@@ -1,0 +1,4 @@
+max_width = 80
+# these two are only available on nightly (F)
+merge_imports = true
+wrap_comments = true

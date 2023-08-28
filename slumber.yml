@@ -1,0 +1,40 @@
+environments:
+  - name: Local
+    data:
+      host: http://localhost:5000
+  - name: Dev
+    data:
+      host: https://dev.dev.dev
+  - name: Prd
+    data:
+      host: https://prd.prd.prd
+
+base: &base
+  headers:
+    Accept: application/json
+    Authorization: Bearer {{ auth_token }}
+    Content-Type: application/json
+
+requests:
+  - !Request
+    <<: *base
+    name: Get Users
+    method: GET
+    url: "{{ host }}/users"
+
+  - !Request
+    <<: *base
+    name: Get User
+    method: GET
+    url: "{{ host }}/users/{{ user_guid }}"
+
+  # Nested folder of requests
+  - !Folder
+    name: Admin
+    requests:
+      - !Request
+        <<: *base
+        name: Modify User
+        method: PUT
+        url: "{{ host }}/users/{{ user_guid }}"
+        body: { "username": "new username" }

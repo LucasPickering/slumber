@@ -1,8 +1,18 @@
 [package]
-name = "slumber"
-version = "0.1.0"
+authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
+description = "Terminal-based REST client"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+keywords = ["rest", "http", "terminal", "tui"]
+license = "MIT"
+name = "slumber"
+repository = "https://github.com/LucasPickering/slumber"
+version = "0.1.0"
+# Keep in sync w/ rust-toolchain.toml
+rust-version = "1.72.0"
 
 [dependencies]
+anyhow = {version = "^1.0.75", features = ["backtrace"]}
+log = "^0.4.20"
+serde = {version = "^1.0.188", features = ["derive"]}
+serde_yaml = {version = "^0.9.25", default-features = false}
+tokio = {version = "^1.32.0", default-features = false, features = ["full"]}

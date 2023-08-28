@@ -1,7 +1,8 @@
-use anyhow::{bail, Context};
+use anyhow::{anyhow, Context};
 use log::warn;
 use serde::Deserialize;
-use std::{collections::HashMap, fs::File, path::Path};
+use std::{collections::HashMap, path::Path};
+use tokio::fs;
 
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
@@ -13,31 +14,38 @@ pub const CONFIG_FILES: &[&str] = &[
     ".slumber.yaml",
 ];
 
+/// A collection of requests
 #[derive(Clone, Debug, Deserialize)]
-pub struct Config {
+pub struct RequestCollection {
     #[serde(default)]
     pub environments: Vec<Environment>,
     #[serde(default)]
     pub requests: Vec<RequestNode>,
 }
 
+/// Mutually exclusive hot-swappable config group
 #[derive(Clone, Debug, Deserialize)]
 pub struct Environment {
     pub name: String,
     pub data: HashMap<String, String>,
 }
 
+/// One node in the request+folder tree
 #[derive(Clone, Debug, Deserialize)]
 pub enum RequestNode {
     Folder {
         name: TemplateString,
         requests: Vec<RequestNode>,
     },
-    Request(Request),
+    Request(RequestRecipe),
 }
 
+/// A definition of how to make a request. This is *not* called `Request` in
+/// order to distinguish it from a single instance of an HTTP request. And it's
+/// not called `RequestTemplate` because the word "template" has a specific
+/// meaning related to string interpolation.
 #[derive(Clone, Debug, Deserialize)]
-pub struct Request {
+pub struct RequestRecipe {
     pub name: TemplateString,
     pub method: TemplateString,
     pub url: TemplateString,
@@ -50,42 +58,52 @@ pub struct Request {
 #[derive(Clone, Debug, Deserialize)]
 pub struct TemplateString(String);
 
-impl Config {
-    pub fn load(collection_file: Option<&Path>) -> anyhow::Result<Self> {
+impl RequestCollection {
+    /// Load config from the given file, or fall back to one of the
+    /// auto-detected defaults
+    pub async fn load(collection_file: Option<&Path>) -> anyhow::Result<Self> {
         // Figure out which file we want to load from
-        let path = match collection_file {
-            Some(path) => path,
-            None => {
-                let paths: Vec<&Path> = CONFIG_FILES
-                    .iter()
-                    .map(Path::new)
-                    .filter(|p| p.exists())
-                    .collect();
-                match paths.as_slice() {
-                    [] => bail!("TODO"),
-                    [path] => path,
-                    [first, rest @ ..] => {
-                        warn!(
-                            "Multiple config files detected. {first:?} will \
-                        be used and the following will be ignored: {rest:?}"
-                        );
-                        *first
-                    }
-                }
-            }
-        };
+        let path = collection_file.map_or_else(Self::detect_path, Ok)?;
 
         // First, parse the file to raw YAML values, so we can apply
         // anchor/alias merging. Then parse that to our config type
-        // Poor man's try block, so we don't have to repeat context
-        let parse = || -> anyhow::Result<Config> {
-            let mut file = File::open(path)?;
+        let parse = async {
+            let content = fs::read(path).await?;
             let mut yaml_value =
-                serde_yaml::from_reader::<_, serde_yaml::Value>(&mut file)?;
+                serde_yaml::from_slice::<serde_yaml::Value>(&content)?;
             yaml_value.apply_merge()?;
-            Ok(serde_yaml::from_value(yaml_value)?)
+            Ok::<RequestCollection, anyhow::Error>(serde_yaml::from_value(
+                yaml_value,
+            )?)
         };
-        parse()
+        parse
+            .await
             .with_context(|| format!("Error parsing config from file {path:?}"))
+    }
+
+    /// Search the current directory for a config file matching one of the known
+    /// file names, and return it if found
+    fn detect_path<'a>() -> anyhow::Result<&'a Path> {
+        let paths: Vec<&Path> = CONFIG_FILES
+            .iter()
+            .map(Path::new)
+            // This could be async but I'm being lazy and skipping it for now,
+            // since we only do this at startup anyway
+            .filter(|p| p.exists())
+            .collect();
+        match paths.as_slice() {
+            [] => Err(anyhow!(
+                "No config file given and none found in current directory"
+            )),
+            [path] => Ok(path),
+            [first, rest @ ..] => {
+                // Print a warning, but don't actually fail
+                warn!(
+                    "Multiple config files detected. {first:?} will be used \
+                    and the following will be ignored: {rest:?}"
+                );
+                Ok(*first)
+            }
+        }
     }
 }

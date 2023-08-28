@@ -1,10 +1,10 @@
-use crate::config::Config;
+use crate::config::RequestCollection;
 
 mod config;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config = Config::load(None)?;
-    println!("{config:#?}");
+    let collection = RequestCollection::load(None).await?;
+    println!("{collection:#?}");
     Ok(())
 }

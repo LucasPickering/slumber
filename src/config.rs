@@ -1,3 +1,4 @@
+use crate::template::TemplateString;
 use anyhow::{anyhow, Context};
 use log::warn;
 use serde::Deserialize;
@@ -34,7 +35,7 @@ pub struct Environment {
 #[derive(Clone, Debug, Deserialize)]
 pub enum RequestNode {
     Folder {
-        name: TemplateString,
+        name: String,
         requests: Vec<RequestNode>,
     },
     Request(RequestRecipe),
@@ -46,17 +47,15 @@ pub enum RequestNode {
 /// meaning related to string interpolation.
 #[derive(Clone, Debug, Deserialize)]
 pub struct RequestRecipe {
-    pub name: TemplateString,
+    pub id: String,
+    /// No reason for this to be a template, because it only appears in the UI
+    pub name: String,
     pub method: TemplateString,
     pub url: TemplateString,
     pub body: Option<serde_yaml::Value>,
     #[serde(default)]
     pub headers: HashMap<String, TemplateString>,
 }
-
-/// A string that can contain templated content
-#[derive(Clone, Debug, Deserialize)]
-pub struct TemplateString(String);
 
 impl RequestCollection {
     /// Load config from the given file, or fall back to one of the

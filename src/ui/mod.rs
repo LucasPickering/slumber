@@ -1,10 +1,9 @@
-use std::{
-    fmt::Display,
-    io::{self, Stdout},
-    time::{Duration, Instant},
-};
+mod util;
 
-use crate::config::{Environment, RequestRecipe};
+use crate::{
+    config::{Environment, RequestRecipe},
+    ui::util::{log_error, StatefulList, ToLines},
+};
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode,
@@ -16,56 +15,11 @@ use crossterm::{
         LeaveAlternateScreen,
     },
 };
-use log::error;
 use ratatui::{prelude::*, widgets::*};
-
-struct StatefulList<T> {
-    state: ListState,
-    items: Vec<T>,
-}
-
-impl<T> StatefulList<T> {
-    fn with_items(items: Vec<T>) -> StatefulList<T> {
-        let mut state = ListState::default();
-        // Pre-select the first item if possible
-        if !items.is_empty() {
-            state.select(Some(0));
-        }
-        StatefulList { state, items }
-    }
-
-    fn next(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.items.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    fn previous(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.items.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    fn unselect(&mut self) {
-        self.state.select(None);
-    }
-}
+use std::{
+    io::{self, Stdout},
+    time::{Duration, Instant},
+};
 
 /// This struct holds the current state of the app. In particular, it has the
 /// `items` field which is a wrapper around `ListState`. Keeping track of the
@@ -155,14 +109,6 @@ impl<'a> Drop for App<'a> {
     }
 }
 
-/// If a result is an error, log it. Useful for handling errors in situations
-/// where we can't panic or exit.
-fn log_error<T, E: Display>(result: Result<T, E>) {
-    if let Err(err) = result {
-        error!("{err}");
-    }
-}
-
 fn draw_main(f: &mut Frame<impl Backend>, state: &mut AppState) {
     // Create layout
     let [left_chunk, right_chunk] = layout(
@@ -209,8 +155,7 @@ fn draw_environment_list(
     chunk: Rect,
     state: &mut AppState,
 ) {
-    let environments = do_list_thing(&state.environments);
-    let items = List::new(environments)
+    let items = List::new(state.environments.to_items())
         .block(Block::default().borders(Borders::ALL).title("Environments"))
         .highlight_style(
             Style::default()
@@ -226,11 +171,7 @@ fn draw_request_list(
     chunk: Rect,
     state: &mut AppState,
 ) {
-    // Create list
-    let requests = do_list_thing(&state.recipes);
-
-    // Render list
-    let items = List::new(requests)
+    let items = List::new(state.recipes.to_items())
         .block(Block::default().borders(Borders::ALL).title("Requests"))
         .highlight_style(
             Style::default()
@@ -259,31 +200,15 @@ fn draw_response(
     f.render_widget(block, chunk);
 }
 
-fn do_list_thing<'a, T: ToLines>(
-    list: &StatefulList<&'a T>,
-) -> Vec<ListItem<'a>> {
-    list.items
-        .iter()
-        .map(|element| {
-            let lines = element.to_lines();
-            ListItem::new(lines)
-                .style(Style::default().fg(Color::Black).bg(Color::White))
-        })
-        .collect()
-}
-
-trait ToLines {
-    fn to_lines(&self) -> Vec<Line>;
-}
-
-impl ToLines for Environment {
-    fn to_lines(&self) -> Vec<Line> {
+// Getting lazy with the lifetimes here...
+impl ToLines for &Environment {
+    fn to_lines(&self) -> Vec<Line<'static>> {
         vec![self.name.clone().into()]
     }
 }
 
-impl ToLines for RequestRecipe {
-    fn to_lines(&self) -> Vec<Line> {
+impl ToLines for &RequestRecipe {
+    fn to_lines(&self) -> Vec<Line<'static>> {
         vec![
             self.name.clone().into(),
             format!("{} {}", self.method, self.url).into(),

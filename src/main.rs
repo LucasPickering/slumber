@@ -1,5 +1,5 @@
 use crate::{
-    config::{Environment, RequestCollection, RequestNode, RequestRecipe},
+    config::{Environment, RequestCollection, RequestRecipe},
     ui::App,
 };
 use anyhow::Context;
@@ -45,7 +45,7 @@ impl Engine {
         };
         Self {
             environments: collection.environments,
-            recipes: flatten(collection.requests),
+            recipes: collection.requests,
             http_client,
             user_state,
         }
@@ -81,23 +81,4 @@ impl Engine {
     ) -> reqwest::Result<Response> {
         self.http_client.execute(request).await
     }
-}
-
-fn flatten(recipes: Vec<RequestNode>) -> Vec<RequestRecipe> {
-    fn helper(all_recipes: &mut Vec<RequestRecipe>, recipes: Vec<RequestNode>) {
-        for recipe in recipes {
-            match recipe {
-                RequestNode::Folder { requests, .. } => {
-                    helper(all_recipes, requests)
-                }
-                RequestNode::Request(recipe) => {
-                    all_recipes.push(recipe);
-                }
-            }
-        }
-    }
-
-    let mut all_recipes = Vec::new();
-    helper(&mut all_recipes, recipes);
-    all_recipes
 }

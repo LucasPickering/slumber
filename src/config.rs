@@ -21,7 +21,7 @@ pub struct RequestCollection {
     #[serde(default)]
     pub environments: Vec<Environment>,
     #[serde(default)]
-    pub requests: Vec<RequestNode>,
+    pub requests: Vec<RequestRecipe>,
 }
 
 /// Mutually exclusive hot-swappable config group
@@ -29,16 +29,6 @@ pub struct RequestCollection {
 pub struct Environment {
     pub name: String,
     pub data: HashMap<String, String>,
-}
-
-/// One node in the request+folder tree
-#[derive(Clone, Debug, Deserialize)]
-pub enum RequestNode {
-    Folder {
-        name: String,
-        requests: Vec<RequestNode>,
-    },
-    Request(RequestRecipe),
 }
 
 /// A definition of how to make a request. This is *not* called `Request` in

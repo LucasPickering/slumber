@@ -16,28 +16,21 @@ base: &base
     Content-Type: application/json
 
 requests:
-  - !Request
-    <<: *base
+  - <<: *base
     id: get-users
     name: Get Users
     method: GET
     url: "{host}/users"
 
-  - !Request
-    <<: *base
+  - <<: *base
     id: get-user
     name: Get User
     method: GET
     url: "{host}/users/{user_guid}"
 
-  # Nested folder of requests
-  - !Folder
-    name: Admin
-    requests:
-      - !Request
-        <<: *base
-        id: modify-user
-        name: Modify User
-        method: PUT
-        url: "{host}/users/{user_guid}"
-        body: { "username": "new username" }
+  - <<: *base
+    id: modify-user
+    name: Modify User
+    method: PUT
+    url: "{host}/users/{user_guid}"
+    body: { "username": "new username" }

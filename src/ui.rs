@@ -26,10 +26,12 @@ struct StatefulList<T> {
 
 impl<T> StatefulList<T> {
     fn with_items(items: Vec<T>) -> StatefulList<T> {
-        StatefulList {
-            state: ListState::default(),
-            items,
+        let mut state = ListState::default();
+        // Pre-select the first item if possible
+        if !items.is_empty() {
+            state.select(Some(0));
         }
+        StatefulList { state, items }
     }
 
     fn next(&mut self) {

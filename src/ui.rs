@@ -86,6 +86,7 @@ struct AppState<'a> {
 }
 
 impl<'a> App<'a> {
+    /// Start the TUI
     pub fn start(
         environments: &'a [Environment],
         recipes: &'a [RequestRecipe],
@@ -115,7 +116,7 @@ impl<'a> App<'a> {
         let tick_rate = Duration::from_millis(250);
         let mut last_tick = Instant::now();
         loop {
-            self.terminal.draw(|f| ui(f, &mut self.state))?;
+            self.terminal.draw(|f| draw_main(f, &mut self.state))?;
 
             let timeout = tick_rate
                 .checked_sub(last_tick.elapsed())
@@ -162,26 +163,73 @@ fn log_error<T, E: Display>(result: Result<T, E>) {
     }
 }
 
-fn ui<B: Backend>(f: &mut Frame<B>, state: &mut AppState) {
+fn draw_main(f: &mut Frame<impl Backend>, state: &mut AppState) {
     // Create layout
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Max(40), Constraint::Percentage(50)].as_ref())
-        .split(f.size());
+    let [left_chunk, right_chunk] = layout(
+        f.size(),
+        Direction::Horizontal,
+        [Constraint::Max(40), Constraint::Percentage(50)],
+    );
 
-    // Create request list
-    let requests: Vec<ListItem> = state
-        .recipes
-        .items
-        .iter()
-        .map(|recipe| {
-            let lines = recipe.to_lines();
-            ListItem::new(lines)
-                .style(Style::default().fg(Color::Black).bg(Color::White))
-        })
-        .collect();
+    let [environments_chunk, requests_chunk] = layout(
+        left_chunk,
+        Direction::Vertical,
+        [Constraint::Max(16), Constraint::Min(0)],
+    );
 
-    // Render request list
+    let [request_chunk, response_chunk] = layout(
+        right_chunk,
+        Direction::Vertical,
+        [Constraint::Percentage(50), Constraint::Percentage(50)],
+    );
+
+    draw_environment_list(f, environments_chunk, state);
+    draw_request_list(f, requests_chunk, state);
+    draw_request(f, request_chunk, state);
+    draw_response(f, response_chunk, state);
+}
+
+fn layout<const N: usize>(
+    area: Rect,
+    direction: Direction,
+    constraints: [Constraint; N],
+) -> [Rect; N] {
+    Layout::default()
+        .direction(direction)
+        .constraints(constraints)
+        .split(area)
+        .as_ref()
+        .try_into()
+        // Should be unreachable
+        .expect("Chunk length does not match constraint length")
+}
+
+fn draw_environment_list(
+    f: &mut Frame<impl Backend>,
+    chunk: Rect,
+    state: &mut AppState,
+) {
+    let environments = do_list_thing(&state.environments);
+    let items = List::new(environments)
+        .block(Block::default().borders(Borders::ALL).title("Environments"))
+        .highlight_style(
+            Style::default()
+                .bg(Color::LightGreen)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol(">> ");
+    f.render_stateful_widget(items, chunk, &mut state.environments.state);
+}
+
+fn draw_request_list(
+    f: &mut Frame<impl Backend>,
+    chunk: Rect,
+    state: &mut AppState,
+) {
+    // Create list
+    let requests = do_list_thing(&state.recipes);
+
+    // Render list
     let items = List::new(requests)
         .block(Block::default().borders(Borders::ALL).title("Requests"))
         .highlight_style(
@@ -190,13 +238,48 @@ fn ui<B: Backend>(f: &mut Frame<B>, state: &mut AppState) {
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol(">> ");
+    f.render_stateful_widget(items, chunk, &mut state.recipes.state);
+}
 
-    // We can now render the item list
-    f.render_stateful_widget(items, chunks[0], &mut state.recipes.state);
+fn draw_request(
+    f: &mut Frame<impl Backend>,
+    chunk: Rect,
+    state: &mut AppState,
+) {
+    let block = Block::default().borders(Borders::ALL).title("Request");
+    f.render_widget(block, chunk);
+}
+
+fn draw_response(
+    f: &mut Frame<impl Backend>,
+    chunk: Rect,
+    state: &mut AppState,
+) {
+    let block = Block::default().borders(Borders::ALL).title("Response");
+    f.render_widget(block, chunk);
+}
+
+fn do_list_thing<'a, T: ToLines>(
+    list: &StatefulList<&'a T>,
+) -> Vec<ListItem<'a>> {
+    list.items
+        .iter()
+        .map(|element| {
+            let lines = element.to_lines();
+            ListItem::new(lines)
+                .style(Style::default().fg(Color::Black).bg(Color::White))
+        })
+        .collect()
 }
 
 trait ToLines {
     fn to_lines(&self) -> Vec<Line>;
+}
+
+impl ToLines for Environment {
+    fn to_lines(&self) -> Vec<Line> {
+        vec![self.name.clone().into()]
+    }
 }
 
 impl ToLines for RequestRecipe {

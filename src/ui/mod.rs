@@ -67,8 +67,21 @@ fn draw_request(
     chunk: Rect,
     state: &mut AppState,
 ) {
-    let block = Block::default().borders(Borders::ALL).title("Request");
-    f.render_widget(block, chunk);
+    if let Some(recipe) = state.recipes.selected() {
+        let block = Block::default().borders(Borders::ALL).title("Request");
+
+        let mut lines: Vec<Line> =
+            vec![format!("{} {}", recipe.method, recipe.url).into()];
+
+        if let Some(body) = &recipe.body {
+            // lines.push(serde_yaml::to_string(body).unwrap().into());
+            let paragraph = Paragraph::new(body.clone()).block(block);
+            f.render_widget(paragraph, chunk);
+        }
+
+        // let paragraph = Paragraph::new(lines).block(block);
+        // f.render_widget(paragraph, chunk);
+    }
 }
 
 fn draw_response(

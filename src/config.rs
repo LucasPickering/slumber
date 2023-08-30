@@ -42,7 +42,7 @@ pub struct RequestRecipe {
     pub name: String,
     pub method: TemplateString,
     pub url: TemplateString,
-    pub body: Option<serde_yaml::Value>,
+    pub body: Option<String>,
     #[serde(default)]
     pub headers: HashMap<String, TemplateString>,
 }

@@ -53,7 +53,7 @@ pub enum Message {
 
 /// A list of items in the UI
 #[derive(Debug)]
-pub struct StatefulList<T> {
+pub struct StatefulList<T: ToLines> {
     pub state: ListState,
     pub items: Vec<T>,
 }

@@ -8,7 +8,7 @@ use crate::{
     config::RequestCollection,
     state::{AppState, Message},
     ui::draw_main,
-    util::log_error,
+    util::{initialize_panic_handler, log_error},
 };
 use anyhow::Context;
 use crossterm::{
@@ -32,7 +32,8 @@ use std::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let collection = RequestCollection::load(None).await?;
+    initialize_panic_handler();
+    let collection = dbg!(RequestCollection::load(None).await?);
     App::start(collection)?;
     Ok(())
 }
@@ -122,8 +123,8 @@ impl App {
             Message::SendRequest => {
                 self.state.active_request = Some(self.build_request()?);
             }
-            Message::SelectPrevious => todo!(),
-            Message::SelectNext => todo!(),
+            Message::SelectPrevious => self.state.recipes.previous(),
+            Message::SelectNext => self.state.recipes.next(),
         }
         Ok(())
     }

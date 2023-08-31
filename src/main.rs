@@ -1,4 +1,5 @@
 mod config;
+mod http;
 mod state;
 mod template;
 mod ui;
@@ -6,11 +7,11 @@ mod util;
 
 use crate::{
     config::RequestCollection,
+    http::HttpEngine,
     state::{AppState, Message},
     ui::draw_main,
     util::{initialize_panic_handler, log_error},
 };
-use anyhow::Context;
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode,
@@ -23,7 +24,6 @@ use crossterm::{
     },
 };
 use ratatui::{prelude::CrosstermBackend, Terminal};
-use reqwest::{Client, Request, Response};
 use std::{
     io::{self, Stdout},
     ops::ControlFlow,
@@ -33,7 +33,7 @@ use std::{
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     initialize_panic_handler();
-    let collection = dbg!(RequestCollection::load(None).await?);
+    let collection = RequestCollection::load(None).await?;
     App::start(collection)?;
     Ok(())
 }
@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
 #[derive(Debug)]
 pub struct App {
     terminal: Terminal<CrosstermBackend<Stdout>>,
-    http_client: Client,
+    http_engine: HttpEngine,
     state: AppState,
 }
 
@@ -58,7 +58,7 @@ impl App {
 
         let mut app = App {
             terminal,
-            http_client: Client::new(),
+            http_engine: HttpEngine::new(),
             state: collection.into(),
         };
 
@@ -121,31 +121,19 @@ impl App {
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::SendRequest => {
-                self.state.active_request = Some(self.build_request()?);
+                let environment = self.state.environments.selected().unwrap();
+                let recipe = self.state.recipes.selected().unwrap();
+
+                // Build the request, then launch it
+                self.state.active_request =
+                    Some(self.http_engine.build_request(environment, recipe)?);
+                self.http_engine
+                    .send_request(self.state.active_request.as_ref().unwrap());
             }
             Message::SelectPrevious => self.state.recipes.previous(),
             Message::SelectNext => self.state.recipes.next(),
         }
         Ok(())
-    }
-
-    fn build_request(&self) -> anyhow::Result<Request> {
-        // TODO add error contexts
-        let environment = self.state.environments.selected().unwrap();
-        let recipe = self.state.recipes.selected().unwrap();
-        let method = recipe.method.render(&environment.data)?.parse()?;
-        let url = recipe.url.render(&environment.data)?;
-        self.http_client
-            .request(method, url)
-            .build()
-            .context("TODO")
-    }
-
-    async fn execute_request(
-        &self,
-        request: Request,
-    ) -> reqwest::Result<Response> {
-        self.http_client.execute(request).await
     }
 }
 

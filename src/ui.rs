@@ -73,14 +73,14 @@ fn draw_request(
         let mut lines: Vec<Line> =
             vec![format!("{} {}", recipe.method, recipe.url).into()];
 
-        if let Some(body) = &recipe.body {
-            // lines.push(serde_yaml::to_string(body).unwrap().into());
-            let paragraph = Paragraph::new(body.clone()).block(block);
-            f.render_widget(paragraph, chunk);
-        }
+        // if let Some(body) = &recipe.body {
+        //     // lines.push(serde_yaml::to_string(body).unwrap().into());
+        //     let paragraph = Paragraph::new(body.clone()).block(block);
+        //     f.render_widget(paragraph, chunk);
+        // }
 
-        // let paragraph = Paragraph::new(lines).block(block);
-        // f.render_widget(paragraph, chunk);
+        let paragraph = Paragraph::new(lines).block(block);
+        f.render_widget(paragraph, chunk);
     }
 }
 
@@ -90,7 +90,21 @@ fn draw_response(
     state: &mut AppState,
 ) {
     let block = Block::default().borders(Borders::ALL).title("Response");
-    f.render_widget(block, chunk);
+
+    if let Some(request) = &state.active_request {
+        // If we can't acquire the read lock for the response, someone else must
+        // be writing - don't show anything until they're done
+        let text = match request.response.try_read().as_deref() {
+            Ok(None) | Err(_) => String::new(),
+            Ok(Some(Ok(response))) => response.content.clone(),
+            Ok(Some(Err(err))) => err.to_string(),
+        };
+
+        let paragraph = Paragraph::new(text).block(block);
+        f.render_widget(paragraph, chunk);
+    } else {
+        f.render_widget(block, chunk);
+    }
 }
 
 /// Helper for building a layout with some constraints

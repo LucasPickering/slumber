@@ -1,9 +1,9 @@
 use crate::{
     config::{Environment, RequestCollection, RequestRecipe},
+    http::Request,
     util::ToLines,
 };
 use ratatui::{prelude::*, widgets::*};
-use reqwest::Request;
 use std::collections::VecDeque;
 
 /// Main app state. All configuration and UI state is stored here. The M in MVC
@@ -12,7 +12,7 @@ pub struct AppState {
     pub message_queue: VecDeque<Message>,
     pub environments: StatefulList<Environment>,
     pub recipes: StatefulList<RequestRecipe>,
-    /// Current in-flight HTTP request
+    /// Most recent HTTP request
     pub active_request: Option<Request>,
 }
 
@@ -100,10 +100,6 @@ impl<T: ToLines> StatefulList<T> {
             None => 0,
         };
         self.state.select(Some(i));
-    }
-
-    pub fn unselect(&mut self) {
-        self.state.select(None);
     }
 
     pub fn to_items(&self) -> Vec<ListItem<'static>> {

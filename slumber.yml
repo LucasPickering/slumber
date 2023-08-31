@@ -1,13 +1,10 @@
 environments:
+  - name: Prd
+    data:
+      host: https://httpbin.org
   - name: Local
     data:
       host: http://localhost:5000
-  - name: Dev
-    data:
-      host: https://dev.dev.dev
-  - name: Prd
-    data:
-      host: https://prd.prd.prd
 
 base: &base
   headers:
@@ -20,19 +17,19 @@ requests:
     id: get-users
     name: Get Users
     method: GET
-    url: "{host}/users"
+    url: "{host}/get"
 
   - <<: *base
     id: get-user
     name: Get User
     method: GET
-    url: "{host}/users/{user_guid}"
+    url: "{host}/anything/{user_guid}"
 
   - <<: *base
     id: modify-user
     name: Modify User
     method: PUT
-    url: "{host}/users/{user_guid}"
+    url: "{host}/anything/{user_guid}"
     body: |
       {
         "username": "new username",

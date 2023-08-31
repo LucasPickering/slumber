@@ -1,28 +1,26 @@
 use crate::config::{Environment, RequestRecipe};
-use log::error;
+use crossterm::{event::DisableMouseCapture, terminal::LeaveAlternateScreen};
 use ratatui::text::Line;
-use std::fmt::Display;
+use std::io;
 
-/// Exit the terminal before panics
+/// Restore termian state during a panic
 pub fn initialize_panic_handler() {
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        crossterm::execute!(
-            std::io::stderr(),
-            crossterm::terminal::LeaveAlternateScreen
-        )
-        .unwrap();
-        crossterm::terminal::disable_raw_mode().unwrap();
+        restore_terminal().unwrap();
         original_hook(panic_info);
     }));
 }
 
-/// If a result is an error, log it. Useful for handling errors in situations
-/// where we can't panic or exit.
-pub fn log_error<T, E: Display>(result: Result<T, E>) {
-    if let Err(err) = result {
-        error!("{err}");
-    }
+/// TODO
+pub fn restore_terminal() -> io::Result<()> {
+    crossterm::terminal::disable_raw_mode()?;
+    crossterm::execute!(
+        std::io::stderr(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    Ok(())
 }
 
 pub trait ToLines {

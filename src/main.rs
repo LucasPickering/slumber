@@ -10,20 +10,23 @@ use crate::{
     http::HttpEngine,
     state::{AppState, Message},
     ui::draw_main,
-    util::{initialize_panic_handler, log_error},
+    util::{initialize_panic_handler, restore_terminal},
 };
+use anyhow::Context;
 use crossterm::{
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode,
-        KeyEventKind,
+        self, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+        KeyModifiers,
     },
     execute,
-    terminal::{
-        disable_raw_mode, enable_raw_mode, EnterAlternateScreen,
-        LeaveAlternateScreen,
-    },
+    terminal::{enable_raw_mode, EnterAlternateScreen},
 };
+use log::error;
 use ratatui::{prelude::CrosstermBackend, Terminal};
+use signal_hook::{
+    consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM},
+    iterator::Signals,
+};
 use std::{
     io::{self, Stdout},
     ops::ControlFlow,
@@ -67,9 +70,18 @@ impl App {
 
     /// Run the main TUI update loop
     fn run(&mut self) -> anyhow::Result<()> {
+        // Listen for signals to stop the program
+        let mut quit_signals = Signals::new([SIGHUP, SIGINT, SIGTERM, SIGQUIT])
+            .context("Error creating signal handler")?;
+
         let tick_rate = Duration::from_millis(250);
         let mut last_tick = Instant::now();
+
         loop {
+            if quit_signals.pending().next().is_some() {
+                return Ok(());
+            }
+
             self.terminal.draw(|f| draw_main(f, &mut self.state))?;
 
             // Handle all messages in the queue before accepting new input
@@ -102,17 +114,27 @@ impl App {
     /// Handle a single input event. If the event triggers a Quit, we return
     /// that so it can be done immediately.
     fn handle_event(&mut self, event: Event) -> ControlFlow<()> {
-        if let Event::Key(key) = event {
-            if key.kind == KeyEventKind::Press {
-                match key.code {
-                    KeyCode::Char('q') => return ControlFlow::Break(()),
-                    KeyCode::Up => self.state.enqueue(Message::SelectPrevious),
-                    KeyCode::Down => self.state.enqueue(Message::SelectNext),
-                    KeyCode::Char(' ') => {
-                        self.state.enqueue(Message::SendRequest)
-                    }
-                    _ => {}
+        if let Event::Key(
+            key @ KeyEvent {
+                kind: KeyEventKind::Press,
+                ..
+            },
+        ) = event
+        {
+            match key.code {
+                // q or ctrl-c both quit
+                KeyCode::Char('q') => return ControlFlow::Break(()),
+                KeyCode::Char('c')
+                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    return ControlFlow::Break(())
                 }
+
+                // Normal events
+                KeyCode::Up => self.state.enqueue(Message::SelectPrevious),
+                KeyCode::Down => self.state.enqueue(Message::SelectNext),
+                KeyCode::Char(' ') => self.state.enqueue(Message::SendRequest),
+                _ => {}
             }
         }
         ControlFlow::Continue(())
@@ -140,12 +162,8 @@ impl App {
 /// Restore terminal on app exit
 impl Drop for App {
     fn drop(&mut self) {
-        log_error(disable_raw_mode());
-        log_error(execute!(
-            self.terminal.backend_mut(),
-            LeaveAlternateScreen,
-            DisableMouseCapture
-        ));
-        log_error(self.terminal.show_cursor());
+        if let Err(err) = restore_terminal() {
+            error!("Error restoring terminal, sorry! {}", err);
+        }
     }
 }

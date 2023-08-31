@@ -804,6 +804,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_yaml",
+ "signal-hook",
  "tokio",
 ]
 

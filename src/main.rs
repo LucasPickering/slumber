@@ -12,7 +12,7 @@ use crate::{
     ui::draw_main,
     util::{initialize_panic_handler, restore_terminal},
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use crossterm::{
     event::{
         self, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
@@ -37,8 +37,7 @@ use std::{
 async fn main() -> anyhow::Result<()> {
     initialize_panic_handler();
     let collection = RequestCollection::load(None).await?;
-    App::start(collection)?;
-    Ok(())
+    App::start(collection)
 }
 
 /// Main controller struct. The app uses an MVC architecture, and this is the C
@@ -84,12 +83,14 @@ impl App {
 
             self.terminal.draw(|f| draw_main(f, &mut self.state))?;
 
-            // Handle all messages in the queue before accepting new input
-            // TODO can we get away without a collect here
-            for message in
-                self.state.message_queue.drain(..).collect::<Vec<_>>()
-            {
-                self.handle_message(message)?;
+            // Handle all messages in the queue before accepting new input.
+            // Can't use a for loop because that maintains a mutable ref to self
+            while let Some(message) = self.state.message_queue.pop_front() {
+                // If an error occurs, store it so we can show the user
+                if let Err(err) = self.handle_message(message) {
+                    error!("Error handling message: {err}");
+                    self.state.error = Some(err);
+                }
             }
 
             // Check for any new events
@@ -140,15 +141,22 @@ impl App {
         ControlFlow::Continue(())
     }
 
+    /// Handle an incoming message. Any error here will be fatal!
+    /// TODO render these errors in a popup instead
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::SendRequest => {
-                let environment = self.state.environments.selected().unwrap();
-                let recipe = self.state.recipes.selected().unwrap();
+                let recipe =
+                    self.state.recipes.selected().ok_or_else(|| {
+                        anyhow!("Cannot send request with no recipe selected")
+                    })?;
 
                 // Build the request, then launch it
-                self.state.active_request =
-                    Some(self.http_engine.build_request(environment, recipe)?);
+                self.state.active_request = Some(
+                    self.http_engine
+                        .build_request(recipe, &(&self.state).into())?,
+                );
+                // Unwrap is safe because we *just* populated it
                 self.http_engine
                     .send_request(self.state.active_request.as_ref().unwrap());
             }

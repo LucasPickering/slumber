@@ -10,6 +10,9 @@ use std::collections::VecDeque;
 #[derive(Debug)]
 pub struct AppState {
     pub message_queue: VecDeque<Message>,
+    /// An error shown to the user in a popup. Cleared when the popup is closed
+    /// TODO show this to the user
+    pub error: Option<anyhow::Error>,
     pub environments: StatefulList<Environment>,
     pub recipes: StatefulList<RequestRecipe>,
     /// Most recent HTTP request
@@ -20,6 +23,7 @@ impl AppState {
     pub fn new(collection: RequestCollection) -> Self {
         Self {
             message_queue: VecDeque::new(),
+            error: None,
             environments: StatefulList::with_items(collection.environments),
             recipes: StatefulList::with_items(collection.requests),
             active_request: None,

@@ -73,11 +73,10 @@ fn draw_request(
         let mut lines: Vec<Line> =
             vec![format!("{} {}", recipe.method, recipe.url).into()];
 
-        // if let Some(body) = &recipe.body {
-        //     // lines.push(serde_yaml::to_string(body).unwrap().into());
-        //     let paragraph = Paragraph::new(body.clone()).block(block);
-        //     f.render_widget(paragraph, chunk);
-        // }
+        // Add request body if present
+        if let Some(body) = &recipe.body {
+            lines.extend(body.lines().map(Line::from));
+        }
 
         let paragraph = Paragraph::new(lines).block(block);
         f.render_widget(paragraph, chunk);

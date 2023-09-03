@@ -1,7 +1,7 @@
 //! This whole module is basically a wrapper around reqwest to make it more
 //! ergnomic for our needs
 
-use crate::config::{Environment, RequestRecipe};
+use crate::{config::RequestRecipe, template::TemplateValues};
 use reqwest::{header::HeaderMap, Client, Method, StatusCode};
 use std::sync::Arc;
 use tokio::{sync::RwLock, task::JoinHandle};
@@ -47,11 +47,11 @@ impl HttpEngine {
     /// environment to render templated strings
     pub fn build_request(
         &self,
-        environment: &Environment,
         recipe: &RequestRecipe,
+        template_values: &TemplateValues,
     ) -> anyhow::Result<Request> {
-        let method = recipe.method.render(&environment.data)?.parse()?;
-        let url = recipe.url.render(&environment.data)?;
+        let method = recipe.method.render(template_values)?.parse()?;
+        let url = recipe.url.render(template_values)?;
         Ok(Request {
             method,
             url,

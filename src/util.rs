@@ -36,9 +36,6 @@ impl ToLines for Environment {
 
 impl ToLines for RequestRecipe {
     fn to_lines(&self) -> Vec<Line<'static>> {
-        vec![
-            self.name.clone().into(),
-            format!("{} {}", self.method, self.url).into(),
-        ]
+        vec![format!("[{}] {}", self.method, self.name).into()]
     }
 }

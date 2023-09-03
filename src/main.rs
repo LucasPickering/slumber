@@ -2,6 +2,7 @@ mod config;
 mod http;
 mod state;
 mod template;
+mod theme;
 mod ui;
 mod util;
 
@@ -9,7 +10,7 @@ use crate::{
     config::RequestCollection,
     http::HttpEngine,
     state::{AppState, Message},
-    ui::draw_main,
+    ui::Renderer,
     util::{initialize_panic_handler, restore_terminal},
 };
 use anyhow::{anyhow, Context};
@@ -44,6 +45,7 @@ async fn main() -> anyhow::Result<()> {
 #[derive(Debug)]
 pub struct App {
     terminal: Terminal<CrosstermBackend<Stdout>>,
+    renderer: Renderer,
     http_engine: HttpEngine,
     state: AppState,
 }
@@ -60,6 +62,7 @@ impl App {
 
         let mut app = App {
             terminal,
+            renderer: Renderer::new(),
             http_engine: HttpEngine::new(),
             state: collection.into(),
         };
@@ -81,7 +84,8 @@ impl App {
                 return Ok(());
             }
 
-            self.terminal.draw(|f| draw_main(f, &mut self.state))?;
+            self.terminal
+                .draw(|f| self.renderer.draw_main(f, &mut self.state))?;
 
             // Handle all messages in the queue before accepting new input.
             // Can't use a for loop because that maintains a mutable ref to self

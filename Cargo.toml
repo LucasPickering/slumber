@@ -13,6 +13,7 @@ rust-version = "1.72.0"
 [dependencies]
 anyhow = {version = "^1.0.75", features = ["backtrace"]}
 crossterm = "0.27.0"
+derive_more = { version = "0.99.17", default-features = false, features = ["deref", "display"] }
 leon = {version = "2.0.1", default-features = false}
 log = "^0.4.20"
 ratatui = "0.23.0"

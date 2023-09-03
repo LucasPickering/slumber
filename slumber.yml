@@ -2,6 +2,7 @@ environments:
   - name: Prd
     data:
       host: https://httpbin.org
+      user_guid: abc123
   - name: Local
     data:
       host: http://localhost:5000
@@ -11,6 +12,7 @@ base: &base
     Accept: application/json
     Authorization: Bearer {{ auth_token }}
     Content-Type: application/json
+    "123123": asdf
 
 requests:
   - <<: *base

@@ -1,11 +1,12 @@
 use crate::state::AppState;
 use anyhow::Context;
+use derive_more::{Deref, Display};
 use leon::{Template, Values};
 use serde::Deserialize;
-use std::{borrow::Cow, collections::HashMap, fmt::Display};
+use std::{borrow::Cow, collections::HashMap};
 
 /// A string that can contain templated content
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deref, Display, Deserialize)]
 pub struct TemplateString(String);
 
 /// A little container struct for all the data that the user can access via
@@ -24,12 +25,6 @@ impl TemplateString {
         Template::parse(&self.0)?.render(values).with_context(|| {
             format!("Error rendering template string {:?}", self.0)
         })
-    }
-}
-
-impl Display for TemplateString {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 

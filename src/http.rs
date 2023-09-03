@@ -2,7 +2,11 @@
 //! ergnomic for our needs
 
 use crate::{config::RequestRecipe, template::TemplateValues};
-use reqwest::{header::HeaderMap, Client, Method, StatusCode};
+use anyhow::Context;
+use reqwest::{
+    header::{HeaderMap, HeaderName},
+    Client, Method, StatusCode,
+};
 use std::sync::Arc;
 use tokio::{sync::RwLock, task::JoinHandle};
 
@@ -22,6 +26,9 @@ pub struct Request {
     pub method: Method,
     pub url: String,
     pub headers: HeaderMap,
+    /// Text body content. At some point we'll support other formats (binary,
+    /// streaming from file, etc.)
+    pub body: Option<String>,
     /// Resolved response, or an error. Since this gets populated
     /// asynchronously, we need to store it behind a lock
     pub response: Arc<RwLock<Option<reqwest::Result<Response>>>>,
@@ -52,9 +59,37 @@ impl HttpEngine {
     ) -> anyhow::Result<Request> {
         let method = recipe.method.render(template_values)?.parse()?;
         let url = recipe.url.render(template_values)?;
+
+        // Build header map
+        let mut headers = HeaderMap::new();
+        for (key, value_template) in &recipe.headers {
+            headers.append(
+                key.parse::<HeaderName>()
+                    // TODO do we need this context? is the base error good
+                    // enough?
+                    .context("Error parsing header name")?,
+                value_template
+                    .render(template_values)
+                    .with_context(|| {
+                        format!("Error rendering value for header {key}")
+                    })?
+                    // I'm not sure when this parse would fail, it seems like
+                    // the value can be any bytes
+                    // https://docs.rs/reqwest/0.11.20/reqwest/header/struct.HeaderValue.html
+                    .parse()
+                    .context("Error parsing header value")?,
+            );
+        }
+
+        let body = recipe
+            .body
+            .as_ref()
+            .map(|body| body.render(template_values))
+            .transpose()?;
         Ok(Request {
             method,
             url,
+            body,
             headers: HeaderMap::new(), // TODO
             response: Arc::new(RwLock::new(None)),
         })

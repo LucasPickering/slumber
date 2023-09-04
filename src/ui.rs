@@ -2,11 +2,13 @@
 //! struct, but these together constitute the V in MVC
 
 use crate::{
+    http::ResponseState,
     state::{AppState, StatefulList},
     theme::Theme,
     util::ToLines,
 };
 use ratatui::{prelude::*, widgets::*};
+use std::ops::Deref;
 
 /// Container for rendering the UI
 #[derive(Debug, Default)]
@@ -95,21 +97,26 @@ impl Renderer {
     ) {
         let block = Block::default().borders(Borders::ALL).title("Response");
 
-        if let Some(request) = &state.active_request {
-            // If we can't acquire the read lock for the response, someone else
-            // must be writing - don't show anything until they're
-            // done
-            let text = match request.response.try_read().as_deref() {
-                Ok(None) | Err(_) => String::new(),
-                Ok(Some(Ok(response))) => response.content.clone(),
-                Ok(Some(Err(err))) => err.to_string(),
-            };
+        let get_text = || -> Option<String> {
+            // Check if a request is running/complete
+            let request = state.active_request.as_ref()?;
+            // Try to access the response. If it's locked, don't block
+            let response = request.response.try_read().ok()?;
+            match response.deref() {
+                // Request hasn't launched yet
+                ResponseState::None => None,
+                ResponseState::Loading => Some("Loading...".into()),
+                ResponseState::Complete { content, .. } => {
+                    // TODO show status/headers somehow
+                    Some(content.clone())
+                }
+                ResponseState::Error(error) => Some(error.to_string()),
+            }
+        };
 
-            let paragraph = Paragraph::new(text).block(block);
-            f.render_widget(paragraph, chunk);
-        } else {
-            f.render_widget(block, chunk);
-        }
+        let paragraph =
+            Paragraph::new(get_text().unwrap_or_default()).block(block);
+        f.render_widget(paragraph, chunk);
     }
 
     /// Build a drawable List, with a title and box

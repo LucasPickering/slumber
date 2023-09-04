@@ -14,7 +14,7 @@ rust-version = "1.72.0"
 anyhow = {version = "^1.0.75", features = ["backtrace"]}
 crossterm = "0.27.0"
 derive_more = {version = "0.99.17", default-features = false, features = ["deref", "display"]}
-leon = {version = "2.0.1", default-features = false}
+liquid = {version = "0.26.4"}
 ratatui = "0.23.0"
 reqwest = {version = "0.11.20", default-features = false, features = ["rustls-tls"]}
 serde = {version = "^1.0.188", features = ["derive"]}

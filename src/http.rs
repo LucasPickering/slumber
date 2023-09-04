@@ -7,8 +7,9 @@ use reqwest::{
     header::{HeaderMap, HeaderName},
     Client, Method, StatusCode,
 };
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 use tokio::{sync::RwLock, task::JoinHandle};
+use tracing::trace;
 
 /// Utility for handling all HTTP operations. The main purpose of this is to
 /// de-asyncify HTTP so it can be called in the main TUI thread. All heavy
@@ -57,12 +58,14 @@ impl HttpEngine {
         recipe: &RequestRecipe,
         template_values: &TemplateValues,
     ) -> anyhow::Result<Request> {
+        // TODO add more tracing
         let method = recipe.method.render(template_values)?.parse()?;
         let url = recipe.url.render(template_values)?;
 
         // Build header map
         let mut headers = HeaderMap::new();
         for (key, value_template) in &recipe.headers {
+            trace!(key = key, value = value_template.deref(), "Adding header");
             headers.append(
                 key.parse::<HeaderName>()
                     // TODO do we need this context? is the base error good
@@ -90,7 +93,7 @@ impl HttpEngine {
             method,
             url,
             body,
-            headers: HeaderMap::new(), // TODO
+            headers,
             response: Arc::new(RwLock::new(None)),
         })
     }

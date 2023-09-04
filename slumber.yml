@@ -11,28 +11,27 @@ environments:
 base: &base
   headers:
     Accept: application/json
-    Authorization: Bearer {auth_token}
+    Authorization: Bearer {{auth_token}}
     Content-Type: application/json
-    "123123": asdf
 
 requests:
   - <<: *base
     id: get-users
     name: Get Users
     method: GET
-    url: "{host}/get"
+    url: "{{host}}/get"
 
   - <<: *base
     id: get-user
     name: Get User
     method: GET
-    url: "{host}/anything/{user_guid}"
+    url: "{{host}}/anything/{{user_guid}}"
 
   - <<: *base
     id: modify-user
     name: Modify User
     method: PUT
-    url: "{host}/anything/{user_guid}"
+    url: "{{host}}/anything/{{user_guid}}"
     body: |
       {
         "username": "new username",

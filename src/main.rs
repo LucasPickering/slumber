@@ -16,13 +16,12 @@ use crate::{
 use anyhow::{anyhow, Context};
 use crossterm::{
     event::{
-        self, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+        EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
         KeyModifiers,
     },
     execute,
     terminal::{enable_raw_mode, EnterAlternateScreen},
 };
-use log::error;
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use signal_hook::{
     consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM},
@@ -30,13 +29,17 @@ use signal_hook::{
 };
 use std::{
     io::{self, Stdout},
-    ops::ControlFlow,
+    ops::{ControlFlow, Deref},
+    path::PathBuf,
     time::{Duration, Instant},
 };
+use tracing::error;
+use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     initialize_panic_handler();
+    initialize_tracing()?;
     let collection = RequestCollection::load(None).await?;
     App::start(collection)
 }
@@ -89,11 +92,10 @@ impl App {
 
             // Handle all messages in the queue before accepting new input.
             // Can't use a for loop because that maintains a mutable ref to self
-            while let Some(message) = self.state.message_queue.pop_front() {
+            while let Some(message) = self.state.dequeue() {
                 // If an error occurs, store it so we can show the user
                 if let Err(err) = self.handle_message(message) {
-                    error!("Error handling message: {err}");
-                    self.state.error = Some(err);
+                    error!(error = err.deref(), "Error handling message");
                 }
             }
 
@@ -104,7 +106,7 @@ impl App {
             if crossterm::event::poll(timeout)? {
                 // If the user asked to quit, exit immediately
                 if let ControlFlow::Break(()) =
-                    self.handle_event(event::read()?)
+                    self.handle_event(crossterm::event::read()?)
                 {
                     return Ok(());
                 }
@@ -145,8 +147,7 @@ impl App {
         ControlFlow::Continue(())
     }
 
-    /// Handle an incoming message. Any error here will be fatal!
-    /// TODO render these errors in a popup instead
+    /// Handle an incoming message. Any error here will be displayed as a popup
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::SendRequest => {
@@ -175,7 +176,25 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         if let Err(err) = restore_terminal() {
-            error!("Error restoring terminal, sorry! {}", err);
+            error!(error = err.deref(), "Error restoring terminal, sorry!");
         }
     }
+}
+
+/// Set up tracing to log to a file
+fn initialize_tracing() -> anyhow::Result<()> {
+    let directory = PathBuf::from("./log/");
+    std::fs::create_dir_all(directory.clone())
+        .context(format!("Error creating log directory {directory:?}"))?;
+    let log_path = directory.join("ratatui-app.log");
+    let log_file = std::fs::File::create(log_path)?;
+    let file_subscriber = tracing_subscriber::fmt::layer()
+        .with_file(true)
+        .with_line_number(true)
+        .with_writer(log_file)
+        .with_target(false)
+        .with_ansi(false)
+        .with_filter(EnvFilter::from_default_env());
+    tracing_subscriber::registry().with(file_subscriber).init();
+    Ok(())
 }

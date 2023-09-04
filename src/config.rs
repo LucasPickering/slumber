@@ -1,9 +1,9 @@
 use crate::template::TemplateString;
 use anyhow::{anyhow, Context};
-use log::warn;
 use serde::Deserialize;
 use std::{collections::HashMap, path::Path};
 use tokio::fs;
+use tracing::{event, Level};
 
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
@@ -87,7 +87,8 @@ impl RequestCollection {
             [path] => Ok(path),
             [first, rest @ ..] => {
                 // Print a warning, but don't actually fail
-                warn!(
+                event!(
+                    Level::WARN,
                     "Multiple config files detected. {first:?} will be used \
                     and the following will be ignored: {rest:?}"
                 );

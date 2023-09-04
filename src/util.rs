@@ -1,7 +1,6 @@
 use crate::config::{Environment, RequestRecipe};
 use crossterm::{event::DisableMouseCapture, terminal::LeaveAlternateScreen};
 use ratatui::text::Line;
-use std::io;
 
 /// Restore termian state during a panic
 pub fn initialize_panic_handler() {
@@ -13,7 +12,7 @@ pub fn initialize_panic_handler() {
 }
 
 /// TODO
-pub fn restore_terminal() -> io::Result<()> {
+pub fn restore_terminal() -> anyhow::Result<()> {
     crossterm::terminal::disable_raw_mode()?;
     crossterm::execute!(
         std::io::stderr(),

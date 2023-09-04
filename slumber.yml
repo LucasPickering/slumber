@@ -3,6 +3,7 @@ environments:
     data:
       host: https://httpbin.org
       user_guid: abc123
+      auth_token: eggsalad
   - name: Local
     data:
       host: http://localhost:5000
@@ -10,7 +11,7 @@ environments:
 base: &base
   headers:
     Accept: application/json
-    Authorization: Bearer {{ auth_token }}
+    Authorization: Bearer {auth_token}
     Content-Type: application/json
     "123123": asdf
 

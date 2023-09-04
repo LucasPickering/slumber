@@ -99,9 +99,14 @@ impl HttpEngine {
     /// the request
     pub fn send_request(&self, request: &Request) -> JoinHandle<()> {
         // Convert to reqwest's request format
-        let reqwest_request = self
+        let mut request_builder = self
             .client
             .request(request.method.clone(), request.url.clone())
+            .headers(request.headers.clone());
+        if let Some(body) = &request.body {
+            request_builder = request_builder.body(body.clone());
+        }
+        let reqwest_request = request_builder
             .build()
             .expect("Error building HTTP request");
 

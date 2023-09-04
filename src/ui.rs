@@ -69,7 +69,7 @@ impl Renderer {
         &self,
         f: &mut Frame<impl Backend>,
         chunk: Rect,
-        state: &mut AppState,
+        state: &AppState,
     ) {
         if let Some(recipe) = state.recipes.selected() {
             let block = Block::default().borders(Borders::ALL).title("Request");
@@ -91,7 +91,7 @@ impl Renderer {
         &self,
         f: &mut Frame<impl Backend>,
         chunk: Rect,
-        state: &mut AppState,
+        state: &AppState,
     ) {
         let block = Block::default().borders(Borders::ALL).title("Response");
 

@@ -9,10 +9,7 @@ use std::collections::VecDeque;
 /// Main app state. All configuration and UI state is stored here. The M in MVC
 #[derive(Debug)]
 pub struct AppState {
-    pub message_queue: VecDeque<Message>,
-    /// An error shown to the user in a popup. Cleared when the popup is closed
-    /// TODO show this to the user
-    pub error: Option<anyhow::Error>,
+    message_queue: VecDeque<Message>,
     pub environments: StatefulList<Environment>,
     pub recipes: StatefulList<RequestRecipe>,
     /// Most recent HTTP request
@@ -23,7 +20,6 @@ impl AppState {
     pub fn new(collection: RequestCollection) -> Self {
         Self {
             message_queue: VecDeque::new(),
-            error: None,
             environments: StatefulList::with_items(collection.environments),
             recipes: StatefulList::with_items(collection.requests),
             active_request: None,
@@ -33,6 +29,11 @@ impl AppState {
     /// Stick a message on the end of the queue
     pub fn enqueue(&mut self, message: Message) {
         self.message_queue.push_back(message);
+    }
+
+    /// Pop a message off the queue (if it's not empty)
+    pub fn dequeue(&mut self) -> Option<Message> {
+        self.message_queue.pop_front()
     }
 }
 

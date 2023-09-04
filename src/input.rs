@@ -2,10 +2,10 @@
 
 use crate::{
     state::{AppState, Message},
-    ui::Element,
+    ui::{EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane},
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use std::{any::Any, fmt::Debug};
+use std::{fmt::Debug, rc::Rc};
 use tracing::trace;
 
 /// An input action from the user. This is context-agnostic; the action may not
@@ -69,7 +69,10 @@ impl Action {
 /// A major item in the UI, which can receive input and be drawn to the screen.
 /// Each of these types should be a **singleton**. There are assumptions that
 /// will break if we start duplicating types.
-pub trait ActionHandler: Any + Debug {
+pub trait InputHandler: Debug {
+    /// Modify app state based on the given action. Sync actions should modify
+    /// state directly, while async ones should queue messages, to be handled
+    /// later.
     fn handle_action(&self, state: &mut AppState, action: Action);
 }
 
@@ -83,35 +86,41 @@ pub fn handle_action(state: &mut AppState, action: Action) {
         Action::FocusPrevious => state.focus_previous(),
         Action::FocusNext => state.focus_next(),
 
-        // Forward context events to the focused element
-        other => state.focused_element.clone().handle_action(state, other),
+        // Forward context events to the focused element. We need to clone the
+        // reference to the pane, so we can pass a mutable ref to state. This is
+        // important because the handler may change the pane focus. If that
+        // happens, once this handler is done we'll drop our reference and the
+        // old pane will be dropped
+        other => Rc::clone(&state.focused_pane).handle_action(state, other),
     }
 }
 
-impl ActionHandler for Element {
+impl InputHandler for EnvironmentListPane {
     fn handle_action(&self, state: &mut AppState, action: Action) {
-        // TODO use dynamic dispatch to split this up?
-        match (self, action) {
-            // Ignore global actions
-            (_, Action::Quit | Action::FocusNext | Action::FocusPrevious) => {}
-
-            (Element::EnvironmentList, Action::Up) => {
-                state.environments.previous()
-            }
-            (Element::EnvironmentList, Action::Down) => {
-                state.environments.next()
-            }
-            (Element::EnvironmentList, Action::Select) => {}
-
-            (Element::RecipeList, Action::Up) => state.recipes.previous(),
-            (Element::RecipeList, Action::Down) => state.recipes.next(),
-            (Element::RecipeList, Action::Select) => {
-                state.enqueue(Message::SendRequest)
-            }
-
-            // Nothing to do on these yet
-            (Element::RequestDetail, _) => {}
-            (Element::ResponseDetail, _) => {}
+        match action {
+            Action::Up => state.environments.previous(),
+            Action::Down => state.environments.next(),
+            _ => {}
         }
     }
+}
+
+impl InputHandler for RecipeListPane {
+    fn handle_action(&self, state: &mut AppState, action: Action) {
+        match action {
+            // TODO impl InputHandler for StatefulList and forward these?
+            Action::Up => state.recipes.previous(),
+            Action::Down => state.recipes.next(),
+            Action::Select => state.enqueue(Message::SendRequest),
+            _ => {}
+        }
+    }
+}
+
+impl InputHandler for RequestPane {
+    fn handle_action(&self, _state: &mut AppState, _action: Action) {}
+}
+
+impl InputHandler for ResponsePane {
+    fn handle_action(&self, _state: &mut AppState, _action: Action) {}
 }

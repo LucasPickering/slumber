@@ -1,11 +1,11 @@
 use crate::{
     config::{Environment, RequestCollection, RequestRecipe},
     http::Request,
-    ui::Element,
+    ui::{Pane, RecipeListPane},
     util::ToLines,
 };
 use ratatui::{prelude::*, widgets::*};
-use std::collections::VecDeque;
+use std::{collections::VecDeque, rc::Rc};
 
 /// Main app state. All configuration and UI state is stored here. The M in MVC
 #[derive(Debug)]
@@ -13,8 +13,9 @@ pub struct AppState {
     /// Flag to control the main app loop. Set to false to exit the app
     should_run: bool,
     message_queue: VecDeque<Message>,
-    /// The element that the user has focused, which will receive input events
-    pub focused_element: Element,
+    /// The pane that the user has focused, which will receive input events
+    /// TODO explain Rc
+    pub focused_pane: Rc<dyn Pane>,
     pub environments: StatefulList<Environment>,
     pub recipes: StatefulList<RequestRecipe>,
     /// Most recent HTTP request
@@ -26,7 +27,7 @@ impl AppState {
         Self {
             should_run: true,
             message_queue: VecDeque::new(),
-            focused_element: Element::RecipeList,
+            focused_pane: Rc::new(RecipeListPane),
             environments: StatefulList::with_items(collection.environments),
             recipes: StatefulList::with_items(collection.requests),
             active_request: None,
@@ -55,20 +56,17 @@ impl AppState {
 
     /// Shift focus to the previous pane
     pub fn focus_previous(&mut self) {
-        // TODO fix crash when tabbing beginning->end
-        let current = self.focused_element.tab_index();
-        self.focused_element = Element::from_tab_index(current - 1);
+        self.focused_pane = self.focused_pane.previous().into();
     }
 
     /// Shift focus to the next pane
     pub fn focus_next(&mut self) {
-        let current = self.focused_element.tab_index();
-        self.focused_element = Element::from_tab_index(current + 1);
+        self.focused_pane = self.focused_pane.next().into();
     }
 
-    /// Check if the given element is in focus
-    pub fn is_focused(&self, element: &Element) -> bool {
-        &self.focused_element == element
+    /// Check if the given pane is in focus
+    pub fn is_focused(&self, pane: &dyn Pane) -> bool {
+        self.focused_pane.equals(pane)
     }
 }
 

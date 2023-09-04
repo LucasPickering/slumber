@@ -2,7 +2,7 @@
 
 use crate::{
     state::{AppState, Message},
-    ui::{EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane},
+    view::{EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane},
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use std::{fmt::Debug, rc::Rc};
@@ -108,7 +108,6 @@ impl InputHandler for EnvironmentListPane {
 impl InputHandler for RecipeListPane {
     fn handle_action(&self, state: &mut AppState, action: Action) {
         match action {
-            // TODO impl InputHandler for StatefulList and forward these?
             Action::Up => state.recipes.previous(),
             Action::Down => state.recipes.next(),
             Action::Select => state.enqueue(Message::SendRequest),

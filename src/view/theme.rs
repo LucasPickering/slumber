@@ -1,12 +1,12 @@
 use ratatui::style::{Color, Modifier, Style};
 
-/// Configurable settings for the UI
+/// Configurable visual settings for the UI
 #[derive(Debug)]
 pub struct Theme {
     pub pane_border_style: Style,
     pub pane_border_focus_style: Style,
     pub list_highlight_style: Style,
-    pub list_highlight_symbol: String,
+    pub list_highlight_symbol: &'static str,
 }
 
 impl Theme {
@@ -28,8 +28,9 @@ impl Default for Theme {
                 .add_modifier(Modifier::BOLD),
             list_highlight_style: Style::default()
                 .bg(Color::LightGreen)
+                .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
-            list_highlight_symbol: ">> ".into(),
+            list_highlight_symbol: ">> ",
         }
     }
 }

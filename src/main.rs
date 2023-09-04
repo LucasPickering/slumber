@@ -3,23 +3,20 @@ mod http;
 mod input;
 mod state;
 mod template;
-mod theme;
-mod ui;
-mod util;
+mod view;
 
 use crate::{
     config::RequestCollection,
     http::HttpEngine,
     input::Action,
     state::{AppState, Message},
-    ui::Renderer,
-    util::{initialize_panic_handler, restore_terminal},
+    view::Renderer,
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
-    event::EnableMouseCapture,
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
-    terminal::{enable_raw_mode, EnterAlternateScreen},
+    terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use signal_hook::{
@@ -32,7 +29,7 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
-use tracing::error;
+use tracing::{error, info};
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
 #[tokio::main]
@@ -165,5 +162,26 @@ fn initialize_tracing() -> anyhow::Result<()> {
         .with_ansi(false)
         .with_filter(EnvFilter::from_default_env());
     tracing_subscriber::registry().with(file_subscriber).init();
+    Ok(())
+}
+
+/// Restore terminal state during a panic
+fn initialize_panic_handler() {
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        restore_terminal().unwrap();
+        original_hook(panic_info);
+    }));
+}
+
+/// Return terminal to initial state
+fn restore_terminal() -> anyhow::Result<()> {
+    info!("Restoring terminal");
+    crossterm::terminal::disable_raw_mode()?;
+    crossterm::execute!(
+        std::io::stderr(),
+        LeaveAlternateScreen,
+        DisableMouseCapture,
+    )?;
     Ok(())
 }

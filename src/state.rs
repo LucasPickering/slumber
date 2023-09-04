@@ -1,10 +1,9 @@
 use crate::{
     config::{Environment, RequestCollection, RequestRecipe},
     http::Request,
-    ui::{Pane, RecipeListPane},
-    util::ToLines,
+    view::{Pane, RecipeListPane},
 };
-use ratatui::{prelude::*, widgets::*};
+use ratatui::widgets::*;
 use std::{collections::VecDeque, rc::Rc};
 
 /// Main app state. All configuration and UI state is stored here. The M in MVC
@@ -91,12 +90,12 @@ pub enum Message {
 
 /// A list of items in the UI
 #[derive(Debug)]
-pub struct StatefulList<T: ToLines> {
+pub struct StatefulList<T> {
     pub state: ListState,
     pub items: Vec<T>,
 }
 
-impl<T: ToLines> StatefulList<T> {
+impl<T> StatefulList<T> {
     pub fn with_items(items: Vec<T>) -> StatefulList<T> {
         let mut state = ListState::default();
         // Pre-select the first item if possible
@@ -138,15 +137,5 @@ impl<T: ToLines> StatefulList<T> {
             None => 0,
         };
         self.state.select(Some(i));
-    }
-
-    pub fn to_items(&self) -> Vec<ListItem<'static>> {
-        self.items
-            .iter()
-            .map(|element| {
-                ListItem::new(element.to_lines())
-                    .style(Style::default().fg(Color::Black).bg(Color::White))
-            })
-            .collect()
     }
 }

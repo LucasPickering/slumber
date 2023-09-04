@@ -1,12 +1,14 @@
-//! All view-related functions live in here. There isn't a singular "View"
-//! struct, but these together constitute the V in MVC
+mod component;
+mod theme;
 
 use crate::{
     http::ResponseState,
     input::InputHandler,
-    state::{AppState, StatefulList},
-    theme::Theme,
-    util::ToLines,
+    state::AppState,
+    view::{
+        component::{BlockComponent, Component, ListComponent},
+        theme::Theme,
+    },
 };
 use ratatui::{prelude::*, widgets::*};
 use std::{any::Any, fmt::Debug, io::Stdout, ops::Deref};
@@ -49,27 +51,9 @@ impl Renderer {
         RequestPane.draw(self, f, request_chunk, state);
         ResponsePane.draw(self, f, response_chunk, state);
     }
-
-    /// Build a drawable List, with a title and box
-    fn build_list<'a>(
-        &'a self,
-        title: &'a str,
-        list: &StatefulList<impl ToLines>,
-        is_focused: bool,
-    ) -> List<'a> {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .style(self.theme.pane_border_style(is_focused))
-            .title(title);
-
-        List::new(list.to_items())
-            .block(block)
-            .highlight_style(self.theme.list_highlight_style)
-            .highlight_symbol(&self.theme.list_highlight_symbol)
-    }
 }
 
-/// Helper for building a layout with some constraints
+/// Helper for building a layout with a fixed number of constraints
 fn layout<const N: usize>(
     area: Rect,
     direction: Direction,
@@ -156,12 +140,15 @@ impl Draw for EnvironmentListPane {
         chunk: Rect,
         state: &mut AppState,
     ) {
-        let list = renderer.build_list(
-            "Environments",
-            &state.environments,
-            state.is_focused(self),
-        );
-        f.render_stateful_widget(list, chunk, &mut state.environments.state);
+        let list = ListComponent {
+            block: BlockComponent {
+                title: "Environments",
+                is_focused: state.is_focused(self),
+            },
+            list: &state.environments,
+        }
+        .render(renderer);
+        f.render_stateful_widget(list, chunk, &mut state.environments.state)
     }
 }
 
@@ -182,12 +169,15 @@ impl Draw for RecipeListPane {
         chunk: Rect,
         state: &mut AppState,
     ) {
-        let list = renderer.build_list(
-            "Requests",
-            &state.recipes,
-            state.is_focused(self),
-        );
-        f.render_stateful_widget(list, chunk, &mut state.recipes.state);
+        let list = ListComponent {
+            block: BlockComponent {
+                title: "Recipes",
+                is_focused: state.is_focused(self),
+            },
+            list: &state.recipes,
+        }
+        .render(renderer);
+        f.render_stateful_widget(list, chunk, &mut state.recipes.state)
     }
 }
 
@@ -209,12 +199,11 @@ impl Draw for RequestPane {
         state: &mut AppState,
     ) {
         if let Some(recipe) = state.recipes.selected() {
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_style(
-                    renderer.theme.pane_border_style(state.is_focused(self)),
-                )
-                .title("Request");
+            let block = BlockComponent {
+                title: "Request",
+                is_focused: state.is_focused(self),
+            }
+            .render(renderer);
 
             let mut lines: Vec<Line> =
                 vec![format!("{} {}", recipe.method, recipe.url).into()];
@@ -247,12 +236,11 @@ impl Draw for ResponsePane {
         chunk: Rect,
         state: &mut AppState,
     ) {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(
-                renderer.theme.pane_border_style(state.is_focused(self)),
-            )
-            .title("Response");
+        let block = BlockComponent {
+            title: "Response",
+            is_focused: state.is_focused(self),
+        }
+        .render(renderer);
 
         let get_text = || -> Option<String> {
             // Check if a request is running/complete

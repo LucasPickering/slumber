@@ -53,7 +53,11 @@ impl Renderer {
         chunk: Rect,
         state: &mut AppState,
     ) {
-        let list = self.build_list("Environments", &state.environments);
+        let list = self.build_list(
+            "Environments",
+            &state.environments,
+            state.is_focused(&Element::EnvironmentList),
+        );
         f.render_stateful_widget(list, chunk, &mut state.environments.state);
     }
 
@@ -63,7 +67,11 @@ impl Renderer {
         chunk: Rect,
         state: &mut AppState,
     ) {
-        let list = self.build_list("Requests", &state.recipes);
+        let list = self.build_list(
+            "Requests",
+            &state.recipes,
+            state.is_focused(&Element::RecipeList),
+        );
         f.render_stateful_widget(list, chunk, &mut state.recipes.state);
     }
 
@@ -74,7 +82,12 @@ impl Renderer {
         state: &AppState,
     ) {
         if let Some(recipe) = state.recipes.selected() {
-            let block = Block::default().borders(Borders::ALL).title("Request");
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(self.theme.pane_border_style(
+                    state.is_focused(&Element::RequestDetail),
+                ))
+                .title("Request");
 
             let mut lines: Vec<Line> =
                 vec![format!("{} {}", recipe.method, recipe.url).into()];
@@ -95,7 +108,13 @@ impl Renderer {
         chunk: Rect,
         state: &AppState,
     ) {
-        let block = Block::default().borders(Borders::ALL).title("Response");
+        let block =
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(self.theme.pane_border_style(
+                    state.is_focused(&Element::ResponseDetail),
+                ))
+                .title("Response");
 
         let get_text = || -> Option<String> {
             // Check if a request is running/complete
@@ -124,9 +143,15 @@ impl Renderer {
         &'a self,
         title: &'a str,
         list: &StatefulList<impl ToLines>,
+        is_focused: bool,
     ) -> List<'a> {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .style(self.theme.pane_border_style(is_focused))
+            .title(title);
+
         List::new(list.to_items())
-            .block(Block::default().borders(Borders::ALL).title(title))
+            .block(block)
             .highlight_style(self.theme.list_highlight_style)
             .highlight_symbol(&self.theme.list_highlight_symbol)
     }
@@ -156,4 +181,24 @@ pub enum Element {
     RecipeList,
     RequestDetail,
     ResponseDetail,
+}
+
+impl Element {
+    /// Elements that can be cycled between with tab
+    const TAB_ELEMENTS: &[Self] = &[
+        Self::EnvironmentList,
+        Self::RecipeList,
+        Self::RequestDetail,
+        Self::ResponseDetail,
+    ];
+
+    pub fn tab_index(&self) -> usize {
+        Self::TAB_ELEMENTS.iter().position(|e| e == self).unwrap()
+    }
+
+    /// Get an alement by its tab index. If the index is outside the defined
+    /// range, it will be modulo'd to cycle back down
+    pub fn from_tab_index(tab_index: usize) -> Self {
+        Self::TAB_ELEMENTS[tab_index % Self::TAB_ELEMENTS.len()]
+    }
 }

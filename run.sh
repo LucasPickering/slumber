@@ -6,6 +6,6 @@
 # latest watchexec we can get rid of this.
 # https://github.com/watchexec/cargo-watch/issues/269
 
-watchexec --restart \
+RUST_LOG=slumber=trace watchexec --restart \
     --watch Cargo.toml --watch Cargo.lock --watch src/ --watch slumber.yml \
     -- cargo run

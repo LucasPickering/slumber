@@ -53,6 +53,19 @@ impl AppState {
         self.message_queue.pop_front()
     }
 
+    /// Shift focus to the previous pane
+    pub fn focus_previous(&mut self) {
+        // TODO fix crash when tabbing beginning->end
+        let current = self.focused_element.tab_index();
+        self.focused_element = Element::from_tab_index(current - 1);
+    }
+
+    /// Shift focus to the next pane
+    pub fn focus_next(&mut self) {
+        let current = self.focused_element.tab_index();
+        self.focused_element = Element::from_tab_index(current + 1);
+    }
+
     /// Check if the given element is in focus
     pub fn is_focused(&self, element: &Element) -> bool {
         &self.focused_element == element

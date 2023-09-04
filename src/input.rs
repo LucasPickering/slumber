@@ -6,6 +6,7 @@ use crate::{
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use std::{any::Any, fmt::Debug};
+use tracing::trace;
 
 /// An input action from the user. This is context-agnostic; the action may not
 /// actually mean something in the current app context. This type is just an
@@ -15,6 +16,10 @@ use std::{any::Any, fmt::Debug};
 pub enum Action {
     /// Exit the app
     Quit,
+    /// Focus the next pane
+    FocusNext,
+    /// Focus the previous pane
+    FocusPrevious,
     /// Go up (e.g in a list)
     Up,
     /// Go down (e.g. in a list)
@@ -27,7 +32,7 @@ impl Action {
     /// Map a generic input event into a specific action. This narrows the event
     /// down to either something we know we care about, or nothing.
     pub fn from_event(event: Event) -> Option<Self> {
-        if let Event::Key(
+        let action = if let Event::Key(
             key @ KeyEvent {
                 kind: KeyEventKind::Press,
                 ..
@@ -35,7 +40,6 @@ impl Action {
         ) = event
         {
             match key.code {
-                // Global events
                 // q or ctrl-c both quit
                 KeyCode::Char('q') => Some(Action::Quit),
                 KeyCode::Char('c')
@@ -43,7 +47,8 @@ impl Action {
                 {
                     Some(Action::Quit)
                 }
-                // Normal events
+                KeyCode::BackTab => Some(Action::FocusPrevious),
+                KeyCode::Tab => Some(Action::FocusNext),
                 KeyCode::Up => Some(Action::Up),
                 KeyCode::Down => Some(Action::Down),
                 KeyCode::Char(' ') => Some(Action::Select),
@@ -51,7 +56,13 @@ impl Action {
             }
         } else {
             None
+        };
+
+        if let Some(action) = &action {
+            trace!("Input action {action:?}");
         }
+
+        action
     }
 }
 
@@ -69,6 +80,9 @@ pub fn handle_action(state: &mut AppState, action: Action) {
     match action {
         // Global events
         Action::Quit => state.quit(),
+        Action::FocusPrevious => state.focus_previous(),
+        Action::FocusNext => state.focus_next(),
+
         // Forward context events to the focused element
         other => state.focused_element.clone().handle_action(state, other),
     }
@@ -79,7 +93,7 @@ impl ActionHandler for Element {
         // TODO use dynamic dispatch to split this up?
         match (self, action) {
             // Ignore global actions
-            (_, Action::Quit) => {}
+            (_, Action::Quit | Action::FocusNext | Action::FocusPrevious) => {}
 
             (Element::EnvironmentList, Action::Up) => {
                 state.environments.previous()
@@ -95,9 +109,9 @@ impl ActionHandler for Element {
                 state.enqueue(Message::SendRequest)
             }
 
-            (Element::RequestDetail, _) => todo!(),
-
-            (Element::ResponseDetail, _) => todo!(),
+            // Nothing to do on these yet
+            (Element::RequestDetail, _) => {}
+            (Element::ResponseDetail, _) => {}
         }
     }
 }

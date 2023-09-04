@@ -1,5 +1,6 @@
 mod config;
 mod http;
+mod input;
 mod state;
 mod template;
 mod theme;
@@ -9,16 +10,14 @@ mod util;
 use crate::{
     config::RequestCollection,
     http::HttpEngine,
+    input::Action,
     state::{AppState, Message},
     ui::Renderer,
     util::{initialize_panic_handler, restore_terminal},
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
-    event::{
-        EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
-        KeyModifiers,
-    },
+    event::EnableMouseCapture,
     execute,
     terminal::{enable_raw_mode, EnterAlternateScreen},
 };
@@ -29,7 +28,7 @@ use signal_hook::{
 };
 use std::{
     io::{self, Stdout},
-    ops::{ControlFlow, Deref},
+    ops::Deref,
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -82,11 +81,7 @@ impl App {
         let tick_rate = Duration::from_millis(250);
         let mut last_tick = Instant::now();
 
-        loop {
-            if quit_signals.pending().next().is_some() {
-                return Ok(());
-            }
-
+        while self.state.should_run() {
             self.terminal
                 .draw(|f| self.renderer.draw_main(f, &mut self.state))?;
 
@@ -104,47 +99,23 @@ impl App {
                 .checked_sub(last_tick.elapsed())
                 .unwrap_or_else(|| Duration::from_secs(0));
             if crossterm::event::poll(timeout)? {
-                // If the user asked to quit, exit immediately
-                if let ControlFlow::Break(()) =
-                    self.handle_event(crossterm::event::read()?)
+                if let Some(action) =
+                    Action::from_event(crossterm::event::read()?)
                 {
-                    return Ok(());
+                    input::handle_action(&mut self.state, action);
                 }
             }
 
             if last_tick.elapsed() >= tick_rate {
                 last_tick = Instant::now();
             }
-        }
-    }
 
-    /// Handle a single input event. If the event triggers a Quit, we return
-    /// that so it can be done immediately.
-    fn handle_event(&mut self, event: Event) -> ControlFlow<()> {
-        if let Event::Key(
-            key @ KeyEvent {
-                kind: KeyEventKind::Press,
-                ..
-            },
-        ) = event
-        {
-            match key.code {
-                // q or ctrl-c both quit
-                KeyCode::Char('q') => return ControlFlow::Break(()),
-                KeyCode::Char('c')
-                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                {
-                    return ControlFlow::Break(())
-                }
-
-                // Normal events
-                KeyCode::Up => self.state.enqueue(Message::SelectPrevious),
-                KeyCode::Down => self.state.enqueue(Message::SelectNext),
-                KeyCode::Char(' ') => self.state.enqueue(Message::SendRequest),
-                _ => {}
+            // Check for exit signals
+            if quit_signals.pending().next().is_some() {
+                self.state.quit();
             }
         }
-        ControlFlow::Continue(())
+        Ok(())
     }
 
     /// Handle an incoming message. Any error here will be displayed as a popup
@@ -165,8 +136,6 @@ impl App {
                 self.http_engine
                     .send_request(self.state.active_request.as_ref().unwrap());
             }
-            Message::SelectPrevious => self.state.recipes.previous(),
-            Message::SelectNext => self.state.recipes.next(),
         }
         Ok(())
     }

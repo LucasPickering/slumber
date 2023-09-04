@@ -8,7 +8,7 @@ use crate::{
     util::ToLines,
 };
 use ratatui::{prelude::*, widgets::*};
-use std::ops::Deref;
+use std::{fmt::Debug, ops::Deref};
 
 /// Container for rendering the UI
 #[derive(Debug, Default)]
@@ -146,4 +146,14 @@ fn layout<const N: usize>(
         .try_into()
         // Should be unreachable
         .expect("Chunk length does not match constraint length")
+}
+
+/// An element in the UI. Each element can receive input and be drawn to the
+/// screen. Focus between elements is mutually exclusive.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Element {
+    EnvironmentList,
+    RecipeList,
+    RequestDetail,
+    ResponseDetail,
 }

@@ -11,6 +11,9 @@ use std::{ops::Deref, sync::Arc};
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::trace;
 
+static USER_AGENT: &str =
+    concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+
 /// Utility for handling all HTTP operations. The main purpose of this is to
 /// de-asyncify HTTP so it can be called in the main TUI thread. All heavy
 /// lifting will be pushed to background tasks.
@@ -69,7 +72,10 @@ pub struct Response {
 impl HttpEngine {
     pub fn new() -> Self {
         Self {
-            client: Client::new(),
+            client: Client::builder()
+                .user_agent(USER_AGENT)
+                .build()
+                .expect("Error building reqwest client"),
         }
     }
 

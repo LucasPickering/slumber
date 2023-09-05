@@ -5,7 +5,7 @@ use crate::{
     view::{EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane},
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use std::{fmt::Debug, rc::Rc};
+use std::fmt::Debug;
 use tracing::trace;
 
 /// An input action from the user. This is context-agnostic; the action may not
@@ -71,7 +71,7 @@ impl Action {
 /// A major item in the UI, which can receive input and be drawn to the screen.
 /// Each of these types should be a **singleton**. There are assumptions that
 /// will break if we start duplicating types.
-pub trait InputHandler: Debug {
+pub trait InputHandler {
     /// Modify app state based on the given action. Sync actions should modify
     /// state directly, while async ones should queue messages, to be handled
     /// later.
@@ -85,16 +85,16 @@ pub fn handle_action(state: &mut AppState, action: Action) {
     match action {
         // Global events
         Action::Quit => state.quit(),
-        Action::FocusPrevious => state.focus_previous(),
-        Action::FocusNext => state.focus_next(),
+        Action::FocusPrevious => state.focused_pane.previous(),
+        Action::FocusNext => state.focused_pane.next(),
         Action::SendRequest => state.enqueue(Message::SendRequest),
 
-        // Forward context events to the focused element. We need to clone the
-        // reference to the pane, so we can pass a mutable ref to state. This is
-        // important because the handler may change the pane focus. If that
-        // happens, once this handler is done we'll drop our reference and the
-        // old pane will be dropped
-        other => Rc::clone(&state.focused_pane).handle_action(state, other),
+        // Forward context events to the focused element
+        other => state
+            .focused_pane
+            .selected()
+            .input_handler()
+            .handle_action(state, other),
     }
 }
 

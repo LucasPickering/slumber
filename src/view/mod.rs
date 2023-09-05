@@ -3,15 +3,14 @@ mod theme;
 
 use crate::{
     http::ResponseState,
-    input::InputHandler,
-    state::{AppState, ResponseTab},
+    state::{AppState, PrimaryPane, ResponseTab},
     view::{
         component::{BlockComponent, Component, ListComponent, TabComponent},
         theme::Theme,
     },
 };
 use ratatui::{prelude::*, widgets::*};
-use std::{any::Any, fmt::Debug, io::Stdout, ops::Deref};
+use std::{fmt::Debug, io::Stdout, ops::Deref};
 
 type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<Stdout>>;
 
@@ -86,56 +85,6 @@ pub trait Draw {
     );
 }
 
-static PANE_TAB_ORDER: &[&dyn Pane] = &[
-    &EnvironmentListPane,
-    &RecipeListPane,
-    &RequestPane,
-    &ResponsePane,
-];
-
-/// A pane is a top-level UI element, which can hold focus and handle input
-/// events. Panes can be cycled through by the user, and focus is mutually
-/// exclusive between them. Panes of the same type are considered equal: there
-/// can be multiple instances of the same Pane implementor, but they refer to
-/// the same piece of the UI.
-pub trait Pane: Any + Sync + InputHandler {
-    /// Convert a reference into a boxed value. Feels icky but also it works
-    fn clone_kinda(&self) -> Box<dyn Pane>;
-
-    /// Is this the same pane as the given one? Panes are singleton-esque, so
-    /// this just needs to check that the types are the same
-    fn equals(&self, other: &dyn Pane) -> bool {
-        self.type_id() == other.type_id()
-    }
-
-    /// Get the tab index of this pane
-    fn tab_index(&self) -> usize {
-        // Search the global list of panes
-        PANE_TAB_ORDER
-            .iter()
-            .position(|p| self.equals(*p))
-            .expect("Pane is not defined in tab order list")
-    }
-
-    /// Get the previous pane in the tab sequence
-    fn previous(&self) -> Box<dyn Pane> {
-        // Turn underflow into custom wrapping
-        let new_index = self
-            .tab_index()
-            .checked_sub(1)
-            .unwrap_or(PANE_TAB_ORDER.len() - 1);
-        PANE_TAB_ORDER[new_index].clone_kinda()
-    }
-
-    /// Get the next pane in the tab sequence
-    fn next(&self) -> Box<dyn Pane> {
-        // Wrap to beginning, no need to worry about overflow here
-        let new_index = (self.tab_index() + 1) % PANE_TAB_ORDER.len();
-        PANE_TAB_ORDER[new_index].clone_kinda()
-    }
-}
-
-#[derive(Debug)]
 pub struct EnvironmentListPane;
 
 impl Draw for EnvironmentListPane {
@@ -146,10 +95,11 @@ impl Draw for EnvironmentListPane {
         chunk: Rect,
         state: &mut AppState,
     ) {
+        let pane_kind = PrimaryPane::EnvironmentList;
         let list = ListComponent {
             block: BlockComponent {
-                title: "Environments",
-                is_focused: state.is_focused(self),
+                title: pane_kind.to_string(),
+                is_focused: state.focused_pane.is_selected(&pane_kind),
             },
             list: &state.environments,
         }
@@ -158,13 +108,6 @@ impl Draw for EnvironmentListPane {
     }
 }
 
-impl Pane for EnvironmentListPane {
-    fn clone_kinda(&self) -> Box<dyn Pane> {
-        Box::new(Self)
-    }
-}
-
-#[derive(Debug)]
 pub struct RecipeListPane;
 
 impl Draw for RecipeListPane {
@@ -175,10 +118,11 @@ impl Draw for RecipeListPane {
         chunk: Rect,
         state: &mut AppState,
     ) {
+        let pane_kind = PrimaryPane::RecipeList;
         let list = ListComponent {
             block: BlockComponent {
-                title: "Recipes",
-                is_focused: state.is_focused(self),
+                title: pane_kind.to_string(),
+                is_focused: state.focused_pane.is_selected(&pane_kind),
             },
             list: &state.recipes,
         }
@@ -187,13 +131,6 @@ impl Draw for RecipeListPane {
     }
 }
 
-impl Pane for RecipeListPane {
-    fn clone_kinda(&self) -> Box<dyn Pane> {
-        Box::new(Self)
-    }
-}
-
-#[derive(Debug)]
 pub struct RequestPane;
 
 impl Draw for RequestPane {
@@ -205,9 +142,10 @@ impl Draw for RequestPane {
         state: &mut AppState,
     ) {
         if let Some(recipe) = state.recipes.selected() {
+            let pane_kind = PrimaryPane::Request;
             let block = BlockComponent {
-                title: "Request",
-                is_focused: state.is_focused(self),
+                title: pane_kind.to_string(),
+                is_focused: state.focused_pane.is_selected(&pane_kind),
             }
             .render(renderer);
 
@@ -225,13 +163,6 @@ impl Draw for RequestPane {
     }
 }
 
-impl Pane for RequestPane {
-    fn clone_kinda(&self) -> Box<dyn Pane> {
-        Box::new(Self)
-    }
-}
-
-#[derive(Debug)]
 pub struct ResponsePane;
 
 impl Draw for ResponsePane {
@@ -243,9 +174,10 @@ impl Draw for ResponsePane {
         state: &mut AppState,
     ) {
         // Render outermost block
+        let pane_kind = PrimaryPane::Response;
         let block = BlockComponent {
-            title: "Response",
-            is_focused: state.is_focused(self),
+            title: pane_kind.to_string(),
+            is_focused: state.focused_pane.is_selected(&pane_kind),
         }
         .render(renderer);
         let inner_chunk = block.inner(chunk);
@@ -297,12 +229,6 @@ impl Draw for ResponsePane {
         };
         let paragraph = Paragraph::new(get_text().unwrap_or_default());
         f.render_widget(paragraph, content_chunk);
-    }
-}
-
-impl Pane for ResponsePane {
-    fn clone_kinda(&self) -> Box<dyn Pane> {
-        Box::new(Self)
     }
 }
 

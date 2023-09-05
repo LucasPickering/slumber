@@ -1,24 +1,31 @@
 use crate::{
     config::{Environment, RequestCollection, RequestRecipe},
     http::Request,
-    view::{Pane, RecipeListPane},
+    input::InputHandler,
+    view::{EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane},
 };
 use ratatui::widgets::*;
-use std::{collections::VecDeque, rc::Rc};
+use std::{collections::VecDeque, fmt::Display};
+use strum::{EnumIter, IntoEnumIterator};
 
 /// Main app state. All configuration and UI state is stored here. The M in MVC
 #[derive(Debug)]
 pub struct AppState {
+    // Global app state
     /// Flag to control the main app loop. Set to false to exit the app
     should_run: bool,
     message_queue: VecDeque<Message>,
+
+    // UI state
     /// The pane that the user has focused, which will receive input events
-    pub focused_pane: Rc<dyn Pane>,
+    pub focused_pane: StatefulSelect<PrimaryPane>,
+    pub response_tab: StatefulSelect<ResponseTab>,
     pub environments: StatefulList<Environment>,
     pub recipes: StatefulList<RequestRecipe>,
+
+    // HTTP state
     /// Most recent HTTP request
     pub active_request: Option<Request>,
-    pub response_tab: StatefulSelect<ResponseTab>,
 }
 
 impl AppState {
@@ -26,11 +33,11 @@ impl AppState {
         Self {
             should_run: true,
             message_queue: VecDeque::new(),
-            focused_pane: Rc::new(RecipeListPane),
+            focused_pane: StatefulSelect::new(),
+            response_tab: StatefulSelect::new(),
             environments: StatefulList::with_items(collection.environments),
             recipes: StatefulList::with_items(collection.requests),
             active_request: None,
-            response_tab: StatefulSelect::new(),
         }
     }
 
@@ -52,21 +59,6 @@ impl AppState {
     /// Pop a message off the queue (if it's not empty)
     pub fn dequeue(&mut self) -> Option<Message> {
         self.message_queue.pop_front()
-    }
-
-    /// Shift focus to the previous pane
-    pub fn focus_previous(&mut self) {
-        self.focused_pane = self.focused_pane.previous().into();
-    }
-
-    /// Shift focus to the next pane
-    pub fn focus_next(&mut self) {
-        self.focused_pane = self.focused_pane.next().into();
-    }
-
-    /// Check if the given pane is in focus
-    pub fn is_focused(&self, pane: &dyn Pane) -> bool {
-        self.focused_pane.equals(pane)
     }
 }
 
@@ -135,29 +127,28 @@ impl<T> StatefulList<T> {
 }
 
 /// A fixed-size collection of selectable items, e.g. panes or tabs. User can
-/// cycle between them using StatefulSelect.
-/// TODO replace this with some stuff from strum?
-pub trait FixedSelect: Sized {
-    fn all() -> Vec<Self>;
-
-    fn title(&self) -> &'static str;
-}
-
+/// cycle between them.
 #[derive(Debug)]
 pub struct StatefulSelect<T: FixedSelect> {
     values: Vec<T>,
     selected: usize,
 }
 
+/// Friendly little trait indicating a type can be cycled through
+pub trait FixedSelect: Display + IntoEnumIterator + PartialEq {
+    /// Initial item to select
+    const DEFAULT_INDEX: usize = 0;
+}
+
 impl<T: FixedSelect> StatefulSelect<T> {
     pub fn new() -> Self {
-        let values = FixedSelect::all();
+        let values: Vec<T> = T::iter().collect();
         if values.is_empty() {
             panic!("Cannot create StatefulSelect from empty values");
         }
         Self {
             values,
-            selected: 0,
+            selected: T::DEFAULT_INDEX,
         }
     }
 
@@ -169,6 +160,11 @@ impl<T: FixedSelect> StatefulSelect<T> {
     /// Get the selected element
     pub fn selected(&self) -> &T {
         &self.values[self.selected]
+    }
+
+    /// Is the given item selected?
+    pub fn is_selected(&self, item: &T) -> bool {
+        self.selected() == item
     }
 
     /// Select previous item
@@ -192,21 +188,36 @@ impl<T: FixedSelect> Default for StatefulSelect<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
+pub enum PrimaryPane {
+    #[display(fmt = "Environments")]
+    EnvironmentList,
+    #[display(fmt = "Recipes")]
+    RecipeList,
+    Request,
+    Response,
+}
+
+impl PrimaryPane {
+    /// Get a trait object that should handle contextual input for this pane
+    pub fn input_handler(self) -> Box<dyn InputHandler> {
+        match self {
+            Self::EnvironmentList => Box::new(EnvironmentListPane),
+            Self::RecipeList => Box::new(RecipeListPane),
+            Self::Request => Box::new(RequestPane),
+            Self::Response => Box::new(ResponsePane),
+        }
+    }
+}
+
+impl FixedSelect for PrimaryPane {
+    const DEFAULT_INDEX: usize = 1;
+}
+
+#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
 pub enum ResponseTab {
     Body,
     Headers,
 }
 
-impl FixedSelect for ResponseTab {
-    fn all() -> Vec<Self> {
-        vec![Self::Body, Self::Headers]
-    }
-
-    fn title(&self) -> &'static str {
-        match self {
-            ResponseTab::Body => "Body",
-            ResponseTab::Headers => "Headers",
-        }
-    }
-}
+impl FixedSelect for ResponseTab {}

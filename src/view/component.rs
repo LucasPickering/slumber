@@ -24,7 +24,7 @@ pub trait Component {
 }
 
 pub struct BlockComponent {
-    pub title: &'static str,
+    pub title: String,
     pub is_focused: bool,
 }
 
@@ -47,7 +47,7 @@ impl<'a, T: FixedSelect> Component for TabComponent<'a, T> {
     type Output = Tabs<'static>;
 
     fn render(self, renderer: &Renderer) -> Self::Output {
-        Tabs::new(T::all().into_iter().map(|e| e.title()).collect())
+        Tabs::new(T::iter().map(|e| e.to_string()).collect())
             .select(self.tabs.selected_index())
             .highlight_style(renderer.theme.tab_highlight_style)
     }

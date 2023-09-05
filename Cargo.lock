@@ -1091,6 +1091,7 @@ dependencies = [
  "serde",
  "serde_yaml",
  "signal-hook",
+ "strum",
  "tokio",
  "tracing",
  "tracing-subscriber",

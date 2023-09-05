@@ -20,12 +20,12 @@ pub enum Action {
     FocusNext,
     /// Focus the previous pane
     FocusPrevious,
-    /// Go up (e.g in a list)
     Up,
-    /// Go down (e.g. in a list)
     Down,
+    Left,
+    Right,
     /// Do a thing. E.g. select an item in a list
-    Select,
+    SendRequest,
 }
 
 impl Action {
@@ -51,7 +51,9 @@ impl Action {
                 KeyCode::Tab => Some(Action::FocusNext),
                 KeyCode::Up => Some(Action::Up),
                 KeyCode::Down => Some(Action::Down),
-                KeyCode::Char(' ') => Some(Action::Select),
+                KeyCode::Left => Some(Action::Left),
+                KeyCode::Right => Some(Action::Right),
+                KeyCode::Char(' ') => Some(Action::SendRequest),
                 _ => None,
             }
         } else {
@@ -85,6 +87,7 @@ pub fn handle_action(state: &mut AppState, action: Action) {
         Action::Quit => state.quit(),
         Action::FocusPrevious => state.focus_previous(),
         Action::FocusNext => state.focus_next(),
+        Action::SendRequest => state.enqueue(Message::SendRequest),
 
         // Forward context events to the focused element. We need to clone the
         // reference to the pane, so we can pass a mutable ref to state. This is
@@ -110,7 +113,6 @@ impl InputHandler for RecipeListPane {
         match action {
             Action::Up => state.recipes.previous(),
             Action::Down => state.recipes.next(),
-            Action::Select => state.enqueue(Message::SendRequest),
             _ => {}
         }
     }
@@ -121,5 +123,11 @@ impl InputHandler for RequestPane {
 }
 
 impl InputHandler for ResponsePane {
-    fn handle_action(&self, _state: &mut AppState, _action: Action) {}
+    fn handle_action(&self, state: &mut AppState, action: Action) {
+        match action {
+            Action::Left => state.response_tab.previous(),
+            Action::Right => state.response_tab.next(),
+            _ => {}
+        }
+    }
 }

@@ -2,12 +2,12 @@
 
 use crate::{
     config::{Environment, RequestRecipe},
-    state::StatefulList,
+    state::{FixedSelect, StatefulList, StatefulSelect},
     view::Renderer,
 };
 use ratatui::{
     text::Line,
-    widgets::{Block, Borders, List, ListItem},
+    widgets::{Block, Borders, List, ListItem, Tabs},
 };
 
 /// A component is a helper for building a UI. It can be rendered into some UI
@@ -20,12 +20,7 @@ pub trait Component {
     type Output;
 
     /// Build a UI element
-    fn render(&self, renderer: &Renderer) -> Self::Output;
-}
-
-pub struct ListComponent<'a, T: ToListItem> {
-    pub block: BlockComponent,
-    pub list: &'a StatefulList<T>,
+    fn render(self, renderer: &Renderer) -> Self::Output;
 }
 
 pub struct BlockComponent {
@@ -36,7 +31,7 @@ pub struct BlockComponent {
 impl Component for BlockComponent {
     type Output = Block<'static>;
 
-    fn render(&self, renderer: &Renderer) -> Self::Output {
+    fn render(self, renderer: &Renderer) -> Self::Output {
         Block::default()
             .borders(Borders::ALL)
             .border_style(renderer.theme.pane_border_style(self.is_focused))
@@ -44,10 +39,29 @@ impl Component for BlockComponent {
     }
 }
 
+pub struct TabComponent<'a, T: FixedSelect> {
+    pub tabs: &'a StatefulSelect<T>,
+}
+
+impl<'a, T: FixedSelect> Component for TabComponent<'a, T> {
+    type Output = Tabs<'static>;
+
+    fn render(self, renderer: &Renderer) -> Self::Output {
+        Tabs::new(T::all().into_iter().map(|e| e.title()).collect())
+            .select(self.tabs.selected_index())
+            .highlight_style(renderer.theme.tab_highlight_style)
+    }
+}
+
+pub struct ListComponent<'a, T: ToListItem> {
+    pub block: BlockComponent,
+    pub list: &'a StatefulList<T>,
+}
+
 impl<'a, T: ToListItem> Component for ListComponent<'a, T> {
     type Output = List<'static>;
 
-    fn render(&self, renderer: &Renderer) -> Self::Output {
+    fn render(self, renderer: &Renderer) -> Self::Output {
         let block = self.block.render(renderer);
 
         // Convert each list item into text

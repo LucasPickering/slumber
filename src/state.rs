@@ -13,12 +13,12 @@ pub struct AppState {
     should_run: bool,
     message_queue: VecDeque<Message>,
     /// The pane that the user has focused, which will receive input events
-    /// TODO explain Rc
     pub focused_pane: Rc<dyn Pane>,
     pub environments: StatefulList<Environment>,
     pub recipes: StatefulList<RequestRecipe>,
     /// Most recent HTTP request
     pub active_request: Option<Request>,
+    pub response_tab: StatefulSelect<ResponseTab>,
 }
 
 impl AppState {
@@ -30,6 +30,7 @@ impl AppState {
             environments: StatefulList::with_items(collection.environments),
             recipes: StatefulList::with_items(collection.requests),
             active_request: None,
+            response_tab: StatefulSelect::new(),
         }
     }
 
@@ -83,9 +84,7 @@ impl From<RequestCollection> for AppState {
 pub enum Message {
     /// Launch an HTTP request from the currently selected recipe. Errors if
     /// the recipes aren't in focus, or the list is empty
-    /// TODO include request here
     SendRequest,
-    // TODO add message for response
 }
 
 /// A list of items in the UI
@@ -113,6 +112,7 @@ impl<T> StatefulList<T> {
     pub fn previous(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
+                // Avoid underflow here
                 if i == 0 {
                     self.items.len() - 1
                 } else {
@@ -127,15 +127,86 @@ impl<T> StatefulList<T> {
     /// Select the next item in the list
     pub fn next(&mut self) {
         let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.items.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
+            Some(i) => (i + 1) % self.items.len(),
             None => 0,
         };
         self.state.select(Some(i));
+    }
+}
+
+/// A fixed-size collection of selectable items, e.g. panes or tabs. User can
+/// cycle between them using StatefulSelect.
+/// TODO replace this with some stuff from strum?
+pub trait FixedSelect: Sized {
+    fn all() -> Vec<Self>;
+
+    fn title(&self) -> &'static str;
+}
+
+#[derive(Debug)]
+pub struct StatefulSelect<T: FixedSelect> {
+    values: Vec<T>,
+    selected: usize,
+}
+
+impl<T: FixedSelect> StatefulSelect<T> {
+    pub fn new() -> Self {
+        let values = FixedSelect::all();
+        if values.is_empty() {
+            panic!("Cannot create StatefulSelect from empty values");
+        }
+        Self {
+            values,
+            selected: 0,
+        }
+    }
+
+    /// Get the index of the selected element
+    pub fn selected_index(&self) -> usize {
+        self.selected
+    }
+
+    /// Get the selected element
+    pub fn selected(&self) -> &T {
+        &self.values[self.selected]
+    }
+
+    /// Select previous item
+    pub fn previous(&mut self) {
+        // Prevent underflow
+        self.selected = self
+            .selected
+            .checked_sub(1)
+            .unwrap_or(self.values.len() - 1);
+    }
+
+    /// Select next item
+    pub fn next(&mut self) {
+        self.selected = (self.selected + 1) % self.values.len();
+    }
+}
+
+impl<T: FixedSelect> Default for StatefulSelect<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug)]
+pub enum ResponseTab {
+    Body,
+    Headers,
+}
+
+impl FixedSelect for ResponseTab {
+    fn all() -> Vec<Self> {
+        vec![Self::Body, Self::Headers]
+    }
+
+    fn title(&self) -> &'static str {
+        match self {
+            ResponseTab::Body => "Body",
+            ResponseTab::Headers => "Headers",
+        }
     }
 }

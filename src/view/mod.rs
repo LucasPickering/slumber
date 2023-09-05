@@ -4,9 +4,9 @@ mod theme;
 use crate::{
     http::ResponseState,
     input::InputHandler,
-    state::AppState,
+    state::{AppState, ResponseTab},
     view::{
-        component::{BlockComponent, Component, ListComponent},
+        component::{BlockComponent, Component, ListComponent, TabComponent},
         theme::Theme,
     },
 };
@@ -31,7 +31,7 @@ impl Renderer {
         let [main_chunk, help_chunk] = layout(
             f.size(),
             Direction::Vertical,
-            [Constraint::Percentage(100), Constraint::Min(1)],
+            [Constraint::Min(0), Constraint::Length(1)],
         );
         let [left_chunk, right_chunk] = layout(
             main_chunk,
@@ -242,13 +242,29 @@ impl Draw for ResponsePane {
         chunk: Rect,
         state: &mut AppState,
     ) {
+        // Render outermost block
         let block = BlockComponent {
             title: "Response",
             is_focused: state.is_focused(self),
         }
         .render(renderer);
+        let inner_chunk = block.inner(chunk);
+        f.render_widget(block, chunk);
+        let [tabs_chunk, content_chunk] = layout(
+            inner_chunk,
+            Direction::Vertical,
+            [Constraint::Length(1), Constraint::Min(0)],
+        );
 
-        let get_text = || -> Option<String> {
+        // Navigation tabs
+        let tabs = TabComponent {
+            tabs: &state.response_tab,
+        }
+        .render(renderer);
+        f.render_widget(tabs, tabs_chunk);
+
+        // Response content/metadata
+        let get_text = || -> Option<Text> {
             // Check if a request is running/complete
             let request = state.active_request.as_ref()?;
             // Try to access the response. If it's locked, don't block
@@ -257,17 +273,30 @@ impl Draw for ResponsePane {
                 // Request hasn't launched yet
                 ResponseState::None => None,
                 ResponseState::Loading => Some("Loading...".into()),
-                ResponseState::Complete { content, .. } => {
-                    // TODO show status/headers somehow
-                    Some(content.clone())
+                ResponseState::Complete {
+                    headers, content, ..
+                } => {
+                    // TODO show status
+                    Some(match state.response_tab.selected() {
+                        ResponseTab::Body => content.clone().into(),
+                        ResponseTab::Headers => headers
+                            .into_iter()
+                            .map(|(key, value)| {
+                                format!(
+                                    "{key} = {}",
+                                    value.to_str().unwrap_or("<unknown>")
+                                )
+                                .into()
+                            })
+                            .collect::<Vec<Line>>()
+                            .into(),
+                    })
                 }
-                ResponseState::Error(error) => Some(error.to_string()),
+                ResponseState::Error(error) => Some(error.to_string().into()),
             }
         };
-
-        let paragraph =
-            Paragraph::new(get_text().unwrap_or_default()).block(block);
-        f.render_widget(paragraph, chunk);
+        let paragraph = Paragraph::new(get_text().unwrap_or_default());
+        f.render_widget(paragraph, content_chunk);
     }
 }
 

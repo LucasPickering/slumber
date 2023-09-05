@@ -119,7 +119,13 @@ impl InputHandler for RecipeListPane {
 }
 
 impl InputHandler for RequestPane {
-    fn handle_action(&self, _state: &mut AppState, _action: Action) {}
+    fn handle_action(&self, state: &mut AppState, action: Action) {
+        match action {
+            Action::Left => state.request_tab.previous(),
+            Action::Right => state.request_tab.next(),
+            _ => {}
+        }
+    }
 }
 
 impl InputHandler for ResponsePane {

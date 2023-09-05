@@ -3,9 +3,11 @@ mod theme;
 
 use crate::{
     http::ResponseState,
-    state::{AppState, PrimaryPane, ResponseTab},
+    state::{AppState, PrimaryPane, RequestTab, ResponseTab},
     view::{
-        component::{BlockComponent, Component, ListComponent, TabComponent},
+        component::{
+            BlockComponent, Component, ListComponent, TabComponent, ToText,
+        },
         theme::Theme,
     },
 };
@@ -142,23 +144,50 @@ impl Draw for RequestPane {
         state: &mut AppState,
     ) {
         if let Some(recipe) = state.recipes.selected() {
+            // Render outermost block
             let pane_kind = PrimaryPane::Request;
             let block = BlockComponent {
                 title: pane_kind.to_string(),
                 is_focused: state.focused_pane.is_selected(&pane_kind),
             }
             .render(renderer);
+            let inner_chunk = block.inner(chunk);
+            f.render_widget(block, chunk);
+            let [url_chunk, tabs_chunk, content_chunk] = layout(
+                inner_chunk,
+                Direction::Vertical,
+                [
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ],
+            );
 
-            let mut lines: Vec<Line> =
-                vec![format!("{} {}", recipe.method, recipe.url).into()];
+            // URL
+            f.render_widget(
+                Paragraph::new(format!("{} {}", recipe.method, recipe.url)),
+                url_chunk,
+            );
 
-            // Add request body if present
-            if let Some(body) = &recipe.body {
-                lines.extend(body.lines().map(Line::from));
+            // Navigation tabs
+            let tabs = TabComponent {
+                tabs: &state.request_tab,
             }
+            .render(renderer);
+            f.render_widget(tabs, tabs_chunk);
 
-            let paragraph = Paragraph::new(lines).block(block);
-            f.render_widget(paragraph, chunk);
+            // Request content
+            let text: Text = match state.request_tab.selected() {
+                RequestTab::Body => recipe
+                    .body
+                    .as_ref()
+                    .map(|b| b.to_string())
+                    .unwrap_or_default()
+                    .into(),
+                RequestTab::Query => "TODO".into(),
+                RequestTab::Headers => recipe.headers.to_text(),
+            };
+            f.render_widget(Paragraph::new(text), content_chunk);
         }
     }
 }
@@ -211,24 +240,16 @@ impl Draw for ResponsePane {
                     // TODO show status
                     Some(match state.response_tab.selected() {
                         ResponseTab::Body => content.clone().into(),
-                        ResponseTab::Headers => headers
-                            .into_iter()
-                            .map(|(key, value)| {
-                                format!(
-                                    "{key} = {}",
-                                    value.to_str().unwrap_or("<unknown>")
-                                )
-                                .into()
-                            })
-                            .collect::<Vec<Line>>()
-                            .into(),
+                        ResponseTab::Headers => headers.to_text(),
                     })
                 }
                 ResponseState::Error(error) => Some(error.to_string().into()),
             }
         };
-        let paragraph = Paragraph::new(get_text().unwrap_or_default());
-        f.render_widget(paragraph, content_chunk);
+        f.render_widget(
+            Paragraph::new(get_text().unwrap_or_default()),
+            content_chunk,
+        );
     }
 }
 
@@ -239,7 +260,7 @@ impl Draw for HelpText {
         let block = Block::default();
         let paragraph = Paragraph::new(
             "<q> Exit | <space> Send request | <tab>/<shift+tab> Switch panes \
-            | ↑↓ Navigate",
+            | ←↑↓→  Navigate",
         )
         .block(block);
         f.render_widget(paragraph, chunk);

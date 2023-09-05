@@ -19,6 +19,7 @@ pub struct AppState {
     // UI state
     /// The pane that the user has focused, which will receive input events
     pub focused_pane: StatefulSelect<PrimaryPane>,
+    pub request_tab: StatefulSelect<RequestTab>,
     pub response_tab: StatefulSelect<ResponseTab>,
     pub environments: StatefulList<Environment>,
     pub recipes: StatefulList<RequestRecipe>,
@@ -34,6 +35,7 @@ impl AppState {
             should_run: true,
             message_queue: VecDeque::new(),
             focused_pane: StatefulSelect::new(),
+            request_tab: StatefulSelect::new(),
             response_tab: StatefulSelect::new(),
             environments: StatefulList::with_items(collection.environments),
             recipes: StatefulList::with_items(collection.requests),
@@ -213,6 +215,15 @@ impl PrimaryPane {
 impl FixedSelect for PrimaryPane {
     const DEFAULT_INDEX: usize = 1;
 }
+
+#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
+pub enum RequestTab {
+    Body,
+    Query,
+    Headers,
+}
+
+impl FixedSelect for RequestTab {}
 
 #[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
 pub enum ResponseTab {

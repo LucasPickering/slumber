@@ -3,12 +3,15 @@
 use crate::{
     config::{Environment, RequestRecipe},
     state::{FixedSelect, StatefulList, StatefulSelect},
+    template::TemplateString,
     view::Renderer,
 };
 use ratatui::{
-    text::Line,
+    text::{Line, Text},
     widgets::{Block, Borders, List, ListItem, Tabs},
 };
+use reqwest::header::HeaderMap;
+use std::collections::HashMap;
 
 /// A component is a helper for building a UI. It can be rendered into some UI
 /// element to be drawn.
@@ -53,20 +56,24 @@ impl<'a, T: FixedSelect> Component for TabComponent<'a, T> {
     }
 }
 
-pub struct ListComponent<'a, T: ToListItem> {
+pub struct ListComponent<'a, T: ToText> {
     pub block: BlockComponent,
     pub list: &'a StatefulList<T>,
 }
 
-impl<'a, T: ToListItem> Component for ListComponent<'a, T> {
+impl<'a, T: ToText> Component for ListComponent<'a, T> {
     type Output = List<'static>;
 
     fn render(self, renderer: &Renderer) -> Self::Output {
         let block = self.block.render(renderer);
 
         // Convert each list item into text
-        let items: Vec<ListItem<'static>> =
-            self.list.items.iter().map(T::to_list_item).collect();
+        let items: Vec<ListItem<'static>> = self
+            .list
+            .items
+            .iter()
+            .map(|i| ListItem::new(i.to_text()))
+            .collect();
 
         List::new(items)
             .block(block)
@@ -76,25 +83,46 @@ impl<'a, T: ToListItem> Component for ListComponent<'a, T> {
     }
 }
 
-/// Convert a value into a renderable list item. This *could* just be a
+/// Convert a value into a renderable text. This *could* just be a
 /// Component impl, but there may be a different way to render the same type,
 /// with more detail.
-pub trait ToListItem {
-    fn to_list_item(&self) -> ListItem<'static>;
+///
+/// This uses 'static to get around some borrow checking issues. It's lazy but
+/// it works.
+pub trait ToText {
+    fn to_text(&self) -> Text<'static>;
 }
 
 // Getting lazy with the lifetimes here...
-impl ToListItem for Environment {
-    fn to_list_item(&self) -> ListItem<'static> {
-        ListItem::new(vec![Line::from(self.name.clone())])
+impl ToText for Environment {
+    fn to_text(&self) -> Text<'static> {
+        vec![Line::from(self.name.clone())].into()
     }
 }
 
-impl ToListItem for RequestRecipe {
-    fn to_list_item(&self) -> ListItem<'static> {
-        ListItem::new(vec![Line::from(format!(
-            "[{}] {}",
-            self.method, self.name
-        ))])
+impl ToText for RequestRecipe {
+    fn to_text(&self) -> Text<'static> {
+        vec![Line::from(format!("[{}] {}", self.method, self.name))].into()
+    }
+}
+
+impl ToText for HashMap<String, TemplateString> {
+    fn to_text(&self) -> Text<'static> {
+        self.iter()
+            .map(|(key, value)| format!("{key} = {value}").into())
+            .collect::<Vec<Line>>()
+            .into()
+    }
+}
+
+impl ToText for HeaderMap {
+    fn to_text(&self) -> Text<'static> {
+        self.into_iter()
+            .map(|(key, value)| {
+                format!("{key} = {}", value.to_str().unwrap_or("<unknown>"))
+                    .into()
+            })
+            .collect::<Vec<Line>>()
+            .into()
     }
 }

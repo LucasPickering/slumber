@@ -184,7 +184,7 @@ impl Draw for RequestPane {
                     .map(|b| b.to_string())
                     .unwrap_or_default()
                     .into(),
-                RequestTab::Query => "TODO".into(),
+                RequestTab::Query => recipe.query.to_text(),
                 RequestTab::Headers => recipe.headers.to_text(),
             };
             f.render_widget(Paragraph::new(text), content_chunk);

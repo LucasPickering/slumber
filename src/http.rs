@@ -7,7 +7,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName},
     Client, Method, StatusCode,
 };
-use std::{ops::Deref, sync::Arc};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::trace;
 
@@ -30,6 +30,7 @@ pub struct Request {
     pub method: Method,
     pub url: String,
     pub headers: HeaderMap,
+    pub query: HashMap<String, String>,
     /// Text body content. At some point we'll support other formats (binary,
     /// streaming from file, etc.)
     pub body: Option<String>,
@@ -112,6 +113,11 @@ impl HttpEngine {
             );
         }
 
+        let query = recipe
+            .query
+            .iter()
+            .map(|(k, v)| Ok((k.clone(), v.render(template_values)?)))
+            .collect::<anyhow::Result<HashMap<_, _>>>()?;
         let body = recipe
             .body
             .as_ref()
@@ -120,6 +126,7 @@ impl HttpEngine {
         Ok(Request {
             method,
             url,
+            query,
             body,
             headers,
             response: Arc::new(RwLock::new(ResponseState::None)),
@@ -133,7 +140,8 @@ impl HttpEngine {
         let mut request_builder = self
             .client
             .request(request.method.clone(), request.url.clone())
-            .headers(request.headers.clone());
+            .headers(request.headers.clone())
+            .query(&request.query);
         if let Some(body) = &request.body {
             request_builder = request_builder.body(body.clone());
         }

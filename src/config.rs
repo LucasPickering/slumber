@@ -44,6 +44,8 @@ pub struct RequestRecipe {
     pub url: TemplateString,
     pub body: Option<TemplateString>,
     #[serde(default)]
+    pub query: HashMap<String, TemplateString>,
+    #[serde(default)]
     pub headers: HashMap<String, TemplateString>,
 }
 

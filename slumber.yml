@@ -20,6 +20,8 @@ requests:
     name: Get Users
     method: GET
     url: "{{host}}/get"
+    query:
+      foo: bar
 
   - <<: *base
     id: get-user

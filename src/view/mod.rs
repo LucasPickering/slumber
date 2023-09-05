@@ -28,8 +28,13 @@ impl Renderer {
 
     pub fn draw_main(&self, f: &mut Frame, state: &mut AppState) {
         // Create layout
-        let [left_chunk, right_chunk] = layout(
+        let [main_chunk, help_chunk] = layout(
             f.size(),
+            Direction::Vertical,
+            [Constraint::Percentage(100), Constraint::Min(1)],
+        );
+        let [left_chunk, right_chunk] = layout(
+            main_chunk,
             Direction::Horizontal,
             [Constraint::Max(40), Constraint::Percentage(50)],
         );
@@ -46,6 +51,7 @@ impl Renderer {
             [Constraint::Percentage(50), Constraint::Percentage(50)],
         );
 
+        HelpText.draw(self, f, help_chunk, state);
         EnvironmentListPane.draw(self, f, environments_chunk, state);
         RecipeListPane.draw(self, f, recipes_chunk, state);
         RequestPane.draw(self, f, request_chunk, state);
@@ -268,5 +274,19 @@ impl Draw for ResponsePane {
 impl Pane for ResponsePane {
     fn clone_kinda(&self) -> Box<dyn Pane> {
         Box::new(Self)
+    }
+}
+
+pub struct HelpText;
+
+impl Draw for HelpText {
+    fn draw(&self, _: &Renderer, f: &mut Frame, chunk: Rect, _: &mut AppState) {
+        let block = Block::default();
+        let paragraph = Paragraph::new(
+            "<q> Exit | <space> Send request | <tab>/<shift+tab> Switch panes \
+            | ↑↓ Navigate",
+        )
+        .block(block);
+        f.render_widget(paragraph, chunk);
     }
 }

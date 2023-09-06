@@ -88,8 +88,12 @@ impl HttpEngine {
         template_values: &TemplateValues,
     ) -> anyhow::Result<Request> {
         // TODO add more tracing
-        let method = recipe.method.render(template_values)?.parse()?;
-        let url = recipe.url.render(template_values)?;
+        let method = recipe
+            .method
+            .render(template_values)
+            .context("Method")?
+            .parse()?;
+        let url = recipe.url.render(template_values).context("URL")?;
 
         // Build header map
         let mut headers = HeaderMap::new();
@@ -102,9 +106,7 @@ impl HttpEngine {
                     .context("Error parsing header name")?,
                 value_template
                     .render(template_values)
-                    .with_context(|| {
-                        format!("Error rendering value for header {key}")
-                    })?
+                    .with_context(|| format!("Header `{key}`"))?
                     // I'm not sure when this parse would fail, it seems like
                     // the value can be any bytes
                     // https://docs.rs/reqwest/0.11.20/reqwest/header/struct.HeaderValue.html
@@ -113,15 +115,22 @@ impl HttpEngine {
             );
         }
 
+        // Add query parameters
         let query = recipe
             .query
             .iter()
-            .map(|(k, v)| Ok((k.clone(), v.render(template_values)?)))
+            .map(|(k, v)| {
+                Ok((
+                    k.clone(),
+                    v.render(template_values)
+                        .with_context(|| format!("Query parameter `{k}`"))?,
+                ))
+            })
             .collect::<anyhow::Result<HashMap<_, _>>>()?;
         let body = recipe
             .body
             .as_ref()
-            .map(|body| body.render(template_values))
+            .map(|body| body.render(template_values).context("Body"))
             .transpose()?;
         Ok(Request {
             method,

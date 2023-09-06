@@ -88,6 +88,7 @@ impl App {
                 // If an error occurs, store it so we can show the user
                 if let Err(err) = self.handle_message(message) {
                     error!(error = err.deref(), "Error handling message");
+                    self.state.error = Some(err);
                 }
             }
 

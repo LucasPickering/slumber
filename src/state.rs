@@ -17,6 +17,8 @@ pub struct AppState {
     message_queue: VecDeque<Message>,
 
     // UI state
+    /// Any error that should be shown to the user in a popup
+    pub error: Option<anyhow::Error>,
     /// The pane that the user has focused, which will receive input events
     pub focused_pane: StatefulSelect<PrimaryPane>,
     pub request_tab: StatefulSelect<RequestTab>,
@@ -34,6 +36,7 @@ impl AppState {
         Self {
             should_run: true,
             message_queue: VecDeque::new(),
+            error: None,
             focused_pane: StatefulSelect::new(),
             request_tab: StatefulSelect::new(),
             response_tab: StatefulSelect::new(),

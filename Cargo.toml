@@ -12,6 +12,7 @@ rust-version = "1.72.0"
 
 [dependencies]
 anyhow = {version = "^1.0.75", features = ["backtrace"]}
+clap = {version = "4.4.2", features = ["derive"]}
 crossterm = "0.27.0"
 derive_more = {version = "0.99.17", default-features = false, features = ["deref", "display"]}
 liquid = {version = "0.26.4"}
@@ -20,7 +21,7 @@ reqwest = {version = "0.11.20", default-features = false, features = ["rustls-tl
 serde = {version = "^1.0.188", features = ["derive"]}
 serde_yaml = {version = "^0.9.25", default-features = false}
 signal-hook = "0.3.17"
-strum = { version = "0.25.0", default-features = false, features = ["derive"] }
+strum = {version = "0.25.0", default-features = false, features = ["derive"]}
 tokio = {version = "^1.32.0", default-features = false, features = ["full"]}
 tracing = "0.1.37"
 tracing-subscriber = {version = "0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}

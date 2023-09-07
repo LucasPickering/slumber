@@ -2,9 +2,11 @@
 
 use crate::{
     config::{Environment, RequestRecipe},
-    state::{FixedSelect, StatefulList, StatefulSelect},
     template::TemplateString,
-    view::Renderer,
+    tui::{
+        state::{FixedSelect, StatefulList, StatefulSelect},
+        view::Renderer,
+    },
 };
 use ratatui::{
     text::{Line, Text},

@@ -27,6 +27,7 @@ pub struct RequestCollection {
 /// Mutually exclusive hot-swappable config group
 #[derive(Clone, Debug, Deserialize)]
 pub struct Environment {
+    pub id: String,
     pub name: String,
     pub data: HashMap<String, String>,
 }

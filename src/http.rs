@@ -7,8 +7,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName},
     Client, Method, StatusCode,
 };
-use std::{collections::HashMap, ops::Deref, sync::Arc};
-use tokio::{sync::RwLock, task::JoinHandle};
+use std::{collections::HashMap, ops::Deref};
 use tracing::trace;
 
 static USER_AGENT: &str =
@@ -17,15 +16,18 @@ static USER_AGENT: &str =
 /// Utility for handling all HTTP operations. The main purpose of this is to
 /// de-asyncify HTTP so it can be called in the main TUI thread. All heavy
 /// lifting will be pushed to background tasks.
+///
+/// This is safe and cheap to clone because reqwest's `Client` type uses `Arc`
+/// internally.
+/// https://docs.rs/reqwest/0.11.20/reqwest/struct.Client.html
 #[derive(Clone, Debug, Default)]
 pub struct HttpEngine {
     client: Client,
 }
 
-/// A single instance of an HTTP request, with an optional response. Most of
-/// this is sync because it should be built on the main thread, but the request
-/// gets sent async so the response has to be populated async
-#[derive(Debug)]
+/// A single instance of an HTTP request. Simpler alternative to
+/// [reqwest::Request] that suits our needs better.
+#[derive(Clone, Debug)]
 pub struct Request {
     pub method: Method,
     pub url: String,
@@ -34,36 +36,13 @@ pub struct Request {
     /// Text body content. At some point we'll support other formats (binary,
     /// streaming from file, etc.)
     pub body: Option<String>,
-    /// Resolved response, or an error. Since this gets populated
-    /// asynchronously, we need to store it behind a lock
-    pub response: Arc<RwLock<ResponseState>>,
-}
-
-/// State of a response, corresponding to a single request
-#[derive(Debug, Default)]
-pub enum ResponseState {
-    /// Request hasn't been sent yet
-    #[default]
-    None,
-    /// Response is in flight
-    Loading,
-    /// A resolved HTTP response, with all content loaded and ready to be
-    /// displayed in the UI. This does *not necessarily* have a 2xx/3xx status
-    /// code, any received response is stored here.
-    Complete {
-        status: StatusCode,
-        headers: HeaderMap,
-        content: String,
-    },
-    /// Error occurred sending the request or receiving the response
-    Error(reqwest::Error),
 }
 
 /// A resolved HTTP response, with all content loaded and ready to be displayed
-/// in the UI. A simpler alternative to [reqwest::Response], because there's
+/// to the user. A simpler alternative to [reqwest::Response], because there's
 /// no way to access all resolved data on that type at once. Resolving the
 /// response body requires moving the response.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Response {
     pub status: StatusCode,
     pub headers: HeaderMap,
@@ -81,7 +60,8 @@ impl HttpEngine {
     }
 
     /// Instantiate a request from a recipe, using values from the given
-    /// environment to render templated strings
+    /// environment to render templated strings. Errors if request construction
+    /// fails because of invalid user input somewhere.
     pub fn build_request(
         &self,
         recipe: &RequestRecipe,
@@ -106,7 +86,7 @@ impl HttpEngine {
                     .context("Error parsing header name")?,
                 value_template
                     .render(template_values)
-                    .with_context(|| format!("Header `{key}`"))?
+                    .with_context(|| format!("Header {key:?}"))?
                     // I'm not sure when this parse would fail, it seems like
                     // the value can be any bytes
                     // https://docs.rs/reqwest/0.11.20/reqwest/header/struct.HeaderValue.html
@@ -123,7 +103,7 @@ impl HttpEngine {
                 Ok((
                     k.clone(),
                     v.render(template_values)
-                        .with_context(|| format!("Query parameter `{k}`"))?,
+                        .with_context(|| format!("Query parameter {k:?}"))?,
                 ))
             })
             .collect::<anyhow::Result<HashMap<_, _>>>()?;
@@ -138,77 +118,43 @@ impl HttpEngine {
             query,
             body,
             headers,
-            response: Arc::new(RwLock::new(ResponseState::None)),
         })
     }
 
     /// Launch a request in a spawned task. The response will be stored with
     /// the request
-    pub fn send_request(&self, request: &Request) -> JoinHandle<()> {
+    pub async fn send_request(
+        &self,
+        request: Request,
+    ) -> reqwest::Result<Response> {
         // Convert to reqwest's request format
         let mut request_builder = self
             .client
-            .request(request.method.clone(), request.url.clone())
-            .headers(request.headers.clone())
+            .request(request.method, request.url)
+            .headers(request.headers)
             .query(&request.query);
-        if let Some(body) = &request.body {
-            request_builder = request_builder.body(body.clone());
+        if let Some(body) = request.body {
+            request_builder = request_builder.body(body);
         }
         // Failure here is a bug
         let reqwest_request = request_builder
             .build()
             .expect("Error building HTTP request");
 
-        // Launch the request in a task
-        let response_box = Arc::clone(&request.response);
-        // Client is safe to clone, it uses Arc internally
-        // https://docs.rs/reqwest/0.11.20/reqwest/struct.Client.html
-        let client = self.client.clone();
-        tokio::spawn(async move {
-            // Immediately mark the response as loading
-            *response_box.write().await = ResponseState::Loading;
+        let reqwest_response = self.client.execute(reqwest_request).await?;
 
-            // Execute the request and get all response metadata/content.
-            // This double-result thing is needed because we can't impl
-            // FromResidual on stable.
-            let result: Result<ResponseState, ResponseState> = async {
-                let reqwest_response = client.execute(reqwest_request).await?;
+        // Copy response data out first, because we need to move the
+        // response to resolve content (not sure why...)
+        let status = reqwest_response.status();
+        let headers = reqwest_response.headers().clone();
 
-                // Copy response data out first, because we need to move the
-                // response to resolve content (not sure why...)
-                let status = reqwest_response.status();
-                let headers = reqwest_response.headers().clone();
+        // Pre-resolve the content, so we get all the async work done
+        let content = reqwest_response.text().await?;
 
-                // Pre-resolve the content, so we get all the async work done
-                let content = reqwest_response.text().await?;
-
-                Ok(ResponseState::Complete {
-                    status,
-                    headers,
-                    content,
-                })
-            }
-            .await;
-
-            // Store the result with the request
-            *response_box.write().await = result.into();
+        Ok(Response {
+            status,
+            headers,
+            content,
         })
-    }
-}
-
-// These two impls can be replaced with a single FromResidiaul impl after
-// https://github.com/rust-lang/rust/issues/84277 (or if we switch to nightly)
-impl From<reqwest::Error> for ResponseState {
-    fn from(error: reqwest::Error) -> Self {
-        Self::Error(error)
-    }
-}
-
-impl From<Result<Self, Self>> for ResponseState {
-    fn from(value: Result<Self, Self>) -> Self {
-        match value {
-            Ok(value) => value,
-            Err(value) => value,
-        }
     }
 }

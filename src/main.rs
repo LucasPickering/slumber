@@ -1,151 +1,98 @@
 mod config;
 mod http;
-mod input;
-mod state;
 mod template;
-mod view;
+mod tui;
+mod util;
 
 use crate::{
-    config::RequestCollection,
-    http::HttpEngine,
-    input::Action,
-    state::{AppState, Message},
-    view::Renderer,
+    config::RequestCollection, http::HttpEngine, template::TemplateValues,
+    tui::Tui, util::find_by,
 };
-use anyhow::{anyhow, Context};
-use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
-    execute,
-    terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use ratatui::{prelude::CrosstermBackend, Terminal};
-use signal_hook::{
-    consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM},
-    iterator::Signals,
-};
-use std::{
-    io::{self, Stdout},
-    ops::Deref,
-    path::PathBuf,
-    time::{Duration, Instant},
-};
-use tracing::{error, info};
+use anyhow::Context;
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
+
+#[derive(Debug, Parser)]
+#[clap(
+    author,
+    version,
+    about,
+    long_about = "Configurable REST client with both TUI and CLI interfaces"
+)]
+struct Args {
+    #[clap(long, short)]
+    collection: Option<PathBuf>,
+
+    /// Subcommand to execute. If omitted, run the TUI
+    #[command(subcommand)]
+    subcommand: Option<Commands>,
+}
+
+#[derive(Clone, Debug, Subcommand)]
+enum Commands {
+    /// Execute a single request
+    #[clap(aliases=&["req", "rq"])]
+    Request {
+        /// ID of the request to execute
+        request_id: String,
+        /// ID of the environment to pull template values from
+        #[clap(long = "env", short)]
+        environment: Option<String>,
+    },
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    initialize_panic_handler();
+    // Global initialization
     initialize_tracing()?;
-    let collection = RequestCollection::load(None).await?;
-    App::start(collection)
-}
+    let args = Args::parse();
+    let collection =
+        RequestCollection::load(args.collection.as_deref()).await?;
 
-/// Main controller struct. The app uses an MVC architecture, and this is the C
-#[derive(Debug)]
-pub struct App {
-    terminal: Terminal<CrosstermBackend<Stdout>>,
-    renderer: Renderer,
-    http_engine: HttpEngine,
-    state: AppState,
-}
-
-impl App {
-    /// Start the TUI
-    pub fn start(collection: RequestCollection) -> anyhow::Result<()> {
-        // Set up terminal
-        enable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-        let backend = CrosstermBackend::new(stdout);
-        let terminal = Terminal::new(backend)?;
-
-        let mut app = App {
-            terminal,
-            renderer: Renderer::new(),
-            http_engine: HttpEngine::new(),
-            state: collection.into(),
-        };
-
-        app.run()
-    }
-
-    /// Run the main TUI update loop
-    fn run(&mut self) -> anyhow::Result<()> {
-        // Listen for signals to stop the program
-        let mut quit_signals = Signals::new([SIGHUP, SIGINT, SIGTERM, SIGQUIT])
-            .context("Error creating signal handler")?;
-
-        let tick_rate = Duration::from_millis(250);
-        let mut last_tick = Instant::now();
-
-        while self.state.should_run() {
-            self.terminal
-                .draw(|f| self.renderer.draw_main(f, &mut self.state))?;
-
-            // Handle all messages in the queue before accepting new input.
-            // Can't use a for loop because that maintains a mutable ref to self
-            while let Some(message) = self.state.dequeue() {
-                // If an error occurs, store it so we can show the user
-                if let Err(err) = self.handle_message(message) {
-                    error!(error = err.deref(), "Error handling message");
-                    self.state.error = Some(err);
-                }
-            }
-
-            // Check for any new events
-            let timeout = tick_rate
-                .checked_sub(last_tick.elapsed())
-                .unwrap_or_else(|| Duration::from_secs(0));
-            if crossterm::event::poll(timeout)? {
-                if let Some(action) =
-                    Action::from_event(crossterm::event::read()?)
-                {
-                    input::handle_action(&mut self.state, action);
-                }
-            }
-
-            if last_tick.elapsed() >= tick_rate {
-                last_tick = Instant::now();
-            }
-
-            // Check for exit signals
-            if quit_signals.pending().next().is_some() {
-                self.state.quit();
-            }
+    // Select mode based on whether request ID(s) were given
+    match args.subcommand {
+        // Run the TUI
+        None => {
+            Tui::start(collection)?;
         }
-        Ok(())
-    }
 
-    /// Handle an incoming message. Any error here will be displayed as a popup
-    fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
-        match message {
-            Message::SendRequest => {
-                let recipe =
-                    self.state.recipes.selected().ok_or_else(|| {
-                        anyhow!("Cannot send request with no recipe selected")
-                    })?;
+        // Execute one request without a TUI
+        Some(Commands::Request {
+            request_id,
+            environment,
+        }) => {
+            // Find environment and recipe by ID
+            let environment = match environment {
+                Some(id) => Some(
+                    &find_by(
+                        collection.environments.iter(),
+                        |e| &e.id,
+                        &id,
+                        "No environment with ID",
+                    )?
+                    .data,
+                ),
+                None => None,
+            };
+            let recipe = find_by(
+                collection.requests.iter(),
+                |r| &r.id,
+                &request_id,
+                "No request recipe with ID",
+            )?;
 
-                // Build the request, then launch it
-                self.state.active_request = Some(
-                    self.http_engine
-                        .build_request(recipe, &(&self.state).into())?,
-                );
-                // Unwrap is safe because we *just* populated it
-                self.http_engine
-                    .send_request(self.state.active_request.as_ref().unwrap());
-            }
-        }
-        Ok(())
-    }
-}
+            // Run the request
+            let http_engine = HttpEngine::new();
+            let request = http_engine
+                .build_request(recipe, &TemplateValues { environment })?;
+            let response = http_engine.send_request(request).await?;
 
-/// Restore terminal on app exit
-impl Drop for App {
-    fn drop(&mut self) {
-        if let Err(err) = restore_terminal() {
-            error!(error = err.deref(), "Error restoring terminal, sorry!");
+            print!("{}", response.content);
         }
     }
+
+    Ok(())
 }
 
 /// Set up tracing to log to a file
@@ -163,26 +110,5 @@ fn initialize_tracing() -> anyhow::Result<()> {
         .with_ansi(false)
         .with_filter(EnvFilter::from_default_env());
     tracing_subscriber::registry().with(file_subscriber).init();
-    Ok(())
-}
-
-/// Restore terminal state during a panic
-fn initialize_panic_handler() {
-    let original_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |panic_info| {
-        restore_terminal().unwrap();
-        original_hook(panic_info);
-    }));
-}
-
-/// Return terminal to initial state
-fn restore_terminal() -> anyhow::Result<()> {
-    info!("Restoring terminal");
-    crossterm::terminal::disable_raw_mode()?;
-    crossterm::execute!(
-        std::io::stderr(),
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-    )?;
     Ok(())
 }

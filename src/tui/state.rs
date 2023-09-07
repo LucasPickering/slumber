@@ -1,12 +1,18 @@
 use crate::{
     config::{Environment, RequestCollection, RequestRecipe},
-    http::Request,
-    input::InputHandler,
-    view::{EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane},
+    http::{Request, Response},
+    template::TemplateValues,
+    tui::{
+        input::InputHandler,
+        view::{
+            EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane,
+        },
+    },
 };
 use ratatui::widgets::*;
-use std::{collections::VecDeque, fmt::Display};
+use std::fmt::Display;
 use strum::{EnumIter, IntoEnumIterator};
+use tokio::sync::mpsc::UnboundedSender;
 
 /// Main app state. All configuration and UI state is stored here. The M in MVC
 #[derive(Debug)]
@@ -14,7 +20,11 @@ pub struct AppState {
     // Global app state
     /// Flag to control the main app loop. Set to false to exit the app
     should_run: bool,
-    message_queue: VecDeque<Message>,
+    /// Sender end of the message queue. Anything can use this to pass async
+    /// messages back to the main thread to be handled. We use an unbounded
+    /// sender because we don't ever expect the queue to get that large, and it
+    /// allows for synchronous enqueueing.
+    pub messages_tx: UnboundedSender<Message>,
 
     // UI state
     /// Any error that should be shown to the user in a popup
@@ -28,14 +38,17 @@ pub struct AppState {
 
     // HTTP state
     /// Most recent HTTP request
-    pub active_request: Option<Request>,
+    pub active_request: Option<RequestState>,
 }
 
 impl AppState {
-    pub fn new(collection: RequestCollection) -> Self {
+    pub fn new(
+        collection: RequestCollection,
+        messages_tx: UnboundedSender<Message>,
+    ) -> Self {
         Self {
             should_run: true,
-            message_queue: VecDeque::new(),
+            messages_tx,
             error: None,
             focused_pane: StatefulSelect::new(),
             request_tab: StatefulSelect::new(),
@@ -55,21 +68,14 @@ impl AppState {
     pub fn quit(&mut self) {
         self.should_run = false;
     }
-
-    /// Stick a message on the end of the queue
-    pub fn enqueue(&mut self, message: Message) {
-        self.message_queue.push_back(message);
-    }
-
-    /// Pop a message off the queue (if it's not empty)
-    pub fn dequeue(&mut self) -> Option<Message> {
-        self.message_queue.pop_front()
-    }
 }
 
-impl From<RequestCollection> for AppState {
-    fn from(collection: RequestCollection) -> Self {
-        Self::new(collection)
+/// Expose app state to the templater
+impl<'a> From<&'a AppState> for TemplateValues<'a> {
+    fn from(state: &'a AppState) -> Self {
+        Self {
+            environment: state.environments.selected().map(|e| &e.data),
+        }
     }
 }
 
@@ -77,11 +83,50 @@ impl From<RequestCollection> for AppState {
 /// be made synchronously by the input handler, but some require async handling
 /// at the top level. The controller is responsible for both triggering and
 /// handling messages.
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 pub enum Message {
     /// Launch an HTTP request from the currently selected recipe. Errors if
     /// the recipes aren't in focus, or the list is empty
     SendRequest,
+    /// An HTTP response was received (or the request failed), and we should
+    /// update state accordingly
+    Response(ResponseState),
+}
+
+/// State of a single request, including an optional response. Most of this is
+/// sync because it should be built on the main thread, but the request
+/// gets sent async so the response has to be populated async
+#[derive(Debug)]
+pub struct RequestState {
+    pub request: Request,
+    /// Resolved response, or an error. Since this gets populated
+    /// asynchronously, we need to store it behind a lock
+    pub response: ResponseState,
+}
+
+/// Initialize a stateful request
+impl From<Request> for RequestState {
+    fn from(request: Request) -> Self {
+        Self {
+            request,
+            response: ResponseState::Loading,
+        }
+    }
+}
+
+/// State of an HTTP response, corresponding to a single request
+#[derive(Debug)]
+pub enum ResponseState {
+    /// Request is in flight, or is *about* to be sent. There's no way to
+    /// initiate a request that doesn't immediately launch it, so Loading is
+    /// the initial state.
+    Loading,
+    /// A resolved HTTP response, with all content loaded and ready to be
+    /// displayed in the UI. This does *not necessarily* have a 2xx/3xx status
+    /// code, any received response is stored here.
+    Complete(Response),
+    /// Error occurred sending the request or receiving the response
+    Error(reqwest::Error),
 }
 
 /// A list of items in the UI

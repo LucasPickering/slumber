@@ -1,10 +1,12 @@
 environments:
-  - name: Prd
+  - id: prd
+    name: Prd
     data:
       host: https://httpbin.org
       user_guid: abc123
       auth_token: eggsalad
-  - name: Local
+  - id: local
+    name: Local
     data:
       host: http://localhost:5000
 

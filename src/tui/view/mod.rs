@@ -2,17 +2,21 @@ mod component;
 mod theme;
 
 use crate::{
-    http::ResponseState,
-    state::{AppState, PrimaryPane, RequestTab, ResponseTab},
-    view::{
-        component::{
-            BlockComponent, Component, ListComponent, TabComponent, ToText,
+    http::Response,
+    tui::{
+        state::{
+            AppState, PrimaryPane, RequestTab, ResponseState, ResponseTab,
         },
-        theme::Theme,
+        view::{
+            component::{
+                BlockComponent, Component, ListComponent, TabComponent, ToText,
+            },
+            theme::Theme,
+        },
     },
 };
 use ratatui::{prelude::*, widgets::*};
-use std::{fmt::Debug, io::Stdout, ops::Deref};
+use std::{fmt::Debug, io::Stdout};
 
 type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<Stdout>>;
 
@@ -241,15 +245,11 @@ impl Draw for ResponsePane {
         let get_text = || -> Option<Text> {
             // Check if a request is running/complete
             let request = state.active_request.as_ref()?;
-            // Try to access the response. If it's locked, don't block
-            let response = request.response.try_read().ok()?;
-            match response.deref() {
-                // Request hasn't launched yet
-                ResponseState::None => None,
+            match &request.response {
                 ResponseState::Loading => Some("Loading...".into()),
-                ResponseState::Complete {
+                ResponseState::Complete(Response {
                     headers, content, ..
-                } => {
+                }) => {
                     // TODO show status
                     Some(match state.response_tab.selected() {
                         ResponseTab::Body => content.clone().into(),

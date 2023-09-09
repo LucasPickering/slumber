@@ -44,16 +44,20 @@ pub struct Tui {
 }
 
 impl Tui {
-    /// Start the TUI
-    pub fn start(collection: RequestCollection) -> anyhow::Result<()> {
+    /// Start the TUI. Any errors that occur during startup will be panics,
+    /// because they prevent TUI execution.
+    pub fn start(collection: RequestCollection) {
         initialize_panic_handler();
 
         // Set up terminal
-        enable_raw_mode()?;
+        enable_raw_mode().expect("Error initializing terminal");
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)
+            .expect("Error initializing terminal");
         let backend = CrosstermBackend::new(stdout);
-        let terminal = Terminal::new(backend)?;
+        let terminal =
+            Terminal::new(backend).expect("Error initializing terminal");
+
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
 
@@ -65,10 +69,12 @@ impl Tui {
             state: AppState::new(collection, messages_tx),
         };
 
-        app.run()
+        // Any error during execution that gets this far is fatal. We expect the
+        // error to already have context attached so we can just unwrap
+        app.run().unwrap();
     }
 
-    /// Run the main TUI update loop
+    /// Run the main TUI update loop. Any error returned from this is fatal
     fn run(&mut self) -> anyhow::Result<()> {
         // Listen for signals to stop the program
         let mut quit_signals = Signals::new([SIGHUP, SIGINT, SIGTERM, SIGQUIT])

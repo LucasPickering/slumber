@@ -9,7 +9,7 @@ use crate::{
     tui::Tui, util::find_by,
 };
 use anyhow::Context;
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use std::path::PathBuf;
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
@@ -26,11 +26,11 @@ struct Args {
 
     /// Subcommand to execute. If omitted, run the TUI
     #[command(subcommand)]
-    subcommand: Option<Commands>,
+    subcommand: Option<Subcommand>,
 }
 
-#[derive(Clone, Debug, Subcommand)]
-enum Commands {
+#[derive(Clone, Debug, clap::Subcommand)]
+enum Subcommand {
     /// Execute a single request
     #[clap(aliases=&["req", "rq"])]
     Request {
@@ -42,26 +42,47 @@ enum Commands {
     },
 }
 
+/// Error handling procedure:
+/// - Unexpected errors (e.g. bugs) should be panics where they occur
+/// - Expected errors (e.g. network error, bad input) should be shown to the
+/// user. For the CLI, just print it. For the TUI, show a popup.
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     // Global initialization
-    initialize_tracing()?;
+    initialize_tracing().unwrap();
     let args = Args::parse();
-    let collection =
-        RequestCollection::load(args.collection.as_deref()).await?;
+    // This won't panic at the failure site because it can also be called
+    // mid-TUI execution
+    let collection = RequestCollection::load(args.collection.as_deref())
+        .await
+        .expect("Error loading collection");
 
     // Select mode based on whether request ID(s) were given
     match args.subcommand {
         // Run the TUI
         None => {
-            Tui::start(collection)?;
+            Tui::start(collection);
         }
 
         // Execute one request without a TUI
-        Some(Commands::Request {
+        Some(subcommand) => {
+            if let Err(err) = execute_subcommand(collection, subcommand).await {
+                eprintln!("{err:#}");
+            }
+        }
+    }
+}
+
+/// Execute a non-TUI command
+async fn execute_subcommand(
+    collection: RequestCollection,
+    subcommand: Subcommand,
+) -> anyhow::Result<()> {
+    match subcommand {
+        Subcommand::Request {
             request_id,
             environment,
-        }) => {
+        } => {
             // Find environment and recipe by ID
             let environment = match environment {
                 Some(id) => Some(
@@ -89,10 +110,9 @@ async fn main() -> anyhow::Result<()> {
             let response = http_engine.send_request(request).await?;
 
             print!("{}", response.content);
+            Ok(())
         }
     }
-
-    Ok(())
 }
 
 /// Set up tracing to log to a file

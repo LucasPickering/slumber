@@ -1,7 +1,7 @@
 //! This whole module is basically a wrapper around reqwest to make it more
 //! ergnomic for our needs
 
-use crate::{config::RequestRecipe, template::TemplateValues};
+use crate::{config::RequestRecipe, template::TemplateContext};
 use anyhow::Context;
 use reqwest::{
     header::{HeaderMap, HeaderName},
@@ -65,7 +65,7 @@ impl HttpEngine {
     pub fn build_request(
         &self,
         recipe: &RequestRecipe,
-        template_values: &TemplateValues,
+        template_values: &TemplateContext,
     ) -> anyhow::Result<Request> {
         // TODO add more tracing
         let method = recipe

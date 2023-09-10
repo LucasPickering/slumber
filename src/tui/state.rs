@@ -1,7 +1,7 @@
 use crate::{
     config::{Environment, RequestCollection, RequestRecipe},
     http::{Request, Response},
-    template::TemplateValues,
+    template::TemplateContext,
     tui::{
         input::InputHandler,
         view::{
@@ -71,10 +71,11 @@ impl AppState {
 }
 
 /// Expose app state to the templater
-impl<'a> From<&'a AppState> for TemplateValues<'a> {
+impl<'a> From<&'a AppState> for TemplateContext<'a> {
     fn from(state: &'a AppState) -> Self {
         Self {
             environment: state.environments.selected().map(|e| &e.data),
+            overrides: None,
         }
     }
 }

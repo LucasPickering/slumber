@@ -5,12 +5,12 @@ mod tui;
 mod util;
 
 use crate::{
-    config::RequestCollection, http::HttpEngine, template::TemplateValues,
+    config::RequestCollection, http::HttpEngine, template::TemplateContext,
     tui::Tui, util::find_by,
 };
 use anyhow::Context;
 use clap::Parser;
-use std::path::PathBuf;
+use std::{collections::HashMap, error::Error, path::PathBuf, str::FromStr};
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
 #[derive(Debug, Parser)]
@@ -36,9 +36,18 @@ enum Subcommand {
     Request {
         /// ID of the request to execute
         request_id: String,
+
         /// ID of the environment to pull template values from
         #[clap(long = "env", short)]
         environment: Option<String>,
+
+        /// List of key=value overrides
+        #[clap(
+            long = "override",
+            short = 'o',
+            value_parser = parse_key_val::<String, String>,
+        )]
+        overrides: Vec<(String, String)>,
     },
 }
 
@@ -82,6 +91,7 @@ async fn execute_subcommand(
         Subcommand::Request {
             request_id,
             environment,
+            overrides,
         } => {
             // Find environment and recipe by ID
             let environment = match environment {
@@ -105,8 +115,14 @@ async fn execute_subcommand(
 
             // Run the request
             let http_engine = HttpEngine::new();
-            let request = http_engine
-                .build_request(recipe, &TemplateValues { environment })?;
+            let overrides: HashMap<_, _> = overrides.into_iter().collect();
+            let request = http_engine.build_request(
+                recipe,
+                &TemplateContext {
+                    environment,
+                    overrides: Some(&overrides),
+                },
+            )?;
             let response = http_engine.send_request(request).await?;
 
             print!("{}", response.content);
@@ -131,4 +147,20 @@ fn initialize_tracing() -> anyhow::Result<()> {
         .with_filter(EnvFilter::from_default_env());
     tracing_subscriber::registry().with(file_subscriber).init();
     Ok(())
+}
+
+/// Parse a single key=value pair for an argument
+fn parse_key_val<T, U>(
+    s: &str,
+) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
+where
+    T: FromStr,
+    T::Err: Error + Send + Sync + 'static,
+    U: FromStr,
+    U::Err: Error + Send + Sync + 'static,
+{
+    let (key, value) = s
+        .split_once('=')
+        .ok_or_else(|| format!("invalid key=value: no \"=\" found in {s:?}"))?;
+    Ok((key.parse()?, value.parse()?))
 }

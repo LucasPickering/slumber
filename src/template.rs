@@ -1,8 +1,10 @@
-use anyhow::Context;
+use anyhow::anyhow;
 use derive_more::{Deref, Display};
-use liquid::ParserBuilder;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::OnceLock};
+
+static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
 
 /// A string that can contain templated content
 #[derive(Clone, Debug, Deref, Display, Deserialize)]
@@ -13,16 +15,31 @@ impl TemplateString {
     /// the whole state so we can dynamically access the environment, responses,
     /// etc.
     pub fn render(&self, context: &TemplateContext) -> anyhow::Result<String> {
-        // TODO make parser available statically
-        // TODO cache built template (maybe just do it during startup?)
-        let template = ParserBuilder::with_stdlib().build()?.parse(&self.0)?;
-        // TODO implement ObjectView for TemplateValues
-        let empty_map = HashMap::new();
-        let globals =
-            liquid::to_object(context.environment.unwrap_or(&empty_map))?;
-        template.render(&globals).with_context(|| {
-            format!("Error rendering template string {:?}", self.0)
-        })
+        // Template syntax is simple so it's easiest to just implement it with
+        // a regex
+        let re = TEMPLATE_REGEX
+            .get_or_init(|| Regex::new(r"\{\{\s*([\w\d_-]+)\s*\}\}").unwrap());
+
+        // Regex::replace_all doesn't support fallible replacement, so we
+        // have to do it ourselves. Use a Cow so we don't allocate for
+        // strings that contain no templating.
+        // https://docs.rs/regex/1.9.5/regex/struct.Regex.html#method.replace_all
+        let mut new = String::with_capacity(self.len());
+        let mut last_match = 0;
+        for captures in re.captures_iter(self) {
+            let m = captures.get(0).unwrap();
+            new.push_str(&self[last_match..m.start()]);
+            let key =
+                captures.get(1).expect("Missing key capture group").as_str();
+            new.push_str(context.get(key).ok_or_else(|| {
+                // TODO return a structure error with spans for the TUI
+                anyhow!("Unknown key in template {:?}", self.0)
+            })?);
+            last_match = m.end();
+        }
+        new.push_str(&self[last_match..]);
+
+        Ok(new)
     }
 }
 
@@ -38,4 +55,13 @@ pub struct TemplateContext<'a> {
     pub environment: Option<&'a HashMap<String, String>>,
     /// Additional key=value overrides passed directly from the user
     pub overrides: Option<&'a HashMap<String, String>>,
+}
+
+impl<'a> TemplateContext<'a> {
+    /// Get a value by key
+    fn get(&self, key: &str) -> Option<&String> {
+        self.overrides?
+            .get(key)
+            .or_else(|| self.environment?.get(key))
+    }
 }

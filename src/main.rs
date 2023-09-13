@@ -48,6 +48,10 @@ enum Subcommand {
             value_parser = parse_key_val::<String, String>,
         )]
         overrides: Vec<(String, String)>,
+
+        /// Just print the generated request, instead of sending it
+        #[clap(long)]
+        dry_run: bool,
     },
 }
 
@@ -92,6 +96,7 @@ async fn execute_subcommand(
             request_id,
             environment,
             overrides,
+            dry_run,
         } => {
             // Find environment and recipe by ID
             let environment = match environment {
@@ -113,7 +118,7 @@ async fn execute_subcommand(
                 "No request recipe with ID",
             )?;
 
-            // Run the request
+            // Build the request
             let http_engine = HttpEngine::new();
             let overrides: HashMap<_, _> = overrides.into_iter().collect();
             let request = http_engine.build_request(
@@ -123,9 +128,13 @@ async fn execute_subcommand(
                     overrides: Some(&overrides),
                 },
             )?;
-            let response = http_engine.send_request(request).await?;
 
-            print!("{}", response.content);
+            if dry_run {
+                println!("{:#?}", request);
+            } else {
+                let response = http_engine.send_request(request).await?;
+                print!("{}", response.content);
+            }
             Ok(())
         }
     }

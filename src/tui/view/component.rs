@@ -98,13 +98,13 @@ pub trait ToText {
 // Getting lazy with the lifetimes here...
 impl ToText for Environment {
     fn to_text(&self) -> Text<'static> {
-        vec![Line::from(self.name.clone())].into()
+        vec![Line::from(self.name().to_owned())].into()
     }
 }
 
 impl ToText for RequestRecipe {
     fn to_text(&self) -> Text<'static> {
-        vec![Line::from(format!("[{}] {}", self.method, self.name))].into()
+        vec![Line::from(format!("[{}] {}", self.method, self.name()))].into()
     }
 }
 

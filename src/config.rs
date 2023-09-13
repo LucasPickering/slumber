@@ -28,7 +28,7 @@ pub struct RequestCollection {
 #[derive(Clone, Debug, Deserialize)]
 pub struct Environment {
     pub id: String,
-    pub name: String,
+    pub name: Option<String>,
     pub data: HashMap<String, String>,
 }
 
@@ -39,8 +39,7 @@ pub struct Environment {
 #[derive(Clone, Debug, Deserialize)]
 pub struct RequestRecipe {
     pub id: String,
-    /// No reason for this to be a template, because it only appears in the UI
-    pub name: String,
+    pub name: Option<String>,
     pub method: TemplateString,
     pub url: TemplateString,
     pub body: Option<TemplateString>,
@@ -98,5 +97,19 @@ impl RequestCollection {
                 Ok(*first)
             }
         }
+    }
+}
+
+impl Environment {
+    /// Get a presentable name for this environment
+    pub fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.id)
+    }
+}
+
+impl RequestRecipe {
+    /// Get a presentable name for this recipe
+    pub fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.id)
     }
 }

@@ -30,7 +30,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc::{self, UnboundedReceiver};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 /// Main controller struct for the TUI. The app uses an MVC architecture, and
 /// this is the C
@@ -191,7 +191,7 @@ fn initialize_panic_handler() {
 
 /// Return terminal to initial state
 fn restore_terminal() -> anyhow::Result<()> {
-    info!("Restoring terminal");
+    debug!("Restoring terminal");
     crossterm::terminal::disable_raw_mode()?;
     crossterm::execute!(
         std::io::stderr(),

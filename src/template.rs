@@ -33,7 +33,7 @@ impl TemplateString {
                 captures.get(1).expect("Missing key capture group").as_str();
             new.push_str(context.get(key).ok_or_else(|| {
                 // TODO return a structure error with spans for the TUI
-                anyhow!("Unknown key in template {:?}", self.0)
+                anyhow!("Unknown key {key:?} in {:?}", self.0)
             })?);
             last_match = m.end();
         }
@@ -60,9 +60,15 @@ pub struct TemplateContext<'a> {
 impl<'a> TemplateContext<'a> {
     /// Get a value by key
     fn get(&self, key: &str) -> Option<&String> {
-        self.overrides?
-            .get(key)
-            .or_else(|| self.environment?.get(key))
+        fn get_opt<'a>(
+            map: Option<&'a HashMap<String, String>>,
+            key: &str,
+        ) -> Option<&'a String> {
+            map?.get(key)
+        }
+
+        None.or_else(|| get_opt(self.overrides, key))
+            .or_else(|| get_opt(self.environment, key))
     }
 }
 
@@ -72,8 +78,12 @@ mod tests {
 
     #[test]
     fn test_valid_template() {
-        let environment =
-            [("user_id".into(), "1".into())].into_iter().collect();
+        let environment = [
+            ("user_id".into(), "1".into()),
+            ("group_id".into(), "3".into()),
+        ]
+        .into_iter()
+        .collect();
         let overrides = [("user_id".into(), "2".into())].into_iter().collect();
         let context = TemplateContext {
             environment: Some(&environment),
@@ -87,11 +97,19 @@ mod tests {
             TemplateString("plain".into()).render(&context).unwrap(),
             "plain".to_owned()
         );
+        // Pull from overrides
         assert_eq!(
             TemplateString("{{user_id}}".into())
                 .render(&context)
                 .unwrap(),
             "2".to_owned()
+        );
+        // Pull from env
+        assert_eq!(
+            TemplateString("{{group_id}}".into())
+                .render(&context)
+                .unwrap(),
+            "3".to_owned()
         );
     }
 
@@ -106,7 +124,7 @@ mod tests {
                 .render(&context)
                 .unwrap_err()
                 .to_string(),
-            "Unknown key in template \"{{user_id}}\"".to_owned()
+            "Unknown key \"user_id\" in \"{{user_id}}\"".to_owned()
         );
     }
 }

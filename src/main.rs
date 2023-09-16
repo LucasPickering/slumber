@@ -1,4 +1,5 @@
 mod config;
+mod history;
 mod http;
 mod template;
 mod tui;
@@ -21,6 +22,10 @@ use tracing_subscriber::{filter::EnvFilter, prelude::*};
     long_about = "Configurable REST client with both TUI and CLI interfaces"
 )]
 struct Args {
+    /// Collection file, which defines your environments and recipes. If
+    /// omitted, check for the following files in the current directory
+    /// (first match will be used): slumber.yml, slumber.yaml, .slumber.yml,
+    /// .slumber.yaml
     #[clap(long, short)]
     collection: Option<PathBuf>,
 

@@ -2,11 +2,9 @@ mod component;
 mod theme;
 
 use crate::{
-    http::Response,
+    http::{Response, ResponseState},
     tui::{
-        state::{
-            AppState, PrimaryPane, RequestTab, ResponseState, ResponseTab,
-        },
+        state::{AppState, PrimaryPane, RequestTab, ResponseTab},
         view::{
             component::{
                 BlockComponent, Component, ListComponent, TabComponent, ToText,
@@ -244,10 +242,10 @@ impl Draw for ResponsePane {
         // Response content/metadata
         let get_text = || -> Option<Text> {
             // Check if a request is running/complete
-            let request = state.active_request.as_ref()?;
-            match &request.response {
+            let response = state.get_response()?;
+            match response {
                 ResponseState::Loading => Some("Loading...".into()),
-                ResponseState::Complete(Response {
+                ResponseState::Success(Response {
                     headers, content, ..
                 }) => {
                     // TODO show status

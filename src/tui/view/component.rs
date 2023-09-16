@@ -2,7 +2,6 @@
 
 use crate::{
     config::{Environment, RequestRecipe},
-    template::TemplateString,
     tui::{
         state::{FixedSelect, StatefulList, StatefulSelect},
         view::Renderer,
@@ -12,8 +11,7 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Borders, List, ListItem, Tabs},
 };
-use reqwest::header::HeaderMap;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 /// A component is a helper for building a UI. It can be rendered into some UI
 /// element to be drawn.
@@ -108,7 +106,7 @@ impl ToText for RequestRecipe {
     }
 }
 
-impl ToText for HashMap<String, TemplateString> {
+impl<K: Display, V: Display> ToText for HashMap<K, V> {
     fn to_text(&self) -> Text<'static> {
         self.iter()
             .map(|(key, value)| format!("{key} = {value}").into())
@@ -117,14 +115,14 @@ impl ToText for HashMap<String, TemplateString> {
     }
 }
 
-impl ToText for HeaderMap {
-    fn to_text(&self) -> Text<'static> {
-        self.into_iter()
-            .map(|(key, value)| {
-                format!("{key} = {}", value.to_str().unwrap_or("<unknown>"))
-                    .into()
-            })
-            .collect::<Vec<Line>>()
-            .into()
-    }
-}
+// impl ToText for HashMap<String, String> {
+//     fn to_text(&self) -> Text<'static> {
+//         self.into_iter()
+//             .map(|(key, value)| {
+//                 format!("{key} = {}", value.to_str().unwrap_or("<unknown>"))
+//                     .into()
+//             })
+//             .collect::<Vec<Line>>()
+//             .into()
+//     }
+// }

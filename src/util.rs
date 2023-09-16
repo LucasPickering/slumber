@@ -1,8 +1,10 @@
 use anyhow::anyhow;
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::Deref};
 use tokio::sync::mpsc::UnboundedSender;
+use tracing::error;
 
 /// Extension trait for UnboundedSender
+/// TODO replace this with a newtype wrapper on Sender instead, it'll be cleaner
 pub trait UnboundedSenderExt<T> {
     /// Send a message on the channel and panic if the channel is closed. We
     /// expect the message receiver to life the entire lifespan of the program,
@@ -39,4 +41,24 @@ pub fn find_by<E, T: Debug + PartialEq>(
     Err(anyhow!(
         "{not_found_message} {target:?}; Options are: {misses:?}"
     ))
+}
+
+pub trait ResultExt<T>: Sized {
+    /// If the result is an error, log it and swallow it. If not, return the
+    /// value. Useful for low-priority errors that shouldn't be shown to the
+    /// user at all.
+    fn ok_or_trace(self) -> Option<T>;
+}
+
+impl<T> ResultExt<T> for anyhow::Result<T> {
+    fn ok_or_trace(self) -> Option<T> {
+        match self {
+            Ok(value) => Some(value),
+            Err(err) => {
+                // The error should already have useful context attached
+                error!(error = err.deref());
+                None
+            }
+        }
+    }
 }

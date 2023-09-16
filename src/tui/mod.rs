@@ -7,7 +7,7 @@ use crate::{
     http::HttpEngine,
     tui::{
         input::Action,
-        state::{AppState, Message, ResponseState},
+        state::{AppState, Message},
         view::Renderer,
     },
     util::UnboundedSenderExt,
@@ -24,7 +24,6 @@ use signal_hook::{
     iterator::Signals,
 };
 use std::{
-    error::Error,
     io::{self, Stdout},
     ops::Deref,
     time::{Duration, Instant},
@@ -91,8 +90,7 @@ impl Tui {
             while let Ok(message) = self.messages_rx.try_recv() {
                 // If an error occurs, store it so we can show the user
                 if let Err(err) = self.handle_message(message) {
-                    error!(error = err.deref(), "Error handling message");
-                    self.state.error = Some(err);
+                    self.state.set_error(err);
                 }
             }
 
@@ -126,10 +124,14 @@ impl Tui {
             Message::SendRequest => {
                 self.send_request()?;
             }
-            Message::Response(response) => {
-                if let Some(request_state) = &mut self.state.active_request {
-                    request_state.response = response;
-                }
+            Message::Response {
+                request_id,
+                response,
+            } => {
+                // Store the request in history so it can be shown to the user
+                self.state
+                    .history
+                    .add_response(request_id, &response.into());
             }
         }
         Ok(())
@@ -143,29 +145,33 @@ impl Tui {
             .selected()
             .ok_or_else(|| anyhow!("No recipe selected"))?;
 
-        // Build the request first
+        // Build the request first, and immediately store it in history
         let request = self
             .http_engine
             .build_request(recipe, &(&self.state).into())?;
-        self.state.active_request = Some(request.clone().into());
+        self.state.history.add_request(&recipe.id, &request);
+
         let messages_tx = self.state.messages_tx.clone();
         let http_engine = self.http_engine.clone();
+        let request_id = request.id;
 
         // Launch the request in a separate task so it doesn't block
         tokio::spawn(async move {
-            let response_state = match http_engine.send_request(request).await {
+            let result = http_engine.send_request(request).await;
+            match &result {
                 Ok(response) => {
                     info!(?response, "HTTP request succeeded");
-                    ResponseState::Complete(response)
                 }
                 Err(err) => {
                     // yikes
-                    error!(error = &err as &dyn Error, "HTTP request failed");
-                    ResponseState::Error(err)
+                    error!(error = err.deref(), "HTTP request failed");
                 }
             };
             // Send the response back to the main thread
-            messages_tx.send_unwrap(Message::Response(response_state));
+            messages_tx.send_unwrap(Message::Response {
+                request_id,
+                response: result,
+            });
         });
         Ok(())
     }

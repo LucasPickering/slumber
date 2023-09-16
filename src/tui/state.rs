@@ -1,6 +1,7 @@
 use crate::{
     config::{Environment, RequestCollection, RequestRecipe},
-    http::{Request, Response},
+    history::RequestHistory,
+    http::{Request, RequestId, Response, ResponseState},
     template::TemplateContext,
     tui::{
         input::InputHandler,
@@ -10,9 +11,10 @@ use crate::{
     },
 };
 use ratatui::widgets::*;
-use std::fmt::Display;
+use std::{fmt::Display, ops::Deref};
 use strum::{EnumIter, IntoEnumIterator};
 use tokio::sync::mpsc::UnboundedSender;
+use tracing::error;
 
 /// Main app state. All configuration and UI state is stored here. The M in MVC
 #[derive(Debug)]
@@ -37,8 +39,7 @@ pub struct AppState {
     pub recipes: StatefulList<RequestRecipe>,
 
     // HTTP state
-    /// Most recent HTTP request
-    pub active_request: Option<RequestState>,
+    pub history: RequestHistory,
 }
 
 impl AppState {
@@ -55,7 +56,7 @@ impl AppState {
             response_tab: StatefulSelect::new(),
             environments: StatefulList::with_items(collection.environments),
             recipes: StatefulList::with_items(collection.requests),
-            active_request: None,
+            history: RequestHistory::load().unwrap(),
         }
     }
 
@@ -67,6 +68,19 @@ impl AppState {
     /// Set the app to exit on next loop
     pub fn quit(&mut self) {
         self.should_run = false;
+    }
+
+    /// Get whichever response state should currently be shown to the user,
+    /// based on whichever recipe is selected. Only returns `None` if there has
+    /// been request sent for the current recipe, or the history lookup fails.
+    pub fn get_response(&self) -> Option<ResponseState> {
+        self.history.get_last_response(&self.recipes.selected()?.id)
+    }
+
+    /// Store an error in state, to be shown to the user
+    pub fn set_error(&mut self, err: anyhow::Error) {
+        error!(error = err.deref());
+        self.error = Some(err);
     }
 }
 
@@ -91,7 +105,11 @@ pub enum Message {
     SendRequest,
     /// An HTTP response was received (or the request failed), and we should
     /// update state accordingly
-    Response(ResponseState),
+    Response {
+        /// ID of the originating request
+        request_id: RequestId,
+        response: anyhow::Result<Response>,
+    },
 }
 
 /// State of a single request, including an optional response. Most of this is
@@ -100,8 +118,6 @@ pub enum Message {
 #[derive(Debug)]
 pub struct RequestState {
     pub request: Request,
-    /// Resolved response, or an error. Since this gets populated
-    /// asynchronously, we need to store it behind a lock
     pub response: ResponseState,
 }
 
@@ -113,21 +129,6 @@ impl From<Request> for RequestState {
             response: ResponseState::Loading,
         }
     }
-}
-
-/// State of an HTTP response, corresponding to a single request
-#[derive(Debug)]
-pub enum ResponseState {
-    /// Request is in flight, or is *about* to be sent. There's no way to
-    /// initiate a request that doesn't immediately launch it, so Loading is
-    /// the initial state.
-    Loading,
-    /// A resolved HTTP response, with all content loaded and ready to be
-    /// displayed in the UI. This does *not necessarily* have a 2xx/3xx status
-    /// code, any received response is stored here.
-    Complete(Response),
-    /// Error occurred sending the request or receiving the response
-    Error(reqwest::Error),
 }
 
 /// A list of items in the UI

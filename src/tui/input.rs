@@ -1,13 +1,8 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use crate::{
-    tui::{
-        state::{AppState, Message},
-        view::{
-            EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane,
-        },
-    },
-    util::UnboundedSenderExt,
+use crate::tui::{
+    state::{AppState, Message},
+    view::{EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane},
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use std::fmt::Debug;
@@ -92,9 +87,7 @@ pub fn handle_action(state: &mut AppState, action: Action) {
         Action::Quit => state.quit(),
         Action::FocusPrevious => state.focused_pane.previous(),
         Action::FocusNext => state.focused_pane.next(),
-        Action::SendRequest => {
-            state.messages_tx.send_unwrap(Message::SendRequest)
-        }
+        Action::SendRequest => state.messages_tx.send(Message::SendRequest),
 
         // Forward context events to the focused element
         other => state

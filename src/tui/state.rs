@@ -26,7 +26,7 @@ pub struct AppState {
     /// messages back to the main thread to be handled. We use an unbounded
     /// sender because we don't ever expect the queue to get that large, and it
     /// allows for synchronous enqueueing.
-    pub messages_tx: UnboundedSender<Message>,
+    pub messages_tx: MessageSender,
 
     // UI state
     /// Any error that should be shown to the user in a popup
@@ -49,7 +49,7 @@ impl AppState {
     ) -> Self {
         Self {
             should_run: true,
-            messages_tx,
+            messages_tx: MessageSender(messages_tx),
             error: None,
             focused_pane: StatefulSelect::new(),
             request_tab: StatefulSelect::new(),
@@ -91,6 +91,17 @@ impl<'a> From<&'a AppState> for TemplateContext<'a> {
             environment: state.environments.selected().map(|e| &e.data),
             overrides: None,
         }
+    }
+}
+
+/// Wrapper around a sender for async messages. Free to clone and pass around
+#[derive(Clone, Debug)]
+pub struct MessageSender(UnboundedSender<Message>);
+
+impl MessageSender {
+    /// Send an async message, to be handled by the main loop
+    pub fn send(&self, message: Message) {
+        self.0.send(message).expect("Message queue is closed")
     }
 }
 

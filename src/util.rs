@@ -1,22 +1,6 @@
 use anyhow::anyhow;
 use std::{fmt::Debug, ops::Deref};
-use tokio::sync::mpsc::UnboundedSender;
 use tracing::error;
-
-/// Extension trait for UnboundedSender
-/// TODO replace this with a newtype wrapper on Sender instead, it'll be cleaner
-pub trait UnboundedSenderExt<T> {
-    /// Send a message on the channel and panic if the channel is closed. We
-    /// expect the message receiver to life the entire lifespan of the program,
-    /// so if it fails that's a bug.
-    fn send_unwrap(&self, message: T);
-}
-
-impl<T> UnboundedSenderExt<T> for UnboundedSender<T> {
-    fn send_unwrap(&self, message: T) {
-        self.send(message).expect("Message queue is closed")
-    }
-}
 
 /// A slightly spaghetti helper for finding an item in a list by value. We
 /// expect the item to be there, so if it's missing return an error with a

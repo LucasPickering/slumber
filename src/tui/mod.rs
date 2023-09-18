@@ -10,7 +10,6 @@ use crate::{
         state::{AppState, Message},
         view::Renderer,
     },
-    util::UnboundedSenderExt,
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
@@ -168,7 +167,7 @@ impl Tui {
                 }
             };
             // Send the response back to the main thread
-            messages_tx.send_unwrap(Message::Response {
+            messages_tx.send(Message::Response {
                 request_id,
                 response: result,
             });

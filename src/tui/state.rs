@@ -1,7 +1,7 @@
 use crate::{
     config::{Environment, RequestCollection, RequestRecipe},
-    history::RequestHistory,
-    http::{Request, RequestId, Response, ResponseState},
+    history::{RequestHistory, RequestId, RequestRecord},
+    http::Response,
     template::TemplateContext,
     tui::{
         input::InputHandler,
@@ -70,11 +70,11 @@ impl AppState {
         self.should_run = false;
     }
 
-    /// Get whichever response state should currently be shown to the user,
+    /// Get whichever request state should currently be shown to the user,
     /// based on whichever recipe is selected. Only returns `None` if there has
-    /// been request sent for the current recipe, or the history lookup fails.
-    pub fn get_response(&self) -> Option<ResponseState> {
-        self.history.get_last_response(&self.recipes.selected()?.id)
+    /// never been request sent for the current recipe.
+    pub fn active_request(&self) -> Option<RequestRecord> {
+        self.history.get_last(&self.recipes.selected()?.id)
     }
 
     /// Store an error in state, to be shown to the user
@@ -121,25 +121,6 @@ pub enum Message {
         request_id: RequestId,
         response: anyhow::Result<Response>,
     },
-}
-
-/// State of a single request, including an optional response. Most of this is
-/// sync because it should be built on the main thread, but the request
-/// gets sent async so the response has to be populated async
-#[derive(Debug)]
-pub struct RequestState {
-    pub request: Request,
-    pub response: ResponseState,
-}
-
-/// Initialize a stateful request
-impl From<Request> for RequestState {
-    fn from(request: Request) -> Self {
-        Self {
-            request,
-            response: ResponseState::Loading,
-        }
-    }
 }
 
 /// A list of items in the UI

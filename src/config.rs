@@ -1,11 +1,10 @@
 use crate::template::TemplateString;
 use anyhow::{anyhow, Context};
-use derive_more::Deref;
+use derive_more::{Deref, From};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
 use tokio::fs;
 use tracing::{event, Level};
-use uuid::Uuid;
 
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
@@ -51,11 +50,8 @@ pub struct RequestRecipe {
     pub headers: HashMap<String, TemplateString>,
 }
 
-#[derive(Clone, Debug, Deref, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deref, From, Serialize, Deserialize)]
 pub struct RequestRecipeId(String);
-
-#[derive(Clone, Debug)]
-pub struct RequestId(Uuid);
 
 impl RequestCollection {
     /// Load config from the given file, or fall back to one of the

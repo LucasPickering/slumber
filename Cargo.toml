@@ -15,7 +15,7 @@ anyhow = {version = "^1.0.75", features = ["backtrace"]}
 chrono = {version = "0.4.31", default-features = false, features = ["clock", "serde", "std"]}
 clap = {version = "4.4.2", features = ["derive"]}
 crossterm = "0.27.0"
-derive_more = {version = "0.99.17", default-features = false, features = ["deref", "display"]}
+derive_more = "0.99.17"
 ratatui = "0.23.0"
 regex = "1.9.5"
 reqwest = {version = "0.11.20", default-features = false, features = ["rustls-tls"]}

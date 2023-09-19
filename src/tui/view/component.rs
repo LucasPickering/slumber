@@ -7,8 +7,9 @@ use crate::{
         view::Renderer,
     },
 };
+use chrono::{DateTime, Duration, Local, Utc};
 use ratatui::{
-    text::{Line, Text},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, Tabs},
 };
 use std::{collections::HashMap, fmt::Display};
@@ -77,15 +78,14 @@ impl<'a, T: ToText> Component for ListComponent<'a, T> {
 
         List::new(items)
             .block(block)
-            // .style(Style::default().fg(Color::Black).bg(Color::White))
             .highlight_style(renderer.theme.list_highlight_style)
             .highlight_symbol(renderer.theme.list_highlight_symbol)
     }
 }
 
-/// Convert a value into a renderable text. This *could* just be a
-/// Component impl, but there may be a different way to render the same type,
-/// with more detail.
+/// Convert a value into a renderable text. This *could* just be a Component
+/// impl, but there may be a different way to render the same type, with more
+/// detail.
 ///
 /// This uses 'static to get around some borrow checking issues. It's lazy but
 /// it works.
@@ -93,16 +93,60 @@ pub trait ToText {
     fn to_text(&self) -> Text<'static>;
 }
 
+/// Convert a value into a single span of renderable text. Like [ToText], but
+/// for text that doesn't take up multiple lines.
+pub trait ToSpan {
+    fn to_span(&self) -> Span<'static>;
+}
+
 // Getting lazy with the lifetimes here...
-impl ToText for Environment {
-    fn to_text(&self) -> Text<'static> {
-        vec![Line::from(self.name().to_owned())].into()
+impl ToSpan for Environment {
+    fn to_span(&self) -> Span<'static> {
+        self.name().to_owned().into()
     }
 }
 
-impl ToText for RequestRecipe {
+impl ToSpan for RequestRecipe {
+    fn to_span(&self) -> Span<'static> {
+        format!("[{}] {}", self.method, self.name()).into()
+    }
+}
+
+/// Format a timestamp in the local timezone
+impl ToSpan for DateTime<Utc> {
+    fn to_span(&self) -> Span<'static> {
+        self.with_timezone(&Local)
+            .format("%b %e %H:%M:%S")
+            .to_string()
+            .into()
+    }
+}
+
+impl ToSpan for Duration {
+    fn to_span(&self) -> Span<'static> {
+        let ms = self.num_milliseconds();
+        if ms < 1000 {
+            format!("{ms}ms").into()
+        } else {
+            format!("{:.2}s", ms as f64 / 1000.0).into()
+        }
+    }
+}
+
+impl ToSpan for Option<Duration> {
+    fn to_span(&self) -> Span<'static> {
+        match self {
+            Some(duration) => duration.to_span(),
+            // For incomplete requests typically
+            None => "???".into(),
+        }
+    }
+}
+
+/// If we can make a little text, we can make a lotta text
+impl<T: ToSpan> ToText for T {
     fn to_text(&self) -> Text<'static> {
-        vec![Line::from(format!("[{}] {}", self.method, self.name()))].into()
+        Line::from(self.to_span()).into()
     }
 }
 
@@ -114,15 +158,3 @@ impl<K: Display, V: Display> ToText for HashMap<K, V> {
             .into()
     }
 }
-
-// impl ToText for HashMap<String, String> {
-//     fn to_text(&self) -> Text<'static> {
-//         self.into_iter()
-//             .map(|(key, value)| {
-//                 format!("{key} = {}", value.to_str().unwrap_or("<unknown>"))
-//                     .into()
-//             })
-//             .collect::<Vec<Line>>()
-//             .into()
-//     }
-// }

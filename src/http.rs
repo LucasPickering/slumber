@@ -3,12 +3,10 @@
 
 use crate::{config::RequestRecipe, template::TemplateContext};
 use anyhow::Context;
-use derive_more::Deref;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::trace;
-use uuid::Uuid;
 
 static USER_AGENT: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -25,18 +23,10 @@ pub struct HttpEngine {
     client: Client,
 }
 
-/// Unique ID for a single instance of a request recipe
-#[derive(Copy, Clone, Debug, Deref, Serialize, Deserialize)]
-pub struct RequestId(Uuid);
-
 /// A single instance of an HTTP request. Simpler alternative to
 /// [reqwest::Request] that suits our needs better.
-///
-/// This deliberately does not implement clone because each request needs a
-/// unique ID.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
-    pub id: RequestId,
     pub method: String,
     pub url: String,
     pub headers: HashMap<String, String>,
@@ -55,24 +45,6 @@ pub struct Response {
     pub status: u16,
     pub headers: HashMap<String, String>,
     pub content: String,
-}
-
-/// State of an HTTP response, which can be pending or completed.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum ResponseState {
-    /// Request is in flight, or is *about* to be sent. There's no way to
-    /// initiate a request that doesn't immediately launch it, so Loading is
-    /// the initial state.
-    Loading,
-    /// A resolved HTTP response, with all content loaded and ready to be
-    /// displayed. This does *not necessarily* have a 2xx/3xx status code, any
-    /// received response is considered a "success".
-    Success(Response),
-    /// Error occurred sending the request or receiving the response. We're
-    /// never going to do anything with the error but display it, so just
-    /// store it as a string. This makes it easy to display to the user and
-    /// serialize/deserialize.
-    Error(String),
 }
 
 impl HttpEngine {
@@ -133,7 +105,6 @@ impl HttpEngine {
             .map(|body| body.render(template_values).context("Body"))
             .transpose()?;
         Ok(Request {
-            id: RequestId(Uuid::new_v4()),
             method,
             url,
             query,
@@ -218,14 +189,5 @@ impl HttpEngine {
             headers,
             content,
         })
-    }
-}
-
-impl From<anyhow::Result<Response>> for ResponseState {
-    fn from(result: anyhow::Result<Response>) -> Self {
-        match result {
-            Ok(response) => Self::Success(response),
-            Err(err) => Self::Error(err.to_string()),
-        }
     }
 }

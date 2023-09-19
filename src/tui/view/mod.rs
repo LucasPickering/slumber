@@ -2,12 +2,14 @@ mod component;
 mod theme;
 
 use crate::{
-    http::{Response, ResponseState},
+    history::ResponseState,
+    http::Response,
     tui::{
         state::{AppState, PrimaryPane, RequestTab, ResponseTab},
         view::{
             component::{
-                BlockComponent, Component, ListComponent, TabComponent, ToText,
+                BlockComponent, Component, ListComponent, TabComponent, ToSpan,
+                ToText,
             },
             theme::Theme,
         },
@@ -226,41 +228,66 @@ impl Draw for ResponsePane {
         .render(renderer);
         let inner_chunk = block.inner(chunk);
         f.render_widget(block, chunk);
-        let [tabs_chunk, content_chunk] = layout(
-            inner_chunk,
-            Direction::Vertical,
-            [Constraint::Length(1), Constraint::Min(0)],
-        );
 
-        // Navigation tabs
-        let tabs = TabComponent {
-            tabs: &state.response_tab,
-        }
-        .render(renderer);
-        f.render_widget(tabs, tabs_chunk);
+        // Don't render anything else unless we have a response state
+        if let Some(request) = state.active_request() {
+            let [header_chunk, content_chunk] = layout(
+                inner_chunk,
+                Direction::Vertical,
+                [Constraint::Length(1), Constraint::Min(0)],
+            );
+            let [tabs_chunk, time_chunk] = layout(
+                header_chunk,
+                Direction::Horizontal,
+                [Constraint::Length(20), Constraint::Min(0)],
+            );
 
-        // Response content/metadata
-        let get_text = || -> Option<Text> {
-            // Check if a request is running/complete
-            let response = state.get_response()?;
-            match response {
-                ResponseState::Loading => Some("Loading...".into()),
-                ResponseState::Success(Response {
-                    headers, content, ..
-                }) => {
-                    // TODO show status
-                    Some(match state.response_tab.selected() {
-                        ResponseTab::Body => content.clone().into(),
-                        ResponseTab::Headers => headers.to_text(),
-                    })
-                }
-                ResponseState::Error(error) => Some(error.to_string().into()),
+            // Navigation tabs
+            let tabs = TabComponent {
+                tabs: &state.response_tab,
             }
-        };
-        f.render_widget(
-            Paragraph::new(get_text().unwrap_or_default()),
-            content_chunk,
-        );
+            .render(renderer);
+            f.render_widget(tabs, tabs_chunk);
+
+            // Time-related data
+            f.render_widget(
+                Paragraph::new(Line::from(vec![
+                    request.start_time.to_span(),
+                    " / ".into(),
+                    request.duration().to_span(),
+                ]))
+                .alignment(Alignment::Right),
+                time_chunk,
+            );
+
+            // Response content/metadata
+            let get_text = || -> Option<Text> {
+                match &request.response {
+                    ResponseState::Loading => Some("Loading...".into()),
+                    ResponseState::Incomplete => {
+                        Some("Request never compelted".into())
+                    }
+                    ResponseState::Success(Response {
+                        headers,
+                        content,
+                        ..
+                    }) => {
+                        // TODO show status code
+                        Some(match state.response_tab.selected() {
+                            ResponseTab::Body => content.clone().into(),
+                            ResponseTab::Headers => headers.to_text(),
+                        })
+                    }
+                    ResponseState::Error(error) => {
+                        Some(error.to_string().into())
+                    }
+                }
+            };
+            f.render_widget(
+                Paragraph::new(get_text().unwrap_or_default()),
+                content_chunk,
+            );
+        }
     }
 }
 

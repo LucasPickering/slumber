@@ -23,6 +23,7 @@ pub struct RequestCollection {
     pub environments: Vec<Environment>,
     #[serde(default)]
     pub requests: Vec<RequestRecipe>,
+    pub chains: Vec<Chain>,
 }
 
 /// Mutually exclusive hot-swappable config group
@@ -50,8 +51,18 @@ pub struct RequestRecipe {
     pub headers: HashMap<String, TemplateString>,
 }
 
-#[derive(Clone, Debug, Deref, From, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deref, Default, From, Serialize, Deserialize)]
 pub struct RequestRecipeId(String);
+
+/// A chain is a means to data from one response in another request. The chain
+/// is the middleman: it defines where and how to pull the value, then recipes
+/// can use it in a template via `{{chains.<chain_id>}}`.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Chain {
+    pub id: String,
+    pub name: Option<String>,
+    pub source: RequestRecipeId,
+}
 
 impl RequestCollection {
     /// Load config from the given file, or fall back to one of the

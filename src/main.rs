@@ -1,6 +1,8 @@
 #![deny(clippy::all)]
 
 mod config;
+#[cfg(test)]
+mod factory;
 mod history;
 mod http;
 mod template;
@@ -8,8 +10,8 @@ mod tui;
 mod util;
 
 use crate::{
-    config::RequestCollection, http::HttpEngine, template::TemplateContext,
-    tui::Tui, util::find_by,
+    config::RequestCollection, history::RequestHistory, http::HttpEngine,
+    template::TemplateContext, tui::Tui, util::find_by,
 };
 use anyhow::Context;
 use clap::Parser;
@@ -126,6 +128,7 @@ async fn execute_subcommand(
             )?;
 
             // Build the request
+            let history = RequestHistory::load()?;
             let http_engine = HttpEngine::new();
             let overrides: HashMap<_, _> = overrides.into_iter().collect();
             let request = http_engine.build_request(
@@ -133,6 +136,8 @@ async fn execute_subcommand(
                 &TemplateContext {
                     environment,
                     overrides: Some(&overrides),
+                    chains: &collection.chains,
+                    history: &history,
                 },
             )?;
 

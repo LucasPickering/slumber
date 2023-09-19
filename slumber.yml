@@ -16,15 +16,29 @@ environments:
       user_guid: abc123
       auth_token: eggsalad
 
+chains:
+  - id: auth_token
+    source: login
+    expire: never
+
 base: &base
   headers:
     Accept: application/json
-    Authorization: Bearer {{auth_token}}
+    Authorization: Bearer {{chains.auth_token}}
     Content-Type: application/json
 
 requests:
+  - id: login
+    method: POST
+    url: "{{host}}/anything/login"
+    body: |
+      {
+        "username": "user",
+        "password": "hunter2"
+      }
+
   - <<: *base
-    id: get-users
+    id: get_users
     name: Get Users
     method: GET
     url: "{{host}}/get"
@@ -32,18 +46,17 @@ requests:
       foo: bar
 
   - <<: *base
-    id: get-user
+    id: get_user
     name: Get User
     method: GET
     url: "{{host}}/anything/{{user_guid}}"
 
   - <<: *base
-    id: modify-user
+    id: modify_user
     name: Modify User
     method: PUT
     url: "{{host}}/anything/{{user_guid}}"
     body: |
       {
-        "username": "new username",
-        "password": "hunter2"
+        "username": "new username"
       }

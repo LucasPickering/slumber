@@ -4,6 +4,7 @@ mod view;
 
 use crate::{
     config::RequestCollection,
+    history::RequestHistory,
     http::HttpEngine,
     tui::{
         input::InputManager,
@@ -59,12 +60,13 @@ impl Tui {
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
 
+        let history = RequestHistory::load().unwrap();
         let mut app = Tui {
             terminal,
             messages_rx,
             renderer: Renderer::new(),
             http_engine: HttpEngine::new(),
-            state: AppState::new(collection, messages_tx),
+            state: AppState::new(collection, history, messages_tx),
         };
 
         // Any error during execution that gets this far is fatal. We expect the
@@ -120,13 +122,6 @@ impl Tui {
             Message::SendRequest => {
                 self.send_request()?;
             }
-            Message::Response {
-                request_id,
-                response,
-            } => {
-                // Store the request in history so it can be shown to the user
-                self.state.history.add_response(request_id, response)?;
-            }
         }
         Ok(())
     }
@@ -142,11 +137,8 @@ impl Tui {
         // Build the request first, and immediately store it in history
         let request = self
             .http_engine
-            .build_request(recipe, &(&self.state).into())?;
-        let request_id =
-            self.state.history.add_request(&recipe.id, &request)?;
+            .build_request(recipe, &self.state.template_context())?;
 
-        let messages_tx = self.state.messages_tx.clone();
         let http_engine = self.http_engine.clone();
 
         // Launch the request in a separate task so it doesn't block
@@ -161,11 +153,6 @@ impl Tui {
                     error!(error = err.deref(), "HTTP request failed");
                 }
             };
-            // Send the response back to the main thread
-            messages_tx.send(Message::Response {
-                request_id,
-                response: result,
-            });
         });
         Ok(())
     }

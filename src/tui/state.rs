@@ -1,7 +1,6 @@
 use crate::{
-    config::{Environment, RequestCollection, RequestRecipe},
-    history::{RequestHistory, RequestId, RequestRecord},
-    http::Response,
+    config::{Chain, Environment, RequestCollection, RequestRecipe},
+    history::{RequestHistory, RequestRecord},
     template::TemplateContext,
     tui::{
         input::InputTarget,
@@ -39,6 +38,7 @@ pub struct AppState {
     pub response_tab: StatefulSelect<ResponseTab>,
     pub environments: StatefulList<Environment>,
     pub recipes: StatefulList<RequestRecipe>,
+    pub chains: Vec<Chain>,
 
     // HTTP state
     pub history: RequestHistory,
@@ -47,6 +47,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         collection: RequestCollection,
+        history: RequestHistory,
         messages_tx: UnboundedSender<Message>,
     ) -> Self {
         Self {
@@ -58,7 +59,8 @@ impl AppState {
             response_tab: StatefulSelect::new(),
             environments: StatefulList::with_items(collection.environments),
             recipes: StatefulList::with_items(collection.requests),
-            history: RequestHistory::load().unwrap(),
+            chains: collection.chains,
+            history,
         }
     }
 
@@ -110,14 +112,14 @@ impl AppState {
         info!("Clearing error state");
         self.error = None;
     }
-}
 
-/// Expose app state to the templater
-impl<'a> From<&'a AppState> for TemplateContext<'a> {
-    fn from(state: &'a AppState) -> Self {
-        Self {
-            environment: state.environments.selected().map(|e| &e.data),
+    /// Expose app state to the templater
+    pub fn template_context(&self) -> TemplateContext {
+        TemplateContext {
+            environment: self.environments.selected().map(|e| &e.data),
             overrides: None,
+            history: &self.history,
+            chains: &self.chains,
         }
     }
 }
@@ -142,13 +144,6 @@ pub enum Message {
     /// Launch an HTTP request from the currently selected recipe. Errors if
     /// the recipes aren't in focus, or the list is empty
     SendRequest,
-    /// An HTTP response was received (or the request failed), and we should
-    /// update state accordingly
-    Response {
-        /// ID of the originating request
-        request_id: RequestId,
-        response: anyhow::Result<Response>,
-    },
 }
 
 /// A list of items in the UI

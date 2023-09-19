@@ -318,6 +318,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
+name = "factori"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ff6b50917609e530c145de1c6aa8df9c38c40562375e8aa5eeaaf6c737a0b31"
+dependencies = [
+ "factori-impl",
+]
+
+[[package]]
+name = "factori-impl"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d6344ded92b0a4a1d90a816632f7ff2a12e01401d325d6295810dacca1dbdd6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1159,6 +1179,7 @@ dependencies = [
  "clap",
  "crossterm",
  "derive_more",
+ "factori",
  "itertools",
  "ratatui",
  "regex",

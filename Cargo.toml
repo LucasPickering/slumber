@@ -31,3 +31,6 @@ tokio = {version = "^1.32.0", default-features = false, features = ["full"]}
 tracing = "0.1.37"
 tracing-subscriber = {version = "0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}
 uuid = {version = "1.4.1", default-features = false, features = ["serde", "v4"]}
+
+[dev-dependencies]
+factori = "1.1.0"

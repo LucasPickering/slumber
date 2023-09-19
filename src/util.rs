@@ -28,21 +28,32 @@ pub fn find_by<E, T: Debug + PartialEq>(
 }
 
 pub trait ResultExt<T>: Sized {
-    /// If the result is an error, log it and swallow it. If not, return the
-    /// value. Useful for low-priority errors that shouldn't be shown to the
-    /// user at all.
-    fn ok_or_trace(self) -> Option<T>;
+    /// If this is an error, trace it. Return the same result.
+    fn traced(self) -> Self;
 }
 
+// This is deliberately *not* implemented for non-anyhow errors, because we only
+// want to trace errors that have full context attached
 impl<T> ResultExt<T> for anyhow::Result<T> {
-    fn ok_or_trace(self) -> Option<T> {
-        match self {
-            Ok(value) => Some(value),
-            Err(err) => {
-                // The error should already have useful context attached
-                error!(error = err.deref());
-                None
-            }
+    fn traced(self) -> Self {
+        if let Err(err) = &self {
+            error!(error = err.deref());
         }
+        self
     }
 }
+
+#[cfg(test)]
+macro_rules! assert_err {
+    ($e:expr, $msg:expr) => {
+        let msg = $msg;
+        let error = $e.unwrap_err().to_string();
+        assert!(
+            error.contains(msg),
+            "Expected error message to contain {msg:?}, but was: {error:?}"
+        )
+    };
+}
+
+#[cfg(test)]
+pub(crate) use assert_err;

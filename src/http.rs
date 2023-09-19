@@ -1,12 +1,16 @@
 //! This whole module is basically a wrapper around reqwest to make it more
 //! ergnomic for our needs
 
-use crate::{config::RequestRecipe, template::TemplateContext};
+use crate::{
+    config::{RequestRecipe, RequestRecipeId},
+    history::RequestHistory,
+    template::TemplateContext,
+};
 use anyhow::Context;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use tracing::trace;
+use std::{collections::HashMap, ops::Deref};
+use tracing::{debug, error, info, info_span};
 
 static USER_AGENT: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -27,6 +31,9 @@ pub struct HttpEngine {
 /// [reqwest::Request] that suits our needs better.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
+    /// The recipe used to generate this request (for historical context)
+    pub recipe_id: RequestRecipeId,
+
     pub method: String,
     pub url: String,
     pub headers: HashMap<String, String>,
@@ -69,10 +76,9 @@ impl HttpEngine {
         recipe: &RequestRecipe,
         template_values: &TemplateContext,
     ) -> anyhow::Result<Request> {
+        debug!(?recipe, "Building request from recipe");
         let method = recipe.method.render(template_values).context("Method")?;
-        trace!(method, "Resolved method");
         let url = recipe.url.render(template_values).context("URL")?;
-        trace!(url, "Resolved URL");
 
         // Build header map
         let headers = recipe
@@ -106,6 +112,7 @@ impl HttpEngine {
             .map(|body| body.render(template_values).context("Body"))
             .transpose()?;
         Ok(Request {
+            recipe_id: recipe.id.clone(),
             method,
             url,
             query,
@@ -120,15 +127,37 @@ impl HttpEngine {
         &self,
         request: Request,
     ) -> anyhow::Result<Response> {
+        // Open a new connection to history, because this function may be called
+        // in an async task so it can't be passed a connection
+        let history = RequestHistory::load_fast()?;
+        let request_id = history.add_request(&request)?;
+
         // TODO frontload this so the error happens during build
         let reqwest_request = self
             .convert_request(request)
             .context("Error building HTTP request")?;
 
+        let span = info_span!("HTTP request");
+        info!(parent: &span, request_url = ?reqwest_request.url());
         let reqwest_response = self.client.execute(reqwest_request).await?;
-        self.convert_response(reqwest_response)
+        let response_result = self
+            .convert_response(reqwest_response)
             .await
-            .context("Error loading response")
+            .context("Error loading response");
+        match &response_result {
+            Ok(response) => {
+                info!(
+                    parent: &span, status = response.status.as_u16(),
+                    "Response",
+                );
+            }
+            Err(err) => {
+                error!(parent: &span, error = err.deref(), "Error");
+            }
+        }
+
+        history.add_response(request_id, &response_result)?;
+        response_result
     }
 
     /// Convert from our request type to reqwest's. We don't do any content

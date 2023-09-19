@@ -88,15 +88,31 @@ impl RequestHistory {
         PathBuf::from("./history.sqlite")
     }
 
-    /// Load history from disk. If the file doesn't exist yet, load a default
-    /// value. Any other error will be propagated.
-    pub fn load() -> anyhow::Result<Self> {
-        let mut db_connection = Connection::open(Self::path())?;
+    /// Load the history database, skipping first-time setup. This should be
+    /// used for short-lived threads.
+    pub fn load_fast() -> anyhow::Result<Self> {
+        let db_connection = Connection::open(Self::path())?;
+        // Use WAL for concurrency
+        db_connection.pragma_update(None, "journal_mode", "WAL")?;
 
-        // The response status is a bit hard to map to tabular data. Everything
-        // that we need to query on (success/error status, end_time, etc.) is
-        // in its own column. The response itself will be serialized into text
+        Ok(Self { db_connection })
+    }
+
+    /// Load the history database. This will perform first-time setup, so this
+    /// should only be called at the main session entrypoint.
+    pub fn load() -> anyhow::Result<Self> {
+        let mut history = Self::load_fast()?;
+        history.setup()?;
+        Ok(history)
+    }
+
+    /// First-time setup, should be called once per session
+    fn setup(&mut self) -> anyhow::Result<()> {
         let migrations = Migrations::new(vec![M::up(
+            // The response status is a bit hard to map to tabular data.
+            // Everything that we need to query on (success/error status,
+            // end_time, etc.) is in its own column. The response itself will
+            // be serialized into text
             "CREATE TABLE requests (
                 id          UUID PRIMARY KEY,
                 recipe_id   TEXT,
@@ -107,34 +123,35 @@ impl RequestHistory {
                 response    TEXT NULLABLE
             )",
         )]);
-        migrations.to_latest(&mut db_connection)?;
+        migrations.to_latest(&mut self.db_connection)?;
 
         // Anything that was pending when we exited is lost now, so convert
         // those to incomplete
-        db_connection.execute(
+        self.db_connection.execute(
             "UPDATE requests SET status = ?1 WHERE status = ?2",
             (ResponseStatus::Incomplete, ResponseStatus::Loading),
         )?;
-
-        Ok(Self { db_connection })
+        Ok(())
     }
 
     /// Add a new request to history. This should be called when the request
     /// is sent, so the generated start_time timestamp is accurate. Returns the
     /// generated ID for the request, so it can be linked to the response later.
-    pub fn add_request(
-        &mut self,
-        recipe_id: &RequestRecipeId,
-        request: &Request,
-    ) -> anyhow::Result<RequestId> {
+    pub fn add_request(&self, request: &Request) -> anyhow::Result<RequestId> {
         let id = RequestId(Uuid::new_v4());
-        debug!(?id, ?recipe_id, ?request, "Adding request to history");
+        debug!(?id, ?request, "Adding request to history");
         self.db_connection
             .execute(
                 "INSERT INTO
                 requests (id, recipe_id, start_time, request, status)
                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                (id, recipe_id, Utc::now(), request, ResponseStatus::Loading),
+                (
+                    id,
+                    &request.recipe_id,
+                    Utc::now(),
+                    request,
+                    ResponseStatus::Loading,
+                ),
             )
             .context("Error saving request in history")?;
         Ok(id)
@@ -145,7 +162,7 @@ impl RequestHistory {
     pub fn add_response(
         &self,
         request_id: RequestId,
-        result: anyhow::Result<Response>,
+        result: &anyhow::Result<Response>,
     ) -> anyhow::Result<()> {
         let (status, response): (ResponseStatus, Box<dyn ToSql>) = match result
         {
@@ -200,7 +217,43 @@ impl RequestHistory {
                 |row| row.try_into(),
             )
             .optional()
-            .context("Error fetching response from history")
+            .context("Error fetching request from history")
+    }
+
+    /// Get the most recent *successful* response for a recipe, or `None` if
+    /// there is none
+    pub fn get_last_success(
+        &self,
+        recipe_id: &RequestRecipeId,
+    ) -> anyhow::Result<Option<Response>> {
+        self.db_connection
+            .query_row(
+                "SELECT * FROM requests
+                WHERE recipe_id = ?1 AND status = ?2
+                ORDER BY start_time DESC LIMIT 1",
+                (recipe_id, ResponseStatus::Success),
+                |row| row.get("response"),
+            )
+            .optional()
+            .context("Error fetching request from history")
+    }
+}
+
+/// Test-only helpers
+#[cfg(test)]
+impl RequestHistory {
+    /// Create an in-memory history DB, only for testing
+    pub fn testing() -> Self {
+        let db_connection = Connection::open_in_memory().unwrap();
+        let mut history = Self { db_connection };
+        history.setup().unwrap();
+        history
+    }
+
+    /// Add a request-response pair
+    pub fn add(&self, request: &Request, response: &anyhow::Result<Response>) {
+        let request_id = self.add_request(request).unwrap();
+        self.add_response(request_id, response).unwrap();
     }
 }
 

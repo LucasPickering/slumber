@@ -54,6 +54,7 @@ impl HttpEngine {
             client: Client::builder()
                 .user_agent(USER_AGENT)
                 .build()
+                // This should be infallible
                 .expect("Error building reqwest client"),
         }
     }
@@ -170,13 +171,13 @@ impl HttpEngine {
         // response to resolve content (not sure why...)
         let status = response.status();
 
-        // TODO support non-utf8 header values
         let headers = response
             .headers()
             .iter()
             .map(|(header, value)| {
                 (
                     header.as_str().to_owned(),
+                    // TODO support non-utf8 header values
                     value.to_str().unwrap().to_owned(),
                 )
             })

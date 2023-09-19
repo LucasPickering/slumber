@@ -20,10 +20,12 @@ ratatui = "0.23.0"
 regex = "1.9.5"
 reqwest = {version = "0.11.20", default-features = false, features = ["rustls-tls"]}
 rusqlite = {version = "0.29.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
+rusqlite_migration = "1.0.2"
 serde = {version = "^1.0.188", features = ["derive"]}
 serde_yaml = {version = "^0.9.25", default-features = false}
 signal-hook = "0.3.17"
 strum = {version = "0.25.0", default-features = false, features = ["derive"]}
+thiserror = "1.0.48"
 tokio = {version = "^1.32.0", default-features = false, features = ["full"]}
 tracing = "0.1.37"
 tracing-subscriber = {version = "0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}

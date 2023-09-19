@@ -1,3 +1,5 @@
+#![deny(clippy::all)]
+
 mod config;
 mod history;
 mod http;

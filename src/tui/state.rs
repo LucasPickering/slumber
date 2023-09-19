@@ -30,7 +30,7 @@ pub struct AppState {
 
     // UI state
     /// Any error that should be shown to the user in a popup
-    pub error: Option<anyhow::Error>,
+    error: Option<anyhow::Error>,
     /// The pane that the user has focused, which will receive input events
     pub focused_pane: StatefulSelect<PrimaryPane>,
     pub request_tab: StatefulSelect<RequestTab>,
@@ -73,8 +73,20 @@ impl AppState {
     /// Get whichever request state should currently be shown to the user,
     /// based on whichever recipe is selected. Only returns `None` if there has
     /// never been request sent for the current recipe.
-    pub fn active_request(&self) -> Option<RequestRecord> {
-        self.history.get_last(&self.recipes.selected()?.id)
+    pub fn active_request(&mut self) -> Option<RequestRecord> {
+        match self.history.get_last(&self.recipes.selected()?.id) {
+            Ok(record) => record,
+            Err(err) => {
+                // Hide the error and act natural
+                self.set_error(err);
+                None
+            }
+        }
+    }
+
+    /// Get the stored error (if any)
+    pub fn error(&self) -> Option<&anyhow::Error> {
+        self.error.as_ref()
     }
 
     /// Store an error in state, to be shown to the user

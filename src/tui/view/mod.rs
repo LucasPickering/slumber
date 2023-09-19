@@ -63,7 +63,7 @@ impl Renderer {
         ResponsePane.draw(self, f, response_chunk, state);
 
         // TODO move this into a component or something
-        if let Some(error) = &state.error {
+        if let Some(error) = state.error() {
             let block = Block::default().title("Error").borders(Borders::ALL);
             let area = centered_rect(60, 20, f.size());
             f.render_widget(Clear, area);
@@ -268,11 +268,15 @@ impl Draw for ResponsePane {
                     );
                 }
 
-                ResponseState::Success(Response {
-                    status,
-                    headers,
-                    content,
-                }) => {
+                ResponseState::Success {
+                    response:
+                        Response {
+                            status,
+                            headers,
+                            content,
+                        },
+                    ..
+                } => {
                     // Status code
                     f.render_widget(
                         Paragraph::new(status.to_string()),
@@ -301,7 +305,7 @@ impl Draw for ResponsePane {
                     f.render_widget(Paragraph::new(tab_text), content_chunk);
                 }
 
-                ResponseState::Error(error) => {
+                ResponseState::Error { error, .. } => {
                     f.render_widget(
                         Paragraph::new(error).wrap(Wrap::default()),
                         content_chunk,

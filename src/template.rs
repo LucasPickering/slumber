@@ -1,8 +1,8 @@
-use anyhow::anyhow;
 use derive_more::{Deref, Display};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::OnceLock};
+use thiserror::Error;
 
 static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
 
@@ -10,11 +10,22 @@ static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
 #[derive(Clone, Debug, Deref, Display, Deserialize)]
 pub struct TemplateString(String);
 
+#[derive(Debug, Error)]
+pub enum TemplateError {
+    // TODO include span in errors
+    // TODO try to make this work with lifetimes
+    #[error("Unknown key {key:?} in {template:?}")]
+    UnknownKey { template: String, key: String },
+}
+
 impl TemplateString {
     /// Render the template string using values from the given state. We need
     /// the whole state so we can dynamically access the environment, responses,
     /// etc.
-    pub fn render(&self, context: &TemplateContext) -> anyhow::Result<String> {
+    pub fn render(
+        &self,
+        context: &TemplateContext,
+    ) -> Result<String, TemplateError> {
         // Template syntax is simple so it's easiest to just implement it with
         // a regex
         let re = TEMPLATE_REGEX
@@ -32,8 +43,10 @@ impl TemplateString {
             let key =
                 captures.get(1).expect("Missing key capture group").as_str();
             new.push_str(context.get(key).ok_or_else(|| {
-                // TODO return a structure error with spans for the TUI
-                anyhow!("Unknown key {key:?} in {:?}", self.0)
+                TemplateError::UnknownKey {
+                    template: self.0.clone(),
+                    key: key.to_owned(),
+                }
             })?);
             last_match = m.end();
         }

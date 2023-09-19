@@ -128,7 +128,7 @@ impl Tui {
                 response,
             } => {
                 // Store the request in history so it can be shown to the user
-                self.state.history.add_response(request_id, response);
+                self.state.history.add_response(request_id, response)?;
             }
         }
         Ok(())
@@ -146,7 +146,8 @@ impl Tui {
         let request = self
             .http_engine
             .build_request(recipe, &(&self.state).into())?;
-        let request_id = self.state.history.add_request(&recipe.id, &request);
+        let request_id =
+            self.state.history.add_request(&recipe.id, &request)?;
 
         let messages_tx = self.state.messages_tx.clone();
         let http_engine = self.http_engine.clone();

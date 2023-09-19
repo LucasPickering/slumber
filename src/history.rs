@@ -2,18 +2,18 @@ use crate::{
     config::RequestRecipeId,
     http::{Request, Response},
 };
+use anyhow::{anyhow, Context};
 use chrono::{DateTime, Duration, Utc};
 use derive_more::Deref;
 use rusqlite::{
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
     Connection, OptionalExtension, Row, ToSql,
 };
-use serde::{Deserialize, Serialize};
+use rusqlite_migration::{Migrations, M};
 use std::{ops::Deref, path::PathBuf};
-use tracing::debug;
+use strum::{Display, EnumDiscriminants, EnumString};
+use tracing::{debug, warn};
 use uuid::Uuid;
-
-// TODO make sqlite async (worth? would require draw code to be async too)
 
 /// A record of all HTTP history, which is persisted on disk. This is also used
 /// to populate chained values. This uses a sqlite DB underneath, which means
@@ -45,15 +45,14 @@ pub struct RequestRecord {
     pub recipe_id: RequestRecipeId,
     /// When was the request sent to the server?
     pub start_time: DateTime<Utc>,
-    /// When did the request either finish or fail? Populated iff response is
-    /// `Success`/`Error`.
-    pub end_time: Option<DateTime<Utc>>,
     pub request: Request,
     pub response: ResponseState,
 }
 
-/// State of an HTTP response, which can be pending or completed.
-#[derive(Debug, Serialize, Deserialize)]
+/// State of an HTTP response, which can be pending or completed. Also generate
+/// a discriminant-only enum that will map to the `status` column in the DB
+#[derive(Debug, EnumDiscriminants)]
+#[strum_discriminants(name(ResponseStatus), derive(Display, EnumString))]
 pub enum ResponseState {
     /// Request is in flight, or is *about* to be sent. There's no way to
     /// initiate a request that doesn't immediately launch it, so Loading is
@@ -66,12 +65,21 @@ pub enum ResponseState {
     /// A resolved HTTP response, with all content loaded and ready to be
     /// displayed. This does *not necessarily* have a 2xx/3xx status code, any
     /// received response is considered a "success".
-    Success(Response),
+    Success {
+        response: Response,
+        /// When did we finish receiving the full response?
+        end_time: DateTime<Utc>,
+    },
     /// Error occurred sending the request or receiving the response. We're
     /// never going to do anything with the error but display it, so just
     /// store it as a string. This makes it easy to display to the user and
     /// serialize/deserialize.
-    Error(String),
+    Error {
+        // TODO could we use a custom error type here?
+        error: String,
+        /// When did the error occur?
+        end_time: DateTime<Utc>,
+    },
 }
 
 impl RequestHistory {
@@ -84,19 +92,31 @@ impl RequestHistory {
     /// Load history from disk. If the file doesn't exist yet, load a default
     /// value. Any other error will be propagated.
     pub fn load() -> anyhow::Result<Self> {
-        // TODO apply error context to fn
-        let db_connection = Connection::open(Self::path())?;
-        db_connection.execute(
-            "CREATE TABLE IF NOT EXISTS requests (
+        let mut db_connection = Connection::open(Self::path())?;
+
+        // The response status is a bit hard to map to tabular data. Everything
+        // that we need to query on (success/error status, end_time, etc.) is
+        // in its own column. The response itself will be serialized into text
+        let migrations = Migrations::new(vec![M::up(
+            "CREATE TABLE requests (
                 id          UUID PRIMARY KEY,
                 recipe_id   TEXT,
                 start_time  TEXT,
                 end_time    TEXT NULLABLE,
                 request     TEXT,
-                response    TEXT
+                status      TEXT,
+                response    TEXT NULLABLE
             )",
-            [],
+        )]);
+        migrations.to_latest(&mut db_connection)?;
+
+        // Anything that was pending when we exited is lost now, so convert
+        // those to incomplete
+        db_connection.execute(
+            "UPDATE requests SET status = ?1 WHERE status = ?2",
+            (ResponseStatus::Incomplete, ResponseStatus::Loading),
         )?;
+
         // TODO mark Loading requests as errored
         Ok(Self { db_connection })
     }
@@ -108,18 +128,18 @@ impl RequestHistory {
         &mut self,
         recipe_id: &RequestRecipeId,
         request: &Request,
-    ) -> RequestId {
+    ) -> anyhow::Result<RequestId> {
         let id = RequestId(Uuid::new_v4());
         debug!(?id, ?recipe_id, ?request, "Adding request to history");
         self.db_connection
             .execute(
                 "INSERT INTO
-                requests (id, recipe_id, start_time, request, response)
+                requests (id, recipe_id, start_time, request, status)
                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                (id, recipe_id, Utc::now(), request, ResponseState::Loading),
+                (id, recipe_id, Utc::now(), request, ResponseStatus::Loading),
             )
-            .expect("Error saving request in history");
-        id
+            .context("Error saving request in history")?;
+        Ok(id)
     }
 
     /// Attach a response (or error) to an existing request. Errors will be
@@ -128,27 +148,43 @@ impl RequestHistory {
         &self,
         request_id: RequestId,
         result: anyhow::Result<Response>,
-    ) {
-        let response = match result {
-            Ok(response) => ResponseState::Success(response),
-            Err(err) => ResponseState::Error(err.to_string()),
+    ) -> anyhow::Result<()> {
+        let (status, response): (ResponseStatus, Box<dyn ToSql>) = match result
+        {
+            Ok(response) => {
+                debug!(
+                    ?request_id,
+                    ?response,
+                    "Adding response success to history"
+                );
+                (ResponseStatus::Success, Box::new(response))
+            }
+            Err(err) => {
+                warn!(
+                    ?request_id,
+                    error = err.deref(),
+                    "Adding response error to history"
+                );
+                (ResponseStatus::Error, Box::new(err.to_string()))
+            }
         };
 
-        debug!(?request_id, ?response, "Adding response to history");
         let updated_rows = self
             .db_connection
             .execute(
-                "UPDATE requests SET response = ?1, end_time = ?2 WHERE id = ?3",
-                (response, Utc::now(), request_id),
+                "UPDATE requests SET status = ?1, response = ?2, end_time = ?3 WHERE id = ?4",
+                (status, response, Utc::now(), request_id),
             )
-            .expect("Error saving response in history");
+            .context("Error saving response in history")?;
 
         // Safety check, make sure it ID matched
-        if updated_rows != 1 {
-            panic!(
+        if updated_rows == 1 {
+            Ok(())
+        } else {
+            Err(anyhow!(
                 "Expected to update 1 row when adding response, \
                 but updated {updated_rows} instead"
-            );
+            ))
         }
     }
 
@@ -157,7 +193,7 @@ impl RequestHistory {
     pub fn get_last(
         &self,
         recipe_id: &RequestRecipeId,
-    ) -> Option<RequestRecord> {
+    ) -> anyhow::Result<Option<RequestRecord>> {
         self.db_connection
             .query_row(
                 "SELECT * FROM requests WHERE recipe_id = ?1
@@ -166,7 +202,7 @@ impl RequestHistory {
                 |row| row.try_into(),
             )
             .optional()
-            .expect("Error fetching response from history")
+            .context("Error fetching response from history")
     }
 }
 
@@ -180,11 +216,10 @@ impl RequestRecord {
         match self.response {
             ResponseState::Loading => Some(Utc::now() - self.start_time),
             ResponseState::Incomplete => None,
-            ResponseState::Success(_) | ResponseState::Error(_) => Some(
-                // yuck
-                self.end_time.expect("No end_time for complete request")
-                    - self.start_time,
-            ),
+            ResponseState::Success { end_time, .. }
+            | ResponseState::Error { end_time, .. } => {
+                Some(end_time - self.start_time)
+            }
         }
     }
 }
@@ -194,13 +229,26 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
     type Error = rusqlite::Error;
 
     fn try_from(row: &Row<'a>) -> Result<Self, Self::Error> {
+        // Extract the response based on the status column
+        let response = match row.get::<_, ResponseStatus>("status")? {
+            ResponseStatus::Loading => ResponseState::Loading,
+            ResponseStatus::Incomplete => ResponseState::Incomplete,
+            ResponseStatus::Success => ResponseState::Success {
+                response: row.get("response")?,
+                end_time: row.get("end_time")?,
+            },
+            ResponseStatus::Error => ResponseState::Error {
+                error: row.get("response")?,
+                end_time: row.get("end_time")?,
+            },
+        };
+
         Ok(Self {
             id: row.get("id")?,
             recipe_id: row.get("recipe_id")?,
             request: row.get("request")?,
             start_time: row.get("start_time")?,
-            end_time: row.get("end_time")?,
-            response: row.get("response")?,
+            response,
         })
     }
 }
@@ -229,6 +277,20 @@ impl FromSql for RequestRecipeId {
     }
 }
 
+impl ToSql for ResponseStatus {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(ToSqlOutput::Owned(self.to_string().into()))
+    }
+}
+
+impl FromSql for ResponseStatus {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        String::column_result(value)?
+            .parse()
+            .map_err(|err| FromSqlError::Other(Box::new(err)))
+    }
+}
+
 /// Macro to convert a serializable type to/from SQL via YAML serialization.
 /// This is a bit ugly but it works.
 macro_rules! serial_sql {
@@ -252,4 +314,4 @@ macro_rules! serial_sql {
 }
 
 serial_sql!(Request);
-serial_sql!(ResponseState);
+serial_sql!(Response);

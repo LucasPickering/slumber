@@ -1,14 +1,20 @@
 environments:
-  - id: prd
-    name: Prd
+  - id: works
+    name: Works
     data:
       host: https://httpbin.org
       user_guid: abc123
       auth_token: eggsalad
-  - id: local
-    name: Local
+  - id: init-fails
+    name: Request Init Fails
     data:
       host: http://localhost:5000
+  - id: request-fails
+    name: Request Fails
+    data:
+      host: http://localhost:5000
+      user_guid: abc123
+      auth_token: eggsalad
 
 base: &base
   headers:

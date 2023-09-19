@@ -236,18 +236,11 @@ impl Draw for ResponsePane {
                 Direction::Vertical,
                 [Constraint::Length(1), Constraint::Min(0)],
             );
-            let [tabs_chunk, time_chunk] = layout(
+            let [header_left_chunk, header_right_chunk] = layout(
                 header_chunk,
                 Direction::Horizontal,
                 [Constraint::Length(20), Constraint::Min(0)],
             );
-
-            // Navigation tabs
-            let tabs = TabComponent {
-                tabs: &state.response_tab,
-            }
-            .render(renderer);
-            f.render_widget(tabs, tabs_chunk);
 
             // Time-related data
             f.render_widget(
@@ -257,36 +250,64 @@ impl Draw for ResponsePane {
                     request.duration().to_span(),
                 ]))
                 .alignment(Alignment::Right),
-                time_chunk,
+                header_right_chunk,
             );
 
-            // Response content/metadata
-            let get_text = || -> Option<Text> {
-                match &request.response {
-                    ResponseState::Loading => Some("Loading...".into()),
-                    ResponseState::Incomplete => {
-                        Some("Request never compelted".into())
-                    }
-                    ResponseState::Success(Response {
-                        headers,
-                        content,
-                        ..
-                    }) => {
-                        // TODO show status code
-                        Some(match state.response_tab.selected() {
-                            ResponseTab::Body => content.clone().into(),
-                            ResponseTab::Headers => headers.to_text(),
-                        })
-                    }
-                    ResponseState::Error(error) => {
-                        Some(error.to_string().into())
-                    }
+            match request.response {
+                ResponseState::Loading => {
+                    f.render_widget(
+                        Paragraph::new("Loading..."),
+                        header_left_chunk,
+                    );
                 }
-            };
-            f.render_widget(
-                Paragraph::new(get_text().unwrap_or_default()),
-                content_chunk,
-            );
+
+                ResponseState::Incomplete => {
+                    f.render_widget(
+                        Paragraph::new("Request never completed"),
+                        content_chunk,
+                    );
+                }
+
+                ResponseState::Success(Response {
+                    status,
+                    headers,
+                    content,
+                }) => {
+                    // Status code
+                    f.render_widget(
+                        Paragraph::new(status.to_string()),
+                        header_left_chunk,
+                    );
+
+                    // Split the main chunk again to allow tabs
+                    let [tabs_chunk, content_chunk] = layout(
+                        content_chunk,
+                        Direction::Vertical,
+                        [Constraint::Length(1), Constraint::Min(0)],
+                    );
+
+                    // Navigation tabs
+                    let tabs = TabComponent {
+                        tabs: &state.response_tab,
+                    }
+                    .render(renderer);
+                    f.render_widget(tabs, tabs_chunk);
+
+                    // Main content for the response
+                    let tab_text = match state.response_tab.selected() {
+                        ResponseTab::Body => content.clone().into(),
+                        ResponseTab::Headers => headers.to_text(),
+                    };
+                    f.render_widget(Paragraph::new(tab_text), content_chunk);
+                }
+
+                ResponseState::Error(error) => {
+                    f.render_widget(
+                        Paragraph::new(error).wrap(Wrap::default()),
+                        content_chunk,
+                    );
+                }
+            }
         }
     }
 }

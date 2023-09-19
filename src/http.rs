@@ -3,7 +3,7 @@
 
 use crate::{config::RequestRecipe, template::TemplateContext};
 use anyhow::Context;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::trace;
@@ -42,7 +42,8 @@ pub struct Request {
 /// response body requires moving the response.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
-    pub status: u16,
+    #[serde(with = "serde_status_code")]
+    pub status: StatusCode,
     pub headers: HashMap<String, String>,
     pub content: String,
 }
@@ -165,9 +166,9 @@ impl HttpEngine {
         &self,
         response: reqwest::Response,
     ) -> anyhow::Result<Response> {
-        // Copy response data out first, because we need to move the
+        // Copy response metadata out first, because we need to move the
         // response to resolve content (not sure why...)
-        let status = response.status().as_u16();
+        let status = response.status();
 
         // TODO support non-utf8 header values
         let headers = response
@@ -189,5 +190,28 @@ impl HttpEngine {
             headers,
             content,
         })
+    }
+}
+
+mod serde_status_code {
+    use super::*;
+    use serde::{de, Deserializer, Serializer};
+
+    pub fn serialize<S>(
+        status_code: &StatusCode,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u16(status_code.as_u16())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<StatusCode, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        StatusCode::from_u16(u16::deserialize(deserializer)?)
+            .map_err(de::Error::custom)
     }
 }

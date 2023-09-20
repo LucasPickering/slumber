@@ -2,138 +2,313 @@
 
 use crate::tui::{
     state::{AppState, Message},
-    view::{EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane},
+    view::{
+        EnvironmentListPane, ErrorPopup, RecipeListPane, RequestPane,
+        ResponsePane,
+    },
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use std::fmt::Debug;
+use derive_more::Display;
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+    sync::OnceLock,
+};
 use tracing::trace;
 
-/// An input action from the user. This is context-agnostic; the action may not
-/// actually mean something in the current app context. This type is just an
-/// abstraction to map all possible input events to the things we actually
-/// care about handling.
-#[derive(Debug)]
-pub enum Action {
-    /// Exit the app
-    Quit,
-    /// Focus the next pane
-    FocusNext,
-    /// Focus the previous pane
-    FocusPrevious,
-    Up,
-    Down,
-    Left,
-    Right,
-    /// Do a thing. E.g. select an item in a list
-    SendRequest,
+static INSTANCE: OnceLock<InputManager> = OnceLock::new();
+
+/// Top-level input manager. This is the entrypoint into the input management
+/// system. It delegates out to certain children based on UI state.
+pub struct InputManager {
+    bindings: HashMap<Action, InputBinding>,
 }
 
-impl Action {
-    /// Map a generic input event into a specific action. This narrows the event
-    /// down to either something we know we care about, or nothing.
-    pub fn from_event(event: Event) -> Option<Self> {
-        let action = if let Event::Key(
+impl InputManager {
+    fn new() -> Self {
+        Self {
+            bindings: [
+                InputBinding {
+                    action: Action::Quit,
+                    primary: KeyCombination {
+                        key_code: KeyCode::Char('q'),
+                        modifiers: KeyModifiers::NONE,
+                    },
+                    secondary: Some(KeyCombination {
+                        key_code: KeyCode::Char('c'),
+                        modifiers: KeyModifiers::CONTROL,
+                    }),
+                },
+                InputBinding::new(KeyCode::BackTab, Action::FocusPrevious),
+                InputBinding::new(KeyCode::Tab, Action::FocusNext),
+                InputBinding::new(KeyCode::Up, Action::Up),
+                InputBinding::new(KeyCode::Down, Action::Down),
+                InputBinding::new(KeyCode::Left, Action::Left),
+                InputBinding::new(KeyCode::Right, Action::Right),
+                InputBinding::new(KeyCode::Char(' '), Action::Interact),
+                InputBinding::new(KeyCode::Esc, Action::Close),
+            ]
+            .into_iter()
+            .map(|binding| (binding.action, binding))
+            .collect(),
+        }
+    }
+
+    pub fn instance() -> &'static Self {
+        INSTANCE.get_or_init(Self::new)
+    }
+
+    /// Get the binding associated with a particular action
+    pub fn binding(&self, action: Action) -> Option<InputBinding> {
+        self.bindings.get(&action).copied()
+    }
+
+    pub fn handle_event(&self, state: &mut AppState, event: Event) {
+        if let Event::Key(
             key @ KeyEvent {
                 kind: KeyEventKind::Press,
                 ..
             },
         ) = event
         {
-            match key.code {
-                // q or ctrl-c both quit
-                KeyCode::Char('q') => Some(Action::Quit),
-                KeyCode::Char('c')
-                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                {
-                    Some(Action::Quit)
-                }
-                KeyCode::BackTab => Some(Action::FocusPrevious),
-                KeyCode::Tab => Some(Action::FocusNext),
-                KeyCode::Up => Some(Action::Up),
-                KeyCode::Down => Some(Action::Down),
-                KeyCode::Left => Some(Action::Left),
-                KeyCode::Right => Some(Action::Right),
-                KeyCode::Char(' ') => Some(Action::SendRequest),
-                _ => None,
+            // Scan all bindings for a match
+            let action = self
+                .bindings
+                .values()
+                .find(|binding| binding.matches(&key))
+                .map(|binding| binding.action);
+
+            if let Some(action) = action {
+                trace!("Input action {action:?}");
+                self.apply_action(state, action);
             }
-        } else {
-            None
-        };
-
-        if let Some(action) = &action {
-            trace!("Input action {action:?}");
         }
+    }
+}
 
-        action
+/// An input action from the user. This is context-agnostic; the action may not
+/// actually mean something in the current app context. This type is just an
+/// abstraction to map all possible input events to the things we actually
+/// care about handling.
+///
+/// This is a middle abstraction layer between the input ([KeyCombination]) and
+/// the output ([Mutator]).
+#[derive(Copy, Clone, Debug, Display, Eq, Hash, PartialEq)]
+pub enum Action {
+    /// Exit the app
+    Quit,
+    /// Focus the next pane
+    #[display(fmt = "Next Pane")]
+    FocusNext,
+    /// Focus the previous pane
+    #[display(fmt = "Prev Pane")]
+    FocusPrevious,
+    Up,
+    Down,
+    Left,
+    Right,
+    /// Do a thing. E.g. select an item in a list
+    Interact,
+    /// Close the current popup
+    Close,
+}
+
+/// A mapping from a key input sequence to an action. This can optionally have
+/// a secondary binding.
+#[derive(Copy, Clone, Debug)]
+pub struct InputBinding {
+    action: Action,
+    primary: KeyCombination,
+    secondary: Option<KeyCombination>,
+}
+
+impl InputBinding {
+    /// Create a binding with only a primary
+    const fn new(key_code: KeyCode, action: Action) -> Self {
+        Self {
+            action,
+            primary: KeyCombination {
+                key_code,
+                modifiers: KeyModifiers::NONE,
+            },
+            secondary: None,
+        }
+    }
+
+    fn matches(&self, event: &KeyEvent) -> bool {
+        self.primary.matches(event)
+            || self
+                .secondary
+                .map(|secondary| secondary.matches(event))
+                .unwrap_or_default()
+    }
+}
+
+impl Display for InputBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Don't display secondary binding in help text
+        write!(f, "{} {}", self.primary, self.action)
+    }
+}
+
+/// Key input sequence, which can trigger an action
+#[derive(Copy, Clone, Debug)]
+struct KeyCombination {
+    key_code: KeyCode,
+    modifiers: KeyModifiers,
+}
+
+impl KeyCombination {
+    fn matches(self, event: &KeyEvent) -> bool {
+        event.code == self.key_code && event.modifiers.contains(self.modifiers)
+    }
+}
+
+impl Display for KeyCombination {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.key_code {
+            KeyCode::BackTab => write!(f, "<shift+tab>"),
+            KeyCode::Tab => write!(f, "<tab>"),
+            KeyCode::Up => write!(f, "↑"),
+            KeyCode::Down => write!(f, "↓"),
+            KeyCode::Left => write!(f, "←"),
+            KeyCode::Right => write!(f, "→"),
+            KeyCode::Esc => write!(f, "<esc>"),
+            KeyCode::Char(' ') => write!(f, "<space>"),
+            KeyCode::Char(c) => write!(f, "<{c}>"),
+            // Punting on everything else until we need it
+            _ => write!(f, "???"),
+        }
+    }
+}
+
+/// A binding between an action and the change it makes to state
+pub struct OutcomeBinding {
+    pub action: Action,
+    pub mutator: Mutator,
+}
+
+/// A function to mutate state based on an input action
+type Mutator = &'static dyn Fn(&mut AppState);
+
+impl OutcomeBinding {
+    fn new(action: Action, mutator: Mutator) -> Self {
+        Self { action, mutator }
     }
 }
 
 /// A major item in the UI, which can receive input and be drawn to the screen.
 /// Each of these types should be a **singleton**. There are assumptions that
 /// will break if we start duplicating types.
-pub trait InputHandler {
+pub trait InputTarget {
     /// Modify app state based on the given action. Sync actions should modify
-    /// state directly, while async ones should queue messages, to be handled
-    /// later.
-    fn handle_action(&self, state: &mut AppState, action: Action);
+    /// state directly. Async actions should queue messages to be handled later.
+    fn apply_action(&self, state: &mut AppState, action: Action) {
+        let mutator = self
+            .actions(state)
+            .into_iter()
+            .find(|app| app.action == action)
+            .map(|app| app.mutator);
+        if let Some(mutator) = mutator {
+            mutator(state);
+        }
+    }
+
+    /// Get a list of mappings that will modify the state. This needs to return
+    /// a list of available actions so it can be used to show help text.
+    fn actions(&self, state: &AppState) -> Vec<OutcomeBinding>;
 }
 
-/// Handle an action globally. Some actions are context-independent, meaning
-/// they have the same effect regardless of focus or other context. Others are
-/// contextual, and will be forwarded to the focused element.
-pub fn handle_action(state: &mut AppState, action: Action) {
-    match action {
-        // Global events
-        Action::Quit => state.quit(),
-        Action::FocusPrevious => state.focused_pane.previous(),
-        Action::FocusNext => state.focused_pane.next(),
-        Action::SendRequest => state.messages_tx.send(Message::SendRequest),
-
-        // Forward context events to the focused element
-        other => state
-            .focused_pane
-            .selected()
-            .input_handler()
-            .handle_action(state, other),
+impl InputTarget for InputManager {
+    fn actions(&self, state: &AppState) -> Vec<OutcomeBinding> {
+        let mut mappings: Vec<OutcomeBinding> =
+            vec![OutcomeBinding::new(Action::Quit, &|state| state.quit())];
+        mappings.extend(state.input_handler().actions(state));
+        mappings
     }
 }
 
-impl InputHandler for EnvironmentListPane {
-    fn handle_action(&self, state: &mut AppState, action: Action) {
-        match action {
-            Action::Up => state.environments.previous(),
-            Action::Down => state.environments.next(),
-            _ => {}
-        }
+impl InputTarget for EnvironmentListPane {
+    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
+        vec![
+            OutcomeBinding::new(Action::FocusPrevious, &|state| {
+                state.selected_pane.previous()
+            }),
+            OutcomeBinding::new(Action::FocusNext, &|state| {
+                state.selected_pane.next()
+            }),
+            OutcomeBinding::new(Action::Up, &|state| {
+                state.environments.previous()
+            }),
+            OutcomeBinding::new(Action::Down, &|state| {
+                state.environments.next()
+            }),
+        ]
     }
 }
 
-impl InputHandler for RecipeListPane {
-    fn handle_action(&self, state: &mut AppState, action: Action) {
-        match action {
-            Action::Up => state.recipes.previous(),
-            Action::Down => state.recipes.next(),
-            _ => {}
-        }
+impl InputTarget for RecipeListPane {
+    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
+        vec![
+            OutcomeBinding::new(Action::FocusPrevious, &|state| {
+                state.selected_pane.previous()
+            }),
+            OutcomeBinding::new(Action::FocusNext, &|state| {
+                state.selected_pane.next()
+            }),
+            OutcomeBinding::new(Action::Up, &|state| state.recipes.previous()),
+            OutcomeBinding::new(Action::Down, &|state| state.recipes.next()),
+            OutcomeBinding::new(Action::Interact, &|state| {
+                state.messages_tx.send(Message::SendRequest)
+            }),
+        ]
     }
 }
 
-impl InputHandler for RequestPane {
-    fn handle_action(&self, state: &mut AppState, action: Action) {
-        match action {
-            Action::Left => state.request_tab.previous(),
-            Action::Right => state.request_tab.next(),
-            _ => {}
-        }
+impl InputTarget for RequestPane {
+    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
+        vec![
+            OutcomeBinding::new(Action::FocusPrevious, &|state| {
+                state.selected_pane.previous()
+            }),
+            OutcomeBinding::new(Action::FocusNext, &|state| {
+                state.selected_pane.next()
+            }),
+            OutcomeBinding::new(Action::Left, &|state| {
+                state.request_tab.previous()
+            }),
+            OutcomeBinding::new(Action::Right, &|state| {
+                state.request_tab.next()
+            }),
+        ]
     }
 }
 
-impl InputHandler for ResponsePane {
-    fn handle_action(&self, state: &mut AppState, action: Action) {
-        match action {
-            Action::Left => state.response_tab.previous(),
-            Action::Right => state.response_tab.next(),
-            _ => {}
-        }
+impl InputTarget for ResponsePane {
+    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
+        vec![
+            OutcomeBinding::new(Action::FocusPrevious, &|state| {
+                state.selected_pane.previous()
+            }),
+            OutcomeBinding::new(Action::FocusNext, &|state| {
+                state.selected_pane.next()
+            }),
+            OutcomeBinding::new(Action::Left, &|state| {
+                state.response_tab.previous()
+            }),
+            OutcomeBinding::new(Action::Right, &|state| {
+                state.response_tab.next()
+            }),
+        ]
+    }
+}
+
+impl InputTarget for ErrorPopup {
+    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
+        let clear_error: Mutator = &|state| state.clear_error();
+        vec![
+            OutcomeBinding::new(Action::Interact, clear_error),
+            OutcomeBinding::new(Action::Close, clear_error),
+        ]
     }
 }

@@ -1159,6 +1159,7 @@ dependencies = [
  "clap",
  "crossterm",
  "derive_more",
+ "itertools",
  "ratatui",
  "regex",
  "reqwest",

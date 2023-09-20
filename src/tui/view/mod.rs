@@ -5,6 +5,7 @@ use crate::{
     history::ResponseState,
     http::Response,
     tui::{
+        input::{InputManager, InputTarget},
         state::{AppState, PrimaryPane, RequestTab, ResponseTab},
         view::{
             component::{
@@ -15,6 +16,7 @@ use crate::{
         },
     },
 };
+use itertools::Itertools;
 use ratatui::{prelude::*, widgets::*};
 use std::{fmt::Debug, io::Stdout};
 
@@ -104,6 +106,8 @@ pub trait Draw {
     );
 }
 
+pub struct ErrorPopup;
+
 pub struct EnvironmentListPane;
 
 impl Draw for EnvironmentListPane {
@@ -118,7 +122,7 @@ impl Draw for EnvironmentListPane {
         let list = ListComponent {
             block: BlockComponent {
                 title: pane_kind.to_string(),
-                is_focused: state.focused_pane.is_selected(&pane_kind),
+                is_focused: state.selected_pane.is_selected(&pane_kind),
             },
             list: &state.environments,
         }
@@ -141,7 +145,7 @@ impl Draw for RecipeListPane {
         let list = ListComponent {
             block: BlockComponent {
                 title: pane_kind.to_string(),
-                is_focused: state.focused_pane.is_selected(&pane_kind),
+                is_focused: state.selected_pane.is_selected(&pane_kind),
             },
             list: &state.recipes,
         }
@@ -165,7 +169,7 @@ impl Draw for RequestPane {
             let pane_kind = PrimaryPane::Request;
             let block = BlockComponent {
                 title: pane_kind.to_string(),
-                is_focused: state.focused_pane.is_selected(&pane_kind),
+                is_focused: state.selected_pane.is_selected(&pane_kind),
             }
             .render(renderer);
             let inner_chunk = block.inner(chunk);
@@ -223,7 +227,7 @@ impl Draw for ResponsePane {
         let pane_kind = PrimaryPane::Response;
         let block = BlockComponent {
             title: pane_kind.to_string(),
-            is_focused: state.focused_pane.is_selected(&pane_kind),
+            is_focused: state.selected_pane.is_selected(&pane_kind),
         }
         .render(renderer);
         let inner_chunk = block.inner(chunk);
@@ -319,13 +323,22 @@ impl Draw for ResponsePane {
 pub struct HelpText;
 
 impl Draw for HelpText {
-    fn draw(&self, _: &Renderer, f: &mut Frame, chunk: Rect, _: &mut AppState) {
+    fn draw(
+        &self,
+        _: &Renderer,
+        f: &mut Frame,
+        chunk: Rect,
+        state: &mut AppState,
+    ) {
         let block = Block::default();
-        let paragraph = Paragraph::new(
-            "<q> Exit | <space> Send request | <tab>/<shift+tab> Switch panes \
-            | ←↑↓→  Navigate",
-        )
-        .block(block);
+        // Find all available input bindings
+        let input_manager = InputManager::instance();
+        let available_actions = input_manager.actions(state);
+        let key_binding_text = available_actions
+            .into_iter()
+            .filter_map(|app| input_manager.binding(app.action))
+            .join(" | ");
+        let paragraph = Paragraph::new(key_binding_text).block(block);
         f.render_widget(paragraph, chunk);
     }
 }

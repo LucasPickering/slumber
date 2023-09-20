@@ -4,9 +4,10 @@ use crate::{
     http::Response,
     template::TemplateContext,
     tui::{
-        input::InputHandler,
+        input::InputTarget,
         view::{
-            EnvironmentListPane, RecipeListPane, RequestPane, ResponsePane,
+            EnvironmentListPane, ErrorPopup, RecipeListPane, RequestPane,
+            ResponsePane,
         },
     },
 };
@@ -14,7 +15,7 @@ use ratatui::widgets::*;
 use std::{fmt::Display, ops::Deref};
 use strum::{EnumIter, IntoEnumIterator};
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::error;
+use tracing::{error, info};
 
 /// Main app state. All configuration and UI state is stored here. The M in MVC
 #[derive(Debug)]
@@ -32,7 +33,8 @@ pub struct AppState {
     /// Any error that should be shown to the user in a popup
     error: Option<anyhow::Error>,
     /// The pane that the user has focused, which will receive input events
-    pub focused_pane: StatefulSelect<PrimaryPane>,
+    /// UNLESS a high-priority popup is open
+    pub selected_pane: StatefulSelect<PrimaryPane>,
     pub request_tab: StatefulSelect<RequestTab>,
     pub response_tab: StatefulSelect<ResponseTab>,
     pub environments: StatefulList<Environment>,
@@ -51,7 +53,7 @@ impl AppState {
             should_run: true,
             messages_tx: MessageSender(messages_tx),
             error: None,
-            focused_pane: StatefulSelect::new(),
+            selected_pane: StatefulSelect::new(),
             request_tab: StatefulSelect::new(),
             response_tab: StatefulSelect::new(),
             environments: StatefulList::with_items(collection.environments),
@@ -68,6 +70,14 @@ impl AppState {
     /// Set the app to exit on next loop
     pub fn quit(&mut self) {
         self.should_run = false;
+    }
+
+    /// Get the active local input handler, based on pane focus and popup state
+    pub fn input_handler(&self) -> Box<dyn InputTarget> {
+        match self.error() {
+            Some(_) => Box::new(ErrorPopup),
+            None => self.selected_pane.selected().input_handler(),
+        }
     }
 
     /// Get whichever request state should currently be shown to the user,
@@ -93,6 +103,12 @@ impl AppState {
     pub fn set_error(&mut self, err: anyhow::Error) {
         error!(error = err.deref());
         self.error = Some(err);
+    }
+
+    /// Close the error popup
+    pub fn clear_error(&mut self) {
+        info!("Clearing error state");
+        self.error = None;
     }
 }
 
@@ -256,7 +272,7 @@ pub enum PrimaryPane {
 
 impl PrimaryPane {
     /// Get a trait object that should handle contextual input for this pane
-    pub fn input_handler(self) -> Box<dyn InputHandler> {
+    pub fn input_handler(self) -> Box<dyn InputTarget> {
         match self {
             Self::EnvironmentList => Box::new(EnvironmentListPane),
             Self::RecipeList => Box::new(RecipeListPane),

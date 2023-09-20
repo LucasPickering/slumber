@@ -6,7 +6,7 @@ use crate::{
     config::RequestCollection,
     http::HttpEngine,
     tui::{
-        input::Action,
+        input::InputManager,
         state::{AppState, Message},
         view::Renderer,
     },
@@ -98,11 +98,8 @@ impl Tui {
                 .checked_sub(last_tick.elapsed())
                 .unwrap_or_else(|| Duration::from_secs(0));
             if crossterm::event::poll(timeout)? {
-                if let Some(action) =
-                    Action::from_event(crossterm::event::read()?)
-                {
-                    input::handle_action(&mut self.state, action);
-                }
+                InputManager::instance()
+                    .handle_event(&mut self.state, crossterm::event::read()?);
             }
 
             if last_tick.elapsed() >= tick_rate {

@@ -75,7 +75,6 @@ pub enum ResponseState {
     /// store it as a string. This makes it easy to display to the user and
     /// serialize/deserialize.
     Error {
-        // TODO could we use a custom error type here?
         error: String,
         /// When did the error occur?
         end_time: DateTime<Utc>,
@@ -117,7 +116,6 @@ impl RequestHistory {
             (ResponseStatus::Incomplete, ResponseStatus::Loading),
         )?;
 
-        // TODO mark Loading requests as errored
         Ok(Self { db_connection })
     }
 

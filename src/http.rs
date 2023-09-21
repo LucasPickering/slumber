@@ -69,7 +69,6 @@ impl HttpEngine {
         recipe: &RequestRecipe,
         template_values: &TemplateContext,
     ) -> anyhow::Result<Request> {
-        // TODO add more tracing
         let method = recipe.method.render(template_values).context("Method")?;
         trace!(method, "Resolved method");
         let url = recipe.url.render(template_values).context("URL")?;

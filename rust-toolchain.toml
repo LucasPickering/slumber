@@ -1,4 +1,4 @@
 [toolchain]
 # Keep in sync w/ Cargo.toml
-channel = "1.72.0"
+channel = "nightly-2023-09-20"
 components = ["cargo", "clippy", "rustfmt"]

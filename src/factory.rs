@@ -1,6 +1,7 @@
 use crate::{
     config::{Chain, RequestRecipeId},
     http::{Request, Response},
+    template::TemplateString,
 };
 use factori::factori;
 use reqwest::StatusCode;
@@ -30,5 +31,19 @@ factori!(Chain, {
         id = String::new(),
         source = RequestRecipeId::default(),
         name = None,
+        path = None
     }
 });
+
+// Some helpful conversion implementations
+impl From<&str> for RequestRecipeId {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+
+impl From<&str> for TemplateString {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}

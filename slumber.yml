@@ -20,6 +20,7 @@ chains:
   - id: auth_token
     source: login
     expire: never
+    path: $.headers.X-Amzn-Trace-Id
 
 base: &base
   headers:

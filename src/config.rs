@@ -62,6 +62,8 @@ pub struct Chain {
     pub id: String,
     pub name: Option<String>,
     pub source: RequestRecipeId,
+    /// JSONpath to extract a value from the response. For JSON responses only.
+    pub path: Option<String>,
 }
 
 impl RequestCollection {

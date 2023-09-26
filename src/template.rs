@@ -1,8 +1,9 @@
 use crate::{config::Chain, history::RequestHistory, util::ResultExt};
 use anyhow::Context;
-use derive_more::{Deref, Display};
+use derive_more::{Deref, Display, From};
 use regex::Regex;
 use serde::Deserialize;
+use serde_json_path::{ExactlyOneError, JsonPath};
 use std::{borrow::Cow, collections::HashMap, ops::Deref as _, sync::OnceLock};
 use thiserror::Error;
 use tracing::{instrument, trace};
@@ -10,7 +11,7 @@ use tracing::{instrument, trace};
 static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
 
 /// A string that can contain templated content
-#[derive(Clone, Debug, Deref, Display, Deserialize)]
+#[derive(Clone, Debug, Deref, Display, From, Deserialize)]
 pub struct TemplateString(String);
 
 /// A little container struct for all the data that the user can access via
@@ -45,15 +46,39 @@ pub enum TemplateError<S: std::fmt::Display> {
 
     /// A basic field key contained an unknown field
     #[error("Unknown field {field:?}")]
-    UnknownField { field: S },
+    FieldUnknown { field: S },
 
     #[error("Unknown chain {chain_id:?}")]
-    UnknownChain { chain_id: S },
+    ChainUnknown { chain_id: S },
 
     /// The chain ID is valid, but the corresponding recipe has no successful
     /// response
     #[error("No response available for chain {chain_id:?}")]
-    NoChainResponse { chain_id: S },
+    ChainNoResponse { chain_id: S },
+
+    /// An error occurred while querying with JSON path
+    #[error("Error parsing JSON path for chain {chain_id:?}: {error}")]
+    ChainJsonPath {
+        chain_id: S,
+        #[source]
+        error: serde_json_path::ParseError,
+    },
+
+    /// Failed to parse the response body as JSON
+    #[error("Error parsing response as JSON for chain {chain_id:?}: {error}")]
+    ChainJsonParse {
+        chain_id: S,
+        #[source]
+        error: serde_json::Error,
+    },
+
+    /// Got either 0 or 2+ results for JSON path query
+    #[error("Expected exactly one result for chain {chain_id:?}: {error}")]
+    ChainInvalidResult {
+        chain_id: S,
+        #[source]
+        error: ExactlyOneError,
+    },
 
     /// An error occurred accessing history
     #[error("{0}")]
@@ -113,7 +138,9 @@ impl TemplateString {
 }
 
 impl<'a> TemplateContext<'a> {
-    /// Get a value by key
+    /// Get a value by key. Return a Cow because sometimes this can be a
+    /// reference to the template context, but sometimes it has to be owned
+    /// data (e.g. when pulling response data from the history DB).
     fn get(
         &self,
         key: TemplateKey<'a>,
@@ -132,25 +159,63 @@ impl<'a> TemplateContext<'a> {
                 .or_else(|| get_opt(self.overrides, field))
                 .or_else(|| get_opt(self.environment, field))
                 .map(Cow::from)
-                .ok_or(TemplateError::UnknownField { field }),
+                .ok_or(TemplateError::FieldUnknown { field }),
 
             // Chained response values
-            TemplateKey::Chain(chain_id) => {
-                // Resolve chained value
-                let chain = self
-                    .chains
-                    .iter()
-                    .find(|chain| chain.id == chain_id)
-                    .ok_or(TemplateError::UnknownChain { chain_id })?;
-                let response = self
-                    .history
-                    .get_last_success(&chain.source)
-                    .map_err(TemplateError::History)?
-                    .ok_or(TemplateError::NoChainResponse { chain_id })?;
+            TemplateKey::Chain(chain_id) => self.get_chain(chain_id),
+        }
+    }
 
-                // TODO support jsonpath
-                Ok(response.content.into())
+    /// Helper for resolving a chained value
+    fn get_chain(
+        &self,
+        chain_id: &'a str,
+    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
+        // Resolve chained value
+        let chain = self
+            .chains
+            .iter()
+            .find(|chain| chain.id == chain_id)
+            .ok_or(TemplateError::ChainUnknown { chain_id })?;
+        let response = self
+            .history
+            .get_last_success(&chain.source)
+            .map_err(TemplateError::History)?
+            .ok_or(TemplateError::ChainNoResponse { chain_id })?
+            .content;
+
+        // Optionally extract a value from the JSON
+        match &chain.path {
+            Some(path) => {
+                // Parse the JSON path
+                let path = JsonPath::parse(path).map_err(|err| {
+                    TemplateError::ChainJsonPath {
+                        chain_id,
+                        error: err,
+                    }
+                })?;
+                // Parse the response as JSON
+                let response_value: serde_json::Value =
+                    serde_json::from_str(&response).map_err(|err| {
+                        TemplateError::ChainJsonParse {
+                            chain_id,
+                            error: err,
+                        }
+                    })?;
+                let found_value = path
+                    .query(&response_value)
+                    .exactly_one()
+                    .map_err(|err| TemplateError::ChainInvalidResult {
+                        chain_id,
+                        error: err,
+                    })?;
+
+                match found_value {
+                    serde_json::Value::String(s) => Ok(s.clone().into()),
+                    other => Ok(other.to_string().into()),
+                }
             }
+            None => Ok(response.into()),
         }
     }
 }
@@ -162,15 +227,33 @@ impl<'a> TemplateError<&'a str> {
             Self::InvalidKey { key } => TemplateError::InvalidKey {
                 key: key.to_owned(),
             },
-            Self::UnknownField { field } => TemplateError::UnknownField {
+            Self::FieldUnknown { field } => TemplateError::FieldUnknown {
                 field: field.to_owned(),
             },
-            Self::UnknownChain { chain_id } => TemplateError::UnknownChain {
+            Self::ChainUnknown { chain_id } => TemplateError::ChainUnknown {
                 chain_id: chain_id.to_owned(),
             },
-            Self::NoChainResponse { chain_id } => {
-                TemplateError::NoChainResponse {
+            Self::ChainNoResponse { chain_id } => {
+                TemplateError::ChainNoResponse {
                     chain_id: chain_id.to_owned(),
+                }
+            }
+            Self::ChainJsonPath { chain_id, error } => {
+                TemplateError::ChainJsonPath {
+                    chain_id: chain_id.to_owned(),
+                    error,
+                }
+            }
+            Self::ChainJsonParse { chain_id, error } => {
+                TemplateError::ChainJsonParse {
+                    chain_id: chain_id.to_owned(),
+                    error,
+                }
+            }
+            Self::ChainInvalidResult { chain_id, error } => {
+                TemplateError::ChainInvalidResult {
+                    chain_id: chain_id.to_owned(),
+                    error,
                 }
             }
             Self::History(err) => TemplateError::History(err),
@@ -204,9 +287,16 @@ impl<'a> TemplateKey<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{config::RequestRecipeId, factory::*, util::assert_err};
+    use crate::{
+        config::RequestRecipeId,
+        factory::*,
+        http::{Request, Response},
+        util::assert_err,
+    };
     use anyhow::anyhow;
     use factori::create;
+    use rstest::rstest;
+    use serde_json::json;
 
     /// Test that a field key renders correctly
     #[test]
@@ -251,53 +341,127 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_chain() {
-        let success_recipe_id = RequestRecipeId::from("success".to_string());
-        let error_recipe_id = RequestRecipeId::from("error".to_string());
+    /// Test success cases with chained responses
+    #[rstest]
+    #[case(
+        None,
+        r#"{"array":[1,2],"bool":false,"number":6,"object":{"a":1},"string":"Hello World!"}"#,
+    )]
+    #[case(Some("$.string"), "Hello World!")]
+    #[case(Some("$.number"), "6")]
+    #[case(Some("$.bool"), "false")]
+    #[case(Some("$.array"), "[1,2]")]
+    #[case(Some("$.object"), "{\"a\":1}")]
+    fn test_chain(#[case] path: Option<&str>, #[case] expected_value: &str) {
+        let recipe_id: RequestRecipeId = "recipe1".into();
         let history = RequestHistory::testing();
+        let response_content = json!({
+            "string": "Hello World!",
+            "number": 6,
+            "bool": false,
+            "array": [1,2],
+            "object": {"a": 1},
+        });
         history.add(
-            &create!(Request, recipe_id: success_recipe_id.clone()),
-            &Ok(create!(Response, content: "Hello World!".into())),
-        );
-        history.add(
-            &create!(Request, recipe_id: error_recipe_id.clone()),
-            &Err(anyhow!("Something went wrong!")),
+            &create!(Request, recipe_id: recipe_id.clone()),
+            &Ok(create!(Response, content: response_content.to_string())),
         );
         let context = TemplateContext {
             environment: None,
             overrides: None,
             history: &history,
-            chains: &[
-                create!(Chain, id: "chain1".into(), source: success_recipe_id),
-                create!(Chain, id: "chain2".into(), source: error_recipe_id),
-                create!(Chain, id: "chain3".into(), source: "unknown".to_owned().into()),
-            ],
+            chains: &[create!(
+                Chain,
+                id: "chain1".into(),
+                source: recipe_id,
+                path: path.map(String::from),
+            )],
         };
 
-        // Success cases
         assert_eq!(
             TemplateString("{{chains.chain1}}".into())
                 .render_borrow(&context)
                 .unwrap(),
-            "Hello World!"
+            expected_value
         );
+    }
 
-        // Error cases
+    /// Test all possible error cases for chained requests. This covers all
+    /// chain-specific error variants
+    #[rstest]
+    #[case(create!(Chain), None, "Unknown chain \"chain1\"")]
+    #[case(
+        create!(Chain, id: "chain1".into(), source: "recipe1".into()),
+        Some((
+            create!(Request, recipe_id: "recipe1".into()),
+            Err(anyhow!("Bad!")),
+        )),
+        "No response available for chain \"chain1\"",
+    )]
+    #[case(
+        create!(Chain, id: "chain1".into(), source: "unknown".into()),
+        None,
+        "No response available for chain \"chain1\"",
+    )]
+    #[case(
+        create!(
+            Chain,
+            id: "chain1".into(),
+            source: "recipe1".into(),
+            path: Some("$.".into()),
+        ),
+        Some((
+            create!(Request, recipe_id: "recipe1".into()),
+            Ok(create!(Response, content: "{}".into())),
+        )),
+        "Error parsing JSON path for chain \"chain1\"",
+    )]
+    #[case(
+        create!(
+            Chain,
+            id: "chain1".into(),
+            source: "recipe1".into(),
+            path: Some("$.message".into()),
+        ),
+        Some((
+            create!(Request, recipe_id: "recipe1".into()),
+            Ok(create!(Response, content: "not json!".into())),
+        )),
+        "Error parsing response as JSON for chain \"chain1\"",
+    )]
+    #[case(
+        create!(
+            Chain,
+            id: "chain1".into(),
+            source: "recipe1".into(),
+            path: Some("$.*".into()),
+        ),
+        Some((
+            create!(Request, recipe_id: "recipe1".into()),
+            Ok(create!(Response, content: "[1, 2]".into())),
+        )),
+        "Expected exactly one result for chain \"chain1\"",
+    )]
+    fn test_chain_error(
+        #[case] chain: Chain,
+        // Optional request data to store in history
+        #[case] request_response: Option<(Request, anyhow::Result<Response>)>,
+        #[case] expected_error: &str,
+    ) {
+        let history = RequestHistory::testing();
+        if let Some((request, response)) = request_response {
+            history.add(&request, &response);
+        }
+        let context = TemplateContext {
+            environment: None,
+            overrides: None,
+            history: &history,
+            chains: &[chain],
+        };
+
         assert_err!(
-            // Unknown chain
-            TemplateString("{{chains.unknown}}".into()).render_borrow(&context),
-            "Unknown chain \"unknown\""
-        );
-        assert_err!(
-            // Chain is known, but has no success response
-            TemplateString("{{chains.chain2}}".into()).render_borrow(&context),
-            "No response available for chain \"chain2\""
-        );
-        assert_err!(
-            // Chain is known, but its recipe isn't
-            TemplateString("{{chains.chain3}}".into()).render_borrow(&context),
-            "No response available for chain \"chain3\""
+            TemplateString::from("{{chains.chain1}}").render_borrow(&context),
+            expected_error
         );
     }
 

@@ -23,6 +23,8 @@ reqwest = {version = "0.11.20", default-features = false, features = ["rustls-tl
 rusqlite = {version = "0.29.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
 rusqlite_migration = "1.0.2"
 serde = {version = "^1.0.188", features = ["derive"]}
+serde_json = {version = "1.0.107", default-features = false}
+serde_json_path = "0.6.3"
 serde_yaml = {version = "^0.9.25", default-features = false}
 signal-hook = "0.3.17"
 strum = {version = "0.25.0", default-features = false, features = ["derive"]}
@@ -34,3 +36,4 @@ uuid = {version = "1.4.1", default-features = false, features = ["serde", "v4"]}
 
 [dev-dependencies]
 factori = "1.1.0"
+rstest = {version = "0.18.2", default-features = false}

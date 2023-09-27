@@ -68,8 +68,11 @@ pub struct Chain {
 
 impl RequestCollection {
     /// Load config from the given file, or fall back to one of the
-    /// auto-detected defaults
-    pub async fn load(collection_file: Option<&Path>) -> anyhow::Result<Self> {
+    /// auto-detected defaults. Return the loaded collection as well as the
+    /// path of the file it was loaded from.
+    pub async fn load(
+        collection_file: Option<&Path>,
+    ) -> anyhow::Result<(&Path, Self)> {
         // Figure out which file we want to load from
         let path = collection_file.map_or_else(Self::detect_path, Ok)?;
 
@@ -84,9 +87,11 @@ impl RequestCollection {
                 yaml_value,
             )?)
         };
-        parse
-            .await
-            .with_context(|| format!("Error parsing config from file {path:?}"))
+        let collection = parse.await.with_context(|| {
+            format!("Error parsing config from file {path:?}")
+        })?;
+
+        Ok((path, collection))
     }
 
     /// Search the current directory for a config file matching one of the known
@@ -96,7 +101,8 @@ impl RequestCollection {
             .iter()
             .map(Path::new)
             // This could be async but I'm being lazy and skipping it for now,
-            // since we only do this at startup anyway
+            // since we only do this at startup anyway (mid-process reloading
+            // reuses the detected path so we don't re-detect)
             .filter(|p| p.exists())
             .collect();
         match paths.as_slice() {

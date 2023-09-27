@@ -11,6 +11,7 @@ use crate::{
         state::{AppState, Message},
         view::Renderer,
     },
+    util::ResultExt,
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
@@ -26,6 +27,7 @@ use signal_hook::{
 use std::{
     io::{self, Stdout},
     ops::Deref,
+    path::PathBuf,
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -35,6 +37,8 @@ use tracing::{debug, error};
 /// this is the C
 #[derive(Debug)]
 pub struct Tui {
+    // All state should generally be stored in [AppState]. This stored here
+    // are more functionality than data.
     terminal: Terminal<CrosstermBackend<Stdout>>,
     messages_rx: UnboundedReceiver<Message>,
     renderer: Renderer,
@@ -45,7 +49,7 @@ pub struct Tui {
 impl Tui {
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
-    pub fn start(collection: RequestCollection) {
+    pub fn start(collection_file: PathBuf, collection: RequestCollection) {
         initialize_panic_handler();
 
         // Set up terminal
@@ -66,7 +70,12 @@ impl Tui {
             messages_rx,
             renderer: Renderer::new(),
             http_engine: HttpEngine::new(),
-            state: AppState::new(collection, history, messages_tx),
+            state: AppState::new(
+                collection_file,
+                collection,
+                history,
+                messages_tx,
+            ),
         };
 
         // Any error during execution that gets this far is fatal. We expect the
@@ -90,9 +99,8 @@ impl Tui {
             // Handle all messages in the queue before accepting new input
             while let Ok(message) = self.messages_rx.try_recv() {
                 // If an error occurs, store it so we can show the user
-                if let Err(err) = self.handle_message(message) {
-                    self.state.set_error(err);
-                }
+                self.handle_message(message)
+                    .ok_or_apply(|err| self.state.ui.set_error(err));
             }
 
             // Check for any new events
@@ -119,8 +127,30 @@ impl Tui {
     /// Handle an incoming message. Any error here will be displayed as a popup
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
+            Message::StartReloadCollection => {
+                let messages_tx = self.state.messages_tx.clone();
+                let collection_file = self.state.collection_file().to_owned();
+                tokio::spawn(async move {
+                    let (_, collection) =
+                        RequestCollection::load(Some(&collection_file))
+                            .await
+                            .ok_or_apply(|err| {
+                            messages_tx.send(Message::Error { error: err })
+                        })?;
+                    messages_tx
+                        .send(Message::EndReloadCollection { collection });
+                    // Return an option just to allow bailing above
+                    None::<()>
+                });
+            }
+            Message::EndReloadCollection { collection } => {
+                self.state.reload_collection(collection);
+            }
             Message::SendRequest => {
                 self.send_request()?;
+            }
+            Message::Error { error } => {
+                self.state.ui.set_error(error);
             }
         }
         Ok(())
@@ -130,6 +160,7 @@ impl Tui {
     fn send_request(&mut self) -> anyhow::Result<()> {
         let recipe = self
             .state
+            .ui
             .recipes
             .selected()
             .ok_or_else(|| anyhow!("No recipe selected"))?;

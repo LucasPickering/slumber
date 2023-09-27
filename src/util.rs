@@ -27,19 +27,33 @@ pub fn find_by<E, T: Debug + PartialEq>(
     ))
 }
 
-pub trait ResultExt<T>: Sized {
+pub trait ResultExt<T, E>: Sized {
     /// If this is an error, trace it. Return the same result.
     fn traced(self) -> Self;
+
+    /// Return the value if `Ok`, or call a given function on the error if
+    /// `Err`.
+    fn ok_or_apply(self, op: impl FnOnce(E)) -> Option<T>;
 }
 
 // This is deliberately *not* implemented for non-anyhow errors, because we only
 // want to trace errors that have full context attached
-impl<T> ResultExt<T> for anyhow::Result<T> {
+impl<T> ResultExt<T, anyhow::Error> for anyhow::Result<T> {
     fn traced(self) -> Self {
         if let Err(err) = &self {
             error!(error = err.deref());
         }
         self
+    }
+
+    fn ok_or_apply(self, op: impl FnOnce(anyhow::Error)) -> Option<T> {
+        match self {
+            Ok(value) => Some(value),
+            Err(err) => {
+                op(err);
+                None
+            }
+        }
     }
 }
 

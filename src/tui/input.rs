@@ -39,6 +39,7 @@ impl InputManager {
                         modifiers: KeyModifiers::CONTROL,
                     }),
                 },
+                InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
                 InputBinding::new(KeyCode::BackTab, Action::FocusPrevious),
                 InputBinding::new(KeyCode::Tab, Action::FocusNext),
                 InputBinding::new(KeyCode::Up, Action::Up),
@@ -97,6 +98,9 @@ impl InputManager {
 pub enum Action {
     /// Exit the app
     Quit,
+    /// Reload the request collection from the same file as the initial load
+    #[display(fmt = "Reload")]
+    ReloadCollection,
     /// Focus the next pane
     #[display(fmt = "Next Pane")]
     FocusNext,
@@ -221,8 +225,12 @@ pub trait InputTarget {
 
 impl InputTarget for InputManager {
     fn actions(&self, state: &AppState) -> Vec<OutcomeBinding> {
-        let mut mappings: Vec<OutcomeBinding> =
-            vec![OutcomeBinding::new(Action::Quit, &|state| state.quit())];
+        let mut mappings: Vec<OutcomeBinding> = vec![
+            OutcomeBinding::new(Action::Quit, &|state| state.quit()),
+            OutcomeBinding::new(Action::ReloadCollection, &|state| {
+                state.messages_tx.send(Message::StartReloadCollection)
+            }),
+        ];
         mappings.extend(state.input_handler().actions(state));
         mappings
     }
@@ -232,16 +240,16 @@ impl InputTarget for EnvironmentListPane {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
         vec![
             OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane.previous()
+                state.ui.selected_pane.previous()
             }),
             OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane.next()
+                state.ui.selected_pane.next()
             }),
             OutcomeBinding::new(Action::Up, &|state| {
-                state.environments.previous()
+                state.ui.environments.previous()
             }),
             OutcomeBinding::new(Action::Down, &|state| {
-                state.environments.next()
+                state.ui.environments.next()
             }),
         ]
     }
@@ -251,13 +259,15 @@ impl InputTarget for RecipeListPane {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
         vec![
             OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane.previous()
+                state.ui.selected_pane.previous()
             }),
             OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane.next()
+                state.ui.selected_pane.next()
             }),
-            OutcomeBinding::new(Action::Up, &|state| state.recipes.previous()),
-            OutcomeBinding::new(Action::Down, &|state| state.recipes.next()),
+            OutcomeBinding::new(Action::Up, &|state| {
+                state.ui.recipes.previous()
+            }),
+            OutcomeBinding::new(Action::Down, &|state| state.ui.recipes.next()),
             OutcomeBinding::new(Action::Interact, &|state| {
                 state.messages_tx.send(Message::SendRequest)
             }),
@@ -269,16 +279,16 @@ impl InputTarget for RequestPane {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
         vec![
             OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane.previous()
+                state.ui.selected_pane.previous()
             }),
             OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane.next()
+                state.ui.selected_pane.next()
             }),
             OutcomeBinding::new(Action::Left, &|state| {
-                state.request_tab.previous()
+                state.ui.request_tab.previous()
             }),
             OutcomeBinding::new(Action::Right, &|state| {
-                state.request_tab.next()
+                state.ui.request_tab.next()
             }),
         ]
     }
@@ -288,16 +298,16 @@ impl InputTarget for ResponsePane {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
         vec![
             OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane.previous()
+                state.ui.selected_pane.previous()
             }),
             OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane.next()
+                state.ui.selected_pane.next()
             }),
             OutcomeBinding::new(Action::Left, &|state| {
-                state.response_tab.previous()
+                state.ui.response_tab.previous()
             }),
             OutcomeBinding::new(Action::Right, &|state| {
-                state.response_tab.next()
+                state.ui.response_tab.next()
             }),
         ]
     }
@@ -305,7 +315,7 @@ impl InputTarget for ResponsePane {
 
 impl InputTarget for ErrorPopup {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        let clear_error: Mutator = &|state| state.clear_error();
+        let clear_error: Mutator = &|state| state.ui.clear_error();
         vec![
             OutcomeBinding::new(Action::Interact, clear_error),
             OutcomeBinding::new(Action::Close, clear_error),

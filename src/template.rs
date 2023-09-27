@@ -57,23 +57,24 @@ pub enum TemplateError<S: std::fmt::Display> {
     ChainNoResponse { chain_id: S },
 
     /// An error occurred while querying with JSON path
-    #[error("Error parsing JSON path for chain {chain_id:?}: {error}")]
+    #[error("Error parsing JSON path {path:?} for chain {chain_id:?}")]
     ChainJsonPath {
         chain_id: S,
+        path: S,
         #[source]
         error: serde_json_path::ParseError,
     },
 
     /// Failed to parse the response body as JSON
-    #[error("Error parsing response as JSON for chain {chain_id:?}: {error}")]
-    ChainJsonParse {
+    #[error("Error parsing response as JSON for chain {chain_id:?}")]
+    ChainJsonResponse {
         chain_id: S,
         #[source]
         error: serde_json::Error,
     },
 
     /// Got either 0 or 2+ results for JSON path query
-    #[error("Expected exactly one result for chain {chain_id:?}: {error}")]
+    #[error("Expected exactly one result for chain {chain_id:?}")]
     ChainInvalidResult {
         chain_id: S,
         #[source]
@@ -191,13 +192,14 @@ impl<'a> TemplateContext<'a> {
                 let path = JsonPath::parse(path).map_err(|err| {
                     TemplateError::ChainJsonPath {
                         chain_id,
+                        path,
                         error: err,
                     }
                 })?;
                 // Parse the response as JSON
                 let response_value: serde_json::Value =
                     serde_json::from_str(&response).map_err(|err| {
-                        TemplateError::ChainJsonParse {
+                        TemplateError::ChainJsonResponse {
                             chain_id,
                             error: err,
                         }
@@ -238,14 +240,17 @@ impl<'a> TemplateError<&'a str> {
                     chain_id: chain_id.to_owned(),
                 }
             }
-            Self::ChainJsonPath { chain_id, error } => {
-                TemplateError::ChainJsonPath {
-                    chain_id: chain_id.to_owned(),
-                    error,
-                }
-            }
-            Self::ChainJsonParse { chain_id, error } => {
-                TemplateError::ChainJsonParse {
+            Self::ChainJsonPath {
+                chain_id,
+                path,
+                error,
+            } => TemplateError::ChainJsonPath {
+                chain_id: chain_id.to_owned(),
+                path: path.to_owned(),
+                error,
+            },
+            Self::ChainJsonResponse { chain_id, error } => {
+                TemplateError::ChainJsonResponse {
                     chain_id: chain_id.to_owned(),
                     error,
                 }

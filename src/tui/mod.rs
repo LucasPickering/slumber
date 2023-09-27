@@ -29,7 +29,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc::{self, UnboundedReceiver};
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 /// Main controller struct for the TUI. The app uses an MVC architecture, and
 /// this is the C
@@ -143,16 +143,9 @@ impl Tui {
 
         // Launch the request in a separate task so it doesn't block
         tokio::spawn(async move {
-            let result = http_engine.send_request(request).await;
-            match &result {
-                Ok(response) => {
-                    info!(?response, "HTTP request succeeded");
-                }
-                Err(err) => {
-                    // yikes
-                    error!(error = err.deref(), "HTTP request failed");
-                }
-            };
+            // The result will be stored in history and traced, so we don't need
+            // to do anything with it
+            let _ = http_engine.send_request(request).await;
         });
         Ok(())
     }

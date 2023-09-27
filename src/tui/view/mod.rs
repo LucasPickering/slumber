@@ -70,9 +70,19 @@ impl Renderer {
             let area = centered_rect(60, 20, f.size());
             f.render_widget(Clear, area);
             f.render_widget(
-                Paragraph::new(format!("{error:#}"))
-                    .block(block)
-                    .wrap(Wrap::default()),
+                Paragraph::new(
+                    error
+                        .chain()
+                        .enumerate()
+                        .map(|(i, err)| {
+                            // Add indentation to parent errors
+                            format!("{}{err}", if i > 0 { "  " } else { "" })
+                                .into()
+                        })
+                        .collect::<Vec<Line>>(),
+                )
+                .block(block)
+                .wrap(Wrap::default()),
                 area,
             );
         }

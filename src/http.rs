@@ -5,12 +5,13 @@ use crate::{
     config::{RequestRecipe, RequestRecipeId},
     history::RequestHistory,
     template::TemplateContext,
+    util::ResultExt,
 };
 use anyhow::Context;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, ops::Deref};
-use tracing::{debug, error, info, info_span};
+use std::collections::HashMap;
+use tracing::{debug, info, info_span};
 
 static USER_AGENT: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -29,7 +30,7 @@ pub struct HttpEngine {
 
 /// A single instance of an HTTP request. Simpler alternative to
 /// [reqwest::Request] that suits our needs better.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Request {
     /// The recipe used to generate this request (for historical context)
     pub recipe_id: RequestRecipeId,
@@ -127,35 +128,42 @@ impl HttpEngine {
         &self,
         request: Request,
     ) -> anyhow::Result<Response> {
-        // Open a new connection to history, because this function may be called
-        // in an async task so it can't be passed a connection
+        // Open a new connection to history. This function may be called in an
+        // async task so it can't be passed a connection
         let history = RequestHistory::load_fast()?;
-        let request_id = history.add_request(&request)?;
-
         // TODO frontload this so the error happens during build
+        // (should make the clone unnecessary too?)
         let reqwest_request = self
-            .convert_request(request)
+            .convert_request(request.clone())
             .context("Error building HTTP request")?;
 
-        let span = info_span!("HTTP request");
-        info!(parent: &span, request_url = ?reqwest_request.url());
-        let reqwest_response = self.client.execute(reqwest_request).await?;
-        let response_result = self
-            .convert_response(reqwest_response)
-            .await
-            .context("Error loading response");
-        match &response_result {
-            Ok(response) => {
-                info!(
-                    parent: &span, status = response.status.as_u16(),
-                    "Response",
-                );
-            }
-            Err(err) => {
-                error!(parent: &span, error = err.deref(), "Error");
-            }
-        }
+        // Don't add request to history until we know we can launch it
+        let request_id = history.add_request(&request)?;
 
+        let span = info_span!("HTTP request", %request_id);
+        let response_result = span
+            .in_scope(|| async {
+                info!(request_url = %reqwest_request.url());
+                // Any error inside this block should be stored in history
+
+                let reqwest_response = self
+                    .client
+                    .execute(reqwest_request)
+                    .await
+                    .map_err(anyhow::Error::from)
+                    .traced()?;
+                let response = self
+                    .convert_response(reqwest_response)
+                    .await
+                    .context("Error loading response")
+                    .traced()?;
+
+                info!(status = response.status.as_u16(), "Response");
+                Ok(response)
+            })
+            .await;
+
+        // Store result (success OR failure) in history
         history.add_response(request_id, &response_result)?;
         response_result
     }

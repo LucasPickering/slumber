@@ -4,14 +4,14 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use chrono::{DateTime, Duration, Utc};
-use derive_more::Deref;
+use derive_more::{Deref, Display};
 use rusqlite::{
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
     Connection, OptionalExtension, Row, ToSql,
 };
 use rusqlite_migration::{Migrations, M};
 use std::{ops::Deref, path::PathBuf};
-use strum::{Display, EnumDiscriminants, EnumString};
+use strum::{EnumDiscriminants, EnumString};
 use tracing::{debug, warn};
 use uuid::Uuid;
 
@@ -33,8 +33,8 @@ pub struct RequestHistory {
     db_connection: Connection,
 }
 
-/// Unique ID for a single instance of a request recipe
-#[derive(Copy, Clone, Debug, Deref)]
+/// Unique ID for a single launched request
+#[derive(Copy, Clone, Debug, Deref, Display)]
 pub struct RequestId(Uuid);
 
 /// A single request in history
@@ -134,19 +134,20 @@ impl RequestHistory {
         Ok(())
     }
 
-    /// Add a new request to history. This should be called when the request
-    /// is sent, so the generated start_time timestamp is accurate. Returns the
-    /// generated ID for the request, so it can be linked to the response later.
+    /// Add a new request to history. This should be called immediately after
+    /// the request is sent, so the generated start_time timestamp is accurate.
+    /// Returns the generated ID for the request, so it can be linked to the
+    /// response later.
     pub fn add_request(&self, request: &Request) -> anyhow::Result<RequestId> {
-        let id = RequestId(Uuid::new_v4());
-        debug!(?id, ?request, "Adding request to history");
+        let request_id = RequestId(Uuid::new_v4());
+        debug!(%request_id, ?request, "Adding request to history");
         self.db_connection
             .execute(
                 "INSERT INTO
                 requests (id, recipe_id, start_time, request, status)
                 VALUES (?1, ?2, ?3, ?4, ?5)",
                 (
-                    id,
+                    request_id,
                     &request.recipe_id,
                     Utc::now(),
                     request,
@@ -154,7 +155,7 @@ impl RequestHistory {
                 ),
             )
             .context("Error saving request in history")?;
-        Ok(id)
+        Ok(request_id)
     }
 
     /// Attach a response (or error) to an existing request. Errors will be
@@ -168,16 +169,14 @@ impl RequestHistory {
         {
             Ok(response) => {
                 debug!(
-                    ?request_id,
-                    ?response,
+                    %request_id,
                     "Adding response success to history"
                 );
                 (ResponseStatus::Success, Box::new(response))
             }
             Err(err) => {
                 warn!(
-                    ?request_id,
-                    error = err.deref(),
+                    %request_id,
                     "Adding response error to history"
                 );
                 (ResponseStatus::Error, Box::new(err.to_string()))

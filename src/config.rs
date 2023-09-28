@@ -27,6 +27,7 @@ pub struct RequestCollection {
 }
 
 /// Mutually exclusive hot-swappable config group
+/// TODO rename to break confusion with environment variables
 #[derive(Clone, Debug, Deserialize)]
 pub struct Environment {
     pub id: String,

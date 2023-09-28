@@ -32,7 +32,7 @@ requests:
     body: |
       {
         "username": "user",
-        "password": "hunter2"
+        "password": "{{env.PASSWORD}}"
       }
 
   - <<: *base

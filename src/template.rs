@@ -4,7 +4,13 @@ use derive_more::{Deref, Display, From};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json_path::{ExactlyOneError, JsonPath};
-use std::{borrow::Cow, collections::HashMap, ops::Deref as _, sync::OnceLock};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    env::{self, VarError},
+    ops::Deref as _,
+    sync::OnceLock,
+};
 use thiserror::Error;
 use tracing::{instrument, trace};
 
@@ -81,6 +87,14 @@ pub enum TemplateError<S: std::fmt::Display> {
         error: ExactlyOneError,
     },
 
+    /// Variable either didn't exist or had non-unicode content
+    #[error("Error accessing environment variable {variable:?}")]
+    EnvironmentVariable {
+        variable: S,
+        #[source]
+        error: VarError,
+    },
+
     /// An error occurred accessing history
     #[error("{0}")]
     History(#[source] anyhow::Error),
@@ -150,6 +164,8 @@ enum TemplateKey<'a> {
     Field(&'a str),
     /// A value chained from the response of another recipe
     Chain(&'a str),
+    /// A value pulled from the process environment
+    Environment(&'a str),
 }
 
 impl<'a> TemplateKey<'a> {
@@ -160,15 +176,19 @@ impl<'a> TemplateKey<'a> {
         match s.split('.').collect::<Vec<_>>().as_slice() {
             [key] => Ok(Self::Field(key)),
             ["chains", chain_id] => Ok(Self::Chain(chain_id)),
+            ["env", variable] => Ok(Self::Environment(variable)),
             _ => Err(TemplateError::InvalidKey { key: s }),
         }
     }
 
     /// Convert this key into a renderable value type
-    fn into_value(self) -> Box<dyn TemplateRender<'a>> {
+    fn into_value(self) -> Box<dyn TemplateSource<'a>> {
         match self {
-            TemplateKey::Field(field) => Box::new(FieldKey { field }),
-            TemplateKey::Chain(chain_id) => Box::new(ChainKey { chain_id }),
+            TemplateKey::Field(field) => Box::new(FieldSource { field }),
+            TemplateKey::Chain(chain_id) => Box::new(ChainSource { chain_id }),
+            TemplateKey::Environment(variable) => {
+                Box::new(EnvironmentSource { variable })
+            }
         }
     }
 }
@@ -179,7 +199,7 @@ impl<'a> TemplateKey<'a> {
 /// By breaking `TemplateKey` apart into multiple types, we can split the
 /// render logic easily amongst a bunch of functions. It's not technically
 /// necessary, just a code organization thing.
-trait TemplateRender<'a>: 'a {
+trait TemplateSource<'a>: 'a {
     /// Render this intermediate value into a string. Return a Cow because
     /// sometimes this can be a reference to the template context, but
     /// other times it has to be owned data (e.g. when pulling response data
@@ -191,11 +211,11 @@ trait TemplateRender<'a>: 'a {
 }
 
 /// A simple field value (e.g. from the environment or an override)
-struct FieldKey<'a> {
+struct FieldSource<'a> {
     field: &'a str,
 }
 
-impl<'a> TemplateRender<'a> for FieldKey<'a> {
+impl<'a> TemplateSource<'a> for FieldSource<'a> {
     fn render(
         &self,
         context: &'a TemplateContext<'a>,
@@ -218,11 +238,11 @@ impl<'a> TemplateRender<'a> for FieldKey<'a> {
 }
 
 /// A chained value from another response
-struct ChainKey<'a> {
+struct ChainSource<'a> {
     chain_id: &'a str,
 }
 
-impl<'a> TemplateRender<'a> for ChainKey<'a> {
+impl<'a> TemplateSource<'a> for ChainSource<'a> {
     fn render(
         &self,
         context: &'a TemplateContext<'a>,
@@ -278,25 +298,48 @@ impl<'a> TemplateRender<'a> for ChainKey<'a> {
     }
 }
 
+/// A value sourced from the process's environment
+struct EnvironmentSource<'a> {
+    variable: &'a str,
+}
+
+impl<'a> TemplateSource<'a> for EnvironmentSource<'a> {
+    fn render(
+        &self,
+        _: &'a TemplateContext<'a>,
+    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
+        env::var(self.variable).map(Cow::from).map_err(|err| {
+            TemplateError::EnvironmentVariable {
+                variable: self.variable,
+                error: err,
+            }
+        })
+    }
+}
+
 impl<'a> TemplateError<&'a str> {
     /// Convert a borrowed error into an owned one by cloning every string
     pub fn into_owned(self) -> TemplateError<String> {
         match self {
-            Self::InvalidKey { key } => TemplateError::InvalidKey {
+            TemplateError::InvalidKey { key } => TemplateError::InvalidKey {
                 key: key.to_owned(),
             },
-            Self::FieldUnknown { field } => TemplateError::FieldUnknown {
-                field: field.to_owned(),
-            },
-            Self::ChainUnknown { chain_id } => TemplateError::ChainUnknown {
-                chain_id: chain_id.to_owned(),
-            },
-            Self::ChainNoResponse { chain_id } => {
+            TemplateError::FieldUnknown { field } => {
+                TemplateError::FieldUnknown {
+                    field: field.to_owned(),
+                }
+            }
+            TemplateError::ChainUnknown { chain_id } => {
+                TemplateError::ChainUnknown {
+                    chain_id: chain_id.to_owned(),
+                }
+            }
+            TemplateError::ChainNoResponse { chain_id } => {
                 TemplateError::ChainNoResponse {
                     chain_id: chain_id.to_owned(),
                 }
             }
-            Self::ChainJsonPath {
+            TemplateError::ChainJsonPath {
                 chain_id,
                 path,
                 error,
@@ -305,19 +348,25 @@ impl<'a> TemplateError<&'a str> {
                 path: path.to_owned(),
                 error,
             },
-            Self::ChainJsonResponse { chain_id, error } => {
+            TemplateError::ChainJsonResponse { chain_id, error } => {
                 TemplateError::ChainJsonResponse {
                     chain_id: chain_id.to_owned(),
                     error,
                 }
             }
-            Self::ChainInvalidResult { chain_id, error } => {
+            TemplateError::ChainInvalidResult { chain_id, error } => {
                 TemplateError::ChainInvalidResult {
                     chain_id: chain_id.to_owned(),
                     error,
                 }
             }
-            Self::History(err) => TemplateError::History(err),
+            TemplateError::EnvironmentVariable { variable, error } => {
+                TemplateError::EnvironmentVariable {
+                    variable: variable.to_owned(),
+                    error,
+                }
+            }
+            TemplateError::History(err) => TemplateError::History(err),
         }
     }
 }
@@ -452,7 +501,7 @@ mod tests {
             create!(Request, recipe_id: "recipe1".into()),
             Ok(create!(Response, content: "{}".into())),
         )),
-        "Error parsing JSON path for chain \"chain1\"",
+        "Error parsing JSON path \"$.\" for chain \"chain1\"",
     )]
     #[case(
         create!(
@@ -503,40 +552,63 @@ mod tests {
         );
     }
 
-    /// Test parsing just *inside* the {{ }}
     #[test]
-    fn test_parse_template_key_success() {
-        // Success cases
-        assert_eq!(
-            TemplateKey::parse("field_id").unwrap(),
-            TemplateKey::Field("field_id")
-        );
-        assert_eq!(
-            TemplateKey::parse("chains.chain_id").unwrap(),
-            TemplateKey::Chain("chain_id")
-        );
-        // This is "valid", but probably won't match anything
-        assert_eq!(
-            TemplateKey::parse("chains.").unwrap(),
-            TemplateKey::Chain("")
-        );
+    fn test_environment_success() {
+        let context = TemplateContext {
+            environment: None,
+            overrides: None,
+            history: &RequestHistory::testing(),
+            chains: &[],
+        };
 
-        // Error cases
-        assert_err!(
-            TemplateKey::parse("."),
-            "Failed to parse template key \".\""
+        env::set_var("TEST", "test!");
+        assert_eq!(
+            TemplateString::from("{{env.TEST}}")
+                .render_borrow(&context)
+                .unwrap(),
+            "test!"
         );
+    }
+
+    #[test]
+    fn test_environment_error() {
+        let context = TemplateContext {
+            environment: None,
+            overrides: None,
+            history: &RequestHistory::testing(),
+            chains: &[],
+        };
+
         assert_err!(
-            TemplateKey::parse(".bad"),
-            "Failed to parse template key \".bad\""
+            TemplateString::from("{{env.UNKNOWN}}").render_borrow(&context),
+            "Error accessing environment variable \"UNKNOWN\""
         );
+    }
+
+    /// Test successful parsing *inside* the {{ }}
+    #[rstest]
+    #[case("field_id", TemplateKey::Field("field_id"))]
+    #[case("chains.chain_id", TemplateKey::Chain("chain_id"))]
+    // This is "valid", but probably won't match anything
+    #[case("chains.", TemplateKey::Chain(""))]
+    #[case("env.TEST", TemplateKey::Environment("TEST"))]
+    fn test_parse_template_key_success(
+        #[case] input: &str,
+        #[case] expected_value: TemplateKey,
+    ) {
+        assert_eq!(TemplateKey::parse(input).unwrap(), expected_value);
+    }
+
+    /// Test errors when parsing inside the {{ }}
+    #[rstest]
+    #[case(".")]
+    #[case(".bad")]
+    #[case("bad.")]
+    #[case("chains.good.bad")]
+    fn test_parse_template_key_error(#[case] input: &str) {
         assert_err!(
-            TemplateKey::parse("bad."),
-            "Failed to parse template key \"bad.\""
-        );
-        assert_err!(
-            TemplateKey::parse("chains.good.bad"),
-            "Failed to parse template key \"chains.good.bad\""
+            TemplateKey::parse(input),
+            &format!("Failed to parse template key {input:?}")
         );
     }
 }

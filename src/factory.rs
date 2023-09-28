@@ -5,14 +5,14 @@ use crate::{
 };
 use factori::factori;
 use indexmap::IndexMap;
-use reqwest::StatusCode;
+use reqwest::{header::HeaderMap, Method, StatusCode};
 
 factori!(Request, {
     default {
         recipe_id = String::new().into(),
-        method = "GET".into(),
+        method = Method::GET,
         url = "/url".into(),
-        headers = IndexMap::new(),
+        headers = HeaderMap::new(),
         query = IndexMap::new(),
         body = None,
     }
@@ -21,7 +21,7 @@ factori!(Request, {
 factori!(Response, {
     default {
         status = StatusCode::OK,
-        headers = IndexMap::new(),
+        headers = HeaderMap::new(),
         content = String::new(),
     }
 });

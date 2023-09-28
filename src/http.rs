@@ -9,7 +9,10 @@ use crate::{
 };
 use anyhow::Context;
 use indexmap::IndexMap;
-use reqwest::{Client, StatusCode};
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    Client, Method, StatusCode,
+};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, info_span};
 
@@ -35,9 +38,11 @@ pub struct Request {
     /// The recipe used to generate this request (for historical context)
     pub recipe_id: RequestRecipeId,
 
-    pub method: String,
+    #[serde(with = "serde_method")]
+    pub method: Method,
     pub url: String,
-    pub headers: IndexMap<String, String>,
+    #[serde(with = "serde_header_map")]
+    pub headers: HeaderMap,
     pub query: IndexMap<String, String>,
     /// Text body content. At some point we'll support other formats (binary,
     /// streaming from file, etc.)
@@ -52,7 +57,8 @@ pub struct Request {
 pub struct Response {
     #[serde(with = "serde_status_code")]
     pub status: StatusCode,
-    pub headers: IndexMap<String, String>,
+    #[serde(with = "serde_header_map")]
+    pub headers: HeaderMap,
     pub content: String,
 }
 
@@ -78,7 +84,12 @@ impl HttpEngine {
         template_values: &TemplateContext,
     ) -> anyhow::Result<Request> {
         debug!(?recipe, "Building request from recipe");
-        let method = recipe.method.render(template_values).context("Method")?;
+        let method = recipe
+            .method
+            .render(template_values)
+            .context("Method")?
+            .parse()
+            .context("Method")?;
         let url = recipe.url.render(template_values).context("URL")?;
 
         // Build header map
@@ -86,14 +97,19 @@ impl HttpEngine {
             .headers
             .iter()
             .map(|(header, value_template)| {
-                Ok((
-                    header.clone(),
-                    value_template
-                        .render(template_values)
-                        .with_context(|| format!("Header {header:?}"))?,
-                ))
+                let result: anyhow::Result<_> = try {
+                    // String -> header conversions are fallible, if headers
+                    // are invalid
+                    (
+                        HeaderName::try_from(header)?,
+                        HeaderValue::try_from(
+                            value_template.render(template_values)?,
+                        )?,
+                    )
+                };
+                result.with_context(|| format!("Header {header:?}"))
             })
-            .collect::<anyhow::Result<_>>()?;
+            .try_collect()?;
 
         // Add query parameters
         let query = recipe
@@ -131,14 +147,9 @@ impl HttpEngine {
         // Open a new connection to history. This function may be called in an
         // async task so it can't be passed a connection
         let history = RequestHistory::load_fast()?;
-        // TODO frontload this so the error happens during build
-        // (should make the clone unnecessary too?)
-        let reqwest_request = self
-            .convert_request(request.clone())
-            .context("Error building HTTP request")?;
 
-        // Don't add request to history until we know we can launch it
         let request_id = history.add_request(&request)?;
+        let reqwest_request = self.convert_request(request);
 
         let span = info_span!("HTTP request", %request_id);
         let response_result = span
@@ -168,37 +179,33 @@ impl HttpEngine {
         response_result
     }
 
-    /// Convert from our request type to reqwest's. We don't do any content
-    /// validation on the input data, so this is where things like HTTP method,
-    /// header names, etc. will be validated. It'd be nice if this was a TryFrom
-    /// impl, but it requires context from the engine.
-    fn convert_request(
-        &self,
-        request: Request,
-    ) -> anyhow::Result<reqwest::Request> {
+    /// Convert from our request type to reqwest's. The input request should
+    /// already be validated by virtue of its type structure, so this conversion
+    /// is generally infallible. There is potential for an error though, which
+    /// will trigger a panic. Hopefully that never happens!
+    fn convert_request(&self, request: Request) -> reqwest::Request {
         // Convert to reqwest's request format
         let mut request_builder = self
             .client
-            .request(request.method.parse()?, request.url)
-            .query(&request.query);
-
-        // Add headers
-        // TODO support non-utf8 header values
-        for (header, value) in request.headers {
-            request_builder = request_builder.header(header, value);
-        }
+            .request(request.method, request.url)
+            .query(&request.query)
+            .headers(request.headers);
 
         // Add body
         if let Some(body) = request.body {
             request_builder = request_builder.body(body);
         }
 
-        Ok(request_builder.build()?)
+        // An error here indicates a bug. Technically we should just show the
+        // error to the user, but panicking saves us from a lot of grungy logic.
+        request_builder
+            .build()
+            .expect("Error building HTTP request (this is a bug!)")
     }
 
     /// Convert reqwest's response type into ours. This is async because the
     /// response content is not necessarily loaded when we first get the
-    /// response.
+    /// response. Only fallible if the response content fails to load.
     async fn convert_response(
         &self,
         response: reqwest::Response,
@@ -206,18 +213,7 @@ impl HttpEngine {
         // Copy response metadata out first, because we need to move the
         // response to resolve content (not sure why...)
         let status = response.status();
-
-        let headers = response
-            .headers()
-            .iter()
-            .map(|(header, value)| {
-                (
-                    header.as_str().to_owned(),
-                    // TODO support non-utf8 header values
-                    value.to_str().unwrap().to_owned(),
-                )
-            })
-            .collect();
+        let headers = response.headers().clone();
 
         // Pre-resolve the content, so we get all the async work done
         let content = response.text().await?;
@@ -230,6 +226,72 @@ impl HttpEngine {
     }
 }
 
+/// Serialization/deserialization for [reqwest::Method]
+mod serde_method {
+    use super::*;
+    use serde::{de, Deserializer, Serializer};
+
+    pub fn serialize<S>(
+        method: &Method,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(method.as_str())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Method, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        <&str>::deserialize(deserializer)?
+            .parse()
+            .map_err(de::Error::custom)
+    }
+}
+
+/// Serialization/deserialization for [reqwest::HeaderMap]
+mod serde_header_map {
+    use super::*;
+    use reqwest::header::{HeaderName, HeaderValue};
+    use serde::{de, Deserializer, Serializer};
+
+    pub fn serialize<S>(
+        headers: &HeaderMap,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // HeaderValue -> str is fallible, so we'll serialize as bytes instead
+        <IndexMap<&str, &[u8]>>::serialize(
+            &headers
+                .into_iter()
+                .map(|(k, v)| (k.as_str(), v.as_bytes()))
+                .collect(),
+            serializer,
+        )
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HeaderMap, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        <IndexMap<String, Vec<u8>>>::deserialize(deserializer)?
+            .into_iter()
+            .map::<Result<(HeaderName, HeaderValue), _>, _>(|(k, v)| {
+                // Fallibly map each key and value to header types
+                Ok((
+                    k.try_into().map_err(de::Error::custom)?,
+                    v.try_into().map_err(de::Error::custom)?,
+                ))
+            })
+            .try_collect()
+    }
+}
+
+/// Serialization/deserialization for [reqwest::StatusCode]
 mod serde_status_code {
     use super::*;
     use serde::{de, Deserializer, Serializer};

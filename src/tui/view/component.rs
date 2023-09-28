@@ -13,6 +13,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, Tabs},
 };
+use reqwest::header::HeaderMap;
 use std::fmt::Display;
 
 /// A component is a helper for building a UI. It can be rendered into some UI
@@ -180,6 +181,21 @@ impl<K: Display, V: Display> ToText for IndexMap<K, V> {
     fn to_text(&self) -> Text<'static> {
         self.iter()
             .map(|(key, value)| format!("{key} = {value}").into())
+            .collect::<Vec<Line>>()
+            .into()
+    }
+}
+
+impl ToText for HeaderMap {
+    fn to_text(&self) -> Text<'static> {
+        self.iter()
+            .map(|(key, value)| {
+                format!(
+                    "{key} = {}",
+                    value.to_str().unwrap_or("<unrepresentable>")
+                )
+                .into()
+            })
             .collect::<Vec<Line>>()
             .into()
     }

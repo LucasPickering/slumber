@@ -1,4 +1,7 @@
 #![deny(clippy::all)]
+#![feature(iterator_try_collect)]
+#![feature(result_option_inspect)]
+#![feature(try_blocks)]
 
 mod config;
 #[cfg(test)]

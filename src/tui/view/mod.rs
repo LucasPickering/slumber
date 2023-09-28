@@ -276,7 +276,7 @@ impl Draw for ResponsePane {
                         Response {
                             status,
                             headers,
-                            content,
+                            body,
                         },
                     ..
                 } => {
@@ -302,7 +302,7 @@ impl Draw for ResponsePane {
 
                     // Main content for the response
                     let tab_text = match state.ui.response_tab.selected() {
-                        ResponseTab::Body => content.clone().into(),
+                        ResponseTab::Body => body.clone().into(),
                         ResponseTab::Headers => headers.to_text(),
                     };
                     f.render_widget(Paragraph::new(tab_text), content_chunk);

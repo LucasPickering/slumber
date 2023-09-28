@@ -22,7 +22,7 @@ factori!(Response, {
     default {
         status = StatusCode::OK,
         headers = HeaderMap::new(),
-        content = String::new(),
+        body = String::new(),
     }
 });
 

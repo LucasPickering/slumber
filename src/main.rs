@@ -150,7 +150,7 @@ async fn execute_subcommand(
                 println!("{:#?}", request);
             } else {
                 let response = http_engine.send_request(request).await?;
-                print!("{}", response.content);
+                print!("{}", response.body);
             }
             Ok(())
         }

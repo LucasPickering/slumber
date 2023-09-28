@@ -259,7 +259,7 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
             .get_last_success(&chain.source)
             .map_err(TemplateError::History)?
             .ok_or(TemplateError::ChainNoResponse { chain_id })?
-            .content;
+            .body;
 
         // Optionally extract a value from the JSON
         match &chain.path {
@@ -442,7 +442,7 @@ mod tests {
     fn test_chain(#[case] path: Option<&str>, #[case] expected_value: &str) {
         let recipe_id: RequestRecipeId = "recipe1".into();
         let history = RequestHistory::testing();
-        let response_content = json!({
+        let response_body = json!({
             "string": "Hello World!",
             "number": 6,
             "bool": false,
@@ -451,7 +451,7 @@ mod tests {
         });
         history.add(
             &create!(Request, recipe_id: recipe_id.clone()),
-            &Ok(create!(Response, content: response_content.to_string())),
+            &Ok(create!(Response, body: response_body.to_string())),
         );
         let context = TemplateContext {
             environment: None,
@@ -499,7 +499,7 @@ mod tests {
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),
-            Ok(create!(Response, content: "{}".into())),
+            Ok(create!(Response, body: "{}".into())),
         )),
         "Error parsing JSON path \"$.\" for chain \"chain1\"",
     )]
@@ -512,7 +512,7 @@ mod tests {
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),
-            Ok(create!(Response, content: "not json!".into())),
+            Ok(create!(Response, body: "not json!".into())),
         )),
         "Error parsing response as JSON for chain \"chain1\"",
     )]
@@ -525,7 +525,7 @@ mod tests {
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),
-            Ok(create!(Response, content: "[1, 2]".into())),
+            Ok(create!(Response, body: "[1, 2]".into())),
         )),
         "Expected exactly one result for chain \"chain1\"",
     )]

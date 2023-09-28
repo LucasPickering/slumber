@@ -59,7 +59,7 @@ pub struct Response {
     pub status: StatusCode,
     #[serde(with = "serde_header_map")]
     pub headers: HeaderMap,
-    pub content: String,
+    pub body: String,
 }
 
 impl HttpEngine {
@@ -216,12 +216,12 @@ impl HttpEngine {
         let headers = response.headers().clone();
 
         // Pre-resolve the content, so we get all the async work done
-        let content = response.text().await?;
+        let body = response.text().await?;
 
         Ok(Response {
             status,
             headers,
-            content,
+            body,
         })
     }
 }

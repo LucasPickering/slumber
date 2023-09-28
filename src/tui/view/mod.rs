@@ -9,8 +9,8 @@ use crate::{
         state::{AppState, PrimaryPane, RequestTab, ResponseTab},
         view::{
             component::{
-                BlockComponent, Component, ListComponent, TabComponent, ToSpan,
-                ToText,
+                BlockComponent, ButtonComponent, Component, ListComponent,
+                TabComponent, ToSpan, ToText,
             },
             theme::Theme,
         },
@@ -64,34 +64,15 @@ impl Renderer {
         RequestPane.draw(self, f, request_chunk, state);
         ResponsePane.draw(self, f, response_chunk, state);
 
-        // Other stuff
-        match state.notification() {
-            Some(_) => NotificationText.draw(self, f, footer_chunk, state),
-            None => HelpText.draw(self, f, footer_chunk, state),
+        // Footer
+        if state.notification().is_some() {
+            NotificationText.draw(self, f, footer_chunk, state);
+        } else {
+            HelpText.draw(self, f, footer_chunk, state);
         }
 
-        // TODO move this into a component or something
-        if let Some(error) = state.error() {
-            let block = Block::default().title("Error").borders(Borders::ALL);
-            let area = centered_rect(60, 20, f.size());
-            f.render_widget(Clear, area);
-            f.render_widget(
-                Paragraph::new(
-                    error
-                        .chain()
-                        .enumerate()
-                        .map(|(i, err)| {
-                            // Add indentation to parent errors
-                            format!("{}{err}", if i > 0 { "  " } else { "" })
-                                .into()
-                        })
-                        .collect::<Vec<Line>>(),
-                )
-                .block(block)
-                .wrap(Wrap::default()),
-                area,
-            );
-        }
+        // Render popups last so they go on top
+        ErrorPopup.draw(self, f, f.size(), state);
     }
 }
 
@@ -111,7 +92,11 @@ fn layout<const N: usize>(
         .expect("Chunk length does not match constraint length")
 }
 
-/// Something that can be drawn into a frame
+/// Something that can be drawn into a frame. Generally implementors of this
+/// will be empty structs, since [Draw::draw] provides all the context needed
+/// to render. You might be tempted to break the state apart and store in each
+/// implementor only what it needs, but that doesn't work because some need
+/// mutable+immutable references to state.
 pub trait Draw {
     fn draw(
         &self,
@@ -121,8 +106,6 @@ pub trait Draw {
         state: &mut AppState,
     );
 }
-
-pub struct ErrorPopup;
 
 pub struct EnvironmentListPane;
 
@@ -332,6 +315,60 @@ impl Draw for ResponsePane {
                     );
                 }
             }
+        }
+    }
+}
+
+pub struct ErrorPopup;
+
+impl Draw for ErrorPopup {
+    fn draw(
+        &self,
+        renderer: &Renderer,
+        f: &mut Frame,
+        chunk: Rect,
+        state: &mut AppState,
+    ) {
+        if let Some(error) = state.error() {
+            // Grab a spot in the middle of the screen
+            let chunk = centered_rect(60, 20, chunk);
+            let block = Block::default().title("Error").borders(Borders::ALL);
+            let [content_chunk, footer_chunk] = layout(
+                block.inner(chunk),
+                Direction::Vertical,
+                [Constraint::Min(0), Constraint::Length(1)],
+            );
+
+            f.render_widget(Clear, chunk);
+            f.render_widget(block, chunk);
+            f.render_widget(
+                Paragraph::new(
+                    error
+                        .chain()
+                        .enumerate()
+                        .map(|(i, err)| {
+                            // Add indentation to parent errors
+                            format!("{}{err}", if i > 0 { "  " } else { "" })
+                                .into()
+                        })
+                        .collect::<Vec<Line>>(),
+                )
+                .wrap(Wrap::default()),
+                content_chunk,
+            );
+
+            // Prompt the user to get out of here
+            f.render_widget(
+                Paragraph::new(
+                    ButtonComponent {
+                        text: "OK",
+                        is_highlighted: true,
+                    }
+                    .render(renderer),
+                )
+                .alignment(Alignment::Center),
+                footer_chunk,
+            );
         }
     }
 }

@@ -5,8 +5,7 @@ use ratatui::style::{Color, Modifier, Style};
 pub struct Theme {
     pub pane_border_style: Style,
     pub pane_border_focus_style: Style,
-    pub tab_highlight_style: Style,
-    pub list_highlight_style: Style,
+    pub text_highlight_style: Style,
     pub list_highlight_symbol: &'static str,
 }
 
@@ -27,10 +26,7 @@ impl Default for Theme {
             pane_border_focus_style: Style::default()
                 .fg(Color::LightGreen)
                 .add_modifier(Modifier::BOLD),
-            tab_highlight_style: Style::default()
-                .bg(Color::LightGreen)
-                .fg(Color::Black),
-            list_highlight_style: Style::default()
+            text_highlight_style: Style::default()
                 .bg(Color::LightGreen)
                 .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),

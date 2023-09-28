@@ -43,6 +43,20 @@ impl Component for BlockComponent {
     }
 }
 
+/// A piece of text that looks interactable
+pub struct ButtonComponent<'a> {
+    pub text: &'a str,
+    pub is_highlighted: bool,
+}
+
+impl<'a> Component for ButtonComponent<'a> {
+    type Output = Text<'a>;
+
+    fn render(self, renderer: &Renderer) -> Self::Output {
+        Text::styled(self.text, renderer.theme.text_highlight_style)
+    }
+}
+
 pub struct TabComponent<'a, T: FixedSelect> {
     pub tabs: &'a StatefulSelect<T>,
 }
@@ -53,7 +67,7 @@ impl<'a, T: FixedSelect> Component for TabComponent<'a, T> {
     fn render(self, renderer: &Renderer) -> Self::Output {
         Tabs::new(T::iter().map(|e| e.to_string()).collect())
             .select(self.tabs.selected_index())
-            .highlight_style(renderer.theme.tab_highlight_style)
+            .highlight_style(renderer.theme.text_highlight_style)
     }
 }
 
@@ -78,7 +92,7 @@ impl<'a, T: ToText> Component for ListComponent<'a, T> {
 
         List::new(items)
             .block(block)
-            .highlight_style(renderer.theme.list_highlight_style)
+            .highlight_style(renderer.theme.text_highlight_style)
             .highlight_symbol(renderer.theme.list_highlight_symbol)
     }
 }

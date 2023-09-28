@@ -31,6 +31,7 @@ pub struct TemplateContext<'a> {
     /// how to keep it around
     pub environment: Option<&'a IndexMap<String, String>>,
     pub chains: &'a [Chain],
+    /// Needed for accessing response bodies for chaining
     pub history: &'a RequestHistory,
     /// Additional key=value overrides passed directly from the user
     pub overrides: Option<&'a IndexMap<String, String>>,
@@ -441,7 +442,7 @@ mod tests {
     #[case(Some("$.object"), "{\"a\":1}")]
     fn test_chain(#[case] path: Option<&str>, #[case] expected_value: &str) {
         let recipe_id: RequestRecipeId = "recipe1".into();
-        let history = RequestHistory::testing();
+        let mut history = RequestHistory::testing();
         let response_body = json!({
             "string": "Hello World!",
             "number": 6,
@@ -450,8 +451,8 @@ mod tests {
             "object": {"a": 1},
         });
         history.add(
-            &create!(Request, recipe_id: recipe_id.clone()),
-            &Ok(create!(Response, body: response_body.to_string())),
+            create!(Request, recipe_id: recipe_id.clone()),
+            Ok(create!(Response, body: response_body.to_string())),
         );
         let context = TemplateContext {
             environment: None,
@@ -535,9 +536,9 @@ mod tests {
         #[case] request_response: Option<(Request, anyhow::Result<Response>)>,
         #[case] expected_error: &str,
     ) {
-        let history = RequestHistory::testing();
+        let mut history = RequestHistory::testing();
         if let Some((request, response)) = request_response {
-            history.add(&request, &response);
+            history.add(request, response);
         }
         let context = TemplateContext {
             environment: None,

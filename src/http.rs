@@ -3,18 +3,20 @@
 
 use crate::{
     config::{RequestRecipe, RequestRecipeId},
-    history::RequestHistory,
     template::TemplateContext,
     util::ResultExt,
 };
 use anyhow::Context;
+use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Client, Method, StatusCode,
 };
 use serde::{Deserialize, Serialize};
+use std::future::Future;
 use tracing::{debug, info, info_span};
+use uuid::Uuid;
 
 static USER_AGENT: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -31,10 +33,29 @@ pub struct HttpEngine {
     client: Client,
 }
 
+/// Unique ID for a single launched request
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Deref,
+    Display,
+    Eq,
+    From,
+    Hash,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
+pub struct RequestId(Uuid);
+
 /// A single instance of an HTTP request. Simpler alternative to
-/// [reqwest::Request] that suits our needs better.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// [reqwest::Request] that suits our needs better. This intentionally does
+/// *not* implement `Clone`, because each request is unique.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
+    /// ID to uniquely refer to this request. Useful for historical records.
+    pub id: RequestId,
     /// The recipe used to generate this request (for historical context)
     pub recipe_id: RequestRecipeId,
 
@@ -73,16 +94,106 @@ impl HttpEngine {
         }
     }
 
+    /// Launch an HTTP request. The caller is responsible for registering the
+    /// given request, and returned response/error, in history.
+    ///
+    /// This consumes the HTTP engine so that the future can outlive the scope
+    /// that created the future. This allows the future to be created outside
+    /// the task that will resolve it.
+    ///
+    /// This returns `impl Future` instead of being `async` so we can detach the
+    /// lifetime of the request from the future.
+    pub fn send<'a>(
+        self,
+        request: &Request,
+    ) -> impl Future<Output = anyhow::Result<Response>> + 'a {
+        // Convert the request *outside* the future, so we can drop the
+        // reference to the record
+        let reqwest_request = self.convert_request(request);
+        let span = info_span!("HTTP request", request_id = %request.id);
+
+        async move {
+            span.in_scope(|| async {
+                // Any error inside this block should be stored in history
+
+                let reqwest_response = self
+                    .client
+                    .execute(reqwest_request)
+                    .await
+                    .map_err(anyhow::Error::from)
+                    .traced()?;
+                let response = self
+                    .convert_response(reqwest_response)
+                    .await
+                    .context("Error loading response")
+                    .traced()?;
+
+                info!(status = response.status.as_u16(), "Response");
+                Ok(response)
+            })
+            .await
+        }
+    }
+
+    /// Convert from our request type to reqwest's. The input request should
+    /// already be validated by virtue of its type structure, so this conversion
+    /// is generally infallible. There is potential for an error though, which
+    /// will trigger a panic. Hopefully that never happens!
+    ///
+    /// This will pretty much clone all the data out of the request, which sucks
+    /// but there's no alternative. Reqwest wants to own it all, but we also
+    /// need to retain ownership for the UI.
+    fn convert_request(&self, request: &Request) -> reqwest::Request {
+        // Convert to reqwest's request format
+        let mut request_builder = self
+            .client
+            .request(request.method.clone(), &request.url)
+            .query(&request.query)
+            .headers(request.headers.clone());
+
+        // Add body
+        if let Some(body) = &request.body {
+            request_builder = request_builder.body(body.clone());
+        }
+
+        // An error here indicates a bug. Technically we should just show the
+        // error to the user, but panicking saves us from a lot of grungy logic.
+        request_builder
+            .build()
+            .expect("Error building HTTP request (this is a bug!)")
+    }
+
+    /// Convert reqwest's response type into ours. This is async because the
+    /// response content is not necessarily loaded when we first get the
+    /// response. Only fallible if the response content fails to load.
+    async fn convert_response(
+        &self,
+        response: reqwest::Response,
+    ) -> anyhow::Result<Response> {
+        // Copy response metadata out first, because we need to move the
+        // response to resolve content (not sure why...)
+        let status = response.status();
+        let headers = response.headers().clone();
+
+        // Pre-resolve the content, so we get all the async work done
+        let body = response.text().await?;
+
+        Ok(Response {
+            status,
+            headers,
+            body,
+        })
+    }
+}
+
+impl Request {
     /// Instantiate a request from a recipe, using values from the given
     /// environment to render templated strings. Errors if request construction
     /// fails because of invalid user input somewhere.
-    ///
-    /// The returned request is *not necessarily* a valid HTTP request.
-    pub fn build_request(
-        &self,
+    pub fn build(
         recipe: &RequestRecipe,
         template_values: &TemplateContext,
-    ) -> anyhow::Result<Request> {
+    ) -> anyhow::Result<Self> {
         debug!(?recipe, "Building request from recipe");
         let method = recipe
             .method
@@ -123,105 +234,21 @@ impl HttpEngine {
                 ))
             })
             .collect::<anyhow::Result<IndexMap<_, _>>>()?;
+        // Render the body
         let body = recipe
             .body
             .as_ref()
             .map(|body| body.render(template_values).context("Body"))
             .transpose()?;
-        Ok(Request {
+
+        Ok(Self {
+            id: RequestId(Uuid::new_v4()),
             recipe_id: recipe.id.clone(),
             method,
             url,
             query,
             body,
             headers,
-        })
-    }
-
-    /// Launch a request in a spawned task. The response will be stored with
-    /// the request
-    pub async fn send_request(
-        &self,
-        request: Request,
-    ) -> anyhow::Result<Response> {
-        // Open a new connection to history. This function may be called in an
-        // async task so it can't be passed a connection
-        let history = RequestHistory::load_fast()?;
-
-        let request_id = history.add_request(&request)?;
-        let reqwest_request = self.convert_request(request);
-
-        let span = info_span!("HTTP request", %request_id);
-        let response_result = span
-            .in_scope(|| async {
-                info!(request_url = %reqwest_request.url());
-                // Any error inside this block should be stored in history
-
-                let reqwest_response = self
-                    .client
-                    .execute(reqwest_request)
-                    .await
-                    .map_err(anyhow::Error::from)
-                    .traced()?;
-                let response = self
-                    .convert_response(reqwest_response)
-                    .await
-                    .context("Error loading response")
-                    .traced()?;
-
-                info!(status = response.status.as_u16(), "Response");
-                Ok(response)
-            })
-            .await;
-
-        // Store result (success OR failure) in history
-        history.add_response(request_id, &response_result)?;
-        response_result
-    }
-
-    /// Convert from our request type to reqwest's. The input request should
-    /// already be validated by virtue of its type structure, so this conversion
-    /// is generally infallible. There is potential for an error though, which
-    /// will trigger a panic. Hopefully that never happens!
-    fn convert_request(&self, request: Request) -> reqwest::Request {
-        // Convert to reqwest's request format
-        let mut request_builder = self
-            .client
-            .request(request.method, request.url)
-            .query(&request.query)
-            .headers(request.headers);
-
-        // Add body
-        if let Some(body) = request.body {
-            request_builder = request_builder.body(body);
-        }
-
-        // An error here indicates a bug. Technically we should just show the
-        // error to the user, but panicking saves us from a lot of grungy logic.
-        request_builder
-            .build()
-            .expect("Error building HTTP request (this is a bug!)")
-    }
-
-    /// Convert reqwest's response type into ours. This is async because the
-    /// response content is not necessarily loaded when we first get the
-    /// response. Only fallible if the response content fails to load.
-    async fn convert_response(
-        &self,
-        response: reqwest::Response,
-    ) -> anyhow::Result<Response> {
-        // Copy response metadata out first, because we need to move the
-        // response to resolve content (not sure why...)
-        let status = response.status();
-        let headers = response.headers().clone();
-
-        // Pre-resolve the content, so we get all the async work done
-        let body = response.text().await?;
-
-        Ok(Response {
-            status,
-            headers,
-            body,
         })
     }
 }

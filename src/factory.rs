@@ -6,9 +6,11 @@ use crate::{
 use factori::factori;
 use indexmap::IndexMap;
 use reqwest::{header::HeaderMap, Method, StatusCode};
+use uuid::Uuid;
 
 factori!(Request, {
     default {
+        id = Uuid::new_v4().into(),
         recipe_id = String::new().into(),
         method = Method::GET,
         url = "/url".into(),

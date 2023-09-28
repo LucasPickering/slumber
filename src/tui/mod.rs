@@ -5,7 +5,7 @@ mod view;
 use crate::{
     config::RequestCollection,
     history::RequestHistory,
-    http::HttpEngine,
+    http::{HttpEngine, Request},
     tui::{
         input::InputManager,
         state::{AppState, Message},
@@ -34,7 +34,14 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 use tracing::{debug, error};
 
 /// Main controller struct for the TUI. The app uses an MVC architecture, and
-/// this is the C
+/// this is the C. The main loop goes through the following phases on each
+/// iteration:
+///
+/// - Input phase: Check for input from the user
+/// - Message phase: Process any async messages from input or external sources
+///   (HTTP, file system, etc.)
+/// - Draw phase: Draw the entire UI
+/// - Signal phase: Check for process signals that should trigger an exit
 #[derive(Debug)]
 pub struct Tui {
     // All state should generally be stored in [AppState]. This stored here
@@ -83,7 +90,9 @@ impl Tui {
         app.run().unwrap();
     }
 
-    /// Run the main TUI update loop. Any error returned from this is fatal
+    /// Run the main TUI update loop. Any error returned from this is fatal. See
+    /// the struct definition for a description of the different phases of the
+    /// run loop.
     fn run(&mut self) -> anyhow::Result<()> {
         // Listen for signals to stop the program
         let mut quit_signals = Signals::new([SIGHUP, SIGINT, SIGTERM, SIGQUIT])
@@ -93,20 +102,11 @@ impl Tui {
         let mut last_tick = Instant::now();
 
         while self.state.should_run() {
-            self.terminal
-                .draw(|f| self.renderer.draw_main(f, &mut self.state))?;
-
-            // Handle all messages in the queue before accepting new input
-            while let Ok(message) = self.messages_rx.try_recv() {
-                // If an error occurs, store it so we can show the user
-                self.handle_message(message)
-                    .ok_or_apply(|err| self.state.set_error(err));
-            }
-
-            // Check for any new events
+            // ===== Input Phase =====
             let timeout = tick_rate
                 .checked_sub(last_tick.elapsed())
                 .unwrap_or_else(|| Duration::from_secs(0));
+            // This is where the tick rate is enforced
             if crossterm::event::poll(timeout)? {
                 InputManager::instance()
                     .handle_event(&mut self.state, crossterm::event::read()?);
@@ -115,7 +115,18 @@ impl Tui {
                 last_tick = Instant::now();
             }
 
-            // Check for exit signals
+            // ===== Message Phase =====
+            while let Ok(message) = self.messages_rx.try_recv() {
+                // If an error occurs, store it so we can show the user
+                self.handle_message(message)
+                    .ok_or_apply(|err| self.state.set_error(err));
+            }
+
+            // ===== Draw Phase =====
+            self.terminal
+                .draw(|f| self.renderer.draw_main(f, &mut self.state))?;
+
+            // ===== Signal Phase =====
             if quit_signals.pending().next().is_some() {
                 self.state.quit();
             }
@@ -156,8 +167,16 @@ impl Tui {
                     collection_file.to_string_lossy()
                 ));
             }
-            Message::SendRequest => {
+            Message::HttpSendRequest => {
                 self.send_request()?;
+            }
+            Message::HttpRegisterResponse {
+                request_id,
+                response_result,
+            } => {
+                self.state
+                    .history
+                    .add_response(request_id, response_result)?;
             }
             Message::Error { error } => {
                 self.state.set_error(error);
@@ -175,18 +194,23 @@ impl Tui {
             .selected()
             .ok_or_else(|| anyhow!("No recipe selected"))?;
 
-        // Build the request first, and immediately store it in history
-        let request = self
-            .http_engine
-            .build_request(recipe, &self.state.template_context())?;
+        // Build the request
+        let request = Request::build(recipe, &self.state.template_context())?;
 
-        let http_engine = self.http_engine.clone();
+        // Pre-create the future because it needs a reference to the request
+        let future = self.http_engine.clone().send(&request);
+        let record = self.state.history.add_request(request)?;
+
+        let request_id = record.id();
+        let messages_tx = self.state.messages_tx.clone();
 
         // Launch the request in a separate task so it doesn't block
         tokio::spawn(async move {
-            // The result will be stored in history and traced, so we don't need
-            // to do anything with it
-            let _ = http_engine.send_request(request).await;
+            let response_result = future.await;
+            messages_tx.send(Message::HttpRegisterResponse {
+                request_id,
+                response_result,
+            });
         });
         Ok(())
     }

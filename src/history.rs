@@ -1,29 +1,39 @@
 use crate::{
     config::RequestRecipeId,
-    http::{Request, Response},
+    http::{Request, RequestId, Response},
+    util::ResultExt,
 };
-use anyhow::{anyhow, Context};
+use anyhow::{bail, Context};
 use chrono::{DateTime, Duration, Utc};
-use derive_more::{Deref, Display};
+use derive_more::Display;
+use lru::LruCache;
 use rusqlite::{
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
     Connection, OptionalExtension, Row, ToSql,
 };
 use rusqlite_migration::{Migrations, M};
-use std::{ops::Deref, path::PathBuf};
+use std::{
+    cell::RefCell, num::NonZeroUsize, ops::Deref, path::PathBuf, rc::Rc,
+};
 use strum::{EnumDiscriminants, EnumString};
-use tracing::{debug, warn};
+use tracing::debug;
 use uuid::Uuid;
+
+/// Number of requests/responses to cache in memory
+const CACHE_SIZE: usize = 10;
 
 /// A record of all HTTP history, which is persisted on disk. This is also used
 /// to populate chained values. This uses a sqlite DB underneath, which means
 /// all operations are internally fallible. Generally speaking, any error that
-/// occurs *after* opening the DB connection should be an internal bug, because
-/// any external changes to the file system will not affect the open file
-/// handle. Therefore they are panics. This simplifies the external API.
+/// occurs *after* opening the DB connection should be an internal bug. The
+/// error should be shown to the user whenever possible.
 ///
 /// Invalid requests should *not* be stored in history, because they were never
 /// launched.
+///
+/// Requests and responses are cached in memory, to prevent constantly going to
+/// disk and deserializing. The cache uses interior mutability to minimize
+/// impact on the external API.
 #[derive(Debug)]
 pub struct RequestHistory {
     /// History is stored in a sqlite DB, for ease of access and insertion. It
@@ -31,22 +41,29 @@ pub struct RequestHistory {
     /// that we need, the equivalent Rust struct would start to look a lot
     /// like a database anyway.
     db_connection: Connection,
+    /// Cache all request records that have been created/modified/loaded during
+    /// this session, so we don't have to go to the DB on every frame.
+    ///
+    /// The `RefCell` allows us to cache retrieved values loaded from the
+    /// database without requiring the user to hold `&mut` for a read
+    /// operation. The `Rc` allows the caller to retain a reference to the
+    /// record without having to keep the `RefCell` open.
+    ///
+    /// Inspired by https://matklad.github.io/2022/06/11/caches-in-rust.html
+    request_cache: RefCell<LruCache<RequestId, Rc<RequestRecord>>>,
 }
 
-/// Unique ID for a single launched request
-#[derive(Copy, Clone, Debug, Deref, Display)]
-pub struct RequestId(Uuid);
-
-/// A single request in history
+/// A single request+response in history
 #[derive(Debug)]
 pub struct RequestRecord {
-    /// Uniquely identify this record
-    pub id: RequestId,
-    pub recipe_id: RequestRecipeId,
-    /// When was the request sent to the server?
+    /// When was the request registered in history? This should be very close
+    /// to when it was sent to the server
     pub start_time: DateTime<Utc>,
     pub request: Request,
-    pub response: ResponseState,
+    /// This needs interior mutability so the response can be modified after
+    /// the request is already cached. We guarantee soundness by only mutating
+    /// during the message phase of the TUI.
+    response: RefCell<ResponseState>,
 }
 
 /// State of an HTTP response, which can be pending or completed. Also generate
@@ -88,20 +105,20 @@ impl RequestHistory {
         PathBuf::from("./history.sqlite")
     }
 
-    /// Load the history database, skipping first-time setup. This should be
-    /// used for short-lived threads.
-    pub fn load_fast() -> anyhow::Result<Self> {
+    /// Load the history database. This will perform first-time setup, so this
+    /// should only be called at the main session entrypoint.
+    pub fn load() -> anyhow::Result<Self> {
         let db_connection = Connection::open(Self::path())?;
         // Use WAL for concurrency
         db_connection.pragma_update(None, "journal_mode", "WAL")?;
 
-        Ok(Self { db_connection })
-    }
+        let mut history = Self {
+            db_connection,
+            request_cache: RefCell::new(LruCache::new(
+                NonZeroUsize::new(CACHE_SIZE).unwrap(),
+            )),
+        };
 
-    /// Load the history database. This will perform first-time setup, so this
-    /// should only be called at the main session entrypoint.
-    pub fn load() -> anyhow::Result<Self> {
-        let mut history = Self::load_fast()?;
         history.setup()?;
         Ok(history)
     }
@@ -134,72 +151,117 @@ impl RequestHistory {
         Ok(())
     }
 
-    /// Add a new request to history. This should be called immediately after
-    /// the request is sent, so the generated start_time timestamp is accurate.
-    /// Returns the generated ID for the request, so it can be linked to the
-    /// response later.
-    pub fn add_request(&self, request: &Request) -> anyhow::Result<RequestId> {
-        let request_id = RequestId(Uuid::new_v4());
-        debug!(%request_id, ?request, "Adding request to history");
+    /// Add a new request to history. This should be called immediately before
+    /// or after the request is sent, so the generated start_time timestamp
+    /// is accurate. Returns the generated record.
+    ///
+    /// The returned record is wrapped in `Rc` so it can co-exist in our local
+    /// cache.
+    pub fn add_request(
+        &mut self,
+        request: Request,
+    ) -> anyhow::Result<Rc<RequestRecord>> {
+        debug!(id = %request.id, url = %request.url, "Adding request to history");
+        let record = Rc::new(RequestRecord {
+            request,
+            start_time: Utc::now(),
+            response: RefCell::new(ResponseState::Loading),
+        });
         self.db_connection
             .execute(
                 "INSERT INTO
                 requests (id, recipe_id, start_time, request, status)
                 VALUES (?1, ?2, ?3, ?4, ?5)",
                 (
-                    request_id,
-                    &request.recipe_id,
-                    Utc::now(),
-                    request,
+                    record.id(),
+                    &record.request.recipe_id,
+                    &record.start_time,
+                    &record.request,
                     ResponseStatus::Loading,
                 ),
             )
             .context("Error saving request in history")?;
-        Ok(request_id)
+
+        Ok(self.cache_record(record))
     }
 
     /// Attach a response (or error) to an existing request. Errors will be
     /// converted to a string for serialization
     pub fn add_response(
-        &self,
+        &mut self,
         request_id: RequestId,
-        result: &anyhow::Result<Response>,
+        // The error is stored as a string, so take anything stringifiable
+        result: Result<Response, impl ToString>,
     ) -> anyhow::Result<()> {
-        let (status, response): (ResponseStatus, Box<dyn ToSql>) = match result
-        {
-            Ok(response) => {
-                debug!(
-                    %request_id,
-                    "Adding response success to history"
-                );
-                (ResponseStatus::Success, Box::new(response))
-            }
-            Err(err) => {
-                warn!(
-                    %request_id,
-                    "Adding response error to history"
-                );
-                (ResponseStatus::Error, Box::new(err.to_string()))
-            }
+        debug!(
+            %request_id,
+            outcome = match result {
+                Ok(_) => "OK",
+                Err(_) => "Error",
+            },
+            "Adding response to history"
+        );
+
+        let end_time = Utc::now();
+        let response_state = match result {
+            Ok(response) => ResponseState::Success { response, end_time },
+            Err(err) => ResponseState::Error {
+                error: err.to_string(),
+                end_time,
+            },
         };
 
+        // Update the DB first
+        let content: &dyn ToSql = match &response_state {
+            ResponseState::Success { response, .. } => response,
+            ResponseState::Error { error, .. } => error,
+            // We just created the state, so we know it can't hit this
+            _ => unreachable!("Response state must be success or error"),
+        };
         let updated_rows = self
             .db_connection
             .execute(
                 "UPDATE requests SET status = ?1, response = ?2, end_time = ?3 WHERE id = ?4",
-                (status, response, Utc::now(), request_id),
+                (ResponseStatus::from(&response_state), content, Utc::now(), request_id),
             )
             .context("Error saving response in history")?;
 
-        // Safety check, make sure it ID matched
-        if updated_rows == 1 {
-            Ok(())
-        } else {
-            Err(anyhow!(
+        // Safety check, make sure the ID matched
+        if updated_rows != 1 {
+            bail!(
                 "Expected to update 1 row when adding response, \
                 but updated {updated_rows} instead"
-            ))
+            )
         }
+
+        // Update the cache with the response
+        self.cache_response(request_id, response_state);
+
+        Ok(())
+    }
+
+    /// Get a request by ID. Requires `&mut self` so the cache can be updated if
+    /// necessary. Return an error if the request isn't in history.
+    pub fn get_request(
+        &self,
+        request_id: RequestId,
+    ) -> anyhow::Result<Rc<RequestRecord>> {
+        let mut cache = self.request_cache.borrow_mut();
+        let record = cache.try_get_or_insert(request_id, || {
+            // Miss - get the request from the DB
+            let record: RequestRecord = self
+                .db_connection
+                .query_row(
+                    "SELECT * FROM requests WHERE id = ?1",
+                    [request_id],
+                    |row| row.try_into(),
+                )
+                .context("Error fetching request from history")
+                .traced()?;
+            debug!(%request_id, "Loaded request from history");
+            Ok::<_, anyhow::Error>(Rc::new(record))
+        })?;
+        Ok(Rc::clone(record))
     }
 
     /// Get the most recent request for a recipe, or `None` if there has never
@@ -207,25 +269,37 @@ impl RequestHistory {
     pub fn get_last(
         &self,
         recipe_id: &RequestRecipeId,
-    ) -> anyhow::Result<Option<RequestRecord>> {
-        self.db_connection
+    ) -> anyhow::Result<Option<Rc<RequestRecord>>> {
+        // First, find the ID we care about. The fetch the record separately,
+        // since it may be cached
+        let request_id_opt: Option<RequestId> = self
+            .db_connection
             .query_row(
-                "SELECT * FROM requests WHERE recipe_id = ?1
+                "SELECT id FROM requests WHERE recipe_id = ?1
                 ORDER BY start_time DESC LIMIT 1",
                 [recipe_id],
-                |row| row.try_into(),
+                |row| row.get(0),
             )
             .optional()
-            .context("Error fetching request from history")
+            .context("Error fetching request ID from history")
+            .traced()?;
+
+        Ok(match request_id_opt {
+            Some(request_id) => Some(self.get_request(request_id)?),
+            None => None,
+        })
     }
 
     /// Get the most recent *successful* response for a recipe, or `None` if
-    /// there is none
+    /// there is none.
     pub fn get_last_success(
         &self,
         recipe_id: &RequestRecipeId,
     ) -> anyhow::Result<Option<Response>> {
-        self.db_connection
+        // Right now this doesn't use the cache because that makes it hard to
+        // return just a Response
+        let record_opt = self
+            .db_connection
             .query_row(
                 "SELECT * FROM requests
                 WHERE recipe_id = ?1 AND status = ?2
@@ -235,6 +309,35 @@ impl RequestHistory {
             )
             .optional()
             .context("Error fetching request from history")
+            .traced()?;
+        debug!(%recipe_id, "Loaded request from history");
+        Ok(record_opt)
+    }
+
+    /// Store a request record in the cache. Return a reference to the cached
+    /// record
+    fn cache_record(&self, record: Rc<RequestRecord>) -> Rc<RequestRecord> {
+        let record_id = record.id();
+        let mut cache = self.request_cache.borrow_mut();
+        cache.push(record_id, record);
+        // Grab the thing we just inserted
+        let record = cache.get(&record_id).unwrap();
+        Rc::clone(record)
+    }
+
+    /// Link a response to an existing request in the cache. If the request
+    /// isn't in the cache, do nothing.
+    fn cache_response(
+        &mut self,
+        request_id: RequestId,
+        response_state: ResponseState,
+    ) {
+        // Use peek_mut so we don't update the LRU. A response coming in
+        // doesn't necessarily mean the user still cares about it.
+        if let Some(record) = self.request_cache.get_mut().peek_mut(&request_id)
+        {
+            *record.response.borrow_mut() = response_state;
+        }
     }
 }
 
@@ -244,31 +347,51 @@ impl RequestHistory {
     /// Create an in-memory history DB, only for testing
     pub fn testing() -> Self {
         let db_connection = Connection::open_in_memory().unwrap();
-        let mut history = Self { db_connection };
+        let mut history = Self {
+            db_connection,
+            request_cache: RefCell::new(LruCache::new(
+                NonZeroUsize::new(1).unwrap(),
+            )),
+        };
         history.setup().unwrap();
         history
     }
 
     /// Add a request-response pair
-    pub fn add(&self, request: &Request, response: &anyhow::Result<Response>) {
-        let request_id = self.add_request(request).unwrap();
-        self.add_response(request_id, response).unwrap();
+    pub fn add(
+        &mut self,
+        request: Request,
+        response: anyhow::Result<Response>,
+    ) {
+        let record = self.add_request(request).unwrap();
+        self.add_response(record.id(), response).unwrap();
     }
 }
 
 impl RequestRecord {
+    /// Get the unique ID for this request
+    pub fn id(&self) -> RequestId {
+        self.request.id
+    }
+
+    /// Access the response state for this request. Return `impl Deref` to mask
+    /// the implementation details of interior mutability here.
+    pub fn response(&self) -> impl Deref<Target = ResponseState> + '_ {
+        self.response.borrow()
+    }
+
     /// Get the elapsed time for this request, according to response state:
     /// - Loading - Elapsed time since the request started
     /// - Incomplete - `None`
     /// - Success - Duration from start to loading the entire request
     /// - Error - Duration from start to request failing
     pub fn duration(&self) -> Option<Duration> {
-        match self.response {
+        match self.response().deref() {
             ResponseState::Loading => Some(Utc::now() - self.start_time),
             ResponseState::Incomplete => None,
             ResponseState::Success { end_time, .. }
             | ResponseState::Error { end_time, .. } => {
-                Some(end_time - self.start_time)
+                Some(*end_time - self.start_time)
             }
         }
     }
@@ -294,11 +417,9 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
         };
 
         Ok(Self {
-            id: row.get("id")?,
-            recipe_id: row.get("recipe_id")?,
             request: row.get("request")?,
             start_time: row.get("start_time")?,
-            response,
+            response: RefCell::new(response),
         })
     }
 }
@@ -311,7 +432,7 @@ impl ToSql for RequestId {
 
 impl FromSql for RequestId {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Ok(Self(Uuid::column_result(value)?))
+        Ok(Uuid::column_result(value)?.into())
     }
 }
 

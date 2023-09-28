@@ -1,6 +1,7 @@
 use crate::{
     config::{Chain, Environment, RequestCollection, RequestRecipe},
     history::{RequestHistory, RequestRecord},
+    http::{RequestId, Response},
     template::TemplateContext,
     tui::{
         input::InputTarget,
@@ -18,6 +19,7 @@ use std::{
     fmt::Display,
     ops::Deref,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 use strum::{EnumIter, IntoEnumIterator};
 use tokio::sync::mpsc::UnboundedSender;
@@ -104,9 +106,11 @@ impl AppState {
     }
 
     /// Get whichever request state should currently be shown to the user,
-    /// based on whichever recipe is selected. Only returns `None` if there has
-    /// never been request sent for the current recipe.
-    pub fn active_request(&mut self) -> Option<RequestRecord> {
+    /// based on whichever recipe is selected.
+    ///
+    /// The request is loaded from history, which uses caching internally, so
+    /// generally this should be fast.
+    pub fn active_request(&mut self) -> Option<Rc<RequestRecord>> {
         self.history
             .get_last(&self.ui.recipes.selected()?.id)
             .ok_or_apply(|err| self.set_error(err))
@@ -203,7 +207,13 @@ pub enum Message {
     },
     /// Launch an HTTP request from the currently selected recipe. Errors if
     /// the recipes aren't in focus, or the list is empty
-    SendRequest,
+    HttpSendRequest,
+    /// Store an HTTP response/error in state/history
+    HttpRegisterResponse {
+        request_id: RequestId,
+        response_result: anyhow::Result<Response>,
+    },
+
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
 }

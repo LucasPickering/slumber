@@ -1,6 +1,6 @@
 use crate::template::TemplateString;
 use anyhow::{anyhow, Context};
-use derive_more::{Deref, From};
+use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -53,7 +53,17 @@ pub struct RequestRecipe {
     pub headers: IndexMap<String, TemplateString>,
 }
 
-#[derive(Clone, Debug, Deref, Default, From, Serialize, Deserialize)]
+#[derive(
+    Clone,
+    Debug,
+    Deref,
+    Default,
+    Display,
+    From,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
 pub struct RequestRecipeId(String);
 
 /// A chain is a means to data from one response in another request. The chain

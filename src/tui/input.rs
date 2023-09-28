@@ -269,7 +269,7 @@ impl InputTarget for RecipeListPane {
             }),
             OutcomeBinding::new(Action::Down, &|state| state.ui.recipes.next()),
             OutcomeBinding::new(Action::Interact, &|state| {
-                state.messages_tx.send(Message::SendRequest)
+                state.messages_tx.send(Message::HttpSendRequest)
             }),
         ]
     }

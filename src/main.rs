@@ -13,13 +13,21 @@ mod tui;
 mod util;
 
 use crate::{
-    config::RequestCollection, history::RequestHistory, http::HttpEngine,
-    template::TemplateContext, tui::Tui, util::find_by,
+    config::RequestCollection,
+    history::RequestHistory,
+    http::{HttpEngine, Request},
+    template::TemplateContext,
+    tui::Tui,
+    util::find_by,
 };
 use anyhow::Context;
 use clap::Parser;
 use indexmap::IndexMap;
-use std::{error::Error, path::PathBuf, str::FromStr};
+use std::{
+    error::Error,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
 #[derive(Debug, Parser)]
@@ -133,10 +141,9 @@ async fn execute_subcommand(
             )?;
 
             // Build the request
-            let history = RequestHistory::load()?;
-            let http_engine = HttpEngine::new();
+            let mut history = RequestHistory::load()?;
             let overrides: IndexMap<_, _> = overrides.into_iter().collect();
-            let request = http_engine.build_request(
+            let request = Request::build(
                 recipe,
                 &TemplateContext {
                     environment,
@@ -149,8 +156,28 @@ async fn execute_subcommand(
             if dry_run {
                 println!("{:#?}", request);
             } else {
-                let response = http_engine.send_request(request).await?;
-                print!("{}", response.body);
+                // Register the request in history *before* launching it, in
+                // case it fails
+                let http_engine = HttpEngine::new();
+                let future = http_engine.send(&request);
+                let record_id = history.add_request(request)?.id();
+
+                // For Ok, we have to move the response, so print it *first*.
+                // For Err, we want to return the owned error. Fortunately the
+                // record stores it as a string, so we can pass a reference.
+                match future.await {
+                    Ok(response) => {
+                        print!("{}", response.body);
+                        history.add_response(
+                            record_id,
+                            Ok::<_, anyhow::Error>(response),
+                        )?;
+                    }
+                    Err(err) => {
+                        history.add_response(record_id, Err(&err))?;
+                        return Err(err);
+                    }
+                }
             }
             Ok(())
         }
@@ -159,8 +186,8 @@ async fn execute_subcommand(
 
 /// Set up tracing to log to a file
 fn initialize_tracing() -> anyhow::Result<()> {
-    let directory = PathBuf::from("./log/");
-    std::fs::create_dir_all(directory.clone())
+    let directory = Path::new("./log/");
+    std::fs::create_dir_all(directory)
         .context(format!("Error creating log directory {directory:?}"))?;
     let log_path = directory.join("ratatui-app.log");
     let log_file = std::fs::File::create(log_path)?;

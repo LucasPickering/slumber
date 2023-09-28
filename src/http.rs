@@ -8,9 +8,9 @@ use crate::{
     util::ResultExt,
 };
 use anyhow::Context;
+use indexmap::IndexMap;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tracing::{debug, info, info_span};
 
 static USER_AGENT: &str =
@@ -37,8 +37,8 @@ pub struct Request {
 
     pub method: String,
     pub url: String,
-    pub headers: HashMap<String, String>,
-    pub query: HashMap<String, String>,
+    pub headers: IndexMap<String, String>,
+    pub query: IndexMap<String, String>,
     /// Text body content. At some point we'll support other formats (binary,
     /// streaming from file, etc.)
     pub body: Option<String>,
@@ -52,7 +52,7 @@ pub struct Request {
 pub struct Response {
     #[serde(with = "serde_status_code")]
     pub status: StatusCode,
-    pub headers: HashMap<String, String>,
+    pub headers: IndexMap<String, String>,
     pub content: String,
 }
 
@@ -106,7 +106,7 @@ impl HttpEngine {
                         .with_context(|| format!("Query parameter {k:?}"))?,
                 ))
             })
-            .collect::<anyhow::Result<HashMap<_, _>>>()?;
+            .collect::<anyhow::Result<IndexMap<_, _>>>()?;
         let body = recipe
             .body
             .as_ref()

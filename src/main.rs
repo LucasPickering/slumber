@@ -15,7 +15,8 @@ use crate::{
 };
 use anyhow::Context;
 use clap::Parser;
-use std::{collections::HashMap, error::Error, path::PathBuf, str::FromStr};
+use indexmap::IndexMap;
+use std::{error::Error, path::PathBuf, str::FromStr};
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
 #[derive(Debug, Parser)]
@@ -131,7 +132,7 @@ async fn execute_subcommand(
             // Build the request
             let history = RequestHistory::load()?;
             let http_engine = HttpEngine::new();
-            let overrides: HashMap<_, _> = overrides.into_iter().collect();
+            let overrides: IndexMap<_, _> = overrides.into_iter().collect();
             let request = http_engine.build_request(
                 recipe,
                 &TemplateContext {

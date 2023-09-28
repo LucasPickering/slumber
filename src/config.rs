@@ -1,8 +1,9 @@
 use crate::template::TemplateString;
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, From};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::Path};
+use std::path::Path;
 use tokio::fs;
 use tracing::{event, Level};
 
@@ -32,7 +33,7 @@ pub struct RequestCollection {
 pub struct Environment {
     pub id: String,
     pub name: Option<String>,
-    pub data: HashMap<String, String>,
+    pub data: IndexMap<String, String>,
 }
 
 /// A definition of how to make a request. This is *not* called `Request` in
@@ -47,9 +48,9 @@ pub struct RequestRecipe {
     pub url: TemplateString,
     pub body: Option<TemplateString>,
     #[serde(default)]
-    pub query: HashMap<String, TemplateString>,
+    pub query: IndexMap<String, TemplateString>,
     #[serde(default)]
-    pub headers: HashMap<String, TemplateString>,
+    pub headers: IndexMap<String, TemplateString>,
 }
 
 #[derive(Clone, Debug, Deref, Default, From, Serialize, Deserialize)]

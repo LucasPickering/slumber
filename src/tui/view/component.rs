@@ -8,11 +8,12 @@ use crate::{
     },
 };
 use chrono::{DateTime, Duration, Local, Utc};
+use indexmap::IndexMap;
 use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, Tabs},
 };
-use std::{collections::HashMap, fmt::Display};
+use std::fmt::Display;
 
 /// A component is a helper for building a UI. It can be rendered into some UI
 /// element to be drawn.
@@ -175,7 +176,7 @@ impl<T: ToSpan> ToText for T {
     }
 }
 
-impl<K: Display, V: Display> ToText for HashMap<K, V> {
+impl<K: Display, V: Display> ToText for IndexMap<K, V> {
     fn to_text(&self) -> Text<'static> {
         self.iter()
             .map(|(key, value)| format!("{key} = {value}").into())

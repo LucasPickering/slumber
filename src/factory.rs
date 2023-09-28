@@ -4,16 +4,16 @@ use crate::{
     template::TemplateString,
 };
 use factori::factori;
+use indexmap::IndexMap;
 use reqwest::StatusCode;
-use std::collections::HashMap;
 
 factori!(Request, {
     default {
         recipe_id = String::new().into(),
         method = "GET".into(),
         url = "/url".into(),
-        headers = HashMap::new(),
-        query = HashMap::new(),
+        headers = IndexMap::new(),
+        query = IndexMap::new(),
         body = None,
     }
 });
@@ -21,7 +21,7 @@ factori!(Request, {
 factori!(Response, {
     default {
         status = StatusCode::OK,
-        headers = HashMap::new(),
+        headers = IndexMap::new(),
         content = String::new(),
     }
 });

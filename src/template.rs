@@ -1,12 +1,12 @@
 use crate::{config::Chain, history::RequestHistory, util::ResultExt};
 use anyhow::Context;
 use derive_more::{Deref, Display, From};
+use indexmap::IndexMap;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json_path::{ExactlyOneError, JsonPath};
 use std::{
     borrow::Cow,
-    collections::HashMap,
     env::{self, VarError},
     ops::Deref as _,
     sync::OnceLock,
@@ -25,15 +25,15 @@ pub struct TemplateString(String);
 /// to that state (without cloning).
 #[derive(Debug)]
 pub struct TemplateContext<'a> {
-    /// Technically this could just be an empty hashmap instead of needing an
+    /// Technically this could just be an empty IndexMap instead of needing an
     /// option, but that makes it hard when the environment is missing on the
     /// creator's side, because they need to create an empty map and figure out
     /// how to keep it around
-    pub environment: Option<&'a HashMap<String, String>>,
+    pub environment: Option<&'a IndexMap<String, String>>,
     pub chains: &'a [Chain],
     pub history: &'a RequestHistory,
     /// Additional key=value overrides passed directly from the user
-    pub overrides: Option<&'a HashMap<String, String>>,
+    pub overrides: Option<&'a IndexMap<String, String>>,
 }
 
 /// Any error that can occur during template rendering. Generally the generic
@@ -221,7 +221,7 @@ impl<'a> TemplateSource<'a> for FieldSource<'a> {
         context: &'a TemplateContext<'a>,
     ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
         fn get_opt<'a>(
-            map: Option<&'a HashMap<String, String>>,
+            map: Option<&'a IndexMap<String, String>>,
             key: &str,
         ) -> Option<&'a String> {
             map?.get(key)

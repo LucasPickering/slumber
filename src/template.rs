@@ -122,7 +122,7 @@ impl TemplateString {
             let key_raw =
                 captures.get(1).expect("Missing key capture group").as_str();
             let key = TemplateKey::parse(key_raw)?;
-            let rendered_value = context.get(key)?;
+            let rendered_value = key.into_value().render(context)?;
             trace!(
                 key = key_raw,
                 value = rendered_value.deref(),
@@ -138,13 +138,67 @@ impl TemplateString {
     }
 }
 
-impl<'a> TemplateContext<'a> {
-    /// Get a value by key. Return a Cow because sometimes this can be a
-    /// reference to the template context, but sometimes it has to be owned
-    /// data (e.g. when pulling response data from the history DB).
-    fn get(
+/// A parsed template key. The variant of this determines how the key will be
+/// resolved into a value.
+///
+/// This also serves as an enumeration of all possible value types. Once a key
+/// is parsed, we know its value type and can dynamically dispatch for rendering
+/// based on that.
+#[derive(Clone, Debug, PartialEq)]
+enum TemplateKey<'a> {
+    /// A plain field, which can come from the environment or an override
+    Field(&'a str),
+    /// A value chained from the response of another recipe
+    Chain(&'a str),
+}
+
+impl<'a> TemplateKey<'a> {
+    /// Parse a string into a key. It'd be nice if this was a `FromStr`
+    /// implementation, but that doesn't allow us to attach to the lifetime of
+    /// the input `str`.
+    fn parse(s: &'a str) -> Result<Self, TemplateError<&'a str>> {
+        match s.split('.').collect::<Vec<_>>().as_slice() {
+            [key] => Ok(Self::Field(key)),
+            ["chains", chain_id] => Ok(Self::Chain(chain_id)),
+            _ => Err(TemplateError::InvalidKey { key: s }),
+        }
+    }
+
+    /// Convert this key into a renderable value type
+    fn into_value(self) -> Box<dyn TemplateRender<'a>> {
+        match self {
+            TemplateKey::Field(field) => Box::new(FieldKey { field }),
+            TemplateKey::Chain(chain_id) => Box::new(ChainKey { chain_id }),
+        }
+    }
+}
+
+/// A single-type parsed template key, which can be rendered into a string.
+/// This should be one implementation of this for each variant of [TemplateKey].
+///
+/// By breaking `TemplateKey` apart into multiple types, we can split the
+/// render logic easily amongst a bunch of functions. It's not technically
+/// necessary, just a code organization thing.
+trait TemplateRender<'a>: 'a {
+    /// Render this intermediate value into a string. Return a Cow because
+    /// sometimes this can be a reference to the template context, but
+    /// other times it has to be owned data (e.g. when pulling response data
+    /// from the history DB).
+    fn render(
         &self,
-        key: TemplateKey<'a>,
+        context: &'a TemplateContext<'a>,
+    ) -> Result<Cow<'a, str>, TemplateError<&'a str>>;
+}
+
+/// A simple field value (e.g. from the environment or an override)
+struct FieldKey<'a> {
+    field: &'a str,
+}
+
+impl<'a> TemplateRender<'a> for FieldKey<'a> {
+    fn render(
+        &self,
+        context: &'a TemplateContext<'a>,
     ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
         fn get_opt<'a>(
             map: Option<&'a HashMap<String, String>>,
@@ -153,32 +207,34 @@ impl<'a> TemplateContext<'a> {
             map?.get(key)
         }
 
-        match key {
-            // Plain fields
-            TemplateKey::Field(field) => None
-                // Cascade down the the list of maps we want to check
-                .or_else(|| get_opt(self.overrides, field))
-                .or_else(|| get_opt(self.environment, field))
-                .map(Cow::from)
-                .ok_or(TemplateError::FieldUnknown { field }),
-
-            // Chained response values
-            TemplateKey::Chain(chain_id) => self.get_chain(chain_id),
-        }
+        let field = self.field;
+        None
+            // Cascade down the the list of maps we want to check
+            .or_else(|| get_opt(context.overrides, field))
+            .or_else(|| get_opt(context.environment, field))
+            .map(Cow::from)
+            .ok_or(TemplateError::FieldUnknown { field })
     }
+}
 
-    /// Helper for resolving a chained value
-    fn get_chain(
+/// A chained value from another response
+struct ChainKey<'a> {
+    chain_id: &'a str,
+}
+
+impl<'a> TemplateRender<'a> for ChainKey<'a> {
+    fn render(
         &self,
-        chain_id: &'a str,
+        context: &'a TemplateContext<'a>,
     ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
+        let chain_id = self.chain_id;
         // Resolve chained value
-        let chain = self
+        let chain = context
             .chains
             .iter()
             .find(|chain| chain.id == chain_id)
             .ok_or(TemplateError::ChainUnknown { chain_id })?;
-        let response = self
+        let response = context
             .history
             .get_last_success(&chain.source)
             .map_err(TemplateError::History)?
@@ -262,29 +318,6 @@ impl<'a> TemplateError<&'a str> {
                 }
             }
             Self::History(err) => TemplateError::History(err),
-        }
-    }
-}
-
-/// A parsed template key. The variant of this determines how the key will be
-/// resolved into a value.
-#[derive(Clone, Debug, PartialEq)]
-enum TemplateKey<'a> {
-    /// A plain field, which can come from the environment or an override
-    Field(&'a str),
-    /// A value chained from the response of another recipe
-    Chain(&'a str),
-}
-
-impl<'a> TemplateKey<'a> {
-    /// Parse a string into a key. It'd be nice if this was a `FromStr`
-    /// implementation, but that doesn't allow us to attach to the lifetime of
-    /// the input `str`.
-    fn parse(s: &'a str) -> Result<Self, TemplateError<&'a str>> {
-        match s.split('.').collect::<Vec<_>>().as_slice() {
-            [key] => Ok(Self::Field(key)),
-            ["chains", chain_id] => Ok(Self::Chain(chain_id)),
-            _ => Err(TemplateError::InvalidKey { key: s }),
         }
     }
 }

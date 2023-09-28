@@ -3,7 +3,7 @@
 use crate::{
     config::{Environment, RequestRecipe},
     tui::{
-        state::{FixedSelect, StatefulList, StatefulSelect},
+        state::{FixedSelect, Notification, StatefulList, StatefulSelect},
         view::Renderer,
     },
 };
@@ -109,6 +109,17 @@ impl ToSpan for Environment {
 impl ToSpan for RequestRecipe {
     fn to_span(&self) -> Span<'static> {
         format!("[{}] {}", self.method, self.name()).into()
+    }
+}
+
+impl ToSpan for Notification {
+    fn to_span(&self) -> Span<'static> {
+        format!(
+            "[{}] {}",
+            self.timestamp.with_timezone(&Local).format("%H:%M:%S"),
+            self.message
+        )
+        .into()
     }
 }
 

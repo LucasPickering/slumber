@@ -35,7 +35,7 @@ impl Renderer {
 
     pub fn draw_main(&self, f: &mut Frame, state: &mut AppState) {
         // Create layout
-        let [main_chunk, help_chunk] = layout(
+        let [main_chunk, footer_chunk] = layout(
             f.size(),
             Direction::Vertical,
             [Constraint::Min(0), Constraint::Length(1)],
@@ -58,14 +58,20 @@ impl Renderer {
             [Constraint::Percentage(50), Constraint::Percentage(50)],
         );
 
-        HelpText.draw(self, f, help_chunk, state);
+        // Main panes
         EnvironmentListPane.draw(self, f, environments_chunk, state);
         RecipeListPane.draw(self, f, recipes_chunk, state);
         RequestPane.draw(self, f, request_chunk, state);
         ResponsePane.draw(self, f, response_chunk, state);
 
+        // Other stuff
+        match state.notification() {
+            Some(_) => NotificationText.draw(self, f, footer_chunk, state),
+            None => HelpText.draw(self, f, footer_chunk, state),
+        }
+
         // TODO move this into a component or something
-        if let Some(error) = state.ui.error() {
+        if let Some(error) = state.error() {
             let block = Block::default().title("Error").borders(Borders::ALL);
             let area = centered_rect(60, 20, f.size());
             f.render_widget(Clear, area);
@@ -340,7 +346,6 @@ impl Draw for HelpText {
         chunk: Rect,
         state: &mut AppState,
     ) {
-        let block = Block::default();
         // Find all available input bindings
         let input_manager = InputManager::instance();
         let available_actions = input_manager.actions(state);
@@ -348,8 +353,23 @@ impl Draw for HelpText {
             .into_iter()
             .filter_map(|app| input_manager.binding(app.action))
             .join(" | ");
-        let paragraph = Paragraph::new(key_binding_text).block(block);
-        f.render_widget(paragraph, chunk);
+        f.render_widget(Paragraph::new(key_binding_text), chunk);
+    }
+}
+
+pub struct NotificationText;
+
+impl Draw for NotificationText {
+    fn draw(
+        &self,
+        _: &Renderer,
+        f: &mut Frame,
+        chunk: Rect,
+        state: &mut AppState,
+    ) {
+        if let Some(notification) = state.notification() {
+            f.render_widget(Paragraph::new(notification.to_span()), chunk);
+        }
     }
 }
 

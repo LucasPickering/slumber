@@ -99,7 +99,7 @@ pub enum Action {
     /// Exit the app
     Quit,
     /// Reload the request collection from the same file as the initial load
-    #[display(fmt = "Reload")]
+    #[display(fmt = "Reload Collection")]
     ReloadCollection,
     /// Focus the next pane
     #[display(fmt = "Next Pane")]
@@ -315,7 +315,7 @@ impl InputTarget for ResponsePane {
 
 impl InputTarget for ErrorPopup {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        let clear_error: Mutator = &|state| state.ui.clear_error();
+        let clear_error: Mutator = &|state| state.clear_error();
         vec![
             OutcomeBinding::new(Action::Interact, clear_error),
             OutcomeBinding::new(Action::Close, clear_error),

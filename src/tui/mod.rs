@@ -100,7 +100,7 @@ impl Tui {
             while let Ok(message) = self.messages_rx.try_recv() {
                 // If an error occurs, store it so we can show the user
                 self.handle_message(message)
-                    .ok_or_apply(|err| self.state.ui.set_error(err));
+                    .ok_or_apply(|err| self.state.set_error(err));
             }
 
             // Check for any new events
@@ -111,7 +111,6 @@ impl Tui {
                 InputManager::instance()
                     .handle_event(&mut self.state, crossterm::event::read()?);
             }
-
             if last_tick.elapsed() >= tick_rate {
                 last_tick = Instant::now();
             }
@@ -137,20 +136,31 @@ impl Tui {
                             .ok_or_apply(|err| {
                             messages_tx.send(Message::Error { error: err })
                         })?;
-                    messages_tx
-                        .send(Message::EndReloadCollection { collection });
+                    messages_tx.send(Message::EndReloadCollection {
+                        collection_file,
+                        collection,
+                    });
                     // Return an option just to allow bailing above
                     None::<()>
                 });
             }
-            Message::EndReloadCollection { collection } => {
+            Message::EndReloadCollection {
+                collection_file,
+                collection,
+            } => {
                 self.state.reload_collection(collection);
+                // Send the notification *after* reloading, otherwise it'll get
+                // wiped out immediately
+                self.state.notify(format!(
+                    "Reloaded collection from {}",
+                    collection_file.to_string_lossy()
+                ));
             }
             Message::SendRequest => {
                 self.send_request()?;
             }
             Message::Error { error } => {
-                self.state.ui.set_error(error);
+                self.state.set_error(error);
             }
         }
         Ok(())

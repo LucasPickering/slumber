@@ -54,6 +54,9 @@ pub struct Tui {
 }
 
 impl Tui {
+    /// Rough maximum time for each iteration of the main loop
+    const TICK_TIME: Duration = Duration::from_millis(100);
+
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
     pub fn start(collection_file: PathBuf, collection: RequestCollection) {
@@ -98,12 +101,11 @@ impl Tui {
         let mut quit_signals = Signals::new([SIGHUP, SIGINT, SIGTERM, SIGQUIT])
             .context("Error creating signal handler")?;
 
-        let tick_rate = Duration::from_millis(250);
         let mut last_tick = Instant::now();
 
         while self.state.should_run() {
             // ===== Input Phase =====
-            let timeout = tick_rate
+            let timeout = Self::TICK_TIME
                 .checked_sub(last_tick.elapsed())
                 .unwrap_or_else(|| Duration::from_secs(0));
             // This is where the tick rate is enforced
@@ -111,7 +113,7 @@ impl Tui {
                 InputManager::instance()
                     .handle_event(&mut self.state, crossterm::event::read()?);
             }
-            if last_tick.elapsed() >= tick_rate {
+            if last_tick.elapsed() >= Self::TICK_TIME {
                 last_tick = Instant::now();
             }
 

@@ -67,9 +67,9 @@ pub struct RequestRecord {
 }
 
 /// State of an HTTP response, which can be pending or completed. Also generate
-/// a discriminant-only enum that will map to the `status` column in the DB
+/// a discriminant-only enum that will map to the `response_kind` column
 #[derive(Debug, EnumDiscriminants)]
-#[strum_discriminants(name(ResponseStatus), derive(Display, EnumString))]
+#[strum_discriminants(name(ResponseStateKind), derive(Display, EnumString))]
 pub enum ResponseState {
     /// Request is in flight, or is *about* to be sent. There's no way to
     /// initiate a request that doesn't immediately launch it, so Loading is
@@ -126,18 +126,19 @@ impl RequestHistory {
     /// First-time setup, should be called once per session
     fn setup(&mut self) -> anyhow::Result<()> {
         let migrations = Migrations::new(vec![M::up(
-            // The response status is a bit hard to map to tabular data.
-            // Everything that we need to query on (success/error status,
-            // end_time, etc.) is in its own column. The response itself will
-            // be serialized into text
+            // The response state kind is a bit hard to map to tabular data.
+            // Everything that we need to query on (success/error kind, HTTP
+            // status code, end_time, etc.) is in its own column. The response
+            // itself will be serialized into text
             "CREATE TABLE requests (
-                id          UUID PRIMARY KEY,
-                recipe_id   TEXT,
-                start_time  TEXT,
-                end_time    TEXT NULLABLE,
-                request     BLOB,
-                status      TEXT,
-                response    BLOB NULLABLE
+                id              UUID PRIMARY KEY,
+                recipe_id       TEXT,
+                start_time      TEXT,
+                end_time        TEXT NULLABLE,
+                request         BLOB,
+                response_kind   TEXT,
+                response        BLOB NULLABLE,
+                status_code     INTEGER NULLABLE
             )",
         )]);
         migrations.to_latest(&mut self.db_connection)?;
@@ -145,8 +146,8 @@ impl RequestHistory {
         // Anything that was pending when we exited is lost now, so convert
         // those to incomplete
         self.db_connection.execute(
-            "UPDATE requests SET status = ?1 WHERE status = ?2",
-            (ResponseStatus::Incomplete, ResponseStatus::Loading),
+            "UPDATE requests SET response_kind = ?1 WHERE response_kind = ?2",
+            (ResponseStateKind::Incomplete, ResponseStateKind::Loading),
         )?;
         Ok(())
     }
@@ -161,7 +162,11 @@ impl RequestHistory {
         &mut self,
         request: Request,
     ) -> anyhow::Result<Rc<RequestRecord>> {
-        debug!(id = %request.id, url = %request.url, "Adding request to history");
+        debug!(
+            id = %request.id,
+            url = %request.url,
+            "Adding request to history",
+        );
         let record = Rc::new(RequestRecord {
             request,
             start_time: Utc::now(),
@@ -170,14 +175,14 @@ impl RequestHistory {
         self.db_connection
             .execute(
                 "INSERT INTO
-                requests (id, recipe_id, start_time, request, status)
+                requests (id, recipe_id, start_time, request, response_kind)
                 VALUES (?1, ?2, ?3, ?4, ?5)",
                 (
                     record.id(),
                     &record.request.recipe_id,
                     &record.start_time,
                     &record.request,
-                    ResponseStatus::Loading,
+                    ResponseStateKind::Loading,
                 ),
             )
             .context("Error saving request in history")?;
@@ -212,17 +217,28 @@ impl RequestHistory {
         };
 
         // Update the DB first
-        let content: &dyn ToSql = match &response_state {
-            ResponseState::Success { response, .. } => response,
-            ResponseState::Error { error, .. } => error,
-            // We just created the state, so we know it can't hit this
-            _ => unreachable!("Response state must be success or error"),
-        };
+        let (content, status_code): (&dyn ToSql, Option<u16>) =
+            match &response_state {
+                ResponseState::Success { response, .. } => {
+                    (response, Some(response.status.as_u16()))
+                }
+                ResponseState::Error { error, .. } => (error, None),
+                // We just created the state, so we know it can't hit this
+                _ => unreachable!("Response state must be success or error"),
+            };
         let updated_rows = self
             .db_connection
             .execute(
-                "UPDATE requests SET status = ?1, response = ?2, end_time = ?3 WHERE id = ?4",
-                (ResponseStatus::from(&response_state), content, Utc::now(), request_id),
+                "UPDATE requests SET response_kind = ?1, response = ?2,
+                end_time = ?3, status_code = ?4
+                WHERE id = ?5",
+                (
+                    ResponseStateKind::from(&response_state),
+                    content,
+                    end_time,
+                    status_code,
+                    request_id,
+                ),
             )
             .context("Error saving response in history")?;
 
@@ -302,9 +318,9 @@ impl RequestHistory {
             .db_connection
             .query_row(
                 "SELECT * FROM requests
-                WHERE recipe_id = ?1 AND status = ?2
+                WHERE recipe_id = ?1 AND response_kind = ?2
                 ORDER BY start_time DESC LIMIT 1",
-                (recipe_id, ResponseStatus::Success),
+                (recipe_id, ResponseStateKind::Success),
                 |row| row.get("response"),
             )
             .optional()
@@ -402,15 +418,15 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
     type Error = rusqlite::Error;
 
     fn try_from(row: &Row<'a>) -> Result<Self, Self::Error> {
-        // Extract the response based on the status column
-        let response = match row.get::<_, ResponseStatus>("status")? {
-            ResponseStatus::Loading => ResponseState::Loading,
-            ResponseStatus::Incomplete => ResponseState::Incomplete,
-            ResponseStatus::Success => ResponseState::Success {
+        // Extract the response based on the response_kind column
+        let response = match row.get::<_, ResponseStateKind>("response_kind")? {
+            ResponseStateKind::Loading => ResponseState::Loading,
+            ResponseStateKind::Incomplete => ResponseState::Incomplete,
+            ResponseStateKind::Success => ResponseState::Success {
                 response: row.get("response")?,
                 end_time: row.get("end_time")?,
             },
-            ResponseStatus::Error => ResponseState::Error {
+            ResponseStateKind::Error => ResponseState::Error {
                 error: row.get("response")?,
                 end_time: row.get("end_time")?,
             },
@@ -448,13 +464,13 @@ impl FromSql for RequestRecipeId {
     }
 }
 
-impl ToSql for ResponseStatus {
+impl ToSql for ResponseStateKind {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         Ok(ToSqlOutput::Owned(self.to_string().into()))
     }
 }
 
-impl FromSql for ResponseStatus {
+impl FromSql for ResponseStateKind {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         String::column_result(value)?
             .parse()

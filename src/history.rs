@@ -135,9 +135,9 @@ impl RequestHistory {
                 recipe_id   TEXT,
                 start_time  TEXT,
                 end_time    TEXT NULLABLE,
-                request     TEXT,
+                request     BLOB,
                 status      TEXT,
-                response    TEXT NULLABLE
+                response    BLOB NULLABLE
             )",
         )]);
         migrations.to_latest(&mut self.db_connection)?;
@@ -462,22 +462,22 @@ impl FromSql for ResponseStatus {
     }
 }
 
-/// Macro to convert a serializable type to/from SQL via YAML serialization.
-/// This is a bit ugly but it works.
+/// Macro to convert a serializable type to/from SQL via MessagePack
 macro_rules! serial_sql {
     ($t:ty) => {
         impl ToSql for $t {
             fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-                Ok(ToSqlOutput::Owned(
-                    serde_yaml::to_string(self).unwrap().into(),
-                ))
+                let bytes = rmp_serde::to_vec(self).map_err(|err| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(err))
+                })?;
+                Ok(ToSqlOutput::Owned(bytes.into()))
             }
         }
 
         impl FromSql for $t {
             fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-                let s = value.as_str()?;
-                serde_yaml::from_str(s)
+                let bytes = value.as_blob()?;
+                rmp_serde::from_slice(bytes)
                     .map_err(|err| FromSqlError::Other(Box::new(err)))
             }
         }

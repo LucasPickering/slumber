@@ -1,7 +1,8 @@
 use crate::{
     config::{Chain, RequestRecipeId},
     http::{Request, Response},
-    template::TemplateString,
+    repository::Repository,
+    template::{TemplateContext, TemplateString},
 };
 use factori::factori;
 use indexmap::IndexMap;
@@ -34,6 +35,15 @@ factori!(Chain, {
         source = RequestRecipeId::default(),
         name = None,
         path = None
+    }
+});
+
+factori!(TemplateContext, {
+    default {
+        environment = Default::default()
+        chains = Default::default()
+        repository = Repository::testing()
+        overrides = Default::default()
     }
 });
 

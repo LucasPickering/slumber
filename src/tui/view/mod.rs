@@ -18,7 +18,7 @@ use crate::{
 };
 use itertools::Itertools;
 use ratatui::{prelude::*, widgets::*};
-use std::{fmt::Debug, io::Stdout, ops::Deref};
+use std::{fmt::Debug, io::Stdout};
 
 type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<Stdout>>;
 
@@ -256,7 +256,7 @@ impl Draw for ResponsePane {
                 header_right_chunk,
             );
 
-            match request.response().deref() {
+            match &request.response {
                 ResponseState::Loading => {
                     f.render_widget(
                         Paragraph::new("Loading..."),

@@ -169,20 +169,8 @@ impl Tui {
                     collection_file.to_string_lossy()
                 ));
             }
-            Message::HttpSendRequest => {
-                self.send_request()?;
-            }
-            Message::HttpRegisterResponse {
-                request_id,
-                response_result,
-            } => {
-                self.state
-                    .repository
-                    .add_response(request_id, response_result)?;
-            }
-            Message::Error { error } => {
-                self.state.set_error(error);
-            }
+            Message::HttpSendRequest => self.send_request()?,
+            Message::Error { error } => self.state.set_error(error),
         }
         Ok(())
     }
@@ -194,25 +182,36 @@ impl Tui {
             .ui
             .recipes
             .selected()
-            .ok_or_else(|| anyhow!("No recipe selected"))?;
+            .ok_or_else(|| anyhow!("No recipe selected"))?
+            .clone();
 
-        // Build the request
-        let request = Request::build(recipe, &self.state.template_context())?;
-
-        // Pre-create the future because it needs a reference to the request
-        let future = self.http_engine.clone().send(&request);
-        let record = self.state.repository.add_request(request)?;
-
-        let request_id = record.id();
+        // These clones are all cheap
+        let template_context = self.state.template_context();
+        let http_engine = self.http_engine.clone();
+        let mut repository = self.state.repository.clone();
         let messages_tx = self.state.messages_tx.clone();
 
         // Launch the request in a separate task so it doesn't block
         tokio::spawn(async move {
-            let response_result = future.await;
-            messages_tx.send(Message::HttpRegisterResponse {
-                request_id,
-                response_result,
-            });
+            let result = try {
+                // Build the request
+                let request =
+                    Request::build(&recipe, &template_context).await?;
+                let request_id = request.id;
+
+                // Pre-create the future because it needs a reference to the
+                // request
+                let future = http_engine.send(&request);
+                repository.add_request(request)?;
+
+                // Execute the request and store the response
+                let response_result = future.await;
+                repository.add_response(request_id, response_result)?;
+            };
+            // Report any errors back to the main thread
+            if let Err(err) = result {
+                messages_tx.send(Message::Error { error: err })
+            }
         });
         Ok(())
     }

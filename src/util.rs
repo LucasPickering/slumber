@@ -5,26 +5,22 @@ use tracing::error;
 /// A slightly spaghetti helper for finding an item in a list by value. We
 /// expect the item to be there, so if it's missing return an error with a
 /// friendly message for the user.
-pub fn find_by<E, T: Debug + PartialEq>(
-    iter: impl Iterator<Item = E>,
-    extractor: impl Fn(&E) -> T,
-    target: T,
+pub fn find_by<E, K: Debug + PartialEq>(
+    mut vec: Vec<E>,
+    extractor: impl Fn(&E) -> &K,
+    target: &K,
     not_found_message: &str,
 ) -> anyhow::Result<E> {
-    // Track which ones don't match, for a potential error message
-    let mut misses = Vec::new();
-
-    for element in iter {
-        let ass = extractor(&element);
-        if ass == target {
-            return Ok(element);
+    let index = vec.iter().position(|element| extractor(element) == target);
+    match index {
+        Some(index) => Ok(vec.swap_remove(index)),
+        None => {
+            let options: Vec<&K> = vec.iter().map(extractor).collect();
+            Err(anyhow!(
+                "{not_found_message} {target:?}; Options are: {options:?}"
+            ))
         }
-        misses.push(ass);
     }
-
-    Err(anyhow!(
-        "{not_found_message} {target:?}; Options are: {misses:?}"
-    ))
 }
 
 pub trait ResultExt<T, E>: Sized {

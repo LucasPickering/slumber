@@ -1,9 +1,6 @@
-use crate::{
-    config::Chain,
-    repository::{Repository, ResponseState},
-    util::ResultExt,
-};
+use crate::{config::Chain, repository::Repository, util::ResultExt};
 use anyhow::Context;
+use async_trait::async_trait;
 use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
 use regex::Regex;
@@ -28,17 +25,237 @@ pub struct TemplateString(String);
 /// templating. This is derived from AppState, and will only store references
 /// to that state (without cloning).
 #[derive(Debug)]
-pub struct TemplateContext<'a> {
-    /// Technically this could just be an empty IndexMap instead of needing an
-    /// option, but that makes it hard when the environment is missing on the
-    /// creator's side, because they need to create an empty map and figure out
-    /// how to keep it around
-    pub environment: Option<&'a IndexMap<String, String>>,
-    pub chains: &'a [Chain],
+pub struct TemplateContext {
+    /// Key-value mapping
+    pub environment: IndexMap<String, String>,
+    /// Chained values from dynamic sources
+    pub chains: Vec<Chain>,
     /// Needed for accessing response bodies for chaining
-    pub repository: &'a Repository,
+    pub repository: Repository,
     /// Additional key=value overrides passed directly from the user
-    pub overrides: Option<&'a IndexMap<String, String>>,
+    pub overrides: IndexMap<String, String>,
+}
+
+impl TemplateString {
+    /// Render the template string using values from the given context. If an
+    /// error occurs, it is returned as general `anyhow` error. If you need a
+    /// more specific error, use [Self::render_borrow].
+    pub async fn render(
+        &self,
+        context: &TemplateContext,
+    ) -> anyhow::Result<String> {
+        self.render_borrow(context)
+            .await
+            .map_err(TemplateError::into_owned)
+            .with_context(|| format!("Error rendering template {:?}", self.0))
+            .traced()
+    }
+
+    /// Render the template string using values from the given state. If an
+    /// error occurs, return a borrowed error type that references the template
+    /// string. Useful for inline rendering in the UI.
+    #[instrument]
+    pub async fn render_borrow<'a>(
+        &'a self,
+        context: &'a TemplateContext,
+    ) -> Result<String, TemplateError<&'a str>> {
+        // Template syntax is simple so it's easiest to just implement it with
+        // a regex
+        let re = TEMPLATE_REGEX
+            .get_or_init(|| Regex::new(r"\{\{\s*([\w\d._-]+)\s*\}\}").unwrap());
+
+        // Regex::replace_all doesn't support fallible replacement, so we
+        // have to do it ourselves.
+        // https://docs.rs/regex/1.9.5/regex/struct.Regex.html#method.replace_all
+
+        let mut new = String::with_capacity(self.len());
+        let mut last_match = 0;
+        for captures in re.captures_iter(self) {
+            let m = captures.get(0).unwrap();
+            new.push_str(&self[last_match..m.start()]);
+            let key_raw =
+                captures.get(1).expect("Missing key capture group").as_str();
+            let key = TemplateKey::parse(key_raw)?;
+            let rendered_value = key.into_value().render(context).await?;
+            trace!(
+                key = key_raw,
+                value = rendered_value.deref(),
+                "Rendered template key"
+            );
+            // Replace the key with its value
+            new.push_str(&rendered_value);
+            last_match = m.end();
+        }
+        new.push_str(&self[last_match..]);
+
+        Ok(new)
+    }
+}
+
+/// A parsed template key. The variant of this determines how the key will be
+/// resolved into a value.
+///
+/// This also serves as an enumeration of all possible value types. Once a key
+/// is parsed, we know its value type and can dynamically dispatch for rendering
+/// based on that.
+#[derive(Clone, Debug, PartialEq)]
+enum TemplateKey<'a> {
+    /// A plain field, which can come from the environment or an override
+    Field(&'a str),
+    /// A value chained from the response of another recipe
+    Chain(&'a str),
+    /// A value pulled from the process environment
+    Environment(&'a str),
+}
+
+impl<'a> TemplateKey<'a> {
+    /// Parse a string into a key. It'd be nice if this was a `FromStr`
+    /// implementation, but that doesn't allow us to attach to the lifetime of
+    /// the input `str`.
+    fn parse(s: &'a str) -> Result<Self, TemplateError<&'a str>> {
+        match s.split('.').collect::<Vec<_>>().as_slice() {
+            [key] => Ok(Self::Field(key)),
+            ["chains", chain_id] => Ok(Self::Chain(chain_id)),
+            ["env", variable] => Ok(Self::Environment(variable)),
+            _ => Err(TemplateError::InvalidKey { key: s }),
+        }
+    }
+
+    /// Convert this key into a renderable value type
+    fn into_value(self) -> Box<dyn TemplateSource<'a>> {
+        match self {
+            TemplateKey::Field(field) => Box::new(FieldSource { field }),
+            TemplateKey::Chain(chain_id) => Box::new(ChainSource { chain_id }),
+            TemplateKey::Environment(variable) => {
+                Box::new(EnvironmentSource { variable })
+            }
+        }
+    }
+}
+
+/// A single-type parsed template key, which can be rendered into a string.
+/// This should be one implementation of this for each variant of [TemplateKey].
+///
+/// By breaking `TemplateKey` apart into multiple types, we can split the
+/// render logic easily amongst a bunch of functions. It's not technically
+/// necessary, just a code organization thing.
+#[async_trait]
+trait TemplateSource<'a>: 'a + Send + Sync {
+    /// Render this intermediate value into a string. Return a Cow because
+    /// sometimes this can be a reference to the template context, but
+    /// other times it has to be owned data (e.g. when pulling response data
+    /// from the repository).
+    async fn render(
+        &self,
+        context: &'a TemplateContext,
+    ) -> Result<Cow<'a, str>, TemplateError<&'a str>>;
+}
+
+/// A simple field value (e.g. from the environment or an override)
+struct FieldSource<'a> {
+    field: &'a str,
+}
+
+#[async_trait]
+impl<'a> TemplateSource<'a> for FieldSource<'a> {
+    async fn render(
+        &self,
+        context: &'a TemplateContext,
+    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
+        let field = self.field;
+        None
+            // Cascade down the the list of maps we want to check
+            .or_else(|| context.overrides.get(field))
+            .or_else(|| context.environment.get(field))
+            .map(Cow::from)
+            .ok_or(TemplateError::FieldUnknown { field })
+    }
+}
+
+/// A chained value from another response
+struct ChainSource<'a> {
+    chain_id: &'a str,
+}
+
+#[async_trait]
+impl<'a> TemplateSource<'a> for ChainSource<'a> {
+    async fn render(
+        &self,
+        context: &'a TemplateContext,
+    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
+        let chain_id = self.chain_id;
+        // Resolve chained value
+        let chain = context
+            .chains
+            .iter()
+            .find(|chain| chain.id == chain_id)
+            .ok_or(TemplateError::ChainUnknown { chain_id })?;
+        let record = context
+            .repository
+            .get_last_success(&chain.source)
+            .map_err(TemplateError::Repository)?
+            .ok_or(TemplateError::ChainNoResponse { chain_id })?;
+        let response = record
+            // The record *should* contain a response because we asked for a
+            // success but just to be safe, don't unwrap
+            .try_response()
+            .map_err(TemplateError::Repository)?;
+
+        // Optionally extract a value from the JSON
+        match &chain.path {
+            Some(path) => {
+                // Parse the JSON path
+                let path = JsonPath::parse(path).map_err(|err| {
+                    TemplateError::ChainJsonPath {
+                        chain_id,
+                        path,
+                        error: err,
+                    }
+                })?;
+                // Parse the response as JSON
+                let response_value: serde_json::Value =
+                    serde_json::from_str(&response.body).map_err(|err| {
+                        TemplateError::ChainJsonResponse {
+                            chain_id,
+                            error: err,
+                        }
+                    })?;
+                let found_value = path
+                    .query(&response_value)
+                    .exactly_one()
+                    .map_err(|err| TemplateError::ChainInvalidResult {
+                        chain_id,
+                        error: err,
+                    })?;
+
+                match found_value {
+                    serde_json::Value::String(s) => Ok(s.clone().into()),
+                    other => Ok(other.to_string().into()),
+                }
+            }
+            None => Ok(response.body.to_owned().into()),
+        }
+    }
+}
+
+/// A value sourced from the process's environment
+struct EnvironmentSource<'a> {
+    variable: &'a str,
+}
+
+#[async_trait]
+impl<'a> TemplateSource<'a> for EnvironmentSource<'a> {
+    async fn render(
+        &self,
+        _: &'a TemplateContext,
+    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
+        env::var(self.variable).map(Cow::from).map_err(|err| {
+            TemplateError::EnvironmentVariable {
+                variable: self.variable,
+                error: err,
+            }
+        })
+    }
 }
 
 /// Any error that can occur during template rendering. Generally the generic
@@ -103,228 +320,6 @@ pub enum TemplateError<S: std::fmt::Display> {
     /// An error occurred accessing the request repository
     #[error("{0}")]
     Repository(#[source] anyhow::Error),
-}
-
-impl TemplateString {
-    /// Render the template string using values from the given context. If an
-    /// error occurs, it is returned as general `anyhow` error. If you need a
-    /// more specific error, use [Self::render_borrow].
-    pub fn render(&self, context: &TemplateContext) -> anyhow::Result<String> {
-        self.render_borrow(context)
-            .map_err(TemplateError::into_owned)
-            .with_context(|| format!("Error rendering template {:?}", self.0))
-            .traced()
-    }
-
-    /// Render the template string using values from the given state. If an
-    /// error occurs, return a borrowed error type that references the template
-    /// string. Useful for inline rendering in the UI.
-    #[instrument]
-    pub fn render_borrow<'a>(
-        &'a self,
-        context: &'a TemplateContext,
-    ) -> Result<String, TemplateError<&'a str>> {
-        // Template syntax is simple so it's easiest to just implement it with
-        // a regex
-        let re = TEMPLATE_REGEX
-            .get_or_init(|| Regex::new(r"\{\{\s*([\w\d._-]+)\s*\}\}").unwrap());
-
-        // Regex::replace_all doesn't support fallible replacement, so we
-        // have to do it ourselves.
-        // https://docs.rs/regex/1.9.5/regex/struct.Regex.html#method.replace_all
-
-        let mut new = String::with_capacity(self.len());
-        let mut last_match = 0;
-        for captures in re.captures_iter(self) {
-            let m = captures.get(0).unwrap();
-            new.push_str(&self[last_match..m.start()]);
-            let key_raw =
-                captures.get(1).expect("Missing key capture group").as_str();
-            let key = TemplateKey::parse(key_raw)?;
-            let rendered_value = key.into_value().render(context)?;
-            trace!(
-                key = key_raw,
-                value = rendered_value.deref(),
-                "Rendered template key"
-            );
-            // Replace the key with its value
-            new.push_str(&rendered_value);
-            last_match = m.end();
-        }
-        new.push_str(&self[last_match..]);
-
-        Ok(new)
-    }
-}
-
-/// A parsed template key. The variant of this determines how the key will be
-/// resolved into a value.
-///
-/// This also serves as an enumeration of all possible value types. Once a key
-/// is parsed, we know its value type and can dynamically dispatch for rendering
-/// based on that.
-#[derive(Clone, Debug, PartialEq)]
-enum TemplateKey<'a> {
-    /// A plain field, which can come from the environment or an override
-    Field(&'a str),
-    /// A value chained from the response of another recipe
-    Chain(&'a str),
-    /// A value pulled from the process environment
-    Environment(&'a str),
-}
-
-impl<'a> TemplateKey<'a> {
-    /// Parse a string into a key. It'd be nice if this was a `FromStr`
-    /// implementation, but that doesn't allow us to attach to the lifetime of
-    /// the input `str`.
-    fn parse(s: &'a str) -> Result<Self, TemplateError<&'a str>> {
-        match s.split('.').collect::<Vec<_>>().as_slice() {
-            [key] => Ok(Self::Field(key)),
-            ["chains", chain_id] => Ok(Self::Chain(chain_id)),
-            ["env", variable] => Ok(Self::Environment(variable)),
-            _ => Err(TemplateError::InvalidKey { key: s }),
-        }
-    }
-
-    /// Convert this key into a renderable value type
-    fn into_value(self) -> Box<dyn TemplateSource<'a>> {
-        match self {
-            TemplateKey::Field(field) => Box::new(FieldSource { field }),
-            TemplateKey::Chain(chain_id) => Box::new(ChainSource { chain_id }),
-            TemplateKey::Environment(variable) => {
-                Box::new(EnvironmentSource { variable })
-            }
-        }
-    }
-}
-
-/// A single-type parsed template key, which can be rendered into a string.
-/// This should be one implementation of this for each variant of [TemplateKey].
-///
-/// By breaking `TemplateKey` apart into multiple types, we can split the
-/// render logic easily amongst a bunch of functions. It's not technically
-/// necessary, just a code organization thing.
-trait TemplateSource<'a>: 'a {
-    /// Render this intermediate value into a string. Return a Cow because
-    /// sometimes this can be a reference to the template context, but
-    /// other times it has to be owned data (e.g. when pulling response data
-    /// from the repository).
-    fn render(
-        &self,
-        context: &'a TemplateContext<'a>,
-    ) -> Result<Cow<'a, str>, TemplateError<&'a str>>;
-}
-
-/// A simple field value (e.g. from the environment or an override)
-struct FieldSource<'a> {
-    field: &'a str,
-}
-
-impl<'a> TemplateSource<'a> for FieldSource<'a> {
-    fn render(
-        &self,
-        context: &'a TemplateContext<'a>,
-    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
-        fn get_opt<'a>(
-            map: Option<&'a IndexMap<String, String>>,
-            key: &str,
-        ) -> Option<&'a String> {
-            map?.get(key)
-        }
-
-        let field = self.field;
-        None
-            // Cascade down the the list of maps we want to check
-            .or_else(|| get_opt(context.overrides, field))
-            .or_else(|| get_opt(context.environment, field))
-            .map(Cow::from)
-            .ok_or(TemplateError::FieldUnknown { field })
-    }
-}
-
-/// A chained value from another response
-struct ChainSource<'a> {
-    chain_id: &'a str,
-}
-
-impl<'a> TemplateSource<'a> for ChainSource<'a> {
-    fn render(
-        &self,
-        context: &'a TemplateContext<'a>,
-    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
-        let chain_id = self.chain_id;
-        // Resolve chained value
-        let chain = context
-            .chains
-            .iter()
-            .find(|chain| chain.id == chain_id)
-            .ok_or(TemplateError::ChainUnknown { chain_id })?;
-        let record = context
-            .repository
-            .get_last_success(&chain.source)
-            .map_err(TemplateError::Repository)?
-            .ok_or(TemplateError::ChainNoResponse { chain_id })?;
-        let response = record.response();
-        // This is janky ¯\_(ツ)_/¯
-        let body = match response.deref() {
-            ResponseState::Success { response, .. } => &response.body,
-            _ => unreachable!("Non-success state should not be possible"),
-        };
-
-        // Optionally extract a value from the JSON
-        match &chain.path {
-            Some(path) => {
-                // Parse the JSON path
-                let path = JsonPath::parse(path).map_err(|err| {
-                    TemplateError::ChainJsonPath {
-                        chain_id,
-                        path,
-                        error: err,
-                    }
-                })?;
-                // Parse the response as JSON
-                let response_value: serde_json::Value =
-                    serde_json::from_str(body).map_err(|err| {
-                        TemplateError::ChainJsonResponse {
-                            chain_id,
-                            error: err,
-                        }
-                    })?;
-                let found_value = path
-                    .query(&response_value)
-                    .exactly_one()
-                    .map_err(|err| TemplateError::ChainInvalidResult {
-                        chain_id,
-                        error: err,
-                    })?;
-
-                match found_value {
-                    serde_json::Value::String(s) => Ok(s.clone().into()),
-                    other => Ok(other.to_string().into()),
-                }
-            }
-            None => Ok(body.to_owned().into()),
-        }
-    }
-}
-
-/// A value sourced from the process's environment
-struct EnvironmentSource<'a> {
-    variable: &'a str,
-}
-
-impl<'a> TemplateSource<'a> for EnvironmentSource<'a> {
-    fn render(
-        &self,
-        _: &'a TemplateContext<'a>,
-    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
-        env::var(self.variable).map(Cow::from).map_err(|err| {
-            TemplateError::EnvironmentVariable {
-                variable: self.variable,
-                error: err,
-            }
-        })
-    }
 }
 
 impl<'a> TemplateError<&'a str> {
@@ -396,8 +391,8 @@ mod tests {
     use serde_json::json;
 
     /// Test that a field key renders correctly
-    #[test]
-    fn test_field() {
+    #[tokio::test]
+    async fn test_field() {
         let environment = [
             ("user_id".into(), "1".into()),
             ("group_id".into(), "3".into()),
@@ -405,35 +400,24 @@ mod tests {
         .into_iter()
         .collect();
         let overrides = [("user_id".into(), "2".into())].into_iter().collect();
-        let context = TemplateContext {
-            environment: Some(&environment),
-            overrides: Some(&overrides),
-            repository: &Repository::testing(),
-            chains: &[],
-        };
+        let context = create!(
+            TemplateContext,
+            environment: environment,
+            overrides: overrides,
+        );
 
         // Success cases
-        assert_eq!(
-            TemplateString("".into()).render_borrow(&context).unwrap(),
-            "".to_owned()
-        );
-        assert_eq!(
-            TemplateString("plain".into())
-                .render_borrow(&context)
-                .unwrap(),
-            "plain".to_owned()
-        );
+        assert_eq!(render!("", context).unwrap(), "".to_owned());
+        assert_eq!(render!("plain", context).unwrap(), "plain".to_owned());
         assert_eq!(
             // Pull from overrides for user_id, env for group_id
-            TemplateString("{{user_id}} {{group_id}}".into())
-                .render_borrow(&context)
-                .unwrap(),
+            render!("{{user_id}} {{group_id}}", context).unwrap(),
             "2 3".to_owned()
         );
 
         // Error cases
         assert_err!(
-            TemplateString("{{onion_id}}".into()).render_borrow(&context),
+            render!("{{onion_id}}", context),
             "Unknown field \"onion_id\""
         );
     }
@@ -449,7 +433,11 @@ mod tests {
     #[case(Some("$.bool"), "false")]
     #[case(Some("$.array"), "[1,2]")]
     #[case(Some("$.object"), "{\"a\":1}")]
-    fn test_chain(#[case] path: Option<&str>, #[case] expected_value: &str) {
+    #[tokio::test]
+    async fn test_chain(
+        #[case] path: Option<&str>,
+        #[case] expected_value: &str,
+    ) {
         let recipe_id: RequestRecipeId = "recipe1".into();
         let mut repository = Repository::testing();
         let response_body = json!({
@@ -463,22 +451,18 @@ mod tests {
             create!(Request, recipe_id: recipe_id.clone()),
             Ok(create!(Response, body: response_body.to_string())),
         );
-        let context = TemplateContext {
-            environment: None,
-            overrides: None,
-            repository: &repository,
-            chains: &[create!(
-                Chain,
-                id: "chain1".into(),
-                source: recipe_id,
-                path: path.map(String::from),
-            )],
-        };
+        let chains = vec![create!(
+            Chain,
+            id: "chain1".into(),
+            source: recipe_id,
+            path: path.map(String::from),
+        )];
+        let context = create!(
+            TemplateContext, repository: repository, chains: chains,
+        );
 
         assert_eq!(
-            TemplateString("{{chains.chain1}}".into())
-                .render_borrow(&context)
-                .unwrap(),
+            render!("{{chains.chain1}}", context).unwrap(),
             expected_value
         );
     }
@@ -539,7 +523,8 @@ mod tests {
         )),
         "Expected exactly one result for chain \"chain1\"",
     )]
-    fn test_chain_error(
+    #[tokio::test]
+    async fn test_chain_error(
         #[case] chain: Chain,
         // Optional request data to store in the repository
         #[case] request_response: Option<(Request, anyhow::Result<Response>)>,
@@ -549,48 +534,26 @@ mod tests {
         if let Some((request, response)) = request_response {
             repository.add(request, response);
         }
-        let context = TemplateContext {
-            environment: None,
-            overrides: None,
-            repository: &repository,
-            chains: &[chain],
-        };
-
-        assert_err!(
-            TemplateString::from("{{chains.chain1}}").render_borrow(&context),
-            expected_error
+        let chains = vec![chain];
+        let context = create!(
+            TemplateContext, repository: repository, chains: chains
         );
+
+        assert_err!(render!("{{chains.chain1}}", context), expected_error);
     }
 
-    #[test]
-    fn test_environment_success() {
-        let context = TemplateContext {
-            environment: None,
-            overrides: None,
-            repository: &Repository::testing(),
-            chains: &[],
-        };
-
+    #[tokio::test]
+    async fn test_environment_success() {
+        let context = create!(TemplateContext);
         env::set_var("TEST", "test!");
-        assert_eq!(
-            TemplateString::from("{{env.TEST}}")
-                .render_borrow(&context)
-                .unwrap(),
-            "test!"
-        );
+        assert_eq!(render!("{{env.TEST}}", context).unwrap(), "test!");
     }
 
-    #[test]
-    fn test_environment_error() {
-        let context = TemplateContext {
-            environment: None,
-            overrides: None,
-            repository: &Repository::testing(),
-            chains: &[],
-        };
-
+    #[tokio::test]
+    async fn test_environment_error() {
+        let context = create!(TemplateContext);
         assert_err!(
-            TemplateString::from("{{env.UNKNOWN}}").render_borrow(&context),
+            render!("{{env.UNKNOWN}}", context),
             "Error accessing environment variable \"UNKNOWN\""
         );
     }
@@ -621,4 +584,14 @@ mod tests {
             &format!("Failed to parse template key {input:?}")
         );
     }
+
+    /// Helper for rendering a string
+    macro_rules! render {
+        ($template:expr, $context:expr) => {
+            TemplateString($template.into())
+                .render_borrow(&$context)
+                .await
+        };
+    }
+    use render;
 }

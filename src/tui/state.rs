@@ -1,6 +1,5 @@
 use crate::{
     config::{Chain, Environment, RequestCollection, RequestRecipe},
-    http::{RequestId, Response},
     repository::{Repository, RequestRecord},
     template::TemplateContext,
     tui::{
@@ -19,7 +18,7 @@ use std::{
     fmt::Display,
     ops::Deref,
     path::{Path, PathBuf},
-    rc::Rc,
+    sync::Arc,
 };
 use strum::{EnumIter, IntoEnumIterator};
 use tokio::sync::mpsc::UnboundedSender;
@@ -110,20 +109,27 @@ impl AppState {
     ///
     /// The request is loaded from the repository, which uses caching
     /// internally, so generally this should be fast.
-    pub fn active_request(&mut self) -> Option<Rc<RequestRecord>> {
+    pub fn active_request(&mut self) -> Option<Arc<RequestRecord>> {
         self.repository
             .get_last(&self.ui.recipes.selected()?.id)
             .ok_or_apply(|err| self.set_error(err))
             .flatten()
     }
 
-    /// Expose app state to the templater
+    /// Expose app state to the templater. Most of the data has to be cloned out
+    /// to be passed across async boundaries. This is annoying but in reality
+    /// it should be small data.
     pub fn template_context(&self) -> TemplateContext {
         TemplateContext {
-            environment: self.ui.environments.selected().map(|e| &e.data),
-            overrides: None,
-            repository: &self.repository,
-            chains: &self.ui.chains,
+            environment: self
+                .ui
+                .environments
+                .selected()
+                .map(|e| e.data.clone())
+                .unwrap_or_default(),
+            repository: self.repository.clone(),
+            chains: self.ui.chains.clone(),
+            overrides: Default::default(),
         }
     }
 
@@ -206,14 +212,8 @@ pub enum Message {
         collection: RequestCollection,
     },
     /// Launch an HTTP request from the currently selected recipe. Errors if
-    /// the recipes aren't in focus, or the list is empty
+    /// the recipe list is empty.
     HttpSendRequest,
-    /// Store an HTTP response/error in state/repository
-    HttpRegisterResponse {
-        request_id: RequestId,
-        response_result: anyhow::Result<Response>,
-    },
-
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
 }

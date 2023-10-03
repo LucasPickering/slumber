@@ -12,10 +12,12 @@ rust-version = "1.72.0"
 
 [dependencies]
 anyhow = {version = "^1.0.75", features = ["backtrace"]}
+async-trait = "0.1.73"
 chrono = {version = "0.4.31", default-features = false, features = ["clock", "serde", "std"]}
 clap = {version = "4.4.2", features = ["derive"]}
 crossterm = "0.27.0"
 derive_more = "0.99.17"
+futures = {version = "0.3.28", default-features = false}
 indexmap = {version = "2.0.1", features = ["serde"]}
 itertools = "0.11.0"
 lru = "0.11.1"

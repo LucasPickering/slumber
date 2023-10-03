@@ -1,6 +1,5 @@
 #![deny(clippy::all)]
 #![feature(iterator_try_collect)]
-#![feature(result_option_inspect)]
 #![feature(try_blocks)]
 
 mod config;
@@ -121,20 +120,22 @@ async fn execute_subcommand(
             dry_run,
         } => {
             // Find environment and recipe by ID
-            let environment = match environment {
-                Some(id) => Some(
-                    &find_by(
-                        collection.environments.iter(),
-                        |e| &e.id,
-                        &id,
-                        "No environment with ID",
-                    )?
-                    .data,
-                ),
-                None => None,
-            };
+            let environment = environment
+                .map(|environment| {
+                    Ok::<_, anyhow::Error>(
+                        find_by(
+                            collection.environments,
+                            |e| &e.id,
+                            &environment,
+                            "No environment with ID",
+                        )?
+                        .data,
+                    )
+                })
+                .transpose()?
+                .unwrap_or_default();
             let recipe = find_by(
-                collection.requests.iter(),
+                collection.requests,
                 |r| &r.id,
                 &request_id,
                 "No request recipe with ID",
@@ -144,14 +145,15 @@ async fn execute_subcommand(
             let mut repository = Repository::load()?;
             let overrides: IndexMap<_, _> = overrides.into_iter().collect();
             let request = Request::build(
-                recipe,
+                &recipe,
                 &TemplateContext {
                     environment,
-                    overrides: Some(&overrides),
-                    chains: &collection.chains,
-                    repository: &repository,
+                    overrides,
+                    chains: collection.chains,
+                    repository: repository.clone(),
                 },
-            )?;
+            )
+            .await?;
 
             if dry_run {
                 println!("{:#?}", request);

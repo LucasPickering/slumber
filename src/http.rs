@@ -8,6 +8,7 @@ use crate::{
 };
 use anyhow::Context;
 use derive_more::{Deref, Display, From};
+use futures::future;
 use indexmap::IndexMap;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -190,7 +191,7 @@ impl Request {
     /// Instantiate a request from a recipe, using values from the given
     /// environment to render templated strings. Errors if request construction
     /// fails because of invalid user input somewhere.
-    pub fn build(
+    pub async fn build(
         recipe: &RequestRecipe,
         template_values: &TemplateContext,
     ) -> anyhow::Result<Self> {
@@ -198,48 +199,53 @@ impl Request {
         let method = recipe
             .method
             .render(template_values)
+            .await
             .context("Method")?
             .parse()
             .context("Method")?;
-        let url = recipe.url.render(template_values).context("URL")?;
+        let url = recipe.url.render(template_values).await.context("URL")?;
 
         // Build header map
-        let headers = recipe
-            .headers
-            .iter()
-            .map(|(header, value_template)| {
+        let headers = future::try_join_all(recipe.headers.iter().map(
+            |(header, value_template)| async move {
                 let result: anyhow::Result<_> = try {
                     // String -> header conversions are fallible, if headers
                     // are invalid
                     (
                         HeaderName::try_from(header)?,
                         HeaderValue::try_from(
-                            value_template.render(template_values)?,
+                            value_template.render(template_values).await?,
                         )?,
                     )
                 };
                 result.with_context(|| format!("Header {header:?}"))
-            })
-            .try_collect()?;
+            },
+        ))
+        .await?
+        .into_iter()
+        .collect();
 
         // Add query parameters
-        let query = recipe
-            .query
-            .iter()
-            .map(|(k, v)| {
-                Ok((
+        let query: IndexMap<String, String> = future::try_join_all(
+            recipe.query.iter().map(|(k, v)| async move {
+                Ok::<_, anyhow::Error>((
                     k.clone(),
                     v.render(template_values)
+                        .await
                         .with_context(|| format!("Query parameter {k:?}"))?,
                 ))
-            })
-            .collect::<anyhow::Result<IndexMap<_, _>>>()?;
+            }),
+        )
+        .await?
+        .into_iter()
+        .collect();
         // Render the body
-        let body = recipe
-            .body
-            .as_ref()
-            .map(|body| body.render(template_values).context("Body"))
-            .transpose()?;
+        let body = match &recipe.body {
+            Some(body) => {
+                Some(body.render(template_values).await.context("Body")?)
+            }
+            None => None,
+        };
 
         Ok(Self {
             id: RequestId(Uuid::new_v4()),

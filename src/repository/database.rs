@@ -4,23 +4,28 @@ use crate::{
     repository::{RequestRecord, ResponseState, ResponseStateKind},
     util::ResultExt,
 };
-use anyhow::{anyhow, bail, Context};
+use anyhow::{bail, Context};
 use chrono::{DateTime, Utc};
 use rusqlite::{
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
     Connection, OptionalExtension, Row, ToSql,
 };
 use rusqlite_migration::{Migrations, M};
-use std::{cell::RefCell, ops::Deref, path::PathBuf};
+use std::{ops::Deref, path::PathBuf, sync::Arc};
+use tokio::sync::Mutex;
 use tracing::debug;
 use uuid::Uuid;
 
 /// The backing database for the request repository. The data store is sqlite3
 /// persisted to disk.
-#[derive(Debug)]
+///
+/// This is freely cloneable.
+#[derive(Clone, Debug)]
 pub struct RepositoryDatabase {
-    /// History is stored in a sqlite DB
-    connection: Connection,
+    /// History is stored in a sqlite DB. Mutex is needed for multi-threaded
+    /// access. This is a bottleneck but the access rate should be so low that
+    /// it doesn't matter.
+    connection: Arc<Mutex<Connection>>,
 }
 
 impl RepositoryDatabase {
@@ -33,17 +38,17 @@ impl RepositoryDatabase {
     /// Load the repository database. This will perform first-time setup, so
     /// this should only be called at the main session entrypoint.
     pub fn load() -> anyhow::Result<Self> {
-        let connection = Connection::open(Self::path())?;
+        let mut connection = Connection::open(Self::path())?;
         // Use WAL for concurrency
         connection.pragma_update(None, "journal_mode", "WAL")?;
-        let mut repository = Self { connection };
-        repository.setup()?;
-
-        Ok(repository)
+        Self::setup(&mut connection)?;
+        Ok(Self {
+            connection: Arc::new(Mutex::new(connection)),
+        })
     }
 
     /// Apply first-time setup
-    fn setup(&mut self) -> anyhow::Result<()> {
+    fn setup(connection: &mut Connection) -> anyhow::Result<()> {
         let migrations = Migrations::new(vec![M::up(
             // The response state kind is a bit hard to map to tabular data.
             // Everything that we need to query on (success/error kind, HTTP
@@ -60,15 +65,74 @@ impl RepositoryDatabase {
                 status_code     INTEGER NULLABLE
             )",
         )]);
-        migrations.to_latest(&mut self.connection)?;
+        migrations.to_latest(connection)?;
 
         // Anything that was pending when we exited is lost now, so convert
         // those to incomplete
-        self.connection.execute(
+        connection.execute(
             "UPDATE requests SET response_kind = ?1 WHERE response_kind = ?2",
             (ResponseStateKind::Incomplete, ResponseStateKind::Loading),
         )?;
         Ok(())
+    }
+
+    /// Get a request by ID. Return an error if the request isn't in history or
+    /// the lookup fails.
+    pub fn get_request(
+        &self,
+        request_id: RequestId,
+    ) -> anyhow::Result<RequestRecord> {
+        let record: RequestRecord = self
+            .connection
+            .try_lock()?
+            .query_row(
+                "SELECT * FROM requests WHERE id = ?1",
+                [request_id],
+                |row| row.try_into(),
+            )
+            .context("Error fetching request from database")
+            .traced()?;
+        debug!(%request_id, "Loaded request from database");
+        Ok(record)
+    }
+
+    /// Get the ID most recent request for a recipe, or `None` if there has
+    /// never been one sent
+    pub fn get_last(
+        &self,
+        recipe_id: &RequestRecipeId,
+    ) -> anyhow::Result<Option<RequestId>> {
+        self.connection
+            .try_lock()?
+            .query_row(
+                "SELECT id FROM requests WHERE recipe_id = ?1
+                ORDER BY start_time DESC LIMIT 1",
+                [recipe_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("Error fetching request ID from database")
+            .traced()
+    }
+
+    /// Get the ID of the most recent *successful* response for a recipe, or
+    /// `None` if there is none
+    pub fn get_last_success(
+        &self,
+        recipe_id: &RequestRecipeId,
+    ) -> anyhow::Result<Option<RequestId>> {
+        self.connection
+            .try_lock()?
+            .query_row(
+                "SELECT id FROM requests
+                WHERE recipe_id = ?1 AND response_kind = ?2
+                ORDER BY start_time DESC LIMIT 1",
+                (recipe_id, ResponseStateKind::Success),
+                |row| row.get(0),
+            )
+            .optional()
+            .context("Error fetching request ID from database")
+            .traced()
     }
 
     /// Add a new request to history. This should be called immediately before
@@ -81,6 +145,7 @@ impl RepositoryDatabase {
             "Adding request to database",
         );
         self.connection
+            .try_lock()?
             .execute(
                 "INSERT INTO
                 requests (id, recipe_id, start_time, request, response_kind)
@@ -90,7 +155,7 @@ impl RepositoryDatabase {
                     &record.request.recipe_id,
                     &record.start_time,
                     &record.request,
-                    ResponseStateKind::from(record.response.borrow().deref()),
+                    ResponseStateKind::from(&record.response),
                 ),
             )
             .context("Error saving request to database")?;
@@ -99,12 +164,13 @@ impl RepositoryDatabase {
 
     /// Attach a response (or error) to an existing request. Errors will be
     /// converted to a string for serialization. The given response state must
-    /// be either the `Success` or `Error` variant.
+    /// be either the `Success` or `Error` variant. Return the entire updated
+    /// record.
     pub fn add_response(
         &self,
         request_id: RequestId,
         response_state: &ResponseState,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<RequestRecord> {
         // This unpack is pretty ugly... we could clean it up by factoring the
         // Success+Error variants into their own type
         let (description, content, status_code, end_time): (
@@ -129,12 +195,12 @@ impl RepositoryDatabase {
             "Adding response to database"
         );
 
-        let updated_rows = self
-            .connection
-            .execute(
+        self.connection
+            .try_lock()?
+            .query_row(
                 "UPDATE requests SET response_kind = ?1, response = ?2,
                 end_time = ?3, status_code = ?4
-                WHERE id = ?5",
+                WHERE id = ?5 RETURNING *",
                 (
                     ResponseStateKind::from(response_state),
                     content,
@@ -142,74 +208,9 @@ impl RepositoryDatabase {
                     status_code,
                     request_id,
                 ),
-            )
-            .context("Error saving response to database")?;
-
-        // Safety check, make sure the ID matched
-        if updated_rows == 1 {
-            Ok(())
-        } else {
-            Err(anyhow!(
-                "Expected to update 1 row when adding response, \
-                but updated {updated_rows} instead"
-            ))
-        }
-    }
-
-    /// Get a request by ID. Return an error if the request isn't in history or
-    /// the lookup fails.
-    pub fn get_request(
-        &self,
-        request_id: RequestId,
-    ) -> anyhow::Result<RequestRecord> {
-        let record: RequestRecord = self
-            .connection
-            .query_row(
-                "SELECT * FROM requests WHERE id = ?1",
-                [request_id],
                 |row| row.try_into(),
             )
-            .context("Error fetching request from database")
-            .traced()?;
-        debug!(%request_id, "Loaded request from database");
-        Ok(record)
-    }
-
-    /// Get the ID most recent request for a recipe, or `None` if there has
-    /// never been one sent
-    pub fn get_last(
-        &self,
-        recipe_id: &RequestRecipeId,
-    ) -> anyhow::Result<Option<RequestId>> {
-        self.connection
-            .query_row(
-                "SELECT id FROM requests WHERE recipe_id = ?1
-                ORDER BY start_time DESC LIMIT 1",
-                [recipe_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .context("Error fetching request ID from database")
-            .traced()
-    }
-
-    /// Get the ID of the most recent *successful* response for a recipe, or
-    /// `None` if there is none
-    pub fn get_last_success(
-        &self,
-        recipe_id: &RequestRecipeId,
-    ) -> anyhow::Result<Option<RequestId>> {
-        self.connection
-            .query_row(
-                "SELECT id FROM requests
-                WHERE recipe_id = ?1 AND response_kind = ?2
-                ORDER BY start_time DESC LIMIT 1",
-                (recipe_id, ResponseStateKind::Success),
-                |row| row.get(0),
-            )
-            .optional()
-            .context("Error fetching request ID from database")
-            .traced()
+            .context("Error saving response to database")
     }
 }
 
@@ -218,10 +219,11 @@ impl RepositoryDatabase {
 impl RepositoryDatabase {
     /// Create an in-memory DB, only for testing
     pub fn testing() -> Self {
-        let connection = Connection::open_in_memory().unwrap();
-        let mut database = Self { connection };
-        database.setup().unwrap();
-        database
+        let mut connection = Connection::open_in_memory().unwrap();
+        Self::setup(&mut connection).unwrap();
+        Self {
+            connection: Arc::new(Mutex::new(connection)),
+        }
     }
 }
 
@@ -310,7 +312,7 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
         Ok(Self {
             request: row.get("request")?,
             start_time: row.get("start_time")?,
-            response: RefCell::new(response),
+            response,
         })
     }
 }

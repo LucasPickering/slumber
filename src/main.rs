@@ -6,16 +6,16 @@
 mod config;
 #[cfg(test)]
 mod factory;
-mod history;
 mod http;
+mod repository;
 mod template;
 mod tui;
 mod util;
 
 use crate::{
     config::RequestCollection,
-    history::RequestHistory,
     http::{HttpEngine, Request},
+    repository::Repository,
     template::TemplateContext,
     tui::Tui,
     util::find_by,
@@ -141,7 +141,7 @@ async fn execute_subcommand(
             )?;
 
             // Build the request
-            let mut history = RequestHistory::load()?;
+            let mut repository = Repository::load()?;
             let overrides: IndexMap<_, _> = overrides.into_iter().collect();
             let request = Request::build(
                 recipe,
@@ -149,18 +149,18 @@ async fn execute_subcommand(
                     environment,
                     overrides: Some(&overrides),
                     chains: &collection.chains,
-                    history: &history,
+                    repository: &repository,
                 },
             )?;
 
             if dry_run {
                 println!("{:#?}", request);
             } else {
-                // Register the request in history *before* launching it, in
+                // Register the request in the repo *before* launching it, in
                 // case it fails
                 let http_engine = HttpEngine::new();
                 let future = http_engine.send(&request);
-                let record_id = history.add_request(request)?.id();
+                let record_id = repository.add_request(request)?.id();
 
                 // For Ok, we have to move the response, so print it *first*.
                 // For Err, we want to return the owned error. Fortunately the
@@ -168,13 +168,13 @@ async fn execute_subcommand(
                 match future.await {
                     Ok(response) => {
                         print!("{}", response.body);
-                        history.add_response(
+                        repository.add_response(
                             record_id,
                             Ok::<_, anyhow::Error>(response),
                         )?;
                     }
                     Err(err) => {
-                        history.add_response(record_id, Err(&err))?;
+                        repository.add_response(record_id, Err(&err))?;
                         return Err(err);
                     }
                 }

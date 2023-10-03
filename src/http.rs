@@ -95,7 +95,7 @@ impl HttpEngine {
     }
 
     /// Launch an HTTP request. The caller is responsible for registering the
-    /// given request, and returned response/error, in history.
+    /// given request, and returned response/error, in the repository.
     ///
     /// This consumes the HTTP engine so that the future can outlive the scope
     /// that created the future. This allows the future to be created outside
@@ -114,7 +114,7 @@ impl HttpEngine {
 
         async move {
             span.in_scope(|| async {
-                // Any error inside this block should be stored in history
+                // Any error inside this block should be persisted in the repo
 
                 let reqwest_response = self
                     .client

@@ -1,7 +1,7 @@
 use crate::{
     config::{Chain, Environment, RequestCollection, RequestRecipe},
-    history::{RequestHistory, RequestRecord},
     http::{RequestId, Response},
+    repository::{Repository, RequestRecord},
     template::TemplateContext,
     tui::{
         input::InputTarget,
@@ -39,7 +39,7 @@ pub struct AppState {
     /// sender because we don't ever expect the queue to get that large, and it
     /// allows for synchronous enqueueing.
     pub messages_tx: MessageSender,
-    pub history: RequestHistory,
+    pub repository: Repository,
     /// All the stuff that directly affects what's shown on screen
     pub ui: UiState,
 }
@@ -65,14 +65,14 @@ impl AppState {
     pub fn new(
         collection_file: PathBuf,
         collection: RequestCollection,
-        history: RequestHistory,
+        repository: Repository,
         messages_tx: impl Into<MessageSender>,
     ) -> Self {
         Self {
             should_run: true,
             collection_file,
             messages_tx: messages_tx.into(),
-            history,
+            repository,
             ui: UiState::new(collection),
         }
     }
@@ -108,10 +108,10 @@ impl AppState {
     /// Get whichever request state should currently be shown to the user,
     /// based on whichever recipe is selected.
     ///
-    /// The request is loaded from history, which uses caching internally, so
-    /// generally this should be fast.
+    /// The request is loaded from the repository, which uses caching
+    /// internally, so generally this should be fast.
     pub fn active_request(&mut self) -> Option<Rc<RequestRecord>> {
-        self.history
+        self.repository
             .get_last(&self.ui.recipes.selected()?.id)
             .ok_or_apply(|err| self.set_error(err))
             .flatten()
@@ -122,7 +122,7 @@ impl AppState {
         TemplateContext {
             environment: self.ui.environments.selected().map(|e| &e.data),
             overrides: None,
-            history: &self.history,
+            repository: &self.repository,
             chains: &self.ui.chains,
         }
     }
@@ -208,7 +208,7 @@ pub enum Message {
     /// Launch an HTTP request from the currently selected recipe. Errors if
     /// the recipes aren't in focus, or the list is empty
     HttpSendRequest,
-    /// Store an HTTP response/error in state/history
+    /// Store an HTTP response/error in state/repository
     HttpRegisterResponse {
         request_id: RequestId,
         response_result: anyhow::Result<Response>,

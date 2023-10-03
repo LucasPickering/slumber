@@ -4,8 +4,8 @@ mod view;
 
 use crate::{
     config::RequestCollection,
-    history::RequestHistory,
     http::{HttpEngine, Request},
+    repository::Repository,
     tui::{
         input::InputManager,
         state::{AppState, Message},
@@ -74,7 +74,7 @@ impl Tui {
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
 
-        let history = RequestHistory::load().unwrap();
+        let repository = Repository::load().unwrap();
         let mut app = Tui {
             terminal,
             messages_rx,
@@ -83,7 +83,7 @@ impl Tui {
             state: AppState::new(
                 collection_file,
                 collection,
-                history,
+                repository,
                 messages_tx,
             ),
         };
@@ -177,7 +177,7 @@ impl Tui {
                 response_result,
             } => {
                 self.state
-                    .history
+                    .repository
                     .add_response(request_id, response_result)?;
             }
             Message::Error { error } => {
@@ -201,7 +201,7 @@ impl Tui {
 
         // Pre-create the future because it needs a reference to the request
         let future = self.http_engine.clone().send(&request);
-        let record = self.state.history.add_request(request)?;
+        let record = self.state.repository.add_request(request)?;
 
         let request_id = record.id();
         let messages_tx = self.state.messages_tx.clone();

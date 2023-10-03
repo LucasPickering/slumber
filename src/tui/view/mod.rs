@@ -2,8 +2,8 @@ mod component;
 mod theme;
 
 use crate::{
-    history::ResponseState,
     http::Response,
+    repository::ResponseState,
     tui::{
         input::{InputManager, InputTarget},
         state::{AppState, PrimaryPane, RequestTab, ResponseTab},

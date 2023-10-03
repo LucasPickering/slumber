@@ -1,4 +1,8 @@
-use crate::{config::Chain, history::RequestHistory, util::ResultExt};
+use crate::{
+    config::Chain,
+    repository::{Repository, ResponseState},
+    util::ResultExt,
+};
 use anyhow::Context;
 use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
@@ -32,7 +36,7 @@ pub struct TemplateContext<'a> {
     pub environment: Option<&'a IndexMap<String, String>>,
     pub chains: &'a [Chain],
     /// Needed for accessing response bodies for chaining
-    pub history: &'a RequestHistory,
+    pub repository: &'a Repository,
     /// Additional key=value overrides passed directly from the user
     pub overrides: Option<&'a IndexMap<String, String>>,
 }
@@ -96,9 +100,9 @@ pub enum TemplateError<S: std::fmt::Display> {
         error: VarError,
     },
 
-    /// An error occurred accessing history
+    /// An error occurred accessing the request repository
     #[error("{0}")]
-    History(#[source] anyhow::Error),
+    Repository(#[source] anyhow::Error),
 }
 
 impl TemplateString {
@@ -204,7 +208,7 @@ trait TemplateSource<'a>: 'a {
     /// Render this intermediate value into a string. Return a Cow because
     /// sometimes this can be a reference to the template context, but
     /// other times it has to be owned data (e.g. when pulling response data
-    /// from the history DB).
+    /// from the repository).
     fn render(
         &self,
         context: &'a TemplateContext<'a>,
@@ -255,12 +259,17 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
             .iter()
             .find(|chain| chain.id == chain_id)
             .ok_or(TemplateError::ChainUnknown { chain_id })?;
-        let response = context
-            .history
+        let record = context
+            .repository
             .get_last_success(&chain.source)
-            .map_err(TemplateError::History)?
-            .ok_or(TemplateError::ChainNoResponse { chain_id })?
-            .body;
+            .map_err(TemplateError::Repository)?
+            .ok_or(TemplateError::ChainNoResponse { chain_id })?;
+        let response = record.response();
+        // This is janky ¯\_(ツ)_/¯
+        let body = match response.deref() {
+            ResponseState::Success { response, .. } => &response.body,
+            _ => unreachable!("Non-success state should not be possible"),
+        };
 
         // Optionally extract a value from the JSON
         match &chain.path {
@@ -275,7 +284,7 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
                 })?;
                 // Parse the response as JSON
                 let response_value: serde_json::Value =
-                    serde_json::from_str(&response).map_err(|err| {
+                    serde_json::from_str(body).map_err(|err| {
                         TemplateError::ChainJsonResponse {
                             chain_id,
                             error: err,
@@ -294,7 +303,7 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
                     other => Ok(other.to_string().into()),
                 }
             }
-            None => Ok(response.into()),
+            None => Ok(body.to_owned().into()),
         }
     }
 }
@@ -367,7 +376,7 @@ impl<'a> TemplateError<&'a str> {
                     error,
                 }
             }
-            TemplateError::History(err) => TemplateError::History(err),
+            TemplateError::Repository(err) => TemplateError::Repository(err),
         }
     }
 }
@@ -399,7 +408,7 @@ mod tests {
         let context = TemplateContext {
             environment: Some(&environment),
             overrides: Some(&overrides),
-            history: &RequestHistory::testing(),
+            repository: &Repository::testing(),
             chains: &[],
         };
 
@@ -442,7 +451,7 @@ mod tests {
     #[case(Some("$.object"), "{\"a\":1}")]
     fn test_chain(#[case] path: Option<&str>, #[case] expected_value: &str) {
         let recipe_id: RequestRecipeId = "recipe1".into();
-        let mut history = RequestHistory::testing();
+        let mut repository = Repository::testing();
         let response_body = json!({
             "string": "Hello World!",
             "number": 6,
@@ -450,14 +459,14 @@ mod tests {
             "array": [1,2],
             "object": {"a": 1},
         });
-        history.add(
+        repository.add(
             create!(Request, recipe_id: recipe_id.clone()),
             Ok(create!(Response, body: response_body.to_string())),
         );
         let context = TemplateContext {
             environment: None,
             overrides: None,
-            history: &history,
+            repository: &repository,
             chains: &[create!(
                 Chain,
                 id: "chain1".into(),
@@ -532,18 +541,18 @@ mod tests {
     )]
     fn test_chain_error(
         #[case] chain: Chain,
-        // Optional request data to store in history
+        // Optional request data to store in the repository
         #[case] request_response: Option<(Request, anyhow::Result<Response>)>,
         #[case] expected_error: &str,
     ) {
-        let mut history = RequestHistory::testing();
+        let mut repository = Repository::testing();
         if let Some((request, response)) = request_response {
-            history.add(request, response);
+            repository.add(request, response);
         }
         let context = TemplateContext {
             environment: None,
             overrides: None,
-            history: &history,
+            repository: &repository,
             chains: &[chain],
         };
 
@@ -558,7 +567,7 @@ mod tests {
         let context = TemplateContext {
             environment: None,
             overrides: None,
-            history: &RequestHistory::testing(),
+            repository: &Repository::testing(),
             chains: &[],
         };
 
@@ -576,7 +585,7 @@ mod tests {
         let context = TemplateContext {
             environment: None,
             overrides: None,
-            history: &RequestHistory::testing(),
+            repository: &Repository::testing(),
             chains: &[],
         };
 

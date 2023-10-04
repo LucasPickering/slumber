@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tokio::fs;
-use tracing::{event, Level};
+use tracing::{event, info, Level};
 
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
@@ -87,6 +87,7 @@ impl RequestCollection {
     ) -> anyhow::Result<(&Path, Self)> {
         // Figure out which file we want to load from
         let path = collection_file.map_or_else(Self::detect_path, Ok)?;
+        info!(?path, "Loading collection file");
 
         // First, parse the file to raw YAML values, so we can apply
         // anchor/alias merging. Then parse that to our config type

@@ -21,7 +21,7 @@ use std::{
     sync::Arc,
 };
 use strum::{EnumIter, IntoEnumIterator};
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::{runtime::Handle, sync::mpsc::UnboundedSender};
 use tracing::{error, info, trace};
 
 /// Main app state. All configuration and UI state is stored here. The M in MVC
@@ -107,13 +107,18 @@ impl AppState {
     /// Get whichever request state should currently be shown to the user,
     /// based on whichever recipe is selected.
     ///
-    /// The request is loaded from the repository, which uses caching
-    /// internally, so generally this should be fast.
+    /// The request is loaded from the repository, which means it's async. This
+    /// will block on the future, which we expect to be very fast to resolve.
     pub fn active_request(&mut self) -> Option<Arc<RequestRecord>> {
-        self.repository
-            .get_last(&self.ui.recipes.selected()?.id)
-            .ok_or_apply(|err| self.set_error(err))
-            .flatten()
+        let selected_recipe_id = self.ui.recipes.selected()?.id.clone();
+
+        // Block until we get a request (should be fast)
+        let repository = self.repository.clone();
+        let rt_handle = Handle::current();
+        let result = rt_handle.block_on(async move {
+            repository.get_last(&selected_recipe_id).await
+        });
+        result.ok_or_apply(|err| self.set_error(err)).flatten()
     }
 
     /// Expose app state to the templater. Most of the data has to be cloned out
@@ -194,6 +199,7 @@ pub struct MessageSender(UnboundedSender<Message>);
 impl MessageSender {
     /// Send an async message, to be handled by the main loop
     pub fn send(&self, message: Message) {
+        trace!(?message, "Queueing message");
         self.0.send(message).expect("Message queue is closed")
     }
 }

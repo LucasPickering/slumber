@@ -23,8 +23,11 @@ const CACHE_SIZE: usize = 10;
 /// A record of all HTTP history, which is persisted on disk. This is also used
 /// to populate chained values. This uses a sqlite DB underneath, which means
 /// all operations are internally fallible. Generally speaking, any error that
-/// occurs *after* opening the DB connection should be an internal bug. The
-/// error should be shown to the user whenever possible.
+/// occurs *after* opening the DB connection should be an internal bug, but
+/// should be shown to the user whenever possible. All operations are also
+/// async because of the database and the locking nature of the interior cache.
+/// They generally will be fast though, so it's safe to block on them in the
+/// draw phase.
 ///
 /// Invalid requests should *not* be stored in the repository, because they were
 /// never launched.
@@ -107,46 +110,50 @@ impl Repository {
 
     /// Get a request by ID. Requires `&mut self` so the cache can be updated if
     /// necessary. Return an error if the request isn't in history.
-    pub fn get_request(
+    pub async fn get_request(
         &self,
         request_id: RequestId,
     ) -> anyhow::Result<Arc<RequestRecord>> {
-        let mut cache = self.request_cache.try_write()?;
-        let record = cache.try_get_or_insert(request_id, || {
-            // Miss - get the request from the DB
-            let record = Arc::new(self.database.get_request(request_id)?);
-            Ok::<_, anyhow::Error>(record)
-        })?;
-        Ok(Arc::clone(record))
+        let mut cache = self.request_cache.write().await;
+        match cache.get(&request_id) {
+            Some(record) => Ok(Arc::clone(record)),
+            None => {
+                // Miss - get the request from the DB
+                let record =
+                    Arc::new(self.database.get_request(request_id).await?);
+                cache.push(request_id, Arc::clone(&record));
+                Ok::<_, anyhow::Error>(record)
+            }
+        }
     }
 
     /// Get the most recent request for a recipe, or `None` if there has never
     /// been one sent
-    pub fn get_last(
+    pub async fn get_last(
         &self,
         recipe_id: &RequestRecipeId,
     ) -> anyhow::Result<Option<Arc<RequestRecord>>> {
         // Find the ID we care about, then fetch the record separately since it
         // may be cached
-        self.database
-            .get_last(recipe_id)?
-            .map(|request_id| self.get_request(request_id))
-            .transpose()
+        Ok(match self.database.get_last(recipe_id).await? {
+            Some(request_id) => Some(self.get_request(request_id).await?),
+            None => None,
+        })
     }
 
     /// Get the most recent *successful* response for a recipe, or `None` if
     /// there is none. The response state of the returned record is guaranteed
     /// to be variant `Success`.
-    pub fn get_last_success(
+    pub async fn get_last_success(
         &self,
         recipe_id: &RequestRecipeId,
     ) -> anyhow::Result<Option<Arc<RequestRecord>>> {
         // Find the ID we care about, then fetch the record separately since it
         // may be cached
-        self.database
-            .get_last_success(recipe_id)?
-            .map(|request_id| self.get_request(request_id))
-            .transpose()
+        Ok(match self.database.get_last_success(recipe_id).await? {
+            Some(request_id) => Some(self.get_request(request_id).await?),
+            None => None,
+        })
     }
 
     /// Add a new request to history. This should be called immediately before
@@ -155,7 +162,7 @@ impl Repository {
     ///
     /// The returned record is wrapped in `Arc` so it can co-exist in our local
     /// cache.
-    pub fn add_request(
+    pub async fn add_request(
         &mut self,
         request: Request,
     ) -> anyhow::Result<Arc<RequestRecord>> {
@@ -164,14 +171,14 @@ impl Repository {
             start_time: Utc::now(),
             response: ResponseState::Loading,
         });
-        self.database.add_request(&record)?;
-        self.cache_record(Arc::clone(&record))?;
+        self.database.add_request(&record).await?;
+        self.cache_record(Arc::clone(&record)).await;
         Ok(record)
     }
 
     /// Attach a response (or error) to an existing request. Errors will be
     /// converted to a string for serialization.
-    pub fn add_response(
+    pub async fn add_response(
         &mut self,
         request_id: RequestId,
         // The error is stored as a string, so take anything stringifiable
@@ -188,22 +195,21 @@ impl Repository {
 
         // Update in the DB, which will kick back the updated record. Stick
         // that new guy in the cache
-        let updated_record =
-            Arc::new(self.database.add_response(request_id, &response_state)?);
-        self.cache_record(Arc::clone(&updated_record))?;
+        let updated_record = Arc::new(
+            self.database
+                .add_response(request_id, &response_state)
+                .await?,
+        );
+        self.cache_record(Arc::clone(&updated_record)).await;
 
         Ok(updated_record)
     }
 
     /// Store a request record in the cache.
-    fn cache_record(
-        &mut self,
-        record: Arc<RequestRecord>,
-    ) -> anyhow::Result<()> {
+    async fn cache_record(&mut self, record: Arc<RequestRecord>) {
         let record_id = record.id();
-        let mut cache = self.request_cache.try_write()?;
+        let mut cache = self.request_cache.write().await;
         cache.push(record_id, record);
-        Ok(())
     }
 }
 
@@ -221,13 +227,13 @@ impl Repository {
     }
 
     /// Add a request-response pair
-    pub fn add(
+    pub async fn add(
         &mut self,
         request: Request,
         response: anyhow::Result<Response>,
     ) {
-        let record = self.add_request(request).unwrap();
-        self.add_response(record.id(), response).unwrap();
+        let record = self.add_request(request).await.unwrap();
+        self.add_response(record.id(), response).await.unwrap();
     }
 }
 

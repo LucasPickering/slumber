@@ -193,6 +193,7 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
         let record = context
             .repository
             .get_last_success(&chain.source)
+            .await
             .map_err(TemplateError::Repository)?
             .ok_or(TemplateError::ChainNoResponse { chain_id })?;
         let response = record
@@ -447,10 +448,12 @@ mod tests {
             "array": [1,2],
             "object": {"a": 1},
         });
-        repository.add(
-            create!(Request, recipe_id: recipe_id.clone()),
-            Ok(create!(Response, body: response_body.to_string())),
-        );
+        repository
+            .add(
+                create!(Request, recipe_id: recipe_id.clone()),
+                Ok(create!(Response, body: response_body.to_string())),
+            )
+            .await;
         let chains = vec![create!(
             Chain,
             id: "chain1".into(),
@@ -532,7 +535,7 @@ mod tests {
     ) {
         let mut repository = Repository::testing();
         if let Some((request, response)) = request_response {
-            repository.add(request, response);
+            repository.add(request, response).await;
         }
         let chains = vec![chain];
         let context = create!(

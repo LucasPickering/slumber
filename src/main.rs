@@ -17,7 +17,7 @@ use crate::{
     repository::Repository,
     template::TemplateContext,
     tui::Tui,
-    util::find_by,
+    util::{find_by, ResultExt},
 };
 use anyhow::Context;
 use clap::Parser;
@@ -75,10 +75,6 @@ enum Subcommand {
     },
 }
 
-/// Error handling procedure:
-/// - Unexpected errors (e.g. bugs) should be panics where they occur
-/// - Expected errors (e.g. network error, bad input) should be shown to the
-/// user. For the CLI, just print it. For the TUI, show a popup.
 #[tokio::main]
 async fn main() {
     // Global initialization
@@ -162,7 +158,7 @@ async fn execute_subcommand(
                 // case it fails
                 let http_engine = HttpEngine::new();
                 let future = http_engine.send(&request);
-                let record_id = repository.add_request(request)?.id();
+                let record_id = repository.add_request(request).await?.id();
 
                 // For Ok, we have to move the response, so print it *first*.
                 // For Err, we want to return the owned error. Fortunately the
@@ -170,13 +166,20 @@ async fn execute_subcommand(
                 match future.await {
                     Ok(response) => {
                         print!("{}", response.body);
-                        repository.add_response(
-                            record_id,
-                            Ok::<_, anyhow::Error>(response),
-                        )?;
+                        repository
+                            .add_response(
+                                record_id,
+                                Ok::<_, anyhow::Error>(response),
+                            )
+                            .await?;
                     }
                     Err(err) => {
-                        repository.add_response(record_id, Err(&err))?;
+                        // This error shouldn't hide the HTTP error, so trace
+                        // it instead of returning it
+                        let _ = repository
+                            .add_response(record_id, Err(&err))
+                            .await
+                            .traced();
                         return Err(err);
                     }
                 }

@@ -17,9 +17,12 @@ use tracing::debug;
 use uuid::Uuid;
 
 /// The backing database for the request repository. The data store is sqlite3
-/// persisted to disk.
+/// persisted to disk. This is freely cloneable.
 ///
-/// This is freely cloneable.
+/// Note: Despite all the operations being async, the actual database isn't
+/// async. Each operation will asynchronously wait for the connection mutex,
+/// then block while performing the operation. This is just a shortcut, if it
+/// becomes a bottleneck we can change that.
 #[derive(Clone, Debug)]
 pub struct RepositoryDatabase {
     /// History is stored in a sqlite DB. Mutex is needed for multi-threaded
@@ -78,13 +81,14 @@ impl RepositoryDatabase {
 
     /// Get a request by ID. Return an error if the request isn't in history or
     /// the lookup fails.
-    pub fn get_request(
+    pub async fn get_request(
         &self,
         request_id: RequestId,
     ) -> anyhow::Result<RequestRecord> {
         let record: RequestRecord = self
             .connection
-            .try_lock()?
+            .lock()
+            .await
             .query_row(
                 "SELECT * FROM requests WHERE id = ?1",
                 [request_id],
@@ -98,12 +102,13 @@ impl RepositoryDatabase {
 
     /// Get the ID most recent request for a recipe, or `None` if there has
     /// never been one sent
-    pub fn get_last(
+    pub async fn get_last(
         &self,
         recipe_id: &RequestRecipeId,
     ) -> anyhow::Result<Option<RequestId>> {
         self.connection
-            .try_lock()?
+            .lock()
+            .await
             .query_row(
                 "SELECT id FROM requests WHERE recipe_id = ?1
                 ORDER BY start_time DESC LIMIT 1",
@@ -117,12 +122,13 @@ impl RepositoryDatabase {
 
     /// Get the ID of the most recent *successful* response for a recipe, or
     /// `None` if there is none
-    pub fn get_last_success(
+    pub async fn get_last_success(
         &self,
         recipe_id: &RequestRecipeId,
     ) -> anyhow::Result<Option<RequestId>> {
         self.connection
-            .try_lock()?
+            .lock()
+            .await
             .query_row(
                 "SELECT id FROM requests
                 WHERE recipe_id = ?1 AND response_kind = ?2
@@ -138,14 +144,18 @@ impl RepositoryDatabase {
     /// Add a new request to history. This should be called immediately before
     /// or after the request is sent, so the generated start_time timestamp
     /// is accurate.
-    pub fn add_request(&self, record: &RequestRecord) -> anyhow::Result<()> {
+    pub async fn add_request(
+        &self,
+        record: &RequestRecord,
+    ) -> anyhow::Result<()> {
         debug!(
             id = %record.id(),
             url = %record.request.url,
             "Adding request to database",
         );
         self.connection
-            .try_lock()?
+            .lock()
+            .await
             .execute(
                 "INSERT INTO
                 requests (id, recipe_id, start_time, request, response_kind)
@@ -166,7 +176,7 @@ impl RepositoryDatabase {
     /// converted to a string for serialization. The given response state must
     /// be either the `Success` or `Error` variant. Return the entire updated
     /// record.
-    pub fn add_response(
+    pub async fn add_response(
         &self,
         request_id: RequestId,
         response_state: &ResponseState,
@@ -175,7 +185,7 @@ impl RepositoryDatabase {
         // Success+Error variants into their own type
         let (description, content, status_code, end_time): (
             &str,
-            &dyn ToSql,
+            &(dyn ToSql + Send + Sync),
             Option<u16>,
             &DateTime<Utc>,
         ) = match &response_state {
@@ -196,7 +206,8 @@ impl RepositoryDatabase {
         );
 
         self.connection
-            .try_lock()?
+            .lock()
+            .await
             .query_row(
                 "UPDATE requests SET response_kind = ?1, response = ?2,
                 end_time = ?3, status_code = ?4

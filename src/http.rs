@@ -195,7 +195,7 @@ impl Request {
         recipe: &RequestRecipe,
         template_values: &TemplateContext,
     ) -> anyhow::Result<Self> {
-        debug!(?recipe, "Building request from recipe");
+        debug!(recipe_id = %recipe.id, "Building request from recipe");
         let method = recipe
             .method
             .render(template_values)
@@ -247,7 +247,7 @@ impl Request {
             None => None,
         };
 
-        Ok(Self {
+        let request = Self {
             id: RequestId(Uuid::new_v4()),
             recipe_id: recipe.id.clone(),
             method,
@@ -255,7 +255,13 @@ impl Request {
             query,
             body,
             headers,
-        })
+        };
+        info!(
+            request_id = %request.id,
+            recipe_id = %recipe.id,
+            "Built request from recipe",
+        );
+        Ok(request)
     }
 }
 

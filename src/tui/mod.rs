@@ -30,7 +30,10 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use tokio::{
+    sync::mpsc::{self, UnboundedReceiver},
+    task,
+};
 use tracing::{debug, error};
 
 /// Main controller struct for the TUI. The app uses an MVC architecture, and
@@ -75,7 +78,7 @@ impl Tui {
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
 
         let repository = Repository::load().unwrap();
-        let mut app = Tui {
+        let app = Tui {
             terminal,
             messages_rx,
             renderer: Renderer::new(),
@@ -90,13 +93,13 @@ impl Tui {
 
         // Any error during execution that gets this far is fatal. We expect the
         // error to already have context attached so we can just unwrap
-        app.run().unwrap();
+        task::block_in_place(|| app.run().unwrap());
     }
 
     /// Run the main TUI update loop. Any error returned from this is fatal. See
     /// the struct definition for a description of the different phases of the
     /// run loop.
-    fn run(&mut self) -> anyhow::Result<()> {
+    fn run(mut self) -> anyhow::Result<()> {
         // Listen for signals to stop the program
         let mut quit_signals = Signals::new([SIGHUP, SIGINT, SIGTERM, SIGQUIT])
             .context("Error creating signal handler")?;
@@ -202,11 +205,11 @@ impl Tui {
                 // Pre-create the future because it needs a reference to the
                 // request
                 let future = http_engine.send(&request);
-                repository.add_request(request)?;
+                repository.add_request(request).await?;
 
                 // Execute the request and store the response
                 let response_result = future.await;
-                repository.add_response(request_id, response_result)?;
+                repository.add_response(request_id, response_result).await?;
             };
             // Report any errors back to the main thread
             if let Err(err) = result {

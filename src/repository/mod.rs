@@ -3,6 +3,9 @@
 //! caching and other ephemeral data (e.g. prettified content).
 
 mod database;
+mod parse;
+
+pub use parse::ParsedBody;
 
 use crate::{
     config::RequestRecipeId,
@@ -12,13 +15,12 @@ use crate::{
 use anyhow::anyhow;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::Display;
+use futures::Future;
 use lru::LruCache;
-use std::{num::NonZeroUsize, sync::Arc};
+use std::{hash::Hash, num::NonZeroUsize, ops::Deref, sync::Arc};
 use strum::{EnumDiscriminants, EnumString};
-use tokio::sync::RwLock;
-
-/// Number of requests/responses to cache in memory
-const CACHE_SIZE: usize = 10;
+use tokio::{sync::RwLock, task};
+use tracing::trace;
 
 /// A record of all HTTP history, which is persisted on disk. This is also used
 /// to populate chained values. This uses a sqlite DB underneath, which means
@@ -50,7 +52,10 @@ pub struct Repository {
     /// to keep the lock open.
     ///
     /// Inspired by https://matklad.github.io/2022/06/11/caches-in-rust.html
-    request_cache: Arc<RwLock<LruCache<RequestId, Arc<RequestRecord>>>>,
+    request_cache: Cache<RequestId, RequestRecord>,
+
+    /// Cache every response body that we've attempted to parse
+    parsed_body_cache: Cache<RequestId, ParsedBody>,
 }
 
 /// A single request+response in history
@@ -101,10 +106,8 @@ impl Repository {
     pub fn load() -> anyhow::Result<Self> {
         Ok(Self {
             database: RepositoryDatabase::load()?,
-            // NEW NEW NEW
-            request_cache: Arc::new(RwLock::new(LruCache::new(
-                NonZeroUsize::new(CACHE_SIZE).unwrap(),
-            ))),
+            request_cache: Cache::new(),
+            parsed_body_cache: Cache::new(),
         })
     }
 
@@ -114,17 +117,12 @@ impl Repository {
         &self,
         request_id: RequestId,
     ) -> anyhow::Result<Arc<RequestRecord>> {
-        let mut cache = self.request_cache.write().await;
-        match cache.get(&request_id) {
-            Some(record) => Ok(Arc::clone(record)),
-            None => {
-                // Miss - get the request from the DB
-                let record =
-                    Arc::new(self.database.get_request(request_id).await?);
-                cache.push(request_id, Arc::clone(&record));
-                Ok::<_, anyhow::Error>(record)
-            }
-        }
+        self.request_cache
+            .try_get_or_insert(
+                request_id,
+                self.database.get_request(request_id),
+            )
+            .await
     }
 
     /// Get the most recent request for a recipe, or `None` if there has never
@@ -154,6 +152,33 @@ impl Repository {
             Some(request_id) => Some(self.get_request(request_id).await?),
             None => None,
         })
+    }
+
+    /// Get the parsed form of a record's response body. The given record must
+    /// be in the Success state. If the parsed body is already cached that will
+    /// be returned, otherwise it will be parsed and cached for the next time.
+    /// The parsing will be done *in a separate task*, so this will not block
+    /// while parsing.
+    pub async fn get_parsed_body(
+        &self,
+        record: Arc<RequestRecord>,
+    ) -> anyhow::Result<Arc<ParsedBody>> {
+        // Errors in parsing will *not* be cached. Typically a user won't
+        // retry a failed operation very much, and if they do they'd probably
+        // be happy to know it actually tried it again
+        self.parsed_body_cache
+            .try_get_or_insert(record.id(), async {
+                task::spawn_blocking(move || {
+                    trace!(
+                        request_id = %record.id(),
+                        "Parsing response body"
+                    );
+                    ParsedBody::parse(record.try_response()?)
+                })
+                // Unpack the potential JoinError
+                .await?
+            })
+            .await
     }
 
     /// Add a new request to history. This should be called immediately before
@@ -220,9 +245,8 @@ impl Repository {
     pub fn testing() -> Self {
         Self {
             database: RepositoryDatabase::testing(),
-            request_cache: Arc::new(RwLock::new(LruCache::new(
-                NonZeroUsize::new(CACHE_SIZE).unwrap(),
-            ))),
+            request_cache: Cache::new(),
+            parsed_body_cache: Cache::new(),
         }
     }
 
@@ -266,5 +290,64 @@ impl RequestRecord {
                 Some(*end_time - self.start_time)
             }
         }
+    }
+}
+
+/// A threadsafe LRU cache
+#[derive(Debug)]
+struct Cache<K: Eq + Hash + PartialEq, V>(Arc<RwLock<LruCache<K, Arc<V>>>>);
+
+impl<K: Eq + Hash + PartialEq, V> Cache<K, V> {
+    /// All caches use the same size, for no reason beyond simplicity
+    const CACHE_SIZE: usize = 10;
+
+    /// Build a new cache with a fixed size
+    fn new() -> Self {
+        Self(Arc::new(RwLock::new(LruCache::new(
+            NonZeroUsize::new(Self::CACHE_SIZE).unwrap(),
+        ))))
+    }
+
+    /// Get a value from the cache, or insert a new value generated from the
+    /// given function if it isn't already in the cache. The getter future
+    /// is expected to be fallible, and will only be resolved if the lookup
+    /// fails. Similar to [LruCache::try_get_or_insert] but it supports
+    /// async.
+    async fn try_get_or_insert(
+        &self,
+        key: K,
+        future: impl Future<Output = anyhow::Result<V>>,
+    ) -> anyhow::Result<Arc<V>> {
+        match self.write().await.get(&key) {
+            Some(value) => Ok(Arc::clone(value)),
+            None => {
+                // Miss - use the function to get the value
+                let value = Arc::new(future.await?);
+                // Reopen the lock so we don't hold it across an async bound
+                self.write().await.push(key, Arc::clone(&value));
+                Ok::<_, anyhow::Error>(value)
+            }
+        }
+    }
+}
+
+impl<K: Eq + Hash + PartialEq, V> Deref for Cache<K, V> {
+    type Target = RwLock<LruCache<K, Arc<V>>>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+/// Derive macro applies a Clone bound to K and V which is no good
+impl<K: Eq + Hash + PartialEq, V> Clone for Cache<K, V> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<K: Eq + Hash + PartialEq, V> Default for Cache<K, V> {
+    fn default() -> Self {
+        Self::new()
     }
 }

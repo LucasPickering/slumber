@@ -1,4 +1,8 @@
-use crate::{config::Chain, repository::Repository, util::ResultExt};
+use crate::{
+    config::Chain,
+    repository::{ParsedBody, Repository},
+    util::ResultExt,
+};
 use anyhow::Context;
 use async_trait::async_trait;
 use derive_more::{Deref, Display, From};
@@ -213,16 +217,22 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
                         error: err,
                     }
                 })?;
+
                 // Parse the response as JSON
-                let response_value: serde_json::Value =
-                    serde_json::from_str(&response.body).map_err(|err| {
-                        TemplateError::ChainJsonResponse {
+                let parsed_body =
+                    context.repository.get_parsed_body(record).await.map_err(
+                        |err| TemplateError::ChainParseResponse {
                             chain_id,
                             error: err,
-                        }
-                    })?;
+                        },
+                    )?;
+                let json_value = match parsed_body.deref() {
+                    ParsedBody::Json(value) => value,
+                    // TODO return a structured error here
+                    _ => todo!(),
+                };
                 let found_value = path
-                    .query(&response_value)
+                    .query(json_value)
                     .exactly_one()
                     .map_err(|err| TemplateError::ChainInvalidResult {
                         chain_id,
@@ -294,12 +304,12 @@ pub enum TemplateError<S: std::fmt::Display> {
         error: serde_json_path::ParseError,
     },
 
-    /// Failed to parse the response body as JSON
-    #[error("Error parsing response as JSON for chain {chain_id:?}")]
-    ChainJsonResponse {
+    /// Failed to parse the response body before applying a selector
+    #[error("Error parsing response for chain {chain_id:?}")]
+    ChainParseResponse {
         chain_id: S,
         #[source]
-        error: serde_json::Error,
+        error: anyhow::Error,
     },
 
     /// Got either 0 or 2+ results for JSON path query
@@ -354,8 +364,8 @@ impl<'a> TemplateError<&'a str> {
                 path: path.to_owned(),
                 error,
             },
-            TemplateError::ChainJsonResponse { chain_id, error } => {
-                TemplateError::ChainJsonResponse {
+            TemplateError::ChainParseResponse { chain_id, error } => {
+                TemplateError::ChainParseResponse {
                     chain_id: chain_id.to_owned(),
                     error,
                 }

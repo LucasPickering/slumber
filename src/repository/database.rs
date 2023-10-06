@@ -1,7 +1,7 @@
 use crate::{
     config::RequestRecipeId,
     http::{Request, RequestId, Response},
-    repository::{RequestRecord, ResponseState, ResponseStateKind},
+    repository::{record::ResponseStateKind, RequestRecord, ResponseState},
     util::ResultExt,
 };
 use anyhow::{bail, Context};

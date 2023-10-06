@@ -12,7 +12,7 @@ use crate::{
     util::ResultExt,
 };
 use chrono::{DateTime, Duration, Utc};
-use derive_more::From;
+use derive_more::{Display, From};
 use ratatui::widgets::*;
 use std::{
     fmt::Display,
@@ -199,7 +199,7 @@ pub struct MessageSender(UnboundedSender<Message>);
 impl MessageSender {
     /// Send an async message, to be handled by the main loop
     pub fn send(&self, message: Message) {
-        trace!(?message, "Queueing message");
+        trace!(%message, "Queueing message");
         self.0.send(message).expect("Message queue is closed")
     }
 }
@@ -208,11 +208,12 @@ impl MessageSender {
 /// be made synchronously by the input handler, but some require async handling
 /// at the top level. The controller is responsible for both triggering and
 /// handling messages.
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum Message {
     /// Trigger collection reload
     StartReloadCollection,
     /// Store a reloaded collection value in state
+    #[display(fmt = "EndReloadCollection(collection_file:?)")]
     EndReloadCollection {
         collection_file: PathBuf,
         collection: RequestCollection,

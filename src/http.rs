@@ -1,5 +1,6 @@
 //! This whole module is basically a wrapper around reqwest to make it more
-//! ergnomic for our needs
+//! ergnomic for our needs. This doesn't manage any state, it's a purely
+//! functional adapter for making HTTP requests.
 
 use crate::{
     config::{RequestRecipe, RequestRecipeId},

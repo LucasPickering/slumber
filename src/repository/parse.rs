@@ -1,5 +1,15 @@
+//! Utilities for parsing response bodies into a variety of known content types.
+//! This uses a pseudo-type state pattern. Each supported content type has its
+//! own struct which implements [ContentType]. Then a wrapper enum [ParsedBody]
+//! holds the actual parsed content. [ParsedBody] supports fallible downcasting
+//! to get a specific content type if necessary.
+//!
+//! The runtime downcasting is unfortunate but it's the only option because
+//! the [ParsedBody] gets stored behind an `Arc` in the cache, meaning there's
+//! no way to do static casting.
+
 use crate::{http::Response, util::ResultExt};
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use reqwest::header::{self, HeaderValue};
 
 /// A parsed response body. We have a set number of supported content types that
@@ -16,18 +26,59 @@ pub enum ParsedBody {
 }
 
 impl ParsedBody {
-    /// Parse the body of a response, based on its content-type header
-    pub fn parse(response: &Response) -> anyhow::Result<ParsedBody> {
-        let content_type = response
-            .headers
-            .get(header::CONTENT_TYPE)
-            .map(HeaderValue::as_bytes);
+    fn content_type_display(&self) -> &str {
+        match self {
+            ParsedBody::Json(_) => Json::HEADER,
+            ParsedBody::UnknownContentType { content_type } => {
+                content_type.as_deref().unwrap_or("<unknown>")
+            }
+        }
+    }
+}
+
+/// A response content type that we know how to parse.
+pub trait ContentType {
+    /// Value of the `content-type` header identifying this content type
+    const HEADER: &'static str;
+    /// Useful for pattern matching
+    const HEADER_BYTES: &'static [u8] = Self::HEADER.as_bytes();
+
+    /// The type that the body will parse into
+    type Value;
+
+    /// Parse the response body
+    fn parse(body: &str) -> anyhow::Result<Self::Value>;
+
+    fn from_parsed_body(parsed_body: &ParsedBody) -> Option<&Self::Value>;
+}
+
+pub struct Json;
+impl ContentType for Json {
+    const HEADER: &'static str = "application/json";
+    type Value = serde_json::Value;
+
+    fn parse(body: &str) -> anyhow::Result<Self::Value> {
+        Ok(serde_json::from_str(body)?)
+    }
+
+    fn from_parsed_body(parsed_body: &ParsedBody) -> Option<&Self::Value> {
+        match parsed_body {
+            ParsedBody::Json(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+impl ParsedBody {
+    /// Parse the body of a response, based on its content-type header. This
+    /// should only be used within the `repository` module. Externally, use
+    /// [Repository]'s API for parsing, to leverage the cache.
+    pub(super) fn parse(response: &Response) -> anyhow::Result<ParsedBody> {
+        let body = &response.body;
         let result: anyhow::Result<Self> = try {
-            match content_type {
-                Some(b"application/json") => {
-                    let json_value = serde_json::from_str(&response.body)?;
-                    Self::Json(json_value)
-                }
+            match content_type(response) {
+                Some(Json::HEADER_BYTES) => Self::Json(Json::parse(body)?),
+
                 // Content type is either missing or unknown
                 Some(content_type) => Self::UnknownContentType {
                     // Try to parse the content, but don't try too hard
@@ -40,5 +91,29 @@ impl ParsedBody {
         result.context("Error parsing response body").traced()
     }
 
-    // TODO add a type-stated parse_as
+    /// Attempt to downcast the parsed body to a particular content type. If
+    /// content type doesn't match, return an error.
+    ///
+    /// Generally using this does mean you'll have to parse the response even if
+    /// it isn't the content type you're looking for, but that provides
+    /// simplicity and will cache the parsed body for other purposes too.
+    pub fn as_content_type<CT: ContentType>(
+        &self,
+    ) -> anyhow::Result<&CT::Value> {
+        CT::from_parsed_body(self).ok_or_else(|| {
+            anyhow!(
+                "Expected content type {}, but response was {}",
+                CT::HEADER,
+                self.content_type_display()
+            )
+        })
+    }
+}
+
+/// Get the value of the `content-type` header for a response
+fn content_type(response: &Response) -> Option<&[u8]> {
+    response
+        .headers
+        .get(header::CONTENT_TYPE)
+        .map(HeaderValue::as_bytes)
 }

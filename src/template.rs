@@ -1,6 +1,6 @@
 use crate::{
     config::Chain,
-    repository::{ParsedBody, Repository},
+    repository::{Json, Repository},
     util::ResultExt,
 };
 use anyhow::Context;
@@ -226,11 +226,15 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
                             error: err,
                         },
                     )?;
-                let json_value = match parsed_body.deref() {
-                    ParsedBody::Json(value) => value,
-                    // TODO return a structured error here
-                    _ => todo!(),
-                };
+                let json_value =
+                    parsed_body.as_content_type::<Json>().map_err(|err| {
+                        TemplateError::ChainIncorrectContentType {
+                            chain_id,
+                            error: err,
+                        }
+                    })?;
+
+                // Apply the path to the json
                 let found_value = path
                     .query(json_value)
                     .exactly_one()
@@ -312,6 +316,17 @@ pub enum TemplateError<S: std::fmt::Display> {
         error: anyhow::Error,
     },
 
+    /// Response was parsed correctly, but didn't have the expected content
+    /// type
+    #[error(
+        "Error response for chain {chain_id:?} had incorrect content type"
+    )]
+    ChainIncorrectContentType {
+        chain_id: S,
+        #[source]
+        error: anyhow::Error,
+    },
+
     /// Got either 0 or 2+ results for JSON path query
     #[error("Expected exactly one result for chain {chain_id:?}")]
     ChainInvalidResult {
@@ -345,6 +360,7 @@ impl<'a> TemplateError<&'a str> {
                     field: field.to_owned(),
                 }
             }
+
             TemplateError::ChainUnknown { chain_id } => {
                 TemplateError::ChainUnknown {
                     chain_id: chain_id.to_owned(),
@@ -370,12 +386,19 @@ impl<'a> TemplateError<&'a str> {
                     error,
                 }
             }
+            TemplateError::ChainIncorrectContentType { chain_id, error } => {
+                TemplateError::ChainParseResponse {
+                    chain_id: chain_id.to_owned(),
+                    error,
+                }
+            }
             TemplateError::ChainInvalidResult { chain_id, error } => {
                 TemplateError::ChainInvalidResult {
                     chain_id: chain_id.to_owned(),
                     error,
                 }
             }
+
             TemplateError::EnvironmentVariable { variable, error } => {
                 TemplateError::EnvironmentVariable {
                     variable: variable.to_owned(),

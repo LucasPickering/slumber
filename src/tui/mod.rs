@@ -209,7 +209,7 @@ impl Tui {
 
                 // Execute the request and store the response
                 let response_result = future.await;
-                repository.add_response(request_id, response_result).await?;
+                repository.add_outcome(request_id, response_result).await?;
             };
             // Report any errors back to the main thread
             if let Err(err) = result {

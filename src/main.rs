@@ -166,7 +166,7 @@ async fn execute_subcommand(
                     Ok(response) => {
                         print!("{}", response.body);
                         repository
-                            .add_response(
+                            .add_outcome(
                                 record_id,
                                 Ok::<_, anyhow::Error>(response),
                             )
@@ -176,7 +176,7 @@ async fn execute_subcommand(
                         // This error shouldn't hide the HTTP error, so trace
                         // it instead of returning it
                         let _ = repository
-                            .add_response(record_id, Err(&err))
+                            .add_outcome(record_id, Err(&err))
                             .await
                             .traced();
                         return Err(err);

@@ -13,15 +13,16 @@ pub struct RequestRecord {
     /// to when it was sent to the server
     pub start_time: DateTime<Utc>,
     pub request: Request,
-    pub response: ResponseState,
+    /// Current status of this request
+    pub state: RequestState,
 }
 
 /// State of an HTTP response, which can be pending or completed. Also generate
 /// a discriminant-only enum that will map to the `response_kind` column in the
 /// database.
 #[derive(Debug, EnumDiscriminants)]
-#[strum_discriminants(name(ResponseStateKind), derive(Display, EnumString))]
-pub enum ResponseState {
+#[strum_discriminants(name(RequestStateKind), derive(Display, EnumString))]
+pub enum RequestState {
     /// Request is in flight, or is *about* to be sent. There's no way to
     /// initiate a request that doesn't immediately launch it, so Loading is
     /// the initial state.
@@ -34,7 +35,7 @@ pub enum ResponseState {
     /// A resolved HTTP response, with all content loaded and ready to be
     /// displayed. This does *not necessarily* have a 2xx/3xx status code, any
     /// received response is considered a "success".
-    Success {
+    Response {
         response: Response,
         /// When did we finish receiving the full response?
         end_time: DateTime<Utc>,
@@ -56,26 +57,26 @@ impl RequestRecord {
         self.request.id
     }
 
-    /// Unpack the response state as a successful response. If it isn't a
+    /// Unpack the request state as a response. If it isn't a
     /// success, return an error.
     pub fn try_response(&self) -> anyhow::Result<&Response> {
-        match &self.response {
-            ResponseState::Success { response, .. } => Ok(response),
+        match &self.state {
+            RequestState::Response { response, .. } => Ok(response),
             other => Err(anyhow!("Request is in non-success state {other:?}")),
         }
     }
 
-    /// Get the elapsed time for this request, according to response state:
+    /// Get the elapsed time for this request, according to request state:
     /// - Loading - Elapsed time since the request started
     /// - Incomplete - `None`
-    /// - Success - Duration from start to loading the entire request
+    /// - Response - Duration from start to loading the entire request
     /// - Error - Duration from start to request failing
     pub fn duration(&self) -> Option<Duration> {
-        match &self.response {
-            ResponseState::Loading => Some(Utc::now() - self.start_time),
-            ResponseState::Incomplete => None,
-            ResponseState::Success { end_time, .. }
-            | ResponseState::Error { end_time, .. } => {
+        match &self.state {
+            RequestState::Loading => Some(Utc::now() - self.start_time),
+            RequestState::Incomplete => None,
+            RequestState::Response { end_time, .. }
+            | RequestState::Error { end_time, .. } => {
                 Some(*end_time - self.start_time)
             }
         }

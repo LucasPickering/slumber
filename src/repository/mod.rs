@@ -95,10 +95,10 @@ impl Repository {
         })
     }
 
-    /// Get the most recent *successful* response for a recipe, or `None` if
-    /// there is none. The response state of the returned record is guaranteed
-    /// to be variant `Success`.
-    pub async fn get_last_success(
+    /// Get the most recent response for a recipe, or `None` if there is none.
+    /// The request state of the returned record is guaranteed to be variant
+    /// `Response`.
+    pub async fn get_last_response(
         &self,
         recipe_id: &RequestRecipeId,
     ) -> anyhow::Result<Option<Arc<RequestRecord>>> {
@@ -111,10 +111,10 @@ impl Repository {
     }
 
     /// Get the parsed form of a record's response body. The given record must
-    /// be in the Success state. If the parsed body is already cached that will
-    /// be returned, otherwise it will be parsed and cached for the next time.
-    /// The parsing will be done *in a separate task*, so this will not block
-    /// while parsing.
+    /// be in the `Response` state. If the parsed body is already cached that
+    /// will be returned, otherwise it will be parsed and cached for the next
+    /// time. The parsing will be done *in a separate task*, so this will not
+    /// block while parsing.
     pub async fn get_parsed_body(
         &self,
         record: Arc<RequestRecord>,
@@ -150,16 +150,16 @@ impl Repository {
         let record = Arc::new(RequestRecord {
             request,
             start_time: Utc::now(),
-            response: ResponseState::Loading,
+            state: RequestState::Loading,
         });
         self.database.add_request(&record).await?;
         self.cache_record(Arc::clone(&record)).await;
         Ok(record)
     }
 
-    /// Attach a response (or error) to an existing request. Errors will be
+    /// Attach a response or error to an existing request. Errors will be
     /// converted to a string for serialization.
-    pub async fn add_response(
+    pub async fn add_outcome(
         &mut self,
         request_id: RequestId,
         // The error is stored as a string, so take anything stringifiable
@@ -167,8 +167,8 @@ impl Repository {
     ) -> anyhow::Result<Arc<RequestRecord>> {
         let end_time = Utc::now();
         let response_state = match result {
-            Ok(response) => ResponseState::Success { response, end_time },
-            Err(err) => ResponseState::Error {
+            Ok(response) => RequestState::Response { response, end_time },
+            Err(err) => RequestState::Error {
                 error: err.to_string(),
                 end_time,
             },
@@ -178,7 +178,7 @@ impl Repository {
         // that new guy in the cache
         let updated_record = Arc::new(
             self.database
-                .add_response(request_id, &response_state)
+                .add_outcome(request_id, &response_state)
                 .await?,
         );
         self.cache_record(Arc::clone(&updated_record)).await;
@@ -213,7 +213,7 @@ impl Repository {
         response: anyhow::Result<Response>,
     ) {
         let record = self.add_request(request).await.unwrap();
-        self.add_response(record.id(), response).await.unwrap();
+        self.add_outcome(record.id(), response).await.unwrap();
     }
 }
 

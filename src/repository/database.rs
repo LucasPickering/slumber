@@ -1,7 +1,7 @@
 use crate::{
     config::RequestRecipeId,
     http::{Request, RequestId, Response},
-    repository::{record::ResponseStateKind, RequestRecord, ResponseState},
+    repository::{record::RequestStateKind, RequestRecord, RequestState},
     util::ResultExt,
 };
 use anyhow::{bail, Context};
@@ -53,10 +53,10 @@ impl RepositoryDatabase {
     /// Apply first-time setup
     fn setup(connection: &mut Connection) -> anyhow::Result<()> {
         let migrations = Migrations::new(vec![M::up(
-            // The response state kind is a bit hard to map to tabular data.
+            // The request state kind is a bit hard to map to tabular data.
             // Everything that we need to query on (success/error kind, HTTP
-            // status code, end_time, etc.) is in its own column. The response
-            // itself will be serialized into text
+            // status code, end_time, etc.) is in its own column. The data
+            // itself will be serialized into messagepack bytes
             "CREATE TABLE requests (
                 id              UUID PRIMARY KEY,
                 recipe_id       TEXT,
@@ -74,7 +74,7 @@ impl RepositoryDatabase {
         // those to incomplete
         connection.execute(
             "UPDATE requests SET response_kind = ?1 WHERE response_kind = ?2",
-            (ResponseStateKind::Incomplete, ResponseStateKind::Loading),
+            (RequestStateKind::Incomplete, RequestStateKind::Loading),
         )?;
         Ok(())
     }
@@ -133,7 +133,7 @@ impl RepositoryDatabase {
                 "SELECT id FROM requests
                 WHERE recipe_id = ?1 AND response_kind = ?2
                 ORDER BY start_time DESC LIMIT 1",
-                (recipe_id, ResponseStateKind::Success),
+                (recipe_id, RequestStateKind::Response),
                 |row| row.get(0),
             )
             .optional()
@@ -165,38 +165,38 @@ impl RepositoryDatabase {
                     &record.request.recipe_id,
                     &record.start_time,
                     &record.request,
-                    ResponseStateKind::from(&record.response),
+                    RequestStateKind::from(&record.state),
                 ),
             )
             .context("Error saving request to database")?;
         Ok(())
     }
 
-    /// Attach a response (or error) to an existing request. Errors will be
-    /// converted to a string for serialization. The given response state must
-    /// be either the `Success` or `Error` variant. Return the entire updated
+    /// Attach a response or error to an existing request. Errors will be
+    /// converted to a string for serialization. The given request state must
+    /// be either the `Response` or `Error` variant. Return the entire updated
     /// record.
-    pub async fn add_response(
+    pub async fn add_outcome(
         &self,
         request_id: RequestId,
-        response_state: &ResponseState,
+        response_state: &RequestState,
     ) -> anyhow::Result<RequestRecord> {
         // This unpack is pretty ugly... we could clean it up by factoring the
-        // Success+Error variants into their own type
+        // Response+Error variants into their own type
         let (description, content, status_code, end_time): (
             &str,
             &(dyn ToSql + Send + Sync),
             Option<u16>,
             &DateTime<Utc>,
         ) = match &response_state {
-            ResponseState::Success { response, end_time } => {
+            RequestState::Response { response, end_time } => {
                 ("OK", response, Some(response.status.as_u16()), end_time)
             }
-            ResponseState::Error { error, end_time } => {
+            RequestState::Error { error, end_time } => {
                 ("Error", error, None, end_time)
             }
             // This indicates a bug in the parent
-            _ => bail!("Response state must be success or error"),
+            _ => bail!("Request state must be success or error"),
         };
 
         debug!(
@@ -213,7 +213,7 @@ impl RepositoryDatabase {
                 end_time = ?3, status_code = ?4
                 WHERE id = ?5 RETURNING *",
                 (
-                    ResponseStateKind::from(response_state),
+                    RequestStateKind::from(response_state),
                     content,
                     end_time,
                     status_code,
@@ -262,13 +262,13 @@ impl FromSql for RequestRecipeId {
     }
 }
 
-impl ToSql for ResponseStateKind {
+impl ToSql for RequestStateKind {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         Ok(ToSqlOutput::Owned(self.to_string().into()))
     }
 }
 
-impl FromSql for ResponseStateKind {
+impl FromSql for RequestStateKind {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         String::column_result(value)?
             .parse()
@@ -307,14 +307,14 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
 
     fn try_from(row: &Row<'a>) -> Result<Self, Self::Error> {
         // Extract the response based on the response_kind column
-        let response = match row.get::<_, ResponseStateKind>("response_kind")? {
-            ResponseStateKind::Loading => ResponseState::Loading,
-            ResponseStateKind::Incomplete => ResponseState::Incomplete,
-            ResponseStateKind::Success => ResponseState::Success {
+        let response = match row.get::<_, RequestStateKind>("response_kind")? {
+            RequestStateKind::Loading => RequestState::Loading,
+            RequestStateKind::Incomplete => RequestState::Incomplete,
+            RequestStateKind::Response => RequestState::Response {
                 response: row.get("response")?,
                 end_time: row.get("end_time")?,
             },
-            ResponseStateKind::Error => ResponseState::Error {
+            RequestStateKind::Error => RequestState::Error {
                 error: row.get("response")?,
                 end_time: row.get("end_time")?,
             },
@@ -323,7 +323,7 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
         Ok(Self {
             request: row.get("request")?,
             start_time: row.get("start_time")?,
-            response,
+            state: response,
         })
     }
 }

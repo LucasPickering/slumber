@@ -196,7 +196,7 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
             .ok_or(TemplateError::ChainUnknown { chain_id })?;
         let record = context
             .repository
-            .get_last_success(&chain.source)
+            .get_last_response(&chain.source)
             .await
             .map_err(TemplateError::Repository)?
             .ok_or(TemplateError::ChainNoResponse { chain_id })?;

@@ -3,7 +3,7 @@ mod theme;
 
 use crate::{
     http::Response,
-    repository::ResponseState,
+    repository::RequestState,
     tui::{
         input::{InputManager, InputTarget},
         state::{AppState, PrimaryPane, RequestTab, ResponseTab},
@@ -232,7 +232,7 @@ impl Draw for ResponsePane {
         let inner_chunk = block.inner(chunk);
         f.render_widget(block, chunk);
 
-        // Don't render anything else unless we have a response state
+        // Don't render anything else unless we have a request state
         if let Some(request) = state.active_request() {
             let [header_chunk, content_chunk] = layout(
                 inner_chunk,
@@ -256,22 +256,22 @@ impl Draw for ResponsePane {
                 header_right_chunk,
             );
 
-            match &request.response {
-                ResponseState::Loading => {
+            match &request.state {
+                RequestState::Loading => {
                     f.render_widget(
                         Paragraph::new("Loading..."),
                         header_left_chunk,
                     );
                 }
 
-                ResponseState::Incomplete => {
+                RequestState::Incomplete => {
                     f.render_widget(
                         Paragraph::new("Request never completed"),
                         content_chunk,
                     );
                 }
 
-                ResponseState::Success {
+                RequestState::Response {
                     response:
                         Response {
                             status,
@@ -308,7 +308,7 @@ impl Draw for ResponsePane {
                     f.render_widget(Paragraph::new(tab_text), content_chunk);
                 }
 
-                ResponseState::Error { error, .. } => {
+                RequestState::Error { error, .. } => {
                     f.render_widget(
                         Paragraph::new(error.as_str()).wrap(Wrap::default()),
                         content_chunk,

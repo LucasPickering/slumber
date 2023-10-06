@@ -31,7 +31,7 @@ pub struct TemplateString(String);
 #[derive(Debug)]
 pub struct TemplateContext {
     /// Key-value mapping
-    pub environment: IndexMap<String, String>,
+    pub profile: IndexMap<String, String>,
     /// Chained values from dynamic sources
     pub chains: Vec<Chain>,
     /// Needed for accessing response bodies for chaining
@@ -104,7 +104,7 @@ impl TemplateString {
 /// based on that.
 #[derive(Clone, Debug, PartialEq)]
 enum TemplateKey<'a> {
-    /// A plain field, which can come from the environment or an override
+    /// A plain field, which can come from the profile or an override
     Field(&'a str),
     /// A value chained from the response of another recipe
     Chain(&'a str),
@@ -155,7 +155,7 @@ trait TemplateSource<'a>: 'a + Send + Sync {
     ) -> Result<Cow<'a, str>, TemplateError<&'a str>>;
 }
 
-/// A simple field value (e.g. from the environment or an override)
+/// A simple field value (e.g. from the profile or an override)
 struct FieldSource<'a> {
     field: &'a str,
 }
@@ -170,7 +170,7 @@ impl<'a> TemplateSource<'a> for FieldSource<'a> {
         None
             // Cascade down the the list of maps we want to check
             .or_else(|| context.overrides.get(field))
-            .or_else(|| context.environment.get(field))
+            .or_else(|| context.profile.get(field))
             .map(Cow::from)
             .ok_or(TemplateError::FieldUnknown { field })
     }
@@ -427,7 +427,7 @@ mod tests {
     /// Test that a field key renders correctly
     #[tokio::test]
     async fn test_field() {
-        let environment = [
+        let profile = [
             ("user_id".into(), "1".into()),
             ("group_id".into(), "3".into()),
         ]
@@ -436,7 +436,7 @@ mod tests {
         let overrides = [("user_id".into(), "2".into())].into_iter().collect();
         let context = create!(
             TemplateContext,
-            environment: environment,
+            profile: profile,
             overrides: overrides,
         );
 
@@ -444,7 +444,7 @@ mod tests {
         assert_eq!(render!("", context).unwrap(), "".to_owned());
         assert_eq!(render!("plain", context).unwrap(), "plain".to_owned());
         assert_eq!(
-            // Pull from overrides for user_id, env for group_id
+            // Pull from overrides for user_id, profile for group_id
             render!("{{user_id}} {{group_id}}", context).unwrap(),
             "2 3".to_owned()
         );

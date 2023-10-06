@@ -1,11 +1,11 @@
 use crate::{
-    config::{Chain, Environment, RequestCollection, RequestRecipe},
+    config::{Chain, Profile, RequestCollection, RequestRecipe},
     repository::{Repository, RequestRecord},
     template::TemplateContext,
     tui::{
         input::InputTarget,
         view::{
-            EnvironmentListPane, ErrorPopup, RecipeListPane, RequestPane,
+            ErrorPopup, ProfileListPane, RecipeListPane, RequestPane,
             ResponsePane,
         },
     },
@@ -55,7 +55,7 @@ pub struct UiState {
     pub selected_pane: StatefulSelect<PrimaryPane>,
     pub request_tab: StatefulSelect<RequestTab>,
     pub response_tab: StatefulSelect<ResponseTab>,
-    pub environments: StatefulList<Environment>,
+    pub profiles: StatefulList<Profile>,
     pub recipes: StatefulList<RequestRecipe>,
     pub chains: Vec<Chain>,
 }
@@ -126,9 +126,9 @@ impl AppState {
     /// it should be small data.
     pub fn template_context(&self) -> TemplateContext {
         TemplateContext {
-            environment: self
+            profile: self
                 .ui
-                .environments
+                .profiles
                 .selected()
                 .map(|e| e.data.clone())
                 .unwrap_or_default(),
@@ -185,7 +185,7 @@ impl UiState {
             selected_pane: StatefulSelect::new(),
             request_tab: StatefulSelect::new(),
             response_tab: StatefulSelect::new(),
-            environments: StatefulList::with_items(collection.environments),
+            profiles: StatefulList::with_items(collection.profiles),
             recipes: StatefulList::with_items(collection.requests),
             chains: collection.chains,
         }
@@ -356,8 +356,8 @@ impl<T: FixedSelect> Default for StatefulSelect<T> {
 
 #[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
 pub enum PrimaryPane {
-    #[display(fmt = "Environments")]
-    EnvironmentList,
+    #[display(fmt = "Profiles")]
+    ProfileList,
     #[display(fmt = "Recipes")]
     RecipeList,
     Request,
@@ -368,7 +368,7 @@ impl PrimaryPane {
     /// Get a trait object that should handle contextual input for this pane
     pub fn input_handler(self) -> Box<dyn InputTarget> {
         match self {
-            Self::EnvironmentList => Box::new(EnvironmentListPane),
+            Self::ProfileList => Box::new(ProfileListPane),
             Self::RecipeList => Box::new(RecipeListPane),
             Self::Request => Box::new(RequestPane),
             Self::Response => Box::new(ResponsePane),

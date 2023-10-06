@@ -1,4 +1,4 @@
-environments:
+profiles:
   - id: works
     name: Works
     data:

@@ -190,7 +190,7 @@ impl HttpEngine {
 
 impl Request {
     /// Instantiate a request from a recipe, using values from the given
-    /// environment to render templated strings. Errors if request construction
+    /// context to render templated strings. Errors if request construction
     /// fails because of invalid user input somewhere.
     pub async fn build(
         recipe: &RequestRecipe,

@@ -40,7 +40,7 @@ factori!(Chain, {
 
 factori!(TemplateContext, {
     default {
-        environment = Default::default()
+        profile = Default::default()
         chains = Default::default()
         repository = Repository::testing()
         overrides = Default::default()

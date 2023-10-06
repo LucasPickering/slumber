@@ -1,7 +1,7 @@
 //! Helper components for building panes
 
 use crate::{
-    config::{Environment, RequestRecipe},
+    config::{Profile, RequestRecipe},
     tui::{
         state::{FixedSelect, Notification, StatefulList, StatefulSelect},
         view::Renderer,
@@ -116,7 +116,7 @@ pub trait ToSpan {
 }
 
 // Getting lazy with the lifetimes here...
-impl ToSpan for Environment {
+impl ToSpan for Profile {
     fn to_span(&self) -> Span<'static> {
         self.name().to_owned().into()
     }

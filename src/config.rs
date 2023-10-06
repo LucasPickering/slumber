@@ -21,16 +21,15 @@ pub const CONFIG_FILES: &[&str] = &[
 #[derive(Clone, Debug, Deserialize)]
 pub struct RequestCollection {
     #[serde(default)]
-    pub environments: Vec<Environment>,
+    pub profiles: Vec<Profile>,
     #[serde(default)]
     pub requests: Vec<RequestRecipe>,
     pub chains: Vec<Chain>,
 }
 
 /// Mutually exclusive hot-swappable config group
-/// TODO rename to break confusion with environment variables
 #[derive(Clone, Debug, Deserialize)]
-pub struct Environment {
+pub struct Profile {
     pub id: String,
     pub name: Option<String>,
     pub data: IndexMap<String, String>,
@@ -136,8 +135,8 @@ impl RequestCollection {
     }
 }
 
-impl Environment {
-    /// Get a presentable name for this environment
+impl Profile {
+    /// Get a presentable name for this profile
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
     }

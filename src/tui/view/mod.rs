@@ -46,7 +46,7 @@ impl Renderer {
             [Constraint::Max(40), Constraint::Percentage(50)],
         );
 
-        let [environments_chunk, recipes_chunk] = layout(
+        let [profiles_chunk, recipes_chunk] = layout(
             left_chunk,
             Direction::Vertical,
             [Constraint::Max(16), Constraint::Min(0)],
@@ -59,7 +59,7 @@ impl Renderer {
         );
 
         // Main panes
-        EnvironmentListPane.draw(self, f, environments_chunk, state);
+        ProfileListPane.draw(self, f, profiles_chunk, state);
         RecipeListPane.draw(self, f, recipes_chunk, state);
         RequestPane.draw(self, f, request_chunk, state);
         ResponsePane.draw(self, f, response_chunk, state);
@@ -107,9 +107,9 @@ pub trait Draw {
     );
 }
 
-pub struct EnvironmentListPane;
+pub struct ProfileListPane;
 
-impl Draw for EnvironmentListPane {
+impl Draw for ProfileListPane {
     fn draw(
         &self,
         renderer: &Renderer,
@@ -117,16 +117,16 @@ impl Draw for EnvironmentListPane {
         chunk: Rect,
         state: &mut AppState,
     ) {
-        let pane_kind = PrimaryPane::EnvironmentList;
+        let pane_kind = PrimaryPane::ProfileList;
         let list = ListComponent {
             block: BlockComponent {
                 title: pane_kind.to_string(),
                 is_focused: state.ui.selected_pane.is_selected(&pane_kind),
             },
-            list: &state.ui.environments,
+            list: &state.ui.profiles,
         }
         .render(renderer);
-        f.render_stateful_widget(list, chunk, &mut state.ui.environments.state)
+        f.render_stateful_widget(list, chunk, &mut state.ui.profiles.state)
     }
 }
 

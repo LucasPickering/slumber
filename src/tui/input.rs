@@ -3,8 +3,7 @@
 use crate::tui::{
     state::{AppState, Message},
     view::{
-        EnvironmentListPane, ErrorPopup, RecipeListPane, RequestPane,
-        ResponsePane,
+        ErrorPopup, ProfileListPane, RecipeListPane, RequestPane, ResponsePane,
     },
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -236,7 +235,7 @@ impl InputTarget for InputManager {
     }
 }
 
-impl InputTarget for EnvironmentListPane {
+impl InputTarget for ProfileListPane {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
         vec![
             OutcomeBinding::new(Action::FocusPrevious, &|state| {
@@ -246,10 +245,10 @@ impl InputTarget for EnvironmentListPane {
                 state.ui.selected_pane.next()
             }),
             OutcomeBinding::new(Action::Up, &|state| {
-                state.ui.environments.previous()
+                state.ui.profiles.previous()
             }),
             OutcomeBinding::new(Action::Down, &|state| {
-                state.ui.environments.next()
+                state.ui.profiles.next()
             }),
         ]
     }

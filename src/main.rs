@@ -37,10 +37,9 @@ use tracing_subscriber::{filter::EnvFilter, prelude::*};
     long_about = "Configurable REST client with both TUI and CLI interfaces"
 )]
 struct Args {
-    /// Collection file, which defines your environments and recipes. If
-    /// omitted, check for the following files in the current directory
-    /// (first match will be used): slumber.yml, slumber.yaml, .slumber.yml,
-    /// .slumber.yaml
+    /// Collection file, which defines your profiless and recipes. If omitted,
+    /// check for the following files in the current directory (first match
+    /// will be used): slumber.yml, slumber.yaml, .slumber.yml, .slumber.yaml
     #[clap(long, short)]
     collection: Option<PathBuf>,
 
@@ -57,9 +56,9 @@ enum Subcommand {
         /// ID of the request to execute
         request_id: String,
 
-        /// ID of the environment to pull template values from
-        #[clap(long = "env", short)]
-        environment: Option<String>,
+        /// ID of the profile to pull template values from
+        #[clap(long = "profile", short)]
+        profile: Option<String>,
 
         /// List of key=value overrides
         #[clap(
@@ -111,19 +110,19 @@ async fn execute_subcommand(
     match subcommand {
         Subcommand::Request {
             request_id,
-            environment,
+            profile,
             overrides,
             dry_run,
         } => {
-            // Find environment and recipe by ID
-            let environment = environment
-                .map(|environment| {
+            // Find profile and recipe by ID
+            let profile = profile
+                .map(|profile| {
                     Ok::<_, anyhow::Error>(
                         find_by(
-                            collection.environments,
+                            collection.profiles,
                             |e| &e.id,
-                            &environment,
-                            "No environment with ID",
+                            &profile,
+                            "No profile with ID",
                         )?
                         .data,
                     )
@@ -143,7 +142,7 @@ async fn execute_subcommand(
             let request = Request::build(
                 &recipe,
                 &TemplateContext {
-                    environment,
+                    profile,
                     overrides,
                     chains: collection.chains,
                     repository: repository.clone(),

@@ -242,12 +242,16 @@ impl<K: Eq + Hash + PartialEq, V> Cache<K, V> {
         key: K,
         future: impl Future<Output = anyhow::Result<V>>,
     ) -> anyhow::Result<Arc<V>> {
-        match self.write().await.get(&key) {
+        let mut cache = self.write().await;
+        match cache.get(&key) {
             Some(value) => Ok(Arc::clone(value)),
             None => {
                 // Miss - use the function to get the value
+
+                // Drop the lock and reacquire so we don't hold it across the
+                // await, which could be slow
+                drop(cache);
                 let value = Arc::new(future.await?);
-                // Reopen the lock so we don't hold it across an async bound
                 self.write().await.push(key, Arc::clone(&value));
                 Ok::<_, anyhow::Error>(value)
             }

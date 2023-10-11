@@ -4,8 +4,8 @@ mod view;
 
 use crate::{
     config::RequestCollection,
-    http::{HttpEngine, Request},
-    repository::Repository,
+    http::{HttpEngine, Repository},
+    template::TemplateContext,
     tui::{
         input::InputManager,
         state::{AppState, Message},
@@ -54,6 +54,7 @@ pub struct Tui {
     renderer: Renderer,
     http_engine: HttpEngine,
     state: AppState,
+    repository: Repository,
 }
 
 impl Tui {
@@ -82,13 +83,9 @@ impl Tui {
             terminal,
             messages_rx,
             renderer: Renderer::new(),
-            http_engine: HttpEngine::new(),
-            state: AppState::new(
-                collection_file,
-                collection,
-                repository,
-                messages_tx,
-            ),
+            http_engine: HttpEngine::new(repository.clone()),
+            state: AppState::new(collection_file, collection, messages_tx),
+            repository,
         };
 
         // Any error during execution that gets this far is fatal. We expect the
@@ -172,7 +169,17 @@ impl Tui {
                     collection_file.to_string_lossy()
                 ));
             }
-            Message::HttpSendRequest => self.send_request()?,
+            Message::HttpSendRequest => {
+                if self.state.can_send_request() {
+                    self.send_request()?;
+                }
+            }
+            Message::HttpResponse { record } => {
+                self.state.finish_request(record);
+            }
+            Message::HttpError { recipe_id, error } => {
+                self.state.fail_request(&recipe_id, error);
+            }
             Message::Error { error } => self.state.set_error(error),
         }
         Ok(())
@@ -188,35 +195,54 @@ impl Tui {
             .ok_or_else(|| anyhow!("No recipe selected"))?
             .clone();
 
-        // These clones are all cheap
-        let template_context = self.state.template_context();
-        let http_engine = self.http_engine.clone();
-        let mut repository = self.state.repository.clone();
-        let messages_tx = self.state.messages_tx.clone();
+        // Mark request state as loading
+        self.state.start_request(recipe.id.clone());
 
-        // Launch the request in a separate task so it doesn't block
+        // Launch the request in a separate task so it doesn't block.
+        // These clones are all cheap.
+        let template_context = self.template_context();
+        let http_engine = self.http_engine.clone();
+        let messages_tx = self.state.messages_tx.clone();
         tokio::spawn(async move {
-            let result = try {
+            let result: anyhow::Result<()> = try {
                 // Build the request
                 let request =
-                    Request::build(&recipe, &template_context).await?;
-                let request_id = request.id;
+                    HttpEngine::build_request(&recipe, &template_context)
+                        .await?;
 
-                // Pre-create the future because it needs a reference to the
-                // request
-                let future = http_engine.send(&request);
-                repository.add_request(request).await?;
-
-                // Execute the request and store the response
-                let response_result = future.await;
-                repository.add_outcome(request_id, response_result).await?;
+                // Send the request
+                let record = http_engine.send(request).await?;
+                messages_tx.send(Message::HttpResponse { record });
             };
+
             // Report any errors back to the main thread
             if let Err(err) = result {
-                messages_tx.send(Message::Error { error: err })
+                messages_tx.send(Message::HttpError {
+                    recipe_id: recipe.id,
+                    error: err,
+                })
             }
         });
+
         Ok(())
+    }
+
+    /// Expose app state to the templater. Most of the data has to be cloned out
+    /// to be passed across async boundaries. This is annoying but in reality
+    /// it should be small data.
+    fn template_context(&self) -> TemplateContext {
+        TemplateContext {
+            profile: self
+                .state
+                .ui
+                .profiles
+                .selected()
+                .map(|e| e.data.clone())
+                .unwrap_or_default(),
+            repository: self.repository.clone(),
+            chains: self.state.ui.chains.clone(),
+            overrides: Default::default(),
+        }
     }
 }
 

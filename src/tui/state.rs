@@ -1,7 +1,13 @@
+//! TUI state, which constitues the M in MVC. This does *not* include the
+//! repository, which is kept separate to make sure all state is stored in
+//! memory. The controller is responsible for bridging state with the
+//! repository.
+
 use crate::{
-    config::{Chain, Profile, RequestCollection, RequestRecipe},
-    repository::{Repository, RequestRecord},
-    template::TemplateContext,
+    config::{
+        Chain, Profile, RequestCollection, RequestRecipe, RequestRecipeId,
+    },
+    http::RequestRecord,
     tui::{
         input::InputTarget,
         view::{
@@ -9,19 +15,18 @@ use crate::{
             ResponsePane,
         },
     },
-    util::ResultExt,
 };
 use chrono::{DateTime, Duration, Utc};
 use derive_more::{Display, From};
 use ratatui::widgets::*;
 use std::{
+    collections::{hash_map, HashMap},
     fmt::Display,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 use strum::{EnumIter, IntoEnumIterator};
-use tokio::{runtime::Handle, sync::mpsc::UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, info, trace};
 
 /// Main app state. All configuration and UI state is stored here. The M in MVC
@@ -38,7 +43,6 @@ pub struct AppState {
     /// sender because we don't ever expect the queue to get that large, and it
     /// allows for synchronous enqueueing.
     pub messages_tx: MessageSender,
-    pub repository: Repository,
     /// All the stuff that directly affects what's shown on screen
     pub ui: UiState,
 }
@@ -50,6 +54,8 @@ pub struct UiState {
     /// Any error that should be shown to the user in a popup
     error: Option<anyhow::Error>,
     notification: Option<Notification>,
+    /// Each recipe can have one request in flight at a time
+    active_requests: HashMap<RequestRecipeId, RequestState>,
     /// The pane that the user has focused, which will receive input events
     /// UNLESS a high-priority popup is open
     pub selected_pane: StatefulSelect<PrimaryPane>,
@@ -64,14 +70,12 @@ impl AppState {
     pub fn new(
         collection_file: PathBuf,
         collection: RequestCollection,
-        repository: Repository,
         messages_tx: impl Into<MessageSender>,
     ) -> Self {
         Self {
             should_run: true,
             collection_file,
             messages_tx: messages_tx.into(),
-            repository,
             ui: UiState::new(collection),
         }
     }
@@ -104,40 +108,6 @@ impl AppState {
         }
     }
 
-    /// Get whichever request state should currently be shown to the user,
-    /// based on whichever recipe is selected.
-    ///
-    /// The request is loaded from the repository, which means it's async. This
-    /// will block on the future, which we expect to be very fast to resolve.
-    pub fn active_request(&mut self) -> Option<Arc<RequestRecord>> {
-        let selected_recipe_id = self.ui.recipes.selected()?.id.clone();
-
-        // Block until we get a request (should be fast)
-        let repository = self.repository.clone();
-        let rt_handle = Handle::current();
-        let result = rt_handle.block_on(async move {
-            repository.get_last(&selected_recipe_id).await
-        });
-        result.ok_or_apply(|err| self.set_error(err)).flatten()
-    }
-
-    /// Expose app state to the templater. Most of the data has to be cloned out
-    /// to be passed across async boundaries. This is annoying but in reality
-    /// it should be small data.
-    pub fn template_context(&self) -> TemplateContext {
-        TemplateContext {
-            profile: self
-                .ui
-                .profiles
-                .selected()
-                .map(|e| e.data.clone())
-                .unwrap_or_default(),
-            repository: self.repository.clone(),
-            chains: self.ui.chains.clone(),
-            overrides: Default::default(),
-        }
-    }
-
     /// Get the stored notification (if any). This requires a mutable reference
     /// because this will check if the notification (if any) is expired, and
     /// if so clear it.
@@ -149,6 +119,91 @@ impl AppState {
             }
         }
         self.ui.notification.as_ref()
+    }
+
+    /// Get whichever request state should currently be shown to the user,
+    /// based on whichever recipe is selected.
+    pub fn active_request(&self) -> Option<&RequestState> {
+        self.ui
+            .recipes
+            .selected()
+            .and_then(|recipe| self.ui.active_requests.get(&recipe.id))
+    }
+
+    /// Can a request be sent for the currently selected recipe? Requests can
+    /// only be sent if there isn't already one in progress.
+    pub fn can_send_request(&self) -> bool {
+        !self
+            .active_request()
+            .map(|request_state| request_state.is_loading())
+            .unwrap_or_default()
+    }
+
+    /// Start a new HTTP request
+    pub fn start_request(&mut self, recipe_id: RequestRecipeId) {
+        let state = RequestState::Loading {
+            start_time: Utc::now(),
+        };
+        // This shouldn't ever be called if there's already a pending request,
+        // but just double check
+        match self.ui.active_requests.entry(recipe_id) {
+            hash_map::Entry::Occupied(entry) if entry.get().is_loading() => {
+                error!(
+                    recipe = %entry.key(),
+                    "Cannot set pending request for recipe, \
+                    one is already in progress"
+                )
+            }
+            hash_map::Entry::Occupied(mut entry) => {
+                *entry.get_mut() = state;
+            }
+            hash_map::Entry::Vacant(entry) => {
+                entry.insert(state);
+            }
+        }
+    }
+
+    /// Store response for a request
+    pub fn finish_request(&mut self, record: RequestRecord) {
+        let recipe_id = &record.request.recipe_id;
+        match self.ui.active_requests.get_mut(recipe_id) {
+            Some(state) if state.is_loading() => {
+                // We know this request corresponds to this response because we
+                // only allow one request at a time for each recipe
+                *state = RequestState::Response(record);
+            }
+            other => {
+                error!(
+                    "Expected loading state for recipe {}, but got {:?}",
+                    recipe_id, other
+                );
+            }
+        }
+    }
+
+    /// Store error for a request
+    pub fn fail_request(
+        &mut self,
+        recipe_id: &RequestRecipeId,
+        err: anyhow::Error,
+    ) {
+        match self.ui.active_requests.get_mut(recipe_id) {
+            Some(state) if state.is_loading() => {
+                // We know this request corresponds to this response because we
+                // only allow one request at a time for each recipe
+                *state = RequestState::Error {
+                    error: err,
+                    start_time: state.start_time(),
+                    end_time: Utc::now(),
+                };
+            }
+            other => {
+                error!(
+                    "Expected loading state for recipe {}, but got {:?}",
+                    recipe_id, other
+                );
+            }
+        }
     }
 
     /// Show a notification to the user
@@ -182,6 +237,7 @@ impl UiState {
         Self {
             error: None,
             notification: None,
+            active_requests: HashMap::new(),
             selected_pane: StatefulSelect::new(),
             request_tab: StatefulSelect::new(),
             response_tab: StatefulSelect::new(),
@@ -218,11 +274,76 @@ pub enum Message {
         collection_file: PathBuf,
         collection: RequestCollection,
     },
+
     /// Launch an HTTP request from the currently selected recipe. Errors if
     /// the recipe list is empty.
     HttpSendRequest,
+    /// We received an HTTP response
+    #[display(
+        fmt = "HttpResponse(id={}, status={})",
+        "record.id()",
+        "record.response.status"
+    )]
+    HttpResponse { record: RequestRecord },
+    #[display(fmt = "HttpError(recipe={}, error={})", recipe_id, error)]
+    HttpError {
+        recipe_id: RequestRecipeId,
+        error: anyhow::Error,
+    },
+
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
+}
+
+/// State of an HTTP response, which can be pending or completed
+#[derive(Debug)]
+pub enum RequestState {
+    /// Request is in flight, or is *about* to be sent. There's no way to
+    /// initiate a request that doesn't immediately launch it, so Loading is
+    /// the initial state.
+    Loading { start_time: DateTime<Utc> },
+
+    /// A resolved HTTP response, with all content loaded and ready to be
+    /// displayed. This does *not necessarily* have a 2xx/3xx status code, any
+    /// received response is considered a "success".
+    Response(RequestRecord),
+
+    /// Error occurred sending the request or receiving the response.
+    Error {
+        error: anyhow::Error,
+        start_time: DateTime<Utc>,
+        /// When did the error occur?
+        end_time: DateTime<Utc>,
+    },
+}
+
+impl RequestState {
+    pub fn is_loading(&self) -> bool {
+        matches!(self, RequestState::Loading { .. })
+    }
+
+    /// When was the active request launched?
+    pub fn start_time(&self) -> DateTime<Utc> {
+        match self {
+            Self::Loading { start_time, .. } => *start_time,
+            Self::Response(record) => record.start_time,
+            Self::Error { start_time, .. } => *start_time,
+        }
+    }
+
+    /// Elapsed time for the active request. If pending, this is a running
+    /// total. Otherwise end time - start time.
+    pub fn duration(&self) -> Duration {
+        match self {
+            Self::Loading { start_time, .. } => Utc::now() - start_time,
+            Self::Response(record) => record.duration(),
+            Self::Error {
+                start_time,
+                end_time,
+                ..
+            } => *end_time - *start_time,
+        }
+    }
 }
 
 /// A notification is an ephemeral informational message generated by some async
@@ -243,6 +364,8 @@ impl Notification {
         Utc::now() - self.timestamp >= Self::NOTIFICATION_DECAY
     }
 }
+
+// TODO move some of these to a submodule
 
 /// A list of items in the UI
 #[derive(Debug)]

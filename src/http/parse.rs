@@ -4,9 +4,9 @@
 //! holds the actual parsed content. [ParsedBody] supports fallible downcasting
 //! to get a specific content type if necessary.
 //!
-//! The runtime downcasting is unfortunate but it's the only option because
-//! the [ParsedBody] gets stored behind an `Arc` in the cache, meaning there's
-//! no way to do static casting.
+//! There is probably a way to improve this. I originally went with this
+//! architecture when it was all getting shoved behind an `Arc` in the cache,
+//! but that shouldn't be necessary anymore.
 
 use crate::{http::Response, util::ResultExt};
 use anyhow::{anyhow, Context};
@@ -14,6 +14,8 @@ use reqwest::header::{self, HeaderValue};
 
 /// A parsed response body. We have a set number of supported content types that
 /// we know how to parse using various serde implementations.
+///
+/// Use [Response::parse] to obtain one of these.
 #[derive(Debug)]
 pub enum ParsedBody {
     Json(serde_json::Value),
@@ -70,9 +72,8 @@ impl ContentType for Json {
 }
 
 impl ParsedBody {
-    /// Parse the body of a response, based on its content-type header. This
-    /// should only be used within the `repository` module. Externally, use
-    /// [Repository]'s API for parsing, to leverage the cache.
+    /// Parse the body of a response, based on its `content-type` header. Use
+    /// [Response::parse] to parse from outside the `http` module.
     pub(super) fn parse(response: &Response) -> anyhow::Result<ParsedBody> {
         let body = &response.body;
         let result: anyhow::Result<Self> = try {

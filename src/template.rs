@@ -1,6 +1,6 @@
 use crate::{
     config::Chain,
-    repository::{Json, Repository},
+    http::{Json, Repository},
     util::ResultExt,
 };
 use anyhow::Context;
@@ -196,15 +196,10 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
             .ok_or(TemplateError::ChainUnknown { chain_id })?;
         let record = context
             .repository
-            .get_last_response(&chain.source)
+            .get_last(&chain.source)
             .await
             .map_err(TemplateError::Repository)?
             .ok_or(TemplateError::ChainNoResponse { chain_id })?;
-        let response = record
-            // The record *should* contain a response because we asked for a
-            // success but just to be safe, don't unwrap
-            .try_response()
-            .map_err(TemplateError::Repository)?;
 
         // Optionally extract a value from the JSON
         match &chain.path {
@@ -220,12 +215,12 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
 
                 // Parse the response as JSON
                 let parsed_body =
-                    context.repository.get_parsed_body(record).await.map_err(
-                        |err| TemplateError::ChainParseResponse {
+                    record.response.parse_body().map_err(|err| {
+                        TemplateError::ChainParseResponse {
                             chain_id,
                             error: err,
-                        },
-                    )?;
+                        }
+                    })?;
                 let json_value =
                     parsed_body.as_content_type::<Json>().map_err(|err| {
                         TemplateError::ChainIncorrectContentType {
@@ -248,7 +243,7 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
                     other => Ok(other.to_string().into()),
                 }
             }
-            None => Ok(response.body.to_owned().into()),
+            None => Ok(record.response.body.to_owned().into()),
         }
     }
 }

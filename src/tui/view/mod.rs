@@ -1,19 +1,15 @@
 mod component;
 mod theme;
 
-use crate::{
-    http::Response,
-    repository::RequestState,
-    tui::{
-        input::{InputManager, InputTarget},
-        state::{AppState, PrimaryPane, RequestTab, ResponseTab},
-        view::{
-            component::{
-                BlockComponent, ButtonComponent, Component, ListComponent,
-                TabComponent, ToSpan, ToText,
-            },
-            theme::Theme,
+use crate::tui::{
+    input::{InputManager, InputTarget},
+    state::{AppState, PrimaryPane, RequestState, RequestTab, ResponseTab},
+    view::{
+        component::{
+            BlockComponent, ButtonComponent, Component, ListComponent,
+            TabComponent, ToSpan, ToText,
         },
+        theme::Theme,
     },
 };
 use itertools::Itertools;
@@ -233,7 +229,7 @@ impl Draw for ResponsePane {
         f.render_widget(block, chunk);
 
         // Don't render anything else unless we have a request state
-        if let Some(request) = state.active_request() {
+        if let Some(request_state) = state.active_request() {
             let [header_chunk, content_chunk] = layout(
                 inner_chunk,
                 Direction::Vertical,
@@ -248,41 +244,27 @@ impl Draw for ResponsePane {
             // Time-related data
             f.render_widget(
                 Paragraph::new(Line::from(vec![
-                    request.start_time.to_span(),
+                    request_state.start_time().to_span(),
                     " / ".into(),
-                    request.duration().to_span(),
+                    request_state.duration().to_span(),
                 ]))
                 .alignment(Alignment::Right),
                 header_right_chunk,
             );
 
-            match &request.state {
-                RequestState::Loading => {
+            match &request_state {
+                RequestState::Loading { .. } => {
                     f.render_widget(
                         Paragraph::new("Loading..."),
                         header_left_chunk,
                     );
                 }
 
-                RequestState::Incomplete => {
-                    f.render_widget(
-                        Paragraph::new("Request never completed"),
-                        content_chunk,
-                    );
-                }
-
-                RequestState::Response {
-                    response:
-                        Response {
-                            status,
-                            headers,
-                            body,
-                        },
-                    ..
-                } => {
+                RequestState::Response(record) => {
+                    let response = &record.response;
                     // Status code
                     f.render_widget(
-                        Paragraph::new(status.to_string()),
+                        Paragraph::new(response.status.to_string()),
                         header_left_chunk,
                     );
 
@@ -302,15 +284,15 @@ impl Draw for ResponsePane {
 
                     // Main content for the response
                     let tab_text = match state.ui.response_tab.selected() {
-                        ResponseTab::Body => body.as_str().into(),
-                        ResponseTab::Headers => headers.to_text(),
+                        ResponseTab::Body => response.body.as_str().into(),
+                        ResponseTab::Headers => response.headers.to_text(),
                     };
                     f.render_widget(Paragraph::new(tab_text), content_chunk);
                 }
 
                 RequestState::Error { error, .. } => {
                     f.render_widget(
-                        Paragraph::new(error.as_str()).wrap(Wrap::default()),
+                        Paragraph::new(error.to_string()).wrap(Wrap::default()),
                         content_chunk,
                     );
                 }

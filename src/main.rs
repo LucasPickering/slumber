@@ -6,18 +6,16 @@ mod config;
 #[cfg(test)]
 mod factory;
 mod http;
-mod repository;
 mod template;
 mod tui;
 mod util;
 
 use crate::{
     config::RequestCollection,
-    http::{HttpEngine, Request},
-    repository::Repository,
+    http::{HttpEngine, Repository},
     template::TemplateContext,
     tui::Tui,
-    util::{find_by, ResultExt},
+    util::find_by,
 };
 use anyhow::Context;
 use clap::Parser;
@@ -137,9 +135,9 @@ async fn execute_subcommand(
             )?;
 
             // Build the request
-            let mut repository = Repository::load()?;
+            let repository = Repository::load()?;
             let overrides: IndexMap<_, _> = overrides.into_iter().collect();
-            let request = Request::build(
+            let request = HttpEngine::build_request(
                 &recipe,
                 &TemplateContext {
                     profile,
@@ -153,35 +151,12 @@ async fn execute_subcommand(
             if dry_run {
                 println!("{:#?}", request);
             } else {
-                // Register the request in the repo *before* launching it, in
-                // case it fails
-                let http_engine = HttpEngine::new();
-                let future = http_engine.send(&request);
-                let record_id = repository.add_request(request).await?.id();
+                // Run the request
+                let http_engine = HttpEngine::new(repository);
+                let record = http_engine.send(request).await?;
 
-                // For Ok, we have to move the response, so print it *first*.
-                // For Err, we want to return the owned error. Fortunately the
-                // record stores it as a string, so we can pass a reference.
-                match future.await {
-                    Ok(response) => {
-                        print!("{}", response.body);
-                        repository
-                            .add_outcome(
-                                record_id,
-                                Ok::<_, anyhow::Error>(response),
-                            )
-                            .await?;
-                    }
-                    Err(err) => {
-                        // This error shouldn't hide the HTTP error, so trace
-                        // it instead of returning it
-                        let _ = repository
-                            .add_outcome(record_id, Err(&err))
-                            .await
-                            .traced();
-                        return Err(err);
-                    }
-                }
+                // Print response
+                print!("{}", record.response.body);
             }
             Ok(())
         }

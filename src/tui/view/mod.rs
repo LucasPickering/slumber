@@ -117,16 +117,12 @@ impl Draw for ProfileListPane {
         let list = ListComponent {
             block: BlockComponent {
                 title: pane_kind.to_string(),
-                is_focused: state.ui.selected_pane.is_selected(&pane_kind),
+                is_focused: state.selected_pane().is_selected(&pane_kind),
             },
-            list: &state.ui.profiles,
+            list: state.profiles(),
         }
         .render(renderer);
-        f.render_stateful_widget(
-            list,
-            chunk,
-            &mut state.ui.profiles.state_mut(),
-        )
+        f.render_stateful_widget(list, chunk, &mut state.profiles().state_mut())
     }
 }
 
@@ -144,12 +140,12 @@ impl Draw for RecipeListPane {
         let list = ListComponent {
             block: BlockComponent {
                 title: pane_kind.to_string(),
-                is_focused: state.ui.selected_pane.is_selected(&pane_kind),
+                is_focused: state.selected_pane().is_selected(&pane_kind),
             },
-            list: &state.ui.recipes,
+            list: state.recipes(),
         }
         .render(renderer);
-        f.render_stateful_widget(list, chunk, &mut state.ui.recipes.state_mut())
+        f.render_stateful_widget(list, chunk, &mut state.recipes().state_mut())
     }
 }
 
@@ -163,12 +159,12 @@ impl Draw for RequestPane {
         chunk: Rect,
         state: &AppState,
     ) {
-        if let Some(recipe) = state.ui.recipes.selected() {
+        if let Some(recipe) = state.recipes().selected() {
             // Render outermost block
             let pane_kind = PrimaryPane::Request;
             let block = BlockComponent {
                 title: pane_kind.to_string(),
-                is_focused: state.ui.selected_pane.is_selected(&pane_kind),
+                is_focused: state.selected_pane().is_selected(&pane_kind),
             }
             .render(renderer);
             let inner_chunk = block.inner(chunk);
@@ -191,13 +187,13 @@ impl Draw for RequestPane {
 
             // Navigation tabs
             let tabs = TabComponent {
-                tabs: &state.ui.request_tab,
+                tabs: state.request_tab(),
             }
             .render(renderer);
             f.render_widget(tabs, tabs_chunk);
 
             // Request content
-            let text: Text = match state.ui.request_tab.selected() {
+            let text: Text = match state.request_tab().selected() {
                 RequestTab::Body => recipe
                     .body
                     .as_ref()
@@ -226,7 +222,7 @@ impl Draw for ResponsePane {
         let pane_kind = PrimaryPane::Response;
         let block = BlockComponent {
             title: pane_kind.to_string(),
-            is_focused: state.ui.selected_pane.is_selected(&pane_kind),
+            is_focused: state.selected_pane().is_selected(&pane_kind),
         }
         .render(renderer);
         let inner_chunk = block.inner(chunk);
@@ -284,13 +280,13 @@ impl Draw for ResponsePane {
 
                     // Navigation tabs
                     let tabs = TabComponent {
-                        tabs: &state.ui.response_tab,
+                        tabs: state.response_tab(),
                     }
                     .render(renderer);
                     f.render_widget(tabs, tabs_chunk);
 
                     // Main content for the response
-                    let tab_text = match state.ui.response_tab.selected() {
+                    let tab_text = match state.response_tab().selected() {
                         // Render the pretty body if it's available, otherwise
                         // fall back to the regular one
                         ResponseTab::Body => pretty_body

@@ -227,7 +227,7 @@ impl InputTarget for InputManager {
         let mut mappings: Vec<OutcomeBinding> = vec![
             OutcomeBinding::new(Action::Quit, &|state| state.quit()),
             OutcomeBinding::new(Action::ReloadCollection, &|state| {
-                state.messages_tx.send(Message::CollectionStartReload)
+                state.messages_tx().send(Message::CollectionStartReload)
             }),
         ];
         mappings.extend(state.input_handler().actions(state));
@@ -239,16 +239,16 @@ impl InputTarget for ProfileListPane {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
         vec![
             OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.ui.selected_pane.previous()
+                state.selected_pane_mut().previous()
             }),
             OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.ui.selected_pane.next()
+                state.selected_pane_mut().next()
             }),
             OutcomeBinding::new(Action::Up, &|state| {
-                state.ui.profiles.previous()
+                state.profiles_mut().previous()
             }),
             OutcomeBinding::new(Action::Down, &|state| {
-                state.ui.profiles.next()
+                state.profiles_mut().next()
             }),
         ]
     }
@@ -258,17 +258,19 @@ impl InputTarget for RecipeListPane {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
         vec![
             OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.ui.selected_pane.previous()
+                state.selected_pane_mut().previous()
             }),
             OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.ui.selected_pane.next()
+                state.selected_pane_mut().next()
             }),
             OutcomeBinding::new(Action::Up, &|state| {
-                state.ui.recipes.previous()
+                state.recipes_mut().previous()
             }),
-            OutcomeBinding::new(Action::Down, &|state| state.ui.recipes.next()),
+            OutcomeBinding::new(Action::Down, &|state| {
+                state.recipes_mut().next()
+            }),
             OutcomeBinding::new(Action::Interact, &|state| {
-                state.messages_tx.send(Message::HttpSendRequest)
+                state.messages_tx().send(Message::HttpSendRequest)
             }),
         ]
     }
@@ -278,16 +280,16 @@ impl InputTarget for RequestPane {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
         vec![
             OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.ui.selected_pane.previous()
+                state.selected_pane_mut().previous()
             }),
             OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.ui.selected_pane.next()
+                state.selected_pane_mut().next()
             }),
             OutcomeBinding::new(Action::Left, &|state| {
-                state.ui.request_tab.previous()
+                state.request_tab_mut().previous()
             }),
             OutcomeBinding::new(Action::Right, &|state| {
-                state.ui.request_tab.next()
+                state.request_tab_mut().next()
             }),
         ]
     }
@@ -297,16 +299,16 @@ impl InputTarget for ResponsePane {
     fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
         vec![
             OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.ui.selected_pane.previous()
+                state.selected_pane_mut().previous()
             }),
             OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.ui.selected_pane.next()
+                state.selected_pane_mut().next()
             }),
             OutcomeBinding::new(Action::Left, &|state| {
-                state.ui.response_tab.previous()
+                state.response_tab_mut().previous()
             }),
             OutcomeBinding::new(Action::Right, &|state| {
-                state.ui.response_tab.next()
+                state.response_tab_mut().next()
             }),
         ]
     }

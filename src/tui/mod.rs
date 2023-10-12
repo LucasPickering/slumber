@@ -141,7 +141,7 @@ impl Tui {
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::CollectionStartReload => {
-                let messages_tx = self.state.messages_tx.clone();
+                let messages_tx = self.state.messages_tx();
                 let collection_file = self.state.collection_file().to_owned();
                 self.spawn(async move {
                     let (_, collection) =
@@ -194,8 +194,7 @@ impl Tui {
     fn send_request(&mut self) -> anyhow::Result<()> {
         let recipe = self
             .state
-            .ui
-            .recipes
+            .recipes()
             .selected()
             .ok_or_else(|| anyhow!("No recipe selected"))?
             .clone();
@@ -207,7 +206,7 @@ impl Tui {
         // These clones are all cheap.
         let template_context = self.template_context();
         let http_engine = self.http_engine.clone();
-        let messages_tx = self.state.messages_tx.clone();
+        let messages_tx = self.state.messages_tx();
 
         // We can't use self.spawn here because HTTP errors are handled
         // differently from all other error types
@@ -239,7 +238,7 @@ impl Tui {
     /// repository, and store it in state.
     fn load_request(&self, recipe_id: RequestRecipeId) {
         let repository = self.repository.clone();
-        let messages_tx = self.state.messages_tx.clone();
+        let messages_tx = self.state.messages_tx();
         self.spawn(async move {
             if let Some(record) = repository.get_last(&recipe_id).await? {
                 messages_tx.send(Message::RepositoryEndLoad { record });
@@ -254,7 +253,7 @@ impl Tui {
         &self,
         future: impl Future<Output = anyhow::Result<()>> + Send + 'static,
     ) {
-        let messages_tx = self.state.messages_tx.clone();
+        let messages_tx = self.state.messages_tx();
         tokio::spawn(async move {
             if let Err(err) = future.await {
                 messages_tx.send(Message::Error { error: err })
@@ -269,13 +268,12 @@ impl Tui {
         TemplateContext {
             profile: self
                 .state
-                .ui
-                .profiles
+                .profiles()
                 .selected()
                 .map(|e| e.data.clone())
                 .unwrap_or_default(),
             repository: self.repository.clone(),
-            chains: self.state.ui.chains.clone(),
+            chains: self.state.chains().to_owned(),
             overrides: Default::default(),
         }
     }

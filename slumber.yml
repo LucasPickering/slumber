@@ -15,9 +15,9 @@ profiles:
 
 chains:
   - id: auth_token
-    source: login
+    source: !request login
     expire: never
-    path: $.headers["X-Amzn-Trace-Id"]
+    selector: $.headers["X-Amzn-Trace-Id"]
 
 base: &base
   headers:

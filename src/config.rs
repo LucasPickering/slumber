@@ -3,7 +3,7 @@ use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 use tracing::{event, info, Level};
 
@@ -74,9 +74,19 @@ pub struct RequestRecipeId(String);
 pub struct Chain {
     pub id: String,
     pub name: Option<String>,
-    pub source: RequestRecipeId,
-    /// JSONpath to extract a value from the response. For JSON responses only.
-    pub path: Option<String>,
+    pub source: ChainSource,
+    /// JSONpath to extract a value from the response. For JSON data only.
+    pub selector: Option<String>,
+}
+
+/// The source of data for a chain
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChainSource {
+    /// Load data from the most recent response of a particular request recipe
+    Request(RequestRecipeId),
+    /// Load data from a file
+    File(PathBuf),
 }
 
 impl RequestCollection {

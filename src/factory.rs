@@ -1,5 +1,5 @@
 use crate::{
-    config::{Chain, RequestRecipeId},
+    config::{Chain, ChainSource, RequestRecipeId},
     http::{Repository, Request, RequestId, RequestRecord, Response},
     template::{TemplateContext, TemplateString},
 };
@@ -49,9 +49,9 @@ factori!(RequestRecord, {
 factori!(Chain, {
     default {
         id = String::new(),
-        source = RequestRecipeId::default(),
+        source = ChainSource::Request(RequestRecipeId::default()),
         name = None,
-        path = None
+        selector = None
     }
 });
 

@@ -1,5 +1,5 @@
 use crate::{
-    config::Chain,
+    config::{Chain, ChainSource, RequestRecipeId},
     http::{ContentType, Json, Repository},
     util::ResultExt,
 };
@@ -13,10 +13,13 @@ use serde_json_path::{ExactlyOneError, JsonPath};
 use std::{
     borrow::Cow,
     env::{self, VarError},
+    io,
     ops::Deref as _,
+    path::{Path, PathBuf},
     sync::OnceLock,
 };
 use thiserror::Error;
+use tokio::fs;
 use tracing::{instrument, trace};
 
 static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -40,6 +43,8 @@ pub struct TemplateContext {
     pub overrides: IndexMap<String, String>,
 }
 
+type TemplateResult<'a> = Result<Cow<'a, str>, TemplateError>;
+
 impl TemplateString {
     /// Render the template string using values from the given context. If an
     /// error occurs, it is returned as general `anyhow` error. If you need a
@@ -50,19 +55,17 @@ impl TemplateString {
     ) -> anyhow::Result<String> {
         self.render_borrow(context)
             .await
-            .map_err(TemplateError::into_owned)
             .with_context(|| format!("Error rendering template {:?}", self.0))
             .traced()
     }
 
-    /// Render the template string using values from the given state. If an
-    /// error occurs, return a borrowed error type that references the template
-    /// string. Useful for inline rendering in the UI.
+    /// Render the template string using values from the given context. Useful
+    /// for inline rendering in the UI.
     #[instrument]
     pub async fn render_borrow<'a>(
         &'a self,
         context: &'a TemplateContext,
-    ) -> Result<String, TemplateError<&'a str>> {
+    ) -> Result<String, TemplateError> {
         // Template syntax is simple so it's easiest to just implement it with
         // a regex
         let re = TEMPLATE_REGEX
@@ -116,22 +119,26 @@ impl<'a> TemplateKey<'a> {
     /// Parse a string into a key. It'd be nice if this was a `FromStr`
     /// implementation, but that doesn't allow us to attach to the lifetime of
     /// the input `str`.
-    fn parse(s: &'a str) -> Result<Self, TemplateError<&'a str>> {
+    fn parse(s: &'a str) -> Result<Self, TemplateError> {
         match s.split('.').collect::<Vec<_>>().as_slice() {
             [key] => Ok(Self::Field(key)),
             ["chains", chain_id] => Ok(Self::Chain(chain_id)),
             ["env", variable] => Ok(Self::Environment(variable)),
-            _ => Err(TemplateError::InvalidKey { key: s }),
+            _ => Err(TemplateError::InvalidKey { key: s.to_owned() }),
         }
     }
 
     /// Convert this key into a renderable value type
     fn into_value(self) -> Box<dyn TemplateSource<'a>> {
         match self {
-            TemplateKey::Field(field) => Box::new(FieldSource { field }),
-            TemplateKey::Chain(chain_id) => Box::new(ChainSource { chain_id }),
+            TemplateKey::Field(field) => {
+                Box::new(FieldTemplateSource { field })
+            }
+            TemplateKey::Chain(chain_id) => {
+                Box::new(ChainTemplateSource { chain_id })
+            }
             TemplateKey::Environment(variable) => {
-                Box::new(EnvironmentSource { variable })
+                Box::new(EnvironmentTemplateSource { variable })
             }
         }
     }
@@ -149,151 +156,187 @@ trait TemplateSource<'a>: 'a + Send + Sync {
     /// sometimes this can be a reference to the template context, but
     /// other times it has to be owned data (e.g. when pulling response data
     /// from the repository).
-    async fn render(
-        &self,
-        context: &'a TemplateContext,
-    ) -> Result<Cow<'a, str>, TemplateError<&'a str>>;
+    async fn render(&self, context: &'a TemplateContext) -> TemplateResult<'a>;
 }
 
 /// A simple field value (e.g. from the profile or an override)
-struct FieldSource<'a> {
+struct FieldTemplateSource<'a> {
     field: &'a str,
 }
 
 #[async_trait]
-impl<'a> TemplateSource<'a> for FieldSource<'a> {
-    async fn render(
-        &self,
-        context: &'a TemplateContext,
-    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
+impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
+    async fn render(&self, context: &'a TemplateContext) -> TemplateResult<'a> {
         let field = self.field;
         None
             // Cascade down the the list of maps we want to check
             .or_else(|| context.overrides.get(field))
             .or_else(|| context.profile.get(field))
             .map(Cow::from)
-            .ok_or(TemplateError::FieldUnknown { field })
+            .ok_or(TemplateError::FieldUnknown {
+                field: field.to_owned(),
+            })
     }
 }
 
-/// A chained value from another response
-struct ChainSource<'a> {
+/// A chained value from a complex source. Could be an HTTP response, file, etc.
+struct ChainTemplateSource<'a> {
     chain_id: &'a str,
 }
 
 #[async_trait]
-impl<'a> TemplateSource<'a> for ChainSource<'a> {
-    async fn render(
-        &self,
-        context: &'a TemplateContext,
-    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
+impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
+    async fn render(&self, context: &'a TemplateContext) -> TemplateResult<'a> {
         let chain_id = self.chain_id;
         // Resolve chained value
         let chain = context
             .chains
             .iter()
             .find(|chain| chain.id == chain_id)
-            .ok_or(TemplateError::ChainUnknown { chain_id })?;
+            .ok_or_else(|| TemplateError::ChainUnknown {
+                chain_id: chain_id.to_owned(),
+            })?;
+
+        // Resolve the value based on the source type
+        let value = match &chain.source {
+            ChainSource::Request(recipe_id) => {
+                self.render_request(context, recipe_id).await?
+            }
+            ChainSource::File(path) => self.render_file(path).await?,
+        };
+
+        // If a selector path is present, filter down the value
+        match &chain.selector {
+            Some(path) => self.apply_selector(value, path),
+            None => Ok(value),
+        }
+    }
+}
+
+impl<'a> ChainTemplateSource<'a> {
+    /// Render a chained template value from a response
+    async fn render_request(
+        &self,
+        context: &'a TemplateContext,
+        recipe_id: &RequestRecipeId,
+    ) -> TemplateResult<'a> {
         let record = context
             .repository
-            .get_last(&chain.source)
+            .get_last(recipe_id)
             .await
             .map_err(TemplateError::Repository)?
-            .ok_or(TemplateError::ChainNoResponse { chain_id })?;
+            .ok_or_else(|| TemplateError::ChainNoResponse {
+                chain_id: self.chain_id.to_owned(),
+            })?;
 
-        // Optionally extract a value from the JSON
-        match &chain.path {
-            Some(path) => {
-                // Parse the JSON path
-                let path = JsonPath::parse(path).map_err(|err| {
-                    TemplateError::ChainJsonPath {
-                        chain_id,
-                        path,
-                        error: err,
-                    }
-                })?;
+        Ok(record.response.body.into())
+    }
 
-                // Parse the response as JSON. Intentionally ignore the
-                // content-type. If the user wants to treat it as JSON, we
-                // should allow that even if the server is wrong.
-                let json_value =
-                    Json::parse(&record.response.body).map_err(|err| {
-                        TemplateError::ChainParseResponse {
-                            chain_id,
-                            error: err,
-                        }
-                    })?;
+    /// Render a chained value from a file
+    async fn render_file(&self, path: &'a Path) -> TemplateResult<'a> {
+        fs::read_to_string(path)
+            .await
+            .map(Cow::from)
+            .map_err(|err| TemplateError::ChainFile {
+                chain_id: self.chain_id.to_owned(),
+                path: path.to_owned(),
+                error: err,
+            })
+    }
 
-                // Apply the path to the json
-                let found_value = path
-                    .query(&json_value)
-                    .exactly_one()
-                    .map_err(|err| TemplateError::ChainInvalidResult {
-                        chain_id,
-                        error: err,
-                    })?;
+    /// Apply a selector path to a string value to filter it down. Right now
+    /// this only supports JSONpath but we could add support for more in the
+    /// future. The string value will be parsed as a JSON value.
+    fn apply_selector(
+        &self,
+        value: Cow<'_, str>,
+        selector: &'a str,
+    ) -> TemplateResult<'a> {
+        let chain_id = self.chain_id;
 
-                match found_value {
-                    serde_json::Value::String(s) => Ok(s.clone().into()),
-                    other => Ok(other.to_string().into()),
-                }
+        // Parse the JSON path
+        let path = JsonPath::parse(selector).map_err(|err| {
+            TemplateError::ChainJsonPath {
+                chain_id: chain_id.to_owned(),
+                selector: selector.to_owned(),
+                error: err,
             }
-            None => Ok(record.response.body.to_owned().into()),
+        })?;
+
+        // Parse the response as JSON. Intentionally ignore the
+        // content-type. If the user wants to treat it as JSON, we
+        // should allow that even if the server is wrong.
+        let json_value = Json::parse(&value).map_err(|err| {
+            TemplateError::ChainParseResponse {
+                chain_id: chain_id.to_owned(),
+                error: err,
+            }
+        })?;
+
+        // Apply the path to the json
+        let found_value =
+            path.query(&json_value).exactly_one().map_err(|err| {
+                TemplateError::ChainInvalidResult {
+                    chain_id: chain_id.to_owned(),
+                    error: err,
+                }
+            })?;
+
+        match found_value {
+            serde_json::Value::String(s) => Ok(s.clone().into()),
+            other => Ok(other.to_string().into()),
         }
     }
 }
 
 /// A value sourced from the process's environment
-struct EnvironmentSource<'a> {
+struct EnvironmentTemplateSource<'a> {
     variable: &'a str,
 }
 
 #[async_trait]
-impl<'a> TemplateSource<'a> for EnvironmentSource<'a> {
-    async fn render(
-        &self,
-        _: &'a TemplateContext,
-    ) -> Result<Cow<'a, str>, TemplateError<&'a str>> {
+impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
+    async fn render(&self, _: &'a TemplateContext) -> TemplateResult<'a> {
         env::var(self.variable).map(Cow::from).map_err(|err| {
             TemplateError::EnvironmentVariable {
-                variable: self.variable,
+                variable: self.variable.to_owned(),
                 error: err,
             }
         })
     }
 }
 
-/// Any error that can occur during template rendering. Generally the generic
-/// parameter will be either `&str` (for localized errors) or `String` (for
-/// global errors that need to be propagated up).
+/// Any error that can occur during template rendering. The purpose of having a
+/// structured error here (while the rest of the app just uses `anyhow`) is to
+/// support localized error display in the UI, e.g. showing just one portion of
+/// a string in red if that particular template key failed to render.
 ///
-/// The purpose of having a structured error here (while the rest of the app
-/// just uses `anyhow`) is to support localized error display in the UI, e.g.
-/// showing just one portion of a string in red if that particular template
-/// key failed to render.
+/// The error always holds owned data so it can be detached from the lifetime
+/// of the template context. This requires a mild amount of cloning in error
+/// cases, but those should be infrequent so it's fine.
 #[derive(Debug, Error)]
-pub enum TemplateError<S: std::fmt::Display> {
+pub enum TemplateError {
     /// Template key could not be parsed
     #[error("Failed to parse template key {key:?}")]
-    InvalidKey { key: S },
+    InvalidKey { key: String },
 
     /// A basic field key contained an unknown field
     #[error("Unknown field {field:?}")]
-    FieldUnknown { field: S },
+    FieldUnknown { field: String },
 
     #[error("Unknown chain {chain_id:?}")]
-    ChainUnknown { chain_id: S },
+    ChainUnknown { chain_id: String },
 
     /// The chain ID is valid, but the corresponding recipe has no successful
     /// response
     #[error("No response available for chain {chain_id:?}")]
-    ChainNoResponse { chain_id: S },
+    ChainNoResponse { chain_id: String },
 
     /// An error occurred while querying with JSON path
-    #[error("Error parsing JSON path {path:?} for chain {chain_id:?}")]
+    #[error("Error parsing JSON path {selector:?} for chain {chain_id:?}")]
     ChainJsonPath {
-        chain_id: S,
-        path: S,
+        chain_id: String,
+        selector: String,
         #[source]
         error: serde_json_path::ParseError,
     },
@@ -301,7 +344,7 @@ pub enum TemplateError<S: std::fmt::Display> {
     /// Failed to parse the response body before applying a selector
     #[error("Error parsing response for chain {chain_id:?}")]
     ChainParseResponse {
-        chain_id: S,
+        chain_id: String,
         #[source]
         error: anyhow::Error,
     },
@@ -309,15 +352,23 @@ pub enum TemplateError<S: std::fmt::Display> {
     /// Got either 0 or 2+ results for JSON path query
     #[error("Expected exactly one result for chain {chain_id:?}")]
     ChainInvalidResult {
-        chain_id: S,
+        chain_id: String,
         #[source]
         error: ExactlyOneError,
+    },
+
+    #[error("Error reading from file {path:?} for chain {chain_id:?}")]
+    ChainFile {
+        chain_id: String,
+        path: PathBuf,
+        #[source]
+        error: io::Error,
     },
 
     /// Variable either didn't exist or had non-unicode content
     #[error("Error accessing environment variable {variable:?}")]
     EnvironmentVariable {
-        variable: S,
+        variable: String,
         #[source]
         error: VarError,
     },
@@ -325,62 +376,6 @@ pub enum TemplateError<S: std::fmt::Display> {
     /// An error occurred accessing the request repository
     #[error("{0}")]
     Repository(#[source] anyhow::Error),
-}
-
-impl<'a> TemplateError<&'a str> {
-    /// Convert a borrowed error into an owned one by cloning every string
-    pub fn into_owned(self) -> TemplateError<String> {
-        match self {
-            TemplateError::InvalidKey { key } => TemplateError::InvalidKey {
-                key: key.to_owned(),
-            },
-            TemplateError::FieldUnknown { field } => {
-                TemplateError::FieldUnknown {
-                    field: field.to_owned(),
-                }
-            }
-
-            TemplateError::ChainUnknown { chain_id } => {
-                TemplateError::ChainUnknown {
-                    chain_id: chain_id.to_owned(),
-                }
-            }
-            TemplateError::ChainNoResponse { chain_id } => {
-                TemplateError::ChainNoResponse {
-                    chain_id: chain_id.to_owned(),
-                }
-            }
-            TemplateError::ChainJsonPath {
-                chain_id,
-                path,
-                error,
-            } => TemplateError::ChainJsonPath {
-                chain_id: chain_id.to_owned(),
-                path: path.to_owned(),
-                error,
-            },
-            TemplateError::ChainParseResponse { chain_id, error } => {
-                TemplateError::ChainParseResponse {
-                    chain_id: chain_id.to_owned(),
-                    error,
-                }
-            }
-            TemplateError::ChainInvalidResult { chain_id, error } => {
-                TemplateError::ChainInvalidResult {
-                    chain_id: chain_id.to_owned(),
-                    error,
-                }
-            }
-
-            TemplateError::EnvironmentVariable { variable, error } => {
-                TemplateError::EnvironmentVariable {
-                    variable: variable.to_owned(),
-                    error,
-                }
-            }
-            TemplateError::Repository(err) => TemplateError::Repository(err),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -440,8 +435,8 @@ mod tests {
     #[case(Some("$.array"), "[1,2]")]
     #[case(Some("$.object"), "{\"a\":1}")]
     #[tokio::test]
-    async fn test_chain(
-        #[case] path: Option<&str>,
+    async fn test_chain_request(
+        #[case] selector: Option<&str>,
         #[case] expected_value: &str,
     ) {
         let recipe_id: RequestRecipeId = "recipe1".into();
@@ -464,8 +459,8 @@ mod tests {
         let chains = vec![create!(
             Chain,
             id: "chain1".into(),
-            source: recipe_id,
-            path: path.map(String::from),
+            source: ChainSource::Request(recipe_id),
+            selector: selector.map(String::from),
         )];
         let context = create!(
             TemplateContext, repository: repository, chains: chains,
@@ -482,7 +477,7 @@ mod tests {
     #[rstest]
     #[case(create!(Chain), None, "Unknown chain \"chain1\"")]
     #[case(
-        create!(Chain, id: "chain1".into(), source: "unknown".into()),
+        create!(Chain, id: "chain1".into(), source: ChainSource::Request("unknown".into())),
         None,
         "No response available for chain \"chain1\"",
     )]
@@ -490,8 +485,8 @@ mod tests {
         create!(
             Chain,
             id: "chain1".into(),
-            source: "recipe1".into(),
-            path: Some("$.".into()),
+            source: ChainSource::Request("recipe1".into()),
+            selector: Some("$.".into()),
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),
@@ -503,8 +498,8 @@ mod tests {
         create!(
             Chain,
             id: "chain1".into(),
-            source: "recipe1".into(),
-            path: Some("$.message".into()),
+            source: ChainSource::Request("recipe1".into()),
+            selector: Some("$.message".into()),
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),
@@ -516,8 +511,8 @@ mod tests {
         create!(
             Chain,
             id: "chain1".into(),
-            source: "recipe1".into(),
-            path: Some("$.*".into()),
+            source: ChainSource::Request("recipe1".into()),
+            selector: Some("$.*".into()),
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),
@@ -526,7 +521,7 @@ mod tests {
         "Expected exactly one result for chain \"chain1\"",
     )]
     #[tokio::test]
-    async fn test_chain_error(
+    async fn test_chain_request_error(
         #[case] chain: Chain,
         // Optional request data to store in the repository
         #[case] request_response: Option<(Request, Response)>,
@@ -546,6 +541,42 @@ mod tests {
         );
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
+    }
+
+    /// Test success with chained file
+    #[tokio::test]
+    async fn test_chain_file() {
+        // Create a temp file that we'll read from
+        let temp_dir = env::temp_dir();
+        let file_path = temp_dir.join("stuff.txt");
+        fs::write(&file_path, "hello!").await.unwrap();
+
+        let chains = vec![create!(
+            Chain,
+            id: "chain1".into(),
+            source: ChainSource::File(file_path),
+            selector: None,
+        )];
+        let context = create!(TemplateContext, chains: chains);
+
+        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
+    }
+
+    /// Test failure with chained file
+    #[tokio::test]
+    async fn test_chain_file_error() {
+        let chains = vec![create!(
+            Chain,
+            id: "chain1".into(),
+            source: ChainSource::File("not-a-real-file".into()),
+            selector: None,
+        )];
+        let context = create!(TemplateContext, chains: chains);
+
+        assert_err!(
+            render!("{{chains.chain1}}", context),
+            "Error reading from file"
+        );
     }
 
     #[tokio::test]

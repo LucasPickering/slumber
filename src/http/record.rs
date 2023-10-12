@@ -2,10 +2,10 @@
 
 use crate::{
     config::RequestRecipeId,
-    http::{parse, ContentType, Json},
+    http::{parse, ContentType},
     util::ResultExt,
 };
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::{Deref, Display};
 use indexmap::IndexMap;
@@ -45,8 +45,7 @@ impl RequestId {
 #[derive(Debug)]
 pub struct RequestRecord {
     /// ID to uniquely refer to this record. Useful for historical records.
-    /// Private to prevent external creation.
-    pub(super) id: RequestId,
+    pub id: RequestId,
     /// What we said
     pub request: Request,
     // What we heard

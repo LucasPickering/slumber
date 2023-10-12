@@ -392,7 +392,6 @@ mod tests {
         http::{Request, Response},
         util::assert_err,
     };
-    use anyhow::anyhow;
     use factori::create;
     use rstest::rstest;
     use serde_json::json;
@@ -446,7 +445,7 @@ mod tests {
         #[case] expected_value: &str,
     ) {
         let recipe_id: RequestRecipeId = "recipe1".into();
-        let mut repository = Repository::testing();
+        let repository = Repository::testing();
         let response_body = json!({
             "string": "Hello World!",
             "number": 6,
@@ -454,12 +453,14 @@ mod tests {
             "array": [1,2],
             "object": {"a": 1},
         });
+        let request = create!(Request, recipe_id: recipe_id.clone());
+        let response = create!(Response, body: response_body.to_string());
         repository
-            .add(
-                create!(Request, recipe_id: recipe_id.clone()),
-                Ok(create!(Response, body: response_body.to_string())),
+            .insert_test(
+                &create!(RequestRecord, request: request, response: response),
             )
-            .await;
+            .await
+            .unwrap();
         let chains = vec![create!(
             Chain,
             id: "chain1".into(),
@@ -481,14 +482,6 @@ mod tests {
     #[rstest]
     #[case(create!(Chain), None, "Unknown chain \"chain1\"")]
     #[case(
-        create!(Chain, id: "chain1".into(), source: "recipe1".into()),
-        Some((
-            create!(Request, recipe_id: "recipe1".into()),
-            Err(anyhow!("Bad!")),
-        )),
-        "No response available for chain \"chain1\"",
-    )]
-    #[case(
         create!(Chain, id: "chain1".into(), source: "unknown".into()),
         None,
         "No response available for chain \"chain1\"",
@@ -502,7 +495,7 @@ mod tests {
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),
-            Ok(create!(Response, body: "{}".into())),
+            create!(Response, body: "{}".into()),
         )),
         "Error parsing JSON path \"$.\" for chain \"chain1\"",
     )]
@@ -515,9 +508,9 @@ mod tests {
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),
-            Ok(create!(Response, body: "not json!".into())),
+            create!(Response, body: "not json!".into()),
         )),
-        "Error parsing response as JSON for chain \"chain1\"",
+        "Error parsing response for chain \"chain1\"",
     )]
     #[case(
         create!(
@@ -528,7 +521,7 @@ mod tests {
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),
-            Ok(create!(Response, body: "[1, 2]".into())),
+            create!(Response, body: "[1, 2]".into()),
         )),
         "Expected exactly one result for chain \"chain1\"",
     )]
@@ -536,12 +529,16 @@ mod tests {
     async fn test_chain_error(
         #[case] chain: Chain,
         // Optional request data to store in the repository
-        #[case] request_response: Option<(Request, anyhow::Result<Response>)>,
+        #[case] request_response: Option<(Request, Response)>,
         #[case] expected_error: &str,
     ) {
-        let mut repository = Repository::testing();
+        let repository = Repository::testing();
         if let Some((request, response)) = request_response {
-            repository.add(request, response).await;
+            repository
+                .insert_test(&create!(
+                RequestRecord, request: request, response: response))
+                .await
+                .unwrap();
         }
         let chains = vec![chain];
         let context = create!(

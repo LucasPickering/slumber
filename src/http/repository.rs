@@ -162,6 +162,14 @@ impl Repository {
             connection: Arc::new(Mutex::new(connection)),
         }
     }
+
+    /// Public insert function, only for tests
+    pub async fn insert_test(
+        &self,
+        record: &RequestRecord,
+    ) -> anyhow::Result<()> {
+        self.insert(record).await
+    }
 }
 
 impl ToSql for RequestId {

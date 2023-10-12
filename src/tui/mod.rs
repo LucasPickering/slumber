@@ -3,7 +3,7 @@ mod state;
 mod view;
 
 use crate::{
-    config::RequestCollection,
+    config::{RequestCollection, RequestRecipeId},
     http::{HttpEngine, Repository},
     template::TemplateContext,
     tui::{
@@ -19,6 +19,7 @@ use crossterm::{
     execute,
     terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use futures::Future;
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use signal_hook::{
     consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM},
@@ -139,25 +140,20 @@ impl Tui {
     /// Handle an incoming message. Any error here will be displayed as a popup
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
-            Message::StartReloadCollection => {
+            Message::CollectionStartReload => {
                 let messages_tx = self.state.messages_tx.clone();
                 let collection_file = self.state.collection_file().to_owned();
-                tokio::spawn(async move {
+                self.spawn(async move {
                     let (_, collection) =
-                        RequestCollection::load(Some(&collection_file))
-                            .await
-                            .ok_or_apply(|err| {
-                            messages_tx.send(Message::Error { error: err })
-                        })?;
-                    messages_tx.send(Message::EndReloadCollection {
+                        RequestCollection::load(Some(&collection_file)).await?;
+                    messages_tx.send(Message::CollectionEndReload {
                         collection_file,
                         collection,
                     });
-                    // Return an option just to allow bailing above
-                    None::<()>
+                    Ok(())
                 });
             }
-            Message::EndReloadCollection {
+            Message::CollectionEndReload {
                 collection_file,
                 collection,
             } => {
@@ -169,6 +165,7 @@ impl Tui {
                     collection_file.to_string_lossy()
                 ));
             }
+
             Message::HttpSendRequest => {
                 if self.state.can_send_request() {
                     self.send_request()?;
@@ -180,6 +177,14 @@ impl Tui {
             Message::HttpError { recipe_id, error } => {
                 self.state.fail_request(&recipe_id, error);
             }
+
+            Message::RepositoryStartLoad { recipe_id } => {
+                self.load_request(recipe_id);
+            }
+            Message::RepositoryEndLoad { record } => {
+                self.state.load_request(record);
+            }
+
             Message::Error { error } => self.state.set_error(error),
         }
         Ok(())
@@ -203,6 +208,9 @@ impl Tui {
         let template_context = self.template_context();
         let http_engine = self.http_engine.clone();
         let messages_tx = self.state.messages_tx.clone();
+
+        // We can't use self.spawn here because HTTP errors are handled
+        // differently from all other error types
         tokio::spawn(async move {
             let result: anyhow::Result<()> = try {
                 // Build the request
@@ -225,6 +233,33 @@ impl Tui {
         });
 
         Ok(())
+    }
+
+    /// Load the most recent request+response for a particular recipe from the
+    /// repository, and store it in state.
+    fn load_request(&self, recipe_id: RequestRecipeId) {
+        let repository = self.repository.clone();
+        let messages_tx = self.state.messages_tx.clone();
+        self.spawn(async move {
+            if let Some(record) = repository.get_last(&recipe_id).await? {
+                messages_tx.send(Message::RepositoryEndLoad { record });
+            }
+            Ok(())
+        });
+    }
+
+    /// Helper for spawning a fallible task. Any error in the resolved future
+    /// will be shown to the user in a popup.
+    fn spawn(
+        &self,
+        future: impl Future<Output = anyhow::Result<()>> + Send + 'static,
+    ) {
+        let messages_tx = self.state.messages_tx.clone();
+        tokio::spawn(async move {
+            if let Err(err) = future.await {
+                messages_tx.send(Message::Error { error: err })
+            }
+        });
     }
 
     /// Expose app state to the templater. Most of the data has to be cloned out

@@ -227,7 +227,7 @@ impl InputTarget for InputManager {
         let mut mappings: Vec<OutcomeBinding> = vec![
             OutcomeBinding::new(Action::Quit, &|state| state.quit()),
             OutcomeBinding::new(Action::ReloadCollection, &|state| {
-                state.messages_tx.send(Message::StartReloadCollection)
+                state.messages_tx.send(Message::CollectionStartReload)
             }),
         ];
         mappings.extend(state.input_handler().actions(state));

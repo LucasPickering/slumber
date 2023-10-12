@@ -121,10 +121,18 @@ impl AppState {
     /// Get whichever request state should currently be shown to the user,
     /// based on whichever recipe is selected.
     pub fn active_request(&self) -> Option<&RequestState> {
-        self.ui
-            .recipes
-            .selected()
-            .and_then(|recipe| self.ui.active_requests.get(&recipe.id))
+        let selected_recipe_id = &self.ui.recipes.selected()?.id;
+        let active_request = self.ui.active_requests.get(selected_recipe_id);
+
+        // If we don't have a request for this recipe, load the most recent from
+        // the repository. It should be there by the next frame.
+        if active_request.is_none() {
+            self.messages_tx.send(Message::RepositoryStartLoad {
+                recipe_id: selected_recipe_id.clone(),
+            });
+        }
+
+        active_request
     }
 
     /// Can a request be sent for the currently selected recipe? Requests can
@@ -168,13 +176,7 @@ impl AppState {
                 // We know this request corresponds to this response because we
                 // only allow one request at a time for each recipe
 
-                // Prettification might get slow on large responses, maybe we
-                // want to punt this into a separate task?
-                let pretty_body = record.response.prettify_body().ok();
-                *state = RequestState::Response {
-                    record,
-                    pretty_body,
-                };
+                *state = RequestState::response(record);
             }
             other => {
                 error!(
@@ -208,6 +210,16 @@ impl AppState {
                 );
             }
         }
+    }
+
+    /// Store a completed request that was loaded from the repository
+    pub fn load_request(&mut self, record: RequestRecord) {
+        // If the user spawned a request between when we started the load and
+        // now, don't overwrite it
+        self.ui
+            .active_requests
+            .entry(record.request.recipe_id.clone())
+            .or_insert(RequestState::response(record));
     }
 
     /// Show a notification to the user
@@ -271,10 +283,10 @@ impl MessageSender {
 #[derive(Debug, Display)]
 pub enum Message {
     /// Trigger collection reload
-    StartReloadCollection,
+    CollectionStartReload,
     /// Store a reloaded collection value in state
     #[display(fmt = "EndReloadCollection(collection_file:?)")]
-    EndReloadCollection {
+    CollectionEndReload {
         collection_file: PathBuf,
         collection: RequestCollection,
     },
@@ -294,6 +306,12 @@ pub enum Message {
         recipe_id: RequestRecipeId,
         error: anyhow::Error,
     },
+
+    /// Load the most recent response for a recipe from the repository
+    RepositoryStartLoad { recipe_id: RequestRecipeId },
+    /// TODO
+    #[display(fmt = "RepositoryEndLoad(id={})", "record.id()")]
+    RepositoryEndLoad { record: RequestRecord },
 
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
@@ -349,6 +367,17 @@ impl RequestState {
                 end_time,
                 ..
             } => *end_time - *start_time,
+        }
+    }
+
+    /// Create a request state from a completed response.
+    pub fn response(record: RequestRecord) -> Self {
+        // Prettification might get slow on large responses, maybe we
+        // want to punt this into a separate task?
+        let pretty_body = record.response.prettify_body().ok();
+        Self::Response {
+            record,
+            pretty_body,
         }
     }
 }

@@ -188,28 +188,36 @@ struct ChainTemplateSource<'a> {
 impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
     async fn render(&self, context: &'a TemplateContext) -> TemplateResult<'a> {
         let chain_id = self.chain_id;
-        // Resolve chained value
-        let chain = context
-            .chains
-            .iter()
-            .find(|chain| chain.id == chain_id)
-            .ok_or_else(|| TemplateError::ChainUnknown {
-                chain_id: chain_id.to_owned(),
-            })?;
 
-        // Resolve the value based on the source type
-        let value = match &chain.source {
-            ChainSource::Request(recipe_id) => {
-                self.render_request(context, recipe_id).await?
+        // Any error in here is the chain error subtype
+        let result: Result<_, ChainError> = try {
+            // Resolve chained value
+            let chain = context
+                .chains
+                .iter()
+                .find(|chain| chain.id == chain_id)
+                .ok_or(ChainError::Unknown)?;
+
+            // Resolve the value based on the source type
+            let value = match &chain.source {
+                ChainSource::Request(recipe_id) => {
+                    self.render_request(context, recipe_id).await?
+                }
+                ChainSource::File(path) => self.render_file(path).await?,
+            };
+
+            // If a selector path is present, filter down the value
+            match &chain.selector {
+                Some(path) => self.apply_selector(value, path)?,
+                None => value,
             }
-            ChainSource::File(path) => self.render_file(path).await?,
         };
 
-        // If a selector path is present, filter down the value
-        match &chain.selector {
-            Some(path) => self.apply_selector(value, path),
-            None => Ok(value),
-        }
+        // Wrap the chain error into a TemplateError
+        result.map_err(|error| TemplateError::Chain {
+            chain_id: chain_id.to_owned(),
+            error,
+        })
     }
 }
 
@@ -219,26 +227,26 @@ impl<'a> ChainTemplateSource<'a> {
         &self,
         context: &'a TemplateContext,
         recipe_id: &RequestRecipeId,
-    ) -> TemplateResult<'a> {
+    ) -> Result<Cow<'a, str>, ChainError> {
         let record = context
             .repository
             .get_last(recipe_id)
             .await
-            .map_err(TemplateError::Repository)?
-            .ok_or_else(|| TemplateError::ChainNoResponse {
-                chain_id: self.chain_id.to_owned(),
-            })?;
+            .map_err(ChainError::Repository)?
+            .ok_or(ChainError::NoResponse)?;
 
         Ok(record.response.body.into())
     }
 
     /// Render a chained value from a file
-    async fn render_file(&self, path: &'a Path) -> TemplateResult<'a> {
+    async fn render_file(
+        &self,
+        path: &'a Path,
+    ) -> Result<Cow<'a, str>, ChainError> {
         fs::read_to_string(path)
             .await
             .map(Cow::from)
-            .map_err(|err| TemplateError::ChainFile {
-                chain_id: self.chain_id.to_owned(),
+            .map_err(|err| ChainError::File {
                 path: path.to_owned(),
                 error: err,
             })
@@ -251,36 +259,25 @@ impl<'a> ChainTemplateSource<'a> {
         &self,
         value: Cow<'_, str>,
         selector: &'a str,
-    ) -> TemplateResult<'a> {
-        let chain_id = self.chain_id;
-
+    ) -> Result<Cow<'a, str>, ChainError> {
         // Parse the JSON path
-        let path = JsonPath::parse(selector).map_err(|err| {
-            TemplateError::ChainJsonPath {
-                chain_id: chain_id.to_owned(),
+        let path =
+            JsonPath::parse(selector).map_err(|err| ChainError::JsonPath {
                 selector: selector.to_owned(),
                 error: err,
-            }
-        })?;
+            })?;
 
         // Parse the response as JSON. Intentionally ignore the
         // content-type. If the user wants to treat it as JSON, we
         // should allow that even if the server is wrong.
-        let json_value = Json::parse(&value).map_err(|err| {
-            TemplateError::ChainParseResponse {
-                chain_id: chain_id.to_owned(),
-                error: err,
-            }
-        })?;
+        let json_value = Json::parse(&value)
+            .map_err(|err| ChainError::ParseResponse { error: err })?;
 
         // Apply the path to the json
-        let found_value =
-            path.query(&json_value).exactly_one().map_err(|err| {
-                TemplateError::ChainInvalidResult {
-                    chain_id: chain_id.to_owned(),
-                    error: err,
-                }
-            })?;
+        let found_value = path
+            .query(&json_value)
+            .exactly_one()
+            .map_err(|err| ChainError::InvalidResult { error: err })?;
 
         match found_value {
             serde_json::Value::String(s) => Ok(s.clone().into()),
@@ -324,45 +321,11 @@ pub enum TemplateError {
     #[error("Unknown field {field:?}")]
     FieldUnknown { field: String },
 
-    #[error("Unknown chain {chain_id:?}")]
-    ChainUnknown { chain_id: String },
-
-    /// The chain ID is valid, but the corresponding recipe has no successful
-    /// response
-    #[error("No response available for chain {chain_id:?}")]
-    ChainNoResponse { chain_id: String },
-
-    /// An error occurred while querying with JSON path
-    #[error("Error parsing JSON path {selector:?} for chain {chain_id:?}")]
-    ChainJsonPath {
-        chain_id: String,
-        selector: String,
-        #[source]
-        error: serde_json_path::ParseError,
-    },
-
-    /// Failed to parse the response body before applying a selector
-    #[error("Error parsing response for chain {chain_id:?}")]
-    ChainParseResponse {
+    #[error("Error resolving chain {chain_id:?}")]
+    Chain {
         chain_id: String,
         #[source]
-        error: anyhow::Error,
-    },
-
-    /// Got either 0 or 2+ results for JSON path query
-    #[error("Expected exactly one result for chain {chain_id:?}")]
-    ChainInvalidResult {
-        chain_id: String,
-        #[source]
-        error: ExactlyOneError,
-    },
-
-    #[error("Error reading from file {path:?} for chain {chain_id:?}")]
-    ChainFile {
-        chain_id: String,
-        path: PathBuf,
-        #[source]
-        error: io::Error,
+        error: ChainError,
     },
 
     /// Variable either didn't exist or had non-unicode content
@@ -372,10 +335,48 @@ pub enum TemplateError {
         #[source]
         error: VarError,
     },
+}
 
-    /// An error occurred accessing the request repository
+/// An error sub-type, for any error that occurs while resolving a chained
+/// value. This is factored out because they all need to be paired with a chain
+/// ID.
+#[derive(Debug, Error)]
+pub enum ChainError {
+    /// Reference to a chain that doesn't exist
+    #[error("Unknown chain")]
+    Unknown,
+    /// An error occurred accessing the request repository. This error is
+    /// generated by our code so we don't need any extra context.
     #[error("{0}")]
     Repository(#[source] anyhow::Error),
+    /// The chain ID is valid, but the corresponding recipe has no successful
+    /// response
+    #[error("No response available")]
+    NoResponse,
+    #[error("Error parsing JSON path {selector:?}")]
+    JsonPath {
+        selector: String,
+        #[source]
+        error: serde_json_path::ParseError,
+    },
+    /// Failed to parse the response body before applying a selector
+    #[error("Error parsing response")]
+    ParseResponse {
+        #[source]
+        error: anyhow::Error,
+    },
+    /// Got either 0 or 2+ results for JSON path query
+    #[error("Expected exactly one result from selector")]
+    InvalidResult {
+        #[source]
+        error: ExactlyOneError,
+    },
+    #[error("Error reading from file {path:?}")]
+    File {
+        path: PathBuf,
+        #[source]
+        error: io::Error,
+    },
 }
 
 #[cfg(test)]

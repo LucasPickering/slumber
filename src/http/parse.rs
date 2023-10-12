@@ -51,6 +51,9 @@ pub trait ContentType {
     /// Parse the response body
     fn parse(body: &str) -> anyhow::Result<Self::Value>;
 
+    /// Prettify a parse body into something the user will really like
+    fn prettify(parsed: &Self::Value) -> String;
+
     fn from_parsed_body(parsed_body: &ParsedBody) -> Option<&Self::Value>;
 }
 
@@ -63,6 +66,11 @@ impl ContentType for Json {
         Ok(serde_json::from_str(body)?)
     }
 
+    fn prettify(parsed: &Self::Value) -> String {
+        // serde_json can't fail serializing its own Value type
+        serde_json::to_string_pretty(parsed).unwrap()
+    }
+
     fn from_parsed_body(parsed_body: &ParsedBody) -> Option<&Self::Value> {
         match parsed_body {
             ParsedBody::Json(value) => Some(value),
@@ -73,7 +81,7 @@ impl ContentType for Json {
 
 impl ParsedBody {
     /// Parse the body of a response, based on its `content-type` header. Use
-    /// [Response::parse] to parse from outside the `http` module.
+    /// [Response::parse_body] to parse from outside the `http` module.
     pub(super) fn parse(response: &Response) -> anyhow::Result<ParsedBody> {
         let body = &response.body;
         let result: anyhow::Result<Self> = try {
@@ -90,6 +98,15 @@ impl ParsedBody {
             }
         };
         result.context("Error parsing response body").traced()
+    }
+
+    /// Prettify the parsed body. Use [Response::prettify_body] to prettify from
+    /// outside the `http` module.
+    pub(super) fn prettify(&self) -> String {
+        match self {
+            ParsedBody::Json(value) => Json::prettify(value),
+            ParsedBody::UnknownContentType { content_type } => todo!(),
+        }
     }
 
     /// Attempt to downcast the parsed body to a particular content type. If

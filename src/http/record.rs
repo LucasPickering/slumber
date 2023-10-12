@@ -98,6 +98,11 @@ impl Response {
     pub fn parse_body(&self) -> anyhow::Result<ParsedBody> {
         ParsedBody::parse(self)
     }
+
+    /// TODO
+    pub fn prettify_body(&self) -> anyhow::Result<String> {
+        Ok(self.parse_body()?.prettify())
+    }
 }
 
 /// Serialization/deserialization for [reqwest::Method]

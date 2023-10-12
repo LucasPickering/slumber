@@ -260,7 +260,10 @@ impl Draw for ResponsePane {
                     );
                 }
 
-                RequestState::Response(record) => {
+                RequestState::Response {
+                    record,
+                    pretty_body,
+                } => {
                     let response = &record.response;
                     // Status code
                     f.render_widget(
@@ -284,7 +287,12 @@ impl Draw for ResponsePane {
 
                     // Main content for the response
                     let tab_text = match state.ui.response_tab.selected() {
-                        ResponseTab::Body => response.body.as_str().into(),
+                        // Render the pretty body if it's available, otherwise
+                        // fall back to the regular one
+                        ResponseTab::Body => pretty_body
+                            .as_deref()
+                            .unwrap_or(response.body.as_str())
+                            .into(),
                         ResponseTab::Headers => response.headers.to_text(),
                     };
                     f.render_widget(Paragraph::new(tab_text), content_chunk);

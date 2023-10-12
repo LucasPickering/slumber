@@ -170,7 +170,14 @@ impl AppState {
             Some(state) if state.is_loading() => {
                 // We know this request corresponds to this response because we
                 // only allow one request at a time for each recipe
-                *state = RequestState::Response(record);
+
+                // Prettification might get slow on large responses, maybe we
+                // want to punt this into a separate task?
+                let pretty_body = record.response.prettify_body().ok();
+                *state = RequestState::Response {
+                    record,
+                    pretty_body,
+                };
             }
             other => {
                 error!(
@@ -306,7 +313,10 @@ pub enum RequestState {
     /// A resolved HTTP response, with all content loaded and ready to be
     /// displayed. This does *not necessarily* have a 2xx/3xx status code, any
     /// received response is considered a "success".
-    Response(RequestRecord),
+    Response {
+        record: RequestRecord,
+        pretty_body: Option<String>,
+    },
 
     /// Error occurred sending the request or receiving the response.
     Error {
@@ -326,7 +336,7 @@ impl RequestState {
     pub fn start_time(&self) -> DateTime<Utc> {
         match self {
             Self::Loading { start_time, .. } => *start_time,
-            Self::Response(record) => record.start_time,
+            Self::Response { record, .. } => record.start_time,
             Self::Error { start_time, .. } => *start_time,
         }
     }
@@ -336,7 +346,7 @@ impl RequestState {
     pub fn duration(&self) -> Duration {
         match self {
             Self::Loading { start_time, .. } => Utc::now() - start_time,
-            Self::Response(record) => record.duration(),
+            Self::Response { record, .. } => record.duration(),
             Self::Error {
                 start_time,
                 end_time,

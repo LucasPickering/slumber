@@ -1,6 +1,6 @@
 use crate::{
     config::Chain,
-    http::{Json, Repository},
+    http::{ContentType, Json, Repository},
     util::ResultExt,
 };
 use anyhow::Context;
@@ -213,17 +213,12 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
                     }
                 })?;
 
-                // Parse the response as JSON
-                let parsed_body =
-                    record.response.parse_body().map_err(|err| {
-                        TemplateError::ChainParseResponse {
-                            chain_id,
-                            error: err,
-                        }
-                    })?;
+                // Parse the response as JSON. Intentionally ignore the
+                // content-type. If the user wants to treat it as JSON, we
+                // should allow that even if the server is wrong.
                 let json_value =
-                    parsed_body.as_content_type::<Json>().map_err(|err| {
-                        TemplateError::ChainIncorrectContentType {
+                    Json::parse(&record.response.body).map_err(|err| {
+                        TemplateError::ChainParseResponse {
                             chain_id,
                             error: err,
                         }
@@ -231,7 +226,7 @@ impl<'a> TemplateSource<'a> for ChainSource<'a> {
 
                 // Apply the path to the json
                 let found_value = path
-                    .query(json_value)
+                    .query(&json_value)
                     .exactly_one()
                     .map_err(|err| TemplateError::ChainInvalidResult {
                         chain_id,
@@ -311,17 +306,6 @@ pub enum TemplateError<S: std::fmt::Display> {
         error: anyhow::Error,
     },
 
-    /// Response was parsed correctly, but didn't have the expected content
-    /// type
-    #[error(
-        "Error response for chain {chain_id:?} had incorrect content type"
-    )]
-    ChainIncorrectContentType {
-        chain_id: S,
-        #[source]
-        error: anyhow::Error,
-    },
-
     /// Got either 0 or 2+ results for JSON path query
     #[error("Expected exactly one result for chain {chain_id:?}")]
     ChainInvalidResult {
@@ -376,12 +360,6 @@ impl<'a> TemplateError<&'a str> {
                 error,
             },
             TemplateError::ChainParseResponse { chain_id, error } => {
-                TemplateError::ChainParseResponse {
-                    chain_id: chain_id.to_owned(),
-                    error,
-                }
-            }
-            TemplateError::ChainIncorrectContentType { chain_id, error } => {
                 TemplateError::ChainParseResponse {
                     chain_id: chain_id.to_owned(),
                     error,

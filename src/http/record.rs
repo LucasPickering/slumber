@@ -1,10 +1,18 @@
 //! HTTP-related data types
 
-use crate::{config::RequestRecipeId, http::ParsedBody};
+use crate::{
+    config::RequestRecipeId,
+    http::{parse, ContentType, Json},
+    util::ResultExt,
+};
+use anyhow::{anyhow, Context};
 use chrono::{DateTime, Duration, Utc};
 use derive_more::{Deref, Display};
 use indexmap::IndexMap;
-use reqwest::{header::HeaderMap, Method, StatusCode};
+use reqwest::{
+    header::{self, HeaderMap, HeaderValue},
+    Method, StatusCode,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -95,11 +103,22 @@ pub struct Response {
 
 impl Response {
     /// Parse the body of this response, based on its `content-type` header
-    pub fn parse_body(&self) -> anyhow::Result<ParsedBody> {
-        ParsedBody::parse(self)
+    pub fn parse_body(&self) -> anyhow::Result<Box<dyn ContentType>> {
+        parse::parse_body(self)
+            .context("Error parsing response body")
+            .traced()
     }
 
-    /// TODO
+    /// Get the value of the `content-type` header
+    pub fn content_type(&self) -> Option<&[u8]> {
+        self.headers
+            .get(header::CONTENT_TYPE)
+            .map(HeaderValue::as_bytes)
+    }
+
+    /// Make the response body pretty, if possible. This fails if the response
+    /// has an unknown content-type, or if the body doesn't parse according to
+    /// the content-type.
     pub fn prettify_body(&self) -> anyhow::Result<String> {
         Ok(self.parse_body()?.prettify())
     }

@@ -20,9 +20,10 @@ use chrono::{DateTime, Duration, Utc};
 use derive_more::{Display, From};
 use ratatui::widgets::*;
 use std::{
+    cell::RefCell,
     collections::{hash_map, HashMap},
     fmt::Display,
-    ops::Deref,
+    ops::{Deref, DerefMut},
     path::{Path, PathBuf},
 };
 use strum::{EnumIter, IntoEnumIterator};
@@ -108,17 +109,13 @@ impl AppState {
         }
     }
 
-    /// Get the stored notification (if any). This requires a mutable reference
-    /// because this will check if the notification (if any) is expired, and
-    /// if so clear it.
-    pub fn notification(&mut self) -> Option<&Notification> {
-        // Expire the notification
-        if let Some(notification) = &self.ui.notification {
-            if notification.expired() {
-                self.ui.notification = None;
-            }
+    /// Get the stored notification (if any).
+    pub fn notification(&self) -> Option<&Notification> {
+        match &self.ui.notification {
+            // If the notification is expired, don't show it
+            Some(notification) if !notification.expired() => Some(notification),
+            _ => None,
         }
-        self.ui.notification.as_ref()
     }
 
     /// Get whichever request state should currently be shown to the user,
@@ -380,7 +377,11 @@ impl Notification {
 /// A list of items in the UI
 #[derive(Debug)]
 pub struct StatefulList<T> {
-    pub state: ListState,
+    /// Use interior mutability because this needs to be modified during the
+    /// draw phase, by [Frame::render_stateful_widget]. This means we don't
+    /// have to pass a mutable reference to [AppState] everywhere during
+    /// the draw phase just so list state can be modified.
+    state: RefCell<ListState>,
     pub items: Vec<T>,
 }
 
@@ -391,16 +392,28 @@ impl<T> StatefulList<T> {
         if !items.is_empty() {
             state.select(Some(0));
         }
-        StatefulList { state, items }
+        StatefulList {
+            state: RefCell::new(state),
+            items,
+        }
     }
 
     /// Get the currently selected item (if any)
     pub fn selected(&self) -> Option<&T> {
-        self.items.get(self.state.selected()?)
+        self.items.get(self.state.borrow().selected()?)
     }
 
+    /// Get a mutable reference to state. This uses `RefCell` underneath so it
+    /// will panic if aliased. Only call this during the draw phase!
+    pub fn state_mut(&self) -> impl DerefMut<Target = ListState> + '_ {
+        self.state.borrow_mut()
+    }
+
+    /// Select the previous item in the list. This should only be called during
+    /// the message phase, so we can take `&mut self`.
     pub fn previous(&mut self) {
-        let i = match self.state.selected() {
+        let state = self.state.get_mut();
+        let i = match state.selected() {
             Some(i) => {
                 // Avoid underflow here
                 if i == 0 {
@@ -411,16 +424,18 @@ impl<T> StatefulList<T> {
             }
             None => 0,
         };
-        self.state.select(Some(i));
+        state.select(Some(i));
     }
 
-    /// Select the next item in the list
+    /// Select the next item in the list. This should only be called during the
+    /// message phase, so we can take `&mut self`.
     pub fn next(&mut self) {
-        let i = match self.state.selected() {
+        let state = self.state.get_mut();
+        let i = match state.selected() {
             Some(i) => (i + 1) % self.items.len(),
             None => 0,
         };
-        self.state.select(Some(i));
+        state.select(Some(i));
     }
 }
 

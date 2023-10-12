@@ -126,7 +126,7 @@ impl Tui {
 
             // ===== Draw Phase =====
             self.terminal
-                .draw(|f| self.renderer.draw_main(f, &mut self.state))?;
+                .draw(|f| self.renderer.draw_main(f, &self.state))?;
 
             // ===== Signal Phase =====
             if quit_signals.pending().next().is_some() {

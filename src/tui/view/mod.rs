@@ -14,7 +14,7 @@ use crate::tui::{
 };
 use itertools::Itertools;
 use ratatui::{prelude::*, widgets::*};
-use std::{fmt::Debug, io::Stdout};
+use std::io::Stdout;
 
 type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<Stdout>>;
 
@@ -29,7 +29,7 @@ impl Renderer {
         Self::default()
     }
 
-    pub fn draw_main(&self, f: &mut Frame, state: &mut AppState) {
+    pub fn draw_main(&self, f: &mut Frame, state: &AppState) {
         // Create layout
         let [main_chunk, footer_chunk] = layout(
             f.size(),
@@ -99,7 +99,7 @@ pub trait Draw {
         renderer: &Renderer,
         f: &mut Frame,
         chunk: Rect,
-        state: &mut AppState,
+        state: &AppState,
     );
 }
 
@@ -111,7 +111,7 @@ impl Draw for ProfileListPane {
         renderer: &Renderer,
         f: &mut Frame,
         chunk: Rect,
-        state: &mut AppState,
+        state: &AppState,
     ) {
         let pane_kind = PrimaryPane::ProfileList;
         let list = ListComponent {
@@ -122,7 +122,11 @@ impl Draw for ProfileListPane {
             list: &state.ui.profiles,
         }
         .render(renderer);
-        f.render_stateful_widget(list, chunk, &mut state.ui.profiles.state)
+        f.render_stateful_widget(
+            list,
+            chunk,
+            &mut state.ui.profiles.state_mut(),
+        )
     }
 }
 
@@ -134,7 +138,7 @@ impl Draw for RecipeListPane {
         renderer: &Renderer,
         f: &mut Frame,
         chunk: Rect,
-        state: &mut AppState,
+        state: &AppState,
     ) {
         let pane_kind = PrimaryPane::RecipeList;
         let list = ListComponent {
@@ -145,7 +149,7 @@ impl Draw for RecipeListPane {
             list: &state.ui.recipes,
         }
         .render(renderer);
-        f.render_stateful_widget(list, chunk, &mut state.ui.recipes.state)
+        f.render_stateful_widget(list, chunk, &mut state.ui.recipes.state_mut())
     }
 }
 
@@ -157,7 +161,7 @@ impl Draw for RequestPane {
         renderer: &Renderer,
         f: &mut Frame,
         chunk: Rect,
-        state: &mut AppState,
+        state: &AppState,
     ) {
         if let Some(recipe) = state.ui.recipes.selected() {
             // Render outermost block
@@ -216,7 +220,7 @@ impl Draw for ResponsePane {
         renderer: &Renderer,
         f: &mut Frame,
         chunk: Rect,
-        state: &mut AppState,
+        state: &AppState,
     ) {
         // Render outermost block
         let pane_kind = PrimaryPane::Response;
@@ -317,7 +321,7 @@ impl Draw for ErrorPopup {
         renderer: &Renderer,
         f: &mut Frame,
         chunk: Rect,
-        state: &mut AppState,
+        state: &AppState,
     ) {
         if let Some(error) = state.error() {
             // Grab a spot in the middle of the screen
@@ -366,13 +370,7 @@ impl Draw for ErrorPopup {
 pub struct HelpText;
 
 impl Draw for HelpText {
-    fn draw(
-        &self,
-        _: &Renderer,
-        f: &mut Frame,
-        chunk: Rect,
-        state: &mut AppState,
-    ) {
+    fn draw(&self, _: &Renderer, f: &mut Frame, chunk: Rect, state: &AppState) {
         // Find all available input bindings
         let input_manager = InputManager::instance();
         let available_actions = input_manager.actions(state);
@@ -387,13 +385,7 @@ impl Draw for HelpText {
 pub struct NotificationText;
 
 impl Draw for NotificationText {
-    fn draw(
-        &self,
-        _: &Renderer,
-        f: &mut Frame,
-        chunk: Rect,
-        state: &mut AppState,
-    ) {
+    fn draw(&self, _: &Renderer, f: &mut Frame, chunk: Rect, state: &AppState) {
         if let Some(notification) = state.notification() {
             f.render_widget(Paragraph::new(notification.to_span()), chunk);
         }

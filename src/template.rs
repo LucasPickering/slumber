@@ -82,13 +82,30 @@ impl TemplateString {
             new.push_str(&self[last_match..m.start()]);
             let key_raw =
                 captures.get(1).expect("Missing key capture group").as_str();
-            let key = TemplateKey::parse(key_raw)?;
-            let rendered_value = key.into_value().render(context).await?;
-            trace!(
-                key = key_raw,
-                value = rendered_value.deref(),
-                "Rendered template key"
-            );
+
+            // If the key is in the overrides, don't even both parsing it
+            let rendered_value = match context.overrides.get(key_raw) {
+                Some(value) => {
+                    trace!(
+                        key = key_raw,
+                        value = value,
+                        "Rendered template key from override"
+                    );
+                    value.into()
+                }
+                None => {
+                    // Standard case - parse the key and render it
+                    let key = TemplateKey::parse(key_raw)?;
+                    let value = key.into_value().render(context).await?;
+                    trace!(
+                        key = key_raw,
+                        value = value.deref(),
+                        "Rendered template key"
+                    );
+                    value
+                }
+            };
+
             // Replace the key with its value
             new.push_str(&rendered_value);
             last_match = m.end();
@@ -116,14 +133,19 @@ enum TemplateKey<'a> {
 }
 
 impl<'a> TemplateKey<'a> {
+    const CHAINS_PREFIX: &'static str = "chains";
+    const ENVIRONMENT_PREFIX: &'static str = "env";
+
     /// Parse a string into a key. It'd be nice if this was a `FromStr`
     /// implementation, but that doesn't allow us to attach to the lifetime of
     /// the input `str`.
     fn parse(s: &'a str) -> Result<Self, TemplateError> {
         match s.split('.').collect::<Vec<_>>().as_slice() {
             [key] => Ok(Self::Field(key)),
-            ["chains", chain_id] => Ok(Self::Chain(chain_id)),
-            ["env", variable] => Ok(Self::Environment(variable)),
+            [Self::CHAINS_PREFIX, chain_id] => Ok(Self::Chain(chain_id)),
+            [Self::ENVIRONMENT_PREFIX, variable] => {
+                Ok(Self::Environment(variable))
+            }
             _ => Err(TemplateError::InvalidKey { key: s.to_owned() }),
         }
     }
@@ -168,14 +190,11 @@ struct FieldTemplateSource<'a> {
 impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
     async fn render(&self, context: &'a TemplateContext) -> TemplateResult<'a> {
         let field = self.field;
-        None
-            // Cascade down the the list of maps we want to check
-            .or_else(|| context.overrides.get(field))
-            .or_else(|| context.profile.get(field))
-            .map(Cow::from)
-            .ok_or(TemplateError::FieldUnknown {
+        context.profile.get(field).map(Cow::from).ok_or_else(|| {
+            TemplateError::FieldUnknown {
                 field: field.to_owned(),
-            })
+            }
+        })
     }
 }
 

@@ -1,11 +1,6 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use crate::tui::{
-    state::{AppState, Message},
-    view::{
-        ErrorPopup, ProfileListPane, RecipeListPane, RequestPane, ResponsePane,
-    },
-};
+use crate::tui::state::{AppState, Message};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use derive_more::Display;
 use std::{
@@ -58,7 +53,8 @@ impl InputManager {
         INSTANCE.get_or_init(Self::new)
     }
 
-    /// Get the binding associated with a particular action
+    /// Get the binding associated with a particular action. Useful for mapping
+    /// input in reverse, when showing available bindings to the user.
     pub fn binding(&self, action: Action) -> Option<InputBinding> {
         self.bindings.get(&action).copied()
     }
@@ -192,10 +188,10 @@ pub struct OutcomeBinding {
 }
 
 /// A function to mutate state based on an input action
-type Mutator = &'static dyn Fn(&mut AppState);
+pub type Mutator = &'static dyn Fn(&mut AppState);
 
 impl OutcomeBinding {
-    fn new(action: Action, mutator: Mutator) -> Self {
+    pub fn new(action: Action, mutator: Mutator) -> Self {
         Self { action, mutator }
     }
 }
@@ -232,94 +228,5 @@ impl InputTarget for InputManager {
         ];
         mappings.extend(state.input_handler().actions(state));
         mappings
-    }
-}
-
-impl InputTarget for ProfileListPane {
-    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        vec![
-            OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane_mut().previous()
-            }),
-            OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane_mut().next()
-            }),
-            OutcomeBinding::new(Action::Up, &|state| {
-                state.profiles_mut().previous()
-            }),
-            OutcomeBinding::new(Action::Down, &|state| {
-                state.profiles_mut().next()
-            }),
-        ]
-    }
-}
-
-impl InputTarget for RecipeListPane {
-    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        vec![
-            OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane_mut().previous()
-            }),
-            OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane_mut().next()
-            }),
-            OutcomeBinding::new(Action::Up, &|state| {
-                state.recipes_mut().previous()
-            }),
-            OutcomeBinding::new(Action::Down, &|state| {
-                state.recipes_mut().next()
-            }),
-            OutcomeBinding::new(Action::Interact, &|state| {
-                state.messages_tx().send(Message::HttpSendRequest)
-            }),
-        ]
-    }
-}
-
-impl InputTarget for RequestPane {
-    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        vec![
-            OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane_mut().previous()
-            }),
-            OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane_mut().next()
-            }),
-            OutcomeBinding::new(Action::Left, &|state| {
-                state.request_tab_mut().previous()
-            }),
-            OutcomeBinding::new(Action::Right, &|state| {
-                state.request_tab_mut().next()
-            }),
-        ]
-    }
-}
-
-impl InputTarget for ResponsePane {
-    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        vec![
-            OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane_mut().previous()
-            }),
-            OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane_mut().next()
-            }),
-            OutcomeBinding::new(Action::Left, &|state| {
-                state.response_tab_mut().previous()
-            }),
-            OutcomeBinding::new(Action::Right, &|state| {
-                state.response_tab_mut().next()
-            }),
-        ]
-    }
-}
-
-impl InputTarget for ErrorPopup {
-    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        let clear_error: Mutator = &|state| state.clear_error();
-        vec![
-            OutcomeBinding::new(Action::Interact, clear_error),
-            OutcomeBinding::new(Action::Close, clear_error),
-        ]
     }
 }

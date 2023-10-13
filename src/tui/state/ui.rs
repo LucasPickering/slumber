@@ -2,7 +2,9 @@
 
 use crate::tui::{
     input::InputTarget,
-    view::{ProfileListPane, RecipeListPane, RequestPane, ResponsePane},
+    view::component::primary::{
+        ProfileListPane, RecipeListPane, RequestPane, ResponsePane,
+    },
 };
 use chrono::{DateTime, Duration, Utc};
 use ratatui::widgets::*;

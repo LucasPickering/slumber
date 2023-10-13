@@ -1,38 +1,47 @@
-mod component;
+mod brick;
+pub mod component;
 mod theme;
 
 use crate::tui::{
-    input::{InputManager, InputTarget},
-    state::{AppState, PrimaryPane, RequestState, RequestTab, ResponseTab},
+    state::AppState,
     view::{
         component::{
-            BlockComponent, ButtonComponent, Component, ListComponent,
-            TabComponent, ToSpan, ToText,
+            primary::{
+                ProfileListPane, RecipeListPane, RequestPane, ResponsePane,
+            },
+            ErrorPopup, HelpText, NotificationText,
         },
         theme::Theme,
     },
 };
-use itertools::Itertools;
-use ratatui::{prelude::*, widgets::*};
+use ratatui::prelude::*;
 use std::io::Stdout;
 
 type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<Stdout>>;
 
-/// Container for rendering the UI
-#[derive(Debug, Default)]
-pub struct Renderer {
-    theme: Theme,
+/// Primary entrypoint for the view
+pub struct View;
+
+impl View {
+    /// Draw the whole TUI
+    pub fn draw(state: &AppState, context: &RenderContext, f: &mut Frame) {
+        Draw::draw(&Self, context, state, f, f.size())
+    }
 }
 
-impl Renderer {
-    pub fn new() -> Self {
-        Self::default()
-    }
+impl Draw for View {
+    type State = AppState;
 
-    pub fn draw_main(&self, f: &mut Frame, state: &AppState) {
+    fn draw(
+        &self,
+        context: &RenderContext,
+        state: &Self::State,
+        frame: &mut Frame,
+        chunk: Rect,
+    ) {
         // Create layout
         let [main_chunk, footer_chunk] = layout(
-            f.size(),
+            chunk,
             Direction::Vertical,
             [Constraint::Min(0), Constraint::Length(1)],
         );
@@ -55,21 +64,58 @@ impl Renderer {
         );
 
         // Main panes
-        ProfileListPane.draw(self, f, profiles_chunk, state);
-        RecipeListPane.draw(self, f, recipes_chunk, state);
-        RequestPane.draw(self, f, request_chunk, state);
-        ResponsePane.draw(self, f, response_chunk, state);
+        ProfileListPane.draw(context, state, frame, profiles_chunk);
+        RecipeListPane.draw(context, state, frame, recipes_chunk);
+        RequestPane.draw(context, state, frame, request_chunk);
+        ResponsePane.draw(context, state, frame, response_chunk);
 
         // Footer
-        if state.notification().is_some() {
-            NotificationText.draw(self, f, footer_chunk, state);
-        } else {
-            HelpText.draw(self, f, footer_chunk, state);
+        match state.notification() {
+            Some(notification) => NotificationText.draw(
+                context,
+                notification,
+                frame,
+                footer_chunk,
+            ),
+            None => HelpText.draw(context, state, frame, footer_chunk),
         }
 
         // Render popups last so they go on top
-        ErrorPopup.draw(self, f, f.size(), state);
+        if let Some(error) = state.error() {
+            ErrorPopup.draw(context, error, frame, frame.size());
+        }
     }
+}
+
+/// Container for rendering the UI
+#[derive(Debug, Default)]
+pub struct RenderContext {
+    theme: Theme,
+}
+
+impl RenderContext {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+/// Something that can be drawn into a frame. Generally implementors of this
+/// will be empty structs, since [Draw::draw] provides all the context needed
+/// to render. You might be tempted to break the state apart and store in each
+/// implementor only what it needs, but that gets tricky because the input
+/// handler needs to be able to construct these directly. You could try having
+/// long-lived components, but then you have to retain references to state
+/// across the message phase which would require interior mutability.
+pub trait Draw {
+    type State;
+
+    fn draw(
+        &self,
+        context: &RenderContext,
+        state: &Self::State,
+        frame: &mut Frame,
+        chunk: Rect,
+    );
 }
 
 /// Helper for building a layout with a fixed number of constraints
@@ -86,306 +132,6 @@ fn layout<const N: usize>(
         .try_into()
         // Should be unreachable
         .expect("Chunk length does not match constraint length")
-}
-
-/// Something that can be drawn into a frame. Generally implementors of this
-/// will be empty structs, since [Draw::draw] provides all the context needed
-/// to render. You might be tempted to break the state apart and store in each
-/// implementor only what it needs, but that doesn't work because some need
-/// mutable+immutable references to state.
-pub trait Draw {
-    fn draw(
-        &self,
-        renderer: &Renderer,
-        f: &mut Frame,
-        chunk: Rect,
-        state: &AppState,
-    );
-}
-
-pub struct ProfileListPane;
-
-impl Draw for ProfileListPane {
-    fn draw(
-        &self,
-        renderer: &Renderer,
-        f: &mut Frame,
-        chunk: Rect,
-        state: &AppState,
-    ) {
-        let pane_kind = PrimaryPane::ProfileList;
-        let list = ListComponent {
-            block: BlockComponent {
-                title: pane_kind.to_string(),
-                is_focused: state.selected_pane().is_selected(&pane_kind),
-            },
-            list: state.profiles(),
-        }
-        .render(renderer);
-        f.render_stateful_widget(list, chunk, &mut state.profiles().state_mut())
-    }
-}
-
-pub struct RecipeListPane;
-
-impl Draw for RecipeListPane {
-    fn draw(
-        &self,
-        renderer: &Renderer,
-        f: &mut Frame,
-        chunk: Rect,
-        state: &AppState,
-    ) {
-        let pane_kind = PrimaryPane::RecipeList;
-        let list = ListComponent {
-            block: BlockComponent {
-                title: pane_kind.to_string(),
-                is_focused: state.selected_pane().is_selected(&pane_kind),
-            },
-            list: state.recipes(),
-        }
-        .render(renderer);
-        f.render_stateful_widget(list, chunk, &mut state.recipes().state_mut())
-    }
-}
-
-pub struct RequestPane;
-
-impl Draw for RequestPane {
-    fn draw(
-        &self,
-        renderer: &Renderer,
-        f: &mut Frame,
-        chunk: Rect,
-        state: &AppState,
-    ) {
-        if let Some(recipe) = state.recipes().selected() {
-            // Render outermost block
-            let pane_kind = PrimaryPane::Request;
-            let block = BlockComponent {
-                title: pane_kind.to_string(),
-                is_focused: state.selected_pane().is_selected(&pane_kind),
-            }
-            .render(renderer);
-            let inner_chunk = block.inner(chunk);
-            f.render_widget(block, chunk);
-            let [url_chunk, tabs_chunk, content_chunk] = layout(
-                inner_chunk,
-                Direction::Vertical,
-                [
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Min(0),
-                ],
-            );
-
-            // URL
-            f.render_widget(
-                Paragraph::new(format!("{} {}", recipe.method, recipe.url)),
-                url_chunk,
-            );
-
-            // Navigation tabs
-            let tabs = TabComponent {
-                tabs: state.request_tab(),
-            }
-            .render(renderer);
-            f.render_widget(tabs, tabs_chunk);
-
-            // Request content
-            let text: Text = match state.request_tab().selected() {
-                RequestTab::Body => recipe
-                    .body
-                    .as_ref()
-                    .map(|b| b.to_string())
-                    .unwrap_or_default()
-                    .into(),
-                RequestTab::Query => recipe.query.to_text(),
-                RequestTab::Headers => recipe.headers.to_text(),
-            };
-            f.render_widget(Paragraph::new(text), content_chunk);
-        }
-    }
-}
-
-pub struct ResponsePane;
-
-impl Draw for ResponsePane {
-    fn draw(
-        &self,
-        renderer: &Renderer,
-        f: &mut Frame,
-        chunk: Rect,
-        state: &AppState,
-    ) {
-        // Render outermost block
-        let pane_kind = PrimaryPane::Response;
-        let block = BlockComponent {
-            title: pane_kind.to_string(),
-            is_focused: state.selected_pane().is_selected(&pane_kind),
-        }
-        .render(renderer);
-        let inner_chunk = block.inner(chunk);
-        f.render_widget(block, chunk);
-
-        // Don't render anything else unless we have a request state
-        if let Some(request_state) = state.active_request() {
-            let [header_chunk, content_chunk] = layout(
-                inner_chunk,
-                Direction::Vertical,
-                [Constraint::Length(1), Constraint::Min(0)],
-            );
-            let [header_left_chunk, header_right_chunk] = layout(
-                header_chunk,
-                Direction::Horizontal,
-                [Constraint::Length(20), Constraint::Min(0)],
-            );
-
-            // Time-related data
-            f.render_widget(
-                Paragraph::new(Line::from(vec![
-                    request_state.start_time().to_span(),
-                    " / ".into(),
-                    request_state.duration().to_span(),
-                ]))
-                .alignment(Alignment::Right),
-                header_right_chunk,
-            );
-
-            match &request_state {
-                RequestState::Loading { .. } => {
-                    f.render_widget(
-                        Paragraph::new("Loading..."),
-                        header_left_chunk,
-                    );
-                }
-
-                RequestState::Response {
-                    record,
-                    pretty_body,
-                } => {
-                    let response = &record.response;
-                    // Status code
-                    f.render_widget(
-                        Paragraph::new(response.status.to_string()),
-                        header_left_chunk,
-                    );
-
-                    // Split the main chunk again to allow tabs
-                    let [tabs_chunk, content_chunk] = layout(
-                        content_chunk,
-                        Direction::Vertical,
-                        [Constraint::Length(1), Constraint::Min(0)],
-                    );
-
-                    // Navigation tabs
-                    let tabs = TabComponent {
-                        tabs: state.response_tab(),
-                    }
-                    .render(renderer);
-                    f.render_widget(tabs, tabs_chunk);
-
-                    // Main content for the response
-                    let tab_text = match state.response_tab().selected() {
-                        // Render the pretty body if it's available, otherwise
-                        // fall back to the regular one
-                        ResponseTab::Body => pretty_body
-                            .as_deref()
-                            .unwrap_or(response.body.as_str())
-                            .into(),
-                        ResponseTab::Headers => response.headers.to_text(),
-                    };
-                    f.render_widget(Paragraph::new(tab_text), content_chunk);
-                }
-
-                RequestState::Error { error, .. } => {
-                    f.render_widget(
-                        Paragraph::new(error.to_string()).wrap(Wrap::default()),
-                        content_chunk,
-                    );
-                }
-            }
-        }
-    }
-}
-
-pub struct ErrorPopup;
-
-impl Draw for ErrorPopup {
-    fn draw(
-        &self,
-        renderer: &Renderer,
-        f: &mut Frame,
-        chunk: Rect,
-        state: &AppState,
-    ) {
-        if let Some(error) = state.error() {
-            // Grab a spot in the middle of the screen
-            let chunk = centered_rect(60, 20, chunk);
-            let block = Block::default().title("Error").borders(Borders::ALL);
-            let [content_chunk, footer_chunk] = layout(
-                block.inner(chunk),
-                Direction::Vertical,
-                [Constraint::Min(0), Constraint::Length(1)],
-            );
-
-            f.render_widget(Clear, chunk);
-            f.render_widget(block, chunk);
-            f.render_widget(
-                Paragraph::new(
-                    error
-                        .chain()
-                        .enumerate()
-                        .map(|(i, err)| {
-                            // Add indentation to parent errors
-                            format!("{}{err}", if i > 0 { "  " } else { "" })
-                                .into()
-                        })
-                        .collect::<Vec<Line>>(),
-                )
-                .wrap(Wrap::default()),
-                content_chunk,
-            );
-
-            // Prompt the user to get out of here
-            f.render_widget(
-                Paragraph::new(
-                    ButtonComponent {
-                        text: "OK",
-                        is_highlighted: true,
-                    }
-                    .render(renderer),
-                )
-                .alignment(Alignment::Center),
-                footer_chunk,
-            );
-        }
-    }
-}
-
-pub struct HelpText;
-
-impl Draw for HelpText {
-    fn draw(&self, _: &Renderer, f: &mut Frame, chunk: Rect, state: &AppState) {
-        // Find all available input bindings
-        let input_manager = InputManager::instance();
-        let available_actions = input_manager.actions(state);
-        let key_binding_text = available_actions
-            .into_iter()
-            .filter_map(|app| input_manager.binding(app.action))
-            .join(" | ");
-        f.render_widget(Paragraph::new(key_binding_text), chunk);
-    }
-}
-
-pub struct NotificationText;
-
-impl Draw for NotificationText {
-    fn draw(&self, _: &Renderer, f: &mut Frame, chunk: Rect, state: &AppState) {
-        if let Some(notification) = state.notification() {
-            f.render_widget(Paragraph::new(notification.to_span()), chunk);
-        }
-    }
 }
 
 /// helper function to create a centered rect using up certain percentage of the

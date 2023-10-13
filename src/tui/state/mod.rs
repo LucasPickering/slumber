@@ -14,7 +14,7 @@ use crate::{
         Chain, Profile, RequestCollection, RequestRecipe, RequestRecipeId,
     },
     http::RequestRecord,
-    tui::{input::InputTarget, view::ErrorPopup},
+    tui::{input::InputTarget, view::component::ErrorPopup},
 };
 use chrono::{DateTime, Duration, Utc};
 use std::{
@@ -69,8 +69,6 @@ struct EphemeralState {
 
 impl AppState {
     pub fn new(
-        // TODO make a wrapper struct so we can store the path with the
-        // collection
         collection_file: PathBuf,
         collection: RequestCollection,
         messages_tx: impl Into<MessageSender>,

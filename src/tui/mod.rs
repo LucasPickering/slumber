@@ -9,7 +9,7 @@ use crate::{
     tui::{
         input::InputManager,
         state::{AppState, Message},
-        view::Renderer,
+        view::{RenderContext, View},
     },
     util::ResultExt,
 };
@@ -52,7 +52,7 @@ pub struct Tui {
     // are more functionality than data.
     terminal: Terminal<CrosstermBackend<Stdout>>,
     messages_rx: UnboundedReceiver<Message>,
-    renderer: Renderer,
+    render_context: RenderContext,
     http_engine: HttpEngine,
     state: AppState,
     repository: Repository,
@@ -83,7 +83,7 @@ impl Tui {
         let app = Tui {
             terminal,
             messages_rx,
-            renderer: Renderer::new(),
+            render_context: RenderContext::new(),
             http_engine: HttpEngine::new(repository.clone()),
             state: AppState::new(collection_file, collection, messages_tx),
             repository,
@@ -127,7 +127,7 @@ impl Tui {
 
             // ===== Draw Phase =====
             self.terminal
-                .draw(|f| self.renderer.draw_main(f, &self.state))?;
+                .draw(|f| View::draw(&self.state, &self.render_context, f))?;
 
             // ===== Signal Phase =====
             if quit_signals.pending().next().is_some() {

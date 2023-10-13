@@ -1,10 +1,10 @@
-//! Helper components for building panes
+//! Helper structs for building components
 
 use crate::{
     config::{Profile, RequestRecipe},
     tui::{
         state::{FixedSelect, Notification, StatefulList, StatefulSelect},
-        view::Renderer,
+        view::RenderContext,
     },
 };
 use chrono::{DateTime, Duration, Local, Utc};
@@ -16,28 +16,24 @@ use ratatui::{
 use reqwest::header::HeaderMap;
 use std::fmt::Display;
 
-/// A component is a helper for building a UI. It can be rendered into some UI
-/// element to be drawn.
-///
-/// These components generally clone the state data while rendering, in order
-/// to detach the rendered content from app state. Some drawn panes require
-/// a mutable reference to the state, which means we can't retain that ref here.
-pub trait Component {
+/// A helper for building a UI. It can be converted into some UI element to be
+/// drawn.
+pub trait Brick {
     type Output;
 
     /// Build a UI element
-    fn render(self, renderer: &Renderer) -> Self::Output;
+    fn to_brick(self, renderer: &RenderContext) -> Self::Output;
 }
 
-pub struct BlockComponent {
+pub struct BlockBrick {
     pub title: String,
     pub is_focused: bool,
 }
 
-impl Component for BlockComponent {
+impl Brick for BlockBrick {
     type Output = Block<'static>;
 
-    fn render(self, renderer: &Renderer) -> Self::Output {
+    fn to_brick(self, renderer: &RenderContext) -> Self::Output {
         Block::default()
             .borders(Borders::ALL)
             .border_style(renderer.theme.pane_border_style(self.is_focused))
@@ -46,43 +42,43 @@ impl Component for BlockComponent {
 }
 
 /// A piece of text that looks interactable
-pub struct ButtonComponent<'a> {
+pub struct ButtonBrick<'a> {
     pub text: &'a str,
     pub is_highlighted: bool,
 }
 
-impl<'a> Component for ButtonComponent<'a> {
+impl<'a> Brick for ButtonBrick<'a> {
     type Output = Text<'a>;
 
-    fn render(self, renderer: &Renderer) -> Self::Output {
+    fn to_brick(self, renderer: &RenderContext) -> Self::Output {
         Text::styled(self.text, renderer.theme.text_highlight_style)
     }
 }
 
-pub struct TabComponent<'a, T: FixedSelect> {
+pub struct TabBrick<'a, T: FixedSelect> {
     pub tabs: &'a StatefulSelect<T>,
 }
 
-impl<'a, T: FixedSelect> Component for TabComponent<'a, T> {
+impl<'a, T: FixedSelect> Brick for TabBrick<'a, T> {
     type Output = Tabs<'static>;
 
-    fn render(self, renderer: &Renderer) -> Self::Output {
+    fn to_brick(self, renderer: &RenderContext) -> Self::Output {
         Tabs::new(T::iter().map(|e| e.to_string()).collect())
             .select(self.tabs.selected_index())
             .highlight_style(renderer.theme.text_highlight_style)
     }
 }
 
-pub struct ListComponent<'a, T: ToText> {
-    pub block: BlockComponent,
+pub struct ListBrick<'a, T: ToText> {
+    pub block: BlockBrick,
     pub list: &'a StatefulList<T>,
 }
 
-impl<'a, T: ToText> Component for ListComponent<'a, T> {
+impl<'a, T: ToText> Brick for ListBrick<'a, T> {
     type Output = List<'static>;
 
-    fn render(self, renderer: &Renderer) -> Self::Output {
-        let block = self.block.render(renderer);
+    fn to_brick(self, renderer: &RenderContext) -> Self::Output {
+        let block = self.block.to_brick(renderer);
 
         // Convert each list item into text
         let items: Vec<ListItem<'static>> = self
@@ -99,7 +95,7 @@ impl<'a, T: ToText> Component for ListComponent<'a, T> {
     }
 }
 
-/// Convert a value into a renderable text. This *could* just be a Component
+/// Convert a value into a renderable text. This *could* just be a `Brick`
 /// impl, but there may be a different way to render the same type, with more
 /// detail.
 ///

@@ -30,10 +30,25 @@ pub struct RequestCollection {
 /// Mutually exclusive hot-swappable config group
 #[derive(Clone, Debug, Deserialize)]
 pub struct Profile {
-    pub id: String,
+    pub id: ProfileId,
     pub name: Option<String>,
     pub data: IndexMap<String, String>,
 }
+
+#[derive(
+    Clone,
+    Debug,
+    Deref,
+    Default,
+    Display,
+    Eq,
+    From,
+    Hash,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
+pub struct ProfileId(String);
 
 /// A definition of how to make a request. This is *not* called `Request` in
 /// order to distinguish it from a single instance of an HTTP request. And it's

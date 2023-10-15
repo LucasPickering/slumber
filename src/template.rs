@@ -29,8 +29,8 @@ static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
 pub struct TemplateString(String);
 
 /// A little container struct for all the data that the user can access via
-/// templating. This is derived from AppState, and will only store references
-/// to that state (without cloning).
+/// templating. Unfortunately this has to own all data so templating can be
+/// defered into a task.
 #[derive(Debug)]
 pub struct TemplateContext {
     /// Key-value mapping
@@ -52,10 +52,11 @@ impl TemplateString {
     pub async fn render(
         &self,
         context: &TemplateContext,
+        name: &str,
     ) -> anyhow::Result<String> {
         self.render_borrow(context)
             .await
-            .with_context(|| format!("Error rendering template {:?}", self.0))
+            .with_context(|| format!("Error rendering {name} {:?}", self.0))
             .traced()
     }
 

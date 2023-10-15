@@ -1,163 +1,130 @@
-mod brick;
-pub mod component;
+mod component;
+mod state;
 mod theme;
+mod util;
 
-use crate::tui::{
-    state::AppState,
-    view::{
-        component::{
-            primary::{
-                ProfileListPane, RecipeListPane, RequestPane, ResponsePane,
-            },
-            ErrorPopup, HelpText, NotificationText,
+use crate::{
+    config::{RequestCollection, RequestRecipeId},
+    http::RequestRecord,
+    tui::{
+        input::{Action, InputEngine},
+        message::MessageSender,
+        view::{
+            component::{Component, Draw, Root, UpdateOutcome, ViewMessage},
+            state::Notification,
+            theme::Theme,
         },
-        theme::Theme,
     },
 };
 use ratatui::prelude::*;
-use std::io::Stdout;
+use std::{fmt::Debug, io::Stdout};
+use tracing::{error, trace, trace_span};
 
 type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<Stdout>>;
 
-/// Primary entrypoint for the view
-pub struct View;
+/// Primary entrypoint for the view. This contains the main draw functions, as
+/// well as bindings for externally modifying the view state. We use a component
+/// architecture based on React, meaning the view is responsible for managing
+/// its own state. Certain global state (e.g. the request repository) is managed
+/// by the controll and exposed via message passing.
+#[derive(Debug)]
+pub struct View {
+    messages_tx: MessageSender,
+    theme: Theme,
+    root: Root,
+}
 
 impl View {
-    /// Draw the whole TUI
-    pub fn draw(state: &AppState, context: &RenderContext, f: &mut Frame) {
-        Draw::draw(&Self, context, state, f, f.size())
+    pub fn new(
+        collection: &RequestCollection,
+        messages_tx: MessageSender,
+    ) -> Self {
+        Self {
+            // State
+            messages_tx,
+            theme: Theme::default(),
+            root: Root::new(collection),
+        }
     }
-}
 
-impl Draw for View {
-    type State = AppState;
+    /// Draw the view to screen. This needs access to the input engine in order
+    /// to render input bindings as help messages to the user.
+    pub fn draw(&self, input_engine: &InputEngine, frame: &mut Frame) {
+        self.root.draw(
+            &RenderContext {
+                input_engine,
+                theme: &self.theme,
+            },
+            (),
+            frame,
+            frame.size(),
+        )
+    }
 
-    fn draw(
-        &self,
-        context: &RenderContext,
-        state: &Self::State,
-        frame: &mut Frame,
-        chunk: Rect,
+    /// New HTTP request was spawned
+    pub fn start_request(&mut self, recipe_id: RequestRecipeId) {
+        self.handle_message(ViewMessage::HttpRequest { recipe_id });
+    }
+
+    /// An HTTP request succeeded
+    pub fn finish_request(&mut self, record: RequestRecord) {
+        self.handle_message(ViewMessage::HttpResponse { record });
+    }
+
+    /// An HTTP request failed
+    pub fn fail_request(
+        &mut self,
+        recipe_id: RequestRecipeId,
+        error: anyhow::Error,
     ) {
-        // Create layout
-        let [main_chunk, footer_chunk] = layout(
-            chunk,
-            Direction::Vertical,
-            [Constraint::Min(0), Constraint::Length(1)],
-        );
-        let [left_chunk, right_chunk] = layout(
-            main_chunk,
-            Direction::Horizontal,
-            [Constraint::Max(40), Constraint::Percentage(50)],
-        );
+        self.handle_message(ViewMessage::HttpError { recipe_id, error });
+    }
 
-        let [profiles_chunk, recipes_chunk] = layout(
-            left_chunk,
-            Direction::Vertical,
-            [Constraint::Max(16), Constraint::Min(0)],
-        );
+    /// Historical request was loaded from the repository
+    pub fn load_request(&mut self, record: RequestRecord) {
+        self.handle_message(ViewMessage::HttpLoad { record });
+    }
 
-        let [request_chunk, response_chunk] = layout(
-            right_chunk,
-            Direction::Vertical,
-            [Constraint::Percentage(50), Constraint::Percentage(50)],
-        );
+    /// An error occurred somewhere and the user should be shown a popup
+    pub fn set_error(&mut self, error: anyhow::Error) {
+        self.handle_message(ViewMessage::Error(error));
+    }
 
-        // Main panes
-        ProfileListPane.draw(context, state, frame, profiles_chunk);
-        RecipeListPane.draw(context, state, frame, recipes_chunk);
-        RequestPane.draw(context, state, frame, request_chunk);
-        ResponsePane.draw(context, state, frame, response_chunk);
+    /// Send an informational notification to the user
+    pub fn notify(&mut self, message: String) {
+        let notification = Notification::new(message);
+        self.handle_message(ViewMessage::Notify(notification));
+    }
 
-        // Footer
-        match state.notification() {
-            Some(notification) => NotificationText.draw(
-                context,
-                notification,
-                frame,
-                footer_chunk,
-            ),
-            None => HelpText.draw(context, state, frame, footer_chunk),
-        }
+    /// Update the view according to an input action from the user
+    pub fn handle_input(&mut self, action: Action) {
+        self.handle_message(ViewMessage::Input(action))
+    }
 
-        // Render popups last so they go on top
-        if let Some(error) = state.error() {
-            ErrorPopup.draw(context, error, frame, frame.size());
-        }
+    /// Process a view message by passing it to the root component and letting
+    /// it pass it down the tree
+    fn handle_message(&mut self, message: ViewMessage) {
+        let span = trace_span!("View message", ?message);
+        span.in_scope(|| {
+            match self.root.update_all(message) {
+                UpdateOutcome::Consumed => {}
+                // Consumer didn't eat the message - huh?
+                UpdateOutcome::Propagate(_) => {
+                    error!("View message was unhandled");
+                }
+                // Consumer wants to trigger a new event
+                UpdateOutcome::SideEffect(m) => {
+                    trace!(message = ?m, "View message produced side-effect");
+                    self.messages_tx.send(m);
+                }
+            }
+        });
     }
 }
 
-/// Container for rendering the UI
-#[derive(Debug, Default)]
-pub struct RenderContext {
-    theme: Theme,
-}
-
-impl RenderContext {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-/// Something that can be drawn into a frame. Generally implementors of this
-/// will be empty structs, since [Draw::draw] provides all the context needed
-/// to render. You might be tempted to break the state apart and store in each
-/// implementor only what it needs, but that gets tricky because the input
-/// handler needs to be able to construct these directly. You could try having
-/// long-lived components, but then you have to retain references to state
-/// across the message phase which would require interior mutability.
-pub trait Draw {
-    type State;
-
-    fn draw(
-        &self,
-        context: &RenderContext,
-        state: &Self::State,
-        frame: &mut Frame,
-        chunk: Rect,
-    );
-}
-
-/// Helper for building a layout with a fixed number of constraints
-fn layout<const N: usize>(
-    area: Rect,
-    direction: Direction,
-    constraints: [Constraint; N],
-) -> [Rect; N] {
-    Layout::default()
-        .direction(direction)
-        .constraints(constraints)
-        .split(area)
-        .as_ref()
-        .try_into()
-        // Should be unreachable
-        .expect("Chunk length does not match constraint length")
-}
-
-/// helper function to create a centered rect using up certain percentage of the
-/// available rect `r`
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Percentage((100 - percent_y) / 2),
-                Constraint::Percentage(percent_y),
-                Constraint::Percentage((100 - percent_y) / 2),
-            ]
-            .as_ref(),
-        )
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(
-            [
-                Constraint::Percentage((100 - percent_x) / 2),
-                Constraint::Percentage(percent_x),
-                Constraint::Percentage((100 - percent_x) / 2),
-            ]
-            .as_ref(),
-        )
-        .split(popup_layout[1])[1]
+/// Global readonly data that various components need during rendering
+#[derive(Debug)]
+struct RenderContext<'a> {
+    pub input_engine: &'a InputEngine,
+    pub theme: &'a Theme,
 }

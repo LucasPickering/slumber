@@ -61,27 +61,29 @@ impl HttpEngine {
         debug!(recipe_id = %recipe.id, "Building request from recipe");
         let method = recipe
             .method
-            .render(template_values)
-            .await
-            .context("Method")?
-            .parse()
-            .context("Method")?;
-        let url = recipe.url.render(template_values).await.context("URL")?;
+            .render(template_values, "method")
+            .await?
+            .parse()?;
+        let url = recipe.url.render(template_values, "URL").await?;
 
         // Build header map
         let headers = future::try_join_all(recipe.headers.iter().map(
             |(header, value_template)| async move {
-                let result: anyhow::Result<_> = try {
-                    // String -> header conversions are fallible, if headers
-                    // are invalid
-                    (
-                        HeaderName::try_from(header)?,
-                        HeaderValue::try_from(
-                            value_template.render(template_values).await?,
-                        )?,
-                    )
-                };
-                result.with_context(|| format!("Header {header:?}"))
+                // String -> header conversions are fallible, if headers
+                // are invalid
+                Ok::<_, anyhow::Error>((
+                    HeaderName::try_from(header).with_context(|| {
+                        format!("Error parsing header name {header:?}")
+                    })?,
+                    HeaderValue::try_from(
+                        value_template
+                            .render(
+                                template_values,
+                                &format!("header {header}"),
+                            )
+                            .await?,
+                    )?,
+                ))
             },
         ))
         .await?
@@ -93,9 +95,8 @@ impl HttpEngine {
             recipe.query.iter().map(|(k, v)| async move {
                 Ok::<_, anyhow::Error>((
                     k.clone(),
-                    v.render(template_values)
-                        .await
-                        .with_context(|| format!("Query parameter {k:?}"))?,
+                    v.render(template_values, &format!("Query parameter {k}"))
+                        .await?,
                 ))
             }),
         )
@@ -104,9 +105,9 @@ impl HttpEngine {
         .collect();
         // Render the body
         let body = match &recipe.body {
-            Some(body) => {
-                Some(body.render(template_values).await.context("Body")?)
-            }
+            Some(body) => Some(
+                body.render(template_values, "body").await.context("Body")?,
+            ),
             None => None,
         };
 
@@ -194,6 +195,7 @@ impl HttpEngine {
         // error to the user, but panicking saves us from a lot of grungy logic.
         request_builder
             .build()
+            // TODO this case is possible with an invalid URL
             .expect("Error building HTTP request (this is a bug!)")
     }
 

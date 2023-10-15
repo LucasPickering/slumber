@@ -1,15 +1,15 @@
 mod input;
-mod state;
+mod message;
 mod view;
 
 use crate::{
-    config::{RequestCollection, RequestRecipeId},
+    config::{ProfileId, RequestCollection, RequestRecipeId},
     http::{HttpEngine, Repository},
     template::TemplateContext,
     tui::{
-        input::InputManager,
-        state::{AppState, Message},
-        view::{RenderContext, View},
+        input::InputEngine,
+        message::{Message, MessageSender},
+        view::View,
     },
     util::ResultExt,
 };
@@ -20,6 +20,7 @@ use crossterm::{
     terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::Future;
+use indexmap::IndexMap;
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use signal_hook::{
     consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM},
@@ -31,15 +32,12 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
-use tokio::{
-    sync::mpsc::{self, UnboundedReceiver},
-    task,
-};
+use tokio::sync::mpsc::{self, UnboundedReceiver};
 use tracing::{debug, error};
 
-/// Main controller struct for the TUI. The app uses an MVC architecture, and
-/// this is the C. The main loop goes through the following phases on each
-/// iteration:
+/// Main controller struct for the TUI. The app uses a React-like architecture
+/// for the view, with a wrapping controller (this struct). The main loop goes
+/// through the following phases on each iteration:
 ///
 /// - Input phase: Check for input from the user
 /// - Message phase: Process any async messages from input or external sources
@@ -48,14 +46,18 @@ use tracing::{debug, error};
 /// - Signal phase: Check for process signals that should trigger an exit
 #[derive(Debug)]
 pub struct Tui {
-    // All state should generally be stored in [AppState]. This stored here
-    // are more functionality than data.
     terminal: Terminal<CrosstermBackend<Stdout>>,
     messages_rx: UnboundedReceiver<Message>,
-    render_context: RenderContext,
+    messages_tx: MessageSender,
     http_engine: HttpEngine,
-    state: AppState,
+    input_engine: InputEngine,
+    view: View,
+    /// The file that the current collection was loaded from. Needed in order
+    /// to reload from it
+    collection_file: PathBuf,
+    collection: RequestCollection,
     repository: Repository,
+    should_run: bool,
 }
 
 impl Tui {
@@ -78,20 +80,28 @@ impl Tui {
 
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
+        let messages_tx = MessageSender::new(messages_tx);
 
+        let view = View::new(&collection, messages_tx.clone());
         let repository = Repository::load().unwrap();
         let app = Tui {
             terminal,
             messages_rx,
-            render_context: RenderContext::new(),
+            messages_tx,
             http_engine: HttpEngine::new(repository.clone()),
-            state: AppState::new(collection_file, collection, messages_tx),
+            input_engine: InputEngine::new(),
+
+            collection_file,
+            collection,
+            should_run: true,
+
+            view,
             repository,
         };
 
         // Any error during execution that gets this far is fatal. We expect the
         // error to already have context attached so we can just unwrap
-        task::block_in_place(|| app.run().unwrap());
+        app.run().unwrap();
     }
 
     /// Run the main TUI update loop. Any error returned from this is fatal. See
@@ -104,15 +114,20 @@ impl Tui {
 
         let mut last_tick = Instant::now();
 
-        while self.state.should_run() {
+        while self.should_run {
             // ===== Input Phase =====
             let timeout = Self::TICK_TIME
                 .checked_sub(last_tick.elapsed())
                 .unwrap_or_else(|| Duration::from_secs(0));
             // This is where the tick rate is enforced
             if crossterm::event::poll(timeout)? {
-                InputManager::instance()
-                    .handle_event(&mut self.state, crossterm::event::read()?);
+                let action =
+                    self.input_engine.action(crossterm::event::read()?);
+
+                // Forward input to the view
+                if let Some(action) = action {
+                    self.view.handle_input(action);
+                }
             }
             if last_tick.elapsed() >= Self::TICK_TIME {
                 last_tick = Instant::now();
@@ -122,16 +137,16 @@ impl Tui {
             while let Ok(message) = self.messages_rx.try_recv() {
                 // If an error occurs, store it so we can show the user
                 self.handle_message(message)
-                    .ok_or_apply(|err| self.state.set_error(err));
+                    .ok_or_apply(|err| self.view.set_error(err));
             }
 
             // ===== Draw Phase =====
             self.terminal
-                .draw(|f| View::draw(&self.state, &self.render_context, f))?;
+                .draw(|f| self.view.draw(&self.input_engine, f))?;
 
             // ===== Signal Phase =====
             if quit_signals.pending().next().is_some() {
-                self.state.quit();
+                self.should_run = false;
             }
         }
         Ok(())
@@ -141,8 +156,8 @@ impl Tui {
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::CollectionStartReload => {
-                let messages_tx = self.state.messages_tx();
-                let collection_file = self.state.collection_file().to_owned();
+                let messages_tx = self.messages_tx.clone();
+                let collection_file = self.collection_file.clone();
                 self.spawn(async move {
                     let (_, collection) =
                         RequestCollection::load(Some(&collection_file)).await?;
@@ -157,56 +172,73 @@ impl Tui {
                 collection_file,
                 collection,
             } => {
-                self.state.reload_collection(collection);
-                // Send the notification *after* reloading, otherwise it'll get
-                // wiped out immediately
-                self.state.notify(format!(
-                    "Reloaded collection from {}",
-                    collection_file.to_string_lossy()
-                ));
+                self.reload_collection(collection_file, collection);
             }
 
-            Message::HttpSendRequest => {
-                if self.state.can_send_request() {
-                    self.send_request()?;
-                }
-            }
+            Message::HttpSendRequest {
+                recipe_id,
+                profile_id,
+            } => self.send_request(recipe_id, profile_id)?,
             Message::HttpResponse { record } => {
-                self.state.finish_request(record);
+                self.view.finish_request(record);
             }
             Message::HttpError { recipe_id, error } => {
-                self.state.fail_request(&recipe_id, error);
+                self.view.fail_request(recipe_id, error);
             }
 
             Message::RepositoryStartLoad { recipe_id } => {
                 self.load_request(recipe_id);
             }
             Message::RepositoryEndLoad { record } => {
-                self.state.load_request(record);
+                self.view.load_request(record);
             }
 
-            Message::Error { error } => self.state.set_error(error),
+            Message::Error { error } => self.view.set_error(error),
+            Message::Quit => self.should_run = false,
         }
         Ok(())
     }
 
+    /// Reload state with a new collection file
+    fn reload_collection(
+        &mut self,
+        collection_file: PathBuf,
+        collection: RequestCollection,
+    ) {
+        // TODO can we store these fields together in a wrapper struct?
+        self.collection_file = collection_file;
+        self.collection = collection;
+
+        // Rebuild the whole view, because tons of things can change
+        self.view = View::new(&self.collection, self.messages_tx.clone());
+        self.view.notify(format!(
+            "Reloaded collection from {}",
+            self.collection_file.to_string_lossy()
+        ));
+    }
+
     /// Launch an HTTP request in a separate task
-    fn send_request(&mut self) -> anyhow::Result<()> {
+    fn send_request(
+        &mut self,
+        recipe_id: RequestRecipeId,
+        profile_id: Option<ProfileId>,
+    ) -> anyhow::Result<()> {
         let recipe = self
-            .state
-            .recipes()
-            .selected()
-            .ok_or_else(|| anyhow!("No recipe selected"))?
+            .collection
+            .requests
+            .iter()
+            .find(|recipe| recipe.id == recipe_id)
+            .ok_or_else(|| anyhow!("No recipe with ID {recipe_id:?}"))?
             .clone();
 
         // Mark request state as loading
-        self.state.start_request(recipe.id.clone());
+        self.view.start_request(recipe_id);
 
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
-        let template_context = self.template_context();
+        let template_context = self.template_context(profile_id.as_ref())?;
         let http_engine = self.http_engine.clone();
-        let messages_tx = self.state.messages_tx();
+        let messages_tx = self.messages_tx.clone();
 
         // We can't use self.spawn here because HTTP errors are handled
         // differently from all other error types
@@ -238,7 +270,7 @@ impl Tui {
     /// repository, and store it in state.
     fn load_request(&self, recipe_id: RequestRecipeId) {
         let repository = self.repository.clone();
-        let messages_tx = self.state.messages_tx();
+        let messages_tx = self.messages_tx.clone();
         self.spawn(async move {
             if let Some(record) = repository.get_last(&recipe_id).await? {
                 messages_tx.send(Message::RepositoryEndLoad { record });
@@ -253,7 +285,7 @@ impl Tui {
         &self,
         future: impl Future<Output = anyhow::Result<()>> + Send + 'static,
     ) {
-        let messages_tx = self.state.messages_tx();
+        let messages_tx = self.messages_tx.clone();
         tokio::spawn(async move {
             if let Err(err) = future.await {
                 messages_tx.send(Message::Error { error: err })
@@ -264,18 +296,32 @@ impl Tui {
     /// Expose app state to the templater. Most of the data has to be cloned out
     /// to be passed across async boundaries. This is annoying but in reality
     /// it should be small data.
-    fn template_context(&self) -> TemplateContext {
-        TemplateContext {
-            profile: self
-                .state
-                .profiles()
-                .selected()
-                .map(|e| e.data.clone())
-                .unwrap_or_default(),
+    fn template_context(
+        &self,
+        profile_id: Option<&ProfileId>,
+    ) -> anyhow::Result<TemplateContext> {
+        // Find profile by ID
+        let profile = match profile_id {
+            Some(profile_id) => {
+                let profile = self
+                    .collection
+                    .profiles
+                    .iter()
+                    .find(|profile| &profile.id == profile_id)
+                    .ok_or_else(|| {
+                        anyhow!("No profile with ID {profile_id:?}")
+                    })?;
+                profile.data.clone()
+            }
+            None => IndexMap::new(),
+        };
+
+        Ok(TemplateContext {
+            profile,
             repository: self.repository.clone(),
-            chains: self.state.chains().to_owned(),
+            chains: self.collection.chains.clone(),
             overrides: Default::default(),
-        }
+        })
     }
 }
 

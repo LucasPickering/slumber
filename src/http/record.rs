@@ -97,6 +97,7 @@ pub struct Response {
     pub status: StatusCode,
     #[serde(with = "serde_header_map")]
     pub headers: HeaderMap,
+    // TODO add Body struct with custom Debug impl to prevent printing monsters
     pub body: String,
 }
 

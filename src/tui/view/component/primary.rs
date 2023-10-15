@@ -1,14 +1,19 @@
 //! Primary pane components
 
-use crate::tui::{
-    input::{Action, InputTarget, OutcomeBinding},
-    state::{
-        AppState, Message, PrimaryPane, RequestState, RequestTab, ResponseTab,
-    },
-    view::{
-        brick::{BlockBrick, Brick, ListBrick, TabBrick, ToSpan, ToText},
-        component::Draw,
-        layout, Frame, RenderContext,
+use crate::{
+    config::{Profile, RequestRecipe},
+    tui::{
+        input::Action,
+        message::Message,
+        view::{
+            component::{Component, Draw, UpdateOutcome, ViewMessage},
+            state::{
+                PrimaryPane, RequestState, RequestTab, ResponseTab,
+                StatefulList, StatefulSelect,
+            },
+            util::{layout, BlockBrick, ListBrick, TabBrick, ToTui},
+            Frame, RenderContext,
+        },
     },
 };
 use ratatui::{
@@ -17,63 +22,126 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
 };
 
-pub struct ProfileListPane;
+#[derive(Debug)]
+pub struct ProfileListPane {
+    profiles: StatefulList<Profile>,
+}
+
+impl ProfileListPane {
+    pub fn new(profiles: Vec<Profile>) -> Self {
+        Self {
+            profiles: StatefulList::with_items(profiles),
+        }
+    }
+
+    /// Which profile in the list is selected? `None` iff the list is empty.
+    /// Exposing inner state is hacky but it's an easy shortcut
+    pub fn selected_profile(&self) -> Option<&Profile> {
+        self.profiles.selected()
+    }
+}
+
+impl Component for ProfileListPane {
+    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+        match message {
+            ViewMessage::Input(Action::Up) => {
+                self.profiles.previous();
+                UpdateOutcome::Consumed
+            }
+            ViewMessage::Input(Action::Down) => {
+                self.profiles.next();
+                UpdateOutcome::Consumed
+            }
+            _ => UpdateOutcome::Propagate(message),
+        }
+    }
+}
 
 impl Draw for ProfileListPane {
-    type State = AppState;
+    type Props<'a> = ListPaneProps where Self: 'a;
 
     fn draw(
         &self,
         context: &RenderContext,
-        state: &Self::State,
+        props: Self::Props<'_>,
         frame: &mut Frame,
         chunk: Rect,
     ) {
-        let pane_kind = PrimaryPane::ProfileList;
         let list = ListBrick {
             block: BlockBrick {
-                title: pane_kind.to_string(),
-                is_focused: state.selected_pane().is_selected(&pane_kind),
+                title: PrimaryPane::ProfileList.to_string(),
+                is_focused: props.is_selected,
             },
-            list: state.profiles(),
-        }
-        .to_brick(context);
+            list: &self.profiles,
+        };
         frame.render_stateful_widget(
-            list,
+            list.to_tui(context),
             chunk,
-            &mut state.profiles().state_mut(),
+            &mut self.profiles.state_mut(),
         )
     }
 }
 
-impl InputTarget for ProfileListPane {
-    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        vec![
-            OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane_mut().previous()
-            }),
-            OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane_mut().next()
-            }),
-            OutcomeBinding::new(Action::Up, &|state| {
-                state.profiles_mut().previous()
-            }),
-            OutcomeBinding::new(Action::Down, &|state| {
-                state.profiles_mut().next()
-            }),
-        ]
+#[derive(Debug)]
+pub struct RecipeListPane {
+    recipes: StatefulList<RequestRecipe>,
+}
+
+impl RecipeListPane {
+    pub fn new(recipes: Vec<RequestRecipe>) -> Self {
+        Self {
+            recipes: StatefulList::with_items(recipes),
+        }
+    }
+
+    /// Which recipe in the list is selected? `None` iff the list is empty.
+    /// Exposing inner state is hacky but it's an easy shortcut
+    pub fn selected_recipe(&self) -> Option<&RequestRecipe> {
+        self.recipes.selected()
     }
 }
 
-pub struct RecipeListPane;
+impl Component for RecipeListPane {
+    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+        /// Helper to load a request from the repo whenever we select a new
+        /// recipe
+        fn load_from_repo(pane: &RecipeListPane) -> UpdateOutcome {
+            match pane.recipes.selected() {
+                Some(recipe) => {
+                    UpdateOutcome::SideEffect(Message::RepositoryStartLoad {
+                        recipe_id: recipe.id.clone(),
+                    })
+                }
+                None => UpdateOutcome::Consumed,
+            }
+        }
+
+        match message {
+            ViewMessage::Input(Action::Interact) => {
+                // Parent has to be responsible for sending the request because
+                // it also needs access to the profile list state
+                UpdateOutcome::Propagate(ViewMessage::HttpSendRequest)
+            }
+            ViewMessage::Input(Action::Up) => {
+                self.recipes.previous();
+                load_from_repo(self)
+            }
+            ViewMessage::Input(Action::Down) => {
+                self.recipes.next();
+                load_from_repo(self)
+            }
+            _ => UpdateOutcome::Propagate(message),
+        }
+    }
+}
 
 impl Draw for RecipeListPane {
-    type State = AppState;
+    type Props<'a> = ListPaneProps where Self: 'a;
 
     fn draw(
         &self,
         context: &RenderContext,
-        state: &Self::State,
+        props: Self::Props<'_>,
         frame: &mut Frame,
         chunk: Rect,
     ) {
@@ -81,63 +149,69 @@ impl Draw for RecipeListPane {
         let list = ListBrick {
             block: BlockBrick {
                 title: pane_kind.to_string(),
-                is_focused: state.selected_pane().is_selected(&pane_kind),
+                is_focused: props.is_selected,
             },
-            list: state.recipes(),
-        }
-        .to_brick(context);
+            list: &self.recipes,
+        };
         frame.render_stateful_widget(
-            list,
+            list.to_tui(context),
             chunk,
-            &mut state.recipes().state_mut(),
+            &mut self.recipes.state_mut(),
         )
     }
 }
 
-impl InputTarget for RecipeListPane {
-    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        vec![
-            OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane_mut().previous()
-            }),
-            OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane_mut().next()
-            }),
-            OutcomeBinding::new(Action::Up, &|state| {
-                state.recipes_mut().previous()
-            }),
-            OutcomeBinding::new(Action::Down, &|state| {
-                state.recipes_mut().next()
-            }),
-            OutcomeBinding::new(Action::Interact, &|state| {
-                state.messages_tx().send(Message::HttpSendRequest)
-            }),
-        ]
+#[derive(Debug)]
+pub struct RequestPane {
+    tabs: StatefulSelect<RequestTab>,
+}
+
+impl RequestPane {
+    pub fn new() -> Self {
+        Self {
+            tabs: StatefulSelect::default(),
+        }
     }
 }
 
-pub struct RequestPane;
+impl Component for RequestPane {
+    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+        match message {
+            ViewMessage::Input(Action::Left) => {
+                self.tabs.previous();
+                UpdateOutcome::Consumed
+            }
+            ViewMessage::Input(Action::Right) => {
+                self.tabs.next();
+                UpdateOutcome::Consumed
+            }
+            _ => UpdateOutcome::Propagate(message),
+        }
+    }
+}
 
 impl Draw for RequestPane {
-    type State = AppState;
+    type Props<'a> = RequestPaneProps<'a>;
 
     fn draw(
         &self,
         context: &RenderContext,
-        state: &Self::State,
+        props: Self::Props<'_>,
         frame: &mut Frame,
         chunk: Rect,
     ) {
-        if let Some(recipe) = state.recipes().selected() {
-            // Render outermost block
-            let pane_kind = PrimaryPane::Request;
-            let block = BlockBrick {
-                title: pane_kind.to_string(),
-                is_focused: state.selected_pane().is_selected(&pane_kind),
-            }
-            .to_brick(context);
-            let inner_chunk = block.inner(chunk);
-            frame.render_widget(block, chunk);
+        // Render outermost block
+        let pane_kind = PrimaryPane::Request;
+        let block = BlockBrick {
+            title: pane_kind.to_string(),
+            is_focused: props.is_selected,
+        };
+        let block = block.to_tui(context);
+        let inner_chunk = block.inner(chunk);
+        frame.render_widget(block, chunk);
+
+        // Render request contents
+        if let Some(recipe) = props.selected_recipe {
             let [url_chunk, tabs_chunk, content_chunk] = layout(
                 inner_chunk,
                 Direction::Vertical,
@@ -155,56 +229,61 @@ impl Draw for RequestPane {
             );
 
             // Navigation tabs
-            let tabs = TabBrick {
-                tabs: state.request_tab(),
-            }
-            .to_brick(context);
-            frame.render_widget(tabs, tabs_chunk);
+            let tabs = TabBrick { tabs: &self.tabs };
+            frame.render_widget(tabs.to_tui(context), tabs_chunk);
 
             // Request content
-            let text: Text = match state.request_tab().selected() {
+            let text: Text = match self.tabs.selected() {
                 RequestTab::Body => recipe
                     .body
                     .as_ref()
                     .map(|b| b.to_string())
                     .unwrap_or_default()
                     .into(),
-                RequestTab::Query => recipe.query.to_text(),
-                RequestTab::Headers => recipe.headers.to_text(),
+                RequestTab::Query => recipe.query.to_tui(context),
+                RequestTab::Headers => recipe.headers.to_tui(context),
             };
             frame.render_widget(Paragraph::new(text), content_chunk);
         }
     }
 }
 
-impl InputTarget for RequestPane {
-    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        vec![
-            OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane_mut().previous()
-            }),
-            OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane_mut().next()
-            }),
-            OutcomeBinding::new(Action::Left, &|state| {
-                state.request_tab_mut().previous()
-            }),
-            OutcomeBinding::new(Action::Right, &|state| {
-                state.request_tab_mut().next()
-            }),
-        ]
+#[derive(Debug)]
+pub struct ResponsePane {
+    tabs: StatefulSelect<ResponseTab>,
+}
+
+impl ResponsePane {
+    pub fn new() -> Self {
+        Self {
+            tabs: StatefulSelect::default(),
+        }
     }
 }
 
-pub struct ResponsePane;
+impl Component for ResponsePane {
+    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+        match message {
+            ViewMessage::Input(Action::Left) => {
+                self.tabs.previous();
+                UpdateOutcome::Consumed
+            }
+            ViewMessage::Input(Action::Right) => {
+                self.tabs.next();
+                UpdateOutcome::Consumed
+            }
+            _ => UpdateOutcome::Propagate(message),
+        }
+    }
+}
 
 impl Draw for ResponsePane {
-    type State = AppState;
+    type Props<'a> = ResponsePaneProps<'a>;
 
     fn draw(
         &self,
         context: &RenderContext,
-        state: &Self::State,
+        props: Self::Props<'_>,
         frame: &mut Frame,
         chunk: Rect,
     ) {
@@ -212,14 +291,14 @@ impl Draw for ResponsePane {
         let pane_kind = PrimaryPane::Response;
         let block = BlockBrick {
             title: pane_kind.to_string(),
-            is_focused: state.selected_pane().is_selected(&pane_kind),
-        }
-        .to_brick(context);
+            is_focused: props.is_selected,
+        };
+        let block = block.to_tui(context);
         let inner_chunk = block.inner(chunk);
         frame.render_widget(block, chunk);
 
         // Don't render anything else unless we have a request state
-        if let Some(request_state) = state.active_request() {
+        if let Some(request_state) = props.active_request {
             let [header_chunk, content_chunk] = layout(
                 inner_chunk,
                 Direction::Vertical,
@@ -234,9 +313,9 @@ impl Draw for ResponsePane {
             // Time-related data
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
-                    request_state.start_time().to_span(),
+                    request_state.start_time().to_tui(context),
                     " / ".into(),
-                    request_state.duration().to_span(),
+                    request_state.duration().to_tui(context),
                 ]))
                 .alignment(Alignment::Right),
                 header_right_chunk,
@@ -269,21 +348,20 @@ impl Draw for ResponsePane {
                     );
 
                     // Navigation tabs
-                    let tabs = TabBrick {
-                        tabs: state.response_tab(),
-                    }
-                    .to_brick(context);
-                    frame.render_widget(tabs, tabs_chunk);
+                    let tabs = TabBrick { tabs: &self.tabs };
+                    frame.render_widget(tabs.to_tui(context), tabs_chunk);
 
                     // Main content for the response
-                    let tab_text = match state.response_tab().selected() {
+                    let tab_text = match self.tabs.selected() {
                         // Render the pretty body if it's available, otherwise
                         // fall back to the regular one
                         ResponseTab::Body => pretty_body
                             .as_deref()
                             .unwrap_or(response.body.as_str())
                             .into(),
-                        ResponseTab::Headers => response.headers.to_text(),
+                        ResponseTab::Headers => {
+                            response.headers.to_tui(context)
+                        }
                     };
                     frame
                         .render_widget(Paragraph::new(tab_text), content_chunk);
@@ -291,7 +369,8 @@ impl Draw for ResponsePane {
 
                 RequestState::Error { error, .. } => {
                     frame.render_widget(
-                        Paragraph::new(error.to_string()).wrap(Wrap::default()),
+                        Paragraph::new(error.to_tui(context))
+                            .wrap(Wrap::default()),
                         content_chunk,
                     );
                 }
@@ -300,21 +379,16 @@ impl Draw for ResponsePane {
     }
 }
 
-impl InputTarget for ResponsePane {
-    fn actions(&self, _: &AppState) -> Vec<OutcomeBinding> {
-        vec![
-            OutcomeBinding::new(Action::FocusPrevious, &|state| {
-                state.selected_pane_mut().previous()
-            }),
-            OutcomeBinding::new(Action::FocusNext, &|state| {
-                state.selected_pane_mut().next()
-            }),
-            OutcomeBinding::new(Action::Left, &|state| {
-                state.response_tab_mut().previous()
-            }),
-            OutcomeBinding::new(Action::Right, &|state| {
-                state.response_tab_mut().next()
-            }),
-        ]
-    }
+pub struct ListPaneProps {
+    pub is_selected: bool,
+}
+
+pub struct RequestPaneProps<'a> {
+    pub is_selected: bool,
+    pub selected_recipe: Option<&'a RequestRecipe>,
+}
+
+pub struct ResponsePaneProps<'a> {
+    pub is_selected: bool,
+    pub active_request: Option<&'a RequestState>,
 }

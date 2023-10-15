@@ -2,10 +2,10 @@
 //! state updates.
 
 use crate::{
-    config::{RequestCollection, RequestRecipeId},
+    config::{ProfileId, RequestCollection, RequestRecipeId},
     http::RequestRecord,
 };
-use derive_more::{Display, From};
+use derive_more::From;
 use std::path::PathBuf;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
@@ -15,9 +15,14 @@ use tracing::trace;
 pub struct MessageSender(UnboundedSender<Message>);
 
 impl MessageSender {
+    pub fn new(sender: UnboundedSender<Message>) -> Self {
+        Self(sender)
+    }
+
     /// Send an async message, to be handled by the main loop
-    pub fn send(&self, message: Message) {
-        trace!(%message, "Queueing message");
+    pub fn send(&self, message: impl Into<Message>) {
+        let message: Message = message.into();
+        trace!(?message, "Queueing message");
         self.0.send(message).expect("Message queue is closed")
     }
 }
@@ -26,28 +31,24 @@ impl MessageSender {
 /// be made synchronously by the input handler, but some require async handling
 /// at the top level. The controller is responsible for both triggering and
 /// handling messages.
-#[derive(Debug, Display)]
+#[derive(Debug)]
 pub enum Message {
     /// Trigger collection reload
     CollectionStartReload,
     /// Store a reloaded collection value in state
-    #[display(fmt = "EndReloadCollection(collection_file:?)")]
     CollectionEndReload {
         collection_file: PathBuf,
         collection: RequestCollection,
     },
 
-    /// Launch an HTTP request from the currently selected recipe. Errors if
-    /// the recipe list is empty.
-    HttpSendRequest,
+    /// Launch an HTTP request from the given recipe/profile.
+    HttpSendRequest {
+        recipe_id: RequestRecipeId,
+        profile_id: Option<ProfileId>,
+    },
     /// We received an HTTP response
-    #[display(
-        fmt = "HttpResponse(id={}, status={})",
-        "record.id()",
-        "record.response.status"
-    )]
     HttpResponse { record: RequestRecord },
-    #[display(fmt = "HttpError(recipe={}, error={})", recipe_id, error)]
+    /// HTTP request failed :(
     HttpError {
         recipe_id: RequestRecipeId,
         error: anyhow::Error,
@@ -56,9 +57,10 @@ pub enum Message {
     /// Load the most recent response for a recipe from the repository
     RepositoryStartLoad { recipe_id: RequestRecipeId },
     /// Finished loading a response from the repository
-    #[display(fmt = "RepositoryEndLoad(id={})", "record.id()")]
     RepositoryEndLoad { record: RequestRecord },
 
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
+    /// Exit the program
+    Quit,
 }

@@ -1,25 +1,22 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use crate::tui::state::{AppState, Message};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use derive_more::Display;
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
-    sync::OnceLock,
 };
 use tracing::trace;
 
-static INSTANCE: OnceLock<InputManager> = OnceLock::new();
-
-/// Top-level input manager. This is the entrypoint into the input management
-/// system. It delegates out to certain children based on UI state.
-pub struct InputManager {
+/// Top-level input manager. This handles things like bindings and mapping
+/// events to actions, but then the actions are actually processed by the view.
+#[derive(Debug)]
+pub struct InputEngine {
     bindings: HashMap<Action, InputBinding>,
 }
 
-impl InputManager {
-    fn new() -> Self {
+impl InputEngine {
+    pub fn new() -> Self {
         Self {
             bindings: [
                 InputBinding {
@@ -40,7 +37,7 @@ impl InputManager {
                 InputBinding::new(KeyCode::Down, Action::Down),
                 InputBinding::new(KeyCode::Left, Action::Left),
                 InputBinding::new(KeyCode::Right, Action::Right),
-                InputBinding::new(KeyCode::Char(' '), Action::Interact),
+                InputBinding::new(KeyCode::Enter, Action::Interact),
                 InputBinding::new(KeyCode::Esc, Action::Close),
             ]
             .into_iter()
@@ -49,17 +46,14 @@ impl InputManager {
         }
     }
 
-    pub fn instance() -> &'static Self {
-        INSTANCE.get_or_init(Self::new)
-    }
-
     /// Get the binding associated with a particular action. Useful for mapping
     /// input in reverse, when showing available bindings to the user.
     pub fn binding(&self, action: Action) -> Option<InputBinding> {
         self.bindings.get(&action).copied()
     }
 
-    pub fn handle_event(&self, state: &mut AppState, event: Event) {
+    /// Convert an input event into its bound action, if any
+    pub fn action(&self, event: Event) -> Option<Action> {
         if let Event::Key(
             key @ KeyEvent {
                 kind: KeyEventKind::Press,
@@ -76,8 +70,11 @@ impl InputManager {
 
             if let Some(action) = action {
                 trace!("Input action {action:?}");
-                self.apply_action(state, action);
             }
+
+            action
+        } else {
+            None
         }
     }
 }
@@ -109,6 +106,7 @@ pub enum Action {
     /// Do a thing. E.g. select an item in a list
     Interact,
     /// Close the current popup
+    #[display(fmt = "Close Dialog")]
     Close,
 }
 
@@ -173,60 +171,11 @@ impl Display for KeyCombination {
             KeyCode::Left => write!(f, "←"),
             KeyCode::Right => write!(f, "→"),
             KeyCode::Esc => write!(f, "<esc>"),
+            KeyCode::Enter => write!(f, "<enter>"),
             KeyCode::Char(' ') => write!(f, "<space>"),
             KeyCode::Char(c) => write!(f, "<{c}>"),
             // Punting on everything else until we need it
             _ => write!(f, "???"),
         }
-    }
-}
-
-/// A binding between an action and the change it makes to state
-pub struct OutcomeBinding {
-    pub action: Action,
-    pub mutator: Mutator,
-}
-
-/// A function to mutate state based on an input action
-pub type Mutator = &'static dyn Fn(&mut AppState);
-
-impl OutcomeBinding {
-    pub fn new(action: Action, mutator: Mutator) -> Self {
-        Self { action, mutator }
-    }
-}
-
-/// A major item in the UI, which can receive input and be drawn to the screen.
-/// Each of these types should be a **singleton**. There are assumptions that
-/// will break if we start duplicating types.
-pub trait InputTarget {
-    /// Modify app state based on the given action. Sync actions should modify
-    /// state directly. Async actions should queue messages to be handled later.
-    fn apply_action(&self, state: &mut AppState, action: Action) {
-        let mutator = self
-            .actions(state)
-            .into_iter()
-            .find(|app| app.action == action)
-            .map(|app| app.mutator);
-        if let Some(mutator) = mutator {
-            mutator(state);
-        }
-    }
-
-    /// Get a list of mappings that will modify the state. This needs to return
-    /// a list of available actions so it can be used to show help text.
-    fn actions(&self, state: &AppState) -> Vec<OutcomeBinding>;
-}
-
-impl InputTarget for InputManager {
-    fn actions(&self, state: &AppState) -> Vec<OutcomeBinding> {
-        let mut mappings: Vec<OutcomeBinding> = vec![
-            OutcomeBinding::new(Action::Quit, &|state| state.quit()),
-            OutcomeBinding::new(Action::ReloadCollection, &|state| {
-                state.messages_tx().send(Message::CollectionStartReload)
-            }),
-        ];
-        mappings.extend(state.input_handler().actions(state));
-        mappings
     }
 }

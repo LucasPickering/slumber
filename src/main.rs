@@ -160,7 +160,7 @@ async fn execute_subcommand(
                 let record = http_engine.send(request).await?;
 
                 // Print response
-                print!("{}", record.response.body);
+                print!("{}", record.response.body.text());
             }
             Ok(())
         }

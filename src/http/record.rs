@@ -7,13 +7,14 @@ use crate::{
 };
 use anyhow::Context;
 use chrono::{DateTime, Duration, Utc};
-use derive_more::{Deref, Display};
+use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
 use reqwest::{
     header::{self, HeaderMap, HeaderValue},
     Method, StatusCode,
 };
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 use uuid::Uuid;
 
 /// Unique ID for a single launched request
@@ -97,8 +98,7 @@ pub struct Response {
     pub status: StatusCode,
     #[serde(with = "serde_header_map")]
     pub headers: HeaderMap,
-    // TODO add Body struct with custom Debug impl to prevent printing monsters
-    pub body: String,
+    pub body: Body,
 }
 
 impl Response {
@@ -121,6 +121,31 @@ impl Response {
     /// the content-type.
     pub fn prettify_body(&self) -> anyhow::Result<String> {
         Ok(self.parse_body()?.prettify())
+    }
+}
+
+/// HTTP response body. Right now we store as text only, but at some point
+/// should add support for binary responses
+#[derive(Debug, Default, From, Serialize, Deserialize)]
+pub struct Body(String);
+
+impl Body {
+    pub fn new(text: String) -> Self {
+        Self(text)
+    }
+
+    pub fn text(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_text(self) -> String {
+        self.0
+    }
+}
+
+impl From<&str> for Body {
+    fn from(value: &str) -> Self {
+        Body::new(value.into())
     }
 }
 

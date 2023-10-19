@@ -384,7 +384,7 @@ impl Draw for ResponsePane {
                         // fall back to the regular one
                         ResponseTab::Body => pretty_body
                             .as_deref()
-                            .unwrap_or(response.body.as_str())
+                            .unwrap_or(response.body.text())
                             .into(),
                         ResponseTab::Headers => {
                             response.headers.to_tui(context)

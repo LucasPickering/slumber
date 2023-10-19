@@ -212,7 +212,7 @@ impl HttpEngine {
         let headers = response.headers().clone();
 
         // Pre-resolve the content, so we get all the async work done
-        let body = response.text().await?;
+        let body = response.text().await?.into();
 
         Ok(Response {
             status,

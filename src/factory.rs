@@ -1,6 +1,6 @@
 use crate::{
     config::{Chain, ChainSource, RequestRecipeId},
-    http::{Repository, Request, RequestId, RequestRecord, Response},
+    http::{Body, Repository, Request, RequestId, RequestRecord, Response},
     template::{Prompt, Prompter, TemplateContext, TemplateString},
 };
 use chrono::Utc;
@@ -23,7 +23,7 @@ factori!(Response, {
     default {
         status = StatusCode::OK,
         headers = HeaderMap::new(),
-        body = String::new(),
+        body = Body::default(),
     }
 });
 

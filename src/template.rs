@@ -310,7 +310,7 @@ impl<'a> ChainTemplateSource<'a> {
             .map_err(ChainError::Repository)?
             .ok_or(ChainError::NoResponse)?;
 
-        Ok(record.response.body.into())
+        Ok(record.response.body.into_text().into())
     }
 
     /// Render a chained value from a file
@@ -547,7 +547,8 @@ mod tests {
             "object": {"a": 1},
         });
         let request = create!(Request, recipe_id: recipe_id.clone());
-        let response = create!(Response, body: response_body.to_string());
+        let response =
+            create!(Response, body: response_body.to_string().into());
         repository
             .insert_test(
                 &create!(RequestRecord, request: request, response: response),

@@ -44,11 +44,17 @@ impl ProfileListPane {
 impl Component for ProfileListPane {
     fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
         match message {
-            ViewMessage::Input(Action::Up) => {
+            ViewMessage::InputAction {
+                action: Some(Action::Up),
+                ..
+            } => {
                 self.profiles.previous();
                 UpdateOutcome::Consumed
             }
-            ViewMessage::Input(Action::Down) => {
+            ViewMessage::InputAction {
+                action: Some(Action::Down),
+                ..
+            } => {
                 self.profiles.next();
                 UpdateOutcome::Consumed
             }
@@ -117,16 +123,25 @@ impl Component for RecipeListPane {
         }
 
         match message {
-            ViewMessage::Input(Action::Interact) => {
+            ViewMessage::InputAction {
+                action: Some(Action::Interact),
+                ..
+            } => {
                 // Parent has to be responsible for sending the request because
                 // it also needs access to the profile list state
                 UpdateOutcome::Propagate(ViewMessage::HttpSendRequest)
             }
-            ViewMessage::Input(Action::Up) => {
+            ViewMessage::InputAction {
+                action: Some(Action::Up),
+                ..
+            } => {
                 self.recipes.previous();
                 load_from_repo(self)
             }
-            ViewMessage::Input(Action::Down) => {
+            ViewMessage::InputAction {
+                action: Some(Action::Down),
+                ..
+            } => {
                 self.recipes.next();
                 load_from_repo(self)
             }
@@ -177,11 +192,17 @@ impl RequestPane {
 impl Component for RequestPane {
     fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
         match message {
-            ViewMessage::Input(Action::Left) => {
+            ViewMessage::InputAction {
+                action: Some(Action::Left),
+                ..
+            } => {
                 self.tabs.previous();
                 UpdateOutcome::Consumed
             }
-            ViewMessage::Input(Action::Right) => {
+            ViewMessage::InputAction {
+                action: Some(Action::Right),
+                ..
+            } => {
                 self.tabs.next();
                 UpdateOutcome::Consumed
             }
@@ -264,11 +285,17 @@ impl ResponsePane {
 impl Component for ResponsePane {
     fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
         match message {
-            ViewMessage::Input(Action::Left) => {
+            ViewMessage::InputAction {
+                action: Some(Action::Left),
+                ..
+            } => {
                 self.tabs.previous();
                 UpdateOutcome::Consumed
             }
-            ViewMessage::Input(Action::Right) => {
+            ViewMessage::InputAction {
+                action: Some(Action::Right),
+                ..
+            } => {
                 self.tabs.next();
                 UpdateOutcome::Consumed
             }

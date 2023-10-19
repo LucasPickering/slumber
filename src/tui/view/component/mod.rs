@@ -1,35 +1,38 @@
 //! The building blocks of the view
 
+mod misc;
 mod primary;
 
 use crate::{
     config::{RequestCollection, RequestRecipeId},
     http::RequestRecord,
+    template::Prompt,
     tui::{
         input::Action,
         message::Message,
         view::{
-            component::primary::{
-                ListPaneProps, ProfileListPane, RecipeListPane, RequestPane,
-                RequestPaneProps, ResponsePane, ResponsePaneProps,
+            component::{
+                misc::{ErrorModal, HelpText, NotificationText, PromptModal},
+                primary::{
+                    ListPaneProps, ProfileListPane, RecipeListPane,
+                    RequestPane, RequestPaneProps, ResponsePane,
+                    ResponsePaneProps,
+                },
             },
             state::{Notification, PrimaryPane, RequestState, StatefulSelect},
-            util::{centered_rect, layout, ButtonBrick, ToTui},
+            util::layout,
             Frame, RenderContext,
         },
     },
 };
 use chrono::Utc;
-use itertools::Itertools;
-use ratatui::{
-    prelude::{Alignment, Constraint, Direction, Rect},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
-};
+use crossterm::event::Event;
+use ratatui::prelude::{Constraint, Direction, Rect};
 use std::{
     collections::{hash_map, HashMap},
     fmt::Debug,
 };
-use tracing::error;
+use tracing::{error, trace};
 
 /// The main building block that makes up the view. This is modeled after React,
 /// with some key differences:
@@ -52,25 +55,30 @@ pub trait Component: Debug {
     /// Update the state of this component *and* its children, starting at the
     /// lowest descendant. Recursively walk up the tree until a component
     /// consumes the message.
-    fn update_all(&mut self, message: ViewMessage) -> UpdateOutcome {
+    fn update_all(&mut self, mut message: ViewMessage) -> UpdateOutcome {
         // If we have a child, send them the message. If not, eat it ourselves
-        match self.focused_child() {
-            Some(child) => {
-                let outcome = child.update_all(message);
-                if let UpdateOutcome::Propagate(message) = outcome {
-                    self.update(message)
-                } else {
-                    outcome
-                }
+        for child in self.focused_children() {
+            let outcome = child.update_all(message);
+            if let UpdateOutcome::Propagate(returned) = outcome {
+                // Keep going to the next child. It's possible the child
+                // returned something other than the original message, which
+                // we'll just pass along anyway.
+                message = returned;
+            } else {
+                trace!(?child, "View message consumed");
+                return outcome;
             }
-            None => self.update(message),
         }
+        // None of our children handled it, we'll take it ourselves
+        self.update(message)
     }
 
     /// Which, if any, of this component's children currently has focus? The
-    /// focused component will receive first dibs on any update messages.
-    fn focused_child(&mut self) -> Option<&mut dyn Component> {
-        None
+    /// focused component will receive first dibs on any update messages, in
+    /// the order of the returned list. If none of the children consume the
+    /// message, it will be passed to this component.
+    fn focused_children(&mut self) -> Vec<&mut dyn Component> {
+        Vec::new()
     }
 }
 
@@ -105,8 +113,12 @@ pub trait Draw {
 /// we should rename this?
 #[derive(Debug)]
 pub enum ViewMessage {
-    /// Input from the user
-    Input(Action),
+    /// Input from the user, which may or may not correspond to a bound action.
+    /// Most components just care about the action, but some require raw input
+    InputAction {
+        event: Event,
+        action: Option<Action>,
+    },
 
     // HTTP
     /// User wants to send a new request
@@ -129,9 +141,11 @@ pub enum ViewMessage {
         record: RequestRecord,
     },
 
+    /// Prompt the user for input
+    Prompt(Prompt),
+
     // Errors
     Error(anyhow::Error),
-    ClearError,
 
     // Notifications
     Notify(Notification),
@@ -183,7 +197,8 @@ pub struct Root {
     recipe_list_pane: RecipeListPane,
     request_pane: RequestPane,
     response_pane: ResponsePane,
-    error_popup: Option<ErrorPopup>,
+    error_modal: ErrorModal,
+    prompt_modal: PromptModal,
     notification_text: Option<NotificationText>,
 }
 
@@ -202,7 +217,8 @@ impl Root {
             recipe_list_pane: RecipeListPane::new(collection.requests.clone()),
             request_pane: RequestPane::new(),
             response_pane: ResponsePane::new(),
-            error_popup: None,
+            error_modal: ErrorModal::new(),
+            prompt_modal: PromptModal::new(),
             notification_text: None,
         }
     }
@@ -296,51 +312,51 @@ impl Component for Root {
             ViewMessage::HttpLoad { record } => self.load_request(record),
 
             // Other state messages
-            ViewMessage::Error(error) => {
-                self.error_popup = Some(ErrorPopup::new(error));
-            }
-            ViewMessage::ClearError => {
-                self.error_popup = None;
-            }
             ViewMessage::Notify(notification) => {
                 self.notification_text =
                     Some(NotificationText::new(notification));
             }
 
             // Input messages
-            ViewMessage::Input(Action::Quit) => {
-                return UpdateOutcome::SideEffect(Message::Quit);
-            }
-            ViewMessage::Input(Action::ReloadCollection) => {
+            ViewMessage::InputAction {
+                action: Some(Action::Quit),
+                ..
+            } => return UpdateOutcome::SideEffect(Message::Quit),
+            ViewMessage::InputAction {
+                action: Some(Action::ReloadCollection),
+                ..
+            } => {
                 return UpdateOutcome::SideEffect(
                     Message::CollectionStartReload,
-                );
+                )
             }
-            ViewMessage::Input(Action::FocusPrevious) => {
-                self.primary_panes.previous();
-            }
-            ViewMessage::Input(Action::FocusNext) => {
-                self.primary_panes.next();
-            }
+            ViewMessage::InputAction {
+                action: Some(Action::FocusPrevious),
+                ..
+            } => self.primary_panes.previous(),
+            ViewMessage::InputAction {
+                action: Some(Action::FocusNext),
+                ..
+            } => self.primary_panes.next(),
 
             _ => return UpdateOutcome::Propagate(message),
         }
         UpdateOutcome::Consumed
     }
 
-    fn focused_child(&mut self) -> Option<&mut dyn Component> {
-        // Popups take priority, then fall back to the selected pane
-        let child = self
-            .error_popup
-            .as_mut()
-            .map(|v| v as &mut dyn Component)
-            .unwrap_or(match self.primary_panes.selected() {
-                PrimaryPane::ProfileList => &mut self.profile_list_pane,
+    fn focused_children(&mut self) -> Vec<&mut dyn Component> {
+        vec![
+            &mut self.error_modal,
+            &mut self.prompt_modal,
+            match self.primary_panes.selected() {
+                PrimaryPane::ProfileList => {
+                    &mut self.profile_list_pane as &mut dyn Component
+                }
                 PrimaryPane::RecipeList => &mut self.recipe_list_pane,
                 PrimaryPane::Request => &mut self.request_pane,
                 PrimaryPane::Response => &mut self.response_pane,
-            });
-        Some(child)
+            },
+        ]
     }
 }
 
@@ -424,130 +440,8 @@ impl Draw for Root {
             None => HelpText.draw(context, (), frame, footer_chunk),
         }
 
-        // Render popups last so they go on top
-        if let Some(error_popup) = &self.error_popup {
-            error_popup.draw(context, (), frame, frame.size());
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ErrorPopup {
-    error: anyhow::Error,
-}
-
-impl ErrorPopup {
-    pub fn new(error: anyhow::Error) -> Self {
-        Self { error }
-    }
-}
-
-impl Component for ErrorPopup {
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
-        match message {
-            ViewMessage::Input(Action::Interact | Action::Close) => {
-                UpdateOutcome::Propagate(ViewMessage::ClearError)
-            }
-            _ => UpdateOutcome::Propagate(message),
-        }
-    }
-}
-
-impl Draw for ErrorPopup {
-    fn draw(
-        &self,
-        context: &RenderContext,
-        _: (),
-        frame: &mut Frame,
-        chunk: Rect,
-    ) {
-        // Grab a spot in the middle of the screen
-        let chunk = centered_rect(60, 20, chunk);
-        let block = Block::default().title("Error").borders(Borders::ALL);
-        let [content_chunk, footer_chunk] = layout(
-            block.inner(chunk),
-            Direction::Vertical,
-            [Constraint::Min(0), Constraint::Length(1)],
-        );
-
-        frame.render_widget(Clear, chunk);
-        frame.render_widget(block, chunk);
-        frame.render_widget(
-            Paragraph::new(self.error.to_tui(context)).wrap(Wrap::default()),
-            content_chunk,
-        );
-
-        // Prompt the user to get out of here
-        frame.render_widget(
-            Paragraph::new(
-                ButtonBrick {
-                    text: "OK",
-                    is_highlighted: true,
-                }
-                .to_tui(context),
-            )
-            .alignment(Alignment::Center),
-            footer_chunk,
-        );
-    }
-}
-
-#[derive(Debug)]
-pub struct HelpText;
-
-impl Draw for HelpText {
-    fn draw(
-        &self,
-        context: &RenderContext,
-        _: (),
-        frame: &mut Frame,
-        chunk: Rect,
-    ) {
-        let actions = [
-            Action::Quit,
-            Action::ReloadCollection,
-            Action::FocusNext,
-            Action::FocusPrevious,
-            Action::Close,
-        ];
-        let text = actions
-            .into_iter()
-            .map(|action| {
-                context
-                    .input_engine
-                    .binding(action)
-                    .as_ref()
-                    .map(ToString::to_string)
-                    // This *shouldn't* happen, all actions get a binding
-                    .unwrap_or_else(|| "???".into())
-            })
-            .join(" / ");
-        frame.render_widget(Paragraph::new(text), chunk);
-    }
-}
-
-#[derive(Debug)]
-pub struct NotificationText {
-    notification: Notification,
-}
-
-impl NotificationText {
-    pub fn new(notification: Notification) -> Self {
-        Self { notification }
-    }
-}
-
-impl Draw for NotificationText {
-    fn draw(
-        &self,
-        context: &RenderContext,
-        _: (),
-        frame: &mut Frame,
-        chunk: Rect,
-    ) {
-        frame.render_widget(
-            Paragraph::new(self.notification.to_tui(context)),
-            chunk,
-        );
+        // Render modals last so they go on top
+        self.prompt_modal.draw(context, (), frame, frame.size());
+        self.error_modal.draw(context, (), frame, frame.size());
     }
 }

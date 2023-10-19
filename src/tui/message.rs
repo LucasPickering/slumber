@@ -4,6 +4,7 @@
 use crate::{
     config::{ProfileId, RequestCollection, RequestRecipeId},
     http::RequestRecord,
+    template::{Prompt, Prompter},
 };
 use derive_more::From;
 use std::path::PathBuf;
@@ -24,6 +25,15 @@ impl MessageSender {
         let message: Message = message.into();
         trace!(?message, "Queueing message");
         self.0.send(message).expect("Message queue is closed")
+    }
+}
+
+/// Use the message stream to prompt the user for input when needed for a
+/// template. The message will be routed to the view so it can show the prompt,
+/// and the given returner will be used to send the submitted value back.
+impl Prompter for MessageSender {
+    fn prompt(&self, prompt: Prompt) {
+        self.send(Message::PromptStart(prompt));
     }
 }
 
@@ -58,6 +68,10 @@ pub enum Message {
     RepositoryStartLoad { recipe_id: RequestRecipeId },
     /// Finished loading a response from the repository
     RepositoryEndLoad { record: RequestRecord },
+
+    /// Show a prompt to the user, asking for some input. Use the included
+    /// channel to return the value.
+    PromptStart(Prompt),
 
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },

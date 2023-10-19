@@ -15,7 +15,7 @@ mod util;
 use crate::{
     config::RequestCollection,
     http::{HttpEngine, Repository},
-    template::TemplateContext,
+    template::{Prompt, Prompter, TemplateContext},
     tui::Tui,
     util::find_by,
 };
@@ -27,6 +27,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
+use tracing::error;
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
 #[derive(Debug, Parser)]
@@ -146,6 +147,7 @@ async fn execute_subcommand(
                     overrides,
                     chains: collection.chains,
                     repository: repository.clone(),
+                    prompter: Box::new(CliPrompter),
                 },
             )
             .await?;
@@ -197,4 +199,19 @@ where
         .split_once('=')
         .ok_or_else(|| format!("invalid key=value: no \"=\" found in {s:?}"))?;
     Ok((key.parse()?, value.parse()?))
+}
+
+/// CLI doesn't support prompting (yet). Just tell the user to use a command
+/// line arg instead.
+#[derive(Debug)]
+struct CliPrompter;
+
+impl Prompter for CliPrompter {
+    fn prompt(&self, _prompt: Prompt) {
+        // TODO allow prompts in CLI
+        error!(
+            "Prompting not supported in CLI. \
+            Try `--override` to pass the value via command line argument."
+        );
+    }
 }

@@ -1,7 +1,7 @@
 use crate::{
     config::{Chain, ChainSource, RequestRecipeId},
     http::{Repository, Request, RequestId, RequestRecord, Response},
-    template::{TemplateContext, TemplateString},
+    template::{Prompt, Prompter, TemplateContext, TemplateString},
 };
 use chrono::Utc;
 use factori::{create, factori};
@@ -51,7 +51,8 @@ factori!(Chain, {
         id = String::new(),
         source = ChainSource::Request(RequestRecipeId::default()),
         name = None,
-        selector = None
+        sensitive = false,
+        selector = None,
     }
 });
 
@@ -59,10 +60,34 @@ factori!(TemplateContext, {
     default {
         profile = Default::default()
         chains = Default::default()
+        prompter = Box::<TestPrompter>::default(),
         repository = Repository::testing()
         overrides = Default::default()
     }
 });
+
+/// Return a static value when prompted, or no value if none is given
+#[derive(Debug, Default)]
+pub struct TestPrompter {
+    value: Option<String>,
+}
+
+impl TestPrompter {
+    pub fn new<T: Into<String>>(value: Option<T>) -> Self {
+        Self {
+            value: value.map(Into::into),
+        }
+    }
+}
+
+impl Prompter for TestPrompter {
+    fn prompt(&self, prompt: Prompt) {
+        // If no value was given, don't respond at all
+        if let Some(value) = self.value.as_ref() {
+            prompt.respond(value.clone())
+        }
+    }
+}
 
 // Some helpful conversion implementations
 impl From<&str> for RequestRecipeId {

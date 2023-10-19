@@ -3,8 +3,9 @@
 use crate::{
     config::{Profile, RequestRecipe},
     tui::view::{
+        component::Draw,
         state::{FixedSelect, Notification, StatefulList, StatefulSelect},
-        RenderContext,
+        Frame, RenderContext,
     },
 };
 use chrono::{DateTime, Duration, Local, Utc};
@@ -15,7 +16,11 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Tabs},
 };
 use reqwest::header::HeaderMap;
-use std::fmt::Display;
+use std::{
+    fmt::{Debug, Display},
+    mem,
+};
+use tracing::warn;
 
 /// A helper for building a UI. It can be converted into some UI element to be
 /// drawn.
@@ -212,6 +217,74 @@ impl ToTui for anyhow::Error {
     }
 }
 
+/// A generic modal, which is a temporary dialog that appears for the user. The
+/// contents of the modal should be determined by the concrete implementation.
+///
+/// The modal is generally responsible for listening for its own open event,
+/// and also closing itself. This leads to update logic being a bit grungy
+/// because you have to check `self.is_open()`.
+/// TODO move open/close logic into generic struct
+#[derive(Default)]
+pub enum Modal<T> {
+    #[default]
+    Closed,
+    Open(T),
+}
+
+impl<T: Debug + Draw> Modal<T> {
+    pub fn new() -> Self {
+        Self::Closed
+    }
+
+    pub fn is_open(&self) -> bool {
+        matches!(self, Self::Open { .. })
+    }
+
+    /// Open a new modal with the given initial state
+    pub fn open(&mut self, state: T) {
+        if let Self::Open(existing) = self {
+            // Just a safety check
+            warn!("Modal {existing:?} already open, overwriting it...");
+        }
+        *self = Self::Open(state);
+    }
+
+    /// Close the modal, and if it was open, return the inner value that was
+    /// there
+    pub fn close(&mut self) -> Option<T> {
+        match mem::take(self) {
+            Modal::Closed => None,
+            Modal::Open(state) => Some(state),
+        }
+    }
+}
+
+impl<T: Draw> Draw for Modal<T> {
+    type Props<'a> = T::Props<'a> where Self: 'a;
+
+    fn draw<'a>(
+        &'a self,
+        context: &RenderContext,
+        props: Self::Props<'a>,
+        frame: &mut Frame,
+        chunk: Rect,
+    ) {
+        // If open, draw the contents
+        if let Self::Open(inner) = self {
+            inner.draw(context, props, frame, chunk)
+        }
+    }
+}
+
+impl<T: Debug> Debug for Modal<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Closed => write!(f, "ModalClosed"),
+            Self::Open(arg0) => f.debug_tuple("ModalOpen").field(arg0).finish(),
+        }
+    }
+}
+
 /// Helper for building a layout with a fixed number of constraints
 pub fn layout<const N: usize>(
     area: Rect,
@@ -228,30 +301,30 @@ pub fn layout<const N: usize>(
         .expect("Chunk length does not match constraint length")
 }
 
-/// helper function to create a centered rect using up certain percentage of the
-/// available rect `r`
-pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
+/// Created a rectangle centered on the given `Rect`.
+pub fn centered_rect(x: Constraint, y: Constraint, rect: Rect) -> Rect {
+    fn buffer(constraint: Constraint, full_size: u16) -> Constraint {
+        match constraint {
+            Constraint::Percentage(percent) => {
+                Constraint::Percentage((100 - percent) / 2)
+            }
+            Constraint::Length(length) => {
+                Constraint::Length((full_size - length) / 2)
+            }
+            // Implement these as needed
+            _ => unimplemented!("Other center constraints unsupported"),
+        }
+    }
+
+    let buffer_x = buffer(x, rect.width);
+    let buffer_y = buffer(y, rect.height);
+    let columns = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Percentage((100 - percent_y) / 2),
-                Constraint::Percentage(percent_y),
-                Constraint::Percentage((100 - percent_y) / 2),
-            ]
-            .as_ref(),
-        )
-        .split(r);
+        .constraints([buffer_y, y, buffer_y].as_ref())
+        .split(rect);
 
     Layout::default()
         .direction(Direction::Horizontal)
-        .constraints(
-            [
-                Constraint::Percentage((100 - percent_x) / 2),
-                Constraint::Percentage(percent_x),
-                Constraint::Percentage((100 - percent_x) / 2),
-            ]
-            .as_ref(),
-        )
-        .split(popup_layout[1])[1]
+        .constraints([buffer_x, x, buffer_x].as_ref())
+        .split(columns[1])[1]
 }

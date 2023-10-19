@@ -90,6 +90,9 @@ pub struct Chain {
     pub id: String,
     pub name: Option<String>,
     pub source: ChainSource,
+    /// Mask chained value in the UI
+    #[serde(default)]
+    pub sensitive: bool,
     /// JSONpath to extract a value from the response. For JSON data only.
     pub selector: Option<String>,
 }
@@ -102,6 +105,8 @@ pub enum ChainSource {
     Request(RequestRecipeId),
     /// Load data from a file
     File(PathBuf),
+    /// Prompt the user for a value, with an optional label
+    Prompt(Option<String>),
 }
 
 impl RequestCollection {

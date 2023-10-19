@@ -121,13 +121,11 @@ impl Tui {
                 .unwrap_or_else(|| Duration::from_secs(0));
             // This is where the tick rate is enforced
             if crossterm::event::poll(timeout)? {
-                let action =
-                    self.input_engine.action(crossterm::event::read()?);
-
-                // Forward input to the view
-                if let Some(action) = action {
-                    self.view.handle_input(action);
-                }
+                // Forward input to the view. Include the raw event for text
+                // editors and such
+                let event = crossterm::event::read()?;
+                let action = self.input_engine.action(&event);
+                self.view.handle_input(event, action);
             }
             if last_tick.elapsed() >= Self::TICK_TIME {
                 last_tick = Instant::now();
@@ -152,7 +150,7 @@ impl Tui {
         Ok(())
     }
 
-    /// Handle an incoming message. Any error here will be displayed as a popup
+    /// Handle an incoming message. Any error here will be displayed as a modal
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::CollectionStartReload => {
@@ -191,6 +189,10 @@ impl Tui {
             }
             Message::RepositoryEndLoad { record } => {
                 self.view.load_request(record);
+            }
+
+            Message::PromptStart(prompt) => {
+                self.view.set_prompt(prompt);
             }
 
             Message::Error { error } => self.view.set_error(error),
@@ -280,7 +282,7 @@ impl Tui {
     }
 
     /// Helper for spawning a fallible task. Any error in the resolved future
-    /// will be shown to the user in a popup.
+    /// will be shown to the user in a modal.
     fn spawn(
         &self,
         future: impl Future<Output = anyhow::Result<()>> + Send + 'static,
@@ -321,6 +323,7 @@ impl Tui {
             repository: self.repository.clone(),
             chains: self.collection.chains.clone(),
             overrides: Default::default(),
+            prompter: Box::new(self.messages_tx.clone()),
         })
     }
 }

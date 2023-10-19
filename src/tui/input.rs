@@ -53,7 +53,7 @@ impl InputEngine {
     }
 
     /// Convert an input event into its bound action, if any
-    pub fn action(&self, event: Event) -> Option<Action> {
+    pub fn action(&self, event: &Event) -> Option<Action> {
         if let Event::Key(
             key @ KeyEvent {
                 kind: KeyEventKind::Press,
@@ -65,7 +65,7 @@ impl InputEngine {
             let action = self
                 .bindings
                 .values()
-                .find(|binding| binding.matches(&key))
+                .find(|binding| binding.matches(key))
                 .map(|binding| binding.action);
 
             if let Some(action) = action {
@@ -105,7 +105,7 @@ pub enum Action {
     Right,
     /// Do a thing. E.g. select an item in a list
     Interact,
-    /// Close the current popup
+    /// Close the current modal
     #[display(fmt = "Close Dialog")]
     Close,
 }

@@ -6,6 +6,7 @@ mod util;
 use crate::{
     config::{RequestCollection, RequestRecipeId},
     http::RequestRecord,
+    template::Prompt,
     tui::{
         input::{Action, InputEngine},
         message::MessageSender,
@@ -16,6 +17,7 @@ use crate::{
         },
     },
 };
+use crossterm::event::Event;
 use ratatui::prelude::*;
 use std::{fmt::Debug, io::Stdout};
 use tracing::{error, trace, trace_span};
@@ -85,7 +87,12 @@ impl View {
         self.handle_message(ViewMessage::HttpLoad { record });
     }
 
-    /// An error occurred somewhere and the user should be shown a popup
+    /// Prompt the user to enter some input
+    pub fn set_prompt(&mut self, prompt: Prompt) {
+        self.handle_message(ViewMessage::Prompt(prompt))
+    }
+
+    /// An error occurred somewhere and the user should be shown a modal
     pub fn set_error(&mut self, error: anyhow::Error) {
         self.handle_message(ViewMessage::Error(error));
     }
@@ -96,9 +103,11 @@ impl View {
         self.handle_message(ViewMessage::Notify(notification));
     }
 
-    /// Update the view according to an input action from the user
-    pub fn handle_input(&mut self, action: Action) {
-        self.handle_message(ViewMessage::Input(action))
+    /// Update the view according to an input event from the user. If possible,
+    /// a bound action is provided which tells us what abstract action the
+    /// input maps to.
+    pub fn handle_input(&mut self, event: Event, action: Option<Action>) {
+        self.handle_message(ViewMessage::InputAction { event, action })
     }
 
     /// Process a view message by passing it to the root component and letting

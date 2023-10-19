@@ -9,6 +9,7 @@ use strum::{EnumIter, IntoEnumIterator};
 /// State of an HTTP response, which can be pending or completed
 #[derive(Debug)]
 pub enum RequestState {
+    // TODO add a Building variant
     /// Request is in flight, or is *about* to be sent. There's no way to
     /// initiate a request that doesn't immediately launch it, so Loading is
     /// the initial state.

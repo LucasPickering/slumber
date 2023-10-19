@@ -3,7 +3,7 @@ use crate::{
     http::{ContentType, Json, Repository},
     util::ResultExt,
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
@@ -13,13 +13,14 @@ use serde_json_path::{ExactlyOneError, JsonPath};
 use std::{
     borrow::Cow,
     env::{self, VarError},
+    fmt::Debug,
     io,
     ops::Deref as _,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
 use thiserror::Error;
-use tokio::fs;
+use tokio::{fs, sync::oneshot};
 use tracing::{instrument, trace};
 
 static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -41,6 +42,52 @@ pub struct TemplateContext {
     pub repository: Repository,
     /// Additional key=value overrides passed directly from the user
     pub overrides: IndexMap<String, String>,
+    /// A conduit to ask the user questions
+    pub prompter: Box<dyn Prompter>,
+}
+
+/// A prompter is a bridge between the user and the template engine. It enables
+/// the template engine to request values from the user *during* the template
+/// process. The implementor is responsible for deciding *how* to ask the user.
+pub trait Prompter: Debug + Send + Sync {
+    /// Ask the user a question, and use the given channel to return a response.
+    /// To indicate "no response", simply drop the returner.
+    ///
+    /// If an error occurs while prompting the user, just drop the returner.
+    /// The implementor is responsible for logging the error as appropriate.
+    fn prompt(&self, prompt: Prompt);
+}
+
+/// Data defining a prompt which should be presented to the user
+#[derive(Debug)]
+pub struct Prompt {
+    /// Tell the user what we're asking for
+    label: String,
+    /// Should the value the user is typing be masked? E.g. password input
+    sensitive: bool,
+    /// How the prompter will pass the answer back
+    channel: oneshot::Sender<String>,
+}
+
+impl Prompt {
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    pub fn sensitive(&self) -> bool {
+        self.sensitive
+    }
+
+    /// Return the value that the user gave
+    pub fn respond(self, response: String) {
+        // This error *shouldn't* ever happen, because the templating task
+        // stays open until it gets a response
+        let _ = self
+            .channel
+            .send(response)
+            .map_err(|_| anyhow!("Prompt listener dropped"))
+            .traced();
+    }
 }
 
 type TemplateResult<'a> = Result<Cow<'a, str>, TemplateError>;
@@ -224,6 +271,14 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     self.render_request(context, recipe_id).await?
                 }
                 ChainSource::File(path) => self.render_file(path).await?,
+                ChainSource::Prompt(label) => {
+                    self.render_prompt(
+                        context,
+                        label.as_deref(),
+                        chain.sensitive,
+                    )
+                    .await?
+                }
             };
 
             // If a selector path is present, filter down the value
@@ -270,6 +325,24 @@ impl<'a> ChainTemplateSource<'a> {
                 path: path.to_owned(),
                 error: err,
             })
+    }
+
+    /// Render a value by asking the user to provide it
+    async fn render_prompt(
+        &self,
+        context: &'a TemplateContext,
+        label: Option<&str>,
+        sensitive: bool,
+    ) -> Result<Cow<'a, str>, ChainError> {
+        // Use the prompter to ask the user a question, and wait for a response
+        // on the prompt channel
+        let (tx, rx) = oneshot::channel();
+        context.prompter.prompt(Prompt {
+            label: label.unwrap_or(self.chain_id).into(),
+            sensitive,
+            channel: tx,
+        });
+        Ok(rx.await.map_err(|_| ChainError::PromptNoResponse)?.into())
     }
 
     /// Apply a selector path to a string value to filter it down. Right now
@@ -397,6 +470,10 @@ pub enum ChainError {
         #[source]
         error: io::Error,
     },
+    /// Never got a response from the prompt channel. Do *not* store the
+    /// `RecvError` here, because it provides useless extra output to the user.
+    #[error("No response from prompt")]
+    PromptNoResponse,
 }
 
 #[cfg(test)]
@@ -576,7 +653,6 @@ mod tests {
             Chain,
             id: "chain1".into(),
             source: ChainSource::File(file_path),
-            selector: None,
         )];
         let context = create!(TemplateContext, chains: chains);
 
@@ -590,13 +666,50 @@ mod tests {
             Chain,
             id: "chain1".into(),
             source: ChainSource::File("not-a-real-file".into()),
-            selector: None,
         )];
         let context = create!(TemplateContext, chains: chains);
 
         assert_err!(
             render!("{{chains.chain1}}", context),
             "Error reading from file"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chain_prompt() {
+        let chains = vec![create!(
+            Chain,
+            id: "chain1".into(),
+            source: ChainSource::Prompt(Some("password".into())),
+        )];
+        let context = create!(
+            TemplateContext,
+            chains: chains,
+            // Prompter gives no response
+            prompter: Box::new(TestPrompter::new(Some("hello!"))),
+        );
+
+        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
+    }
+
+    /// Prompting gone wrong
+    #[tokio::test]
+    async fn test_chain_prompt_error() {
+        let chains = vec![create!(
+            Chain,
+            id: "chain1".into(),
+            source: ChainSource::Prompt(Some("password".into())),
+        )];
+        let context = create!(
+            TemplateContext,
+            chains: chains,
+            // Prompter gives no response
+            prompter: Box::new(TestPrompter::new::<String>(None)),
+        );
+
+        assert_err!(
+            render!("{{chains.chain1}}", context),
+            "No response from prompt"
         );
     }
 

@@ -5,7 +5,7 @@
 use crate::{
     config::RequestRecipeId,
     http::{Request, RequestId, RequestRecord, Response},
-    util::ResultExt,
+    util::{data_directory, ResultExt},
 };
 use anyhow::Context;
 use rusqlite::{
@@ -57,10 +57,9 @@ impl Repository {
         })
     }
 
-    /// Path to the history database file
+    /// Path to the repository database file
     fn path() -> PathBuf {
-        // TODO use path in home dir
-        PathBuf::from("./history.sqlite")
+        data_directory().join("repository.sqlite")
     }
 
     /// Apply first-time setup

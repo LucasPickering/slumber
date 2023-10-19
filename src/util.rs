@@ -1,6 +1,23 @@
 use anyhow::anyhow;
-use std::{fmt::Debug, ops::Deref};
+use std::{
+    fmt::Debug,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 use tracing::error;
+
+/// Where to store data and log files. The value is contextual:
+/// - In development, use a directory in the current directory
+/// - In release, use a platform-specific directory in the user's home
+pub fn data_directory() -> PathBuf {
+    if cfg!(debug_assertions) {
+        Path::new("./data/").into()
+    } else {
+        // According to the docs, this dir will be present on all platforms
+        // https://docs.rs/dirs/latest/dirs/fn.data_dir.html
+        dirs::data_dir().unwrap().join("slumber")
+    }
+}
 
 /// A slightly spaghetti helper for finding an item in a list by value. We
 /// expect the item to be there, so if it's missing return an error with a

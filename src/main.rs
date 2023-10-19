@@ -17,16 +17,12 @@ use crate::{
     http::{HttpEngine, Repository},
     template::{Prompt, Prompter, TemplateContext},
     tui::Tui,
-    util::find_by,
+    util::{data_directory, find_by},
 };
 use anyhow::Context;
 use clap::Parser;
 use indexmap::IndexMap;
-use std::{
-    error::Error,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{error::Error, path::PathBuf, str::FromStr};
 use tracing::error;
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
@@ -166,10 +162,11 @@ async fn execute_subcommand(
 
 /// Set up tracing to log to a file
 fn initialize_tracing() -> anyhow::Result<()> {
-    let directory = Path::new("./log/");
-    std::fs::create_dir_all(directory)
+    let directory = data_directory();
+
+    std::fs::create_dir_all(&directory)
         .context(format!("Error creating log directory {directory:?}"))?;
-    let log_path = directory.join("ratatui-app.log");
+    let log_path = directory.join("slumber.log");
     let log_file = std::fs::File::create(log_path)?;
     let file_subscriber = tracing_subscriber::fmt::layer()
         .with_file(true)

@@ -13,7 +13,7 @@ use indexmap::IndexMap;
 use ratatui::{
     prelude::*,
     text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, Tabs},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Tabs},
 };
 use reqwest::header::HeaderMap;
 use std::{
@@ -224,11 +224,20 @@ impl ToTui for anyhow::Error {
 /// and also closing itself. This leads to update logic being a bit grungy
 /// because you have to check `self.is_open()`.
 /// TODO move open/close logic into generic struct
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum Modal<T> {
     #[default]
     Closed,
     Open(T),
+}
+
+/// Something that can be rendered into a modal
+pub trait ModalContent {
+    /// Text at the top of the modal
+    fn title(&self) -> &str;
+
+    /// Dimensions of the modal, relative to the whole screen
+    fn dimensions(&self) -> (Constraint, Constraint);
 }
 
 impl<T: Debug + Draw> Modal<T> {
@@ -259,7 +268,7 @@ impl<T: Debug + Draw> Modal<T> {
     }
 }
 
-impl<T: Draw> Draw for Modal<T> {
+impl<T: Draw + ModalContent> Draw for Modal<T> {
     type Props<'a> = T::Props<'a> where Self: 'a;
 
     fn draw<'a>(
@@ -271,16 +280,20 @@ impl<T: Draw> Draw for Modal<T> {
     ) {
         // If open, draw the contents
         if let Self::Open(inner) = self {
-            inner.draw(context, props, frame, chunk)
-        }
-    }
-}
+            let (x, y) = inner.dimensions();
+            let chunk = centered_rect(x, y, chunk);
+            let block = Block::default()
+                .title(inner.title())
+                .borders(Borders::ALL)
+                .border_type(BorderType::Thick);
+            let inner_chunk = block.inner(chunk);
 
-impl<T: Debug> Debug for Modal<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Closed => write!(f, "ModalClosed"),
-            Self::Open(arg0) => f.debug_tuple("ModalOpen").field(arg0).finish(),
+            // Draw the outline of the modal
+            frame.render_widget(Clear, chunk);
+            frame.render_widget(block, chunk);
+
+            // Render the actual content
+            inner.draw(context, props, frame, inner_chunk);
         }
     }
 }

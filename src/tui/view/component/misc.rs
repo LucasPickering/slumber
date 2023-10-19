@@ -8,7 +8,7 @@ use crate::{
         view::{
             component::{Component, Draw, UpdateOutcome, ViewMessage},
             state::Notification,
-            util::{centered_rect, layout, ButtonBrick, Modal, ToTui},
+            util::{layout, ButtonBrick, Modal, ModalContent, ToTui},
             Frame, RenderContext,
         },
     },
@@ -17,7 +17,7 @@ use derive_more::From;
 use itertools::Itertools;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Paragraph, Wrap},
 };
 use std::fmt::Debug;
 use tui_textarea::TextArea;
@@ -51,6 +51,16 @@ impl Component for ErrorModal {
 #[derive(Debug, From)]
 pub struct ErrorModalInner(anyhow::Error);
 
+impl ModalContent for ErrorModalInner {
+    fn title(&self) -> &str {
+        "Error"
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        (Constraint::Percentage(60), Constraint::Percentage(20))
+    }
+}
+
 impl Draw for ErrorModalInner {
     fn draw(
         &self,
@@ -59,21 +69,12 @@ impl Draw for ErrorModalInner {
         frame: &mut Frame,
         chunk: Rect,
     ) {
-        // Grab a spot in the middle of the screen
-        let chunk = centered_rect(
-            Constraint::Percentage(60),
-            Constraint::Percentage(20),
-            chunk,
-        );
-        let block = Block::default().title("Error").borders(Borders::ALL);
         let [content_chunk, footer_chunk] = layout(
-            block.inner(chunk),
+            chunk,
             Direction::Vertical,
             [Constraint::Min(0), Constraint::Length(1)],
         );
 
-        frame.render_widget(Clear, chunk);
-        frame.render_widget(block, chunk);
         frame.render_widget(
             Paragraph::new(self.0.to_tui(context)).wrap(Wrap::default()),
             content_chunk,
@@ -165,6 +166,16 @@ impl PromptModalInner {
     }
 }
 
+impl ModalContent for PromptModalInner {
+    fn title(&self) -> &str {
+        self.prompt.label()
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        (Constraint::Percentage(60), Constraint::Length(3))
+    }
+}
+
 impl Draw for PromptModalInner {
     fn draw(
         &self,
@@ -173,20 +184,7 @@ impl Draw for PromptModalInner {
         frame: &mut Frame,
         chunk: Rect,
     ) {
-        // Grab a spot in the middle of the screen
-        let chunk = centered_rect(
-            Constraint::Percentage(60),
-            Constraint::Length(3),
-            chunk,
-        );
-        let block = Block::default()
-            .title(format!("Enter value for {}", self.prompt.label()))
-            .borders(Borders::ALL);
-        let content_chunk = block.inner(chunk);
-
-        frame.render_widget(Clear, chunk);
-        frame.render_widget(block, chunk);
-        frame.render_widget(self.text_area.widget(), content_chunk);
+        frame.render_widget(self.text_area.widget(), chunk);
     }
 }
 

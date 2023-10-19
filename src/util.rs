@@ -56,11 +56,19 @@ impl<T> ResultExt<T, anyhow::Error> for anyhow::Result<T> {
 #[cfg(test)]
 macro_rules! assert_err {
     ($e:expr, $msg:expr) => {
+        use itertools::Itertools;
+        use std::error::Error;
+
         let msg = $msg;
-        let error = $e.unwrap_err().to_string();
+        // Include all source errors so wrappers don't hide the important stuff
+        let error = $e.unwrap_err();
+        let actual = (&error as &dyn Error)
+            .sources()
+            .map(ToString::to_string)
+            .join("; ");
         assert!(
-            error.contains(msg),
-            "Expected error message to contain {msg:?}, but was: {error:?}"
+            actual.contains(msg),
+            "Expected error message to contain {msg:?}, but was: {actual:?}"
         )
     };
 }

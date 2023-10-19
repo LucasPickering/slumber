@@ -7,7 +7,6 @@ use crate::{
     template::{Prompt, Prompter},
 };
 use derive_more::From;
-use std::path::PathBuf;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
@@ -46,10 +45,7 @@ pub enum Message {
     /// Trigger collection reload
     CollectionStartReload,
     /// Store a reloaded collection value in state
-    CollectionEndReload {
-        collection_file: PathBuf,
-        collection: RequestCollection,
-    },
+    CollectionEndReload(RequestCollection),
 
     /// Launch an HTTP request from the given recipe/profile.
     HttpSendRequest {

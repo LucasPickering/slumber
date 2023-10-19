@@ -29,7 +29,6 @@ use signal_hook::{
 use std::{
     io::{self, Stdout},
     ops::Deref,
-    path::PathBuf,
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -52,9 +51,6 @@ pub struct Tui {
     http_engine: HttpEngine,
     input_engine: InputEngine,
     view: View,
-    /// The file that the current collection was loaded from. Needed in order
-    /// to reload from it
-    collection_file: PathBuf,
     collection: RequestCollection,
     repository: Repository,
     should_run: bool,
@@ -66,7 +62,7 @@ impl Tui {
 
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
-    pub fn start(collection_file: PathBuf, collection: RequestCollection) {
+    pub fn start(collection: RequestCollection) {
         initialize_panic_handler();
 
         // Set up terminal
@@ -91,7 +87,6 @@ impl Tui {
             http_engine: HttpEngine::new(repository.clone()),
             input_engine: InputEngine::new(),
 
-            collection_file,
             collection,
             should_run: true,
 
@@ -155,22 +150,15 @@ impl Tui {
         match message {
             Message::CollectionStartReload => {
                 let messages_tx = self.messages_tx.clone();
-                let collection_file = self.collection_file.clone();
+                let future = self.collection.reload();
                 self.spawn(async move {
-                    let (_, collection) =
-                        RequestCollection::load(Some(&collection_file)).await?;
-                    messages_tx.send(Message::CollectionEndReload {
-                        collection_file,
-                        collection,
-                    });
+                    let collection = future.await?;
+                    messages_tx.send(Message::CollectionEndReload(collection));
                     Ok(())
                 });
             }
-            Message::CollectionEndReload {
-                collection_file,
-                collection,
-            } => {
-                self.reload_collection(collection_file, collection);
+            Message::CollectionEndReload(collection) => {
+                self.reload_collection(collection);
             }
 
             Message::HttpSendRequest {
@@ -201,21 +189,15 @@ impl Tui {
         Ok(())
     }
 
-    /// Reload state with a new collection file
-    fn reload_collection(
-        &mut self,
-        collection_file: PathBuf,
-        collection: RequestCollection,
-    ) {
-        // TODO can we store these fields together in a wrapper struct?
-        self.collection_file = collection_file;
+    /// Reload state with a new collection
+    fn reload_collection(&mut self, collection: RequestCollection) {
         self.collection = collection;
 
         // Rebuild the whole view, because tons of things can change
         self.view = View::new(&self.collection, self.messages_tx.clone());
         self.view.notify(format!(
             "Reloaded collection from {}",
-            self.collection_file.to_string_lossy()
+            self.collection.path().to_string_lossy()
         ));
     }
 
@@ -321,7 +303,7 @@ impl Tui {
         Ok(TemplateContext {
             profile,
             repository: self.repository.clone(),
-            chains: self.collection.chains.clone(),
+            chains: self.collection.chains.to_owned(),
             overrides: Default::default(),
             prompter: Box::new(self.messages_tx.clone()),
         })

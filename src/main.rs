@@ -82,17 +82,14 @@ async fn main() {
     let args = Args::parse();
     // This won't panic at the failure site because it can also be called
     // mid-TUI execution
-    let (collection_file, collection) =
-        RequestCollection::load(args.collection.as_deref())
-            .await
-            .expect("Error loading collection");
+    let collection = RequestCollection::load(args.collection)
+        .await
+        .expect("Error loading collection");
 
     // Select mode based on whether request ID(s) were given
     match args.subcommand {
         // Run the TUI
-        None => {
-            Tui::start(collection_file.to_owned(), collection);
-        }
+        None => Tui::start(collection),
 
         // Execute one request without a TUI
         Some(subcommand) => {

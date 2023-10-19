@@ -212,9 +212,11 @@ impl Root {
 
             // Children
             profile_list_pane: ProfileListPane::new(
-                collection.profiles.clone(),
+                collection.profiles.to_owned(),
             ),
-            recipe_list_pane: RecipeListPane::new(collection.requests.clone()),
+            recipe_list_pane: RecipeListPane::new(
+                collection.requests.to_owned(),
+            ),
             request_pane: RequestPane::new(),
             response_pane: ResponsePane::new(),
             error_modal: ErrorModal::new(),

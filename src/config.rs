@@ -1,6 +1,7 @@
 use crate::template::TemplateString;
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
+use futures::Future;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -20,10 +21,15 @@ pub const CONFIG_FILES: &[&str] = &[
 /// A collection of requests
 #[derive(Clone, Debug, Deserialize)]
 pub struct RequestCollection {
+    /// The path of the file that this collection was loaded from
+    #[serde(skip)]
+    path: PathBuf,
+
     #[serde(default)]
     pub profiles: Vec<Profile>,
     #[serde(default)]
     pub requests: Vec<RequestRecipe>,
+    #[serde(default)]
     pub chains: Vec<Chain>,
 }
 
@@ -111,11 +117,10 @@ pub enum ChainSource {
 
 impl RequestCollection {
     /// Load config from the given file, or fall back to one of the
-    /// auto-detected defaults. Return the loaded collection as well as the
-    /// path of the file it was loaded from.
+    /// auto-detected defaults.
     pub async fn load(
-        collection_file: Option<&Path>,
-    ) -> anyhow::Result<(&Path, Self)> {
+        collection_file: Option<PathBuf>,
+    ) -> anyhow::Result<Self> {
         // Figure out which file we want to load from
         let path = collection_file.map_or_else(Self::detect_path, Ok)?;
         info!(?path, "Loading collection file");
@@ -123,7 +128,7 @@ impl RequestCollection {
         // First, parse the file to raw YAML values, so we can apply
         // anchor/alias merging. Then parse that to our config type
         let parse = async {
-            let content = fs::read(path).await?;
+            let content = fs::read(&path).await?;
             let mut yaml_value =
                 serde_yaml::from_slice::<serde_yaml::Value>(&content)?;
             yaml_value.apply_merge()?;
@@ -131,16 +136,29 @@ impl RequestCollection {
                 yaml_value,
             )?)
         };
-        let collection = parse.await.with_context(|| {
+        let mut collection = parse.await.with_context(|| {
             format!("Error parsing config from file {path:?}")
         })?;
+        collection.path = path;
 
-        Ok((path, collection))
+        Ok(collection)
+    }
+
+    /// Reload a new collection from the same file used for this one.
+    ///
+    /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
+    pub fn reload(&self) -> impl Future<Output = anyhow::Result<Self>> {
+        Self::load(Some(self.path.clone()))
+    }
+
+    /// Get the path of the file that this collection was loaded from
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     /// Search the current directory for a config file matching one of the known
     /// file names, and return it if found
-    fn detect_path<'a>() -> anyhow::Result<&'a Path> {
+    fn detect_path() -> anyhow::Result<PathBuf> {
         let paths: Vec<&Path> = CONFIG_FILES
             .iter()
             .map(Path::new)
@@ -153,7 +171,7 @@ impl RequestCollection {
             [] => Err(anyhow!(
                 "No config file given and none found in current directory"
             )),
-            [path] => Ok(path),
+            [path] => Ok(path.to_path_buf()),
             [first, rest @ ..] => {
                 // Print a warning, but don't actually fail
                 event!(
@@ -161,7 +179,7 @@ impl RequestCollection {
                     "Multiple config files detected. {first:?} will be used \
                     and the following will be ignored: {rest:?}"
                 );
-                Ok(*first)
+                Ok(first.to_path_buf())
             }
         }
     }

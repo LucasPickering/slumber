@@ -21,6 +21,7 @@ dirs = "5.0.1"
 futures = {version = "0.3.28", default-features = false}
 indexmap = {version = "2.0.1", features = ["serde"]}
 itertools = "0.11.0"
+notify = {version = "6.1.1", default-features = false, features = ["macos_fsevent"]}
 ratatui = "0.23.0"
 regex = "1.9.5"
 reqwest = {version = "0.11.20", default-features = false, features = ["rustls-tls"]}

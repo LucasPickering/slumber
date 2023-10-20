@@ -21,6 +21,7 @@ use crossterm::{
 };
 use futures::Future;
 use indexmap::IndexMap;
+use notify::{RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use signal_hook::{
     consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM},
@@ -107,6 +108,9 @@ impl Tui {
         let mut quit_signals = Signals::new([SIGHUP, SIGINT, SIGTERM, SIGQUIT])
             .context("Error creating signal handler")?;
 
+        // Hang onto this because it stops running when dropped
+        let _watcher = self.watch_collection()?;
+
         let mut last_tick = Instant::now();
 
         while self.should_run {
@@ -142,6 +146,7 @@ impl Tui {
                 self.should_run = false;
             }
         }
+
         Ok(())
     }
 
@@ -187,6 +192,24 @@ impl Tui {
             Message::Quit => self.should_run = false,
         }
         Ok(())
+    }
+
+    /// Spawn a watcher to automatically reload the collection when the file
+    /// changes. Return the watcher because it stops when dropped.
+    fn watch_collection(&self) -> anyhow::Result<impl Watcher> {
+        // Spawn a watcher for the collection file
+        let messages_tx = self.messages_tx.clone();
+        let mut watcher =
+            notify::recommended_watcher(move |result: notify::Result<_>| {
+                match result {
+                    Ok(_) => messages_tx.send(Message::CollectionStartReload),
+                    Err(err) => {
+                        error!(error = %err, "Error watching collection file");
+                    }
+                }
+            })?;
+        watcher.watch(self.collection.path(), RecursiveMode::NonRecursive)?;
+        Ok(watcher)
     }
 
     /// Reload state with a new collection

@@ -341,7 +341,8 @@ impl Component for Root {
                 ..
             } => self.primary_panes.next(),
 
-            _ => return UpdateOutcome::Propagate(message),
+            // Everything else gets ate
+            _ => {}
         }
         UpdateOutcome::Consumed
     }

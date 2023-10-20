@@ -7,6 +7,6 @@
 # https://github.com/watchexec/cargo-watch/issues/269
 
 RUST_LOG=slumber=trace USERNAME=user watchexec --restart \
-    --watch Cargo.toml --watch Cargo.lock --watch src/ --watch slumber.yml \
+    --watch Cargo.toml --watch Cargo.lock --watch src/ \
     -- cargo run \
     -- $@

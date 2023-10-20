@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json_path::{ExactlyOneError, JsonPath};
 use std::{
     borrow::Cow,
@@ -26,7 +26,7 @@ use tracing::{instrument, trace};
 static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
 
 /// A string that can contain templated content
-#[derive(Clone, Debug, Deref, Display, From, Deserialize)]
+#[derive(Clone, Debug, Deref, Display, From, Serialize, Deserialize)]
 pub struct TemplateString(String);
 
 /// A little container struct for all the data that the user can access via

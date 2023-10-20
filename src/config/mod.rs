@@ -1,12 +1,16 @@
+mod insomnia;
+
 use crate::template::TemplateString;
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
-use futures::Future;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    future::Future,
+    path::{Path, PathBuf},
+};
 use tokio::fs;
-use tracing::{event, info, Level};
+use tracing::{info, warn};
 
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
@@ -19,22 +23,25 @@ pub const CONFIG_FILES: &[&str] = &[
 ];
 
 /// A collection of requests
-#[derive(Clone, Debug, Deserialize)]
-pub struct RequestCollection {
-    /// The path of the file that this collection was loaded from
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RequestCollection<S = PathBuf> {
+    /// The source of the collection, typically a path to the file it was
+    /// loaded from
     #[serde(skip)]
-    path: PathBuf,
+    source: S,
 
     #[serde(default)]
     pub profiles: Vec<Profile>,
     #[serde(default)]
-    pub requests: Vec<RequestRecipe>,
-    #[serde(default)]
     pub chains: Vec<Chain>,
+    /// Internally we call these recipes, but to a user `requests` is more
+    /// intuitive
+    #[serde(default, rename = "requests")]
+    pub recipes: Vec<RequestRecipe>,
 }
 
 /// Mutually exclusive hot-swappable config group
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Profile {
     pub id: ProfileId,
     pub name: Option<String>,
@@ -60,7 +67,7 @@ pub struct ProfileId(String);
 /// order to distinguish it from a single instance of an HTTP request. And it's
 /// not called `RequestTemplate` because the word "template" has a specific
 /// meaning related to string interpolation.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestRecipe {
     pub id: RequestRecipeId,
     pub name: Option<String>,
@@ -91,7 +98,7 @@ pub struct RequestRecipeId(String);
 /// A chain is a means to data from one response in another request. The chain
 /// is the middleman: it defines where and how to pull the value, then recipes
 /// can use it in a template via `{{chains.<chain_id>}}`.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Chain {
     pub id: String,
     pub name: Option<String>,
@@ -104,7 +111,7 @@ pub struct Chain {
 }
 
 /// The source of data for a chain
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChainSource {
     /// Load data from the most recent response of a particular request recipe
@@ -115,7 +122,7 @@ pub enum ChainSource {
     Prompt(Option<String>),
 }
 
-impl RequestCollection {
+impl RequestCollection<PathBuf> {
     /// Load config from the given file, or fall back to one of the
     /// auto-detected defaults.
     pub async fn load(
@@ -139,7 +146,7 @@ impl RequestCollection {
         let mut collection = parse.await.with_context(|| {
             format!("Error parsing config from file {path:?}")
         })?;
-        collection.path = path;
+        collection.source = path;
 
         Ok(collection)
     }
@@ -148,12 +155,12 @@ impl RequestCollection {
     ///
     /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
     pub fn reload(&self) -> impl Future<Output = anyhow::Result<Self>> {
-        Self::load(Some(self.path.clone()))
+        Self::load(Some(self.source.clone()))
     }
 
     /// Get the path of the file that this collection was loaded from
     pub fn path(&self) -> &Path {
-        &self.path
+        &self.source
     }
 
     /// Search the current directory for a config file matching one of the known
@@ -174,8 +181,7 @@ impl RequestCollection {
             [path] => Ok(path.to_path_buf()),
             [first, rest @ ..] => {
                 // Print a warning, but don't actually fail
-                event!(
-                    Level::WARN,
+                warn!(
                     "Multiple config files detected. {first:?} will be used \
                     and the following will be ignored: {rest:?}"
                 );

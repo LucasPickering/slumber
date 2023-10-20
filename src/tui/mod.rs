@@ -209,7 +209,7 @@ impl Tui {
     ) -> anyhow::Result<()> {
         let recipe = self
             .collection
-            .requests
+            .recipes
             .iter()
             .find(|recipe| recipe.id == recipe_id)
             .ok_or_else(|| anyhow!("No recipe with ID {recipe_id:?}"))?

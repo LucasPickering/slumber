@@ -8,4 +8,5 @@
 
 RUST_LOG=slumber=trace USERNAME=user watchexec --restart \
     --watch Cargo.toml --watch Cargo.lock --watch src/ --watch slumber.yml \
-    -- cargo run
+    -- cargo run \
+    -- $@

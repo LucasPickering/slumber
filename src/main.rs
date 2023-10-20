@@ -45,20 +45,20 @@ async fn main() {
     // Global initialization
     initialize_tracing().unwrap();
     let args = Args::parse();
-    // This won't panic at the failure site because it can also be called
-    // mid-TUI execution
-    let collection = RequestCollection::load(args.collection)
-        .await
-        .expect("Error loading collection");
 
     // Select mode based on whether request ID(s) were given
     match args.subcommand {
         // Run the TUI
-        None => Tui::start(collection),
+        None => {
+            let collection = RequestCollection::load(args.collection)
+                .await
+                .expect("Error loading collection");
+            Tui::start(collection)
+        }
 
         // Execute one request without a TUI
         Some(subcommand) => {
-            if let Err(err) = subcommand.execute(collection).await {
+            if let Err(err) = subcommand.execute(args.collection).await {
                 eprintln!("{err:#}");
             }
         }

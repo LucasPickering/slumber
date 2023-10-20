@@ -215,7 +215,7 @@ impl Root {
                 collection.profiles.to_owned(),
             ),
             recipe_list_pane: RecipeListPane::new(
-                collection.requests.to_owned(),
+                collection.recipes.to_owned(),
             ),
             request_pane: RequestPane::new(),
             response_pane: ResponsePane::new(),

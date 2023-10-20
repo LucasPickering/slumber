@@ -4,8 +4,15 @@ use crate::{
     template::{Prompt, Prompter, TemplateContext},
     util::find_by,
 };
+use anyhow::Context;
 use indexmap::IndexMap;
-use std::{error::Error, str::FromStr};
+use std::{
+    error::Error,
+    fs::File,
+    io::{self, Write},
+    path::PathBuf,
+    str::FromStr,
+};
 use tracing::error;
 
 /// A non-TUI command
@@ -33,13 +40,23 @@ pub enum Subcommand {
         #[clap(long)]
         dry_run: bool,
     },
+
+    /// Generate a slumber request collection from an external format
+    #[clap(name = "import-experimental")]
+    Import {
+        /// Collection to import
+        input_file: PathBuf,
+        /// Destination for the new slumber collection file. Omit to print to
+        /// stdout.
+        output_file: Option<PathBuf>,
+    },
 }
 
 impl Subcommand {
     /// Execute a non-TUI command
     pub async fn execute(
         self,
-        collection: RequestCollection,
+        collection_file: Option<PathBuf>,
     ) -> anyhow::Result<()> {
         match self {
             Subcommand::Request {
@@ -48,6 +65,10 @@ impl Subcommand {
                 overrides,
                 dry_run,
             } => {
+                let collection = RequestCollection::load(collection_file)
+                    .await
+                    .expect("Error loading collection");
+
                 // Find profile and recipe by ID
                 let profile = profile
                     .map(|profile| {
@@ -64,7 +85,7 @@ impl Subcommand {
                     .transpose()?
                     .unwrap_or_default();
                 let recipe = find_by(
-                    collection.requests,
+                    collection.recipes,
                     |r| &r.id,
                     &request_id,
                     "No request recipe with ID",
@@ -95,6 +116,35 @@ impl Subcommand {
                     // Print response
                     print!("{}", record.response.body.text());
                 }
+                Ok(())
+            }
+
+            Subcommand::Import {
+                input_file,
+                output_file,
+            } => {
+                // Load the input
+                let collection = RequestCollection::from_insomnia(&input_file)?;
+
+                // Write the output
+                let mut writer: Box<dyn Write> = match output_file {
+                    Some(output_file) => Box::new(
+                        File::options()
+                            .create(true)
+                            .truncate(true)
+                            .write(true)
+                            .open(&output_file)
+                            .with_context(|| {
+                                format!(
+                                    "Error opening collection output file \
+                                {output_file:?}"
+                                )
+                            })?,
+                    ),
+                    None => Box::new(io::stdout()),
+                };
+                serde_yaml::to_writer(&mut writer, &collection)?;
+
                 Ok(())
             }
         }

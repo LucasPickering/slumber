@@ -1,5 +1,37 @@
 //! HTTP-specific logic and models. [HttpEngine] is the main entrypoint for all
-//! operations.
+//! operations. This is the life cycle of a request:
+//!
+//! +--------+
+//! | Recipe |
+//! +--------+
+//!      |
+//!     new
+//!      |
+//!      v
+//! +----------------+          +-------------------+
+//! | RequestBuilder | -error-> | RequestBuildError |
+//! +----------------+          +-------------------+
+//!      |
+//!    build
+//!      |
+//!      v
+//! +---------+
+//! | Request |
+//! +---------+
+//!      |
+//!    send
+//!      |
+//!      v
+//! +----------+          +--------------+
+//! | <future> | -error-> | RequestError |
+//! +----------+          +--------------+
+//!      |
+//!   success
+//!      |
+//!      v
+//! +---------------+
+//! | RequestRecord |
+//! +---------------+
 
 mod parse;
 mod record;
@@ -51,81 +83,6 @@ impl HttpEngine {
         }
     }
 
-    /// Instantiate a request from a recipe, using values from the given
-    /// context to render templated strings. Errors if request construction
-    /// fails because of invalid user input somewhere.
-    pub async fn build_request(
-        recipe: &RequestRecipe,
-        template_values: &TemplateContext,
-    ) -> anyhow::Result<Request> {
-        debug!(recipe_id = %recipe.id, "Building request from recipe");
-        let method = recipe
-            .method
-            .render(template_values, "method")
-            .await?
-            .parse()?;
-        let url = recipe.url.render(template_values, "URL").await?;
-
-        // Build header map
-        let headers = future::try_join_all(recipe.headers.iter().map(
-            |(header, value_template)| async move {
-                // String -> header conversions are fallible, if headers
-                // are invalid
-                Ok::<_, anyhow::Error>((
-                    HeaderName::try_from(header).with_context(|| {
-                        format!("Error parsing header name {header:?}")
-                    })?,
-                    HeaderValue::try_from(
-                        value_template
-                            .render(
-                                template_values,
-                                &format!("header {header}"),
-                            )
-                            .await?,
-                    )?,
-                ))
-            },
-        ))
-        .await?
-        .into_iter()
-        .collect();
-
-        // Add query parameters
-        let query: IndexMap<String, String> = future::try_join_all(
-            recipe.query.iter().map(|(k, v)| async move {
-                Ok::<_, anyhow::Error>((
-                    k.clone(),
-                    v.render(template_values, &format!("Query parameter {k}"))
-                        .await?,
-                ))
-            }),
-        )
-        .await?
-        .into_iter()
-        .collect();
-        // Render the body
-        let body = match &recipe.body {
-            Some(body) => Some(
-                body.render(template_values, "body").await.context("Body")?,
-            ),
-            None => None,
-        };
-
-        let request = Request {
-            recipe_id: recipe.id.clone(),
-            method,
-            url,
-            query,
-            body,
-            headers,
-        };
-        info!(
-            recipe_id = %recipe.id,
-            "Built request from recipe",
-        );
-        Ok(request)
-    }
-
     /// Launch an HTTP request. Upon completion, it will automatically be
     /// registered in the repository for posterity.
     ///
@@ -134,38 +91,58 @@ impl HttpEngine {
     /// the task that will resolve it.
     ///
     /// Returns a full HTTP record, which includes the originating request, the
-    /// response, and the start/end timestamps.
-    pub async fn send(self, request: Request) -> anyhow::Result<RequestRecord> {
-        let id: RequestId = RequestId::new();
-        let start_time = Utc::now();
+    /// response, and the start/end timestamps. We can't report a reliable start
+    /// time until after the future is resolved, because the request isn't
+    /// launched until the consumer starts awaiting the future. For in-flight
+    /// time tracking, track your own start time immediately before/after
+    /// sending the request.
+    pub async fn send(
+        self,
+        request: Request,
+    ) -> Result<RequestRecord, RequestError> {
+        let id = request.id;
 
         let span = info_span!("HTTP request", request_id = %id);
+        // TODO pre-convert the request
         let reqwest_request = self.convert_request(&request);
         span.in_scope(|| async move {
-            let reqwest_response = self
-                .client
-                .execute(reqwest_request)
-                .await
-                .map_err(anyhow::Error::from)
-                .traced()?;
-            let response = self
-                .convert_response(reqwest_response)
-                .await
-                .context("Error loading response")
-                .traced()?;
+            // This start time will be accurate because the request doesn't
+            // launch until this whole future is awaited
+            let start_time = Utc::now();
+            let result: reqwest::Result<Response> = try {
+                let reqwest_response =
+                    self.client.execute(reqwest_request).await?;
+                // Load the full response and convert it to our format
+                self.convert_response(reqwest_response).await?
+            };
             let end_time = Utc::now();
 
-            info!(status = response.status.as_u16(), "Response");
-            let record = RequestRecord {
-                id,
-                request,
-                response,
-                start_time,
-                end_time,
-            };
-            // Error here should *not* kill the request
-            let _ = self.repository.insert(&record).await;
-            Ok(record)
+            // Attach metadata to the error and yeet it
+            match result {
+                // Can't use map_err because we need to conditionally move
+                // the request
+                Ok(response) => {
+                    info!(status = response.status.as_u16(), "Response");
+                    let record = RequestRecord {
+                        id,
+                        request,
+                        response,
+                        start_time,
+                        end_time,
+                    };
+
+                    // Error here should *not* kill the request
+                    let _ = self.repository.insert(&record).await;
+                    Ok(record)
+                }
+                Err(error) => Err(RequestError {
+                    request,
+                    start_time,
+                    end_time,
+                    error,
+                })
+                .traced(),
+            }
         })
         .await
     }
@@ -205,7 +182,7 @@ impl HttpEngine {
     async fn convert_response(
         &self,
         response: reqwest::Response,
-    ) -> anyhow::Result<Response> {
+    ) -> reqwest::Result<Response> {
         // Copy response metadata out first, because we need to move the
         // response to resolve content (not sure why...)
         let status = response.status();
@@ -218,6 +195,131 @@ impl HttpEngine {
             status,
             headers,
             body,
+        })
+    }
+}
+
+/// The foundation of a request. This builder captures *how* the request will
+/// be built, but it hasn't actually been built yet.
+pub struct RequestBuilder {
+    // Don't store start_time here because we don't need to track build time,
+    // only in-flight time
+    id: RequestId,
+    // We need this during the build
+    recipe: RequestRecipe,
+    template_context: TemplateContext,
+}
+
+impl RequestBuilder {
+    /// Instantiate new request builder for the given recipe. Use [Self::build]
+    /// to build it.
+    ///
+    /// This needs an owned recipe and context so they can be moved into a
+    /// subtask for the build.
+    pub fn new(
+        recipe: RequestRecipe,
+        template_context: TemplateContext,
+    ) -> RequestBuilder {
+        debug!(recipe_id = %recipe.id, "Building request from recipe");
+        let request_id = RequestId::new();
+
+        Self {
+            id: request_id,
+            recipe,
+            template_context,
+        }
+    }
+
+    /// The unique ID generated for this request, which can be used to track it
+    /// throughout its life cycle
+    pub fn id(&self) -> RequestId {
+        self.id
+    }
+
+    /// Build the request. This is async because templated values may require IO
+    /// or other async actions.
+    pub async fn build(self) -> Result<Request, RequestBuildError> {
+        let id = self.id;
+        self.build_helper()
+            .await
+            .traced()
+            .map_err(|error| RequestBuildError { id, error })
+    }
+
+    /// Outsourced build function, to make error conversion easier later
+    async fn build_helper(self) -> anyhow::Result<Request> {
+        let recipe = self.recipe;
+        // Don't let any sub-futures try to move the context
+        let template_context = &self.template_context;
+
+        // TODO fully parallize this
+        let method = recipe
+            .method
+            .render(template_context, "method")
+            .await?
+            .parse()?;
+        let url = recipe.url.render(template_context, "URL").await?;
+
+        // Build header map
+        let headers = future::try_join_all(recipe.headers.iter().map(
+            |(header, value_template)| async move {
+                // String -> header conversions are fallible, if headers
+                // are invalid
+                Ok::<_, anyhow::Error>((
+                    HeaderName::try_from(header).with_context(|| {
+                        format!("Error parsing header name {header:?}")
+                    })?,
+                    HeaderValue::try_from(
+                        value_template
+                            .render(
+                                template_context,
+                                &format!("header {header}"),
+                            )
+                            .await?,
+                    )?,
+                ))
+            },
+        ))
+        .await?
+        .into_iter()
+        .collect();
+
+        // Add query parameters
+        let query: IndexMap<String, String> = future::try_join_all(
+            recipe.query.iter().map(|(k, v)| async move {
+                Ok::<_, anyhow::Error>((
+                    k.clone(),
+                    v.render(template_context, &format!("Query parameter {k}"))
+                        .await?,
+                ))
+            }),
+        )
+        .await?
+        .into_iter()
+        .collect();
+        // Render the body
+        let body = match &recipe.body {
+            Some(body) => Some(
+                body.render(template_context, "body")
+                    .await
+                    .context("Body")?,
+            ),
+            None => None,
+        };
+
+        info!(
+            recipe_id = %recipe.id,
+            "Built request from recipe",
+        );
+
+        Ok(Request {
+            id: self.id,
+            recipe_id: recipe.id.clone(),
+            method,
+            url,
+            query,
+            body,
+            headers,
         })
     }
 }

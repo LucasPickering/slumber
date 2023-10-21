@@ -3,9 +3,10 @@ mod state;
 mod theme;
 mod util;
 
+pub use state::RequestState;
+
 use crate::{
     config::{RequestCollection, RequestRecipeId},
-    http::RequestRecord,
     template::Prompt,
     tui::{
         input::{Action, InputEngine},
@@ -63,32 +64,20 @@ impl View {
         )
     }
 
-    /// New HTTP request was spawned
-    pub fn start_request(&mut self, recipe_id: RequestRecipeId) {
-        self.handle_message(ViewMessage::HttpRequest { recipe_id });
-    }
-
-    /// An HTTP request succeeded
-    pub fn finish_request(&mut self, record: RequestRecord) {
-        self.handle_message(ViewMessage::HttpResponse { record });
-    }
-
-    /// An HTTP request failed
-    pub fn fail_request(
+    /// Update the request state for the given recipe. The state will only be
+    /// updated if this is a new request or it matches the current request for
+    /// this recipe. We only store one request per recipe at a time.
+    pub fn set_request_state(
         &mut self,
         recipe_id: RequestRecipeId,
-        error: anyhow::Error,
+        state: RequestState,
     ) {
-        self.handle_message(ViewMessage::HttpError { recipe_id, error });
-    }
-
-    /// Historical request was loaded from the repository
-    pub fn load_request(&mut self, record: RequestRecord) {
-        self.handle_message(ViewMessage::HttpLoad { record });
+        self.handle_message(ViewMessage::HttpSetState { recipe_id, state });
     }
 
     /// Prompt the user to enter some input
     pub fn set_prompt(&mut self, prompt: Prompt) {
+        // TODO keep a queue of prompts to allow parallel resolution
         self.handle_message(ViewMessage::Prompt(prompt))
     }
 
@@ -116,7 +105,9 @@ impl View {
         let span = trace_span!("View message", ?message);
         span.in_scope(|| {
             match self.root.update_all(message) {
-                UpdateOutcome::Consumed => {}
+                UpdateOutcome::Consumed => {
+                    trace!("View message consumed")
+                }
                 // Consumer didn't eat the message - huh?
                 UpdateOutcome::Propagate(_) => {
                     error!("View message was unhandled");

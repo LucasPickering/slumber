@@ -3,7 +3,7 @@
 
 use crate::{
     config::{ProfileId, RequestCollection, RequestRecipeId},
-    http::RequestRecord,
+    http::{RequestBuildError, RequestError, RequestId, RequestRecord},
     template::{Prompt, Prompter},
 };
 use derive_more::From;
@@ -48,17 +48,24 @@ pub enum Message {
     CollectionEndReload(RequestCollection),
 
     /// Launch an HTTP request from the given recipe/profile.
-    HttpSendRequest {
+    HttpBeginRequest {
         recipe_id: RequestRecipeId,
         profile_id: Option<ProfileId>,
     },
-    /// We received an HTTP response
-    HttpResponse { record: RequestRecord },
-    /// HTTP request failed :(
-    HttpError {
+    /// Request failed to build
+    HttpBuildError {
         recipe_id: RequestRecipeId,
-        error: anyhow::Error,
+        error: RequestBuildError,
     },
+    /// We launched the HTTP request
+    HttpLoading {
+        recipe_id: RequestRecipeId,
+        request_id: RequestId,
+    },
+    /// The HTTP request either succeeded or failed. We don't need to store the
+    /// recipe ID here because it's in the inner container already. Combining
+    /// these two cases saves a bit of boilerplate.
+    HttpComplete(Result<RequestRecord, RequestError>),
 
     /// Load the most recent response for a recipe from the repository
     RepositoryStartLoad { recipe_id: RequestRecipeId },

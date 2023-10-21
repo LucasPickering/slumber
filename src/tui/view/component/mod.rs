@@ -5,7 +5,6 @@ mod primary;
 
 use crate::{
     config::{RequestCollection, RequestRecipeId},
-    http::RequestRecord,
     template::Prompt,
     tui::{
         input::Action,
@@ -25,14 +24,13 @@ use crate::{
         },
     },
 };
-use chrono::Utc;
 use crossterm::event::Event;
 use ratatui::prelude::{Constraint, Direction, Rect};
 use std::{
-    collections::{hash_map, HashMap},
+    collections::{hash_map::Entry, HashMap},
     fmt::Debug,
 };
-use tracing::{error, trace};
+use tracing::trace;
 
 /// The main building block that makes up the view. This is modeled after React,
 /// with some key differences:
@@ -121,33 +119,21 @@ pub enum ViewMessage {
     },
 
     // HTTP
-    /// User wants to send a new request
+    /// User wants to send a new request (upstream)
     HttpSendRequest,
-    /// New HTTP request was spawned
-    HttpRequest {
+    /// Update our state based on external HTTP events
+    HttpSetState {
         recipe_id: RequestRecipeId,
-    },
-    /// An HTTP request succeeded
-    HttpResponse {
-        record: RequestRecord,
-    },
-    /// An HTTP request failed
-    HttpError {
-        recipe_id: RequestRecipeId,
-        error: anyhow::Error,
-    },
-    /// Historical request was loaded from the repository
-    HttpLoad {
-        record: RequestRecord,
+        state: RequestState,
     },
 
     /// Prompt the user for input
     Prompt(Prompt),
 
-    // Errors
+    /// Something went bad
     Error(anyhow::Error),
 
-    // Notifications
+    /// Tell the user something informational
     Notify(Notification),
 }
 
@@ -230,54 +216,6 @@ impl Root {
         let recipe = self.recipe_list_pane.selected_recipe()?;
         self.active_requests.get(&recipe.id)
     }
-
-    /// Mark the current HTTP request as failed
-    fn fail_request(
-        &mut self,
-        recipe_id: RequestRecipeId,
-        error: anyhow::Error,
-    ) {
-        // TODO this is a disaster, we need to link requests with errors using
-        // IDs.
-        match self.active_requests.entry(recipe_id) {
-            hash_map::Entry::Occupied(mut entry)
-                if entry.get().is_loading() =>
-            {
-                entry.insert(RequestState::Error {
-                    error,
-                    start_time: entry.get().start_time(),
-                    end_time: Utc::now(),
-                });
-            }
-            other => {
-                // We don't expect anything but a loading state to be there,
-                // but don't overwrite anything else either
-                error!(
-                    request = ?other,
-                    "Cannot store error for request with non-loading state",
-                )
-            }
-        }
-    }
-
-    /// Store an HTTP record loaded from the repository, if newer than the
-    /// current request
-    fn load_request(&mut self, record: RequestRecord) {
-        // Make sure we don't overwrite any request that was made
-        // more recently than this
-        match self.active_requests.entry(record.request.recipe_id.clone()) {
-            hash_map::Entry::Occupied(mut entry) => {
-                if record.start_time > entry.get().start_time() {
-                    // Do *not* create the response state eagerly, because it
-                    // requires prettification
-                    entry.insert(RequestState::response(record));
-                }
-            }
-            hash_map::Entry::Vacant(entry) => {
-                entry.insert(RequestState::response(record));
-            }
-        };
-    }
 }
 
 impl Component for Root {
@@ -287,7 +225,7 @@ impl Component for Root {
             ViewMessage::HttpSendRequest => {
                 if let Some(recipe) = self.recipe_list_pane.selected_recipe() {
                     return UpdateOutcome::SideEffect(
-                        Message::HttpSendRequest {
+                        Message::HttpBeginRequest {
                             // Reach into the children to grab state (ugly!)
                             recipe_id: recipe.id.clone(),
                             profile_id: self
@@ -298,20 +236,27 @@ impl Component for Root {
                     );
                 }
             }
-            ViewMessage::HttpRequest { recipe_id } => {
-                self.active_requests
-                    .insert(recipe_id, RequestState::loading());
+            ViewMessage::HttpSetState { recipe_id, state } => {
+                // Update the state if any of these conditions match:
+                // - There's nothing there yet
+                // - This is a new request
+                // - This is an update to the request already in place
+                match self.active_requests.entry(recipe_id) {
+                    Entry::Vacant(entry) => {
+                        entry.insert(state);
+                    }
+                    Entry::Occupied(mut entry)
+                        if state.is_initial()
+                            || entry.get().id() == state.id() =>
+                    {
+                        entry.insert(state);
+                    }
+                    Entry::Occupied(_) => {
+                        // State is already holding a different request, throw
+                        // this update away
+                    }
+                }
             }
-            ViewMessage::HttpResponse { record } => {
-                self.active_requests.insert(
-                    record.request.recipe_id.clone(),
-                    RequestState::response(record),
-                );
-            }
-            ViewMessage::HttpError { recipe_id, error } => {
-                self.fail_request(recipe_id, error)
-            }
-            ViewMessage::HttpLoad { record } => self.load_request(record),
 
             // Other state messages
             ViewMessage::Notify(notification) => {

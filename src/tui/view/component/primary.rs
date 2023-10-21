@@ -337,18 +337,39 @@ impl Draw for ResponsePane {
                 [Constraint::Length(20), Constraint::Min(0)],
             );
 
-            // Time-related data
-            frame.render_widget(
-                Paragraph::new(Line::from(vec![
-                    request_state.start_time().to_tui(context),
-                    " / ".into(),
-                    request_state.duration().to_tui(context),
-                ]))
-                .alignment(Alignment::Right),
-                header_right_chunk,
-            );
+            // Time-related data. start_time and duration should always be
+            // defined together
+            if let (Some(start_time), Some(duration)) =
+                (request_state.start_time(), request_state.duration())
+            {
+                frame.render_widget(
+                    Paragraph::new(Line::from(vec![
+                        start_time.to_tui(context),
+                        " / ".into(),
+                        duration.to_tui(context),
+                    ]))
+                    .alignment(Alignment::Right),
+                    header_right_chunk,
+                );
+            }
 
             match &request_state {
+                RequestState::Building { .. } => {
+                    frame.render_widget(
+                        Paragraph::new("Initializing request..."),
+                        header_left_chunk,
+                    );
+                }
+
+                // :(
+                RequestState::BuildError { error } => {
+                    frame.render_widget(
+                        Paragraph::new(error.to_tui(context))
+                            .wrap(Wrap::default()),
+                        content_chunk,
+                    );
+                }
+
                 RequestState::Loading { .. } => {
                     frame.render_widget(
                         Paragraph::new("Loading..."),
@@ -394,7 +415,8 @@ impl Draw for ResponsePane {
                         .render_widget(Paragraph::new(tab_text), content_chunk);
                 }
 
-                RequestState::Error { error, .. } => {
+                // Sadge
+                RequestState::RequestError { error, .. } => {
                     frame.render_widget(
                         Paragraph::new(error.to_tui(context))
                             .wrap(Wrap::default()),

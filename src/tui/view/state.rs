@@ -1,19 +1,30 @@
 //! State types for the view.
 
-use crate::http::RequestRecord;
+use crate::http::{RequestBuildError, RequestError, RequestId, RequestRecord};
 use chrono::{DateTime, Duration, Utc};
 use ratatui::widgets::*;
 use std::{cell::RefCell, fmt::Display, ops::DerefMut};
 use strum::{EnumIter, IntoEnumIterator};
 
-/// State of an HTTP response, which can be pending or completed
+/// State of an HTTP response, which can be in various states of
+/// completion/failure. Each request *recipe* should have one request state
+/// stored in the view at a time.
 #[derive(Debug)]
 pub enum RequestState {
-    // TODO add a Building variant
+    /// The request is being built. Typically this is very fast, but can be
+    /// slow if a chain source takes a while.
+    Building { id: RequestId },
+
+    /// Something went wrong during the build :(
+    BuildError { error: RequestBuildError },
+
     /// Request is in flight, or is *about* to be sent. There's no way to
     /// initiate a request that doesn't immediately launch it, so Loading is
     /// the initial state.
-    Loading { start_time: DateTime<Utc> },
+    Loading {
+        id: RequestId,
+        start_time: DateTime<Utc>,
+    },
 
     /// A resolved HTTP response, with all content loaded and ready to be
     /// displayed. This does *not necessarily* have a 2xx/3xx status code, any
@@ -24,47 +35,63 @@ pub enum RequestState {
     },
 
     /// Error occurred sending the request or receiving the response.
-    Error {
-        error: anyhow::Error,
-        start_time: DateTime<Utc>,
-        /// When did the error occur?
-        end_time: DateTime<Utc>,
-    },
+    RequestError { error: RequestError },
 }
 
 impl RequestState {
-    pub fn is_loading(&self) -> bool {
-        matches!(self, RequestState::Loading { .. })
+    /// Unique ID for this request, which will be retained throughout its life
+    /// cycle
+    pub fn id(&self) -> RequestId {
+        match self {
+            Self::Building { id } | Self::Loading { id, .. } => *id,
+            Self::BuildError { error } => error.id,
+            Self::RequestError { error } => error.request.id,
+            Self::Response { record, .. } => record.id,
+        }
     }
 
-    /// When was the active request launched?
-    pub fn start_time(&self) -> DateTime<Utc> {
+    /// Is the initial stage in a request life cycle?
+    pub fn is_initial(&self) -> bool {
+        matches!(self, Self::Building { .. })
+    }
+
+    /// When was the request launched? Returns `None` if the request hasn't
+    /// been launched yet.
+    pub fn start_time(&self) -> Option<DateTime<Utc>> {
         match self {
-            Self::Loading { start_time, .. } => *start_time,
-            Self::Response { record, .. } => record.start_time,
-            Self::Error { start_time, .. } => *start_time,
+            Self::Building { .. } | Self::BuildError { .. } => None,
+            Self::Loading { start_time, .. } => Some(*start_time),
+            Self::Response { record, .. } => Some(record.start_time),
+            Self::RequestError { error } => Some(error.start_time),
         }
     }
 
     /// Elapsed time for the active request. If pending, this is a running
-    /// total. Otherwise end time - start time.
-    pub fn duration(&self) -> Duration {
+    /// total. Otherwise end time - start time.  Returns `None` if the request
+    /// hasn't been launched yet.
+    pub fn duration(&self) -> Option<Duration> {
         match self {
-            Self::Loading { start_time, .. } => Utc::now() - start_time,
-            Self::Response { record, .. } => record.duration(),
-            Self::Error {
-                start_time,
-                end_time,
-                ..
-            } => *end_time - *start_time,
+            Self::Building { .. } | Self::BuildError { .. } => None,
+            Self::Loading { start_time, .. } => Some(Utc::now() - start_time),
+            Self::Response { record, .. } => Some(record.duration()),
+            Self::RequestError { error } => {
+                Some(error.end_time - error.start_time)
+            }
         }
+    }
+
+    /// Initialize a new request in the `Building` state
+    pub fn building(id: RequestId) -> Self {
+        Self::Building { id }
     }
 
     /// Create a loading state with the current timestamp. This will generally
     /// be slightly off from when the request was actually launched, but it
-    /// shouldn't matter.
-    pub fn loading() -> Self {
+    /// shouldn't matter. See [HttpEngine::send] for why it can't report a start
+    /// time back to us.
+    pub fn loading(id: RequestId) -> Self {
         Self::Loading {
+            id,
             start_time: Utc::now(),
         }
     }

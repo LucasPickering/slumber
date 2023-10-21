@@ -2,6 +2,7 @@
 
 use crate::{
     config::{Profile, RequestRecipe},
+    http::{RequestBuildError, RequestError},
     tui::view::{
         component::Draw,
         state::{FixedSelect, Notification, StatefulList, StatefulSelect},
@@ -214,6 +215,23 @@ impl ToTui for anyhow::Error {
             })
             .collect::<Vec<Line>>()
             .into()
+    }
+}
+
+impl ToTui for RequestBuildError {
+    type Output<'this> = Text<'static>;
+
+    fn to_tui(&self, context: &RenderContext) -> Self::Output<'_> {
+        // Defer to the underlying anyhow error
+        self.error.to_tui(context)
+    }
+}
+
+impl ToTui for RequestError {
+    type Output<'this> = Text<'static>;
+
+    fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
+        self.error.to_string().into()
     }
 }
 

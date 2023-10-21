@@ -43,10 +43,6 @@ pub fn find_by<E, K: Debug + PartialEq>(
 pub trait ResultExt<T, E>: Sized {
     /// If this is an error, trace it. Return the same result.
     fn traced(self) -> Self;
-
-    /// Return the value if `Ok`, or call a given function on the error if
-    /// `Err`.
-    fn ok_or_apply(self, op: impl FnOnce(E)) -> Option<T>;
 }
 
 // This is deliberately *not* implemented for non-anyhow errors, because we only
@@ -58,15 +54,14 @@ impl<T> ResultExt<T, anyhow::Error> for anyhow::Result<T> {
         }
         self
     }
+}
 
-    fn ok_or_apply(self, op: impl FnOnce(anyhow::Error)) -> Option<T> {
-        match self {
-            Ok(value) => Some(value),
-            Err(err) => {
-                op(err);
-                None
-            }
+impl<T> ResultExt<T, RequestError> for Result<T, RequestError> {
+    fn traced(self) -> Self {
+        if let Err(err) = &self {
+            error!(error = %err);
         }
+        self
     }
 }
 
@@ -90,5 +85,6 @@ macro_rules! assert_err {
     };
 }
 
+use crate::http::RequestError;
 #[cfg(test)]
 pub(crate) use assert_err;

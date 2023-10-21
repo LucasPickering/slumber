@@ -1,6 +1,6 @@
 use crate::{
     config::{ProfileId, RequestCollection, RequestRecipeId},
-    http::{HttpEngine, Repository},
+    http::{HttpEngine, Repository, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
     util::find_by,
 };
@@ -94,9 +94,9 @@ impl Subcommand {
                 // Build the request
                 let repository = Repository::load()?;
                 let overrides: IndexMap<_, _> = overrides.into_iter().collect();
-                let request = HttpEngine::build_request(
-                    &recipe,
-                    &TemplateContext {
+                let request = RequestBuilder::new(
+                    recipe,
+                    TemplateContext {
                         profile,
                         overrides,
                         chains: collection.chains,
@@ -104,6 +104,7 @@ impl Subcommand {
                         prompter: Box::new(CliPrompter),
                     },
                 )
+                .build()
                 .await?;
 
                 if dry_run {

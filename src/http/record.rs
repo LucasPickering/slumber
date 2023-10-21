@@ -15,7 +15,35 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use thiserror::Error;
 use uuid::Uuid;
+
+/// An error that can occur while *building* a request
+#[derive(Debug, Error)]
+#[error("Error building request {id}")]
+pub struct RequestBuildError {
+    /// ID of the failed request
+    pub id: RequestId,
+    /// There are a lot of different possible error types, so storing an anyhow
+    /// is easiest
+    #[source]
+    pub error: anyhow::Error,
+}
+
+/// An error that can occur during a request. This does *not* including building
+/// errors.
+#[derive(Debug, Error)]
+#[error("Error executing request {}", "request.id")]
+pub struct RequestError {
+    #[source]
+    pub error: reqwest::Error,
+    /// The request that caused all this ruckus
+    pub request: Request,
+    /// When was the request launched?
+    pub start_time: DateTime<Utc>,
+    /// When did the error occur?
+    pub end_time: DateTime<Utc>,
+}
 
 /// Unique ID for a single launched request
 #[derive(
@@ -74,6 +102,8 @@ impl RequestRecord {
 /// *not* implement `Clone`, because each request is unique.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
+    /// Unique ID for this request. Private to prevent mutation
+    pub id: RequestId,
     /// The recipe used to generate this request (for historical context)
     pub recipe_id: RequestRecipeId,
 
@@ -126,7 +156,7 @@ impl Response {
 
 /// HTTP response body. Right now we store as text only, but at some point
 /// should add support for binary responses
-#[derive(Debug, Default, From, Serialize, Deserialize)]
+#[derive(Default, From, Serialize, Deserialize)]
 pub struct Body(String);
 
 impl Body {
@@ -140,6 +170,15 @@ impl Body {
 
     pub fn into_text(self) -> String {
         self.0
+    }
+}
+
+impl Debug for Body {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Don't print the actual body because it could be huge
+        f.debug_tuple("Body")
+            .field(&format!("<{} bytes>", self.0.len()))
+            .finish()
     }
 }
 

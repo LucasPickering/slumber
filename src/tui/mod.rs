@@ -4,14 +4,13 @@ mod view;
 
 use crate::{
     config::{ProfileId, RequestCollection, RequestRecipeId},
-    http::{HttpEngine, Repository},
+    http::{HttpEngine, Repository, RequestBuilder},
     template::TemplateContext,
     tui::{
         input::InputEngine,
         message::{Message, MessageSender},
-        view::View,
+        view::{RequestState, View},
     },
-    util::ResultExt,
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
@@ -133,8 +132,9 @@ impl Tui {
             // ===== Message Phase =====
             while let Ok(message) = self.messages_rx.try_recv() {
                 // If an error occurs, store it so we can show the user
-                self.handle_message(message)
-                    .ok_or_apply(|err| self.view.set_error(err));
+                if let Err(error) = self.handle_message(message) {
+                    self.view.set_error(error);
+                }
             }
 
             // ===== Draw Phase =====
@@ -166,22 +166,48 @@ impl Tui {
                 self.reload_collection(collection);
             }
 
-            Message::HttpSendRequest {
+            // Manage HTTP life cycle
+            Message::HttpBeginRequest {
                 recipe_id,
                 profile_id,
             } => self.send_request(recipe_id, profile_id)?,
-            Message::HttpResponse { record } => {
-                self.view.finish_request(record);
+            Message::HttpBuildError { recipe_id, error } => {
+                self.view.set_request_state(
+                    recipe_id,
+                    RequestState::BuildError { error },
+                );
             }
-            Message::HttpError { recipe_id, error } => {
-                self.view.fail_request(recipe_id, error);
+            Message::HttpLoading {
+                recipe_id,
+                request_id,
+            } => {
+                self.view.set_request_state(
+                    recipe_id,
+                    RequestState::loading(request_id),
+                );
+            }
+            Message::HttpComplete(result) => {
+                let (recipe_id, state) = match result {
+                    Ok(record) => (
+                        record.request.recipe_id.clone(),
+                        RequestState::response(record),
+                    ),
+                    Err(error) => (
+                        error.request.recipe_id.clone(),
+                        RequestState::RequestError { error },
+                    ),
+                };
+                self.view.set_request_state(recipe_id, state);
             }
 
             Message::RepositoryStartLoad { recipe_id } => {
                 self.load_request(recipe_id);
             }
             Message::RepositoryEndLoad { record } => {
-                self.view.load_request(record);
+                self.view.set_request_state(
+                    record.request.recipe_id.clone(),
+                    RequestState::response(record),
+                );
             }
 
             Message::PromptStart(prompt) => {
@@ -238,36 +264,45 @@ impl Tui {
             .ok_or_else(|| anyhow!("No recipe with ID {recipe_id:?}"))?
             .clone();
 
-        // Mark request state as loading
-        self.view.start_request(recipe_id);
-
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
         let template_context = self.template_context(profile_id.as_ref())?;
         let http_engine = self.http_engine.clone();
+        let builder = RequestBuilder::new(recipe, template_context);
         let messages_tx = self.messages_tx.clone();
+
+        // Mark request state as building
+        let request_id = builder.id();
+        self.view.set_request_state(
+            recipe_id.clone(),
+            RequestState::building(request_id),
+        );
 
         // We can't use self.spawn here because HTTP errors are handled
         // differently from all other error types
         tokio::spawn(async move {
-            let result: anyhow::Result<()> = try {
-                // Build the request
-                let request =
-                    HttpEngine::build_request(&recipe, &template_context)
-                        .await?;
+            // Build the request
+            let request = builder.build().await.map_err(|error| {
+                // Report the error, but don't actually return anything
+                messages_tx.send(Message::HttpBuildError {
+                    recipe_id: recipe_id.clone(),
+                    error,
+                });
+            })?;
 
-                // Send the request
-                let record = http_engine.send(request).await?;
-                messages_tx.send(Message::HttpResponse { record });
-            };
+            // Report liftoff
+            messages_tx.send(Message::HttpLoading {
+                recipe_id,
+                request_id,
+            });
 
-            // Report any errors back to the main thread
-            if let Err(err) = result {
-                messages_tx.send(Message::HttpError {
-                    recipe_id: recipe.id,
-                    error: err,
-                })
-            }
+            // Send the request and report the result to the main thread
+            let result = http_engine.send(request).await;
+            messages_tx.send(Message::HttpComplete(result));
+
+            // By returning an empty result, we can use `?` to break out early.
+            // `return` and `break` don't work in an async block :/
+            Ok::<(), ()>(())
         });
 
         Ok(())

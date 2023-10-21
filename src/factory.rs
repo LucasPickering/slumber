@@ -10,6 +10,7 @@ use reqwest::{header::HeaderMap, Method, StatusCode};
 
 factori!(Request, {
     default {
+        id = RequestId::new(),
         recipe_id = String::new().into(),
         method = Method::GET,
         url = "/url".into(),

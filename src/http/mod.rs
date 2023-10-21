@@ -103,13 +103,21 @@ impl HttpEngine {
         let id = request.id;
 
         let span = info_span!("HTTP request", request_id = %id);
-        // TODO pre-convert the request
-        let reqwest_request = self.convert_request(&request);
         span.in_scope(|| async move {
             // This start time will be accurate because the request doesn't
             // launch until this whole future is awaited
+
+            // Technically the elapsed time will include the conversion time,
+            // but that should be extremely minimal compared to network IO
             let start_time = Utc::now();
             let result: reqwest::Result<Response> = try {
+                // Convert to reqwest format as part of the execution. This
+                // means certain builder errors will show up as "request" errors
+                // which is janky, but reqwest already doesn't report some
+                // builder erorrs until you execute the request, and this is
+                // much easier than frontloading the conversion during the build
+                // process.
+                let reqwest_request = self.convert_request(&request)?;
                 let reqwest_response =
                     self.client.execute(reqwest_request).await?;
                 // Load the full response and convert it to our format
@@ -155,7 +163,10 @@ impl HttpEngine {
     /// This will pretty much clone all the data out of the request, which sucks
     /// but there's no alternative. Reqwest wants to own it all, but we also
     /// need to retain ownership for the UI.
-    fn convert_request(&self, request: &Request) -> reqwest::Request {
+    fn convert_request(
+        &self,
+        request: &Request,
+    ) -> reqwest::Result<reqwest::Request> {
         // Convert to reqwest's request format
         let mut request_builder = self
             .client
@@ -168,12 +179,7 @@ impl HttpEngine {
             request_builder = request_builder.body(body.clone());
         }
 
-        // An error here indicates a bug. Technically we should just show the
-        // error to the user, but panicking saves us from a lot of grungy logic.
-        request_builder
-            .build()
-            // TODO this case is possible with an invalid URL
-            .expect("Error building HTTP request (this is a bug!)")
+        request_builder.build()
     }
 
     /// Convert reqwest's response type into ours. This is async because the

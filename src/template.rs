@@ -517,7 +517,8 @@ mod tests {
         // Error cases
         assert_err!(
             render!("{{onion_id}}", context),
-            "Unknown field \"onion_id\""
+            "Unknown field \"onion_id\"",
+            true
         );
     }
 
@@ -639,7 +640,11 @@ mod tests {
             TemplateContext, repository: repository, chains: chains
         );
 
-        assert_err!(render!("{{chains.chain1}}", context), expected_error);
+        assert_err!(
+            render!("{{chains.chain1}}", context),
+            expected_error,
+            true
+        );
     }
 
     /// Test success with chained file
@@ -672,7 +677,8 @@ mod tests {
 
         assert_err!(
             render!("{{chains.chain1}}", context),
-            "Error reading from file"
+            "Error reading from file",
+            true
         );
     }
 
@@ -710,7 +716,8 @@ mod tests {
 
         assert_err!(
             render!("{{chains.chain1}}", context),
-            "No response from prompt"
+            "No response from prompt",
+            true
         );
     }
 
@@ -726,7 +733,8 @@ mod tests {
         let context = create!(TemplateContext);
         assert_err!(
             render!("{{env.UNKNOWN}}", context),
-            "Error accessing environment variable \"UNKNOWN\""
+            "Error accessing environment variable \"UNKNOWN\"",
+            true
         );
     }
 
@@ -753,7 +761,8 @@ mod tests {
     fn test_parse_template_key_error(#[case] input: &str) {
         assert_err!(
             TemplateKey::parse(input),
-            &format!("Failed to parse template key {input:?}")
+            &format!("Failed to parse template key {input:?}"),
+            true
         );
     }
 

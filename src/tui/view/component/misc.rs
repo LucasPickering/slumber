@@ -136,9 +136,10 @@ impl Component for PromptModal {
             ViewMessage::InputAction { event, .. } if self.is_open() => {
                 let text_area = match self {
                     Modal::Closed => unreachable!("We checked is_open"),
-                    Modal::Open(PromptModalInner { text_area, .. }) => {
-                        text_area
-                    }
+                    Modal::Open {
+                        state: PromptModalInner { text_area, .. },
+                        ..
+                    } => text_area,
                 };
                 text_area.input(event);
                 UpdateOutcome::Consumed
@@ -152,7 +153,11 @@ impl Component for PromptModal {
 /// Inner state for the prompt modal
 #[derive(Debug)]
 pub struct PromptModalInner {
+    // Prompt currently being shown
     prompt: Prompt,
+    /// A queue of additional prompts to shown. If the queue is populated,
+    /// closing one prompt will open a the next one.
+    // queue: VecDeque<Prompt>,
     text_area: TextArea<'static>,
 }
 

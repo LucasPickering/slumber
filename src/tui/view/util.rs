@@ -18,10 +18,10 @@ use ratatui::{
 };
 use reqwest::header::HeaderMap;
 use std::{
+    collections::VecDeque,
     fmt::{Debug, Display},
     mem,
 };
-use tracing::warn;
 
 /// A helper for building a UI. It can be converted into some UI element to be
 /// drawn.
@@ -241,12 +241,21 @@ impl ToTui for RequestError {
 /// The modal is generally responsible for listening for its own open event,
 /// and also closing itself. This leads to update logic being a bit grungy
 /// because you have to check `self.is_open()`.
+///
+/// The modal also provides automatic queueing. If a modal is already open when
+/// trying to open another, the second state will be queued up, to be shown when
+/// the first is closed. There is no bound on the queue size.
 /// TODO move open/close logic into generic struct
 #[derive(Debug, Default)]
 pub enum Modal<T> {
     #[default]
     Closed,
-    Open(T),
+    Open {
+        state: T,
+        /// Store a queue of future modal contents, so subsequent openings
+        /// don't get thrown on the floow
+        queue: VecDeque<T>,
+    },
 }
 
 /// Something that can be rendered into a modal
@@ -267,13 +276,19 @@ impl<T: Debug + Draw> Modal<T> {
         matches!(self, Self::Open { .. })
     }
 
-    /// Open a new modal with the given initial state
+    /// Open a new modal with the given initial state. If the modal is already
+    /// open, queue this additional modal to show when the first is closed.
     pub fn open(&mut self, state: T) {
-        if let Self::Open(existing) = self {
-            // Just a safety check
-            warn!("Modal {existing:?} already open, overwriting it...");
+        match self {
+            Self::Closed => {
+                *self = Self::Open {
+                    state,
+                    queue: VecDeque::new(),
+                }
+            }
+            // Wait your turn, buddy boy
+            Self::Open { queue, .. } => queue.push_back(state),
         }
-        *self = Self::Open(state);
     }
 
     /// Close the modal, and if it was open, return the inner value that was
@@ -281,7 +296,14 @@ impl<T: Debug + Draw> Modal<T> {
     pub fn close(&mut self) -> Option<T> {
         match mem::take(self) {
             Modal::Closed => None,
-            Modal::Open(state) => Some(state),
+            Modal::Open { state, mut queue } => {
+                // If there's something in the queue, we'll stay open
+                if let Some(next) = queue.pop_front() {
+                    *self = Self::Open { state: next, queue };
+                }
+                // Return the closed state
+                Some(state)
+            }
         }
     }
 }
@@ -297,11 +319,11 @@ impl<T: Draw + ModalContent> Draw for Modal<T> {
         chunk: Rect,
     ) {
         // If open, draw the contents
-        if let Self::Open(inner) = self {
-            let (x, y) = inner.dimensions();
+        if let Self::Open { state, .. } = self {
+            let (x, y) = state.dimensions();
             let chunk = centered_rect(x, y, chunk);
             let block = Block::default()
-                .title(inner.title())
+                .title(state.title())
                 .borders(Borders::ALL)
                 .border_type(BorderType::Thick);
             let inner_chunk = block.inner(chunk);
@@ -311,7 +333,7 @@ impl<T: Draw + ModalContent> Draw for Modal<T> {
             frame.render_widget(block, chunk);
 
             // Render the actual content
-            inner.draw(context, props, frame, inner_chunk);
+            state.draw(context, props, frame, inner_chunk);
         }
     }
 }

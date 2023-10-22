@@ -77,7 +77,6 @@ impl View {
 
     /// Prompt the user to enter some input
     pub fn set_prompt(&mut self, prompt: Prompt) {
-        // TODO keep a queue of prompts to allow parallel resolution
         self.handle_message(ViewMessage::Prompt(prompt))
     }
 

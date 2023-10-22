@@ -49,6 +49,11 @@ pub struct TemplateContext {
 /// A prompter is a bridge between the user and the template engine. It enables
 /// the template engine to request values from the user *during* the template
 /// process. The implementor is responsible for deciding *how* to ask the user.
+///
+/// **Note:** The prompter has to be able to handle simultaneous prompt
+/// requests, if a template has multiple prompt values, or if multiple templates
+/// with prompts are being rendered simultaneously.  The implementor is
+/// responsible for queueing prompts to show to the user one at a time.
 pub trait Prompter: Debug + Send + Sync {
     /// Ask the user a question, and use the given channel to return a response.
     /// To indicate "no response", simply drop the returner.

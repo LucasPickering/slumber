@@ -17,7 +17,7 @@ chrono = {version = "0.4.31", default-features = false, features = ["clock", "se
 clap = {version = "4.4.2", features = ["derive"]}
 crossterm = "0.27.0"
 derive_more = "0.99.17"
-dialoguer = { version = "0.11.0", default-features = false, features = ["password"] }
+dialoguer = {version = "0.11.0", default-features = false, features = ["password"]}
 dirs = "5.0.1"
 futures = {version = "0.3.28", default-features = false}
 indexmap = {version = "2.0.1", features = ["serde"]}
@@ -45,3 +45,25 @@ uuid = {version = "1.4.1", default-features = false, features = ["serde", "v4"]}
 [dev-dependencies]
 factori = "1.1.0"
 rstest = {version = "0.18.2", default-features = false}
+
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+# Config for 'cargo dist'
+[workspace.metadata.dist]
+# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.3.1"
+# CI backends to support
+ci = ["github"]
+# The installers to generate for each app
+installers = ["shell", "homebrew"]
+# A GitHub repo to push Homebrew formulas to
+tap = "LucasPickering/homebrew-tap"
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-pc-windows-msvc"]
+# Publish jobs to run in CI
+publish-jobs = ["homebrew"]
+# Publish jobs to run in CI
+pr-run-mode = "plan"

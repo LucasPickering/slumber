@@ -192,7 +192,6 @@ impl Root {
     pub fn new(collection: &RequestCollection) -> Self {
         Self {
             // State
-            // TODO populate the initially selected request on startup
             active_requests: HashMap::new(),
             primary_panes: StatefulSelect::new(),
 

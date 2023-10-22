@@ -138,7 +138,6 @@ enum Body {
 
 impl From<Environment> for Profile {
     fn from(environment: Environment) -> Self {
-        // TODO handle base environment specially
         Profile {
             id: environment.id.into(),
             name: Some(environment.name),
@@ -167,8 +166,6 @@ impl From<Request> for RequestRecipe {
         for header in request.headers {
             headers.insert(header.name, header.value);
         }
-
-        // TODO map chained values correctly
 
         RequestRecipe {
             id: request.id.into(),

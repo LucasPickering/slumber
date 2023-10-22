@@ -39,7 +39,7 @@ thiserror = "1.0.48"
 tokio = {version = "^1.32.0", default-features = false, features = ["full"]}
 tracing = "0.1.37"
 tracing-subscriber = {version = "0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}
-tui-textarea = {git = "https://github.com/rhysd/tui-textarea.git", default-features = false, features = ["ratatui-crossterm"]}# Use stable after release with password
+tui-textarea = {version = "0.2.4", default-features = false, features = ["ratatui-crossterm"]}
 uuid = {version = "1.4.1", default-features = false, features = ["serde", "v4"]}
 
 [dev-dependencies]

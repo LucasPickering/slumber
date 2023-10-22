@@ -1798,11 +1798,13 @@ checksum = "3528ecfd12c466c6f163363caf2d02a71161dd5e1cc6ae7b34207ea2d42d81ed"
 
 [[package]]
 name = "tui-textarea"
-version = "0.2.2"
-source = "git+https://github.com/rhysd/tui-textarea.git#879e2d022384bb9685b5efafe75d6f8f0b9c9672"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78ae7c920c9e7d428f8d0d1a7e371833deb932b358f588afceac6c58d34cef5f"
 dependencies = [
  "crossterm",
  "ratatui",
+ "unicode-width",
 ]
 
 [[package]]
@@ -1834,9 +1836,9 @@ checksum = "1dd624098567895118886609431a7c3b8f516e41d30e0643f03d94592a147e36"
 
 [[package]]
 name = "unicode-width"
-version = "0.1.10"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0edd1e5b14653f783770bce4a4dabb4a5108a5370a5f5d8cfe8710c361f6c8b"
+checksum = "e51733f11c9c4f72aa0c160008246859e340b00807569a0da0e7a1079b27ba85"
 
 [[package]]
 name = "unsafe-libyaml"

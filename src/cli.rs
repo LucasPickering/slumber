@@ -2,9 +2,10 @@ use crate::{
     config::{ProfileId, RequestCollection, RequestRecipeId},
     http::{HttpEngine, Repository, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
-    util::find_by,
+    util::{find_by, ResultExt},
 };
 use anyhow::Context;
+use dialoguer::{Input, Password};
 use indexmap::IndexMap;
 use std::{
     error::Error,
@@ -13,7 +14,6 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
-use tracing::error;
 
 /// A non-TUI command
 #[derive(Clone, Debug, clap::Subcommand)]
@@ -152,18 +152,27 @@ impl Subcommand {
     }
 }
 
-/// CLI doesn't support prompting (yet). Just tell the user to use a command
-/// line arg instead.
+/// Prompt the user for input on the CLI
 #[derive(Debug)]
 struct CliPrompter;
 
 impl Prompter for CliPrompter {
-    fn prompt(&self, _prompt: Prompt) {
-        // TODO allow prompts in CLI
-        error!(
-            "Prompting not supported in CLI. \
-            Try `--override` to pass the value via command line argument."
-        );
+    fn prompt(&self, prompt: Prompt) {
+        // This will implicitly queue the prompts by blocking the main thread.
+        // Since the CLI has nothing else to do while waiting on a response,
+        // that's fine.
+        let result = if prompt.sensitive() {
+            Password::new().with_prompt(prompt.label()).interact()
+        } else {
+            Input::new().with_prompt(prompt.label()).interact()
+        };
+
+        // If we failed to read the value, print an error and report nothing
+        if let Ok(value) =
+            result.context("Error reading value from prompt").traced()
+        {
+            prompt.respond(value);
+        }
     }
 }
 

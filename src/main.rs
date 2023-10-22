@@ -1,6 +1,5 @@
 #![deny(clippy::all)]
 #![feature(associated_type_defaults)]
-#![feature(error_iter)]
 #![feature(iterator_try_collect)]
 #![feature(try_blocks)]
 

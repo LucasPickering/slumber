@@ -49,9 +49,10 @@ use chrono::Utc;
 use futures::future;
 use indexmap::IndexMap;
 use reqwest::{
-    header::{HeaderName, HeaderValue},
+    header::{HeaderMap, HeaderName, HeaderValue},
     Client,
 };
+use tokio::try_join;
 use tracing::{debug, info, info_span};
 
 static USER_AGENT: &str =
@@ -258,60 +259,82 @@ impl RequestBuilder {
         // Don't let any sub-futures try to move the context
         let template_context = &self.template_context;
 
-        // TODO fully parallize this
-        let method = recipe
-            .method
-            .render(template_context, "method")
-            .await?
-            .parse()?;
-        let url = recipe.url.render(template_context, "URL").await?;
+        // Build all the futures separately, then resolve them in parallel
+
+        let method_future = async {
+            Ok(recipe
+                .method
+                .render(template_context, "method")
+                .await?
+                .parse()?)
+        };
+        let url_future = recipe.url.render(template_context, "URL");
 
         // Build header map
-        let headers = future::try_join_all(recipe.headers.iter().map(
-            |(header, value_template)| async move {
-                // String -> header conversions are fallible, if headers
-                // are invalid
-                Ok::<_, anyhow::Error>((
-                    HeaderName::try_from(header).with_context(|| {
-                        format!("Error parsing header name {header:?}")
-                    })?,
-                    HeaderValue::try_from(
-                        value_template
-                            .render(
-                                template_context,
-                                &format!("header {header}"),
-                            )
-                            .await?,
-                    )?,
-                ))
-            },
-        ))
-        .await?
-        .into_iter()
-        .collect();
+        let headers_future = async {
+            Ok(future::try_join_all(recipe.headers.iter().map(
+                |(header, value_template)| async move {
+                    // String -> header conversions are fallible, if headers
+                    // are invalid
+                    Ok::<_, anyhow::Error>((
+                        HeaderName::try_from(header).with_context(|| {
+                            format!("Error parsing header name {header:?}")
+                        })?,
+                        HeaderValue::try_from(
+                            value_template
+                                .render(
+                                    template_context,
+                                    &format!("header {header}"),
+                                )
+                                .await?,
+                        )?,
+                    ))
+                },
+            ))
+            .await?
+            .into_iter()
+            .collect::<HeaderMap>())
+        };
 
         // Add query parameters
-        let query: IndexMap<String, String> = future::try_join_all(
-            recipe.query.iter().map(|(k, v)| async move {
-                Ok::<_, anyhow::Error>((
-                    k.clone(),
-                    v.render(template_context, &format!("Query parameter {k}"))
+        let query_future = async {
+            Ok(future::try_join_all(recipe.query.iter().map(
+                |(k, v)| async move {
+                    Ok::<_, anyhow::Error>((
+                        k.clone(),
+                        v.render(
+                            template_context,
+                            &format!("Query parameter {k}"),
+                        )
                         .await?,
-                ))
-            }),
-        )
-        .await?
-        .into_iter()
-        .collect();
-        // Render the body
-        let body = match &recipe.body {
-            Some(body) => Some(
-                body.render(template_context, "body")
-                    .await
-                    .context("Body")?,
-            ),
-            None => None,
+                    ))
+                },
+            ))
+            .await?
+            .into_iter()
+            .collect::<IndexMap<String, String>>())
         };
+
+        // Render the body
+        let body_future = async {
+            match &recipe.body {
+                Some(body) => Ok(Some(
+                    body.render(template_context, "body")
+                        .await
+                        .context("Body")?,
+                )),
+                None => Ok(None),
+            }
+        };
+
+        // Zoooooooooooom!
+        let (method, url, headers, query, body) = try_join!(
+            method_future,
+            url_future,
+            headers_future,
+            query_future,
+            body_future,
+        )?;
 
         info!(
             recipe_id = %recipe.id,

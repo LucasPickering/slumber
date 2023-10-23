@@ -1,0 +1,6 @@
+[book]
+authors = ["Lucas Pickering"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Slumber"

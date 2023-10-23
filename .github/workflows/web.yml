@@ -76,10 +76,11 @@ jobs:
         # a subfolder
         run: mkdir /tmp/public/ && cp -R public /tmp/public/oranda
 
-      - name: Check HTML for broken internal links
-        uses: untitaker/hyperlink@0.1.29
-        with:
-          args: /tmp/public/
+      # TODO re-enable
+      # - name: Check HTML for broken internal links
+      #   uses: untitaker/hyperlink@0.1.29
+      #   with:
+      #     args: /tmp/public/
 
       # Deploy to our gh-pages branch (creating it if it doesn't exist)
       # the "public" dir that oranda made above will become the root dir

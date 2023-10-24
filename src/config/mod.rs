@@ -101,7 +101,6 @@ pub struct RequestRecipeId(String);
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Chain {
     pub id: String,
-    pub name: Option<String>,
     pub source: ChainSource,
     /// Mask chained value in the UI
     #[serde(default)]

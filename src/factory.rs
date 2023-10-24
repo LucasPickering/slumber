@@ -51,7 +51,6 @@ factori!(Chain, {
     default {
         id = String::new(),
         source = ChainSource::Request(RequestRecipeId::default()),
-        name = None,
         sensitive = false,
         selector = None,
     }

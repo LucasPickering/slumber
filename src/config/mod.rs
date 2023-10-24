@@ -106,6 +106,7 @@ pub struct Chain {
     #[serde(default)]
     pub sensitive: bool,
     /// JSONpath to extract a value from the response. For JSON data only.
+    // TODO strong typing on this
     pub selector: Option<String>,
 }
 

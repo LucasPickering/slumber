@@ -5,6 +5,7 @@ use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use serde_json_path::JsonPath;
 use std::{
     future::Future,
     path::{Path, PathBuf},
@@ -106,8 +107,7 @@ pub struct Chain {
     #[serde(default)]
     pub sensitive: bool,
     /// JSONpath to extract a value from the response. For JSON data only.
-    // TODO strong typing on this
-    pub selector: Option<String>,
+    pub selector: Option<JsonPath>,
 }
 
 /// The source of data for a chain

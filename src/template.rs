@@ -356,15 +356,8 @@ impl<'a> ChainTemplateSource<'a> {
     fn apply_selector(
         &self,
         value: Cow<'_, str>,
-        selector: &'a str,
+        selector: &JsonPath,
     ) -> Result<Cow<'a, str>, ChainError> {
-        // Parse the JSON path
-        let path =
-            JsonPath::parse(selector).map_err(|err| ChainError::JsonPath {
-                selector: selector.to_owned(),
-                error: err,
-            })?;
-
         // Parse the response as JSON. Intentionally ignore the
         // content-type. If the user wants to treat it as JSON, we
         // should allow that even if the server is wrong.
@@ -372,7 +365,7 @@ impl<'a> ChainTemplateSource<'a> {
             .map_err(|err| ChainError::ParseResponse { error: err })?;
 
         // Apply the path to the json
-        let found_value = path
+        let found_value = selector
             .query(&json_value)
             .exactly_one()
             .map_err(|err| ChainError::InvalidResult { error: err })?;
@@ -451,12 +444,6 @@ pub enum ChainError {
     /// response
     #[error("No response available")]
     NoResponse,
-    #[error("Error parsing JSON path {selector:?}")]
-    JsonPath {
-        selector: String,
-        #[source]
-        error: serde_json_path::ParseError,
-    },
     /// Failed to parse the response body before applying a selector
     #[error("Error parsing response")]
     ParseResponse {
@@ -561,11 +548,12 @@ mod tests {
             )
             .await
             .unwrap();
+        let selector = selector.map(|s| s.parse().unwrap());
         let chains = vec![create!(
             Chain,
             id: "chain1".into(),
             source: ChainSource::Request(recipe_id),
-            selector: selector.map(String::from),
+            selector: selector,
         )];
         let context = create!(
             TemplateContext, repository: repository, chains: chains,
@@ -591,20 +579,7 @@ mod tests {
             Chain,
             id: "chain1".into(),
             source: ChainSource::Request("recipe1".into()),
-            selector: Some("$.".into()),
-        ),
-        Some((
-            create!(Request, recipe_id: "recipe1".into()),
-            create!(Response, body: "{}".into()),
-        )),
-        "Error parsing JSON path \"$.\"",
-    )]
-    #[case(
-        create!(
-            Chain,
-            id: "chain1".into(),
-            source: ChainSource::Request("recipe1".into()),
-            selector: Some("$.message".into()),
+            selector: Some("$.message".parse().unwrap()),
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),
@@ -617,7 +592,7 @@ mod tests {
             Chain,
             id: "chain1".into(),
             source: ChainSource::Request("recipe1".into()),
-            selector: Some("$.*".into()),
+            selector: Some("$.*".parse().unwrap()),
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),

@@ -1,10 +1,9 @@
-name: test
+name: Test
 
 on:
   push:
     branches:
       - master
-      - release
   pull_request:
 
 # This uses the toolchain defined in rust-toolchain

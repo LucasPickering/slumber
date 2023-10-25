@@ -31,6 +31,7 @@ impl InputEngine {
                     }),
                 },
                 InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
+                InputBinding::new(KeyCode::Char(' '), Action::Fullscreen),
                 InputBinding::new(KeyCode::BackTab, Action::FocusPrevious),
                 InputBinding::new(KeyCode::Tab, Action::FocusNext),
                 InputBinding::new(KeyCode::Up, Action::Up),
@@ -105,6 +106,8 @@ pub enum Action {
     Right,
     /// Do a thing. E.g. select an item in a list
     Interact,
+    /// Embiggen a pane
+    Fullscreen,
     /// Close the current modal/dialog/etc.
     Cancel,
 }

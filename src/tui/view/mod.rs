@@ -94,7 +94,7 @@ impl View {
     /// a bound action is provided which tells us what abstract action the
     /// input maps to.
     pub fn handle_input(&mut self, event: Event, action: Option<Action>) {
-        self.handle_message(ViewMessage::InputAction { event, action })
+        self.handle_message(ViewMessage::Input { event, action })
     }
 
     /// Process a view message by passing it to the root component and letting
@@ -102,7 +102,7 @@ impl View {
     fn handle_message(&mut self, message: ViewMessage) {
         let span = trace_span!("View message", ?message);
         span.in_scope(|| {
-            match self.root.update_all(message) {
+            match Self::update_all(&mut self.root, message) {
                 UpdateOutcome::Consumed => {
                     trace!("View message consumed")
                 }
@@ -117,6 +117,37 @@ impl View {
                 }
             }
         });
+    }
+
+    /// Update the state of a component *and* its children, starting at the
+    /// lowest descendant. Recursively walk up the tree until a component
+    /// consumes the message.
+    fn update_all(
+        component: &mut dyn Component,
+        mut message: ViewMessage,
+    ) -> UpdateOutcome {
+        // If we have a child, send them the message. If not, eat it ourselves
+        for child in component.focused_children() {
+            let outcome = Self::update_all(child, message); // RECURSION
+            if let UpdateOutcome::Propagate(returned) = outcome {
+                // Keep going to the next child. It's possible the child
+                // returned something other than the original message, which
+                // we'll just pass along anyway.
+                message = returned;
+            } else {
+                trace!(%child, "View message consumed");
+                return outcome;
+            }
+        }
+
+        // None of our children handled it, we'll take it ourselves.
+        // Message is already traced in the parent span, so don't dupe it.
+        let span = trace_span!("Component handling message", %component);
+        span.in_scope(|| {
+            let outcome = component.update(message);
+            trace!(?outcome);
+            outcome
+        })
     }
 }
 

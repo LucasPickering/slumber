@@ -4,7 +4,7 @@ use crate::http::{RequestBuildError, RequestError, RequestId, RequestRecord};
 use chrono::{DateTime, Duration, Utc};
 use ratatui::widgets::*;
 use std::{cell::RefCell, fmt::Display, ops::DerefMut};
-use strum::{EnumIter, IntoEnumIterator};
+use strum::IntoEnumIterator;
 
 /// State of an HTTP response, which can be in various states of
 /// completion/failure. Each request *recipe* should have one request state
@@ -253,34 +253,3 @@ impl<T: FixedSelect> Default for StatefulSelect<T> {
         Self::new()
     }
 }
-
-#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
-pub enum PrimaryPane {
-    #[display(fmt = "Profiles")]
-    ProfileList,
-    #[display(fmt = "Recipes")]
-    RecipeList,
-    Request,
-    Response,
-}
-
-impl FixedSelect for PrimaryPane {
-    const DEFAULT_INDEX: usize = 1;
-}
-
-#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
-pub enum RequestTab {
-    Body,
-    Query,
-    Headers,
-}
-
-impl FixedSelect for RequestTab {}
-
-#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
-pub enum ResponseTab {
-    Body,
-    Headers,
-}
-
-impl FixedSelect for ResponseTab {}

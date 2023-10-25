@@ -27,6 +27,7 @@ static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
 
 /// A string that can contain templated content
 #[derive(Clone, Debug, Deref, Display, From, Serialize, Deserialize)]
+#[deref(forward)]
 pub struct TemplateString(String);
 
 /// A little container struct for all the data that the user can access via

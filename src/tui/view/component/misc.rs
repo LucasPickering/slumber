@@ -16,6 +16,7 @@ use crate::{
         },
     },
 };
+use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
@@ -24,7 +25,8 @@ use ratatui::{
 use std::fmt::Debug;
 use tui_textarea::TextArea;
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
+#[display(fmt = "ErrorModal")]
 pub struct ErrorModal(anyhow::Error);
 
 impl Modal for ErrorModal {
@@ -41,7 +43,7 @@ impl Component for ErrorModal {
     fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
         match message {
             // Extra close action
-            ViewMessage::InputAction {
+            ViewMessage::Input {
                 action: Some(Action::Interact),
                 ..
             } => UpdateOutcome::Propagate(ViewMessage::CloseModal),
@@ -94,13 +96,13 @@ impl IntoModal for anyhow::Error {
 }
 
 /// Inner state for the prompt modal
-#[derive(Debug)]
+#[derive(Debug, Display)]
+#[display(fmt = "PromptModal")]
 pub struct PromptModal {
-    // Prompt currently being shown
+    /// Prompt currently being shown
     prompt: Prompt,
     /// A queue of additional prompts to shown. If the queue is populated,
     /// closing one prompt will open a the next one.
-    // queue: VecDeque<Prompt>,
     text_area: TextArea<'static>,
     /// Flag set before closing to indicate if we should submit in `on_close``
     submit: bool,
@@ -142,7 +144,7 @@ impl Component for PromptModal {
     fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
         match message {
             // Submit
-            ViewMessage::InputAction {
+            ViewMessage::Input {
                 action: Some(Action::Interact),
                 ..
             } => {
@@ -153,7 +155,7 @@ impl Component for PromptModal {
             }
 
             // All other input gets forwarded to the text editor (except cancel)
-            ViewMessage::InputAction { event, action }
+            ViewMessage::Input { event, action }
                 if action != Some(Action::Cancel) =>
             {
                 self.text_area.input(event);
@@ -201,6 +203,7 @@ impl Draw for HelpText {
             Action::ReloadCollection,
             Action::FocusNext,
             Action::FocusPrevious,
+            Action::Fullscreen,
             Action::Cancel,
         ];
         let text = actions

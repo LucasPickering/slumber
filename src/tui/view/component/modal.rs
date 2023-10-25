@@ -5,6 +5,7 @@ use crate::tui::{
         util::centered_rect,
     },
 };
+use derive_more::Display;
 use ratatui::{
     prelude::Constraint,
     widgets::{Block, BorderType, Borders, Clear},
@@ -16,6 +17,10 @@ use tracing::trace;
 /// user. It may be informational (e.g. an error message) or interactive (e.g.
 /// an input prompt). Any type that implements this trait can be used as a
 /// modal.
+///
+/// Modals cannot take props because they are rendered by the root component
+/// with dynamic dispatch, and therefore all modals must take the same props
+/// (none).
 pub trait Modal: Draw<()> + Component {
     /// Text at the top of the modal
     fn title(&self) -> &str;
@@ -39,7 +44,8 @@ pub trait IntoModal {
     fn into_modal(self) -> Self::Target;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
+#[display(fmt = "ModalQueue ({} in queue)", "queue.len()")]
 pub struct ModalQueue {
     queue: VecDeque<Box<dyn Modal>>,
 }
@@ -67,22 +73,26 @@ impl ModalQueue {
 impl Component for ModalQueue {
     fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
         match message {
-            // Close the active modal
-            ViewMessage::InputAction {
+            // Close the active modal. If there's no modal open, we'll propagate
+            // the event down
+            ViewMessage::Input {
                 action: Some(Action::Cancel),
                 ..
             }
-            | ViewMessage::CloseModal => match self.close() {
-                Some(modal) => {
-                    // Inform the modal of its terminal status
-                    modal.on_close();
-                    UpdateOutcome::Consumed
+            | ViewMessage::CloseModal => {
+                match self.close() {
+                    Some(modal) => {
+                        // Inform the modal of its terminal status
+                        modal.on_close();
+                        UpdateOutcome::Consumed
+                    }
+                    // Modal wasn't open, so don't consume the event
+                    None => UpdateOutcome::Propagate(message),
                 }
-                // Modal wasn't open, so don't consume the event
-                None => UpdateOutcome::Propagate(message),
-            },
+            }
 
             // Open a new modal
+            // TODO allow pushing high priority modals (errors) to the front
             ViewMessage::OpenModal(modal) => {
                 self.open(modal);
                 UpdateOutcome::Consumed

@@ -1,6 +1,6 @@
 [package]
 authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
-description = "Terminal-based REST client"
+description = "Terminal-based HTTP client"
 edition = "2021"
 keywords = ["rest", "http", "terminal", "tui"]
 license = "MIT"

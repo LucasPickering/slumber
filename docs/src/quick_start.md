@@ -1,10 +1,8 @@
 # Quick Start
 
-## 1. Installation
+Once you've [installed Slumber](/artifacts), setup is easy.
 
-See [install instructions](/artifacts/)
-
-## 2. Create a Slumber collection file
+## 1. Create a Slumber collection file
 
 Create a file called `slumber.yml` and add the following contents:
 
@@ -15,7 +13,7 @@ requests:
     url: https://httpbin.org/get
 ```
 
-## 3. Run Slumber
+## 2. Run Slumber
 
 ```sh
 slumber

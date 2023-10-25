@@ -2,6 +2,8 @@
 
 The request collection is the primary configuration for Slumber. It defines which requests can be made, and how to make them. When running a `slumber` instance, a single collection file is loaded. If you want to work with multiple collections at once, you'll have to run multiple instances of Slumber.
 
+Collection files are designed to be sharable, meaning you can commit them to your Git repo. The most common pattern is to create one collection per API repo, and check it into the repo so other developers of the API can use the same collection. This makes it easy for any new developer or user to learn how to use an API.
+
 ## Format & Loading
 
 A collection is defined as a [YAML](https://yaml.org/) file. When you run `slumber`, it will search the current directory for the following default collection files, in order:

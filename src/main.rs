@@ -25,7 +25,7 @@ use tracing_subscriber::{filter::EnvFilter, prelude::*};
     author,
     version,
     about,
-    long_about = "Configurable REST client with both TUI and CLI interfaces"
+    long_about = "Configurable HTTP client with both TUI and CLI interfaces"
 )]
 struct Args {
     /// Collection file, which defines your profiless and recipes. If omitted,

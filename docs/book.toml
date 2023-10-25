@@ -1,6 +1,11 @@
 [book]
 authors = ["Lucas Pickering"]
+description = "Terminal-based HTTP client"
 language = "en"
 multilingual = false
 src = "src"
 title = "Slumber"
+
+[output.html]
+edit-url-template = "https://github.com/LucasPickering/slumber/edit/master/docs/{path}"
+git-repository-url = "https://github.com/LucasPickering/slumber"

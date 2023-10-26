@@ -5,7 +5,9 @@ use crate::{
     config::{ProfileId, RequestCollection, RequestRecipeId},
     http::{RequestBuildError, RequestError, RequestId, RequestRecord},
     template::{Prompt, Prompter},
+    util::ResultExt,
 };
+use anyhow::Context;
 use derive_more::From;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
@@ -23,7 +25,11 @@ impl MessageSender {
     pub fn send(&self, message: impl Into<Message>) {
         let message: Message = message.into();
         trace!(?message, "Queueing message");
-        self.0.send(message).expect("Message queue is closed")
+        let _ = self
+            .0
+            .send(message)
+            .context("Error enqueueing message")
+            .traced();
     }
 }
 

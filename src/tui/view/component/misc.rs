@@ -6,14 +6,16 @@ use crate::{
     tui::{
         input::Action,
         view::{
-            component::{Component, Draw, UpdateOutcome, ViewMessage},
+            component::{
+                modal::IntoModal, Component, Draw, Modal, UpdateOutcome,
+                ViewMessage,
+            },
             state::Notification,
-            util::{layout, ButtonBrick, Modal, ModalContent, ToTui},
+            util::{layout, ButtonBrick, ToTui},
             Frame, RenderContext,
         },
     },
 };
-use derive_more::From;
 use itertools::Itertools;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
@@ -22,36 +24,10 @@ use ratatui::{
 use std::fmt::Debug;
 use tui_textarea::TextArea;
 
-/// A modal to show the user a catastrophic error
-pub type ErrorModal = Modal<ErrorModalInner>;
+#[derive(Debug)]
+pub struct ErrorModal(anyhow::Error);
 
-impl Component for ErrorModal {
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
-        match message {
-            // Open the modal
-            ViewMessage::Error(error) => {
-                self.open(error.into());
-                UpdateOutcome::Consumed
-            }
-
-            // Close the modal
-            ViewMessage::InputAction {
-                action: Some(Action::Interact | Action::Close),
-                ..
-            } if self.is_open() => {
-                self.close();
-                UpdateOutcome::Consumed
-            }
-
-            _ => UpdateOutcome::Propagate(message),
-        }
-    }
-}
-
-#[derive(Debug, From)]
-pub struct ErrorModalInner(anyhow::Error);
-
-impl ModalContent for ErrorModalInner {
+impl Modal for ErrorModal {
     fn title(&self) -> &str {
         "Error"
     }
@@ -61,7 +37,21 @@ impl ModalContent for ErrorModalInner {
     }
 }
 
-impl Draw for ErrorModalInner {
+impl Component for ErrorModal {
+    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+        match message {
+            // Extra close action
+            ViewMessage::InputAction {
+                action: Some(Action::Interact),
+                ..
+            } => UpdateOutcome::Propagate(ViewMessage::CloseModal),
+
+            _ => UpdateOutcome::Propagate(message),
+        }
+    }
+}
+
+impl Draw for ErrorModal {
     fn draw(
         &self,
         context: &RenderContext,
@@ -95,53 +85,78 @@ impl Draw for ErrorModalInner {
     }
 }
 
-/// A modal to prompt the user for some input
-pub type PromptModal = Modal<PromptModalInner>;
+impl IntoModal for anyhow::Error {
+    type Target = ErrorModal;
+
+    fn into_modal(self) -> Self::Target {
+        ErrorModal(self)
+    }
+}
+
+/// Inner state for the prompt modal
+#[derive(Debug)]
+pub struct PromptModal {
+    // Prompt currently being shown
+    prompt: Prompt,
+    /// A queue of additional prompts to shown. If the queue is populated,
+    /// closing one prompt will open a the next one.
+    // queue: VecDeque<Prompt>,
+    text_area: TextArea<'static>,
+    /// Flag set before closing to indicate if we should submit in `on_close``
+    submit: bool,
+}
+
+impl PromptModal {
+    pub fn new(prompt: Prompt) -> Self {
+        let mut text_area = TextArea::default();
+        if prompt.sensitive() {
+            text_area.set_mask_char('\u{2022}');
+        }
+        Self {
+            prompt,
+            text_area,
+            submit: false,
+        }
+    }
+}
+
+impl Modal for PromptModal {
+    fn title(&self) -> &str {
+        self.prompt.label()
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        (Constraint::Percentage(60), Constraint::Length(3))
+    }
+
+    fn on_close(self: Box<Self>) {
+        if self.submit {
+            // Return the user's value and close the prompt
+            let input = self.text_area.into_lines().join("\n");
+            self.prompt.respond(input);
+        }
+    }
+}
 
 impl Component for PromptModal {
     fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
         match message {
-            // Open the prompt
-            ViewMessage::Prompt(prompt) => {
-                // Listen for this outside the child, because it won't be in
-                // focus while closed
-                self.open(PromptModalInner::new(prompt));
-                UpdateOutcome::Consumed
-            }
-
-            // Close
-            ViewMessage::InputAction {
-                action: Some(Action::Close),
-                ..
-            } if self.is_open() => {
-                // Dropping the prompt returner here will tell the caller
-                // that we're not returning anything
-                self.close();
-                UpdateOutcome::Consumed
-            }
-
             // Submit
             ViewMessage::InputAction {
                 action: Some(Action::Interact),
                 ..
-            } if self.is_open() => {
-                // Return the user's value and close the prompt
-                let inner = self.close().expect("We checked is_open");
-                let input = inner.text_area.into_lines().join("\n");
-                inner.prompt.respond(input);
-                UpdateOutcome::Consumed
+            } => {
+                // Submission is handled in on_close. The control flow here is
+                // ugly but it's hard with the top-down nature of modals
+                self.submit = true;
+                UpdateOutcome::Propagate(ViewMessage::CloseModal)
             }
 
-            // All other input gets forwarded to the text editor
-            ViewMessage::InputAction { event, .. } if self.is_open() => {
-                let text_area = match self {
-                    Modal::Closed => unreachable!("We checked is_open"),
-                    Modal::Open {
-                        state: PromptModalInner { text_area, .. },
-                        ..
-                    } => text_area,
-                };
-                text_area.input(event);
+            // All other input gets forwarded to the text editor (except cancel)
+            ViewMessage::InputAction { event, action }
+                if action != Some(Action::Cancel) =>
+            {
+                self.text_area.input(event);
                 UpdateOutcome::Consumed
             }
 
@@ -150,38 +165,7 @@ impl Component for PromptModal {
     }
 }
 
-/// Inner state for the prompt modal
-#[derive(Debug)]
-pub struct PromptModalInner {
-    // Prompt currently being shown
-    prompt: Prompt,
-    /// A queue of additional prompts to shown. If the queue is populated,
-    /// closing one prompt will open a the next one.
-    // queue: VecDeque<Prompt>,
-    text_area: TextArea<'static>,
-}
-
-impl PromptModalInner {
-    pub fn new(prompt: Prompt) -> Self {
-        let mut text_area = TextArea::default();
-        if prompt.sensitive() {
-            text_area.set_mask_char('\u{2022}');
-        }
-        Self { prompt, text_area }
-    }
-}
-
-impl ModalContent for PromptModalInner {
-    fn title(&self) -> &str {
-        self.prompt.label()
-    }
-
-    fn dimensions(&self) -> (Constraint, Constraint) {
-        (Constraint::Percentage(60), Constraint::Length(3))
-    }
-}
-
-impl Draw for PromptModalInner {
+impl Draw for PromptModal {
     fn draw(
         &self,
         _context: &RenderContext,
@@ -190,6 +174,14 @@ impl Draw for PromptModalInner {
         chunk: Rect,
     ) {
         frame.render_widget(self.text_area.widget(), chunk);
+    }
+}
+
+impl IntoModal for Prompt {
+    type Target = PromptModal;
+
+    fn into_modal(self) -> Self::Target {
+        PromptModal::new(self)
     }
 }
 
@@ -209,7 +201,7 @@ impl Draw for HelpText {
             Action::ReloadCollection,
             Action::FocusNext,
             Action::FocusPrevious,
-            Action::Close,
+            Action::Cancel,
         ];
         let text = actions
             .into_iter()

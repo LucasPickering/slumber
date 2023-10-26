@@ -63,13 +63,11 @@ impl Component for ProfileListPane {
     }
 }
 
-impl Draw for ProfileListPane {
-    type Props<'a> = ListPaneProps where Self: 'a;
-
+impl Draw<ListPaneProps> for ProfileListPane {
     fn draw(
         &self,
         context: &RenderContext,
-        props: Self::Props<'_>,
+        props: ListPaneProps,
         frame: &mut Frame,
         chunk: Rect,
     ) {
@@ -150,13 +148,11 @@ impl Component for RecipeListPane {
     }
 }
 
-impl Draw for RecipeListPane {
-    type Props<'a> = ListPaneProps where Self: 'a;
-
+impl Draw<ListPaneProps> for RecipeListPane {
     fn draw(
         &self,
         context: &RenderContext,
-        props: Self::Props<'_>,
+        props: ListPaneProps,
         frame: &mut Frame,
         chunk: Rect,
     ) {
@@ -211,13 +207,11 @@ impl Component for RequestPane {
     }
 }
 
-impl Draw for RequestPane {
-    type Props<'a> = RequestPaneProps<'a>;
-
+impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
     fn draw(
         &self,
         context: &RenderContext,
-        props: Self::Props<'_>,
+        props: RequestPaneProps<'a>,
         frame: &mut Frame,
         chunk: Rect,
     ) {
@@ -304,13 +298,11 @@ impl Component for ResponsePane {
     }
 }
 
-impl Draw for ResponsePane {
-    type Props<'a> = ResponsePaneProps<'a>;
-
+impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
     fn draw(
         &self,
         context: &RenderContext,
-        props: Self::Props<'_>,
+        props: ResponsePaneProps<'a>,
         frame: &mut Frame,
         chunk: Rect,
     ) {

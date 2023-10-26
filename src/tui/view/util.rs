@@ -4,9 +4,8 @@ use crate::{
     config::{Profile, RequestRecipe},
     http::{RequestBuildError, RequestError},
     tui::view::{
-        component::Draw,
         state::{FixedSelect, Notification, StatefulList, StatefulSelect},
-        Frame, RenderContext,
+        RenderContext,
     },
 };
 use chrono::{DateTime, Duration, Local, Utc};
@@ -14,14 +13,10 @@ use indexmap::IndexMap;
 use ratatui::{
     prelude::*,
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Tabs},
+    widgets::{Block, Borders, List, ListItem, Tabs},
 };
 use reqwest::header::HeaderMap;
-use std::{
-    collections::VecDeque,
-    fmt::{Debug, Display},
-    mem,
-};
+use std::fmt::Display;
 
 /// A helper for building a UI. It can be converted into some UI element to be
 /// drawn.
@@ -232,109 +227,6 @@ impl ToTui for RequestError {
 
     fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
         self.error.to_string().into()
-    }
-}
-
-/// A generic modal, which is a temporary dialog that appears for the user. The
-/// contents of the modal should be determined by the concrete implementation.
-///
-/// The modal is generally responsible for listening for its own open event,
-/// and also closing itself. This leads to update logic being a bit grungy
-/// because you have to check `self.is_open()`.
-///
-/// The modal also provides automatic queueing. If a modal is already open when
-/// trying to open another, the second state will be queued up, to be shown when
-/// the first is closed. There is no bound on the queue size.
-/// TODO move open/close logic into generic struct
-#[derive(Debug, Default)]
-pub enum Modal<T> {
-    #[default]
-    Closed,
-    Open {
-        state: T,
-        /// Store a queue of future modal contents, so subsequent openings
-        /// don't get thrown on the floow
-        queue: VecDeque<T>,
-    },
-}
-
-/// Something that can be rendered into a modal
-pub trait ModalContent {
-    /// Text at the top of the modal
-    fn title(&self) -> &str;
-
-    /// Dimensions of the modal, relative to the whole screen
-    fn dimensions(&self) -> (Constraint, Constraint);
-}
-
-impl<T: Debug + Draw> Modal<T> {
-    pub fn new() -> Self {
-        Self::Closed
-    }
-
-    pub fn is_open(&self) -> bool {
-        matches!(self, Self::Open { .. })
-    }
-
-    /// Open a new modal with the given initial state. If the modal is already
-    /// open, queue this additional modal to show when the first is closed.
-    pub fn open(&mut self, state: T) {
-        match self {
-            Self::Closed => {
-                *self = Self::Open {
-                    state,
-                    queue: VecDeque::new(),
-                }
-            }
-            // Wait your turn, buddy boy
-            Self::Open { queue, .. } => queue.push_back(state),
-        }
-    }
-
-    /// Close the modal, and if it was open, return the inner value that was
-    /// there
-    pub fn close(&mut self) -> Option<T> {
-        match mem::take(self) {
-            Modal::Closed => None,
-            Modal::Open { state, mut queue } => {
-                // If there's something in the queue, we'll stay open
-                if let Some(next) = queue.pop_front() {
-                    *self = Self::Open { state: next, queue };
-                }
-                // Return the closed state
-                Some(state)
-            }
-        }
-    }
-}
-
-impl<T: Draw + ModalContent> Draw for Modal<T> {
-    type Props<'a> = T::Props<'a> where Self: 'a;
-
-    fn draw<'a>(
-        &'a self,
-        context: &RenderContext,
-        props: Self::Props<'a>,
-        frame: &mut Frame,
-        chunk: Rect,
-    ) {
-        // If open, draw the contents
-        if let Self::Open { state, .. } = self {
-            let (x, y) = state.dimensions();
-            let chunk = centered_rect(x, y, chunk);
-            let block = Block::default()
-                .title(state.title())
-                .borders(Borders::ALL)
-                .border_type(BorderType::Thick);
-            let inner_chunk = block.inner(chunk);
-
-            // Draw the outline of the modal
-            frame.render_widget(Clear, chunk);
-            frame.render_widget(block, chunk);
-
-            // Render the actual content
-            state.draw(context, props, frame, inner_chunk);
-        }
     }
 }
 

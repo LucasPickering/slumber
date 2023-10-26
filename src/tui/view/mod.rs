@@ -7,12 +7,13 @@ pub use state::RequestState;
 
 use crate::{
     config::{RequestCollection, RequestRecipeId},
-    template::Prompt,
     tui::{
         input::{Action, InputEngine},
         message::MessageSender,
         view::{
-            component::{Component, Draw, Root, UpdateOutcome, ViewMessage},
+            component::{
+                Component, Draw, IntoModal, Root, UpdateOutcome, ViewMessage,
+            },
             state::Notification,
             theme::Theme,
         },
@@ -75,14 +76,12 @@ impl View {
         self.handle_message(ViewMessage::HttpSetState { recipe_id, state });
     }
 
-    /// Prompt the user to enter some input
-    pub fn set_prompt(&mut self, prompt: Prompt) {
-        self.handle_message(ViewMessage::Prompt(prompt))
-    }
-
-    /// An error occurred somewhere and the user should be shown a modal
-    pub fn set_error(&mut self, error: anyhow::Error) {
-        self.handle_message(ViewMessage::Error(error));
+    /// Open a new modal. The input can be anything that converts to modal
+    /// content
+    pub fn open_modal(&mut self, modal: impl IntoModal + 'static) {
+        self.handle_message(ViewMessage::OpenModal(Box::new(
+            modal.into_modal(),
+        )));
     }
 
     /// Send an informational notification to the user

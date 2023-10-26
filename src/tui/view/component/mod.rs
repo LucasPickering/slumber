@@ -1,17 +1,20 @@
 //! The building blocks of the view
 
 mod misc;
+mod modal;
 mod primary;
+
+pub use modal::{IntoModal, Modal};
 
 use crate::{
     config::{RequestCollection, RequestRecipeId},
-    template::Prompt,
     tui::{
         input::Action,
         message::Message,
         view::{
             component::{
-                misc::{ErrorModal, HelpText, NotificationText, PromptModal},
+                misc::{HelpText, NotificationText},
+                modal::ModalQueue,
                 primary::{
                     ListPaneProps, ProfileListPane, RecipeListPane,
                     RequestPane, RequestPaneProps, ResponsePane,
@@ -85,16 +88,19 @@ pub trait Component: Debug {
 /// Conceptually this is bascially part of `Component`, but having it separate
 /// allows the `Props` associated type. Otherwise, there's no way to make a
 /// trait object from `Component` across components with different props.
-pub trait Draw {
-    /// Props are additional temporary values that a struct may need in order
-    /// to render. Useful for passing down state values that are managed by
-    /// the parent, to avoid duplicating that state in the child.
-    type Props<'a> = () where Self: 'a;
-
-    fn draw<'a>(
-        &'a self,
+///
+/// Props are additional temporary values that a struct may need in order
+/// to render. Useful for passing down state values that are managed by
+/// the parent, to avoid duplicating that state in the child. `Props` probably
+/// would make more sense as an associated type, because you generally wouldn't
+/// implement `Draw` for a single type with more than one value of `Props`. But
+/// attaching a lifetime to the associated type makes using this in a trait
+/// object very difficult (maybe impossible?). This is an easy shortcut.
+pub trait Draw<Props = ()> {
+    fn draw(
+        &self,
         context: &RenderContext,
-        props: Self::Props<'a>,
+        props: Props,
         frame: &mut Frame,
         chunk: Rect,
     );
@@ -127,11 +133,11 @@ pub enum ViewMessage {
         state: RequestState,
     },
 
-    /// Prompt the user for input
-    Prompt(Prompt),
-
-    /// Something went bad
-    Error(anyhow::Error),
+    /// Show a modal to the user
+    OpenModal(Box<dyn Modal>),
+    /// Close the current modal. This is useful for the contents of the modal
+    /// to implement custom close triggers.
+    CloseModal,
 
     /// Tell the user something informational
     Notify(Notification),
@@ -183,8 +189,7 @@ pub struct Root {
     recipe_list_pane: RecipeListPane,
     request_pane: RequestPane,
     response_pane: ResponsePane,
-    error_modal: ErrorModal,
-    prompt_modal: PromptModal,
+    modal_queue: ModalQueue,
     notification_text: Option<NotificationText>,
 }
 
@@ -204,8 +209,7 @@ impl Root {
             ),
             request_pane: RequestPane::new(),
             response_pane: ResponsePane::new(),
-            error_modal: ErrorModal::new(),
-            prompt_modal: PromptModal::new(),
+            modal_queue: ModalQueue::new(),
             notification_text: None,
         }
     }
@@ -293,8 +297,7 @@ impl Component for Root {
 
     fn focused_children(&mut self) -> Vec<&mut dyn Component> {
         vec![
-            &mut self.error_modal,
-            &mut self.prompt_modal,
+            &mut self.modal_queue,
             match self.primary_panes.selected() {
                 PrimaryPane::ProfileList => {
                     &mut self.profile_list_pane as &mut dyn Component
@@ -388,7 +391,6 @@ impl Draw for Root {
         }
 
         // Render modals last so they go on top
-        self.prompt_modal.draw(context, (), frame, frame.size());
-        self.error_modal.draw(context, (), frame, frame.size());
+        self.modal_queue.draw(context, (), frame, frame.size());
     }
 }

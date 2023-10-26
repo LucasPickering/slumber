@@ -133,7 +133,7 @@ impl Tui {
             while let Ok(message) = self.messages_rx.try_recv() {
                 // If an error occurs, store it so we can show the user
                 if let Err(error) = self.handle_message(message) {
-                    self.view.set_error(error);
+                    self.view.open_modal(error);
                 }
             }
 
@@ -211,10 +211,10 @@ impl Tui {
             }
 
             Message::PromptStart(prompt) => {
-                self.view.set_prompt(prompt);
+                self.view.open_modal(prompt);
             }
 
-            Message::Error { error } => self.view.set_error(error),
+            Message::Error { error } => self.view.open_modal(error),
             Message::Quit => self.should_run = false,
         }
         Ok(())

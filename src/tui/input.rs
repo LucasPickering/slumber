@@ -38,7 +38,7 @@ impl InputEngine {
                 InputBinding::new(KeyCode::Left, Action::Left),
                 InputBinding::new(KeyCode::Right, Action::Right),
                 InputBinding::new(KeyCode::Enter, Action::Interact),
-                InputBinding::new(KeyCode::Esc, Action::Close),
+                InputBinding::new(KeyCode::Esc, Action::Cancel),
             ]
             .into_iter()
             .map(|binding| (binding.action, binding))
@@ -105,9 +105,8 @@ pub enum Action {
     Right,
     /// Do a thing. E.g. select an item in a list
     Interact,
-    /// Close the current modal
-    #[display(fmt = "Close Dialog")]
-    Close,
+    /// Close the current modal/dialog/etc.
+    Cancel,
 }
 
 /// A mapping from a key input sequence to an action. This can optionally have

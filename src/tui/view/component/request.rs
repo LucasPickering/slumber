@@ -4,7 +4,8 @@ use crate::{
         input::Action,
         view::{
             component::{
-                primary::PrimaryPane, Component, Draw, Event, UpdateOutcome,
+                primary::PrimaryPane, Component, Draw, Event, UpdateContext,
+                UpdateOutcome,
             },
             state::{FixedSelect, StatefulSelect},
             util::{layout, BlockBrick, TabBrick, ToTui},
@@ -41,7 +42,11 @@ enum RequestTab {
 impl FixedSelect for RequestTab {}
 
 impl Component for RequestPane {
-    fn update(&mut self, message: Event) -> UpdateOutcome {
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        message: Event,
+    ) -> UpdateOutcome {
         match message {
             Event::Input {
                 action: Some(action),

@@ -14,7 +14,7 @@ use crate::{
         view::{
             component::{
                 Component, Draw, Event, IntoModal, RenderContext, Root,
-                UpdateOutcome,
+                UpdateContext, UpdateOutcome,
             },
             state::Notification,
             theme::Theme,
@@ -114,7 +114,8 @@ impl View {
     fn handle_message(&mut self, message: Event) {
         let span = trace_span!("View message", ?message);
         span.in_scope(|| {
-            match Self::update_all(&mut self.root, message) {
+            let mut context = self.update_context();
+            match Self::update_all(&mut self.root, &mut context, message) {
                 UpdateOutcome::Consumed => {
                     trace!("View message consumed")
                 }
@@ -122,13 +123,13 @@ impl View {
                 UpdateOutcome::Propagate(_) => {
                     error!("View message was unhandled");
                 }
-                // Consumer wants to trigger a new event
-                UpdateOutcome::SideEffect(m) => {
-                    trace!(message = ?m, "View message produced side-effect");
-                    self.messages_tx.send(m);
-                }
             }
         });
+    }
+
+    /// Context object passed to each update call
+    fn update_context(&self) -> UpdateContext {
+        UpdateContext::new(self.messages_tx.clone())
     }
 
     /// Update the state of a component *and* its children, starting at the
@@ -136,11 +137,12 @@ impl View {
     /// consumes the message.
     fn update_all(
         component: &mut dyn Component,
+        context: &mut UpdateContext,
         mut message: Event,
     ) -> UpdateOutcome {
         // If we have a child, send them the message. If not, eat it ourselves
         for child in component.children() {
-            let outcome = Self::update_all(child, message); // RECURSION
+            let outcome = Self::update_all(child, context, message); // RECURSION
             if let UpdateOutcome::Propagate(returned) = outcome {
                 // Keep going to the next child. It's possible the child
                 // returned something other than the original message, which
@@ -156,7 +158,7 @@ impl View {
         // Message is already traced in the parent span, so don't dupe it.
         let span = trace_span!("Component handling message", %component);
         span.in_scope(|| {
-            let outcome = component.update(message);
+            let outcome = component.update(context, message);
             trace!(?outcome);
             outcome
         })

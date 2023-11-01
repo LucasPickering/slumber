@@ -14,7 +14,7 @@ use crate::{
     config::RequestRecipeId,
     tui::{
         input::{Action, InputEngine},
-        message::Message,
+        message::{Message, MessageSender},
         view::{
             component::root::RootMode,
             state::{Notification, RequestState},
@@ -41,8 +41,13 @@ use std::fmt::{Debug, Display};
 /// component name.
 pub trait Component: Debug + Display {
     /// Update the state of *just* this component according to the message.
-    /// Returned outcome indicates what to do afterwards.
-    fn update(&mut self, message: Event) -> UpdateOutcome {
+    /// Returned outcome indicates what to do afterwards. Context allows updates
+    /// to trigger side-effects, e.g. launching an HTTP request.
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        message: Event,
+    ) -> UpdateOutcome {
         // By default just forward to our parent
         UpdateOutcome::Propagate(message)
     }
@@ -53,6 +58,23 @@ pub trait Component: Debug + Display {
     /// message, it will be passed to this component.
     fn children(&mut self) -> Vec<&mut dyn Component> {
         Vec::new()
+    }
+}
+
+/// Mutable context passed to each update call. Allows for triggering side
+/// effects.
+pub struct UpdateContext {
+    messages_tx: MessageSender,
+}
+
+impl UpdateContext {
+    pub fn new(messages_tx: MessageSender) -> Self {
+        Self { messages_tx }
+    }
+
+    /// Send a message to trigger an async action
+    pub fn send_message(&mut self, message: Message) {
+        self.messages_tx.send(message);
     }
 }
 
@@ -155,8 +177,4 @@ pub enum UpdateOutcome {
     /// no immediate need for that though so I'm keeping it simpler for
     /// now.
     Propagate(Event),
-    /// The component consumed the message, and wants to trigger an app-wide
-    /// action in response to it. The action should be queued on the controller
-    /// so it can be handled asyncronously.
-    SideEffect(Message),
 }

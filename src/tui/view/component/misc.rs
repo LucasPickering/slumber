@@ -7,7 +7,8 @@ use crate::{
         input::Action,
         view::{
             component::{
-                modal::IntoModal, Component, Draw, Event, Modal, UpdateOutcome,
+                modal::IntoModal, Component, Draw, Event, Modal, UpdateContext,
+                UpdateOutcome,
             },
             state::Notification,
             util::{layout, ButtonBrick, ToTui},
@@ -39,7 +40,11 @@ impl Modal for ErrorModal {
 }
 
 impl Component for ErrorModal {
-    fn update(&mut self, message: Event) -> UpdateOutcome {
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        message: Event,
+    ) -> UpdateOutcome {
         match message {
             // Extra close action
             Event::Input {
@@ -94,7 +99,8 @@ impl IntoModal for anyhow::Error {
     }
 }
 
-/// Inner state for the prompt modal
+/// Inner state forfn update(&mut self, context:&mut UpdateContext, message:
+/// Event) -> UpdateOutcome the prompt modal
 #[derive(Debug, Display)]
 #[display(fmt = "PromptModal")]
 pub struct PromptModal {
@@ -140,7 +146,11 @@ impl Modal for PromptModal {
 }
 
 impl Component for PromptModal {
-    fn update(&mut self, message: Event) -> UpdateOutcome {
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        message: Event,
+    ) -> UpdateOutcome {
         match message {
             // Submit
             Event::Input {

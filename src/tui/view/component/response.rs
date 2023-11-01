@@ -3,7 +3,7 @@ use crate::tui::{
     view::{
         component::{
             primary::PrimaryPane, root::RootMode, Component, Draw, Event,
-            UpdateOutcome,
+            UpdateContext, UpdateOutcome,
         },
         state::{FixedSelect, RequestState, StatefulSelect},
         util::{layout, BlockBrick, TabBrick, ToTui},
@@ -40,7 +40,11 @@ enum ResponseTab {
 impl FixedSelect for ResponseTab {}
 
 impl Component for ResponsePane {
-    fn update(&mut self, message: Event) -> UpdateOutcome {
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        message: Event,
+    ) -> UpdateOutcome {
         match message {
             Event::Input {
                 action: Some(action),

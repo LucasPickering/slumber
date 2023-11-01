@@ -9,7 +9,7 @@ use crate::{
             component::{
                 request::{RequestPane, RequestPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
-                Component, Draw, Event, UpdateOutcome,
+                Component, Draw, Event, UpdateContext, UpdateOutcome,
             },
             state::{FixedSelect, RequestState, StatefulList, StatefulSelect},
             util::{layout, BlockBrick, ListBrick, ToTui},
@@ -94,21 +94,24 @@ impl PrimaryView {
 }
 
 impl Component for PrimaryView {
-    fn update(&mut self, message: Event) -> UpdateOutcome {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        message: Event,
+    ) -> UpdateOutcome {
         match message {
             // Send HTTP request (bubbled up from child)
             Event::HttpSendRequest => {
                 if let Some(recipe) = self.selected_recipe() {
-                    UpdateOutcome::SideEffect(Message::HttpBeginRequest {
+                    context.send_message(Message::HttpBeginRequest {
                         // Reach into the children to grab state (ugly!)
                         recipe_id: recipe.id.clone(),
                         profile_id: self
                             .selected_profile()
                             .map(|profile| profile.id.clone()),
-                    })
-                } else {
-                    UpdateOutcome::Consumed
+                    });
                 }
+                UpdateOutcome::Consumed
             }
 
             // Input messages
@@ -230,7 +233,11 @@ impl ProfileListPane {
 }
 
 impl Component for ProfileListPane {
-    fn update(&mut self, message: Event) -> UpdateOutcome {
+    fn update(
+        &mut self,
+        _context: &mut UpdateContext,
+        message: Event,
+    ) -> UpdateOutcome {
         match message {
             Event::Input {
                 action: Some(Action::Up),
@@ -289,19 +296,19 @@ impl RecipeListPane {
 }
 
 impl Component for RecipeListPane {
-    fn update(&mut self, message: Event) -> UpdateOutcome {
-        /// Helper to load a request from the repo whenever we select a new
-        /// recipe
-        fn load_from_repo(pane: &RecipeListPane) -> UpdateOutcome {
-            match pane.recipes.selected() {
-                Some(recipe) => {
-                    UpdateOutcome::SideEffect(Message::RepositoryStartLoad {
-                        recipe_id: recipe.id.clone(),
-                    })
-                }
-                None => UpdateOutcome::Consumed,
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        message: Event,
+    ) -> UpdateOutcome {
+        let mut load_from_repo = |pane: &RecipeListPane| -> UpdateOutcome {
+            if let Some(recipe) = pane.recipes.selected() {
+                context.send_message(Message::RepositoryStartLoad {
+                    recipe_id: recipe.id.clone(),
+                });
             }
-        }
+            UpdateOutcome::Consumed
+        };
 
         match message {
             Event::Input {

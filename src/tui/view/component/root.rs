@@ -9,7 +9,7 @@ use crate::{
                 modal::ModalQueue,
                 primary::{PrimaryView, PrimaryViewProps},
                 response::ResponsePaneProps,
-                Component, Draw, Event, UpdateOutcome,
+                Component, Draw, Event, UpdateContext, UpdateOutcome,
             },
             state::RequestState,
             util::layout,
@@ -103,51 +103,49 @@ impl Root {
 }
 
 impl Component for Root {
-    fn update(&mut self, message: Event) -> UpdateOutcome {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        message: Event,
+    ) -> UpdateOutcome {
         match message {
             Event::Init => {
                 // Load the initial state for the selected recipe
                 if let Some(recipe) = self.primary_view.selected_recipe() {
-                    UpdateOutcome::SideEffect(Message::RepositoryStartLoad {
+                    context.send_message(Message::RepositoryStartLoad {
                         recipe_id: recipe.id.clone(),
-                    })
-                } else {
-                    UpdateOutcome::Consumed
+                    });
                 }
             }
 
             // Update state of HTTP request
             Event::HttpSetState { recipe_id, state } => {
-                self.update_request(recipe_id, state);
-                UpdateOutcome::Consumed
+                self.update_request(recipe_id, state)
             }
 
             // Other state messages
-            Event::OpenView(mode) => {
-                self.mode = mode;
-                UpdateOutcome::Consumed
-            }
+            Event::OpenView(mode) => self.mode = mode,
             Event::Notify(notification) => {
                 self.notification_text =
-                    Some(NotificationText::new(notification));
-                UpdateOutcome::Consumed
+                    Some(NotificationText::new(notification))
             }
 
             // Input messages
             Event::Input {
                 action: Some(Action::Quit),
                 ..
-            } => UpdateOutcome::SideEffect(Message::Quit),
+            } => context.send_message(Message::Quit),
             Event::Input {
                 action: Some(Action::ReloadCollection),
                 ..
-            } => UpdateOutcome::SideEffect(Message::CollectionStartReload),
+            } => context.send_message(Message::CollectionStartReload),
             // Any other user input should get thrown away
-            Event::Input { .. } => UpdateOutcome::Consumed,
+            Event::Input { .. } => {}
 
             // There shouldn't be anything left unhandled. Bubble up to log it
-            _ => UpdateOutcome::Propagate(message),
+            _ => return UpdateOutcome::Propagate(message),
         }
+        UpdateOutcome::Consumed
     }
 
     fn children(&mut self) -> Vec<&mut dyn Component> {

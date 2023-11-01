@@ -9,7 +9,7 @@ use crate::{
                 modal::ModalQueue,
                 primary::{PrimaryView, PrimaryViewProps},
                 response::ResponsePaneProps,
-                Component, Draw, UpdateOutcome, ViewMessage,
+                Component, Draw, Event, UpdateOutcome,
             },
             state::RequestState,
             util::layout,
@@ -103,11 +103,10 @@ impl Root {
 }
 
 impl Component for Root {
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+    fn update(&mut self, message: Event) -> UpdateOutcome {
         match message {
-            ViewMessage::Init => {
+            Event::Init => {
                 // Load the initial state for the selected recipe
-                tracing::trace!(recipe=?self.primary_view.selected_recipe(), "asdfasdfasdf");
                 if let Some(recipe) = self.primary_view.selected_recipe() {
                     UpdateOutcome::SideEffect(Message::RepositoryStartLoad {
                         recipe_id: recipe.id.clone(),
@@ -118,33 +117,33 @@ impl Component for Root {
             }
 
             // Update state of HTTP request
-            ViewMessage::HttpSetState { recipe_id, state } => {
+            Event::HttpSetState { recipe_id, state } => {
                 self.update_request(recipe_id, state);
                 UpdateOutcome::Consumed
             }
 
             // Other state messages
-            ViewMessage::OpenView(mode) => {
+            Event::OpenView(mode) => {
                 self.mode = mode;
                 UpdateOutcome::Consumed
             }
-            ViewMessage::Notify(notification) => {
+            Event::Notify(notification) => {
                 self.notification_text =
                     Some(NotificationText::new(notification));
                 UpdateOutcome::Consumed
             }
 
             // Input messages
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::Quit),
                 ..
             } => UpdateOutcome::SideEffect(Message::Quit),
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::ReloadCollection),
                 ..
             } => UpdateOutcome::SideEffect(Message::CollectionStartReload),
             // Any other user input should get thrown away
-            ViewMessage::Input { .. } => UpdateOutcome::Consumed,
+            Event::Input { .. } => UpdateOutcome::Consumed,
 
             // There shouldn't be anything left unhandled. Bubble up to log it
             _ => UpdateOutcome::Propagate(message),

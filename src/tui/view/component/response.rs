@@ -2,8 +2,8 @@ use crate::tui::{
     input::Action,
     view::{
         component::{
-            primary::PrimaryPane, root::RootMode, Component, Draw,
-            UpdateOutcome, ViewMessage,
+            primary::PrimaryPane, root::RootMode, Component, Draw, Event,
+            UpdateOutcome,
         },
         state::{FixedSelect, RequestState, StatefulSelect},
         util::{layout, BlockBrick, TabBrick, ToTui},
@@ -40,9 +40,9 @@ enum ResponseTab {
 impl FixedSelect for ResponseTab {}
 
 impl Component for ResponsePane {
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+    fn update(&mut self, message: Event) -> UpdateOutcome {
         match message {
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(action),
                 ..
             } => match action {
@@ -58,12 +58,12 @@ impl Component for ResponsePane {
 
                 // Enter fullscreen
                 Action::Fullscreen => UpdateOutcome::Propagate(
-                    ViewMessage::OpenView(RootMode::Response),
+                    Event::OpenView(RootMode::Response),
                 ),
                 // Exit fullscreen
-                Action::Cancel => UpdateOutcome::Propagate(
-                    ViewMessage::OpenView(RootMode::Primary),
-                ),
+                Action::Cancel => {
+                    UpdateOutcome::Propagate(Event::OpenView(RootMode::Primary))
+                }
 
                 _ => UpdateOutcome::Propagate(message),
             },

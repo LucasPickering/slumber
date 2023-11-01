@@ -9,7 +9,7 @@ use crate::{
             component::{
                 request::{RequestPane, RequestPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
-                Component, Draw, UpdateOutcome, ViewMessage,
+                Component, Draw, Event, UpdateOutcome,
             },
             state::{FixedSelect, RequestState, StatefulList, StatefulSelect},
             util::{layout, BlockBrick, ListBrick, ToTui},
@@ -94,10 +94,10 @@ impl PrimaryView {
 }
 
 impl Component for PrimaryView {
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+    fn update(&mut self, message: Event) -> UpdateOutcome {
         match message {
             // Send HTTP request (bubbled up from child)
-            ViewMessage::HttpSendRequest => {
+            Event::HttpSendRequest => {
                 if let Some(recipe) = self.selected_recipe() {
                     UpdateOutcome::SideEffect(Message::HttpBeginRequest {
                         // Reach into the children to grab state (ugly!)
@@ -112,14 +112,14 @@ impl Component for PrimaryView {
             }
 
             // Input messages
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::FocusPrevious),
                 ..
             } => {
                 self.selected_pane.previous();
                 UpdateOutcome::Consumed
             }
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::FocusNext),
                 ..
             } => {
@@ -230,16 +230,16 @@ impl ProfileListPane {
 }
 
 impl Component for ProfileListPane {
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+    fn update(&mut self, message: Event) -> UpdateOutcome {
         match message {
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::Up),
                 ..
             } => {
                 self.profiles.previous();
                 UpdateOutcome::Consumed
             }
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::Down),
                 ..
             } => {
@@ -289,7 +289,7 @@ impl RecipeListPane {
 }
 
 impl Component for RecipeListPane {
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+    fn update(&mut self, message: Event) -> UpdateOutcome {
         /// Helper to load a request from the repo whenever we select a new
         /// recipe
         fn load_from_repo(pane: &RecipeListPane) -> UpdateOutcome {
@@ -304,22 +304,22 @@ impl Component for RecipeListPane {
         }
 
         match message {
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::Interact),
                 ..
             } => {
                 // Parent has to be responsible for sending the request because
                 // it also needs access to the profile list state
-                UpdateOutcome::Propagate(ViewMessage::HttpSendRequest)
+                UpdateOutcome::Propagate(Event::HttpSendRequest)
             }
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::Up),
                 ..
             } => {
                 self.recipes.previous();
                 load_from_repo(self)
             }
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::Down),
                 ..
             } => {

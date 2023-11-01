@@ -1,7 +1,7 @@
 use crate::tui::{
     input::Action,
     view::{
-        component::{Component, Draw, UpdateOutcome, ViewMessage},
+        component::{Component, Draw, Event, UpdateOutcome},
         util::centered_rect,
     },
 };
@@ -91,15 +91,15 @@ impl ModalQueue {
 }
 
 impl Component for ModalQueue {
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+    fn update(&mut self, message: Event) -> UpdateOutcome {
         match message {
             // Close the active modal. If there's no modal open, we'll propagate
             // the event down
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::Cancel),
                 ..
             }
-            | ViewMessage::CloseModal => {
+            | Event::CloseModal => {
                 match self.close() {
                     Some(modal) => {
                         // Inform the modal of its terminal status
@@ -112,7 +112,7 @@ impl Component for ModalQueue {
             }
 
             // Open a new modal
-            ViewMessage::OpenModal { modal, priority } => {
+            Event::OpenModal { modal, priority } => {
                 self.open(modal, priority);
                 UpdateOutcome::Consumed
             }

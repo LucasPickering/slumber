@@ -13,15 +13,14 @@ use crate::{
         message::MessageSender,
         view::{
             component::{
-                Component, Draw, IntoModal, RenderContext, Root, UpdateOutcome,
-                ViewMessage,
+                Component, Draw, Event, IntoModal, RenderContext, Root,
+                UpdateOutcome,
             },
             state::Notification,
             theme::Theme,
         },
     },
 };
-use crossterm::event::Event;
 use ratatui::prelude::*;
 use std::{fmt::Debug, io::Stdout};
 use tracing::{error, trace, trace_span};
@@ -51,7 +50,7 @@ impl View {
             root: Root::new(collection),
         };
         // Tell the components to wake up
-        view.handle_message(ViewMessage::Init);
+        view.handle_message(Event::Init);
         view
     }
 
@@ -77,7 +76,7 @@ impl View {
         recipe_id: RequestRecipeId,
         state: RequestState,
     ) {
-        self.handle_message(ViewMessage::HttpSetState { recipe_id, state });
+        self.handle_message(Event::HttpSetState { recipe_id, state });
     }
 
     /// Open a new modal. The input can be anything that converts to modal
@@ -87,7 +86,7 @@ impl View {
         modal: impl IntoModal + 'static,
         priority: ModalPriority,
     ) {
-        self.handle_message(ViewMessage::OpenModal {
+        self.handle_message(Event::OpenModal {
             modal: Box::new(modal.into_modal()),
             priority,
         });
@@ -96,19 +95,23 @@ impl View {
     /// Send an informational notification to the user
     pub fn notify(&mut self, message: String) {
         let notification = Notification::new(message);
-        self.handle_message(ViewMessage::Notify(notification));
+        self.handle_message(Event::Notify(notification));
     }
 
     /// Update the view according to an input event from the user. If possible,
     /// a bound action is provided which tells us what abstract action the
     /// input maps to.
-    pub fn handle_input(&mut self, event: Event, action: Option<Action>) {
-        self.handle_message(ViewMessage::Input { event, action })
+    pub fn handle_input(
+        &mut self,
+        event: crossterm::event::Event,
+        action: Option<Action>,
+    ) {
+        self.handle_message(Event::Input { event, action })
     }
 
     /// Process a view message by passing it to the root component and letting
     /// it pass it down the tree
-    fn handle_message(&mut self, message: ViewMessage) {
+    fn handle_message(&mut self, message: Event) {
         let span = trace_span!("View message", ?message);
         span.in_scope(|| {
             match Self::update_all(&mut self.root, message) {
@@ -133,7 +136,7 @@ impl View {
     /// consumes the message.
     fn update_all(
         component: &mut dyn Component,
-        mut message: ViewMessage,
+        mut message: Event,
     ) -> UpdateOutcome {
         // If we have a child, send them the message. If not, eat it ourselves
         for child in component.children() {

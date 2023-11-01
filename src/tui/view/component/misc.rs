@@ -7,8 +7,7 @@ use crate::{
         input::Action,
         view::{
             component::{
-                modal::IntoModal, Component, Draw, Modal, UpdateOutcome,
-                ViewMessage,
+                modal::IntoModal, Component, Draw, Event, Modal, UpdateOutcome,
             },
             state::Notification,
             util::{layout, ButtonBrick, ToTui},
@@ -40,13 +39,13 @@ impl Modal for ErrorModal {
 }
 
 impl Component for ErrorModal {
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+    fn update(&mut self, message: Event) -> UpdateOutcome {
         match message {
             // Extra close action
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::Interact),
                 ..
-            } => UpdateOutcome::Propagate(ViewMessage::CloseModal),
+            } => UpdateOutcome::Propagate(Event::CloseModal),
 
             _ => UpdateOutcome::Propagate(message),
         }
@@ -141,21 +140,21 @@ impl Modal for PromptModal {
 }
 
 impl Component for PromptModal {
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+    fn update(&mut self, message: Event) -> UpdateOutcome {
         match message {
             // Submit
-            ViewMessage::Input {
+            Event::Input {
                 action: Some(Action::Interact),
                 ..
             } => {
                 // Submission is handled in on_close. The control flow here is
                 // ugly but it's hard with the top-down nature of modals
                 self.submit = true;
-                UpdateOutcome::Propagate(ViewMessage::CloseModal)
+                UpdateOutcome::Propagate(Event::CloseModal)
             }
 
             // All other input gets forwarded to the text editor (except cancel)
-            ViewMessage::Input { event, action }
+            Event::Input { event, action }
                 if action != Some(Action::Cancel) =>
             {
                 self.text_area.input(event);

@@ -23,7 +23,6 @@ use crate::{
         },
     },
 };
-use crossterm::event::Event;
 use ratatui::prelude::Rect;
 use std::fmt::{Debug, Display};
 
@@ -43,7 +42,7 @@ use std::fmt::{Debug, Display};
 pub trait Component: Debug + Display {
     /// Update the state of *just* this component according to the message.
     /// Returned outcome indicates what to do afterwards.
-    fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
+    fn update(&mut self, message: Event) -> UpdateOutcome {
         // By default just forward to our parent
         UpdateOutcome::Propagate(message)
     }
@@ -87,19 +86,17 @@ pub struct RenderContext<'a> {
     pub theme: &'a Theme,
 }
 
-/// A trigger for state change in the view. Messages are handled by
-/// [Component::update_all], and each component is responsible for modifying
-/// its own state accordingly. Messages can also trigger other view messages
+/// A trigger for state change in the view. Events are handled by
+/// [Component::update], and each component is responsible for modifying
+/// its own state accordingly. Events can also trigger other events
 /// to propagate state changes, as well as side-effect messages to trigger
 /// app-wide changes (e.g. launch a request).
 ///
 /// This is conceptually different from [Message] in that view messages never
 /// queued, they are handled immediately. Maybe "message" is a misnomer here and
 /// we should rename this?
-///
-/// TODO rename to Event
 #[derive(Debug)]
-pub enum ViewMessage {
+pub enum Event {
     /// Sent when the view is first opened. If a component is created after the
     /// initial view setup, it will *not* receive this message.
     Init,
@@ -107,7 +104,7 @@ pub enum ViewMessage {
     /// Input from the user, which may or may not correspond to a bound action.
     /// Most components just care about the action, but some require raw input
     Input {
-        event: Event,
+        event: crossterm::event::Event,
         action: Option<Action>,
     },
 
@@ -157,7 +154,7 @@ pub enum UpdateOutcome {
     /// caller to reset back to the bottom of the component tree. There's
     /// no immediate need for that though so I'm keeping it simpler for
     /// now.
-    Propagate(ViewMessage),
+    Propagate(Event),
     /// The component consumed the message, and wants to trigger an app-wide
     /// action in response to it. The action should be queued on the controller
     /// so it can be handled asyncronously.

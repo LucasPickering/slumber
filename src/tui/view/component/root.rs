@@ -105,6 +105,18 @@ impl Root {
 impl Component for Root {
     fn update(&mut self, message: ViewMessage) -> UpdateOutcome {
         match message {
+            ViewMessage::Init => {
+                // Load the initial state for the selected recipe
+                tracing::trace!(recipe=?self.primary_view.selected_recipe(), "asdfasdfasdf");
+                if let Some(recipe) = self.primary_view.selected_recipe() {
+                    UpdateOutcome::SideEffect(Message::RepositoryStartLoad {
+                        recipe_id: recipe.id.clone(),
+                    })
+                } else {
+                    UpdateOutcome::Consumed
+                }
+            }
+
             // Update state of HTTP request
             ViewMessage::HttpSetState { recipe_id, state } => {
                 self.update_request(recipe_id, state);
@@ -139,7 +151,7 @@ impl Component for Root {
         }
     }
 
-    fn focused_children(&mut self) -> Vec<&mut dyn Component> {
+    fn children(&mut self) -> Vec<&mut dyn Component> {
         vec![
             &mut self.modal_queue,
             match self.mode {

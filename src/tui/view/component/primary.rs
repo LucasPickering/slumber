@@ -131,7 +131,7 @@ impl Component for PrimaryView {
         }
     }
 
-    fn focused_children(&mut self) -> Vec<&mut dyn Component> {
+    fn children(&mut self) -> Vec<&mut dyn Component> {
         vec![match self.selected_pane.selected() {
             PrimaryPane::ProfileList => {
                 &mut self.profile_list_pane as &mut dyn Component

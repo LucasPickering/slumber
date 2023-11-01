@@ -13,7 +13,8 @@ use crate::{
         message::MessageSender,
         view::{
             component::{
-                Component, Draw, IntoModal, Root, UpdateOutcome, ViewMessage,
+                Component, Draw, IntoModal, RenderContext, Root, UpdateOutcome,
+                ViewMessage,
             },
             state::Notification,
             theme::Theme,
@@ -44,12 +45,14 @@ impl View {
         collection: &RequestCollection,
         messages_tx: MessageSender,
     ) -> Self {
-        Self {
-            // State
+        let mut view = Self {
             messages_tx,
             theme: Theme::default(),
             root: Root::new(collection),
-        }
+        };
+        // Tell the components to wake up
+        view.handle_message(ViewMessage::Init);
+        view
     }
 
     /// Draw the view to screen. This needs access to the input engine in order
@@ -133,7 +136,7 @@ impl View {
         mut message: ViewMessage,
     ) -> UpdateOutcome {
         // If we have a child, send them the message. If not, eat it ourselves
-        for child in component.focused_children() {
+        for child in component.children() {
             let outcome = Self::update_all(child, message); // RECURSION
             if let UpdateOutcome::Propagate(returned) = outcome {
                 // Keep going to the next child. It's possible the child
@@ -155,11 +158,4 @@ impl View {
             outcome
         })
     }
-}
-
-/// Global readonly data that various components need during rendering
-#[derive(Debug)]
-struct RenderContext<'a> {
-    pub input_engine: &'a InputEngine,
-    pub theme: &'a Theme,
 }

@@ -121,7 +121,7 @@ impl Component for ModalQueue {
         }
     }
 
-    fn focused_children(&mut self) -> Vec<&mut dyn Component> {
+    fn children(&mut self) -> Vec<&mut dyn Component> {
         match self.queue.front_mut() {
             Some(first) => vec![first.deref_mut()],
             None => vec![],

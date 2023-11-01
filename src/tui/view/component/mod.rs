@@ -13,12 +13,13 @@ pub use root::Root;
 use crate::{
     config::RequestRecipeId,
     tui::{
-        input::Action,
+        input::{Action, InputEngine},
         message::Message,
         view::{
             component::root::RootMode,
             state::{Notification, RequestState},
-            Frame, RenderContext,
+            theme::Theme,
+            Frame,
         },
     },
 };
@@ -51,7 +52,7 @@ pub trait Component: Debug + Display {
     /// focused component will receive first dibs on any update messages, in
     /// the order of the returned list. If none of the children consume the
     /// message, it will be passed to this component.
-    fn focused_children(&mut self) -> Vec<&mut dyn Component> {
+    fn children(&mut self) -> Vec<&mut dyn Component> {
         Vec::new()
     }
 }
@@ -79,6 +80,13 @@ pub trait Draw<Props = ()> {
     );
 }
 
+/// Global readonly data that various components need during rendering
+#[derive(Debug)]
+pub struct RenderContext<'a> {
+    pub input_engine: &'a InputEngine,
+    pub theme: &'a Theme,
+}
+
 /// A trigger for state change in the view. Messages are handled by
 /// [Component::update_all], and each component is responsible for modifying
 /// its own state accordingly. Messages can also trigger other view messages
@@ -88,8 +96,14 @@ pub trait Draw<Props = ()> {
 /// This is conceptually different from [Message] in that view messages never
 /// queued, they are handled immediately. Maybe "message" is a misnomer here and
 /// we should rename this?
+///
+/// TODO rename to Event
 #[derive(Debug)]
 pub enum ViewMessage {
+    /// Sent when the view is first opened. If a component is created after the
+    /// initial view setup, it will *not* receive this message.
+    Init,
+
     /// Input from the user, which may or may not correspond to a bound action.
     /// Most components just care about the action, but some require raw input
     Input {

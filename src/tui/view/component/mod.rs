@@ -7,7 +7,7 @@ mod request;
 mod response;
 mod root;
 
-pub use modal::{IntoModal, Modal};
+pub use modal::{IntoModal, Modal, ModalPriority};
 pub use root::Root;
 
 use crate::{
@@ -110,7 +110,10 @@ pub enum ViewMessage {
     OpenView(RootMode),
 
     /// Show a modal to the user
-    OpenModal(Box<dyn Modal>),
+    OpenModal {
+        modal: Box<dyn Modal>,
+        priority: ModalPriority,
+    },
     /// Close the current modal. This is useful for the contents of the modal
     /// to implement custom close triggers.
     CloseModal,

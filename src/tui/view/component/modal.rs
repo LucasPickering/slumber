@@ -50,6 +50,17 @@ pub struct ModalQueue {
     queue: VecDeque<Box<dyn Modal>>,
 }
 
+/// Priority defines where in the modal queue to add a new modal. Most modals
+/// should be low priority, but things like errors should be high priority.
+#[derive(Debug, Default)]
+pub enum ModalPriority {
+    /// Open modal at the back of the queue
+    #[default]
+    Low,
+    /// Open modal at the front of the queue
+    High,
+}
+
 impl ModalQueue {
     pub fn new() -> Self {
         Self {
@@ -57,10 +68,19 @@ impl ModalQueue {
         }
     }
 
-    /// Add a new modal to the end of the queue
-    pub fn open(&mut self, modal: Box<dyn Modal>) {
-        trace!("Opening modal");
-        self.queue.push_back(modal);
+    /// Add a new modal, to either the beginning or end of the queue, depending
+    /// on priority
+    pub fn open(&mut self, modal: Box<dyn Modal>, priority: ModalPriority) {
+        match priority {
+            ModalPriority::Low => {
+                trace!("Opening modal (back)");
+                self.queue.push_back(modal);
+            }
+            ModalPriority::High => {
+                trace!("Opening modal (front)");
+                self.queue.push_front(modal);
+            }
+        }
     }
 
     /// Close the current modal, and return the closed modal if any
@@ -92,9 +112,8 @@ impl Component for ModalQueue {
             }
 
             // Open a new modal
-            // TODO allow pushing high priority modals (errors) to the front
-            ViewMessage::OpenModal(modal) => {
-                self.open(modal);
+            ViewMessage::OpenModal { modal, priority } => {
+                self.open(modal, priority);
                 UpdateOutcome::Consumed
             }
 

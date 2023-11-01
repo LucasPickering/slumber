@@ -3,6 +3,7 @@ mod state;
 mod theme;
 mod util;
 
+pub use component::ModalPriority;
 pub use state::RequestState;
 
 use crate::{
@@ -78,10 +79,15 @@ impl View {
 
     /// Open a new modal. The input can be anything that converts to modal
     /// content
-    pub fn open_modal(&mut self, modal: impl IntoModal + 'static) {
-        self.handle_message(ViewMessage::OpenModal(Box::new(
-            modal.into_modal(),
-        )));
+    pub fn open_modal(
+        &mut self,
+        modal: impl IntoModal + 'static,
+        priority: ModalPriority,
+    ) {
+        self.handle_message(ViewMessage::OpenModal {
+            modal: Box::new(modal.into_modal()),
+            priority,
+        });
     }
 
     /// Send an informational notification to the user

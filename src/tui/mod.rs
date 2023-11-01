@@ -9,7 +9,7 @@ use crate::{
     tui::{
         input::InputEngine,
         message::{Message, MessageSender},
-        view::{RequestState, View},
+        view::{ModalPriority, RequestState, View},
     },
 };
 use anyhow::{anyhow, Context};
@@ -133,7 +133,7 @@ impl Tui {
             while let Ok(message) = self.messages_rx.try_recv() {
                 // If an error occurs, store it so we can show the user
                 if let Err(error) = self.handle_message(message) {
-                    self.view.open_modal(error);
+                    self.view.open_modal(error, ModalPriority::High);
                 }
             }
 
@@ -211,10 +211,12 @@ impl Tui {
             }
 
             Message::PromptStart(prompt) => {
-                self.view.open_modal(prompt);
+                self.view.open_modal(prompt, ModalPriority::Low);
             }
 
-            Message::Error { error } => self.view.open_modal(error),
+            Message::Error { error } => {
+                self.view.open_modal(error, ModalPriority::High)
+            }
             Message::Quit => self.should_run = false,
         }
         Ok(())

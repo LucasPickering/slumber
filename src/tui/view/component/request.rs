@@ -4,11 +4,11 @@ use crate::{
         input::Action,
         view::{
             component::{
-                primary::PrimaryPane, root::FullscreenMode, Component, Draw,
-                Event, UpdateContext, UpdateOutcome,
+                primary::PrimaryPane, root::FullscreenMode, tabs::Tabs,
+                Component, Draw, Event, UpdateContext, UpdateOutcome,
             },
-            state::{FixedSelect, StatefulSelect},
-            util::{layout, BlockBrick, TabBrick, ToTui},
+            state::FixedSelect,
+            util::{layout, BlockBrick, ToTui},
             DrawContext,
         },
     },
@@ -24,7 +24,7 @@ use strum::EnumIter;
 #[derive(Debug, Display, Default)]
 #[display(fmt = "RequestPane")]
 pub struct RequestPane {
-    tabs: StatefulSelect<RequestTab>,
+    tabs: Tabs<Tab>,
 }
 
 pub struct RequestPaneProps<'a> {
@@ -32,14 +32,17 @@ pub struct RequestPaneProps<'a> {
     pub selected_recipe: Option<&'a RequestRecipe>,
 }
 
-#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
-enum RequestTab {
+#[derive(
+    Copy, Clone, Debug, Default, derive_more::Display, EnumIter, PartialEq,
+)]
+enum Tab {
+    #[default]
     Body,
     Query,
     Headers,
 }
 
-impl FixedSelect for RequestTab {}
+impl FixedSelect for Tab {}
 
 impl Component for RequestPane {
     fn update(
@@ -49,27 +52,17 @@ impl Component for RequestPane {
     ) -> UpdateOutcome {
         match event {
             Event::Input {
-                action: Some(action),
+                action: Some(Action::Fullscreen),
                 ..
-            } => match action {
-                Action::Left => {
-                    self.tabs.previous();
-                    UpdateOutcome::Consumed
-                }
-                Action::Right => {
-                    self.tabs.next();
-                    UpdateOutcome::Consumed
-                }
-
-                // Enter fullscreen
-                Action::Fullscreen => UpdateOutcome::Propagate(
-                    Event::ToggleFullscreen(FullscreenMode::Request),
-                ),
-
-                _ => UpdateOutcome::Propagate(event),
-            },
+            } => UpdateOutcome::Propagate(Event::ToggleFullscreen(
+                FullscreenMode::Request,
+            )),
             _ => UpdateOutcome::Propagate(event),
         }
+    }
+
+    fn focused_child(&mut self) -> Option<&mut dyn Component> {
+        Some(&mut self.tabs)
     }
 }
 
@@ -109,27 +102,24 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             );
 
             // Navigation tabs
-            let tabs = TabBrick { tabs: &self.tabs };
-            context
-                .frame
-                .render_widget(tabs.to_tui(context), tabs_chunk);
+            self.tabs.draw(context, (), tabs_chunk);
 
             // Request content
             match self.tabs.selected() {
-                RequestTab::Body => {
+                Tab::Body => {
                     if let Some(body) = recipe.body.as_deref() {
                         context
                             .frame
                             .render_widget(Paragraph::new(body), content_chunk);
                     }
                 }
-                RequestTab::Query => {
+                Tab::Query => {
                     context.frame.render_widget(
                         Paragraph::new(recipe.query.to_tui(context)),
                         content_chunk,
                     );
                 }
-                RequestTab::Headers => {
+                Tab::Headers => {
                     context.frame.render_widget(
                         Paragraph::new(recipe.headers.to_tui(context)),
                         content_chunk,

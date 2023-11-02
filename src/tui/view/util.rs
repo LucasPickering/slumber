@@ -4,7 +4,7 @@ use crate::{
     config::{Profile, RequestRecipe},
     http::{RequestBuildError, RequestError},
     tui::view::{
-        state::{FixedSelect, Notification, StatefulList, StatefulSelect},
+        state::{Notification, StatefulList},
         DrawContext,
     },
 };
@@ -13,7 +13,7 @@ use indexmap::IndexMap;
 use ratatui::{
     prelude::*,
     text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, Tabs},
+    widgets::{Block, Borders, List, ListItem},
 };
 use reqwest::header::HeaderMap;
 use std::fmt::Display;
@@ -57,20 +57,6 @@ impl<'a> ToTui for ButtonBrick<'a> {
 
     fn to_tui(&self, context: &DrawContext) -> Self::Output<'_> {
         Text::styled(self.text, context.theme.text_highlight_style)
-    }
-}
-
-pub struct TabBrick<'a, T: FixedSelect> {
-    pub tabs: &'a StatefulSelect<T>,
-}
-
-impl<'a, T: FixedSelect> ToTui for TabBrick<'a, T> {
-    type Output<'this> = Tabs<'this> where Self: 'this;
-
-    fn to_tui(&self, context: &DrawContext) -> Self::Output<'_> {
-        Tabs::new(T::iter().map(|e| e.to_string()).collect())
-            .select(self.tabs.selected_index())
-            .highlight_style(context.theme.text_highlight_style)
     }
 }
 

@@ -2,8 +2,9 @@
 
 use crate::http::{RequestBuildError, RequestError, RequestId, RequestRecord};
 use chrono::{DateTime, Duration, Utc};
+use itertools::Itertools;
 use ratatui::widgets::*;
-use std::{cell::RefCell, fmt::Display, ops::DerefMut};
+use std::{cell::RefCell, fmt::Display, marker::PhantomData, ops::DerefMut};
 use strum::IntoEnumIterator;
 
 /// State of an HTTP response, which can be in various states of
@@ -195,56 +196,58 @@ impl<T> StatefulList<T> {
 /// cycle between them.
 #[derive(Debug)]
 pub struct StatefulSelect<T: FixedSelect> {
-    values: Vec<T>,
-    selected: usize,
+    selected_index: usize,
+    _phantom: PhantomData<T>,
 }
 
-/// Friendly little trait indicating a type can be cycled through, e.g. a set
+/// Friendly marker trait indicating a type can be cycled through, e.g. a set
 /// of panes or tabs
-pub trait FixedSelect: Display + IntoEnumIterator + PartialEq {
-    /// Initial item to select
-    const DEFAULT_INDEX: usize = 0;
+pub trait FixedSelect:
+    Default + Display + IntoEnumIterator + PartialEq
+{
 }
 
 impl<T: FixedSelect> StatefulSelect<T> {
     pub fn new() -> Self {
-        let values: Vec<T> = T::iter().collect();
-        if values.is_empty() {
-            panic!("Cannot create StatefulSelect from empty values");
-        }
         Self {
-            values,
-            selected: T::DEFAULT_INDEX,
+            // Find the index of the select type's default value
+            selected_index: T::iter()
+                .find_position(|value| value == &T::default())
+                .unwrap()
+                .0,
+            _phantom: PhantomData,
         }
     }
 
     /// Get the index of the selected element
     pub fn selected_index(&self) -> usize {
-        self.selected
+        self.selected_index
     }
 
     /// Get the selected element
-    pub fn selected(&self) -> &T {
-        &self.values[self.selected]
+    pub fn selected(&self) -> T {
+        T::iter()
+            .nth(self.selected_index)
+            .expect("StatefulSelect index out of bounds")
     }
 
     /// Is the given item selected?
     pub fn is_selected(&self, item: &T) -> bool {
-        self.selected() == item
+        &self.selected() == item
     }
 
     /// Select previous item
     pub fn previous(&mut self) {
         // Prevent underflow
-        self.selected = self
-            .selected
+        self.selected_index = self
+            .selected_index
             .checked_sub(1)
-            .unwrap_or(self.values.len() - 1);
+            .unwrap_or(T::iter().count() - 1);
     }
 
     /// Select next item
     pub fn next(&mut self) {
-        self.selected = (self.selected + 1) % self.values.len();
+        self.selected_index = (self.selected_index + 1) % T::iter().count();
     }
 }
 

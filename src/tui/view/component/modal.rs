@@ -94,9 +94,9 @@ impl Component for ModalQueue {
     fn update(
         &mut self,
         _context: &mut UpdateContext,
-        message: Event,
+        event: Event,
     ) -> UpdateOutcome {
-        match message {
+        match event {
             // Close the active modal. If there's no modal open, we'll propagate
             // the event down
             Event::Input {
@@ -111,7 +111,7 @@ impl Component for ModalQueue {
                         UpdateOutcome::Consumed
                     }
                     // Modal wasn't open, so don't consume the event
-                    None => UpdateOutcome::Propagate(message),
+                    None => UpdateOutcome::Propagate(event),
                 }
             }
 
@@ -121,7 +121,7 @@ impl Component for ModalQueue {
                 UpdateOutcome::Consumed
             }
 
-            _ => UpdateOutcome::Propagate(message),
+            _ => UpdateOutcome::Propagate(event),
         }
     }
 

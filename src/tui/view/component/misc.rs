@@ -43,16 +43,16 @@ impl Component for ErrorModal {
     fn update(
         &mut self,
         _context: &mut UpdateContext,
-        message: Event,
+        event: Event,
     ) -> UpdateOutcome {
-        match message {
+        match event {
             // Extra close action
             Event::Input {
                 action: Some(Action::Interact),
                 ..
             } => UpdateOutcome::Propagate(Event::CloseModal),
 
-            _ => UpdateOutcome::Propagate(message),
+            _ => UpdateOutcome::Propagate(event),
         }
     }
 }
@@ -149,9 +149,9 @@ impl Component for PromptModal {
     fn update(
         &mut self,
         _context: &mut UpdateContext,
-        message: Event,
+        event: Event,
     ) -> UpdateOutcome {
-        match message {
+        match event {
             // Submit
             Event::Input {
                 action: Some(Action::Interact),
@@ -163,15 +163,19 @@ impl Component for PromptModal {
                 UpdateOutcome::Propagate(Event::CloseModal)
             }
 
-            // All other input gets forwarded to the text editor (except cancel)
-            Event::Input { event, action }
-                if action != Some(Action::Cancel) =>
-            {
+            // Make sure cancel gets propagated to close the modal
+            event @ Event::Input {
+                action: Some(Action::Cancel),
+                ..
+            } => UpdateOutcome::Propagate(event),
+
+            // All other input gets forwarded to the text editor
+            Event::Input { event, .. } => {
                 self.text_area.input(event);
                 UpdateOutcome::Consumed
             }
 
-            _ => UpdateOutcome::Propagate(message),
+            _ => UpdateOutcome::Propagate(event),
         }
     }
 }

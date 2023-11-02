@@ -31,7 +31,7 @@ impl InputEngine {
                     }),
                 },
                 InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
-                InputBinding::new(KeyCode::Char(' '), Action::Fullscreen),
+                InputBinding::new(KeyCode::F(11), Action::Fullscreen),
                 InputBinding::new(KeyCode::BackTab, Action::FocusPrevious),
                 InputBinding::new(KeyCode::Tab, Action::FocusNext),
                 InputBinding::new(KeyCode::Up, Action::Up),
@@ -174,6 +174,7 @@ impl Display for KeyCombination {
             KeyCode::Right => write!(f, "→"),
             KeyCode::Esc => write!(f, "<esc>"),
             KeyCode::Enter => write!(f, "<enter>"),
+            KeyCode::F(num) => write!(f, "F{}", num),
             KeyCode::Char(' ') => write!(f, "<space>"),
             KeyCode::Char(c) => write!(f, "<{c}>"),
             // Punting on everything else until we need it

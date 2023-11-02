@@ -2,7 +2,7 @@ use crate::tui::{
     input::Action,
     view::{
         component::{
-            primary::PrimaryPane, root::RootMode, Component, Draw, Event,
+            primary::PrimaryPane, root::FullscreenMode, Component, Draw, Event,
             UpdateContext, UpdateOutcome,
         },
         state::{FixedSelect, RequestState, StatefulSelect},
@@ -43,9 +43,9 @@ impl Component for ResponsePane {
     fn update(
         &mut self,
         _context: &mut UpdateContext,
-        message: Event,
+        event: Event,
     ) -> UpdateOutcome {
-        match message {
+        match event {
             Event::Input {
                 action: Some(action),
                 ..
@@ -62,16 +62,12 @@ impl Component for ResponsePane {
 
                 // Enter fullscreen
                 Action::Fullscreen => UpdateOutcome::Propagate(
-                    Event::OpenView(RootMode::Response),
+                    Event::ToggleFullscreen(FullscreenMode::Response),
                 ),
-                // Exit fullscreen
-                Action::Cancel => {
-                    UpdateOutcome::Propagate(Event::OpenView(RootMode::Primary))
-                }
 
-                _ => UpdateOutcome::Propagate(message),
+                _ => UpdateOutcome::Propagate(event),
             },
-            _ => UpdateOutcome::Propagate(message),
+            _ => UpdateOutcome::Propagate(event),
         }
     }
 }
@@ -172,9 +168,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                     // Main content for the response
                     match self.tabs.selected() {
                         ResponseTab::Body => {
-                            // Render the pretty body if it's available,
-                            // otherwise fall back to the regular one
-                            let body: &str = pretty_body
+                            let body = pretty_body
                                 .as_deref()
                                 .unwrap_or(response.body.text());
                             frame.render_widget(
@@ -194,7 +188,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 }
 
                 // Sadge
-                RequestState::RequestError { error, .. } => {
+                RequestState::RequestError { error } => {
                     frame.render_widget(
                         Paragraph::new(error.to_tui(context))
                             .wrap(Wrap::default()),

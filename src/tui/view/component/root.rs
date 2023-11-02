@@ -8,6 +8,7 @@ use crate::{
                 misc::{HelpText, NotificationText},
                 modal::ModalQueue,
                 primary::{PrimaryView, PrimaryViewProps},
+                request::RequestPaneProps,
                 response::ResponsePaneProps,
                 Component, Draw, Event, UpdateContext, UpdateOutcome,
             },
@@ -32,25 +33,25 @@ pub struct Root {
     /// - It has beed focused by the user during this process
     /// This will be populated on-demand when a user selects a recipe in the
     /// list.
-    #[display(fmt = "")]
     active_requests: HashMap<RequestRecipeId, RequestState>,
-    /// What is we lookin at?
-    mode: RootMode,
+    fullscreen_mode: Option<FullscreenMode>,
 
     // ==== Children =====
     /// We hold onto the primary view even when it's not visible, because we
     /// don't want the state to reset when changing views
     primary_view: PrimaryView,
+    // fullscreen_view: Option<FullscreenView>,
     modal_queue: ModalQueue,
     notification_text: Option<NotificationText>,
 }
 
-/// View mode of the root component
-#[derive(Copy, Clone, Debug, Default)]
-pub enum RootMode {
-    /// Show the normal pane view
-    #[default]
-    Primary,
+/// The various things that can be requested (haha get it, requested) to be
+/// shown in fullscreen. If one of these is requested while not available, we
+/// simply won't show it.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum FullscreenMode {
+    /// Fullscreen the active request recipe
+    Request,
     /// Fullscreen the active response
     Response,
 }
@@ -60,7 +61,7 @@ impl Root {
         Self {
             // State
             active_requests: HashMap::new(),
-            mode: RootMode::default(),
+            fullscreen_mode: None,
 
             // Children
             primary_view: PrimaryView::new(collection),
@@ -106,9 +107,9 @@ impl Component for Root {
     fn update(
         &mut self,
         context: &mut UpdateContext,
-        message: Event,
+        event: Event,
     ) -> UpdateOutcome {
-        match message {
+        match event {
             Event::Init => {
                 // Load the initial state for the selected recipe
                 if let Some(recipe) = self.primary_view.selected_recipe() {
@@ -124,7 +125,14 @@ impl Component for Root {
             }
 
             // Other state messages
-            Event::OpenView(mode) => self.mode = mode,
+            Event::ToggleFullscreen(mode) => {
+                // If we're already in the given mode, exit
+                self.fullscreen_mode = if Some(mode) == self.fullscreen_mode {
+                    None
+                } else {
+                    Some(mode)
+                };
+            }
             Event::Notify(notification) => {
                 self.notification_text =
                     Some(NotificationText::new(notification))
@@ -143,7 +151,7 @@ impl Component for Root {
             Event::Input { .. } => {}
 
             // There shouldn't be anything left unhandled. Bubble up to log it
-            _ => return UpdateOutcome::Propagate(message),
+            _ => return UpdateOutcome::Propagate(event),
         }
         UpdateOutcome::Consumed
     }
@@ -151,9 +159,14 @@ impl Component for Root {
     fn children(&mut self) -> Vec<&mut dyn Component> {
         vec![
             &mut self.modal_queue,
-            match self.mode {
-                RootMode::Primary => &mut self.primary_view,
-                RootMode::Response => self.primary_view.response_pane_mut(),
+            match self.fullscreen_mode {
+                None => &mut self.primary_view,
+                Some(FullscreenMode::Request) => {
+                    self.primary_view.request_pane_mut()
+                }
+                Some(FullscreenMode::Response) => {
+                    self.primary_view.response_pane_mut()
+                }
             },
         ]
     }
@@ -175,8 +188,8 @@ impl Draw for Root {
         );
 
         // Main content
-        match self.mode {
-            RootMode::Primary => self.primary_view.draw(
+        match self.fullscreen_mode {
+            None => self.primary_view.draw(
                 context,
                 PrimaryViewProps {
                     active_request: self.active_request(),
@@ -184,15 +197,28 @@ impl Draw for Root {
                 frame,
                 main_chunk,
             ),
-            RootMode::Response => self.primary_view.response_pane().draw(
-                context,
-                ResponsePaneProps {
-                    active_request: self.active_request(),
-                    is_selected: false,
-                },
-                frame,
-                main_chunk,
-            ),
+            Some(FullscreenMode::Request) => {
+                self.primary_view.request_pane().draw(
+                    context,
+                    RequestPaneProps {
+                        is_selected: false,
+                        selected_recipe: self.primary_view.selected_recipe(),
+                    },
+                    frame,
+                    main_chunk,
+                );
+            }
+            Some(FullscreenMode::Response) => {
+                self.primary_view.response_pane().draw(
+                    context,
+                    ResponsePaneProps {
+                        is_selected: false,
+                        active_request: self.active_request(),
+                    },
+                    frame,
+                    main_chunk,
+                );
+            }
         }
 
         // Footer

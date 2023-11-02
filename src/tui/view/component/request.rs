@@ -4,8 +4,8 @@ use crate::{
         input::Action,
         view::{
             component::{
-                primary::PrimaryPane, Component, Draw, Event, UpdateContext,
-                UpdateOutcome,
+                primary::PrimaryPane, root::FullscreenMode, Component, Draw,
+                Event, UpdateContext, UpdateOutcome,
             },
             state::{FixedSelect, StatefulSelect},
             util::{layout, BlockBrick, TabBrick, ToTui},
@@ -45,9 +45,9 @@ impl Component for RequestPane {
     fn update(
         &mut self,
         _context: &mut UpdateContext,
-        message: Event,
+        event: Event,
     ) -> UpdateOutcome {
-        match message {
+        match event {
             Event::Input {
                 action: Some(action),
                 ..
@@ -60,9 +60,15 @@ impl Component for RequestPane {
                     self.tabs.next();
                     UpdateOutcome::Consumed
                 }
-                _ => UpdateOutcome::Propagate(message),
+
+                // Enter fullscreen
+                Action::Fullscreen => UpdateOutcome::Propagate(
+                    Event::ToggleFullscreen(FullscreenMode::Request),
+                ),
+
+                _ => UpdateOutcome::Propagate(event),
             },
-            _ => UpdateOutcome::Propagate(message),
+            _ => UpdateOutcome::Propagate(event),
         }
     }
 }

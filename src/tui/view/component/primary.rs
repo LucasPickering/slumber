@@ -82,6 +82,16 @@ impl PrimaryView {
         self.profile_list_pane.profiles.selected()
     }
 
+    /// Expose request pane, for fullscreening
+    pub fn request_pane(&self) -> &RequestPane {
+        &self.request_pane
+    }
+
+    /// Expose request pane, for fullscreening
+    pub fn request_pane_mut(&mut self) -> &mut RequestPane {
+        &mut self.request_pane
+    }
+
     /// Expose response pane, for fullscreening
     pub fn response_pane(&self) -> &ResponsePane {
         &self.response_pane
@@ -97,9 +107,9 @@ impl Component for PrimaryView {
     fn update(
         &mut self,
         context: &mut UpdateContext,
-        message: Event,
+        event: Event,
     ) -> UpdateOutcome {
-        match message {
+        match event {
             // Send HTTP request (bubbled up from child)
             Event::HttpSendRequest => {
                 if let Some(recipe) = self.selected_recipe() {
@@ -130,7 +140,7 @@ impl Component for PrimaryView {
                 UpdateOutcome::Consumed
             }
 
-            _ => UpdateOutcome::Propagate(message),
+            _ => UpdateOutcome::Propagate(event),
         }
     }
 
@@ -236,9 +246,9 @@ impl Component for ProfileListPane {
     fn update(
         &mut self,
         _context: &mut UpdateContext,
-        message: Event,
+        event: Event,
     ) -> UpdateOutcome {
-        match message {
+        match event {
             Event::Input {
                 action: Some(Action::Up),
                 ..
@@ -253,7 +263,7 @@ impl Component for ProfileListPane {
                 self.profiles.next();
                 UpdateOutcome::Consumed
             }
-            _ => UpdateOutcome::Propagate(message),
+            _ => UpdateOutcome::Propagate(event),
         }
     }
 }
@@ -299,7 +309,7 @@ impl Component for RecipeListPane {
     fn update(
         &mut self,
         context: &mut UpdateContext,
-        message: Event,
+        event: Event,
     ) -> UpdateOutcome {
         let mut load_from_repo = |pane: &RecipeListPane| -> UpdateOutcome {
             if let Some(recipe) = pane.recipes.selected() {
@@ -310,7 +320,7 @@ impl Component for RecipeListPane {
             UpdateOutcome::Consumed
         };
 
-        match message {
+        match event {
             Event::Input {
                 action: Some(Action::Interact),
                 ..
@@ -333,7 +343,7 @@ impl Component for RecipeListPane {
                 self.recipes.next();
                 load_from_repo(self)
             }
-            _ => UpdateOutcome::Propagate(message),
+            _ => UpdateOutcome::Propagate(event),
         }
     }
 }

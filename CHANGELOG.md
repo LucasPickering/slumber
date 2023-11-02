@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## [Unreleased]
+
+## [0.4.0] - 2023-11-02
 
 ### Added
 
@@ -18,6 +20,6 @@
 
 - Initially selected recipe loads most recent response [#13](https://github.com/LucasPickering/slumber/issues/13)
 
-## 0.3.1 - 2023-10-22
+## [0.3.1] - 2023-10-22
 
 Initial distributed release!

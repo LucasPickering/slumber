@@ -5,7 +5,7 @@ use crate::{
     http::{RequestBuildError, RequestError},
     tui::view::{
         state::{FixedSelect, Notification, StatefulList, StatefulSelect},
-        RenderContext,
+        DrawContext,
     },
 };
 use chrono::{DateTime, Duration, Local, Utc};
@@ -26,7 +26,7 @@ pub trait ToTui {
         Self: 'this;
 
     /// Build a UI element
-    fn to_tui(&self, context: &RenderContext) -> Self::Output<'_>;
+    fn to_tui(&self, context: &DrawContext) -> Self::Output<'_>;
 }
 
 /// A container with a title and border
@@ -38,7 +38,7 @@ pub struct BlockBrick {
 impl ToTui for BlockBrick {
     type Output<'this> = Block<'this> where Self: 'this;
 
-    fn to_tui(&self, context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, context: &DrawContext) -> Self::Output<'_> {
         Block::default()
             .borders(Borders::ALL)
             .border_style(context.theme.pane_border_style(self.is_focused))
@@ -55,7 +55,7 @@ pub struct ButtonBrick<'a> {
 impl<'a> ToTui for ButtonBrick<'a> {
     type Output<'this> = Text<'this> where Self: 'this;
 
-    fn to_tui(&self, context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, context: &DrawContext) -> Self::Output<'_> {
         Text::styled(self.text, context.theme.text_highlight_style)
     }
 }
@@ -67,7 +67,7 @@ pub struct TabBrick<'a, T: FixedSelect> {
 impl<'a, T: FixedSelect> ToTui for TabBrick<'a, T> {
     type Output<'this> = Tabs<'this> where Self: 'this;
 
-    fn to_tui(&self, context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, context: &DrawContext) -> Self::Output<'_> {
         Tabs::new(T::iter().map(|e| e.to_string()).collect())
             .select(self.tabs.selected_index())
             .highlight_style(context.theme.text_highlight_style)
@@ -83,7 +83,7 @@ pub struct ListBrick<'a, T: ToTui<Output<'a> = Span<'a>>> {
 impl<'a, T: ToTui<Output<'a> = Span<'a>>> ToTui for ListBrick<'a, T> {
     type Output<'this> = List<'this> where Self: 'this;
 
-    fn to_tui(&self, context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, context: &DrawContext) -> Self::Output<'_> {
         let block = self.block.to_tui(context);
 
         // Convert each list item into text
@@ -104,7 +104,7 @@ impl<'a, T: ToTui<Output<'a> = Span<'a>>> ToTui for ListBrick<'a, T> {
 impl ToTui for Profile {
     type Output<'this> = Span<'this> where Self: 'this;
 
-    fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
         self.name().to_owned().into()
     }
 }
@@ -112,7 +112,7 @@ impl ToTui for Profile {
 impl ToTui for RequestRecipe {
     type Output<'this> = Span<'this> where Self: 'this;
 
-    fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
         format!("[{}] {}", self.method, self.name()).into()
     }
 }
@@ -120,7 +120,7 @@ impl ToTui for RequestRecipe {
 impl ToTui for Notification {
     type Output<'this> = Span<'this> where Self: 'this;
 
-    fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
         format!(
             "[{}] {}",
             self.timestamp.with_timezone(&Local).format("%H:%M:%S"),
@@ -134,7 +134,7 @@ impl ToTui for Notification {
 impl ToTui for DateTime<Utc> {
     type Output<'this> = Span<'this> where Self: 'this;
 
-    fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
         self.with_timezone(&Local)
             .format("%b %e %H:%M:%S")
             .to_string()
@@ -146,7 +146,7 @@ impl ToTui for Duration {
     /// 'static because string is generated
     type Output<'this> = Span<'static>;
 
-    fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
         let ms = self.num_milliseconds();
         if ms < 1000 {
             format!("{ms}ms").into()
@@ -159,7 +159,7 @@ impl ToTui for Duration {
 impl ToTui for Option<Duration> {
     type Output<'this> = Span<'this> where Self: 'this;
 
-    fn to_tui(&self, context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, context: &DrawContext) -> Self::Output<'_> {
         match self {
             Some(duration) => duration.to_tui(context),
             // For incomplete requests typically
@@ -171,7 +171,7 @@ impl ToTui for Option<Duration> {
 impl<K: Display, V: Display> ToTui for IndexMap<K, V> {
     type Output<'this> = Text<'this> where Self: 'this;
 
-    fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
         self.iter()
             .map(|(key, value)| format!("{key} = {value}").into())
             .collect::<Vec<Line>>()
@@ -183,7 +183,7 @@ impl ToTui for HeaderMap {
     /// 'static because string is generated
     type Output<'this> = Text<'static>;
 
-    fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
         self.iter()
             .map(|(key, value)| {
                 format!(
@@ -201,7 +201,7 @@ impl ToTui for anyhow::Error {
     /// 'static because string is generated
     type Output<'this> = Text<'static>;
 
-    fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
         self.chain()
             .enumerate()
             .map(|(i, err)| {
@@ -216,7 +216,7 @@ impl ToTui for anyhow::Error {
 impl ToTui for RequestBuildError {
     type Output<'this> = Text<'static>;
 
-    fn to_tui(&self, context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, context: &DrawContext) -> Self::Output<'_> {
         // Defer to the underlying anyhow error
         self.error.to_tui(context)
     }
@@ -225,7 +225,7 @@ impl ToTui for RequestBuildError {
 impl ToTui for RequestError {
     type Output<'this> = Text<'static>;
 
-    fn to_tui(&self, _context: &RenderContext) -> Self::Output<'_> {
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
         self.error.to_string().into()
     }
 }

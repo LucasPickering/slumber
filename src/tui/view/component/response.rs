@@ -7,7 +7,7 @@ use crate::tui::{
         },
         state::{FixedSelect, RequestState, StatefulSelect},
         util::{layout, BlockBrick, TabBrick, ToTui},
-        Frame, RenderContext,
+        DrawContext,
     },
 };
 use derive_more::Display;
@@ -75,9 +75,9 @@ impl Component for ResponsePane {
 impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
     fn draw(
         &self,
-        context: &RenderContext,
+        context: &mut DrawContext,
         props: ResponsePaneProps<'a>,
-        frame: &mut Frame,
+
         chunk: Rect,
     ) {
         // Render outermost block
@@ -88,7 +88,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
         };
         let block = block.to_tui(context);
         let inner_chunk = block.inner(chunk);
-        frame.render_widget(block, chunk);
+        context.frame.render_widget(block, chunk);
 
         // Don't render anything else unless we have a request state
         if let Some(request_state) = props.active_request {
@@ -108,7 +108,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
             if let (Some(start_time), Some(duration)) =
                 (request_state.start_time(), request_state.duration())
             {
-                frame.render_widget(
+                context.frame.render_widget(
                     Paragraph::new(Line::from(vec![
                         start_time.to_tui(context),
                         " / ".into(),
@@ -121,7 +121,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 
             match &request_state {
                 RequestState::Building { .. } => {
-                    frame.render_widget(
+                    context.frame.render_widget(
                         Paragraph::new("Initializing request..."),
                         header_left_chunk,
                     );
@@ -129,7 +129,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 
                 // :(
                 RequestState::BuildError { error } => {
-                    frame.render_widget(
+                    context.frame.render_widget(
                         Paragraph::new(error.to_tui(context))
                             .wrap(Wrap::default()),
                         content_chunk,
@@ -137,7 +137,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 }
 
                 RequestState::Loading { .. } => {
-                    frame.render_widget(
+                    context.frame.render_widget(
                         Paragraph::new("Loading..."),
                         header_left_chunk,
                     );
@@ -149,7 +149,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 } => {
                     let response = &record.response;
                     // Status code
-                    frame.render_widget(
+                    context.frame.render_widget(
                         Paragraph::new(response.status.to_string()),
                         header_left_chunk,
                     );
@@ -163,7 +163,9 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 
                     // Navigation tabs
                     let tabs = TabBrick { tabs: &self.tabs };
-                    frame.render_widget(tabs.to_tui(context), tabs_chunk);
+                    context
+                        .frame
+                        .render_widget(tabs.to_tui(context), tabs_chunk);
 
                     // Main content for the response
                     match self.tabs.selected() {
@@ -171,13 +173,13 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                             let body = pretty_body
                                 .as_deref()
                                 .unwrap_or(response.body.text());
-                            frame.render_widget(
+                            context.frame.render_widget(
                                 Paragraph::new(body),
                                 content_chunk,
                             );
                         }
                         ResponseTab::Headers => {
-                            frame.render_widget(
+                            context.frame.render_widget(
                                 Paragraph::new(
                                     response.headers.to_tui(context),
                                 ),
@@ -189,7 +191,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 
                 // Sadge
                 RequestState::RequestError { error } => {
-                    frame.render_widget(
+                    context.frame.render_widget(
                         Paragraph::new(error.to_tui(context))
                             .wrap(Wrap::default()),
                         content_chunk,

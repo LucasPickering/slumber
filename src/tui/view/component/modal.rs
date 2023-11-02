@@ -1,13 +1,15 @@
 use crate::tui::{
     input::Action,
     view::{
-        component::{Component, Draw, Event, UpdateContext, UpdateOutcome},
+        component::{
+            Component, Draw, DrawContext, Event, UpdateContext, UpdateOutcome,
+        },
         util::centered_rect,
     },
 };
 use derive_more::Display;
 use ratatui::{
-    prelude::Constraint,
+    prelude::{Constraint, Rect},
     widgets::{Block, BorderType, Borders, Clear},
 };
 use std::{collections::VecDeque, ops::DerefMut};
@@ -138,13 +140,7 @@ impl Component for ModalQueue {
 }
 
 impl Draw for ModalQueue {
-    fn draw(
-        &self,
-        context: &crate::tui::view::RenderContext,
-        _: (),
-        frame: &mut crate::tui::view::Frame,
-        chunk: ratatui::prelude::Rect,
-    ) {
+    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
         if let Some(modal) = self.queue.front() {
             let (x, y) = modal.dimensions();
             let chunk = centered_rect(x, y, chunk);
@@ -155,11 +151,11 @@ impl Draw for ModalQueue {
             let inner_chunk = block.inner(chunk);
 
             // Draw the outline of the modal
-            frame.render_widget(Clear, chunk);
-            frame.render_widget(block, chunk);
+            context.frame.render_widget(Clear, chunk);
+            context.frame.render_widget(block, chunk);
 
             // Render the actual content
-            modal.draw(context, (), frame, inner_chunk);
+            modal.draw(context, (), inner_chunk);
         }
     }
 }

@@ -14,7 +14,7 @@ use crate::{
             },
             state::RequestState,
             util::layout,
-            Frame, RenderContext,
+            DrawContext,
         },
     },
 };
@@ -173,13 +173,7 @@ impl Component for Root {
 }
 
 impl Draw for Root {
-    fn draw(
-        &self,
-        context: &RenderContext,
-        _: (),
-        frame: &mut Frame,
-        chunk: Rect,
-    ) {
+    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
         // Create layout
         let [main_chunk, footer_chunk] = layout(
             chunk,
@@ -194,7 +188,6 @@ impl Draw for Root {
                 PrimaryViewProps {
                     active_request: self.active_request(),
                 },
-                frame,
                 main_chunk,
             ),
             Some(FullscreenMode::Request) => {
@@ -204,7 +197,6 @@ impl Draw for Root {
                         is_selected: false,
                         selected_recipe: self.primary_view.selected_recipe(),
                     },
-                    frame,
                     main_chunk,
                 );
             }
@@ -215,7 +207,6 @@ impl Draw for Root {
                         is_selected: false,
                         active_request: self.active_request(),
                     },
-                    frame,
                     main_chunk,
                 );
             }
@@ -224,7 +215,7 @@ impl Draw for Root {
         // Footer
         match &self.notification_text {
             Some(notification_text) => {
-                notification_text.draw(context, (), frame, footer_chunk)
+                notification_text.draw(context, (), footer_chunk)
             }
             None => HelpText.draw(
                 context,
@@ -233,12 +224,11 @@ impl Draw for Root {
                     fullscreen_mode: self.fullscreen_mode,
                     selected_pane: self.primary_view.selected_pane(),
                 },
-                frame,
                 footer_chunk,
             ),
         }
 
         // Render modals last so they go on top
-        self.modal_queue.draw(context, (), frame, frame.size());
+        self.modal_queue.draw(context, (), context.frame.size());
     }
 }

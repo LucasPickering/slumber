@@ -13,7 +13,7 @@ use crate::{
             },
             state::{FixedSelect, RequestState, StatefulList, StatefulSelect},
             util::{layout, BlockBrick, ListBrick, ToTui},
-            Frame, RenderContext,
+            DrawContext,
         },
     },
 };
@@ -164,9 +164,8 @@ impl Component for PrimaryView {
 impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
     fn draw(
         &self,
-        context: &RenderContext,
+        context: &mut DrawContext,
         props: PrimaryViewProps<'a>,
-        frame: &mut Frame,
         chunk: Rect,
     ) {
         // Split the main pane horizontally
@@ -197,7 +196,6 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
             ListPaneProps {
                 is_selected: panes.is_selected(&PrimaryPane::ProfileList),
             },
-            frame,
             profiles_chunk,
         );
         self.recipe_list_pane.draw(
@@ -205,7 +203,6 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
             ListPaneProps {
                 is_selected: panes.is_selected(&PrimaryPane::RecipeList),
             },
-            frame,
             recipes_chunk,
         );
         self.request_pane.draw(
@@ -214,7 +211,6 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 is_selected: panes.is_selected(&PrimaryPane::Request),
                 selected_recipe: self.selected_recipe(),
             },
-            frame,
             request_chunk,
         );
         self.response_pane.draw(
@@ -223,7 +219,6 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 is_selected: panes.is_selected(&PrimaryPane::Response),
                 active_request: props.active_request,
             },
-            frame,
             response_chunk,
         );
     }
@@ -276,9 +271,8 @@ impl Component for ProfileListPane {
 impl Draw<ListPaneProps> for ProfileListPane {
     fn draw(
         &self,
-        context: &RenderContext,
+        context: &mut DrawContext,
         props: ListPaneProps,
-        frame: &mut Frame,
         chunk: Rect,
     ) {
         let list = ListBrick {
@@ -288,7 +282,7 @@ impl Draw<ListPaneProps> for ProfileListPane {
             },
             list: &self.profiles,
         };
-        frame.render_stateful_widget(
+        context.frame.render_stateful_widget(
             list.to_tui(context),
             chunk,
             &mut self.profiles.state_mut(),
@@ -356,9 +350,8 @@ impl Component for RecipeListPane {
 impl Draw<ListPaneProps> for RecipeListPane {
     fn draw(
         &self,
-        context: &RenderContext,
+        context: &mut DrawContext,
         props: ListPaneProps,
-        frame: &mut Frame,
         chunk: Rect,
     ) {
         let pane_kind = PrimaryPane::RecipeList;
@@ -369,7 +362,7 @@ impl Draw<ListPaneProps> for RecipeListPane {
             },
             list: &self.recipes,
         };
-        frame.render_stateful_widget(
+        context.frame.render_stateful_widget(
             list.to_tui(context),
             chunk,
             &mut self.recipes.state_mut(),

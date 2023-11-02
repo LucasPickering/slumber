@@ -12,7 +12,7 @@ use crate::{
             },
             state::Notification,
             util::{layout, ButtonBrick, ToTui},
-            Frame, RenderContext,
+            DrawContext,
         },
     },
 };
@@ -58,26 +58,20 @@ impl Component for ErrorModal {
 }
 
 impl Draw for ErrorModal {
-    fn draw(
-        &self,
-        context: &RenderContext,
-        _: (),
-        frame: &mut Frame,
-        chunk: Rect,
-    ) {
+    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
         let [content_chunk, footer_chunk] = layout(
             chunk,
             Direction::Vertical,
             [Constraint::Min(0), Constraint::Length(1)],
         );
 
-        frame.render_widget(
+        context.frame.render_widget(
             Paragraph::new(self.0.to_tui(context)).wrap(Wrap::default()),
             content_chunk,
         );
 
         // Prompt the user to get out of here
-        frame.render_widget(
+        context.frame.render_widget(
             Paragraph::new(
                 ButtonBrick {
                     text: "OK",
@@ -181,14 +175,8 @@ impl Component for PromptModal {
 }
 
 impl Draw for PromptModal {
-    fn draw(
-        &self,
-        _context: &RenderContext,
-        _: (),
-        frame: &mut Frame,
-        chunk: Rect,
-    ) {
-        frame.render_widget(self.text_area.widget(), chunk);
+    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+        context.frame.render_widget(self.text_area.widget(), chunk);
     }
 }
 
@@ -213,9 +201,8 @@ pub struct HelpTextProps {
 impl Draw<HelpTextProps> for HelpText {
     fn draw(
         &self,
-        context: &RenderContext,
+        context: &mut DrawContext,
         props: HelpTextProps,
-        frame: &mut Frame,
         chunk: Rect,
     ) {
         // Decide which actions to show based on context. This is definitely
@@ -255,7 +242,7 @@ impl Draw<HelpTextProps> for HelpText {
                     .unwrap_or_else(|| "???".into())
             })
             .join(" / ");
-        frame.render_widget(Paragraph::new(text), chunk);
+        context.frame.render_widget(Paragraph::new(text), chunk);
     }
 }
 
@@ -271,14 +258,8 @@ impl NotificationText {
 }
 
 impl Draw for NotificationText {
-    fn draw(
-        &self,
-        context: &RenderContext,
-        _: (),
-        frame: &mut Frame,
-        chunk: Rect,
-    ) {
-        frame.render_widget(
+    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+        context.frame.render_widget(
             Paragraph::new(self.notification.to_tui(context)),
             chunk,
         );

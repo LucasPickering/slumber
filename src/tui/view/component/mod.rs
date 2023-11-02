@@ -92,20 +92,18 @@ impl UpdateContext {
 /// attaching a lifetime to the associated type makes using this in a trait
 /// object very difficult (maybe impossible?). This is an easy shortcut.
 pub trait Draw<Props = ()> {
-    fn draw(
-        &self,
-        context: &RenderContext,
-        props: Props,
-        frame: &mut Frame,
-        chunk: Rect,
-    );
+    fn draw(&self, context: &mut DrawContext, props: Props, chunk: Rect);
 }
 
-/// Global readonly data that various components need during rendering
+/// Global data that various components need during rendering. A mutable
+/// reference to this is passed around to give access to the frame, but please
+/// don't modify anything :)
 #[derive(Debug)]
-pub struct RenderContext<'a> {
+pub struct DrawContext<'a, 'f> {
     pub input_engine: &'a InputEngine,
     pub theme: &'a Theme,
+    // TODO refcell?
+    pub frame: &'a mut Frame<'f>,
 }
 
 /// A trigger for state change in the view. Events are handled by

@@ -68,6 +68,10 @@ impl ModalQueue {
         }
     }
 
+    /// Is there a modal open right now?
+    pub fn is_open(&self) -> bool {
+        !self.queue.is_empty()
+    }
     /// Add a new modal, to either the beginning or end of the queue, depending
     /// on priority
     pub fn open(&mut self, modal: Box<dyn Modal>, priority: ModalPriority) {

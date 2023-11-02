@@ -82,6 +82,11 @@ impl PrimaryView {
         self.profile_list_pane.profiles.selected()
     }
 
+    /// Which pane is selected?
+    pub fn selected_pane(&self) -> PrimaryPane {
+        *self.selected_pane.selected()
+    }
+
     /// Expose request pane, for fullscreening
     pub fn request_pane(&self) -> &RequestPane {
         &self.request_pane
@@ -322,7 +327,7 @@ impl Component for RecipeListPane {
 
         match event {
             Event::Input {
-                action: Some(Action::Interact),
+                action: Some(Action::Submit),
                 ..
             } => {
                 // Parent has to be responsible for sending the request because

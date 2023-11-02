@@ -6,6 +6,7 @@ mod primary;
 mod request;
 mod response;
 mod root;
+mod tabs;
 
 pub use modal::{IntoModal, Modal, ModalPriority};
 pub use root::Root;

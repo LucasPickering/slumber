@@ -2,11 +2,11 @@ use crate::tui::{
     input::Action,
     view::{
         component::{
-            primary::PrimaryPane, root::FullscreenMode, Component, Draw, Event,
-            UpdateContext, UpdateOutcome,
+            primary::PrimaryPane, root::FullscreenMode, tabs::Tabs, Component,
+            Draw, Event, UpdateContext, UpdateOutcome,
         },
-        state::{FixedSelect, RequestState, StatefulSelect},
-        util::{layout, BlockBrick, TabBrick, ToTui},
+        state::{FixedSelect, RequestState},
+        util::{layout, BlockBrick, ToTui},
         DrawContext,
     },
 };
@@ -23,7 +23,7 @@ use strum::EnumIter;
 #[derive(Debug, Default, Display)]
 #[display(fmt = "ResponsePane")]
 pub struct ResponsePane {
-    tabs: StatefulSelect<ResponseTab>,
+    tabs: Tabs<Tab>,
 }
 
 pub struct ResponsePaneProps<'a> {
@@ -31,13 +31,16 @@ pub struct ResponsePaneProps<'a> {
     pub active_request: Option<&'a RequestState>,
 }
 
-#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
-enum ResponseTab {
+#[derive(
+    Copy, Clone, Debug, Default, derive_more::Display, EnumIter, PartialEq,
+)]
+enum Tab {
+    #[default]
     Body,
     Headers,
 }
 
-impl FixedSelect for ResponseTab {}
+impl FixedSelect for Tab {}
 
 impl Component for ResponsePane {
     fn update(
@@ -46,29 +49,19 @@ impl Component for ResponsePane {
         event: Event,
     ) -> UpdateOutcome {
         match event {
+            // Enter fullscreen
             Event::Input {
-                action: Some(action),
+                action: Some(Action::Fullscreen),
                 ..
-            } => match action {
-                // Switch tabs
-                Action::Left => {
-                    self.tabs.previous();
-                    UpdateOutcome::Consumed
-                }
-                Action::Right => {
-                    self.tabs.next();
-                    UpdateOutcome::Consumed
-                }
-
-                // Enter fullscreen
-                Action::Fullscreen => UpdateOutcome::Propagate(
-                    Event::ToggleFullscreen(FullscreenMode::Response),
-                ),
-
-                _ => UpdateOutcome::Propagate(event),
-            },
+            } => UpdateOutcome::Propagate(Event::ToggleFullscreen(
+                FullscreenMode::Response,
+            )),
             _ => UpdateOutcome::Propagate(event),
         }
+    }
+
+    fn focused_child(&mut self) -> Option<&mut dyn Component> {
+        Some(&mut self.tabs)
     }
 }
 
@@ -162,14 +155,11 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                     );
 
                     // Navigation tabs
-                    let tabs = TabBrick { tabs: &self.tabs };
-                    context
-                        .frame
-                        .render_widget(tabs.to_tui(context), tabs_chunk);
+                    self.tabs.draw(context, (), tabs_chunk);
 
                     // Main content for the response
                     match self.tabs.selected() {
-                        ResponseTab::Body => {
+                        Tab::Body => {
                             let body = pretty_body
                                 .as_deref()
                                 .unwrap_or(response.body.text());
@@ -178,7 +168,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                                 content_chunk,
                             );
                         }
-                        ResponseTab::Headers => {
+                        Tab::Headers => {
                             context.frame.render_widget(
                                 Paragraph::new(
                                     response.headers.to_tui(context),

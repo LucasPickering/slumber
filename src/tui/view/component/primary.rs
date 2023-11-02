@@ -40,19 +40,20 @@ pub struct PrimaryViewProps<'a> {
 }
 
 /// Selectable panes in the primary view mode
-#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter, PartialEq)]
+#[derive(
+    Copy, Clone, Debug, Default, derive_more::Display, EnumIter, PartialEq,
+)]
 pub enum PrimaryPane {
     #[display(fmt = "Profiles")]
     ProfileList,
+    #[default]
     #[display(fmt = "Recipes")]
     RecipeList,
     Request,
     Response,
 }
 
-impl FixedSelect for PrimaryPane {
-    const DEFAULT_INDEX: usize = 1;
-}
+impl FixedSelect for PrimaryPane {}
 
 impl PrimaryView {
     pub fn new(collection: &RequestCollection) -> Self {
@@ -84,7 +85,7 @@ impl PrimaryView {
 
     /// Which pane is selected?
     pub fn selected_pane(&self) -> PrimaryPane {
-        *self.selected_pane.selected()
+        self.selected_pane.selected()
     }
 
     /// Expose request pane, for fullscreening

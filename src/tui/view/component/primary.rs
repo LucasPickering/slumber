@@ -9,7 +9,7 @@ use crate::{
             component::{
                 request::{RequestPane, RequestPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
-                Component, Draw, Event, UpdateContext, UpdateOutcome,
+                Component, Draw, Event, Update, UpdateContext,
             },
             state::{FixedSelect, RequestState, StatefulList, StatefulSelect},
             util::{layout, BlockBrick, ListBrick, ToTui},
@@ -110,11 +110,7 @@ impl PrimaryView {
 }
 
 impl Component for PrimaryView {
-    fn update(
-        &mut self,
-        context: &mut UpdateContext,
-        event: Event,
-    ) -> UpdateOutcome {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Send HTTP request (bubbled up from child)
             Event::HttpSendRequest => {
@@ -127,7 +123,7 @@ impl Component for PrimaryView {
                             .map(|profile| profile.id.clone()),
                     });
                 }
-                UpdateOutcome::Consumed
+                Update::Consumed
             }
 
             // Input messages
@@ -136,17 +132,17 @@ impl Component for PrimaryView {
                 ..
             } => {
                 self.selected_pane.previous();
-                UpdateOutcome::Consumed
+                Update::Consumed
             }
             Event::Input {
                 action: Some(Action::NextPane),
                 ..
             } => {
                 self.selected_pane.next();
-                UpdateOutcome::Consumed
+                Update::Consumed
             }
 
-            _ => UpdateOutcome::Propagate(event),
+            _ => Update::Propagate(event),
         }
     }
 
@@ -244,27 +240,23 @@ impl ProfileListPane {
 }
 
 impl Component for ProfileListPane {
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> UpdateOutcome {
+    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::Up),
                 ..
             } => {
                 self.profiles.previous();
-                UpdateOutcome::Consumed
+                Update::Consumed
             }
             Event::Input {
                 action: Some(Action::Down),
                 ..
             } => {
                 self.profiles.next();
-                UpdateOutcome::Consumed
+                Update::Consumed
             }
-            _ => UpdateOutcome::Propagate(event),
+            _ => Update::Propagate(event),
         }
     }
 }
@@ -306,18 +298,14 @@ impl RecipeListPane {
 }
 
 impl Component for RecipeListPane {
-    fn update(
-        &mut self,
-        context: &mut UpdateContext,
-        event: Event,
-    ) -> UpdateOutcome {
-        let mut load_from_repo = |pane: &RecipeListPane| -> UpdateOutcome {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+        let mut load_from_repo = |pane: &RecipeListPane| -> Update {
             if let Some(recipe) = pane.recipes.selected() {
                 context.send_message(Message::RepositoryStartLoad {
                     recipe_id: recipe.id.clone(),
                 });
             }
-            UpdateOutcome::Consumed
+            Update::Consumed
         };
 
         match event {
@@ -327,7 +315,8 @@ impl Component for RecipeListPane {
             } => {
                 // Parent has to be responsible for sending the request because
                 // it also needs access to the profile list state
-                UpdateOutcome::Propagate(Event::HttpSendRequest)
+                context.queue_event(Event::HttpSendRequest);
+                Update::Consumed
             }
             Event::Input {
                 action: Some(Action::Up),
@@ -343,7 +332,7 @@ impl Component for RecipeListPane {
                 self.recipes.next();
                 load_from_repo(self)
             }
-            _ => UpdateOutcome::Propagate(event),
+            _ => Update::Propagate(event),
         }
     }
 }

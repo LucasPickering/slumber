@@ -6,6 +6,8 @@ pub struct Theme {
     pub pane_border_style: Style,
     pub pane_border_focus_style: Style,
     pub text_highlight_style: Style,
+    /// Style for line numbers on large text areas
+    pub line_number_style: Style,
     pub list_highlight_symbol: &'static str,
 }
 
@@ -30,6 +32,7 @@ impl Default for Theme {
                 .bg(Color::LightGreen)
                 .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
+            line_number_style: Style::default(),
             list_highlight_symbol: ">> ",
         }
     }

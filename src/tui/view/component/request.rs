@@ -1,5 +1,5 @@
 use crate::{
-    config::RequestRecipe,
+    config::{RequestRecipe, RequestRecipeId},
     tui::{
         input::Action,
         view::{
@@ -8,7 +8,7 @@ use crate::{
                 root::FullscreenMode,
                 tabs::Tabs,
                 text_window::{TextWindow, TextWindowProps},
-                Component, Draw, Event, UpdateContext, UpdateOutcome,
+                Component, Draw, Event, Update, UpdateContext,
             },
             state::FixedSelect,
             util::{layout, BlockBrick, ToTui},
@@ -19,7 +19,6 @@ use crate::{
 use derive_more::Display;
 use ratatui::{
     prelude::{Constraint, Direction, Rect},
-    text::Text,
     widgets::Paragraph,
 };
 use strum::EnumIter;
@@ -29,7 +28,7 @@ use strum::EnumIter;
 #[display(fmt = "RequestPane")]
 pub struct RequestPane {
     tabs: Tabs<Tab>,
-    text_window: TextWindow,
+    text_window: TextWindow<RequestRecipeId>,
 }
 
 pub struct RequestPaneProps<'a> {
@@ -37,9 +36,7 @@ pub struct RequestPaneProps<'a> {
     pub selected_recipe: Option<&'a RequestRecipe>,
 }
 
-#[derive(
-    Copy, Clone, Debug, Default, derive_more::Display, EnumIter, PartialEq,
-)]
+#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
 enum Tab {
     #[default]
     Body,
@@ -50,27 +47,20 @@ enum Tab {
 impl FixedSelect for Tab {}
 
 impl Component for RequestPane {
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> UpdateOutcome {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Toggle fullscreen
             Event::Input {
                 action: Some(Action::Fullscreen),
                 ..
-            } => UpdateOutcome::Propagate(Event::ToggleFullscreen(
-                FullscreenMode::Request,
-            )),
-
-            // Reset content state when tab changes
-            Event::TabChanged => {
-                self.text_window.reset();
-                UpdateOutcome::Consumed
+            } => {
+                context.queue_event(Event::ToggleFullscreen(
+                    FullscreenMode::Request,
+                ));
+                Update::Consumed
             }
 
-            _ => UpdateOutcome::Propagate(event),
+            _ => Update::Propagate(event),
         }
     }
 
@@ -118,18 +108,27 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             self.tabs.draw(context, (), tabs_chunk);
 
             // Request content
-            let text: Text = match self.tabs.selected() {
+            match self.tabs.selected() {
                 Tab::Body => {
-                    recipe.body.as_deref().map(Text::from).unwrap_or_default()
+                    let text = recipe.body.as_deref().unwrap_or_default();
+                    self.text_window.draw(
+                        context,
+                        TextWindowProps {
+                            key: &recipe.id,
+                            text,
+                        },
+                        content_chunk,
+                    );
                 }
-                Tab::Query => recipe.query.to_tui(context),
-                Tab::Headers => recipe.headers.to_tui(context),
-            };
-            self.text_window.draw(
-                context,
-                TextWindowProps { text },
-                content_chunk,
-            );
+                Tab::Query => context.frame.render_widget(
+                    Paragraph::new(recipe.query.to_tui(context)),
+                    content_chunk,
+                ),
+                Tab::Headers => context.frame.render_widget(
+                    Paragraph::new(recipe.headers.to_tui(context)),
+                    content_chunk,
+                ),
+            }
         }
     }
 }

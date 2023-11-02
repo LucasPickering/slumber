@@ -13,8 +13,8 @@ use crate::{
         message::MessageSender,
         view::{
             component::{
-                Component, Draw, DrawContext, Event, IntoModal, Root,
-                UpdateContext, UpdateOutcome,
+                Component, Draw, DrawContext, Event, IntoModal, Root, Update,
+                UpdateContext,
             },
             state::Notification,
             theme::Theme,
@@ -22,14 +22,14 @@ use crate::{
     },
 };
 use ratatui::Frame;
-use std::fmt::Debug;
+use std::{collections::VecDeque, fmt::Debug};
 use tracing::{error, trace, trace_span};
 
 /// Primary entrypoint for the view. This contains the main draw functions, as
 /// well as bindings for externally modifying the view state. We use a component
 /// architecture based on React, meaning the view is responsible for managing
 /// its own state. Certain global state (e.g. the request repository) is managed
-/// by the controll and exposed via message passing.
+/// by the controller and exposed via event passing.
 #[derive(Debug)]
 pub struct View {
     messages_tx: MessageSender,
@@ -115,24 +115,28 @@ impl View {
     /// Process a view event by passing it to the root component and letting
     /// it pass it down the tree
     fn handle_event(&mut self, event: Event) {
-        let span = trace_span!("View event", ?event);
-        span.in_scope(|| {
-            let mut context = self.update_context();
-            match Self::update_all(&mut self.root, &mut context, event) {
-                UpdateOutcome::Consumed => {
-                    trace!("View event consumed")
-                }
-                // Consumer didn't eat the event - huh?
-                UpdateOutcome::Propagate(_) => {
-                    error!("View event was unhandled");
-                }
-            }
-        });
-    }
+        let mut event_queue: VecDeque<Event> = [event].into();
 
-    /// Context object passed to each update call
-    fn update_context(&self) -> UpdateContext {
-        UpdateContext::new(self.messages_tx.clone())
+        // Each event being handled could potentially queue more. Keep going
+        // until the queue is drained
+        while let Some(event) = event_queue.pop_front() {
+            let span = trace_span!("View event", ?event);
+            span.in_scope(|| {
+                let mut context = UpdateContext::new(
+                    self.messages_tx.clone(),
+                    &mut event_queue,
+                );
+                match Self::update_all(&mut self.root, &mut context, event) {
+                    Update::Consumed => {
+                        trace!("View event consumed")
+                    }
+                    // Consumer didn't eat the event - huh?
+                    Update::Propagate(_) => {
+                        error!("View event was unhandled");
+                    }
+                }
+            });
+        }
     }
 
     /// Update the state of a component *and* its children, starting at the
@@ -142,18 +146,20 @@ impl View {
         component: &mut dyn Component,
         context: &mut UpdateContext,
         mut event: Event,
-    ) -> UpdateOutcome {
+    ) -> Update {
         // If we have a child, send them the event. If not, eat it ourselves
         for child in component.children() {
             let outcome = Self::update_all(child, context, event); // RECURSION
-            if let UpdateOutcome::Propagate(returned) = outcome {
-                // Keep going to the next child. It's possible the child
-                // returned something other than the original event, which
-                // we'll just pass along anyway.
-                event = returned;
-            } else {
-                trace!(%child, "View event consumed");
-                return outcome;
+            match outcome {
+                Update::Propagate(returned) => {
+                    // Keep going to the next child. It's possible the child
+                    // returned something other than the original event, which
+                    // we'll just pass along anyway.
+                    event = returned;
+                }
+                Update::Consumed => {
+                    return outcome;
+                }
             }
         }
 

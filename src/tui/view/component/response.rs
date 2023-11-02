@@ -1,22 +1,25 @@
-use crate::tui::{
-    input::Action,
-    view::{
-        component::{
-            primary::PrimaryPane,
-            root::FullscreenMode,
-            tabs::Tabs,
-            text_window::{TextWindow, TextWindowProps},
-            Component, Draw, Event, UpdateContext, UpdateOutcome,
+use crate::{
+    http::RequestId,
+    tui::{
+        input::Action,
+        view::{
+            component::{
+                primary::PrimaryPane,
+                root::FullscreenMode,
+                tabs::Tabs,
+                text_window::{TextWindow, TextWindowProps},
+                Component, Draw, Event, Update, UpdateContext,
+            },
+            state::{FixedSelect, RequestState},
+            util::{layout, BlockBrick, ToTui},
+            DrawContext,
         },
-        state::{FixedSelect, RequestState},
-        util::{layout, BlockBrick, ToTui},
-        DrawContext,
     },
 };
 use derive_more::Display;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
-    text::{Line, Text},
+    text::Line,
     widgets::{Paragraph, Wrap},
 };
 use strum::EnumIter;
@@ -27,7 +30,7 @@ use strum::EnumIter;
 #[display(fmt = "ResponsePane")]
 pub struct ResponsePane {
     tabs: Tabs<Tab>,
-    text_window: TextWindow,
+    text_window: TextWindow<RequestId>,
 }
 
 pub struct ResponsePaneProps<'a> {
@@ -35,9 +38,7 @@ pub struct ResponsePaneProps<'a> {
     pub active_request: Option<&'a RequestState>,
 }
 
-#[derive(
-    Copy, Clone, Debug, Default, derive_more::Display, EnumIter, PartialEq,
-)]
+#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
 enum Tab {
     #[default]
     Body,
@@ -47,27 +48,20 @@ enum Tab {
 impl FixedSelect for Tab {}
 
 impl Component for ResponsePane {
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> UpdateOutcome {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Toggle fullscreen
             Event::Input {
                 action: Some(Action::Fullscreen),
                 ..
-            } => UpdateOutcome::Propagate(Event::ToggleFullscreen(
-                FullscreenMode::Response,
-            )),
-
-            // Reset content state when tab changes
-            Event::TabChanged => {
-                self.text_window.reset();
-                UpdateOutcome::Consumed
+            } => {
+                context.queue_event(Event::ToggleFullscreen(
+                    FullscreenMode::Response,
+                ));
+                Update::Consumed
             }
 
-            _ => UpdateOutcome::Propagate(event),
+            _ => Update::Propagate(event),
         }
     }
 
@@ -168,18 +162,24 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                     self.tabs.draw(context, (), tabs_chunk);
 
                     // Main content for the response
-                    let text: Text = match self.tabs.selected() {
-                        Tab::Body => pretty_body
-                            .as_deref()
-                            .unwrap_or(response.body.text())
-                            .into(),
-                        Tab::Headers => response.headers.to_tui(context),
-                    };
-                    self.text_window.draw(
-                        context,
-                        TextWindowProps { text },
-                        content_chunk,
-                    );
+                    match self.tabs.selected() {
+                        Tab::Body => self.text_window.draw(
+                            context,
+                            TextWindowProps {
+                                key: &record.id,
+                                // Use the pretty body if available. If not,
+                                // fall back to the ugly one
+                                text: pretty_body
+                                    .as_deref()
+                                    .unwrap_or(response.body.text()),
+                            },
+                            content_chunk,
+                        ),
+                        Tab::Headers => context.frame.render_widget(
+                            Paragraph::new(response.headers.to_tui(context)),
+                            content_chunk,
+                        ),
+                    }
                 }
 
                 // Sadge

@@ -2,7 +2,7 @@ use crate::tui::{
     input::Action,
     view::{
         component::{
-            Component, Draw, DrawContext, Event, UpdateContext, UpdateOutcome,
+            Component, Draw, DrawContext, Event, Update, UpdateContext,
         },
         state::{FixedSelect, StatefulSelect},
     },
@@ -25,35 +25,24 @@ impl<T: FixedSelect> Tabs<T> {
 }
 
 impl<T: Debug + FixedSelect> Component for Tabs<T> {
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> UpdateOutcome {
+    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(action),
                 ..
             } => match action {
-                // Propagate TabChanged event if appropriate
                 Action::Left => {
-                    if self.tabs.previous() {
-                        UpdateOutcome::Propagate(Event::TabChanged)
-                    } else {
-                        UpdateOutcome::Consumed
-                    }
+                    self.tabs.previous();
+                    Update::Consumed
                 }
                 Action::Right => {
-                    if self.tabs.next() {
-                        UpdateOutcome::Propagate(Event::TabChanged)
-                    } else {
-                        UpdateOutcome::Consumed
-                    }
+                    self.tabs.next();
+                    Update::Consumed
                 }
 
-                _ => UpdateOutcome::Propagate(event),
+                _ => Update::Propagate(event),
             },
-            _ => UpdateOutcome::Propagate(event),
+            _ => Update::Propagate(event),
         }
     }
 }

@@ -19,19 +19,26 @@ Whichever of those files is found _first_ will be used. If you want to use a dif
 slumber -c my-collection.yml
 ```
 
+## Collection ID
+
+Each collection needs a unique ID (via the `id` field). This ID is used to tie the collection to its history. If the ID of a collection changes, you'll lose the history for it. If two collections share an ID, their request history could start interfering with each other. Make sure each collection used on your computer is unique.
+
 ## Fields
 
 A request collection supports the following top-level fields:
 
-| Field      | Type                                         | Description               | Default |
-| ---------- | -------------------------------------------- | ------------------------- | ------- |
-| `profiles` | [`list[Profile]`](./profile.md)              | Static template values    | []      |
-| `requests` | [`list[RequestRecipe]`](./request_recipe.md) | Requests Slumber can send | []      |
-| `chains`   | [`list[Chain]`](./chain.md)                  | Complex template values   | []      |
+| Field      | Type                                         | Description                   | Default  |
+| ---------- | -------------------------------------------- | ----------------------------- | -------- |
+| `id`       | `string`                                     | Unique ID for this collection | Required |
+| `profiles` | [`list[Profile]`](./profile.md)              | Static template values        | []       |
+| `requests` | [`list[RequestRecipe]`](./request_recipe.md) | Requests Slumber can send     | []       |
+| `chains`   | [`list[Chain]`](./chain.md)                  | Complex template values       | []       |
 
 ## Examples
 
 ```yaml
+id: example
+
 profiles:
   - id: local
     name: Local

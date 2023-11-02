@@ -31,6 +31,9 @@ pub struct RequestCollection<S = PathBuf> {
     #[serde(skip)]
     source: S,
 
+    /// Unique ID for this collection. This should be unique for across all
+    /// collections used on one computer.
+    pub id: CollectionId,
     #[serde(default)]
     pub profiles: Vec<Profile>,
     #[serde(default)]
@@ -40,6 +43,11 @@ pub struct RequestCollection<S = PathBuf> {
     #[serde(default, rename = "requests")]
     pub recipes: Vec<RequestRecipe>,
 }
+
+/// A unique ID for a collection. This is necessary to differentiate between
+/// responses from different collections in the repository.
+#[derive(Clone, Debug, Display, From, Serialize, Deserialize)]
+pub struct CollectionId(String);
 
 /// Mutually exclusive hot-swappable config group
 #[derive(Clone, Debug, Serialize, Deserialize)]

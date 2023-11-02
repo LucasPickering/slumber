@@ -3,7 +3,7 @@
 //! caching and other ephemeral data (e.g. prettified content).
 
 use crate::{
-    config::RequestRecipeId,
+    config::{CollectionId, RequestRecipeId},
     http::{Request, RequestId, RequestRecord, Response},
     util::{data_directory, ResultExt},
 };
@@ -47,8 +47,10 @@ pub struct Repository {
 impl Repository {
     /// Load the repository database. This will perform first-time setup, so
     /// this should only be called at the main session entrypoint.
-    pub fn load() -> anyhow::Result<Self> {
-        let mut connection = Connection::open(Self::path())?;
+    ///
+    /// Each collection gets its own
+    pub fn load(collection_id: &CollectionId) -> anyhow::Result<Self> {
+        let mut connection = Connection::open(Self::path(collection_id))?;
         // Use WAL for concurrency
         connection.pragma_update(None, "journal_mode", "WAL")?;
         Self::setup(&mut connection)?;
@@ -58,8 +60,8 @@ impl Repository {
     }
 
     /// Path to the repository database file
-    fn path() -> PathBuf {
-        data_directory().join("repository.sqlite")
+    fn path(collection_id: &CollectionId) -> PathBuf {
+        data_directory().join(format!("{collection_id}.sqlite"))
     }
 
     /// Apply first-time setup

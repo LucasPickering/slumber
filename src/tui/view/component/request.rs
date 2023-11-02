@@ -9,7 +9,7 @@ use crate::{
             },
             state::{FixedSelect, StatefulSelect},
             util::{layout, BlockBrick, TabBrick, ToTui},
-            Frame, RenderContext,
+            DrawContext,
         },
     },
 };
@@ -76,9 +76,8 @@ impl Component for RequestPane {
 impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
     fn draw(
         &self,
-        context: &RenderContext,
+        context: &mut DrawContext,
         props: RequestPaneProps<'a>,
-        frame: &mut Frame,
         chunk: Rect,
     ) {
         // Render outermost block
@@ -89,7 +88,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
         };
         let block = block.to_tui(context);
         let inner_chunk = block.inner(chunk);
-        frame.render_widget(block, chunk);
+        context.frame.render_widget(block, chunk);
 
         // Render request contents
         if let Some(recipe) = props.selected_recipe {
@@ -104,31 +103,34 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             );
 
             // URL
-            frame.render_widget(
+            context.frame.render_widget(
                 Paragraph::new(format!("{} {}", recipe.method, recipe.url)),
                 url_chunk,
             );
 
             // Navigation tabs
             let tabs = TabBrick { tabs: &self.tabs };
-            frame.render_widget(tabs.to_tui(context), tabs_chunk);
+            context
+                .frame
+                .render_widget(tabs.to_tui(context), tabs_chunk);
 
             // Request content
             match self.tabs.selected() {
                 RequestTab::Body => {
                     if let Some(body) = recipe.body.as_deref() {
-                        frame
+                        context
+                            .frame
                             .render_widget(Paragraph::new(body), content_chunk);
                     }
                 }
                 RequestTab::Query => {
-                    frame.render_widget(
+                    context.frame.render_widget(
                         Paragraph::new(recipe.query.to_tui(context)),
                         content_chunk,
                     );
                 }
                 RequestTab::Headers => {
-                    frame.render_widget(
+                    context.frame.render_widget(
                         Paragraph::new(recipe.headers.to_tui(context)),
                         content_chunk,
                     );

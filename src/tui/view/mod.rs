@@ -13,7 +13,7 @@ use crate::{
         message::MessageSender,
         view::{
             component::{
-                Component, Draw, Event, IntoModal, RenderContext, Root,
+                Component, Draw, DrawContext, Event, IntoModal, Root,
                 UpdateContext, UpdateOutcome,
             },
             state::Notification,
@@ -56,15 +56,20 @@ impl View {
 
     /// Draw the view to screen. This needs access to the input engine in order
     /// to render input bindings as help messages to the user.
-    pub fn draw(&self, input_engine: &InputEngine, frame: &mut Frame) {
+    pub fn draw<'a>(
+        &'a self,
+        input_engine: &'a InputEngine,
+        frame: &'a mut Frame,
+    ) {
+        let chunk = frame.size();
         self.root.draw(
-            &RenderContext {
+            &mut DrawContext {
                 input_engine,
                 theme: &self.theme,
+                frame,
             },
             (),
-            frame,
-            frame.size(),
+            chunk,
         )
     }
 

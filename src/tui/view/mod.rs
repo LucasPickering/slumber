@@ -21,11 +21,9 @@ use crate::{
         },
     },
 };
-use ratatui::prelude::*;
-use std::{fmt::Debug, io::Stdout};
+use ratatui::Frame;
+use std::fmt::Debug;
 use tracing::{error, trace, trace_span};
-
-type Frame<'a> = ratatui::Frame<'a, CrosstermBackend<Stdout>>;
 
 /// Primary entrypoint for the view. This contains the main draw functions, as
 /// well as bindings for externally modifying the view state. We use a component

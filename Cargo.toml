@@ -12,35 +12,35 @@ rust-version = "1.72.0"
 
 [dependencies]
 anyhow = {version = "^1.0.75", features = ["backtrace"]}
-async-trait = "0.1.73"
-chrono = {version = "0.4.31", default-features = false, features = ["clock", "serde", "std"]}
-clap = {version = "4.4.2", features = ["derive"]}
-crossterm = "0.27.0"
-derive_more = "0.99.17"
-dialoguer = {version = "0.11.0", default-features = false, features = ["password"]}
-dirs = "5.0.1"
-futures = {version = "0.3.28", default-features = false}
-indexmap = {version = "2.0.1", features = ["serde"]}
-itertools = "0.11.0"
-notify = {version = "6.1.1", default-features = false, features = ["macos_fsevent"]}
-ratatui = "0.23.0"
-regex = "1.9.5"
-reqwest = {version = "0.11.20", default-features = false, features = ["rustls-tls"]}
-rmp-serde = "1.1.2"
-rusqlite = {version = "0.29.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
-rusqlite_migration = "1.0.2"
+async-trait = "^0.1.73"
+chrono = {version = "^0.4.31", default-features = false, features = ["clock", "serde", "std"]}
+clap = {version = "^4.4.2", features = ["derive"]}
+crossterm = "^0.27.0"
+derive_more = "^0.99.17"
+dialoguer = {version = "^0.11.0", default-features = false, features = ["password"]}
+dirs = "^5.0.1"
+futures = "^0.3.28"
+indexmap = {version = "^2.0.1", features = ["serde"]}
+itertools = "^0.11.0"
+notify = {version = "^6.1.1", default-features = false, features = ["macos_fsevent"]}
+ratatui = "^0.24.0"
+regex = "^1.9.5"
+reqwest = {version = "^0.11.20", default-features = false, features = ["rustls-tls"]}
+rmp-serde = "^1.1.2"
+rusqlite = {version = "^0.29.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
+rusqlite_migration = "^1.0.2"
 serde = {version = "^1.0.188", features = ["derive"]}
-serde_json = {version = "1.0.107", default-features = false}
-serde_json_path = "0.6.3"
+serde_json = {version = "^1.0.107", default-features = false}
+serde_json_path = "^0.6.3"
 serde_yaml = {version = "^0.9.25", default-features = false}
-signal-hook = "0.3.17"
-strum = {version = "0.25.0", default-features = false, features = ["derive"]}
-thiserror = "1.0.48"
+signal-hook = "^0.3.17"
+strum = {version = "^0.25.0", default-features = false, features = ["derive"]}
+thiserror = "^1.0.48"
 tokio = {version = "^1.32.0", default-features = false, features = ["full"]}
-tracing = "0.1.37"
-tracing-subscriber = {version = "0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}
-tui-textarea = {version = "0.2.4", default-features = false, features = ["ratatui-crossterm"]}
-uuid = {version = "1.4.1", default-features = false, features = ["serde", "v4"]}
+tracing = "^0.1.37"
+tracing-subscriber = {version = "^0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}
+tui-textarea = "^0.3.0"
+uuid = {version = "^1.4.1", default-features = false, features = ["serde", "v4"]}
 
 [dev-dependencies]
 factori = "1.1.0"

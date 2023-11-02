@@ -32,8 +32,8 @@ impl InputEngine {
                 },
                 InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
                 InputBinding::new(KeyCode::F(11), Action::Fullscreen),
-                InputBinding::new(KeyCode::BackTab, Action::FocusPrevious),
-                InputBinding::new(KeyCode::Tab, Action::FocusNext),
+                InputBinding::new(KeyCode::BackTab, Action::PreviousPane),
+                InputBinding::new(KeyCode::Tab, Action::NextPane),
                 InputBinding::new(KeyCode::Up, Action::Up),
                 InputBinding::new(KeyCode::Down, Action::Down),
                 InputBinding::new(KeyCode::Left, Action::Left),
@@ -94,16 +94,19 @@ pub enum Action {
     /// Reload the request collection from the same file as the initial load
     #[display(fmt = "Reload Collection")]
     ReloadCollection,
-    /// Focus the next pane
-    #[display(fmt = "Next Pane")]
-    FocusNext,
+
     /// Focus the previous pane
     #[display(fmt = "Prev Pane")]
-    FocusPrevious,
+    PreviousPane,
+    /// Focus the next pane
+    #[display(fmt = "Next Pane")]
+    NextPane,
+
     Up,
     Down,
     Left,
     Right,
+
     /// Do a thing. E.g. select an item in a list
     Submit,
     /// Embiggen a pane

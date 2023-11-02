@@ -236,18 +236,22 @@ impl<T: FixedSelect> StatefulSelect<T> {
         &self.selected() == item
     }
 
-    /// Select previous item
-    pub fn previous(&mut self) {
+    /// Select previous item, returning whether the selection changed
+    pub fn previous(&mut self) -> bool {
         // Prevent underflow
+        let old = self.selected_index;
         self.selected_index = self
             .selected_index
             .checked_sub(1)
             .unwrap_or(T::iter().count() - 1);
+        old != self.selected_index
     }
 
-    /// Select next item
-    pub fn next(&mut self) {
+    /// Select next item, returning whether the selection changed
+    pub fn next(&mut self) -> bool {
+        let old = self.selected_index;
         self.selected_index = (self.selected_index + 1) % T::iter().count();
+        old != self.selected_index
     }
 }
 

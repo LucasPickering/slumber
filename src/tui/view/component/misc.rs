@@ -212,7 +212,7 @@ impl Draw<HelpTextProps> for HelpText {
 
         match props.fullscreen_mode {
             None => {
-                actions.extend([Action::FocusNext, Action::FocusPrevious]);
+                actions.extend([Action::NextPane, Action::PreviousPane]);
                 // Pane-specific actions
                 actions.extend(match props.selected_pane {
                     PrimaryPane::ProfileList => [].as_slice(),

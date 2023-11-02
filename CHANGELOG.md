@@ -4,7 +4,7 @@
 
 ### Added
 
-- Request and response panes can now be fullscreened
+- Request and response panes can now be fullscreened and scrolled
 
 ### Removed
 

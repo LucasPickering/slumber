@@ -4,7 +4,10 @@ use crate::{
         input::Action,
         view::{
             component::{
-                primary::PrimaryPane, root::FullscreenMode, tabs::Tabs,
+                primary::PrimaryPane,
+                root::FullscreenMode,
+                tabs::Tabs,
+                text_window::{TextWindow, TextWindowProps},
                 Component, Draw, Event, UpdateContext, UpdateOutcome,
             },
             state::FixedSelect,
@@ -16,6 +19,7 @@ use crate::{
 use derive_more::Display;
 use ratatui::{
     prelude::{Constraint, Direction, Rect},
+    text::Text,
     widgets::Paragraph,
 };
 use strum::EnumIter;
@@ -25,6 +29,7 @@ use strum::EnumIter;
 #[display(fmt = "RequestPane")]
 pub struct RequestPane {
     tabs: Tabs<Tab>,
+    text_window: TextWindow,
 }
 
 pub struct RequestPaneProps<'a> {
@@ -51,18 +56,26 @@ impl Component for RequestPane {
         event: Event,
     ) -> UpdateOutcome {
         match event {
+            // Toggle fullscreen
             Event::Input {
                 action: Some(Action::Fullscreen),
                 ..
             } => UpdateOutcome::Propagate(Event::ToggleFullscreen(
                 FullscreenMode::Request,
             )),
+
+            // Reset content state when tab changes
+            Event::TabChanged => {
+                self.text_window.reset();
+                UpdateOutcome::Consumed
+            }
+
             _ => UpdateOutcome::Propagate(event),
         }
     }
 
-    fn focused_child(&mut self) -> Option<&mut dyn Component> {
-        Some(&mut self.tabs)
+    fn children(&mut self) -> Vec<&mut dyn Component> {
+        vec![&mut self.tabs, &mut self.text_window]
     }
 }
 
@@ -105,27 +118,18 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             self.tabs.draw(context, (), tabs_chunk);
 
             // Request content
-            match self.tabs.selected() {
+            let text: Text = match self.tabs.selected() {
                 Tab::Body => {
-                    if let Some(body) = recipe.body.as_deref() {
-                        context
-                            .frame
-                            .render_widget(Paragraph::new(body), content_chunk);
-                    }
+                    recipe.body.as_deref().map(Text::from).unwrap_or_default()
                 }
-                Tab::Query => {
-                    context.frame.render_widget(
-                        Paragraph::new(recipe.query.to_tui(context)),
-                        content_chunk,
-                    );
-                }
-                Tab::Headers => {
-                    context.frame.render_widget(
-                        Paragraph::new(recipe.headers.to_tui(context)),
-                        content_chunk,
-                    );
-                }
-            }
+                Tab::Query => recipe.query.to_tui(context),
+                Tab::Headers => recipe.headers.to_tui(context),
+            };
+            self.text_window.draw(
+                context,
+                TextWindowProps { text },
+                content_chunk,
+            );
         }
     }
 }

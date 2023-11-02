@@ -2,8 +2,11 @@ use crate::tui::{
     input::Action,
     view::{
         component::{
-            primary::PrimaryPane, root::FullscreenMode, tabs::Tabs, Component,
-            Draw, Event, UpdateContext, UpdateOutcome,
+            primary::PrimaryPane,
+            root::FullscreenMode,
+            tabs::Tabs,
+            text_window::{TextWindow, TextWindowProps},
+            Component, Draw, Event, UpdateContext, UpdateOutcome,
         },
         state::{FixedSelect, RequestState},
         util::{layout, BlockBrick, ToTui},
@@ -13,7 +16,7 @@ use crate::tui::{
 use derive_more::Display;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
-    text::Line,
+    text::{Line, Text},
     widgets::{Paragraph, Wrap},
 };
 use strum::EnumIter;
@@ -24,6 +27,7 @@ use strum::EnumIter;
 #[display(fmt = "ResponsePane")]
 pub struct ResponsePane {
     tabs: Tabs<Tab>,
+    text_window: TextWindow,
 }
 
 pub struct ResponsePaneProps<'a> {
@@ -49,19 +53,26 @@ impl Component for ResponsePane {
         event: Event,
     ) -> UpdateOutcome {
         match event {
-            // Enter fullscreen
+            // Toggle fullscreen
             Event::Input {
                 action: Some(Action::Fullscreen),
                 ..
             } => UpdateOutcome::Propagate(Event::ToggleFullscreen(
                 FullscreenMode::Response,
             )),
+
+            // Reset content state when tab changes
+            Event::TabChanged => {
+                self.text_window.reset();
+                UpdateOutcome::Consumed
+            }
+
             _ => UpdateOutcome::Propagate(event),
         }
     }
 
-    fn focused_child(&mut self) -> Option<&mut dyn Component> {
-        Some(&mut self.tabs)
+    fn children(&mut self) -> Vec<&mut dyn Component> {
+        vec![&mut self.tabs, &mut self.text_window]
     }
 }
 
@@ -70,7 +81,6 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
         &self,
         context: &mut DrawContext,
         props: ResponsePaneProps<'a>,
-
         chunk: Rect,
     ) {
         // Render outermost block
@@ -158,25 +168,18 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                     self.tabs.draw(context, (), tabs_chunk);
 
                     // Main content for the response
-                    match self.tabs.selected() {
-                        Tab::Body => {
-                            let body = pretty_body
-                                .as_deref()
-                                .unwrap_or(response.body.text());
-                            context.frame.render_widget(
-                                Paragraph::new(body),
-                                content_chunk,
-                            );
-                        }
-                        Tab::Headers => {
-                            context.frame.render_widget(
-                                Paragraph::new(
-                                    response.headers.to_tui(context),
-                                ),
-                                content_chunk,
-                            );
-                        }
+                    let text: Text = match self.tabs.selected() {
+                        Tab::Body => pretty_body
+                            .as_deref()
+                            .unwrap_or(response.body.text())
+                            .into(),
+                        Tab::Headers => response.headers.to_tui(context),
                     };
+                    self.text_window.draw(
+                        context,
+                        TextWindowProps { text },
+                        content_chunk,
+                    );
                 }
 
                 // Sadge

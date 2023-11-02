@@ -35,13 +35,20 @@ impl<T: Debug + FixedSelect> Component for Tabs<T> {
                 action: Some(action),
                 ..
             } => match action {
+                // Propagate TabChanged event if appropriate
                 Action::Left => {
-                    self.tabs.previous();
-                    UpdateOutcome::Consumed
+                    if self.tabs.previous() {
+                        UpdateOutcome::Propagate(Event::TabChanged)
+                    } else {
+                        UpdateOutcome::Consumed
+                    }
                 }
                 Action::Right => {
-                    self.tabs.next();
-                    UpdateOutcome::Consumed
+                    if self.tabs.next() {
+                        UpdateOutcome::Propagate(Event::TabChanged)
+                    } else {
+                        UpdateOutcome::Consumed
+                    }
                 }
 
                 _ => UpdateOutcome::Propagate(event),

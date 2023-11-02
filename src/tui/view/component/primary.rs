@@ -132,14 +132,14 @@ impl Component for PrimaryView {
 
             // Input messages
             Event::Input {
-                action: Some(Action::FocusPrevious),
+                action: Some(Action::PreviousPane),
                 ..
             } => {
                 self.selected_pane.previous();
                 UpdateOutcome::Consumed
             }
             Event::Input {
-                action: Some(Action::FocusNext),
+                action: Some(Action::NextPane),
                 ..
             } => {
                 self.selected_pane.next();

@@ -7,6 +7,7 @@ mod request;
 mod response;
 mod root;
 mod tabs;
+mod text_window;
 
 pub use modal::{IntoModal, Modal, ModalPriority};
 pub use root::Root;
@@ -149,6 +150,12 @@ pub enum Event {
     /// Close the current modal. This is useful for the contents of the modal
     /// to implement custom close triggers.
     CloseModal,
+
+    /// Propagated from downstream when the user changes changes in a tab
+    /// selection. Allows parents to react to the tab change. This does not
+    /// include the new tab value because that would require generices. You can
+    /// grab the value from the child though.
+    TabChanged,
 
     /// Tell the user something informational
     Notify(Notification),

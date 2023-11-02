@@ -4,7 +4,7 @@
 
 ### Added
 
-- Request and response panes can now be fullscreened
+- Request and response panes can now be fullscreened and scrolled [#14](https://github.com/LucasPickering/slumber/issues/14)
 
 ### Removed
 
@@ -16,7 +16,7 @@
 
 ### Fixed
 
-- Initially selected recipe loads most recent response (https://github.com/LucasPickering/slumber/issues/13)
+- Initially selected recipe loads most recent response [#13](https://github.com/LucasPickering/slumber/issues/13)
 
 ## 0.3.1 - 2023-10-22
 

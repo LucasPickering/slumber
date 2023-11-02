@@ -16,7 +16,7 @@ use crate::{
         input::{Action, InputEngine},
         message::{Message, MessageSender},
         view::{
-            component::root::RootMode,
+            component::root::FullscreenMode,
             state::{Notification, RequestState},
             theme::Theme,
             Frame,
@@ -46,10 +46,10 @@ pub trait Component: Debug + Display {
     fn update(
         &mut self,
         _context: &mut UpdateContext,
-        message: Event,
+        event: Event,
     ) -> UpdateOutcome {
         // By default just forward to our parent
-        UpdateOutcome::Propagate(message)
+        UpdateOutcome::Propagate(event)
     }
 
     /// Which, if any, of this component's children currently has focus? The
@@ -139,8 +139,8 @@ pub enum Event {
         state: RequestState,
     },
 
-    /// Change the root view mode
-    OpenView(RootMode),
+    /// Enter a particular fullscreen mode. If we're already in that mode, exit
+    ToggleFullscreen(FullscreenMode),
 
     /// Show a modal to the user
     OpenModal {

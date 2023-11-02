@@ -50,7 +50,7 @@ impl View {
             root: Root::new(collection),
         };
         // Tell the components to wake up
-        view.handle_message(Event::Init);
+        view.handle_event(Event::Init);
         view
     }
 
@@ -76,7 +76,7 @@ impl View {
         recipe_id: RequestRecipeId,
         state: RequestState,
     ) {
-        self.handle_message(Event::HttpSetState { recipe_id, state });
+        self.handle_event(Event::HttpSetState { recipe_id, state });
     }
 
     /// Open a new modal. The input can be anything that converts to modal
@@ -86,7 +86,7 @@ impl View {
         modal: impl IntoModal + 'static,
         priority: ModalPriority,
     ) {
-        self.handle_message(Event::OpenModal {
+        self.handle_event(Event::OpenModal {
             modal: Box::new(modal.into_modal()),
             priority,
         });
@@ -95,7 +95,7 @@ impl View {
     /// Send an informational notification to the user
     pub fn notify(&mut self, message: String) {
         let notification = Notification::new(message);
-        self.handle_message(Event::Notify(notification));
+        self.handle_event(Event::Notify(notification));
     }
 
     /// Update the view according to an input event from the user. If possible,
@@ -106,22 +106,22 @@ impl View {
         event: crossterm::event::Event,
         action: Option<Action>,
     ) {
-        self.handle_message(Event::Input { event, action })
+        self.handle_event(Event::Input { event, action })
     }
 
-    /// Process a view message by passing it to the root component and letting
+    /// Process a view event by passing it to the root component and letting
     /// it pass it down the tree
-    fn handle_message(&mut self, message: Event) {
-        let span = trace_span!("View message", ?message);
+    fn handle_event(&mut self, event: Event) {
+        let span = trace_span!("View event", ?event);
         span.in_scope(|| {
             let mut context = self.update_context();
-            match Self::update_all(&mut self.root, &mut context, message) {
+            match Self::update_all(&mut self.root, &mut context, event) {
                 UpdateOutcome::Consumed => {
-                    trace!("View message consumed")
+                    trace!("View event consumed")
                 }
-                // Consumer didn't eat the message - huh?
+                // Consumer didn't eat the event - huh?
                 UpdateOutcome::Propagate(_) => {
-                    error!("View message was unhandled");
+                    error!("View event was unhandled");
                 }
             }
         });
@@ -134,31 +134,31 @@ impl View {
 
     /// Update the state of a component *and* its children, starting at the
     /// lowest descendant. Recursively walk up the tree until a component
-    /// consumes the message.
+    /// consumes the event.
     fn update_all(
         component: &mut dyn Component,
         context: &mut UpdateContext,
-        mut message: Event,
+        mut event: Event,
     ) -> UpdateOutcome {
-        // If we have a child, send them the message. If not, eat it ourselves
+        // If we have a child, send them the event. If not, eat it ourselves
         for child in component.children() {
-            let outcome = Self::update_all(child, context, message); // RECURSION
+            let outcome = Self::update_all(child, context, event); // RECURSION
             if let UpdateOutcome::Propagate(returned) = outcome {
                 // Keep going to the next child. It's possible the child
-                // returned something other than the original message, which
+                // returned something other than the original event, which
                 // we'll just pass along anyway.
-                message = returned;
+                event = returned;
             } else {
-                trace!(%child, "View message consumed");
+                trace!(%child, "View event consumed");
                 return outcome;
             }
         }
 
         // None of our children handled it, we'll take it ourselves.
         // Message is already traced in the parent span, so don't dupe it.
-        let span = trace_span!("Component handling message", %component);
+        let span = trace_span!("Component handling", %component);
         span.in_scope(|| {
-            let outcome = component.update(context, message);
+            let outcome = component.update(context, event);
             trace!(?outcome);
             outcome
         })

@@ -38,7 +38,7 @@ impl InputEngine {
                 InputBinding::new(KeyCode::Down, Action::Down),
                 InputBinding::new(KeyCode::Left, Action::Left),
                 InputBinding::new(KeyCode::Right, Action::Right),
-                InputBinding::new(KeyCode::Enter, Action::Interact),
+                InputBinding::new(KeyCode::Enter, Action::Submit),
                 InputBinding::new(KeyCode::Esc, Action::Cancel),
             ]
             .into_iter()
@@ -105,7 +105,7 @@ pub enum Action {
     Left,
     Right,
     /// Do a thing. E.g. select an item in a list
-    Interact,
+    Submit,
     /// Embiggen a pane
     Fullscreen,
     /// Close the current modal/dialog/etc.

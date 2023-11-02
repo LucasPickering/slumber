@@ -7,8 +7,8 @@ use crate::{
         input::Action,
         view::{
             component::{
-                modal::IntoModal, Component, Draw, Event, Modal, UpdateContext,
-                UpdateOutcome,
+                modal::IntoModal, primary::PrimaryPane, root::FullscreenMode,
+                Component, Draw, Event, Modal, UpdateContext, UpdateOutcome,
             },
             state::Notification,
             util::{layout, ButtonBrick, ToTui},
@@ -48,7 +48,7 @@ impl Component for ErrorModal {
         match event {
             // Extra close action
             Event::Input {
-                action: Some(Action::Interact),
+                action: Some(Action::Submit),
                 ..
             } => UpdateOutcome::Propagate(Event::CloseModal),
 
@@ -154,7 +154,7 @@ impl Component for PromptModal {
         match event {
             // Submit
             Event::Input {
-                action: Some(Action::Interact),
+                action: Some(Action::Submit),
                 ..
             } => {
                 // Submission is handled in on_close. The control flow here is
@@ -200,25 +200,49 @@ impl IntoModal for Prompt {
     }
 }
 
+/// Tell the user about keybindings
 #[derive(Debug)]
 pub struct HelpText;
 
-impl Draw for HelpText {
+pub struct HelpTextProps {
+    pub has_modal: bool,
+    pub fullscreen_mode: Option<FullscreenMode>,
+    pub selected_pane: PrimaryPane,
+}
+
+impl Draw<HelpTextProps> for HelpText {
     fn draw(
         &self,
         context: &RenderContext,
-        _: (),
+        props: HelpTextProps,
         frame: &mut Frame,
         chunk: Rect,
     ) {
-        let actions = [
-            Action::Quit,
-            Action::ReloadCollection,
-            Action::FocusNext,
-            Action::FocusPrevious,
-            Action::Fullscreen,
-            Action::Cancel,
-        ];
+        // Decide which actions to show based on context. This is definitely
+        // spaghetti and easy to get out of sync, but it's the easiest way to
+        // get granular control
+        let mut actions = vec![Action::Quit, Action::ReloadCollection];
+
+        match props.fullscreen_mode {
+            None => {
+                actions.extend([Action::FocusNext, Action::FocusPrevious]);
+                // Pane-specific actions
+                actions.extend(match props.selected_pane {
+                    PrimaryPane::ProfileList => [].as_slice(),
+                    PrimaryPane::RecipeList => &[Action::Submit],
+                    PrimaryPane::Request => &[Action::Fullscreen],
+                    PrimaryPane::Response => &[Action::Fullscreen],
+                });
+            }
+            Some(FullscreenMode::Request | FullscreenMode::Response) => {
+                actions.extend([Action::Fullscreen])
+            }
+        }
+
+        if props.has_modal {
+            actions.push(Action::Cancel);
+        }
+
         let text = actions
             .into_iter()
             .map(|action| {

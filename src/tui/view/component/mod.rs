@@ -26,7 +26,11 @@ use crate::{
     },
 };
 use ratatui::prelude::Rect;
-use std::fmt::{Debug, Display};
+use std::{
+    collections::VecDeque,
+    fmt::{Debug, Display},
+};
+use tracing::trace;
 
 /// The main building block that makes up the view. This is modeled after React,
 /// with some key differences:
@@ -45,13 +49,8 @@ pub trait Component: Debug + Display {
     /// Update the state of *just* this component according to the message.
     /// Returned outcome indicates what to do afterwards. Context allows updates
     /// to trigger side-effects, e.g. launching an HTTP request.
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> UpdateOutcome {
-        // By default just forward to our parent
-        UpdateOutcome::Propagate(event)
+    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
+        Update::Propagate(event)
     }
 
     /// Which, if any, of this component's children currently has focus? The
@@ -65,18 +64,31 @@ pub trait Component: Debug + Display {
 
 /// Mutable context passed to each update call. Allows for triggering side
 /// effects.
-pub struct UpdateContext {
+pub struct UpdateContext<'a> {
     messages_tx: MessageSender,
+    event_queue: &'a mut VecDeque<Event>,
 }
 
-impl UpdateContext {
-    pub fn new(messages_tx: MessageSender) -> Self {
-        Self { messages_tx }
+impl<'a> UpdateContext<'a> {
+    pub fn new(
+        messages_tx: MessageSender,
+        event_queue: &'a mut VecDeque<Event>,
+    ) -> Self {
+        Self {
+            messages_tx,
+            event_queue,
+        }
     }
 
     /// Send a message to trigger an async action
     pub fn send_message(&mut self, message: Message) {
         self.messages_tx.send(message);
+    }
+
+    /// Queue a subsequent view event to be handled after the current one
+    pub fn queue_event(&mut self, event: Event) {
+        trace!(?event, "Queueing subsequent event");
+        self.event_queue.push_back(event);
     }
 }
 
@@ -104,7 +116,6 @@ pub trait Draw<Props = ()> {
 pub struct DrawContext<'a, 'f> {
     pub input_engine: &'a InputEngine,
     pub theme: &'a Theme,
-    // TODO refcell?
     pub frame: &'a mut Frame<'f>,
 }
 
@@ -151,12 +162,6 @@ pub enum Event {
     /// to implement custom close triggers.
     CloseModal,
 
-    /// Propagated from downstream when the user changes changes in a tab
-    /// selection. Allows parents to react to the tab change. This does not
-    /// include the new tab value because that would require generices. You can
-    /// grab the value from the child though.
-    TabChanged,
-
     /// Tell the user something informational
     Notify(Notification),
 }
@@ -164,23 +169,14 @@ pub enum Event {
 /// The result of a component state update operation. This corresponds to a
 /// single input [ViewMessage].
 #[derive(Debug)]
-pub enum UpdateOutcome {
+pub enum Update {
     /// The consuming component updated its state accordingly, and no further
     /// changes are necessary
     Consumed,
-    /// The returned message should be passed to the parent component. This can
-    /// mean one of two things:
-    ///
-    /// - The updated component did not handle the message, and it should
-    ///   bubble up the tree
-    /// - The updated component *did* make changes according to the message,
-    ///   and is sending a related message up the tree for ripple-effect
-    ///   changes
-    ///
-    /// This dual meaning is maybe a little janky. There's an argument that
-    /// rippled changes should be a separate variant that would cause the
-    /// caller to reset back to the bottom of the component tree. There's
-    /// no immediate need for that though so I'm keeping it simpler for
-    /// now.
+    /// The message was not consumed by this component, and should be passed to
+    /// the parent component. While technically possible, this should *not* be
+    /// used to trigger additional events. Instead, use
+    /// [UpdateContext::queue_event] for that. That will ensure the entire tree
+    /// has a chance to respond to the entire event.
     Propagate(Event),
 }

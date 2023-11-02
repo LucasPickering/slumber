@@ -8,7 +8,7 @@ use crate::{
         view::{
             component::{
                 modal::IntoModal, primary::PrimaryPane, root::FullscreenMode,
-                Component, Draw, Event, Modal, UpdateContext, UpdateOutcome,
+                Component, Draw, Event, Modal, Update, UpdateContext,
             },
             state::Notification,
             util::{layout, ButtonBrick, ToTui},
@@ -40,19 +40,18 @@ impl Modal for ErrorModal {
 }
 
 impl Component for ErrorModal {
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> UpdateOutcome {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Extra close action
             Event::Input {
                 action: Some(Action::Submit),
                 ..
-            } => UpdateOutcome::Propagate(Event::CloseModal),
+            } => {
+                context.queue_event(Event::CloseModal);
+                Update::Consumed
+            }
 
-            _ => UpdateOutcome::Propagate(event),
+            _ => Update::Propagate(event),
         }
     }
 }
@@ -140,11 +139,7 @@ impl Modal for PromptModal {
 }
 
 impl Component for PromptModal {
-    fn update(
-        &mut self,
-        _context: &mut UpdateContext,
-        event: Event,
-    ) -> UpdateOutcome {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Submit
             Event::Input {
@@ -154,22 +149,23 @@ impl Component for PromptModal {
                 // Submission is handled in on_close. The control flow here is
                 // ugly but it's hard with the top-down nature of modals
                 self.submit = true;
-                UpdateOutcome::Propagate(Event::CloseModal)
+                context.queue_event(Event::CloseModal);
+                Update::Consumed
             }
 
             // Make sure cancel gets propagated to close the modal
             event @ Event::Input {
                 action: Some(Action::Cancel),
                 ..
-            } => UpdateOutcome::Propagate(event),
+            } => Update::Propagate(event),
 
             // All other input gets forwarded to the text editor
             Event::Input { event, .. } => {
                 self.text_area.input(event);
-                UpdateOutcome::Consumed
+                Update::Consumed
             }
 
-            _ => UpdateOutcome::Propagate(event),
+            _ => Update::Propagate(event),
         }
     }
 }

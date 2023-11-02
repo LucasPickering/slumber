@@ -10,7 +10,7 @@ use crate::{
                 primary::{PrimaryView, PrimaryViewProps},
                 request::RequestPaneProps,
                 response::ResponsePaneProps,
-                Component, Draw, Event, UpdateContext, UpdateOutcome,
+                Component, Draw, Event, Update, UpdateContext,
             },
             state::RequestState,
             util::layout,
@@ -104,11 +104,7 @@ impl Root {
 }
 
 impl Component for Root {
-    fn update(
-        &mut self,
-        context: &mut UpdateContext,
-        event: Event,
-    ) -> UpdateOutcome {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Init => {
                 // Load the initial state for the selected recipe
@@ -151,9 +147,9 @@ impl Component for Root {
             Event::Input { .. } => {}
 
             // There shouldn't be anything left unhandled. Bubble up to log it
-            _ => return UpdateOutcome::Propagate(event),
+            _ => return Update::Propagate(event),
         }
-        UpdateOutcome::Consumed
+        Update::Consumed
     }
 
     fn children(&mut self) -> Vec<&mut dyn Component> {

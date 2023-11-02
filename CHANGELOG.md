@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added top-level collection `id` field
+  - Needed in order to give each collection its own history file
+
+### Fixed
+
+- Differentiate history between different collections [#10](https://github.com/LucasPickering/slumber/issues/10)
+
 ## [0.4.0] - 2023-11-02
 
 ### Added

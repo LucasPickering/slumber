@@ -92,7 +92,7 @@ impl Subcommand {
                 )?;
 
                 // Build the request
-                let repository = Repository::load()?;
+                let repository = Repository::load(&collection.id)?;
                 let overrides: IndexMap<_, _> = overrides.into_iter().collect();
                 let request = RequestBuilder::new(
                     recipe,

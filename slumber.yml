@@ -1,3 +1,5 @@
+id: example
+
 profiles:
   - id: works
     name: Works

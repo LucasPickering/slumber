@@ -79,7 +79,7 @@ impl Tui {
         let messages_tx = MessageSender::new(messages_tx);
 
         let view = View::new(&collection, messages_tx.clone());
-        let repository = Repository::load().unwrap();
+        let repository = Repository::load(&collection.id).unwrap();
         let app = Tui {
             terminal,
             messages_rx,

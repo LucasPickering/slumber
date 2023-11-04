@@ -10,6 +10,7 @@
 ### Fixed
 
 - Differentiate history between different collections [#10](https://github.com/LucasPickering/slumber/issues/10)
+- Ensure ctrl-c can't get eaten by text boxes (it guarantees exit now) [#18](https://github.com/LucasPickering/slumber/issues/18)
 
 ## [0.4.0] - 2023-11-02
 

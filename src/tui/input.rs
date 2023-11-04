@@ -12,6 +12,12 @@ use tracing::trace;
 /// events to actions, but then the actions are actually processed by the view.
 #[derive(Debug)]
 pub struct InputEngine {
+    /// Intuitively this should be binding:action, but we can't look up a
+    /// binding from the map based on an input event, because event<=>binding
+    /// matching is more nuanced that simple equality (e.g. bonus modifiers
+    /// keys can be ignored). We have to iterate over map when checking inputs,
+    /// but keying by action at least allows us to look up action=>binding for
+    /// help text.
     bindings: HashMap<Action, InputBinding>,
 }
 
@@ -19,17 +25,14 @@ impl InputEngine {
     pub fn new() -> Self {
         Self {
             bindings: [
-                InputBinding {
-                    action: Action::Quit,
-                    primary: KeyCombination {
-                        key_code: KeyCode::Char('q'),
-                        modifiers: KeyModifiers::NONE,
-                    },
-                    secondary: Some(KeyCombination {
+                InputBinding::new(KeyCode::Char('q'), Action::Quit),
+                InputBinding::new(
+                    KeyCombination {
                         key_code: KeyCode::Char('c'),
                         modifiers: KeyModifiers::CONTROL,
-                    }),
-                },
+                    },
+                    Action::ForceQuit,
+                ),
                 InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
                 InputBinding::new(KeyCode::F(11), Action::Fullscreen),
                 InputBinding::new(KeyCode::BackTab, Action::PreviousPane),
@@ -91,6 +94,10 @@ impl InputEngine {
 pub enum Action {
     /// Exit the app
     Quit,
+    /// A special keybinding that short-circuits the standard view input
+    /// process to force an exit. Standard shutdown will *still run*, but this
+    /// input can't be consumed by any components in the view tree.
+    ForceQuit,
     /// Reload the request collection from the same file as the initial load
     #[display(fmt = "Reload Collection")]
     ReloadCollection,
@@ -120,36 +127,26 @@ pub enum Action {
 #[derive(Copy, Clone, Debug)]
 pub struct InputBinding {
     action: Action,
-    primary: KeyCombination,
-    secondary: Option<KeyCombination>,
+    input: KeyCombination,
 }
 
 impl InputBinding {
-    /// Create a binding with only a primary
-    const fn new(key_code: KeyCode, action: Action) -> Self {
+    fn new(input: impl Into<KeyCombination>, action: Action) -> Self {
         Self {
             action,
-            primary: KeyCombination {
-                key_code,
-                modifiers: KeyModifiers::NONE,
-            },
-            secondary: None,
+            input: input.into(),
         }
     }
 
     fn matches(&self, event: &KeyEvent) -> bool {
-        self.primary.matches(event)
-            || self
-                .secondary
-                .map(|secondary| secondary.matches(event))
-                .unwrap_or_default()
+        self.input.matches(event)
     }
 }
 
 impl Display for InputBinding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Don't display secondary binding in help text
-        write!(f, "{} {}", self.primary, self.action)
+        write!(f, "{} {}", self.input, self.action)
     }
 }
 
@@ -182,6 +179,15 @@ impl Display for KeyCombination {
             KeyCode::Char(c) => write!(f, "<{c}>"),
             // Punting on everything else until we need it
             _ => write!(f, "???"),
+        }
+    }
+}
+
+impl From<KeyCode> for KeyCombination {
+    fn from(key_code: KeyCode) -> Self {
+        Self {
+            key_code,
+            modifiers: KeyModifiers::NONE,
         }
     }
 }

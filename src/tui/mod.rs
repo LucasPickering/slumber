@@ -7,7 +7,7 @@ use crate::{
     http::{HttpEngine, Repository, RequestBuilder},
     template::TemplateContext,
     tui::{
-        input::InputEngine,
+        input::{Action, InputEngine},
         message::{Message, MessageSender},
         view::{ModalPriority, RequestState, View},
     },
@@ -123,7 +123,13 @@ impl Tui {
                 // editors and such
                 let event = crossterm::event::read()?;
                 let action = self.input_engine.action(&event);
-                self.view.handle_input(event, action);
+                if let Some(Action::ForceQuit) = action {
+                    // Short-circuit the view/message cycle, to make sure this
+                    // doesn't get ate
+                    self.quit();
+                } else {
+                    self.view.handle_input(event, action);
+                }
             }
             if last_tick.elapsed() >= Self::TICK_TIME {
                 last_tick = Instant::now();
@@ -143,11 +149,16 @@ impl Tui {
 
             // ===== Signal Phase =====
             if quit_signals.pending().next().is_some() {
-                self.should_run = false;
+                self.quit();
             }
         }
 
         Ok(())
+    }
+
+    /// GOODBYE
+    fn quit(&mut self) {
+        self.should_run = false;
     }
 
     /// Handle an incoming message. Any error here will be displayed as a modal
@@ -217,7 +228,7 @@ impl Tui {
             Message::Error { error } => {
                 self.view.open_modal(error, ModalPriority::High)
             }
-            Message::Quit => self.should_run = false,
+            Message::Quit => self.quit(),
         }
         Ok(())
     }

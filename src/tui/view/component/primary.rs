@@ -112,7 +112,7 @@ impl PrimaryView {
 impl Component for PrimaryView {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
-            // Send HTTP request (bubbled up from child)
+            // Send HTTP request (bubbled up from child *or* queued by parent)
             Event::HttpSendRequest => {
                 if let Some(recipe) = self.selected_recipe() {
                     context.send_message(Message::HttpBeginRequest {

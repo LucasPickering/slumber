@@ -4,9 +4,10 @@
 
 ### Added
 
-- Added top-level collection `id` field
+- Add top-level collection `id` field
   - Needed in order to give each collection its own history file
 - Disable mouse capture to allow text highlighting [#17](https://github.com/LucasPickering/slumber/issues/17)
+- Add keybinding (F2) to send request from any view
 
 ### Fixed
 

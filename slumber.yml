@@ -35,6 +35,8 @@ requests:
   - id: login
     method: POST
     url: "{{host}}/anything/login"
+    query:
+      sudo: yes_please
     body: |
       {
         "username": "{{chains.username}}",

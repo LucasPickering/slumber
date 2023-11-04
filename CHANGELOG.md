@@ -14,6 +14,12 @@
 - Differentiate history between different collections [#10](https://github.com/LucasPickering/slumber/issues/10)
 - Ensure ctrl-c can't get eaten by text boxes (it guarantees exit now) [#18](https://github.com/LucasPickering/slumber/issues/18)
 
+### Changed
+
+- Adjust size of profile list dynamically based on number of profiles
+- Use structured table display format for query parameters and headers
+- Tweak list and tab styling
+
 ## [0.4.0] - 2023-11-02
 
 ### Added

@@ -176,7 +176,14 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
         let [profiles_chunk, recipes_chunk] = layout(
             left_chunk,
             Direction::Vertical,
-            [Constraint::Max(16), Constraint::Min(0)],
+            [
+                // Make profile list as small as possible, with a max size
+                Constraint::Max(
+                    self.profile_list_pane.profiles.len().clamp(1, 16) as u16
+                        + 2, // Account for top/bottom border
+                ),
+                Constraint::Min(0),
+            ],
         );
 
         // Split right column vertically

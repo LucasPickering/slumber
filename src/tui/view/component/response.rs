@@ -6,12 +6,13 @@ use crate::{
             component::{
                 primary::PrimaryPane,
                 root::FullscreenMode,
+                table::{Table, TableProps},
                 tabs::Tabs,
                 text_window::{TextWindow, TextWindowProps},
                 Component, Draw, Event, Update, UpdateContext,
             },
             state::{FixedSelect, RequestState},
-            util::{layout, BlockBrick, ToTui},
+            util::{layout, BlockBrick, HeaderValueDisplay, ToTui},
             DrawContext,
         },
     },
@@ -175,8 +176,15 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                             },
                             content_chunk,
                         ),
-                        Tab::Headers => context.frame.render_widget(
-                            Paragraph::new(response.headers.to_tui(context)),
+                        Tab::Headers => Table.draw(
+                            context,
+                            TableProps {
+                                key_label: "Header",
+                                value_label: "Value",
+                                data: response.headers.iter().map(|(k, v)| {
+                                    (k, HeaderValueDisplay::from(v))
+                                }),
+                            },
                             content_chunk,
                         ),
                     }

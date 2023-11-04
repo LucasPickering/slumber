@@ -6,6 +6,7 @@ mod primary;
 mod request;
 mod response;
 mod root;
+mod table;
 mod tabs;
 mod text_window;
 

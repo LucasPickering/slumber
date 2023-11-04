@@ -6,6 +6,7 @@ use crate::{
             component::{
                 primary::PrimaryPane,
                 root::FullscreenMode,
+                table::{Table, TableProps},
                 tabs::Tabs,
                 text_window::{TextWindow, TextWindowProps},
                 Component, Draw, Event, Update, UpdateContext,
@@ -110,22 +111,33 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             // Request content
             match self.tabs.selected() {
                 Tab::Body => {
-                    let text = recipe.body.as_deref().unwrap_or_default();
-                    self.text_window.draw(
-                        context,
-                        TextWindowProps {
-                            key: &recipe.id,
-                            text,
-                        },
-                        content_chunk,
-                    );
+                    if let Some(text) = recipe.body.as_deref() {
+                        self.text_window.draw(
+                            context,
+                            TextWindowProps {
+                                key: &recipe.id,
+                                text,
+                            },
+                            content_chunk,
+                        );
+                    }
                 }
-                Tab::Query => context.frame.render_widget(
-                    Paragraph::new(recipe.query.to_tui(context)),
+                Tab::Query => Table.draw(
+                    context,
+                    TableProps {
+                        key_label: "Parameter",
+                        value_label: "Value",
+                        data: &recipe.query,
+                    },
                     content_chunk,
                 ),
-                Tab::Headers => context.frame.render_widget(
-                    Paragraph::new(recipe.headers.to_tui(context)),
+                Tab::Headers => Table.draw(
+                    context,
+                    TableProps {
+                        key_label: "Header",
+                        value_label: "Value",
+                        data: &recipe.headers,
+                    },
                     content_chunk,
                 ),
             }

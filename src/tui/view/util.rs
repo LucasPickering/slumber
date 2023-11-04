@@ -9,14 +9,14 @@ use crate::{
     },
 };
 use chrono::{DateTime, Duration, Local, Utc};
-use indexmap::IndexMap;
+use derive_more::From;
 use ratatui::{
     prelude::*,
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem},
 };
-use reqwest::header::HeaderMap;
-use std::fmt::Display;
+use reqwest::header::HeaderValue;
+use std::fmt::{Display, Formatter};
 
 /// A helper for building a UI. It can be converted into some UI element to be
 /// drawn.
@@ -56,7 +56,7 @@ impl<'a> ToTui for ButtonBrick<'a> {
     type Output<'this> = Text<'this> where Self: 'this;
 
     fn to_tui(&self, context: &DrawContext) -> Self::Output<'_> {
-        Text::styled(self.text, context.theme.text_highlight_style)
+        Text::styled(self.text, context.theme.list_highlight_style)
     }
 }
 
@@ -82,8 +82,7 @@ impl<'a, T: ToTui<Output<'a> = Span<'a>>> ToTui for ListBrick<'a, T> {
 
         List::new(items)
             .block(block)
-            .highlight_style(context.theme.text_highlight_style)
-            .highlight_symbol(context.theme.list_highlight_symbol)
+            .highlight_style(context.theme.list_highlight_style)
     }
 }
 
@@ -154,35 +153,6 @@ impl ToTui for Option<Duration> {
     }
 }
 
-impl<K: Display, V: Display> ToTui for IndexMap<K, V> {
-    type Output<'this> = Text<'this> where Self: 'this;
-
-    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
-        self.iter()
-            .map(|(key, value)| format!("{key} = {value}").into())
-            .collect::<Vec<Line>>()
-            .into()
-    }
-}
-
-impl ToTui for HeaderMap {
-    /// 'static because string is generated
-    type Output<'this> = Text<'static>;
-
-    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
-        self.iter()
-            .map(|(key, value)| {
-                format!(
-                    "{key} = {}",
-                    value.to_str().unwrap_or("<unrepresentable>")
-                )
-                .into()
-            })
-            .collect::<Vec<Line>>()
-            .into()
-    }
-}
-
 impl ToTui for anyhow::Error {
     /// 'static because string is generated
     type Output<'this> = Text<'static>;
@@ -213,6 +183,20 @@ impl ToTui for RequestError {
 
     fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
         self.error.to_string().into()
+    }
+}
+
+/// Wrapper to implement `Display` for an HTTP header value. Uses a placeholder
+/// value for non-UTF-8 values
+#[derive(Debug, From)]
+pub struct HeaderValueDisplay<'a>(&'a HeaderValue);
+
+impl<'a> Display for HeaderValueDisplay<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.0.to_str() {
+            Ok(s) => write!(f, "{}", s),
+            Err(_) => write!(f, "<invalid utf-8>"),
+        }
     }
 }
 

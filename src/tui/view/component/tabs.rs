@@ -54,7 +54,7 @@ impl<T: FixedSelect> Draw for Tabs<T> {
                 T::iter().map(|e| e.to_string()).collect(),
             )
             .select(self.tabs.selected_index())
-            .highlight_style(context.theme.text_highlight_style),
+            .highlight_style(context.theme.tab_highlight_style),
             chunk,
         )
     }

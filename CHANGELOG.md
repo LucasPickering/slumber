@@ -6,6 +6,7 @@
 
 - Added top-level collection `id` field
   - Needed in order to give each collection its own history file
+- Disable mouse capture to allow text highlighting [#17](https://github.com/LucasPickering/slumber/issues/17)
 
 ### Fixed
 

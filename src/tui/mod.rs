@@ -14,7 +14,6 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -68,7 +67,7 @@ impl Tui {
         // Set up terminal
         enable_raw_mode().expect("Error initializing terminal");
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)
+        execute!(stdout, EnterAlternateScreen)
             .expect("Error initializing terminal");
         let backend = CrosstermBackend::new(stdout);
         let terminal =
@@ -403,10 +402,6 @@ fn initialize_panic_handler() {
 fn restore_terminal() -> anyhow::Result<()> {
     debug!("Restoring terminal");
     crossterm::terminal::disable_raw_mode()?;
-    crossterm::execute!(
-        std::io::stderr(),
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-    )?;
+    crossterm::execute!(std::io::stderr(), LeaveAlternateScreen)?;
     Ok(())
 }

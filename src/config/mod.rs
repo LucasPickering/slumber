@@ -80,7 +80,9 @@ pub struct ProfileId(String);
 pub struct RequestRecipe {
     pub id: RequestRecipeId,
     pub name: Option<String>,
-    pub method: TemplateString,
+    /// *Not* a template string because the usefulness doesn't justify the
+    /// complexity
+    pub method: String,
     pub url: TemplateString,
     pub body: Option<TemplateString>,
     #[serde(default)]

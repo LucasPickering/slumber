@@ -172,7 +172,7 @@ impl From<Request> for RequestRecipe {
         RequestRecipe {
             id: request.id.into(),
             name: Some(request.name),
-            method: request.method.into(),
+            method: request.method,
             url: request.url,
             body: match request.body {
                 Body::Empty {} => None,

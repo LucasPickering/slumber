@@ -259,15 +259,10 @@ impl RequestBuilder {
         // Don't let any sub-futures try to move the context
         let template_context = &self.template_context;
 
+        let method = recipe.method.parse()?;
+
         // Build all the futures separately, then resolve them in parallel
 
-        let method_future = async {
-            Ok(recipe
-                .method
-                .render(template_context, "method")
-                .await?
-                .parse()?)
-        };
         let url_future = recipe.url.render(template_context, "URL");
 
         // Build header map
@@ -328,13 +323,8 @@ impl RequestBuilder {
         };
 
         // Zoooooooooooom!
-        let (method, url, headers, query, body) = try_join!(
-            method_future,
-            url_future,
-            headers_future,
-            query_future,
-            body_future,
-        )?;
+        let (url, headers, query, body) =
+            try_join!(url_future, headers_future, query_future, body_future,)?;
 
         info!(
             recipe_id = %recipe.id,

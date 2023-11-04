@@ -214,6 +214,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
             RequestPaneProps {
                 is_selected: panes.is_selected(&PrimaryPane::Request),
                 selected_recipe: self.selected_recipe(),
+                selected_profile_id: self
+                    .selected_profile()
+                    .map(|profile| &profile.id),
             },
             request_chunk,
         );

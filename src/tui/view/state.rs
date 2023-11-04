@@ -4,8 +4,69 @@ use crate::http::{RequestBuildError, RequestError, RequestId, RequestRecord};
 use chrono::{DateTime, Duration, Utc};
 use itertools::Itertools;
 use ratatui::widgets::*;
-use std::{cell::RefCell, fmt::Display, marker::PhantomData, ops::DerefMut};
+use std::{
+    cell::{Ref, RefCell},
+    fmt::Display,
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+};
 use strum::IntoEnumIterator;
+
+/// An internally mutable cell for UI state. Certain state needs to be updated
+/// during the draw phase, typically because it's derived from parent data
+/// passed via props. This is safe to use in the render phase, because rendering
+/// is entirely synchronous.
+///
+/// In addition to storing the state value, this stores a state key as well. The
+/// key is used to determine when to update the state. The key should be
+/// something cheaply comparable. If the value itself is cheaply comparable,
+/// you can just use that as the key.
+#[derive(Debug)]
+pub struct StateCell<K, V> {
+    state: RefCell<Option<(K, V)>>,
+}
+
+impl<K, V> StateCell<K, V> {
+    /// Get the current state value, or a new value if the state is stale. State
+    /// will be stale if it is uninitialized OR the key has changed. In either
+    /// case, `init` will be called to create a new value.
+    pub fn get_or_update(&self, key: K, init: impl FnOnce() -> V) -> Ref<'_, V>
+    where
+        K: PartialEq,
+    {
+        let mut state = self.state.borrow_mut();
+        match state.deref() {
+            Some(state) if state.0 == key => {}
+            _ => {
+                // (Re)create the state
+                *state = Some((key, init()));
+            }
+        }
+        drop(state);
+
+        // Unwrap is safe because we just stored a value
+        // It'd be nice to return an `impl Deref` here instead to prevent
+        // leaking implementation details, but I was struggling with the
+        // lifetimes on that
+        Ref::map(self.state.borrow(), |state| &state.as_ref().unwrap().1)
+    }
+
+    /// Get a mutable reference to the V. This will never panic because
+    /// `&mut self` guarantees exclusive access. Returns `None` iff the state
+    /// cell is uninitialized.
+    pub fn get_mut(&mut self) -> Option<&mut V> {
+        self.state.get_mut().as_mut().map(|state| &mut state.1)
+    }
+}
+
+/// Derive impl applies unnecessary bound on the generic parameter
+impl<K, V> Default for StateCell<K, V> {
+    fn default() -> Self {
+        Self {
+            state: RefCell::new(None),
+        }
+    }
+}
 
 /// State of an HTTP response, which can be in various states of
 /// completion/failure. Each request *recipe* should have one request state

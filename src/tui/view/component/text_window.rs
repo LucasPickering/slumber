@@ -2,123 +2,101 @@ use crate::tui::{
     input::Action,
     view::{
         component::{Component, Draw, DrawContext, Event, Update},
-        theme::Theme,
+        util::{layout, ToTui},
     },
 };
 use derive_more::Display;
-use ratatui::{prelude::Rect, style::Style};
-use std::{cell::RefCell, fmt::Debug, ops::Deref};
-use tui_textarea::TextArea;
+use ratatui::{
+    prelude::{Alignment, Constraint, Direction, Rect},
+    text::{Line, Text},
+    widgets::Paragraph,
+};
+use std::{cmp, fmt::Debug};
 
-/// A scrollable (but not editable) block of text. The `Key` parameter is used
-/// to tell the text window when to reset its internal state. The type should be
-/// cheap to compare (e.g. a `Uuid` or short string), and the value is passed to
-/// the `draw` function as a prop. Whenever the value changes, the text buffer
-/// will be reset to the content of the `text` prop on that draw. As such, the
-/// key and text should be in sync: when one changes, the other does too.
+/// A scrollable (but not editable) block of text. Text is not externally
+/// mutable. If you need to update the text, store this in a `StateCell` and
+/// reconstruct the entire component.
+///
+/// The generic parameter allows for any type that can be converted to ratatui's
+/// `Text`, e.g. `String` or `TemplatePreview`.
 #[derive(Debug, Display)]
 #[display(fmt = "TextWindow")]
-pub struct TextWindow<Key> {
-    /// State is stored in a refcell so it can be mutated during the draw. It
-    /// can be very hard to drill down the text content in the update phase, so
-    /// this makes it transparent to the caller.
-    ///
-    /// `RefCell` is safe here because its accesses are never held across
-    /// phases, and all view code is synchronous.
-    state: RefCell<Option<State<Key>>>,
+pub struct TextWindow<T> {
+    text: T,
+    offset_y: u16,
 }
 
-pub struct TextWindowProps<'a, Key> {
-    pub key: &'a Key,
-    pub text: &'a str,
+impl<T> TextWindow<T> {
+    pub fn new(text: T) -> Self {
+        Self { text, offset_y: 0 }
+    }
 }
 
-#[derive(Debug)]
-struct State<Key> {
-    key: Key,
-    text_area: TextArea<'static>,
-}
-
-impl<Key: Debug> Component for TextWindow<Key> {
+impl<T: Debug> Component for TextWindow<T> {
     fn update(
         &mut self,
         _context: &mut super::UpdateContext,
         event: Event,
     ) -> Update {
-        // Don't handle any events if state isn't initialized yet
-        if let Some(state) = self.state.get_mut() {
-            match event {
-                Event::Input {
-                    action: Some(Action::Up),
-                    ..
-                } => {
-                    state.text_area.scroll((-1, 0));
-                    Update::Consumed
-                }
-                Event::Input {
-                    action: Some(Action::Down),
-                    ..
-                } => {
-                    state.text_area.scroll((1, 0));
-                    Update::Consumed
-                }
-                _ => Update::Propagate(event),
+        match event {
+            Event::Input {
+                action: Some(Action::Up),
+                ..
+            } => {
+                self.offset_y = self.offset_y.saturating_sub(1);
+                Update::Consumed
             }
-        } else {
-            Update::Propagate(event)
-        }
-    }
-}
-
-impl<'a, Key: Clone + Debug + PartialEq> Draw<TextWindowProps<'a, Key>>
-    for TextWindow<Key>
-{
-    fn draw(
-        &self,
-        context: &mut DrawContext,
-        props: TextWindowProps<'a, Key>,
-        chunk: Rect,
-    ) {
-        // This uses a reactive pattern to initialize the text area. The key
-        // should change whenever the text does, and that signals to rebuild the
-        // text area.
-
-        // Check if the data is either uninitialized or outdated
-        {
-            let mut state = self.state.borrow_mut();
-            match state.deref() {
-                Some(state) if &state.key == props.key => {}
-                _ => {
-                    // (Re)create the state
-                    *state = Some(State {
-                        key: props.key.clone(),
-                        text_area: init_text_area(context.theme, props.text),
-                    });
-                }
+            Event::Input {
+                action: Some(Action::Down),
+                ..
+            } => {
+                // TODO upper bound on scroll. It's doable because we have the
+                // text, but we need to work through the generics somehow
+                self.offset_y += 1;
+                Update::Consumed
             }
-        }
-
-        // Unwrap is safe because we know we just initialized state above
-        let state = self.state.borrow();
-        let text_area = &state.as_ref().unwrap().text_area;
-        context.frame.render_widget(text_area.widget(), chunk);
-    }
-}
-
-/// Derive impl applies unnecessary bound on the generic parameter
-impl<Key> Default for TextWindow<Key> {
-    fn default() -> Self {
-        Self {
-            state: RefCell::new(None),
+            _ => Update::Propagate(event),
         }
     }
 }
 
-fn init_text_area(theme: &Theme, text: &str) -> TextArea<'static> {
-    let mut text_area: TextArea = text.lines().map(str::to_owned).collect();
-    // Hide cursor/line selection highlights
-    text_area.set_cursor_style(Style::default());
-    text_area.set_cursor_line_style(Style::default());
-    text_area.set_line_number_style(theme.line_number_style);
-    text_area
+impl<'a, T: 'a + ToTui<Output<'a> = Text<'a>>> Draw for &'a TextWindow<T> {
+    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+        let text = self.text.to_tui(context);
+        // TODO how do we handle text longer than 65k lines?
+        let num_lines = text.lines.len() as u16;
+
+        let [gutter_chunk, _, text_chunk] = layout(
+            chunk,
+            Direction::Horizontal,
+            [
+                // Size gutter based on width of max line number
+                Constraint::Length(
+                    (num_lines as f32).log10().floor() as u16 + 1,
+                ),
+                Constraint::Length(1), // Spacer
+                Constraint::Min(0),
+            ],
+        );
+
+        // Draw line numbers in the gutter
+        let first_line = self.offset_y + 1;
+        let last_line = cmp::min(first_line + chunk.height, num_lines);
+        context.frame.render_widget(
+            Paragraph::new(
+                (first_line..=last_line)
+                    .map(|n| n.to_string().into())
+                    .collect::<Vec<Line>>(),
+            )
+            .alignment(Alignment::Right),
+            gutter_chunk,
+        );
+
+        // Darw the text content
+        context.frame.render_widget(
+            Paragraph::new(self.text.to_tui(context))
+                .scroll((self.offset_y, 0)),
+            text_chunk,
+        );
+    }
 }

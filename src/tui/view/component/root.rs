@@ -194,6 +194,10 @@ impl Draw for Root {
                     RequestPaneProps {
                         is_selected: false,
                         selected_recipe: self.primary_view.selected_recipe(),
+                        selected_profile_id: self
+                            .primary_view
+                            .selected_profile()
+                            .map(|profile| &profile.id),
                     },
                     main_chunk,
                 );

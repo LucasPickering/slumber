@@ -2,9 +2,9 @@ use crate::tui::view::component::{Draw, DrawContext};
 use derive_more::Display;
 use ratatui::{
     prelude::{Constraint, Rect},
+    text::Text,
     widgets::Row,
 };
-use std::fmt::Display;
 
 /// 2-column tabular data display
 #[derive(Debug, Display)]
@@ -16,14 +16,11 @@ pub struct TableProps<'a, T> {
     pub data: T,
 }
 
-/// Any (key, value) iterator can be drawn as a table, as long as the key and
-/// value implement `Display`
-impl<'a, K, V, Iter, Data> Draw<TableProps<'a, Data>> for Table
+/// An iterator of (key, value) text pairs can be a table
+impl<'a, Iter, Data> Draw<TableProps<'a, Data>> for Table
 where
-    K: Display,
-    V: Display,
-    Iter: Iterator<Item = (K, V)>,
-    Data: IntoIterator<Item = (K, V), IntoIter = Iter>,
+    Iter: Iterator<Item = (Text<'a>, Text<'a>)>,
+    Data: IntoIterator<Item = (Text<'a>, Text<'a>), IntoIter = Iter>,
 {
     fn draw(
         &self,
@@ -38,7 +35,7 @@ where
             } else {
                 context.theme.table_alt_text_style
             };
-            Row::new(vec![k.to_string(), v.to_string()]).style(style)
+            Row::new(vec![k, v]).style(style)
         });
         let table = ratatui::widgets::Table::new(rows)
             .header(

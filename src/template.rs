@@ -5,13 +5,12 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
-use derive_more::{Deref, Display, From};
+use derive_more::{Deref, From};
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json_path::{ExactlyOneError, JsonPath};
 use std::{
-    borrow::Cow,
     env::{self, VarError},
     fmt::Debug,
     io,
@@ -26,7 +25,7 @@ use tracing::{instrument, trace};
 static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
 
 /// A string that can contain templated content
-#[derive(Clone, Debug, Deref, Display, From, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deref, From, PartialEq, Serialize, Deserialize)]
 #[deref(forward)]
 pub struct TemplateString(String);
 
@@ -45,6 +44,120 @@ pub struct TemplateContext {
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
+}
+
+impl TemplateString {
+    /// Render the template string using values from the given context. If an
+    /// error occurs, it is returned as general `anyhow` error. If you need a
+    /// more specific error, use [Self::render_borrow].
+    pub async fn render(
+        &self,
+        context: &TemplateContext,
+        name: &str,
+    ) -> anyhow::Result<String> {
+        self.render_stitched(context)
+            .await
+            .with_context(|| format!("Error rendering {name} {:?}", self.0))
+            .traced()
+    }
+
+    /// Render the template string using values from the given context,
+    /// returning the individual rendered chunks. This is useful in any
+    /// application where rendered chunks need to be handled differently from
+    /// raw chunks, e.g. in render previews.
+    #[instrument]
+    pub async fn render_chunks(
+        &self,
+        context: &TemplateContext,
+    ) -> Vec<TemplateChunk> {
+        // Template syntax is simple so it's easiest to just implement it with
+        // a regex
+        let re = TEMPLATE_REGEX
+            .get_or_init(|| Regex::new(r"\{\{\s*([\w\d._-]+)\s*\}\}").unwrap());
+
+        // Regex::replace_all doesn't support fallible replacement, so we
+        // have to do it ourselves.
+        // https://docs.rs/regex/1.9.5/regex/struct.Regex.html#method.replace_all
+
+        let mut chunks = Vec::new();
+        let mut last_match_end = 0;
+        for captures in re.captures_iter(self) {
+            let mtch = captures.get(0).unwrap();
+            let key_raw =
+                captures.get(1).expect("Missing key capture group").as_str();
+
+            // Add the raw string between the last match and this once
+            if last_match_end < mtch.start() {
+                chunks.push(TemplateChunk::Raw {
+                    start: last_match_end,
+                    end: mtch.start(),
+                });
+            }
+
+            // If the key is in the overrides, use the given value without
+            // parsing it
+            let result = match context.overrides.get(key_raw) {
+                Some(value) => {
+                    trace!(
+                        key = key_raw,
+                        value = value,
+                        "Rendered template key from override"
+                    );
+                    Ok(value.into())
+                }
+                None => {
+                    // Standard case - parse the key and render it
+                    try {
+                        let key = TemplateKey::parse(key_raw)?;
+                        let value = key.into_value().render(context).await?;
+                        trace!(
+                            key = key_raw,
+                            value = value.deref(),
+                            "Rendered template key"
+                        );
+                        value
+                    }
+                }
+            };
+
+            // Store the result (success or failure) of rendering
+            chunks.push(result.into());
+            last_match_end = mtch.end();
+        }
+
+        // Add the chunk between the last render and the end
+        if last_match_end < self.len() {
+            chunks.push(TemplateChunk::Raw {
+                start: last_match_end,
+                end: self.len(),
+            });
+        }
+
+        chunks
+    }
+
+    /// Helper for stitching chunks together into a single string. If any chunk
+    /// failed to render, return an error.
+    async fn render_stitched(
+        &self,
+        context: &TemplateContext,
+    ) -> TemplateResult {
+        // Render each individual template chunk in the string
+        let chunks = self.render_chunks(context).await;
+
+        // Stitch the rendered chunks together into one string
+        let mut buffer = String::with_capacity(self.len());
+        for chunk in chunks {
+            match chunk {
+                TemplateChunk::Raw { start, end } => {
+                    buffer.push_str(&self.0[start..end]);
+                }
+                TemplateChunk::Rendered(value) => buffer.push_str(&value),
+                TemplateChunk::Error(error) => return Err(error),
+            }
+        }
+        Ok(buffer)
+    }
 }
 
 /// A prompter is a bridge between the user and the template engine. It enables
@@ -96,77 +209,29 @@ impl Prompt {
     }
 }
 
-type TemplateResult<'a> = Result<Cow<'a, str>, TemplateError>;
+/// A piece of a rendered template string. A collection of chunks collectively
+/// constitutes a rendered string, and those chunks should be contiguous.
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum TemplateChunk {
+    /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
+    /// stored as indexes into the original string, rather than a string
+    /// slice, to allow this to be passed between tasks/threads easily. We
+    /// could store an owned copy here but that would require copying what
+    /// could be a very large block of text.
+    Raw { start: usize, end: usize },
+    /// Outcome of rendering a template key
+    Rendered(String),
+    /// An error occurred while rendering a template key
+    Error(TemplateError),
+}
 
-impl TemplateString {
-    /// Render the template string using values from the given context. If an
-    /// error occurs, it is returned as general `anyhow` error. If you need a
-    /// more specific error, use [Self::render_borrow].
-    pub async fn render(
-        &self,
-        context: &TemplateContext,
-        name: &str,
-    ) -> anyhow::Result<String> {
-        self.render_borrow(context)
-            .await
-            .with_context(|| format!("Error rendering {name} {:?}", self.0))
-            .traced()
-    }
-
-    /// Render the template string using values from the given context. Useful
-    /// for inline rendering in the UI.
-    #[instrument]
-    pub async fn render_borrow<'a>(
-        &'a self,
-        context: &'a TemplateContext,
-    ) -> Result<String, TemplateError> {
-        // Template syntax is simple so it's easiest to just implement it with
-        // a regex
-        let re = TEMPLATE_REGEX
-            .get_or_init(|| Regex::new(r"\{\{\s*([\w\d._-]+)\s*\}\}").unwrap());
-
-        // Regex::replace_all doesn't support fallible replacement, so we
-        // have to do it ourselves.
-        // https://docs.rs/regex/1.9.5/regex/struct.Regex.html#method.replace_all
-
-        let mut new = String::with_capacity(self.len());
-        let mut last_match = 0;
-        for captures in re.captures_iter(self) {
-            let m = captures.get(0).unwrap();
-            new.push_str(&self[last_match..m.start()]);
-            let key_raw =
-                captures.get(1).expect("Missing key capture group").as_str();
-
-            // If the key is in the overrides, don't even both parsing it
-            let rendered_value = match context.overrides.get(key_raw) {
-                Some(value) => {
-                    trace!(
-                        key = key_raw,
-                        value = value,
-                        "Rendered template key from override"
-                    );
-                    value.into()
-                }
-                None => {
-                    // Standard case - parse the key and render it
-                    let key = TemplateKey::parse(key_raw)?;
-                    let value = key.into_value().render(context).await?;
-                    trace!(
-                        key = key_raw,
-                        value = value.deref(),
-                        "Rendered template key"
-                    );
-                    value
-                }
-            };
-
-            // Replace the key with its value
-            new.push_str(&rendered_value);
-            last_match = m.end();
+impl From<TemplateResult> for TemplateChunk {
+    fn from(result: TemplateResult) -> Self {
+        match result {
+            Ok(value) => Self::Rendered(value),
+            Err(error) => Self::Error(error),
         }
-        new.push_str(&self[last_match..]);
-
-        Ok(new)
     }
 }
 
@@ -232,7 +297,7 @@ trait TemplateSource<'a>: 'a + Send + Sync {
     /// sometimes this can be a reference to the template context, but
     /// other times it has to be owned data (e.g. when pulling response data
     /// from the repository).
-    async fn render(&self, context: &'a TemplateContext) -> TemplateResult<'a>;
+    async fn render(&self, context: &'a TemplateContext) -> TemplateResult;
 }
 
 /// A simple field value (e.g. from the profile or an override)
@@ -242,9 +307,9 @@ struct FieldTemplateSource<'a> {
 
 #[async_trait]
 impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
-    async fn render(&self, context: &'a TemplateContext) -> TemplateResult<'a> {
+    async fn render(&self, context: &'a TemplateContext) -> TemplateResult {
         let field = self.field;
-        context.profile.get(field).map(Cow::from).ok_or_else(|| {
+        context.profile.get(field).cloned().ok_or_else(|| {
             TemplateError::FieldUnknown {
                 field: field.to_owned(),
             }
@@ -259,7 +324,7 @@ struct ChainTemplateSource<'a> {
 
 #[async_trait]
 impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
-    async fn render(&self, context: &'a TemplateContext) -> TemplateResult<'a> {
+    async fn render(&self, context: &'a TemplateContext) -> TemplateResult {
         let chain_id = self.chain_id;
 
         // Any error in here is the chain error subtype
@@ -289,7 +354,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
 
             // If a selector path is present, filter down the value
             match &chain.selector {
-                Some(path) => self.apply_selector(value, path)?,
+                Some(path) => self.apply_selector(&value, path)?,
                 None => value,
             }
         };
@@ -308,7 +373,7 @@ impl<'a> ChainTemplateSource<'a> {
         &self,
         context: &'a TemplateContext,
         recipe_id: &RequestRecipeId,
-    ) -> Result<Cow<'a, str>, ChainError> {
+    ) -> Result<String, ChainError> {
         let record = context
             .repository
             .get_last(recipe_id)
@@ -316,17 +381,13 @@ impl<'a> ChainTemplateSource<'a> {
             .map_err(ChainError::Repository)?
             .ok_or(ChainError::NoResponse)?;
 
-        Ok(record.response.body.into_text().into())
+        Ok(record.response.body.into_text())
     }
 
     /// Render a chained value from a file
-    async fn render_file(
-        &self,
-        path: &'a Path,
-    ) -> Result<Cow<'a, str>, ChainError> {
+    async fn render_file(&self, path: &'a Path) -> Result<String, ChainError> {
         fs::read_to_string(path)
             .await
-            .map(Cow::from)
             .map_err(|err| ChainError::File {
                 path: path.to_owned(),
                 error: err,
@@ -339,7 +400,7 @@ impl<'a> ChainTemplateSource<'a> {
         context: &'a TemplateContext,
         label: Option<&str>,
         sensitive: bool,
-    ) -> Result<Cow<'a, str>, ChainError> {
+    ) -> Result<String, ChainError> {
         // Use the prompter to ask the user a question, and wait for a response
         // on the prompt channel
         let (tx, rx) = oneshot::channel();
@@ -348,7 +409,7 @@ impl<'a> ChainTemplateSource<'a> {
             sensitive,
             channel: tx,
         });
-        Ok(rx.await.map_err(|_| ChainError::PromptNoResponse)?.into())
+        rx.await.map_err(|_| ChainError::PromptNoResponse)
     }
 
     /// Apply a selector path to a string value to filter it down. Right now
@@ -356,13 +417,13 @@ impl<'a> ChainTemplateSource<'a> {
     /// future. The string value will be parsed as a JSON value.
     fn apply_selector(
         &self,
-        value: Cow<'_, str>,
+        value: &str,
         selector: &JsonPath,
-    ) -> Result<Cow<'a, str>, ChainError> {
+    ) -> Result<String, ChainError> {
         // Parse the response as JSON. Intentionally ignore the
         // content-type. If the user wants to treat it as JSON, we
         // should allow that even if the server is wrong.
-        let json_value = Json::parse(&value)
+        let json_value = Json::parse(value)
             .map_err(|err| ChainError::ParseResponse { error: err })?;
 
         // Apply the path to the json
@@ -372,8 +433,8 @@ impl<'a> ChainTemplateSource<'a> {
             .map_err(|err| ChainError::InvalidResult { error: err })?;
 
         match found_value {
-            serde_json::Value::String(s) => Ok(s.clone().into()),
-            other => Ok(other.to_string().into()),
+            serde_json::Value::String(s) => Ok(s.clone()),
+            other => Ok(other.to_string()),
         }
     }
 }
@@ -385,8 +446,8 @@ struct EnvironmentTemplateSource<'a> {
 
 #[async_trait]
 impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
-    async fn render(&self, _: &'a TemplateContext) -> TemplateResult<'a> {
-        env::var(self.variable).map(Cow::from).map_err(|err| {
+    async fn render(&self, _: &'a TemplateContext) -> TemplateResult {
+        env::var(self.variable).map_err(|err| {
             TemplateError::EnvironmentVariable {
                 variable: self.variable.to_owned(),
                 error: err,
@@ -394,6 +455,8 @@ impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
         })
     }
 }
+
+type TemplateResult = Result<String, TemplateError>;
 
 /// Any error that can occur during template rendering. The purpose of having a
 /// structured error here (while the rest of the app just uses `anyhow`) is to
@@ -404,6 +467,7 @@ impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
 /// of the template context. This requires a mild amount of cloning in error
 /// cases, but those should be infrequent so it's fine.
 #[derive(Debug, Error)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum TemplateError {
     /// Template key could not be parsed
     #[error("Failed to parse template key {key:?}")]
@@ -470,6 +534,14 @@ pub enum ChainError {
 }
 
 #[cfg(test)]
+impl PartialEq for ChainError {
+    fn eq(&self, _: &Self) -> bool {
+        // Punting on this for now because anyhow::Error isn't PartialEq
+        unimplemented!("PartialEq for ChainError is hard to implement")
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
@@ -479,6 +551,7 @@ mod tests {
         util::assert_err,
     };
     use factori::create;
+    use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
 
@@ -505,6 +578,13 @@ mod tests {
             // Pull from overrides for user_id, profile for group_id
             render!("{{user_id}} {{group_id}}", context).unwrap(),
             "2 3".to_owned()
+        );
+        assert_eq!(
+            // Test complex stitching. Emoji is important to test because the
+            // stitching uses character indexes
+            render!("start {{user_id}} 🧡💛 {{group_id}} end", context)
+                .unwrap(),
+            "start 2 🧡💛 3 end".to_owned()
         );
 
         // Error cases
@@ -747,13 +827,44 @@ mod tests {
         );
     }
 
+    /// Test rendering into individual chunks
+    #[tokio::test]
+    async fn test_render_chunks() {
+        let profile = indexmap! {
+            "user_id".into() => "🧡💛".into()
+        };
+        let context = create!(
+            TemplateContext,
+            profile: profile,
+        );
+
+        let chunks =
+            TemplateString("intro {{user_id}} 💚💙💜 {{unknown}} outro".into())
+                .render_chunks(&context)
+                .await;
+        assert_eq!(
+            chunks,
+            vec![
+                TemplateChunk::Raw { start: 0, end: 6 },
+                TemplateChunk::Rendered("🧡💛".into()),
+                // Each emoji is 4 bytes
+                TemplateChunk::Raw { start: 17, end: 31 },
+                TemplateChunk::Error(TemplateError::FieldUnknown {
+                    field: "unknown".into()
+                }),
+                TemplateChunk::Raw { start: 42, end: 48 },
+            ]
+        );
+    }
+
     /// Helper for rendering a string
     macro_rules! render {
         ($template:expr, $context:expr) => {
             TemplateString($template.into())
-                .render_borrow(&$context)
+                .render_stitched(&$context)
                 .await
         };
     }
+
     use render;
 }

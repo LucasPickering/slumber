@@ -156,6 +156,11 @@ impl<T> StatefulList<T> {
         self.items.get(self.state.borrow().selected()?)
     }
 
+    /// Get the number of items in the list
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
     /// Get a mutable reference to state. This uses `RefCell` underneath so it
     /// will panic if aliased. Only call this during the draw phase!
     pub fn state_mut(&self) -> impl DerefMut<Target = ListState> + '_ {

@@ -5,6 +5,7 @@ mod util;
 
 pub use component::ModalPriority;
 pub use state::RequestState;
+pub use util::PreviewPrompter;
 
 use crate::{
     config::{RequestCollection, RequestRecipeId},
@@ -57,6 +58,7 @@ impl View {
     pub fn draw<'a>(
         &'a self,
         input_engine: &'a InputEngine,
+        messages_tx: MessageSender,
         frame: &'a mut Frame,
     ) {
         let chunk = frame.size();
@@ -64,7 +66,9 @@ impl View {
             &mut DrawContext {
                 input_engine,
                 theme: &self.theme,
+                messages_tx,
                 frame,
+                preview_templates: true, // TODO make dynamic
             },
             (),
             chunk,

@@ -8,6 +8,7 @@ mod response;
 mod root;
 mod table;
 mod tabs;
+mod template_preview;
 mod text_window;
 
 pub use modal::{IntoModal, Modal, ModalPriority};
@@ -117,7 +118,12 @@ pub trait Draw<Props = ()> {
 pub struct DrawContext<'a, 'f> {
     pub input_engine: &'a InputEngine,
     pub theme: &'a Theme,
+    /// Allows draw functions to trigger async operations, if the drawn content
+    /// needs some async calculation (e.g. template previews)
+    pub messages_tx: MessageSender,
     pub frame: &'a mut Frame<'f>,
+    /// TODO find a better home
+    pub preview_templates: bool,
 }
 
 /// A trigger for state change in the view. Events are handled by

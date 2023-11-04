@@ -4,11 +4,12 @@
 use crate::{
     config::{ProfileId, RequestCollection, RequestRecipeId},
     http::{RequestBuildError, RequestError, RequestId, RequestRecord},
-    template::{Prompt, Prompter},
+    template::{Prompt, Prompter, TemplateChunk, TemplateString},
     util::ResultExt,
 };
 use anyhow::Context;
 use derive_more::From;
+use std::sync::{Arc, OnceLock};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
@@ -81,6 +82,20 @@ pub enum Message {
     /// Show a prompt to the user, asking for some input. Use the included
     /// channel to return the value.
     PromptStart(Prompt),
+
+    /// Render a template string, to be previewed in the UI. Ideally this could
+    /// be launched directly by the component that needs it, but only the
+    /// controller has the data needed to build the template context. The
+    /// result (including inline errors) will be written back to the given
+    /// cell.
+    ///
+    /// By specifying the destination inline, we avoid having to plumb the
+    /// result all the way back down the component tree.
+    TemplatePreview {
+        template: TemplateString,
+        profile_id: Option<ProfileId>,
+        destination: Arc<OnceLock<Vec<TemplateChunk>>>,
+    },
 
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },

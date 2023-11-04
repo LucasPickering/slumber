@@ -1,5 +1,5 @@
 use crate::{
-    http::RequestId,
+    http::{RequestId, RequestRecord},
     tui::{
         input::Action,
         view::{
@@ -8,21 +8,23 @@ use crate::{
                 root::FullscreenMode,
                 table::{Table, TableProps},
                 tabs::Tabs,
-                text_window::{TextWindow, TextWindowProps},
+                text_window::TextWindow,
                 Component, Draw, Event, Update, UpdateContext,
             },
-            state::{FixedSelect, RequestState},
-            util::{layout, BlockBrick, HeaderValueDisplay, ToTui},
+            state::{FixedSelect, RequestState, StateCell},
+            util::{layout, BlockBrick, ToTui},
             DrawContext,
         },
     },
 };
 use derive_more::Display;
+use itertools::Itertools;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
     text::Line,
     widgets::{Paragraph, Wrap},
 };
+use std::ops::Deref;
 use strum::EnumIter;
 
 /// Display HTTP response state, which could be in progress, complete, or
@@ -30,8 +32,7 @@ use strum::EnumIter;
 #[derive(Debug, Default, Display)]
 #[display(fmt = "ResponsePane")]
 pub struct ResponsePane {
-    tabs: Tabs<Tab>,
-    text_window: TextWindow<RequestId>,
+    content: ResponseContent,
 }
 
 pub struct ResponsePaneProps<'a> {
@@ -67,7 +68,7 @@ impl Component for ResponsePane {
     }
 
     fn children(&mut self) -> Vec<&mut dyn Component> {
-        vec![&mut self.tabs, &mut self.text_window]
+        vec![&mut self.content]
     }
 }
 
@@ -152,42 +153,14 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                         header_left_chunk,
                     );
 
-                    // Split the main chunk again to allow tabs
-                    let [tabs_chunk, content_chunk] = layout(
+                    self.content.draw(
+                        context,
+                        ResponseContentProps {
+                            record,
+                            pretty_body: pretty_body.as_deref(),
+                        },
                         content_chunk,
-                        Direction::Vertical,
-                        [Constraint::Length(1), Constraint::Min(0)],
                     );
-
-                    // Navigation tabs
-                    self.tabs.draw(context, (), tabs_chunk);
-
-                    // Main content for the response
-                    match self.tabs.selected() {
-                        Tab::Body => self.text_window.draw(
-                            context,
-                            TextWindowProps {
-                                key: &record.id,
-                                // Use the pretty body if available. If not,
-                                // fall back to the ugly one
-                                text: pretty_body
-                                    .as_deref()
-                                    .unwrap_or(response.body.text()),
-                            },
-                            content_chunk,
-                        ),
-                        Tab::Headers => Table.draw(
-                            context,
-                            TableProps {
-                                key_label: "Header",
-                                value_label: "Value",
-                                data: response.headers.iter().map(|(k, v)| {
-                                    (k, HeaderValueDisplay::from(v))
-                                }),
-                            },
-                            content_chunk,
-                        ),
-                    }
                 }
 
                 // Sadge
@@ -199,6 +172,101 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                     );
                 }
             }
+        }
+    }
+}
+
+/// Display response success state (tab container)
+#[derive(Debug, Default, Display)]
+#[display(fmt = "ResponsePane")]
+struct ResponseContent {
+    tabs: Tabs<Tab>,
+    /// Persist the response body to track view state. Update whenever the
+    /// loaded request changes
+    body: StateCell<RequestId, TextWindow<String>>,
+}
+
+struct ResponseContentProps<'a> {
+    record: &'a RequestRecord,
+    pretty_body: Option<&'a str>,
+}
+
+impl Component for ResponseContent {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+        match event {
+            // Toggle fullscreen
+            Event::Input {
+                action: Some(Action::Fullscreen),
+                ..
+            } => {
+                context.queue_event(Event::ToggleFullscreen(
+                    FullscreenMode::Response,
+                ));
+                Update::Consumed
+            }
+
+            _ => Update::Propagate(event),
+        }
+    }
+
+    fn children(&mut self) -> Vec<&mut dyn Component> {
+        let mut children: Vec<&mut dyn Component> = vec![&mut self.tabs];
+        if let Some(body) = self.body.get_mut() {
+            children.push(body);
+        }
+        children
+    }
+}
+
+impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
+    fn draw(
+        &self,
+        context: &mut DrawContext,
+        props: ResponseContentProps<'a>,
+        chunk: Rect,
+    ) {
+        let response = &props.record.response;
+
+        // Split the main chunk again to allow tabs
+        let [tabs_chunk, content_chunk] = layout(
+            chunk,
+            Direction::Vertical,
+            [Constraint::Length(1), Constraint::Min(0)],
+        );
+
+        // Navigation tabs
+        self.tabs.draw(context, (), tabs_chunk);
+
+        // Main content for the response
+        match self.tabs.selected() {
+            Tab::Body => {
+                let body = self.body.get_or_update(props.record.id, || {
+                    // Use the pretty body if available. If not,
+                    // fall back to the ugly one
+                    let body = props
+                        .pretty_body
+                        .unwrap_or_else(|| response.body.text())
+                        .to_owned();
+                    TextWindow::new(body)
+                });
+                body.deref().draw(context, (), content_chunk)
+            }
+            Tab::Headers => Table.draw(
+                context,
+                TableProps {
+                    key_label: "Header",
+                    value_label: "Value",
+                    data: response
+                        .headers
+                        .iter()
+                        .map(|(k, v)| {
+                            (k.as_str().into(), v.to_tui(context).into())
+                        })
+                        // Collect required to close context ref
+                        .collect_vec(),
+                },
+                content_chunk,
+            ),
         }
     }
 }

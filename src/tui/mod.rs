@@ -5,11 +5,11 @@ mod view;
 use crate::{
     config::{ProfileId, RequestCollection, RequestRecipeId},
     http::{HttpEngine, Repository, RequestBuilder},
-    template::TemplateContext,
+    template::{Prompter, TemplateChunk, TemplateContext, TemplateString},
     tui::{
         input::{Action, InputEngine},
         message::{Message, MessageSender},
-        view::{ModalPriority, RequestState, View},
+        view::{ModalPriority, PreviewPrompter, RequestState, View},
     },
 };
 use anyhow::{anyhow, Context};
@@ -28,6 +28,7 @@ use signal_hook::{
 use std::{
     io::{self, Stdout},
     ops::Deref,
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -143,8 +144,10 @@ impl Tui {
             }
 
             // ===== Draw Phase =====
-            self.terminal
-                .draw(|f| self.view.draw(&self.input_engine, f))?;
+            self.terminal.draw(|f| {
+                self.view
+                    .draw(&self.input_engine, self.messages_tx.clone(), f)
+            })?;
 
             // ===== Signal Phase =====
             if quit_signals.pending().next().is_some() {
@@ -180,7 +183,7 @@ impl Tui {
             Message::HttpBeginRequest {
                 recipe_id,
                 profile_id,
-            } => self.send_request(recipe_id, profile_id)?,
+            } => self.send_request(recipe_id, profile_id.as_ref())?,
             Message::HttpBuildError { recipe_id, error } => {
                 self.view.set_request_state(
                     recipe_id,
@@ -222,6 +225,18 @@ impl Tui {
 
             Message::PromptStart(prompt) => {
                 self.view.open_modal(prompt, ModalPriority::Low);
+            }
+
+            Message::TemplatePreview {
+                template,
+                profile_id,
+                destination,
+            } => {
+                self.render_template_preview(
+                    template,
+                    profile_id.as_ref(),
+                    destination,
+                )?;
             }
 
             Message::Error { error } => {
@@ -266,7 +281,7 @@ impl Tui {
     fn send_request(
         &mut self,
         recipe_id: RequestRecipeId,
-        profile_id: Option<ProfileId>,
+        profile_id: Option<&ProfileId>,
     ) -> anyhow::Result<()> {
         let recipe = self
             .collection
@@ -278,7 +293,8 @@ impl Tui {
 
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
-        let template_context = self.template_context(profile_id.as_ref())?;
+        let template_context =
+            self.template_context(profile_id, self.messages_tx.clone())?;
         let http_engine = self.http_engine.clone();
         let builder = RequestBuilder::new(recipe, template_context);
         let messages_tx = self.messages_tx.clone();
@@ -333,6 +349,28 @@ impl Tui {
         });
     }
 
+    /// Spawn a task to render a template, storing the result in a pre-defined
+    /// lock. As this is a preview, the user will *not* be prompted for any
+    /// input. A placeholder value will be used for any prompts.
+    fn render_template_preview(
+        &self,
+        template: TemplateString,
+        profile_id: Option<&ProfileId>,
+        destination: Arc<OnceLock<Vec<TemplateChunk>>>,
+    ) -> anyhow::Result<()> {
+        let context = self.template_context(profile_id, PreviewPrompter)?;
+        self.spawn(async move {
+            // Render chunks, then write them to the output destination
+            let chunks = template.render_chunks(&context).await;
+            // If this fails, it's a logic error somewhere. Only one task should
+            // exist per lock
+            destination.set(chunks).map_err(|_| {
+                anyhow!("Multiple writes to template preview lock")
+            })
+        });
+        Ok(())
+    }
+
     /// Helper for spawning a fallible task. Any error in the resolved future
     /// will be shown to the user in a modal.
     fn spawn(
@@ -350,9 +388,12 @@ impl Tui {
     /// Expose app state to the templater. Most of the data has to be cloned out
     /// to be passed across async boundaries. This is annoying but in reality
     /// it should be small data.
+    ///
+    /// Fails if the given profile ID doesn't match any profiles
     fn template_context(
         &self,
         profile_id: Option<&ProfileId>,
+        prompter: impl 'static + Prompter,
     ) -> anyhow::Result<TemplateContext> {
         // Find profile by ID
         let profile = match profile_id {
@@ -375,7 +416,7 @@ impl Tui {
             repository: self.repository.clone(),
             chains: self.collection.chains.to_owned(),
             overrides: Default::default(),
-            prompter: Box::new(self.messages_tx.clone()),
+            prompter: Box::new(prompter),
         })
     }
 }

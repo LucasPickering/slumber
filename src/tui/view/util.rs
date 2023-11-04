@@ -3,20 +3,19 @@
 use crate::{
     config::{Profile, RequestRecipe},
     http::{RequestBuildError, RequestError},
+    template::{Prompt, Prompter},
     tui::view::{
         state::{Notification, StatefulList},
         DrawContext,
     },
 };
 use chrono::{DateTime, Duration, Local, Utc};
-use derive_more::From;
 use ratatui::{
     prelude::*,
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem},
 };
 use reqwest::header::HeaderValue;
-use std::fmt::{Display, Formatter};
 
 /// A helper for building a UI. It can be converted into some UI element to be
 /// drawn.
@@ -26,7 +25,7 @@ pub trait ToTui {
         Self: 'this;
 
     /// Build a UI element
-    fn to_tui(&self, context: &DrawContext) -> Self::Output<'_>;
+    fn to_tui<'a>(&'a self, context: &DrawContext) -> Self::Output<'a>;
 }
 
 /// A container with a title and border
@@ -83,6 +82,15 @@ impl<'a, T: ToTui<Output<'a> = Span<'a>>> ToTui for ListBrick<'a, T> {
         List::new(items)
             .block(block)
             .highlight_style(context.theme.list_highlight_style)
+    }
+}
+
+impl ToTui for String {
+    /// Use `Text` because a string can be multiple lines
+    type Output<'this> = Text<'this> where Self: 'this;
+
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
+        self.as_str().into()
     }
 }
 
@@ -153,6 +161,18 @@ impl ToTui for Option<Duration> {
     }
 }
 
+/// Not all header values are UTF-8; use a placeholder if not
+impl ToTui for HeaderValue {
+    type Output<'this> = Span<'this> where Self: 'this;
+
+    fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
+        match self.to_str() {
+            Ok(s) => s.into(),
+            Err(_) => "<invalid utf-8>".into(),
+        }
+    }
+}
+
 impl ToTui for anyhow::Error {
     /// 'static because string is generated
     type Output<'this> = Text<'static>;
@@ -186,17 +206,14 @@ impl ToTui for RequestError {
     }
 }
 
-/// Wrapper to implement `Display` for an HTTP header value. Uses a placeholder
-/// value for non-UTF-8 values
-#[derive(Debug, From)]
-pub struct HeaderValueDisplay<'a>(&'a HeaderValue);
+/// A prompter that returns a static value; used for template previews, where
+/// user interaction isn't possible
+#[derive(Debug)]
+pub struct PreviewPrompter;
 
-impl<'a> Display for HeaderValueDisplay<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self.0.to_str() {
-            Ok(s) => write!(f, "{}", s),
-            Err(_) => write!(f, "<invalid utf-8>"),
-        }
+impl Prompter for PreviewPrompter {
+    fn prompt(&self, prompt: Prompt) {
+        prompt.respond("<prompt>".into())
     }
 }
 

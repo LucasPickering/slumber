@@ -204,15 +204,16 @@ impl Draw<HelpTextProps> for HelpText {
         // Decide which actions to show based on context. This is definitely
         // spaghetti and easy to get out of sync, but it's the easiest way to
         // get granular control
-        let mut actions = vec![Action::Quit, Action::ReloadCollection];
+        let mut actions =
+            vec![Action::Quit, Action::ReloadCollection, Action::SendRequest];
 
         match props.fullscreen_mode {
             None => {
                 actions.extend([Action::NextPane, Action::PreviousPane]);
                 // Pane-specific actions
                 actions.extend(match props.selected_pane {
-                    PrimaryPane::ProfileList => [].as_slice(),
-                    PrimaryPane::RecipeList => &[Action::Submit],
+                    PrimaryPane::ProfileList => &[] as &[Action],
+                    PrimaryPane::RecipeList => &[],
                     PrimaryPane::Request => &[Action::Fullscreen],
                     PrimaryPane::Response => &[Action::Fullscreen],
                 });

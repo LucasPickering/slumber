@@ -135,16 +135,18 @@ impl Component for Root {
             }
 
             // Input messages
-            Event::Input {
-                action: Some(Action::Quit),
-                ..
-            } => context.send_message(Message::Quit),
-            Event::Input {
-                action: Some(Action::ReloadCollection),
-                ..
-            } => context.send_message(Message::CollectionStartReload),
-            // Any other user input should get thrown away
-            Event::Input { .. } => {}
+            Event::Input { action, .. } => match action {
+                Some(Action::Quit) => context.send_message(Message::Quit),
+                Some(Action::ReloadCollection) => {
+                    context.send_message(Message::CollectionStartReload)
+                }
+                Some(Action::SendRequest) => {
+                    // Send a request from anywhere
+                    context.queue_event(Event::HttpSendRequest)
+                }
+                // Any other user input should get thrown away
+                _ => {}
+            },
 
             // There shouldn't be anything left unhandled. Bubble up to log it
             _ => return Update::Propagate(event),

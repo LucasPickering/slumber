@@ -34,6 +34,7 @@ impl InputEngine {
                     Action::ForceQuit,
                 ),
                 InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
+                InputBinding::new(KeyCode::F(2), Action::SendRequest),
                 InputBinding::new(KeyCode::F(11), Action::Fullscreen),
                 InputBinding::new(KeyCode::BackTab, Action::PreviousPane),
                 InputBinding::new(KeyCode::Tab, Action::NextPane),
@@ -116,6 +117,9 @@ pub enum Action {
 
     /// Do a thing. E.g. select an item in a list
     Submit,
+    /// Send the active request from *any* context
+    #[display(fmt = "Send Request")]
+    SendRequest,
     /// Embiggen a pane
     Fullscreen,
     /// Close the current modal/dialog/etc.

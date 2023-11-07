@@ -6,7 +6,7 @@ keywords = ["rest", "http", "terminal", "tui"]
 license = "MIT"
 name = "slumber"
 repository = "https://github.com/LucasPickering/slumber"
-version = "0.4.0"
+version = "0.5.0"
 # Keep in sync w/ rust-toolchain.toml
 rust-version = "1.72.0"
 

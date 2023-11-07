@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - ReleaseDate
+## [0.5.0] - 2023-11-07
 
 ### Added
 

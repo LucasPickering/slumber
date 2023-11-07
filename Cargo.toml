@@ -51,6 +51,12 @@ rstest = {version = "0.18.2", default-features = false}
 inherits = "release"
 lto = "thin"
 
+[workspace.metadata.release]
+pre-release-replacements = [
+  {file = "CHANGELOG.md", search = "Unreleased", replace = "{{version}}"},
+  {file = "CHANGELOG.md", search = "ReleaseDate", replace = "{{date}}"},
+]
+
 # Config for 'cargo dist'
 [workspace.metadata.dist]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)

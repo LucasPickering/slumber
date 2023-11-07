@@ -2,8 +2,7 @@
 
 It's easy!
 
-- Add release notes to `CHANGELOG.md`
-  - Add a new header in the format `## [x.y.z] - yyyy-mm-dd`
+- Make sure `CHANGELOG.md` has the latest release notes under `Unreleased`
 - `cargo release <major|minor|patch>`
   - If it looks good, add `--execute`
 

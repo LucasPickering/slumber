@@ -11,7 +11,7 @@ use ratatui::{
     text::{Line, Text},
     widgets::Paragraph,
 };
-use std::{cmp, fmt::Debug};
+use std::{cell::Cell, cmp, fmt::Debug};
 
 /// A scrollable (but not editable) block of text. Text is not externally
 /// mutable. If you need to update the text, store this in a `StateCell` and
@@ -24,11 +24,32 @@ use std::{cmp, fmt::Debug};
 pub struct TextWindow<T> {
     text: T,
     offset_y: u16,
+    text_height: Cell<u16>,
+    window_height: Cell<u16>,
 }
 
 impl<T> TextWindow<T> {
     pub fn new(text: T) -> Self {
-        Self { text, offset_y: 0 }
+        Self {
+            text,
+            offset_y: 0,
+            text_height: Cell::default(),
+            window_height: Cell::default(),
+        }
+    }
+
+    fn scroll_up(&mut self, lines: u16) {
+        self.offset_y = self.offset_y.saturating_sub(lines);
+    }
+
+    fn scroll_down(&mut self, lines: u16) {
+        self.offset_y = cmp::min(
+            self.offset_y + lines,
+            // Don't scroll past the bottom of the text
+            self.text_height
+                .get()
+                .saturating_sub(self.window_height.get()),
+        );
     }
 }
 
@@ -43,16 +64,14 @@ impl<T: Debug> Component for TextWindow<T> {
                 action: Some(Action::Up),
                 ..
             } => {
-                self.offset_y = self.offset_y.saturating_sub(1);
+                self.scroll_up(1);
                 Update::Consumed
             }
             Event::Input {
                 action: Some(Action::Down),
                 ..
             } => {
-                // TODO upper bound on scroll. It's doable because we have the
-                // text, but we need to work through the generics somehow
-                self.offset_y += 1;
+                self.scroll_down(1);
                 Update::Consumed
             }
             _ => Update::Propagate(event),
@@ -64,7 +83,9 @@ impl<'a, T: 'a + ToTui<Output<'a> = Text<'a>>> Draw for &'a TextWindow<T> {
     fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
         let text = self.text.to_tui(context);
         // TODO how do we handle text longer than 65k lines?
-        let num_lines = text.lines.len() as u16;
+        let text_height = text.lines.len() as u16;
+        self.text_height.set(text_height);
+        self.window_height.set(chunk.height);
 
         let [gutter_chunk, _, text_chunk] = layout(
             chunk,
@@ -72,7 +93,7 @@ impl<'a, T: 'a + ToTui<Output<'a> = Text<'a>>> Draw for &'a TextWindow<T> {
             [
                 // Size gutter based on width of max line number
                 Constraint::Length(
-                    (num_lines as f32).log10().floor() as u16 + 1,
+                    (text_height as f32).log10().floor() as u16 + 1,
                 ),
                 Constraint::Length(1), // Spacer
                 Constraint::Min(0),
@@ -81,7 +102,7 @@ impl<'a, T: 'a + ToTui<Output<'a> = Text<'a>>> Draw for &'a TextWindow<T> {
 
         // Draw line numbers in the gutter
         let first_line = self.offset_y + 1;
-        let last_line = cmp::min(first_line + chunk.height, num_lines);
+        let last_line = cmp::min(first_line + chunk.height, text_height);
         context.frame.render_widget(
             Paragraph::new(
                 (first_line..=last_line)

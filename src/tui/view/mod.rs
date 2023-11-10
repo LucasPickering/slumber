@@ -34,6 +34,7 @@ use tracing::{error, trace, trace_span};
 #[derive(Debug)]
 pub struct View {
     messages_tx: MessageSender,
+    config: ViewConfig,
     theme: Theme,
     root: Root,
 }
@@ -45,6 +46,7 @@ impl View {
     ) -> Self {
         let mut view = Self {
             messages_tx,
+            config: ViewConfig::default(),
             theme: Theme::default(),
             root: Root::new(collection),
         };
@@ -65,10 +67,10 @@ impl View {
         self.root.draw(
             &mut DrawContext {
                 input_engine,
+                config: &self.config,
                 theme: &self.theme,
                 messages_tx,
                 frame,
-                preview_templates: true, // TODO make dynamic
             },
             (),
             chunk,
@@ -129,6 +131,7 @@ impl View {
                 let mut context = UpdateContext::new(
                     self.messages_tx.clone(),
                     &mut event_queue,
+                    &mut self.config,
                 );
                 match Self::update_all(&mut self.root, &mut context, event) {
                     Update::Consumed => {
@@ -175,5 +178,19 @@ impl View {
             trace!(?outcome);
             outcome
         })
+    }
+}
+
+/// Settings that control the behavior of the view
+#[derive(Debug)]
+struct ViewConfig {
+    preview_templates: bool,
+}
+
+impl Default for ViewConfig {
+    fn default() -> Self {
+        Self {
+            preview_templates: true,
+        }
     }
 }

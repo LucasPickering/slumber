@@ -26,6 +26,7 @@ pub struct Theme {
     pub table_header_style: Style,
     pub table_text_style: Style,
     pub table_alt_text_style: Style,
+    pub table_highlight_style: Style,
 
     pub template_preview_text: Style,
     pub template_preview_error: Style,
@@ -66,6 +67,10 @@ impl Default for Theme {
                 .add_modifier(Modifier::UNDERLINED),
             table_text_style: Style::default(),
             table_alt_text_style: Style::default().bg(Color::DarkGray),
+            table_highlight_style: Style::default()
+                .bg(PRIMARY_COLOR)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
 
             template_preview_text: Style::default().fg(Color::Blue),
             template_preview_error: Style::default().bg(ERROR_COLOR),

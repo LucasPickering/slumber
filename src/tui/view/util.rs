@@ -85,6 +85,23 @@ impl<'a, T: ToTui<Output<'a> = Span<'a>>> ToTui for ListBrick<'a, T> {
     }
 }
 
+/// Yes or no?
+pub struct Checkbox {
+    pub checked: bool,
+}
+
+impl ToTui for Checkbox {
+    type Output<'this> = Text<'this>;
+
+    fn to_tui<'a>(&'a self, _context: &DrawContext) -> Self::Output<'a> {
+        if self.checked {
+            "[x]".into()
+        } else {
+            "[ ]".into()
+        }
+    }
+}
+
 impl ToTui for String {
     /// Use `Text` because a string can be multiple lines
     type Output<'this> = Text<'this> where Self: 'this;

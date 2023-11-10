@@ -1,24 +1,28 @@
+mod error;
+mod prompt;
+
+use error::{ChainError, TemplateError, TemplateResult};
+pub use prompt::{Prompt, Prompter};
+
 use crate::{
     config::{Chain, ChainSource, RequestRecipeId},
     http::{ContentType, Json, Repository},
     util::ResultExt,
 };
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use async_trait::async_trait;
 use derive_more::{Deref, From};
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json_path::{ExactlyOneError, JsonPath};
+use serde_json_path::JsonPath;
 use std::{
-    env::{self, VarError},
+    env::{self},
     fmt::Debug,
-    io,
     ops::Deref as _,
-    path::{Path, PathBuf},
+    path::Path,
     sync::OnceLock,
 };
-use thiserror::Error;
 use tokio::{fs, sync::oneshot};
 use tracing::{instrument, trace};
 
@@ -44,6 +48,23 @@ pub struct TemplateContext {
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
+}
+
+/// A piece of a rendered template string. A collection of chunks collectively
+/// constitutes a rendered string, and those chunks should be contiguous.
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum TemplateChunk {
+    /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
+    /// stored as indexes into the original string, rather than a string
+    /// slice, to allow this to be passed between tasks/threads easily. We
+    /// could store an owned copy here but that would require copying what
+    /// could be a very large block of text.
+    Raw { start: usize, end: usize },
+    /// Outcome of rendering a template key
+    Rendered(String),
+    /// An error occurred while rendering a template key
+    Error(TemplateError),
 }
 
 impl TemplateString {
@@ -158,72 +179,6 @@ impl TemplateString {
         }
         Ok(buffer)
     }
-}
-
-/// A prompter is a bridge between the user and the template engine. It enables
-/// the template engine to request values from the user *during* the template
-/// process. The implementor is responsible for deciding *how* to ask the user.
-///
-/// **Note:** The prompter has to be able to handle simultaneous prompt
-/// requests, if a template has multiple prompt values, or if multiple templates
-/// with prompts are being rendered simultaneously.  The implementor is
-/// responsible for queueing prompts to show to the user one at a time.
-pub trait Prompter: Debug + Send + Sync {
-    /// Ask the user a question, and use the given channel to return a response.
-    /// To indicate "no response", simply drop the returner.
-    ///
-    /// If an error occurs while prompting the user, just drop the returner.
-    /// The implementor is responsible for logging the error as appropriate.
-    fn prompt(&self, prompt: Prompt);
-}
-
-/// Data defining a prompt which should be presented to the user
-#[derive(Debug)]
-pub struct Prompt {
-    /// Tell the user what we're asking for
-    label: String,
-    /// Should the value the user is typing be masked? E.g. password input
-    sensitive: bool,
-    /// How the prompter will pass the answer back
-    channel: oneshot::Sender<String>,
-}
-
-impl Prompt {
-    pub fn label(&self) -> &str {
-        &self.label
-    }
-
-    pub fn sensitive(&self) -> bool {
-        self.sensitive
-    }
-
-    /// Return the value that the user gave
-    pub fn respond(self, response: String) {
-        // This error *shouldn't* ever happen, because the templating task
-        // stays open until it gets a response
-        let _ = self
-            .channel
-            .send(response)
-            .map_err(|_| anyhow!("Prompt listener dropped"))
-            .traced();
-    }
-}
-
-/// A piece of a rendered template string. A collection of chunks collectively
-/// constitutes a rendered string, and those chunks should be contiguous.
-#[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum TemplateChunk {
-    /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
-    /// stored as indexes into the original string, rather than a string
-    /// slice, to allow this to be passed between tasks/threads easily. We
-    /// could store an owned copy here but that would require copying what
-    /// could be a very large block of text.
-    Raw { start: usize, end: usize },
-    /// Outcome of rendering a template key
-    Rendered(String),
-    /// An error occurred while rendering a template key
-    Error(TemplateError),
 }
 
 impl From<TemplateResult> for TemplateChunk {
@@ -453,91 +408,6 @@ impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
                 error: err,
             }
         })
-    }
-}
-
-type TemplateResult = Result<String, TemplateError>;
-
-/// Any error that can occur during template rendering. The purpose of having a
-/// structured error here (while the rest of the app just uses `anyhow`) is to
-/// support localized error display in the UI, e.g. showing just one portion of
-/// a string in red if that particular template key failed to render.
-///
-/// The error always holds owned data so it can be detached from the lifetime
-/// of the template context. This requires a mild amount of cloning in error
-/// cases, but those should be infrequent so it's fine.
-#[derive(Debug, Error)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum TemplateError {
-    /// Template key could not be parsed
-    #[error("Failed to parse template key {key:?}")]
-    InvalidKey { key: String },
-
-    /// A basic field key contained an unknown field
-    #[error("Unknown field {field:?}")]
-    FieldUnknown { field: String },
-
-    #[error("Error resolving chain {chain_id:?}")]
-    Chain {
-        chain_id: String,
-        #[source]
-        error: ChainError,
-    },
-
-    /// Variable either didn't exist or had non-unicode content
-    #[error("Error accessing environment variable {variable:?}")]
-    EnvironmentVariable {
-        variable: String,
-        #[source]
-        error: VarError,
-    },
-}
-
-/// An error sub-type, for any error that occurs while resolving a chained
-/// value. This is factored out because they all need to be paired with a chain
-/// ID.
-#[derive(Debug, Error)]
-pub enum ChainError {
-    /// Reference to a chain that doesn't exist
-    #[error("Unknown chain")]
-    Unknown,
-    /// An error occurred accessing the request repository. This error is
-    /// generated by our code so we don't need any extra context.
-    #[error(transparent)]
-    Repository(anyhow::Error),
-    /// The chain ID is valid, but the corresponding recipe has no successful
-    /// response
-    #[error("No response available")]
-    NoResponse,
-    /// Failed to parse the response body before applying a selector
-    #[error("Error parsing response")]
-    ParseResponse {
-        #[source]
-        error: anyhow::Error,
-    },
-    /// Got either 0 or 2+ results for JSON path query
-    #[error("Expected exactly one result from selector")]
-    InvalidResult {
-        #[source]
-        error: ExactlyOneError,
-    },
-    #[error("Error reading from file {path:?}")]
-    File {
-        path: PathBuf,
-        #[source]
-        error: io::Error,
-    },
-    /// Never got a response from the prompt channel. Do *not* store the
-    /// `RecvError` here, because it provides useless extra output to the user.
-    #[error("No response from prompt")]
-    PromptNoResponse,
-}
-
-#[cfg(test)]
-impl PartialEq for ChainError {
-    fn eq(&self, _: &Self) -> bool {
-        // Punting on this for now because anyhow::Error isn't PartialEq
-        unimplemented!("PartialEq for ChainError is hard to implement")
     }
 }
 

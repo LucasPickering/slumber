@@ -4,8 +4,9 @@
 
 ### Added
 
-- Add ability to preview template values. This will show the rendered value under current settings
+- Add ability to preview template values. This will show the rendered value under current settings [#29](https://github.com/LucasPickering/slumber/issues/29)
   - This includes a new modal to toggle the setting on/off, via the `X` key
+- Add `command` source type for chained values, which uses stdout from an executed subprocess command [#31](https://github.com/LucasPickering/slumber/issues/31)
 
 ### Changed
 

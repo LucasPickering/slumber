@@ -34,6 +34,7 @@ impl InputEngine {
                     Action::ForceQuit,
                 ),
                 InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
+                InputBinding::new(KeyCode::Char('x'), Action::OpenSettings),
                 InputBinding::new(KeyCode::F(2), Action::SendRequest),
                 InputBinding::new(KeyCode::F(11), Action::Fullscreen),
                 InputBinding::new(KeyCode::BackTab, Action::PreviousPane),
@@ -122,6 +123,9 @@ pub enum Action {
     SendRequest,
     /// Embiggen a pane
     Fullscreen,
+    /// Open the settings modal
+    #[display(fmt = "Settings")]
+    OpenSettings,
     /// Close the current modal/dialog/etc.
     Cancel,
 }

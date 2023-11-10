@@ -134,19 +134,13 @@ impl Component for Root {
                     Some(NotificationText::new(notification))
             }
 
-            // Input messages
-            Event::Input { action, .. } => match action {
-                Some(Action::Quit) => context.send_message(Message::Quit),
-                Some(Action::ReloadCollection) => {
-                    context.send_message(Message::CollectionStartReload)
-                }
-                Some(Action::SendRequest) => {
-                    // Send a request from anywhere
-                    context.queue_event(Event::HttpSendRequest)
-                }
-                // Any other user input should get thrown away
-                _ => {}
-            },
+            // Any input here should be handled regardless of current screen
+            // context (barring any focused text element, which will eat all
+            // input)
+            Event::Input {
+                action: Some(Action::Quit),
+                ..
+            } => context.send_message(Message::Quit),
 
             // There shouldn't be anything left unhandled. Bubble up to log it
             _ => return Update::Propagate(event),
@@ -155,9 +149,14 @@ impl Component for Root {
     }
 
     fn children(&mut self) -> Vec<&mut dyn Component> {
-        vec![
-            &mut self.modal_queue,
-            match self.fullscreen_mode {
+        let modal_open = self.modal_queue.is_open();
+        let mut children: Vec<&mut dyn Component> = vec![&mut self.modal_queue];
+
+        // If a modal is open, don't allow *any* input to the background. We'll
+        // still accept input ourselves though, which should only be
+        // high-priority stuff
+        if !modal_open {
+            children.push(match self.fullscreen_mode {
                 None => &mut self.primary_view,
                 Some(FullscreenMode::Request) => {
                     self.primary_view.request_pane_mut()
@@ -165,8 +164,10 @@ impl Component for Root {
                 Some(FullscreenMode::Response) => {
                     self.primary_view.response_pane_mut()
                 }
-            },
-        ]
+            });
+        }
+
+        children
     }
 }
 

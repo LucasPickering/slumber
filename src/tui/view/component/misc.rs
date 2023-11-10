@@ -204,27 +204,31 @@ impl Draw<HelpTextProps> for HelpText {
         // Decide which actions to show based on context. This is definitely
         // spaghetti and easy to get out of sync, but it's the easiest way to
         // get granular control
-        let mut actions =
-            vec![Action::Quit, Action::ReloadCollection, Action::SendRequest];
+        let mut actions = vec![Action::Quit];
 
-        match props.fullscreen_mode {
-            None => {
-                actions.extend([Action::NextPane, Action::PreviousPane]);
-                // Pane-specific actions
-                actions.extend(match props.selected_pane {
-                    PrimaryPane::ProfileList => &[] as &[Action],
-                    PrimaryPane::RecipeList => &[],
-                    PrimaryPane::Request => &[Action::Fullscreen],
-                    PrimaryPane::Response => &[Action::Fullscreen],
-                });
-            }
-            Some(FullscreenMode::Request | FullscreenMode::Response) => {
-                actions.extend([Action::Fullscreen])
-            }
-        }
-
+        // Modal overrides everything else
         if props.has_modal {
             actions.push(Action::Cancel);
+        } else {
+            match props.fullscreen_mode {
+                None => {
+                    actions.extend([
+                        Action::ReloadCollection,
+                        Action::SendRequest,
+                        Action::NextPane,
+                        Action::PreviousPane,
+                        Action::OpenSettings,
+                    ]);
+                    // Pane-specific actions
+                    actions.extend(match props.selected_pane {
+                        PrimaryPane::ProfileList => &[] as &[Action],
+                        PrimaryPane::RecipeList => &[],
+                        PrimaryPane::Request => &[Action::Fullscreen],
+                        PrimaryPane::Response => &[Action::Fullscreen],
+                    });
+                }
+                Some(_) => actions.extend([Action::Fullscreen]),
+            }
         }
 
         let text = actions

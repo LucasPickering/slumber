@@ -9,11 +9,12 @@ use crate::{
             component::{
                 request::{RequestPane, RequestPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
+                settings::SettingsModal,
                 Component, Draw, Event, Update, UpdateContext,
             },
             state::{FixedSelect, RequestState, StatefulList, StatefulSelect},
             util::{layout, BlockBrick, ListBrick, ToTui},
-            DrawContext,
+            DrawContext, ModalPriority,
         },
     },
 };
@@ -127,20 +128,33 @@ impl Component for PrimaryView {
             }
 
             // Input messages
-            Event::Input {
-                action: Some(Action::PreviousPane),
-                ..
-            } => {
-                self.selected_pane.previous();
-                Update::Consumed
-            }
-            Event::Input {
-                action: Some(Action::NextPane),
-                ..
-            } => {
-                self.selected_pane.next();
-                Update::Consumed
-            }
+            Event::Input { action, .. } => match action {
+                Some(Action::PreviousPane) => {
+                    self.selected_pane.previous();
+                    Update::Consumed
+                }
+                Some(Action::NextPane) => {
+                    self.selected_pane.next();
+                    Update::Consumed
+                }
+                Some(Action::ReloadCollection) => {
+                    context.send_message(Message::CollectionStartReload);
+                    Update::Consumed
+                }
+                Some(Action::SendRequest) => {
+                    // Send a request from anywhere
+                    context.queue_event(Event::HttpSendRequest);
+                    Update::Consumed
+                }
+                Some(Action::OpenSettings) => {
+                    context.queue_event(Event::OpenModal {
+                        modal: Box::<SettingsModal>::default(),
+                        priority: ModalPriority::Low,
+                    });
+                    Update::Consumed
+                }
+                _ => Update::Propagate(event),
+            },
 
             _ => Update::Propagate(event),
         }

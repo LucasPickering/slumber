@@ -6,6 +6,7 @@ mod primary;
 mod request;
 mod response;
 mod root;
+mod settings;
 mod table;
 mod tabs;
 mod template_preview;
@@ -23,7 +24,7 @@ use crate::{
             component::root::FullscreenMode,
             state::{Notification, RequestState},
             theme::Theme,
-            Frame,
+            Frame, ViewConfig,
         },
     },
 };
@@ -69,16 +70,19 @@ pub trait Component: Debug + Display {
 pub struct UpdateContext<'a> {
     messages_tx: MessageSender,
     event_queue: &'a mut VecDeque<Event>,
+    config: &'a mut ViewConfig,
 }
 
 impl<'a> UpdateContext<'a> {
     pub fn new(
         messages_tx: MessageSender,
         event_queue: &'a mut VecDeque<Event>,
+        config: &'a mut ViewConfig,
     ) -> Self {
         Self {
             messages_tx,
             event_queue,
+            config,
         }
     }
 
@@ -117,13 +121,12 @@ pub trait Draw<Props = ()> {
 #[derive(Debug)]
 pub struct DrawContext<'a, 'f> {
     pub input_engine: &'a InputEngine,
+    pub config: &'a ViewConfig,
     pub theme: &'a Theme,
     /// Allows draw functions to trigger async operations, if the drawn content
     /// needs some async calculation (e.g. template previews)
     pub messages_tx: MessageSender,
     pub frame: &'a mut Frame<'f>,
-    /// TODO find a better home
-    pub preview_templates: bool,
 }
 
 /// A trigger for state change in the view. Events are handled by

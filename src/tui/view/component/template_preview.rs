@@ -69,7 +69,7 @@ impl ToTui for TemplatePreview {
         // The raw template string
         let raw = self.template.deref();
 
-        if context.preview_templates {
+        if context.config.preview_templates {
             // If the preview render is ready, show it. Otherwise fall back to
             // the raw
             match self.chunks.get() {

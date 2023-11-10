@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Added
+
+- Add ability to preview template values. This will show the rendered value under current settings
+  - This includes a new modal to toggle the setting on/off, via the `X` key
+
+### Changed
+
+- HTTP method is now a plain string, not a template string. This simplifies some internal logic, and I don't think there was a compelling reason to make a template in the first place.
+
 ## [0.5.0] - 2023-11-07
 
 ### Added

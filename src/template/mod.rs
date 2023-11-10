@@ -1,7 +1,7 @@
 mod error;
 mod prompt;
 
-use error::{ChainError, TemplateError, TemplateResult};
+pub use error::{ChainError, TemplateError, TemplateResult};
 pub use prompt::{Prompt, Prompter};
 
 use crate::{

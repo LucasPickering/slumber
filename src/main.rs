@@ -1,6 +1,7 @@
 #![deny(clippy::all)]
 #![feature(associated_type_defaults)]
 #![feature(iterator_try_collect)]
+#![feature(lazy_cell)]
 #![feature(trait_upcasting)]
 #![feature(try_blocks)]
 

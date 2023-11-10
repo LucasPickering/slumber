@@ -1,5 +1,5 @@
 use serde_json_path::ExactlyOneError;
-use std::{env::VarError, io, path::PathBuf};
+use std::{env::VarError, io, path::PathBuf, string::FromUtf8Error};
 use thiserror::Error;
 
 pub type TemplateResult = Result<String, TemplateError>;
@@ -66,6 +66,21 @@ pub enum ChainError {
     InvalidResult {
         #[source]
         error: ExactlyOneError,
+    },
+    /// User gave an empty list for the command
+    #[error("No command given")]
+    CommandMissing,
+    #[error("Error executing command {command:?}")]
+    Command {
+        command: Vec<String>,
+        #[source]
+        error: io::Error,
+    },
+    #[error("Error decoding output for {command:?}")]
+    CommandInvalidUtf8 {
+        command: Vec<String>,
+        #[source]
+        error: FromUtf8Error,
     },
     #[error("Error reading from file {path:?}")]
     File {

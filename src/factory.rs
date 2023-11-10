@@ -49,7 +49,7 @@ factori!(RequestRecord, {
 
 factori!(Chain, {
     default {
-        id = String::new(),
+        id = String::from("chain1"),
         source = ChainSource::Request(RequestRecipeId::default()),
         sensitive = false,
         selector = None,

@@ -126,6 +126,8 @@ pub struct Chain {
 pub enum ChainSource {
     /// Load data from the most recent response of a particular request recipe
     Request(RequestRecipeId),
+    /// Run an external command to get a result
+    Command(Vec<String>),
     /// Load data from a file
     File(PathBuf),
     /// Prompt the user for a value, with an optional label

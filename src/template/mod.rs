@@ -23,8 +23,8 @@ use std::{
     path::Path,
     sync::OnceLock,
 };
-use tokio::{fs, sync::oneshot};
-use tracing::{instrument, trace};
+use tokio::{fs, process::Command, sync::oneshot};
+use tracing::{info, instrument, trace};
 
 static TEMPLATE_REGEX: OnceLock<Regex> = OnceLock::new();
 
@@ -297,6 +297,9 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     self.render_request(context, recipe_id).await?
                 }
                 ChainSource::File(path) => self.render_file(path).await?,
+                ChainSource::Command(command) => {
+                    self.render_command(command).await?
+                }
                 ChainSource::Prompt(label) => {
                     self.render_prompt(
                         context,
@@ -343,10 +346,41 @@ impl<'a> ChainTemplateSource<'a> {
     async fn render_file(&self, path: &'a Path) -> Result<String, ChainError> {
         fs::read_to_string(path)
             .await
-            .map_err(|err| ChainError::File {
+            .map_err(|error| ChainError::File {
                 path: path.to_owned(),
-                error: err,
+                error,
             })
+    }
+
+    /// Render a chained value from an external command
+    async fn render_command(
+        &self,
+        command: &[String],
+    ) -> Result<String, ChainError> {
+        match command {
+            [] => Err(ChainError::CommandMissing),
+            [program, args @ ..] => {
+                let output =
+                    Command::new(program).args(args).output().await.map_err(
+                        |error| ChainError::Command {
+                            command: command.to_owned(),
+                            error,
+                        },
+                    )?;
+                info!(
+                    ?command,
+                    stdout = %String::from_utf8_lossy(&output.stdout),
+                    stderr = %String::from_utf8_lossy(&output.stderr),
+                    "Executing subcommand"
+                );
+                String::from_utf8(output.stdout).map_err(|error| {
+                    ChainError::CommandInvalidUtf8 {
+                        command: command.to_owned(),
+                        error,
+                    }
+                })
+            }
+        }
     }
 
     /// Render a value by asking the user to provide it
@@ -502,7 +536,6 @@ mod tests {
         let selector = selector.map(|s| s.parse().unwrap());
         let chains = vec![create!(
             Chain,
-            id: "chain1".into(),
             source: ChainSource::Request(recipe_id),
             selector: selector,
         )];
@@ -519,16 +552,15 @@ mod tests {
     /// Test all possible error cases for chained requests. This covers all
     /// chain-specific error variants
     #[rstest]
-    #[case(create!(Chain), None, "Unknown chain")]
+    #[case(create!(Chain, id: "unknown".into()), None, "Unknown chain")]
     #[case(
-        create!(Chain, id: "chain1".into(), source: ChainSource::Request("unknown".into())),
+        create!(Chain, source: ChainSource::Request("unknown".into())),
         None,
         "No response available",
     )]
     #[case(
         create!(
             Chain,
-            id: "chain1".into(),
             source: ChainSource::Request("recipe1".into()),
             selector: Some("$.message".parse().unwrap()),
         ),
@@ -541,7 +573,6 @@ mod tests {
     #[case(
         create!(
             Chain,
-            id: "chain1".into(),
             source: ChainSource::Request("recipe1".into()),
             selector: Some("$.*".parse().unwrap()),
         ),
@@ -578,6 +609,42 @@ mod tests {
         );
     }
 
+    /// Test success with chained command
+    #[tokio::test]
+    async fn test_chain_command() {
+        let command = vec!["echo".into(), "-n".into(), "hello!".into()];
+        let chains = vec![create!(
+            Chain,
+            source: ChainSource::Command(command),
+        )];
+        let context = create!(TemplateContext, chains: chains);
+
+        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
+    }
+
+    /// Test failure with chained command
+    #[rstest]
+    #[case(&[], "No command given")]
+    #[case(&["totally not a program"], "No such file or directory")]
+    #[case(&["head", "/dev/random"], "invalid utf-8 sequence")]
+    #[tokio::test]
+    async fn test_chain_command_error(
+        #[case] command: &[&str],
+        #[case] expected_error: &str,
+    ) {
+        let source = ChainSource::Command(
+            command.iter().cloned().map(String::from).collect(),
+        );
+        let chains = vec![create!(Chain, source: source)];
+        let context = create!(TemplateContext, chains: chains);
+
+        assert_err!(
+            render!("{{chains.chain1}}", context),
+            expected_error,
+            true
+        );
+    }
+
     /// Test success with chained file
     #[tokio::test]
     async fn test_chain_file() {
@@ -588,7 +655,7 @@ mod tests {
 
         let chains = vec![create!(
             Chain,
-            id: "chain1".into(),
+
             source: ChainSource::File(file_path),
         )];
         let context = create!(TemplateContext, chains: chains);
@@ -601,7 +668,7 @@ mod tests {
     async fn test_chain_file_error() {
         let chains = vec![create!(
             Chain,
-            id: "chain1".into(),
+
             source: ChainSource::File("not-a-real-file".into()),
         )];
         let context = create!(TemplateContext, chains: chains);
@@ -617,7 +684,7 @@ mod tests {
     async fn test_chain_prompt() {
         let chains = vec![create!(
             Chain,
-            id: "chain1".into(),
+
             source: ChainSource::Prompt(Some("password".into())),
         )];
         let context = create!(
@@ -635,7 +702,7 @@ mod tests {
     async fn test_chain_prompt_error() {
         let chains = vec![create!(
             Chain,
-            id: "chain1".into(),
+
             source: ChainSource::Prompt(Some("password".into())),
         )];
         let context = create!(

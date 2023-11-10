@@ -17,7 +17,7 @@ profiles:
 
 chains:
   - id: username
-    source: !prompt Username
+    source: !command ["sh", "-c", "whoami | tr -d '\n'"]
   - id: password
     source: !prompt Password
     sensitive: true

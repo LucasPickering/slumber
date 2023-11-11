@@ -8,7 +8,7 @@ pub use state::RequestState;
 pub use util::PreviewPrompter;
 
 use crate::{
-    config::{RequestCollection, RequestRecipeId},
+    collection::{RequestCollection, RequestRecipeId},
     tui::{
         input::{Action, InputEngine},
         message::MessageSender,

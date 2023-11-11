@@ -5,7 +5,7 @@ pub use error::{ChainError, TemplateError, TemplateResult};
 pub use prompt::{Prompt, Prompter};
 
 use crate::{
-    config::{Chain, ChainSource, RequestRecipeId},
+    collection::{Chain, ChainSource, RequestRecipeId},
     http::{ContentType, Json, Repository},
     util::ResultExt,
 };
@@ -449,7 +449,7 @@ impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
 mod tests {
     use super::*;
     use crate::{
-        config::RequestRecipeId,
+        collection::RequestRecipeId,
         factory::*,
         http::{Request, Response},
         util::assert_err,

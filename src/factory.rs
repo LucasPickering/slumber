@@ -1,5 +1,5 @@
 use crate::{
-    config::{Chain, ChainSource, RequestRecipeId},
+    collection::{Chain, ChainSource, RequestRecipeId},
     http::{Body, Repository, Request, RequestId, RequestRecord, Response},
     template::{Prompt, Prompter, TemplateContext, TemplateString},
 };

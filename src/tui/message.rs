@@ -2,7 +2,7 @@
 //! state updates.
 
 use crate::{
-    config::{ProfileId, RequestCollection, RequestRecipeId},
+    collection::{ProfileId, RequestCollection, RequestRecipeId},
     http::{RequestBuildError, RequestError, RequestId, RequestRecord},
     template::{Prompt, Prompter, TemplateChunk, TemplateString},
     util::ResultExt,

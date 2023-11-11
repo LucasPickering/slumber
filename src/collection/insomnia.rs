@@ -2,7 +2,7 @@
 //! format
 
 use crate::{
-    config::{Profile, RequestCollection, RequestRecipe},
+    collection::{Profile, RequestCollection, RequestRecipe},
     template::TemplateString,
 };
 use anyhow::Context;

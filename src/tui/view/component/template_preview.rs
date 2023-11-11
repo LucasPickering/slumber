@@ -1,5 +1,5 @@
 use crate::{
-    config::ProfileId,
+    collection::ProfileId,
     template::{TemplateChunk, TemplateString},
     tui::{
         message::Message,

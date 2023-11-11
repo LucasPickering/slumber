@@ -3,7 +3,7 @@ mod message;
 mod view;
 
 use crate::{
-    config::{ProfileId, RequestCollection, RequestRecipeId},
+    collection::{ProfileId, RequestCollection, RequestRecipeId},
     http::{HttpEngine, Repository, RequestBuilder},
     template::{Prompter, TemplateChunk, TemplateContext, TemplateString},
     tui::{

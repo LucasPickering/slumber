@@ -1,7 +1,7 @@
 //! HTTP-related data types
 
 use crate::{
-    config::RequestRecipeId,
+    collection::RequestRecipeId,
     http::{parse, ContentType},
     util::ResultExt,
 };

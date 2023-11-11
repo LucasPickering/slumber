@@ -16,7 +16,7 @@ pub use modal::{IntoModal, Modal, ModalPriority};
 pub use root::Root;
 
 use crate::{
-    config::RequestRecipeId,
+    collection::RequestRecipeId,
     tui::{
         input::{Action, InputEngine},
         message::{Message, MessageSender},

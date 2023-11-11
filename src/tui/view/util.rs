@@ -1,7 +1,7 @@
 //! Helper structs and functions for building components
 
 use crate::{
-    config::{Profile, RequestRecipe},
+    collection::{Profile, RequestRecipe},
     http::{RequestBuildError, RequestError},
     template::{Prompt, Prompter},
     tui::view::{

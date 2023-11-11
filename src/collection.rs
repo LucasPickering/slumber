@@ -1,3 +1,6 @@
+//! A request collection defines recipes, profiles, etc. that make requests
+//! possible
+
 mod insomnia;
 
 use crate::template::TemplateString;

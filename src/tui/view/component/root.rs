@@ -1,5 +1,5 @@
 use crate::{
-    config::{RequestCollection, RequestRecipeId},
+    collection::{RequestCollection, RequestRecipeId},
     tui::{
         input::Action,
         message::Message,

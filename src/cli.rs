@@ -1,5 +1,5 @@
 use crate::{
-    config::{ProfileId, RequestCollection, RequestRecipeId},
+    collection::{ProfileId, RequestCollection, RequestRecipeId},
     http::{HttpEngine, Repository, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
     util::{find_by, ResultExt},

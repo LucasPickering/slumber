@@ -6,7 +6,7 @@
 #![feature(try_blocks)]
 
 mod cli;
-mod config;
+mod collection;
 #[cfg(test)]
 mod factory;
 mod http;
@@ -15,7 +15,8 @@ mod tui;
 mod util;
 
 use crate::{
-    cli::Subcommand, config::RequestCollection, tui::Tui, util::data_directory,
+    cli::Subcommand, collection::RequestCollection, tui::Tui,
+    util::data_directory,
 };
 use anyhow::Context;
 use clap::Parser;

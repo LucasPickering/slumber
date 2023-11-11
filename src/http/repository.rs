@@ -3,7 +3,7 @@
 //! caching and other ephemeral data (e.g. prettified content).
 
 use crate::{
-    config::{CollectionId, RequestRecipeId},
+    collection::{CollectionId, RequestRecipeId},
     http::{Request, RequestId, RequestRecord, Response},
     util::{data_directory, ResultExt},
 };

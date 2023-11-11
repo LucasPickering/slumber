@@ -1,7 +1,7 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
-    config::{Profile, RequestCollection, RequestRecipe},
+    collection::{Profile, RequestCollection, RequestRecipe},
     tui::{
         input::Action,
         message::Message,

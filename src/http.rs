@@ -42,7 +42,7 @@ pub use record::*;
 pub use repository::*;
 
 use crate::{
-    config::RequestRecipe, template::TemplateContext, util::ResultExt,
+    collection::RequestRecipe, template::TemplateContext, util::ResultExt,
 };
 use anyhow::Context;
 use chrono::Utc;

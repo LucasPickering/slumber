@@ -1,8 +1,8 @@
-# Template String
+# Template
 
-A template string is represented in YAML as a normal string, and thus supports [all of YAML's string syntaxes](https://www.educative.io/answers/how-to-represent-strings-in-yaml). Template strings receive post-processing that injects dynamic values into the string. A templated value is represented with `{{...}}`.
+A template is represented in YAML as a normal string, and thus supports [all of YAML's string syntaxes](https://www.educative.io/answers/how-to-represent-strings-in-yaml). Templates receive post-processing that injects dynamic values into the string. A templated value is represented with `{{...}}`.
 
-Template strings can generally be used in any _value_ in a request recipe (_not_ in keys). They _cannot_ be used in profiles or chains, to avoid the potential for recursive templating. If this feature would be useful to you, [le tme know](https://github.com/LucasPickering/slumber/issues/15).
+Templates can generally be used in any _value_ in a request recipe (_not_ in keys). They _cannot_ be used in profiles or chains, to avoid the potential for recursive templating. If this feature would be useful to you, [le tme know](https://github.com/LucasPickering/slumber/issues/15).
 
 ## Template Sources
 

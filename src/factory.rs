@@ -1,7 +1,7 @@
 use crate::{
     collection::{Chain, ChainSource, RequestRecipeId},
     http::{Body, Repository, Request, RequestId, RequestRecord, Response},
-    template::{Prompt, Prompter, TemplateContext, TemplateString},
+    template::{Prompt, Prompter, Template, TemplateContext},
 };
 use chrono::Utc;
 use factori::{create, factori};
@@ -49,7 +49,7 @@ factori!(RequestRecord, {
 
 factori!(Chain, {
     default {
-        id = String::from("chain1"),
+        id = "chain1".into(),
         source = ChainSource::Request(RequestRecipeId::default()),
         sensitive = false,
         selector = None,
@@ -96,8 +96,8 @@ impl From<&str> for RequestRecipeId {
     }
 }
 
-impl From<&str> for TemplateString {
+impl From<&str> for Template {
     fn from(value: &str) -> Self {
-        value.to_owned().into()
+        value.to_owned().try_into().unwrap()
     }
 }

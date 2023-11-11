@@ -1,6 +1,6 @@
 use crate::{
     collection::{ProfileId, RequestRecipe, RequestRecipeId},
-    template::TemplateString,
+    template::Template,
     tui::{
         input::Action,
         view::{
@@ -212,7 +212,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
 fn to_template_previews<'a>(
     context: &DrawContext,
     profile_id: Option<&ProfileId>,
-    iter: impl IntoIterator<Item = (&'a String, &'a TemplateString)>,
+    iter: impl IntoIterator<Item = (&'a String, &'a Template)>,
 ) -> Vec<(String, TemplatePreview)> {
     iter.into_iter()
         .map(|(k, v)| {

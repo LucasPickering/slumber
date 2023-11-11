@@ -18,4 +18,4 @@
   - [Request Recipe](./api/request_recipe.md)
   - [Chain](./api/chain.md)
   - [Chain Source](./api/chain_source.md)
-  - [Template String](./api/template_string.md)
+  - [Template](./api/template.md)

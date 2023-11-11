@@ -5,7 +5,7 @@ mod view;
 use crate::{
     collection::{ProfileId, RequestCollection, RequestRecipeId},
     http::{HttpEngine, Repository, RequestBuilder},
-    template::{Prompter, TemplateChunk, TemplateContext, TemplateString},
+    template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
         input::{Action, InputEngine},
         message::{Message, MessageSender},
@@ -354,7 +354,7 @@ impl Tui {
     /// input. A placeholder value will be used for any prompts.
     fn render_template_preview(
         &self,
-        template: TemplateString,
+        template: Template,
         profile_id: Option<&ProfileId>,
         destination: Arc<OnceLock<Vec<TemplateChunk>>>,
     ) -> anyhow::Result<()> {

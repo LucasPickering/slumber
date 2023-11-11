@@ -10,9 +10,10 @@ use crate::{
     },
 };
 use chrono::{DateTime, Duration, Local, Utc};
+use itertools::Itertools;
 use ratatui::{
     prelude::*,
-    text::{Line, Span, Text},
+    text::{Span, Text},
     widgets::{Block, Borders, List, ListItem},
 };
 use reqwest::header::HeaderValue;
@@ -195,14 +196,7 @@ impl ToTui for anyhow::Error {
     type Output<'this> = Text<'static>;
 
     fn to_tui(&self, _context: &DrawContext) -> Self::Output<'_> {
-        self.chain()
-            .enumerate()
-            .map(|(i, err)| {
-                // Add indentation to parent errors
-                format!("{}{err}", if i > 0 { "  " } else { "" }).into()
-            })
-            .collect::<Vec<Line>>()
-            .into()
+        self.chain().map(|err| err.to_string()).join("\n").into()
     }
 }
 

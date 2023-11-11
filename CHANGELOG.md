@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Changed
+
+- Parse templates up front instead of during render
+- Switch to nom for template parsing
+  - Parse errors should be better now
+
 ## [0.6.0] - 2023-11-11
 
 ### Added

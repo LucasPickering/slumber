@@ -3,7 +3,7 @@
 
 use crate::{
     collection::{Profile, RequestCollection, RequestRecipe},
-    template::TemplateString,
+    template::Template,
 };
 use anyhow::Context;
 use indexmap::IndexMap;
@@ -96,7 +96,7 @@ struct Request {
     #[serde(rename = "_id")]
     id: String,
     name: String,
-    url: TemplateString,
+    url: Template,
     method: String,
     authentication: Authentication,
     headers: Vec<Header>,
@@ -114,13 +114,13 @@ enum Authentication {
 #[derive(Debug, Deserialize)]
 struct Header {
     name: String,
-    value: TemplateString,
+    value: Template,
 }
 
 #[derive(Debug, Deserialize)]
 struct Parameter {
     name: String,
-    value: TemplateString,
+    value: Template,
 }
 
 /// This can't be an `Option` because the empty case is an empty object, not
@@ -132,7 +132,7 @@ enum Body {
     #[serde(rename_all = "camelCase")]
     Body {
         mime_type: String,
-        text: TemplateString,
+        text: Template,
     },
     // This matches empty object, so it has to be a struct variant
     Empty {},
@@ -150,17 +150,20 @@ impl From<Environment> for Profile {
 
 impl From<Request> for RequestRecipe {
     fn from(request: Request) -> Self {
-        let mut headers: IndexMap<String, TemplateString> = IndexMap::new();
+        let mut headers: IndexMap<String, Template> = IndexMap::new();
 
         // Preload headers from implicit sources
         if let Body::Body { mime_type, .. } = &request.body {
-            headers.insert("content-type".into(), mime_type.clone().into());
+            headers.insert(
+                "content-type".into(),
+                Template::dangerous_new(mime_type.clone()),
+            );
         }
         match request.authentication {
             Authentication::Bearer { token } => {
                 headers.insert(
                     "authorization".into(),
-                    format!("Bearer {token}").into(),
+                    Template::dangerous_new(format!("Bearer {token}")),
                 );
             }
         }

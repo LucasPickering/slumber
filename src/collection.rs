@@ -3,7 +3,7 @@
 
 mod insomnia;
 
-use crate::template::TemplateString;
+use crate::template::Template;
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
@@ -86,12 +86,12 @@ pub struct RequestRecipe {
     /// *Not* a template string because the usefulness doesn't justify the
     /// complexity
     pub method: String,
-    pub url: TemplateString,
-    pub body: Option<TemplateString>,
+    pub url: Template,
+    pub body: Option<Template>,
     #[serde(default)]
-    pub query: IndexMap<String, TemplateString>,
+    pub query: IndexMap<String, Template>,
     #[serde(default)]
-    pub headers: IndexMap<String, TemplateString>,
+    pub headers: IndexMap<String, Template>,
 }
 
 #[derive(
@@ -114,13 +114,34 @@ pub struct RequestRecipeId(String);
 /// can use it in a template via `{{chains.<chain_id>}}`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Chain {
-    pub id: String,
+    pub id: ChainId,
     pub source: ChainSource,
     /// Mask chained value in the UI
     #[serde(default)]
     pub sensitive: bool,
     /// JSONpath to extract a value from the response. For JSON data only.
     pub selector: Option<JsonPath>,
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Deref,
+    Default,
+    Display,
+    Eq,
+    From,
+    Hash,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
+pub struct ChainId(String);
+
+impl From<&str> for ChainId {
+    fn from(value: &str) -> Self {
+        Self(value.into())
+    }
 }
 
 /// The source of data for a chain

@@ -4,7 +4,7 @@
 use crate::{
     collection::{ProfileId, RequestCollection, RequestRecipeId},
     http::{RequestBuildError, RequestError, RequestId, RequestRecord},
-    template::{Prompt, Prompter, TemplateChunk, TemplateString},
+    template::{Prompt, Prompter, Template, TemplateChunk},
     util::ResultExt,
 };
 use anyhow::Context;
@@ -92,7 +92,7 @@ pub enum Message {
     /// By specifying the destination inline, we avoid having to plumb the
     /// result all the way back down the component tree.
     TemplatePreview {
-        template: TemplateString,
+        template: Template,
         profile_id: Option<ProfileId>,
         destination: Arc<OnceLock<Vec<TemplateChunk>>>,
     },

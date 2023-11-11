@@ -72,7 +72,7 @@ macro_rules! assert_err {
 
         let msg = $msg;
         // Include all source errors so wrappers don't hide the important stuff
-        let error: anyhow::Error = $e.unwrap_err();
+        let error: anyhow::Error = $e.unwrap_err().into();
         let actual = error.chain().map(ToString::to_string).join(": ");
         assert!(
             actual.contains(msg),

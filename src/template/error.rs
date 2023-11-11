@@ -1,8 +1,21 @@
+use nom::error::VerboseError;
 use serde_json_path::ExactlyOneError;
 use std::{env::VarError, io, path::PathBuf, string::FromUtf8Error};
 use thiserror::Error;
 
 pub type TemplateResult = Result<String, TemplateError>;
+
+/// An error while parsing a template. This is derived from a nom error
+#[derive(Debug, Error)]
+#[error("{0}")]
+pub struct TemplateParseError(String);
+
+impl TemplateParseError {
+    /// Create a user-friendly parse error
+    pub(super) fn new(template: &str, error: VerboseError<&str>) -> Self {
+        Self(nom::error::convert_error(template, error))
+    }
+}
 
 /// Any error that can occur during template rendering. The purpose of having a
 /// structured error here (while the rest of the app just uses `anyhow`) is to

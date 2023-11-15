@@ -273,7 +273,7 @@ impl RequestBuilder {
                     // are invalid
                     Ok::<_, anyhow::Error>((
                         HeaderName::try_from(header).with_context(|| {
-                            format!("Error parsing header name {header:?}")
+                            format!("Error parsing header name `{header}`")
                         })?,
                         HeaderValue::try_from(
                             value_template

@@ -8,7 +8,7 @@ pub use parse::Span;
 pub use prompt::{Prompt, Prompter};
 
 use crate::{
-    collection::Chain,
+    collection::{Chain, ProfileValue},
     http::Repository,
     template::{
         error::TemplateParseError,
@@ -26,7 +26,7 @@ use std::fmt::Debug;
 #[derive(Debug)]
 pub struct TemplateContext {
     /// Key-value mapping
-    pub profile: IndexMap<String, String>,
+    pub profile: IndexMap<String, ProfileValue>,
     /// Chained values from dynamic sources
     pub chains: Vec<Chain>,
     /// Needed for accessing response bodies for chaining
@@ -40,6 +40,7 @@ pub struct TemplateContext {
 /// A immutable string that can contain templated content. The string is parsed
 /// during creation to identify template keys, hence the immutability.
 #[derive(Clone, Debug, Deref, Display, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 #[display(fmt = "{template}")]
 #[serde(try_from = "String", into = "String")]
 pub struct Template {
@@ -207,28 +208,43 @@ mod tests {
     /// Test that a field key renders correctly
     #[tokio::test]
     async fn test_field() {
+        let nested_template =
+            Template::parse("user id: {{user_id}}".into()).unwrap();
         let profile = indexmap! {
             "user_id".into() => "1".into(),
             "group_id".into() => "3".into(),
+            "recursive".into() => ProfileValue::Template(nested_template),
         };
         let context = create!(TemplateContext, profile: profile);
 
-        // Success cases
-        assert_eq!(render!("", context).unwrap(), "".to_owned());
-        assert_eq!(render!("plain", context).unwrap(), "plain".to_owned());
+        assert_eq!(&render!("", context).unwrap(), "");
+        assert_eq!(&render!("plain", context).unwrap(), "plain");
+        assert_eq!(&render!("{{recursive}}", context).unwrap(), "user id: 1");
         assert_eq!(
             // Test complex stitching. Emoji is important to test because the
             // stitching uses character indexes
-            render!("start {{user_id}} 🧡💛 {{group_id}} end", context)
+            &render!("start {{user_id}} 🧡💛 {{group_id}} end", context)
                 .unwrap(),
-            "start 1 🧡💛 3 end".to_owned()
+            "start 1 🧡💛 3 end"
         );
+    }
 
-        // Error cases
+    /// Potential error cases for a profile field
+    #[tokio::test]
+    async fn test_field_error() {
+        let nested_template = Template::parse("{{onion_id}}".into()).unwrap();
+        let profile = indexmap! {
+            "recursive".into() => ProfileValue::Template(nested_template),
+        };
+        let context = create!(TemplateContext, profile: profile);
+
         assert_err!(
             render!("{{onion_id}}", context),
-            "Unknown field \"onion_id\"",
-            true
+            "Unknown field `onion_id`"
+        );
+        assert_err!(
+            render!("{{recursive}}", context),
+            "Error in nested template `{{onion_id}}`: Unknown field `onion_id`"
         );
     }
 
@@ -335,11 +351,7 @@ mod tests {
             TemplateContext, repository: repository, chains: chains
         );
 
-        assert_err!(
-            render!("{{chains.chain1}}", context),
-            expected_error,
-            true
-        );
+        assert_err!(render!("{{chains.chain1}}", context), expected_error);
     }
 
     /// Test success with chained command
@@ -371,11 +383,7 @@ mod tests {
         let chains = vec![create!(Chain, source: source)];
         let context = create!(TemplateContext, chains: chains);
 
-        assert_err!(
-            render!("{{chains.chain1}}", context),
-            expected_error,
-            true
-        );
+        assert_err!(render!("{{chains.chain1}}", context), expected_error);
     }
 
     /// Test success with chained file
@@ -408,8 +416,7 @@ mod tests {
 
         assert_err!(
             render!("{{chains.chain1}}", context),
-            "Error reading from file",
-            true
+            "Error reading from file"
         );
     }
 
@@ -447,8 +454,7 @@ mod tests {
 
         assert_err!(
             render!("{{chains.chain1}}", context),
-            "No response from prompt",
-            true
+            "No response from prompt"
         );
     }
 
@@ -464,8 +470,7 @@ mod tests {
         let context = create!(TemplateContext);
         assert_err!(
             render!("{{env.UNKNOWN}}", context),
-            "Error accessing environment variable \"UNKNOWN\"",
-            true
+            "Error accessing environment variable `UNKNOWN`"
         );
     }
 

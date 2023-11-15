@@ -1,3 +1,4 @@
+use crate::{collection::ChainId, template::Template};
 use nom::error::VerboseError;
 use serde_json_path::ExactlyOneError;
 use std::{env::VarError, io, path::PathBuf, string::FromUtf8Error};
@@ -28,23 +29,27 @@ impl TemplateParseError {
 #[derive(Debug, Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum TemplateError {
-    /// Template key could not be parsed
-    #[error("Failed to parse template key {key:?}")]
-    InvalidKey { key: String },
-
-    /// A basic field key contained an unknown field
-    #[error("Unknown field {field:?}")]
+    /// A profile field key contained an unknown field
+    #[error("Unknown field `{field}`")]
     FieldUnknown { field: String },
 
-    #[error("Error resolving chain {chain_id:?}")]
+    /// An bubbled-up error from a nested render
+    #[error("Error in nested template `{template}`")]
+    Nested {
+        template: Template,
+        #[source]
+        error: Box<Self>,
+    },
+
+    #[error("Error resolving chain `{chain_id}`")]
     Chain {
-        chain_id: String,
+        chain_id: ChainId,
         #[source]
         error: ChainError,
     },
 
     /// Variable either didn't exist or had non-unicode content
-    #[error("Error accessing environment variable {variable:?}")]
+    #[error("Error accessing environment variable `{variable}`")]
     EnvironmentVariable {
         variable: String,
         #[source]
@@ -95,7 +100,7 @@ pub enum ChainError {
         #[source]
         error: FromUtf8Error,
     },
-    #[error("Error reading from file {path:?}")]
+    #[error("Error reading from file `{path}`")]
     File {
         path: PathBuf,
         #[source]

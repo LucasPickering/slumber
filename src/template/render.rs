@@ -1,7 +1,7 @@
 //! Template rendering implementation
 
 use crate::{
-    collection::{ChainSource, RequestRecipeId},
+    collection::{ChainSource, ProfileValue, RequestRecipeId},
     http::{ContentType, Json},
     template::{
         parse::TemplateInputChunk, ChainError, Prompt, Template, TemplateChunk,
@@ -164,11 +164,24 @@ struct FieldTemplateSource<'a> {
 impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
     async fn render(&self, context: &'a TemplateContext) -> TemplateResult {
         let field = self.field;
-        context.profile.get(field).cloned().ok_or_else(|| {
+        let value = context.profile.get(field).ok_or_else(|| {
             TemplateError::FieldUnknown {
                 field: field.to_owned(),
             }
-        })
+        })?;
+        match value {
+            ProfileValue::Raw(value) => Ok(value.clone()),
+            // recursion!
+            ProfileValue::Template(template) => {
+                trace!(%field, %template, "Rendering recursive template");
+                template.render_stitched(context).await.map_err(|error| {
+                    TemplateError::Nested {
+                        template: template.clone(),
+                        error: Box::new(error),
+                    }
+                })
+            }
+        }
     }
 }
 
@@ -219,7 +232,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
 
         // Wrap the chain error into a TemplateError
         result.map_err(|error| TemplateError::Chain {
-            chain_id: chain_id.to_owned(),
+            chain_id: chain_id.into(),
             error,
         })
     }

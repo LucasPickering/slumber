@@ -188,6 +188,6 @@ where
 {
     let (key, value) = s
         .split_once('=')
-        .ok_or_else(|| format!("invalid key=value: no \"=\" found in {s:?}"))?;
+        .ok_or_else(|| format!("invalid key=value: no \"=\" found in `{s}`"))?;
     Ok((key.parse()?, value.parse()?))
 }

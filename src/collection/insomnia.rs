@@ -143,7 +143,11 @@ impl From<Environment> for Profile {
         Profile {
             id: environment.id.into(),
             name: Some(environment.name),
-            data: environment.data,
+            data: environment
+                .data
+                .into_iter()
+                .map(|(k, v)| (k, v.into()))
+                .collect(),
         }
     }
 }

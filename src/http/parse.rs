@@ -57,7 +57,7 @@ pub(super) fn parse_body(
     let body = &response.body;
     match get_content_type(response)? {
         Json::HEADER => Ok(Box::new(Json::parse(body.text())?)),
-        other => Err(anyhow!("Response has unknown content-type {other:?}",)),
+        other => Err(anyhow!("Response has unknown content-type `{other}`",)),
     }
 }
 

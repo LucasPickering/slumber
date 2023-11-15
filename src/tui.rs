@@ -58,7 +58,7 @@ pub struct Tui {
 
 impl Tui {
     /// Rough maximum time for each iteration of the main loop
-    const TICK_TIME: Duration = Duration::from_millis(100);
+    const TICK_TIME: Duration = Duration::from_millis(250);
 
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.

@@ -5,6 +5,7 @@ profiles:
     name: Works
     data:
       host: https://httpbin.org
+      username: !template "xX{{chains.username}}Xx"
       user_guid: abc123
   - id: init-fails
     name: Request Init Fails
@@ -39,7 +40,7 @@ requests:
       sudo: yes_please
     body: |
       {
-        "username": "{{chains.username}}",
+        "username": "{{username}}",
         "password": "{{chains.password}}"
       }
 

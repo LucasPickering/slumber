@@ -288,7 +288,7 @@ impl Tui {
             .recipes
             .iter()
             .find(|recipe| recipe.id == recipe_id)
-            .ok_or_else(|| anyhow!("No recipe with ID {recipe_id:?}"))?
+            .ok_or_else(|| anyhow!("No recipe with ID `{recipe_id}`"))?
             .clone();
 
         // Launch the request in a separate task so it doesn't block.
@@ -404,7 +404,7 @@ impl Tui {
                     .iter()
                     .find(|profile| &profile.id == profile_id)
                     .ok_or_else(|| {
-                        anyhow!("No profile with ID {profile_id:?}")
+                        anyhow!("No profile with ID `{profile_id}`")
                     })?;
                 profile.data.clone()
             }

@@ -75,7 +75,7 @@ impl InputEngine {
                 .map(|binding| binding.action);
 
             if let Some(action) = action {
-                trace!("Input action {action:?}");
+                trace!(?action, "Input action");
             }
 
             action

@@ -67,8 +67,8 @@ impl<T> ResultExt<T, RequestError> for Result<T, RequestError> {
 
 #[cfg(test)]
 macro_rules! assert_err {
-    ($e:expr, $msg:expr) => {
-        use itertools::Itertools;
+    ($e:expr, $msg:expr) => {{
+        use itertools::Itertools as _;
 
         let msg = $msg;
         // Include all source errors so wrappers don't hide the important stuff
@@ -78,11 +78,7 @@ macro_rules! assert_err {
             actual.contains(msg),
             "Expected error message to contain {msg:?}, but was: {actual:?}"
         )
-    };
-    // For non-anyhow errors, map to anyhow (a bit hacky)
-    ($e:expr, $msg:expr, true) => {
-        assert_err!($e.map_err(anyhow::Error::from), $msg);
-    };
+    }};
 }
 
 use crate::http::RequestError;

@@ -2,6 +2,10 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Added recursive templates for profile values, using the `!template` tag before a value
+
 ### Changed
 
 - Parse templates up front instead of during render

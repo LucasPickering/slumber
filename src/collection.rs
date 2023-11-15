@@ -7,10 +7,15 @@ use crate::template::Template;
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{EnumAccess, VariantAccess},
+    Deserialize, Deserializer, Serialize,
+};
 use serde_json_path::JsonPath;
 use std::{
+    fmt,
     future::Future,
+    marker::PhantomData,
     path::{Path, PathBuf},
 };
 use tokio::fs;
@@ -57,7 +62,7 @@ pub struct CollectionId(String);
 pub struct Profile {
     pub id: ProfileId,
     pub name: Option<String>,
-    pub data: IndexMap<String, String>,
+    pub data: IndexMap<String, ProfileValue>,
 }
 
 #[derive(
@@ -74,6 +79,21 @@ pub struct Profile {
     Deserialize,
 )]
 pub struct ProfileId(String);
+
+/// The value type of a profile's data mapping
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileValue {
+    /// A raw text string
+    Raw(String),
+    /// A nested template, which allows for recursion. By requiring the user to
+    /// declare this up front, we can parse the template during collection
+    /// deserialization. It also keeps a cap on the complexity of nested
+    /// templates, which is a balance between usability and simplicity (both
+    /// for the user and the code).
+    Template(Template),
+}
 
 /// A definition of how to make a request. This is *not* called `Request` in
 /// order to distinguish it from a single instance of an HTTP request. And it's
@@ -234,9 +254,146 @@ impl Profile {
     }
 }
 
+impl From<String> for ProfileValue {
+    fn from(value: String) -> Self {
+        Self::Raw(value)
+    }
+}
+
+impl From<&str> for ProfileValue {
+    fn from(value: &str) -> Self {
+        Self::Raw(value.into())
+    }
+}
+
 impl RequestRecipe {
     /// Get a presentable name for this recipe
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
+    }
+}
+
+/// Deserialize a string OR enum into a ProfileValue. This is based on the
+/// generated derive code, with extra logic to default to !raw for a string.
+impl<'de> Deserialize<'de> for ProfileValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        const VARIANTS: &[&str] = &["raw", "template"];
+
+        enum Field {
+            Raw,
+            Template,
+        }
+
+        struct FieldVisitor;
+        impl<'de> serde::de::Visitor<'de> for FieldVisitor {
+            type Value = Field;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "variant identifier")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    0u64 => Ok(Field::Raw),
+                    1u64 => Ok(Field::Template),
+                    _ => Err(serde::de::Error::invalid_value(
+                        serde::de::Unexpected::Unsigned(value),
+                        &"variant index 0 <= i < 2",
+                    )),
+                }
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    "raw" => Ok(Field::Raw),
+                    "template" => Ok(Field::Template),
+                    _ => {
+                        Err(serde::de::Error::unknown_variant(value, VARIANTS))
+                    }
+                }
+            }
+
+            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    b"raw" => Ok(Field::Raw),
+                    b"template" => Ok(Field::Template),
+                    _ => {
+                        let value = String::from_utf8_lossy(value);
+                        Err(serde::de::Error::unknown_variant(&value, VARIANTS))
+                    }
+                }
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for Field {
+            #[inline]
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                serde::Deserializer::deserialize_identifier(
+                    deserializer,
+                    FieldVisitor,
+                )
+            }
+        }
+
+        struct Visitor<'de> {
+            lifetime: PhantomData<&'de ()>,
+        }
+
+        impl<'de> serde::de::Visitor<'de> for Visitor<'de> {
+            type Value = ProfileValue;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "enum ProfileValue or string",)
+            }
+
+            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+            where
+                A: EnumAccess<'de>,
+            {
+                match EnumAccess::variant(data)? {
+                    (Field::Raw, variant) => Result::map(
+                        VariantAccess::newtype_variant::<String>(variant),
+                        ProfileValue::Raw,
+                    ),
+                    (Field::Template, variant) => Result::map(
+                        VariantAccess::newtype_variant::<Template>(variant),
+                        ProfileValue::Template,
+                    ),
+                }
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(ProfileValue::Raw(value.into()))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(ProfileValue::Raw(value))
+            }
+        }
+
+        deserializer.deserialize_any(Visitor {
+            lifetime: PhantomData,
+        })
     }
 }

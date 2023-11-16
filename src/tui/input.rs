@@ -33,7 +33,6 @@ impl InputEngine {
                     },
                     Action::ForceQuit,
                 ),
-                InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
                 InputBinding::new(KeyCode::Char('x'), Action::OpenSettings),
                 InputBinding::new(KeyCode::F(2), Action::SendRequest),
                 InputBinding::new(KeyCode::F(11), Action::Fullscreen),
@@ -100,9 +99,6 @@ pub enum Action {
     /// process to force an exit. Standard shutdown will *still run*, but this
     /// input can't be consumed by any components in the view tree.
     ForceQuit,
-    /// Reload the request collection from the same file as the initial load
-    #[display(fmt = "Reload Collection")]
-    ReloadCollection,
 
     /// Focus the previous pane
     #[display(fmt = "Prev Pane")]

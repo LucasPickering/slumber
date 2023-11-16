@@ -2,6 +2,11 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- Remove keybinding to reload collection
+  - Not useful now that the TUI has automatic reloading
+
 ### Fixed
 
 - Don't panic if the collection file is invalid on first startup

@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Fixed
+
+- Don't panic if the collection file is invalid on first startup
+  - The TUI will now show an empty screen, and watch the collection file for changes
+
 ## [0.7.0] - 2023-11-16
 
 ### Added

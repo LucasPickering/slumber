@@ -74,16 +74,16 @@ impl ModalQueue {
     pub fn is_open(&self) -> bool {
         !self.queue.is_empty()
     }
+
     /// Add a new modal, to either the beginning or end of the queue, depending
     /// on priority
     pub fn open(&mut self, modal: Box<dyn Modal>, priority: ModalPriority) {
+        trace!(?priority, "Opening modal");
         match priority {
             ModalPriority::Low => {
-                trace!("Opening modal (back)");
                 self.queue.push_back(modal);
             }
             ModalPriority::High => {
-                trace!("Opening modal (front)");
                 self.queue.push_front(modal);
             }
         }

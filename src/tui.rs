@@ -28,6 +28,7 @@ use signal_hook::{
 use std::{
     io::{self, Stdout},
     ops::Deref,
+    path::PathBuf,
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
@@ -62,7 +63,7 @@ impl Tui {
 
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
-    pub fn start(collection: RequestCollection) {
+    pub async fn start(collection_file: PathBuf) {
         initialize_panic_handler();
 
         // Set up terminal
@@ -77,6 +78,15 @@ impl Tui {
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx = MessageSender::new(messages_tx);
+
+        // If the collection fails to load, create an empty one just so we can
+        // move along. We'll watch the file and hopefully the user can fix it
+        let collection = RequestCollection::load(collection_file.clone())
+            .await
+            .unwrap_or_else(|error| {
+                messages_tx.send(Message::Error { error });
+                RequestCollection::<()>::default().with_source(collection_file)
+            });
 
         let view = View::new(&collection, messages_tx.clone());
         let repository = Repository::load(&collection.id).unwrap();

@@ -54,10 +54,7 @@ pub enum Subcommand {
 
 impl Subcommand {
     /// Execute a non-TUI command
-    pub async fn execute(
-        self,
-        collection_file: Option<PathBuf>,
-    ) -> anyhow::Result<()> {
+    pub async fn execute(self, collection_file: PathBuf) -> anyhow::Result<()> {
         match self {
             Subcommand::Request {
                 request_id,
@@ -65,9 +62,8 @@ impl Subcommand {
                 overrides,
                 dry_run,
             } => {
-                let collection = RequestCollection::load(collection_file)
-                    .await
-                    .expect("Error loading collection");
+                let collection =
+                    RequestCollection::load(collection_file).await?;
 
                 // Find profile and recipe by ID
                 let profile = profile

@@ -4,7 +4,7 @@
 mod insomnia;
 
 use crate::template::Template;
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
 use serde::{
@@ -14,6 +14,7 @@ use serde::{
 use serde_json_path::JsonPath;
 use std::{
     fmt,
+    fmt::Debug,
     future::Future,
     marker::PhantomData,
     path::{Path, PathBuf},
@@ -32,7 +33,7 @@ pub const CONFIG_FILES: &[&str] = &[
 ];
 
 /// A collection of requests
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RequestCollection<S = PathBuf> {
     /// The source of the collection, typically a path to the file it was
     /// loaded from
@@ -54,7 +55,7 @@ pub struct RequestCollection<S = PathBuf> {
 
 /// A unique ID for a collection. This is necessary to differentiate between
 /// responses from different collections in the repository.
-#[derive(Clone, Debug, Display, From, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Display, From, Serialize, Deserialize)]
 pub struct CollectionId(String);
 
 /// Mutually exclusive hot-swappable config group
@@ -178,19 +179,24 @@ pub enum ChainSource {
     Prompt(Option<String>),
 }
 
+impl<S> RequestCollection<S> {
+    /// Replace the source value on this collection
+    pub fn with_source<T>(self, source: T) -> RequestCollection<T> {
+        RequestCollection { source, ..self }
+    }
+}
+
 impl RequestCollection<PathBuf> {
-    /// Load config from the given file, or fall back to one of the
-    /// auto-detected defaults.
-    pub async fn load(
-        collection_file: Option<PathBuf>,
-    ) -> anyhow::Result<Self> {
+    /// Load config from the given file. The caller is responsible for using
+    /// [Self::detect_path] to find the file themself. This pattern enables the
+    /// TUI to start up and watch the collection file, even if it's invalid.
+    pub async fn load(path: PathBuf) -> Result<Self, anyhow::Error> {
         // Figure out which file we want to load from
-        let path = collection_file.map_or_else(Self::detect_path, Ok)?;
         info!(?path, "Loading collection file");
 
         // First, parse the file to raw YAML values, so we can apply
         // anchor/alias merging. Then parse that to our config type
-        let parse = async {
+        let future = async {
             let content = fs::read(&path).await?;
             let mut yaml_value =
                 serde_yaml::from_slice::<serde_yaml::Value>(&content)?;
@@ -199,19 +205,18 @@ impl RequestCollection<PathBuf> {
                 yaml_value,
             )?)
         };
-        let mut collection = parse.await.with_context(|| {
-            format!("Error parsing config from file {path:?}")
-        })?;
-        collection.source = path;
 
-        Ok(collection)
+        Ok(future
+            .await
+            .with_context(|| format!("Error loading collection from {path:?}"))?
+            .with_source(path))
     }
 
     /// Reload a new collection from the same file used for this one.
     ///
     /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
-    pub fn reload(&self) -> impl Future<Output = anyhow::Result<Self>> {
-        Self::load(Some(self.source.clone()))
+    pub fn reload(&self) -> impl Future<Output = Result<Self, anyhow::Error>> {
+        Self::load(self.source.clone())
     }
 
     /// Get the path of the file that this collection was loaded from
@@ -221,7 +226,7 @@ impl RequestCollection<PathBuf> {
 
     /// Search the current directory for a config file matching one of the known
     /// file names, and return it if found
-    fn detect_path() -> anyhow::Result<PathBuf> {
+    pub fn detect_path() -> Option<PathBuf> {
         let paths: Vec<&Path> = CONFIG_FILES
             .iter()
             .map(Path::new)
@@ -231,17 +236,15 @@ impl RequestCollection<PathBuf> {
             .filter(|p| p.exists())
             .collect();
         match paths.as_slice() {
-            [] => Err(anyhow!(
-                "No config file given and none found in current directory"
-            )),
-            [path] => Ok(path.to_path_buf()),
+            [] => None,
+            [path] => Some(path.to_path_buf()),
             [first, rest @ ..] => {
                 // Print a warning, but don't actually fail
                 warn!(
                     "Multiple config files detected. {first:?} will be used \
                     and the following will be ignored: {rest:?}"
                 );
-                Ok(first.to_path_buf())
+                Some(first.to_path_buf())
             }
         }
     }

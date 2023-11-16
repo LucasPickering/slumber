@@ -137,10 +137,6 @@ impl Component for PrimaryView {
                     self.selected_pane.next();
                     Update::Consumed
                 }
-                Some(Action::ReloadCollection) => {
-                    context.send_message(Message::CollectionStartReload);
-                    Update::Consumed
-                }
                 Some(Action::SendRequest) => {
                     // Send a request from anywhere
                     context.queue_event(Event::HttpSendRequest);

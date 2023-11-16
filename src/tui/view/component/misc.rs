@@ -213,7 +213,6 @@ impl Draw<HelpTextProps> for HelpText {
             match props.fullscreen_mode {
                 None => {
                     actions.extend([
-                        Action::ReloadCollection,
                         Action::SendRequest,
                         Action::NextPane,
                         Action::PreviousPane,

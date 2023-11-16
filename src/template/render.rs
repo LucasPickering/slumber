@@ -42,7 +42,7 @@ impl Template {
     /// returning the individual rendered chunks. This is useful in any
     /// application where rendered chunks need to be handled differently from
     /// raw chunks, e.g. in render previews.
-    #[instrument]
+    #[instrument(skip_all, fields(template = self.template))]
     pub async fn render_chunks(
         &self,
         context: &TemplateContext,

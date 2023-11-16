@@ -138,7 +138,6 @@ pub struct DrawContext<'a, 'f> {
 /// This is conceptually different from [Message] in that view messages never
 /// queued, they are handled immediately. Maybe "message" is a misnomer here and
 /// we should rename this?
-#[derive(Debug)]
 pub enum Event {
     /// Sent when the view is first opened. If a component is created after the
     /// initial view setup, it will *not* receive this message.
@@ -189,4 +188,34 @@ pub enum Update {
     /// [UpdateContext::queue_event] for that. That will ensure the entire tree
     /// has a chance to respond to the entire event.
     Propagate(Event),
+}
+
+/// Custom impl to prevent monster tracing messages
+impl Debug for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Init => write!(f, "Init"),
+            Self::Input { event, action } => f
+                .debug_struct("Input")
+                .field("event", event)
+                .field("action", action)
+                .finish(),
+            Self::HttpSendRequest => write!(f, "HttpSendRequest"),
+            Self::HttpSetState { recipe_id, state } => f
+                .debug_struct("HttpSetState")
+                .field("recipe_id", recipe_id)
+                .field("request_id", &state.id())
+                .finish(),
+            Self::ToggleFullscreen(arg0) => {
+                f.debug_tuple("ToggleFullscreen").field(arg0).finish()
+            }
+            Self::OpenModal { modal, priority } => f
+                .debug_struct("OpenModal")
+                .field("modal", modal)
+                .field("priority", priority)
+                .finish(),
+            Self::CloseModal => write!(f, "CloseModal"),
+            Self::Notify(arg0) => f.debug_tuple("Notify").field(arg0).finish(),
+        }
+    }
 }

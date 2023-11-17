@@ -1,9 +1,12 @@
+mod common;
 mod component;
+mod draw;
+mod event;
 mod state;
 mod theme;
 mod util;
 
-pub use component::ModalPriority;
+pub use common::modal::{IntoModal, ModalPriority};
 pub use state::RequestState;
 pub use util::PreviewPrompter;
 
@@ -13,12 +16,10 @@ use crate::{
         input::{Action, InputEngine},
         message::MessageSender,
         view::{
-            component::{
-                Component, Draw, DrawContext, Event, IntoModal, Root, Update,
-                UpdateContext,
-            },
+            component::root::Root,
+            draw::{Draw, DrawContext},
+            event::{Event, EventHandler, Update, UpdateContext},
             state::Notification,
-            theme::Theme,
         },
     },
 };
@@ -35,7 +36,6 @@ use tracing::{error, trace, trace_span};
 pub struct View {
     messages_tx: MessageSender,
     config: ViewConfig,
-    theme: Theme,
     root: Root,
 }
 
@@ -47,7 +47,6 @@ impl View {
         let mut view = Self {
             messages_tx,
             config: ViewConfig::default(),
-            theme: Theme::default(),
             root: Root::new(collection),
         };
         // Tell the components to wake up
@@ -68,7 +67,6 @@ impl View {
             &mut DrawContext {
                 input_engine,
                 config: &self.config,
-                theme: &self.theme,
                 messages_tx,
                 frame,
             },
@@ -150,7 +148,7 @@ impl View {
     /// lowest descendant. Recursively walk up the tree until a component
     /// consumes the event.
     fn update_all(
-        component: &mut dyn Component,
+        component: &mut dyn EventHandler,
         context: &mut UpdateContext,
         mut event: Event,
     ) -> Update {
@@ -172,7 +170,8 @@ impl View {
 
         // None of our children handled it, we'll take it ourselves.
         // Message is already traced in the parent span, so don't dupe it.
-        let span = trace_span!("Component handling", %component);
+        // TODO figure out a way to print just the component type name
+        let span = trace_span!("Component handling", ?component);
         span.in_scope(|| {
             let outcome = component.update(context, event);
             trace!(?outcome);
@@ -184,13 +183,20 @@ impl View {
 /// Settings that control the behavior of the view
 #[derive(Debug)]
 struct ViewConfig {
+    /// Should templates be rendered inline in the UI, or should we show the
+    /// raw text?
     preview_templates: bool,
+
+    /// Are we capture cursor events, or are they being handled by the terminal
+    /// emulator? This can be toggled by the user
+    capture_mouse: bool,
 }
 
 impl Default for ViewConfig {
     fn default() -> Self {
         Self {
             preview_templates: true,
+            capture_mouse: true,
         }
     }
 }

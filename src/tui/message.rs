@@ -54,6 +54,9 @@ pub enum Message {
     /// Store a reloaded collection value in state
     CollectionEndReload(RequestCollection),
 
+    /// An error occurred in some async process and should be shown to the user
+    Error { error: anyhow::Error },
+
     /// Launch an HTTP request from the given recipe/profile.
     HttpBeginRequest {
         recipe_id: RequestRecipeId,
@@ -74,14 +77,17 @@ pub enum Message {
     /// these two cases saves a bit of boilerplate.
     HttpComplete(Result<RequestRecord, RequestError>),
 
+    /// Show a prompt to the user, asking for some input. Use the included
+    /// channel to return the value.
+    PromptStart(Prompt),
+
+    /// Exit the program
+    Quit,
+
     /// Load the most recent response for a recipe from the repository
     RepositoryStartLoad { recipe_id: RequestRecipeId },
     /// Finished loading a response from the repository
     RepositoryEndLoad { record: RequestRecord },
-
-    /// Show a prompt to the user, asking for some input. Use the included
-    /// channel to return the value.
-    PromptStart(Prompt),
 
     /// Render a template string, to be previewed in the UI. Ideally this could
     /// be launched directly by the component that needs it, but only the
@@ -97,8 +103,6 @@ pub enum Message {
         destination: Arc<OnceLock<Vec<TemplateChunk>>>,
     },
 
-    /// An error occurred in some async process and should be shown to the user
-    Error { error: anyhow::Error },
-    /// Exit the program
-    Quit,
+    /// Enable/disable mouse capture in the terminal
+    ToggleMouseCapture { capture: bool },
 }

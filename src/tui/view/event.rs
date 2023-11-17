@@ -1,54 +1,27 @@
-//! The building blocks of the view
-
-mod misc;
-mod modal;
-mod primary;
-mod request;
-mod response;
-mod root;
-mod settings;
-mod table;
-mod tabs;
-mod template_preview;
-mod text_window;
-
-pub use modal::{IntoModal, Modal, ModalPriority};
-pub use root::Root;
+//! Utilities for handling input events from users, as well as external async
+//! events (e.g. HTTP responses)
 
 use crate::{
     collection::RequestRecipeId,
     tui::{
-        input::{Action, InputEngine},
+        input::Action,
         message::{Message, MessageSender},
         view::{
-            component::root::FullscreenMode,
+            common::modal::{Modal, ModalPriority},
+            component::FullscreenMode,
             state::{Notification, RequestState},
-            theme::Theme,
-            Frame, ViewConfig,
+            ViewConfig,
         },
     },
 };
-use ratatui::prelude::Rect;
-use std::{
-    collections::VecDeque,
-    fmt::{Debug, Display},
-};
+use std::{collections::VecDeque, fmt::Debug};
 use tracing::trace;
 
-/// The main building block that makes up the view. This is modeled after React,
-/// with some key differences:
-///
-/// - State can be exposed from child to parent
-///   - This is arguably an anti-pattern, but it's a simple solution. Rust makes
-///     it possible to expose only immutable references, so I think it's fine.
-/// - State changes are managed via message passing rather that callbacks. See
-///   [Component::update_all] and [Component::update]. This happens during the
-///   message phase of the TUI.
-/// - Rendering is provided by a separate trait: [Draw]
-///
-/// Requires `Display` impl for tracing. Typically the impl can just be the
-/// component name.
-pub trait Component: Debug + Display {
+/// A UI element that can handle user/async input. This trait facilitates an
+/// on-demand tree structure, where each element can furnish its list of
+/// children. Events will be propagated bottom-up (i.e. leff-to-root), and each
+/// element has the opportunity to consume the event so it stops bubbling.
+pub trait EventHandler: Debug {
     /// Update the state of *just* this component according to the message.
     /// Returned outcome indicates what to do afterwards. Context allows updates
     /// to trigger side-effects, e.g. launching an HTTP request.
@@ -60,7 +33,7 @@ pub trait Component: Debug + Display {
     /// focused component will receive first dibs on any update messages, in
     /// the order of the returned list. If none of the children consume the
     /// message, it will be passed to this component.
-    fn children(&mut self) -> Vec<&mut dyn Component> {
+    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
         Vec::new()
     }
 }
@@ -96,37 +69,10 @@ impl<'a> UpdateContext<'a> {
         trace!(?event, "Queueing subsequent event");
         self.event_queue.push_back(event);
     }
-}
 
-/// Something that can be drawn onto screen as one or more TUI widgets.
-///
-/// Conceptually this is bascially part of `Component`, but having it separate
-/// allows the `Props` associated type. Otherwise, there's no way to make a
-/// trait object from `Component` across components with different props.
-///
-/// Props are additional temporary values that a struct may need in order
-/// to render. Useful for passing down state values that are managed by
-/// the parent, to avoid duplicating that state in the child. `Props` probably
-/// would make more sense as an associated type, because you generally wouldn't
-/// implement `Draw` for a single type with more than one value of `Props`. But
-/// attaching a lifetime to the associated type makes using this in a trait
-/// object very difficult (maybe impossible?). This is an easy shortcut.
-pub trait Draw<Props = ()> {
-    fn draw(&self, context: &mut DrawContext, props: Props, chunk: Rect);
-}
-
-/// Global data that various components need during rendering. A mutable
-/// reference to this is passed around to give access to the frame, but please
-/// don't modify anything :)
-#[derive(Debug)]
-pub struct DrawContext<'a, 'f> {
-    pub input_engine: &'a InputEngine,
-    pub config: &'a ViewConfig,
-    pub theme: &'a Theme,
-    /// Allows draw functions to trigger async operations, if the drawn content
-    /// needs some async calculation (e.g. template previews)
-    pub messages_tx: MessageSender,
-    pub frame: &'a mut Frame<'f>,
+    pub fn config(&mut self) -> &mut ViewConfig {
+        self.config
+    }
 }
 
 /// A trigger for state change in the view. Events are handled by
@@ -138,6 +84,7 @@ pub struct DrawContext<'a, 'f> {
 /// This is conceptually different from [Message] in that view messages never
 /// queued, they are handled immediately. Maybe "message" is a misnomer here and
 /// we should rename this?
+#[derive(derive_more::Debug)]
 pub enum Event {
     /// Sent when the view is first opened. If a component is created after the
     /// initial view setup, it will *not* receive this message.
@@ -156,6 +103,7 @@ pub enum Event {
     /// Update our state based on external HTTP events
     HttpSetState {
         recipe_id: RequestRecipeId,
+        #[debug(skip)]
         state: RequestState,
     },
 
@@ -188,34 +136,4 @@ pub enum Update {
     /// [UpdateContext::queue_event] for that. That will ensure the entire tree
     /// has a chance to respond to the entire event.
     Propagate(Event),
-}
-
-/// Custom impl to prevent monster tracing messages
-impl Debug for Event {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Init => write!(f, "Init"),
-            Self::Input { event, action } => f
-                .debug_struct("Input")
-                .field("event", event)
-                .field("action", action)
-                .finish(),
-            Self::HttpSendRequest => write!(f, "HttpSendRequest"),
-            Self::HttpSetState { recipe_id, state } => f
-                .debug_struct("HttpSetState")
-                .field("recipe_id", recipe_id)
-                .field("request_id", &state.id())
-                .finish(),
-            Self::ToggleFullscreen(arg0) => {
-                f.debug_tuple("ToggleFullscreen").field(arg0).finish()
-            }
-            Self::OpenModal { modal, priority } => f
-                .debug_struct("OpenModal")
-                .field("modal", modal)
-                .field("priority", priority)
-                .finish(),
-            Self::CloseModal => write!(f, "CloseModal"),
-            Self::Notify(arg0) => f.debug_tuple("Notify").field(arg0).finish(),
-        }
-    }
 }

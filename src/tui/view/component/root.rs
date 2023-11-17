@@ -4,27 +4,25 @@ use crate::{
         input::Action,
         message::Message,
         view::{
+            common::modal::ModalQueue,
             component::{
                 misc::{HelpText, HelpTextProps, NotificationText},
-                modal::ModalQueue,
                 primary::{PrimaryView, PrimaryViewProps},
                 request::RequestPaneProps,
                 response::ResponsePaneProps,
-                Component, Draw, Event, Update, UpdateContext,
             },
+            draw::{Draw, DrawContext},
+            event::{Event, EventHandler, Update, UpdateContext},
             state::RequestState,
             util::layout,
-            DrawContext,
         },
     },
 };
-use derive_more::Display;
 use ratatui::prelude::{Constraint, Direction, Rect};
 use std::collections::{hash_map::Entry, HashMap};
 
 /// The root view component
-#[derive(Debug, Display)]
-#[display(fmt = "Root")]
+#[derive(derive_more::Debug)]
 pub struct Root {
     // ===== Own State =====
     /// Cached request state. A recipe will appear in this map if two
@@ -39,9 +37,11 @@ pub struct Root {
     // ==== Children =====
     /// We hold onto the primary view even when it's not visible, because we
     /// don't want the state to reset when changing views
+    #[debug(skip)]
     primary_view: PrimaryView,
-    // fullscreen_view: Option<FullscreenView>,
+    #[debug(skip)]
     modal_queue: ModalQueue,
+    #[debug(skip)]
     notification_text: Option<NotificationText>,
 }
 
@@ -103,7 +103,7 @@ impl Root {
     }
 }
 
-impl Component for Root {
+impl EventHandler for Root {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Init => {
@@ -148,9 +148,10 @@ impl Component for Root {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<&mut dyn Component> {
+    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
         let modal_open = self.modal_queue.is_open();
-        let mut children: Vec<&mut dyn Component> = vec![&mut self.modal_queue];
+        let mut children: Vec<&mut dyn EventHandler> =
+            vec![&mut self.modal_queue];
 
         // If a modal is open, don't allow *any* input to the background. We'll
         // still accept input ourselves though, which should only be

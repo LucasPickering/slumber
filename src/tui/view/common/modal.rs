@@ -1,13 +1,11 @@
 use crate::tui::{
     input::Action,
     view::{
-        component::{
-            Component, Draw, DrawContext, Event, Update, UpdateContext,
-        },
+        draw::{Draw, DrawContext},
+        event::{Event, EventHandler, Update, UpdateContext},
         util::centered_rect,
     },
 };
-use derive_more::Display;
 use ratatui::{
     prelude::{Constraint, Rect},
     widgets::{Block, BorderType, Borders, Clear},
@@ -23,7 +21,7 @@ use tracing::trace;
 /// Modals cannot take props because they are rendered by the root component
 /// with dynamic dispatch, and therefore all modals must take the same props
 /// (none).
-pub trait Modal: Draw<()> + Component {
+pub trait Modal: Draw<()> + EventHandler {
     /// Text at the top of the modal
     fn title(&self) -> &str;
 
@@ -36,7 +34,7 @@ pub trait Modal: Draw<()> + Component {
 
     /// Annoying thing to cast from a modal to a base component. Remove after
     /// https://github.com/rust-lang/rust/issues/65991
-    fn as_component(&mut self) -> &mut dyn Component;
+    fn as_component(&mut self) -> &mut dyn EventHandler;
 }
 
 /// Define how a type can be converted into a modal. Often times, implementors
@@ -50,8 +48,7 @@ pub trait IntoModal {
     fn into_modal(self) -> Self::Target;
 }
 
-#[derive(Debug, Display)]
-#[display(fmt = "ModalQueue ({} in queue)", "queue.len()")]
+#[derive(Debug)]
 pub struct ModalQueue {
     queue: VecDeque<Box<dyn Modal>>,
 }
@@ -100,7 +97,7 @@ impl ModalQueue {
     }
 }
 
-impl Component for ModalQueue {
+impl EventHandler for ModalQueue {
     fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Close the active modal. If there's no modal open, we'll propagate
@@ -131,7 +128,7 @@ impl Component for ModalQueue {
         }
     }
 
-    fn children(&mut self) -> Vec<&mut dyn Component> {
+    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
         match self.queue.front_mut() {
             Some(first) => vec![first.as_component()],
             None => vec![],

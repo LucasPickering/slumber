@@ -6,15 +6,20 @@ use crate::{
         input::Action,
         message::Message,
         view::{
+            common::{list::List, Block},
             component::{
                 request::{RequestPane, RequestPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
                 settings::SettingsModal,
-                Component, Draw, Event, Update, UpdateContext,
             },
-            state::{FixedSelect, RequestState, StatefulList, StatefulSelect},
-            util::{layout, BlockBrick, ListBrick, ToTui},
-            DrawContext, ModalPriority,
+            draw::{Draw, DrawContext, Generate},
+            event::{Event, EventHandler, Update, UpdateContext},
+            state::{
+                select::{FixedSelectState, SelectState},
+                RequestState,
+            },
+            util::layout,
+            ModalPriority,
         },
     },
 };
@@ -23,11 +28,10 @@ use ratatui::prelude::{Constraint, Direction, Rect};
 use strum::EnumIter;
 
 /// Primary TUI view, which shows request/response panes
-#[derive(Debug, Display)]
-#[display(fmt = "PrimaryView")]
+#[derive(Debug)]
 pub struct PrimaryView {
     // Own state
-    selected_pane: StatefulSelect<PrimaryPane>,
+    selected_pane: FixedSelectState<PrimaryPane>,
 
     // Children
     profile_list_pane: ProfileListPane,
@@ -41,25 +45,21 @@ pub struct PrimaryViewProps<'a> {
 }
 
 /// Selectable panes in the primary view mode
-#[derive(
-    Copy, Clone, Debug, Default, derive_more::Display, EnumIter, PartialEq,
-)]
+#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
 pub enum PrimaryPane {
-    #[display(fmt = "Profiles")]
+    #[display("Profiles")]
     ProfileList,
     #[default]
-    #[display(fmt = "Recipes")]
+    #[display("Recipes")]
     RecipeList,
     Request,
     Response,
 }
 
-impl FixedSelect for PrimaryPane {}
-
 impl PrimaryView {
     pub fn new(collection: &RequestCollection) -> Self {
         Self {
-            selected_pane: StatefulSelect::default(),
+            selected_pane: Default::default(),
 
             profile_list_pane: ProfileListPane::new(
                 collection.profiles.to_owned(),
@@ -86,7 +86,7 @@ impl PrimaryView {
 
     /// Which pane is selected?
     pub fn selected_pane(&self) -> PrimaryPane {
-        self.selected_pane.selected()
+        *self.selected_pane.selected()
     }
 
     /// Expose request pane, for fullscreening
@@ -110,7 +110,7 @@ impl PrimaryView {
     }
 }
 
-impl Component for PrimaryView {
+impl EventHandler for PrimaryView {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Send HTTP request (bubbled up from child *or* queued by parent)
@@ -156,10 +156,10 @@ impl Component for PrimaryView {
         }
     }
 
-    fn children(&mut self) -> Vec<&mut dyn Component> {
+    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
         vec![match self.selected_pane.selected() {
             PrimaryPane::ProfileList => {
-                &mut self.profile_list_pane as &mut dyn Component
+                &mut self.profile_list_pane as &mut dyn EventHandler
             }
             PrimaryPane::RecipeList => &mut self.recipe_list_pane,
             PrimaryPane::Request => &mut self.request_pane,
@@ -241,10 +241,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
     }
 }
 
-#[derive(Debug, Display)]
-#[display(fmt = "ProfileListPane")]
+#[derive(Debug)]
 struct ProfileListPane {
-    profiles: StatefulList<Profile>,
+    profiles: SelectState<Profile>,
 }
 
 struct ListPaneProps {
@@ -254,30 +253,14 @@ struct ListPaneProps {
 impl ProfileListPane {
     pub fn new(profiles: Vec<Profile>) -> Self {
         Self {
-            profiles: StatefulList::with_items(profiles),
+            profiles: SelectState::new(profiles),
         }
     }
 }
 
-impl Component for ProfileListPane {
-    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            Event::Input {
-                action: Some(Action::Up),
-                ..
-            } => {
-                self.profiles.previous();
-                Update::Consumed
-            }
-            Event::Input {
-                action: Some(Action::Down),
-                ..
-            } => {
-                self.profiles.next();
-                Update::Consumed
-            }
-            _ => Update::Propagate(event),
-        }
+impl EventHandler for ProfileListPane {
+    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
+        vec![&mut self.profiles]
     }
 }
 
@@ -288,36 +271,35 @@ impl Draw<ListPaneProps> for ProfileListPane {
         props: ListPaneProps,
         chunk: Rect,
     ) {
-        let list = ListBrick {
-            block: BlockBrick {
-                title: PrimaryPane::ProfileList.to_string(),
+        let list = List {
+            block: Block {
+                title: &PrimaryPane::ProfileList.to_string(),
                 is_focused: props.is_selected,
             },
             list: &self.profiles,
         };
         context.frame.render_stateful_widget(
-            list.to_tui(context),
+            list.generate(),
             chunk,
             &mut self.profiles.state_mut(),
         )
     }
 }
 
-#[derive(Debug, Display)]
-#[display(fmt = "RecipeListPane")]
+#[derive(Debug)]
 struct RecipeListPane {
-    recipes: StatefulList<RequestRecipe>,
+    recipes: SelectState<RequestRecipe>,
 }
 
 impl RecipeListPane {
     pub fn new(recipes: Vec<RequestRecipe>) -> Self {
         Self {
-            recipes: StatefulList::with_items(recipes),
+            recipes: SelectState::new(recipes),
         }
     }
 }
 
-impl Component for RecipeListPane {
+impl EventHandler for RecipeListPane {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         let mut load_from_repo = |pane: &RecipeListPane| -> Update {
             if let Some(recipe) = pane.recipes.selected() {
@@ -338,6 +320,7 @@ impl Component for RecipeListPane {
                 context.queue_event(Event::HttpSendRequest);
                 Update::Consumed
             }
+            // TODO use input handling from StatefulList
             Event::Input {
                 action: Some(Action::Up),
                 ..
@@ -365,15 +348,15 @@ impl Draw<ListPaneProps> for RecipeListPane {
         chunk: Rect,
     ) {
         let pane_kind = PrimaryPane::RecipeList;
-        let list = ListBrick {
-            block: BlockBrick {
-                title: pane_kind.to_string(),
+        let list = List {
+            block: Block {
+                title: &pane_kind.to_string(),
                 is_focused: props.is_selected,
             },
             list: &self.recipes,
         };
         context.frame.render_stateful_widget(
-            list.to_tui(context),
+            list.generate(),
             chunk,
             &mut self.recipes.state_mut(),
         )

@@ -1,11 +1,11 @@
 use crate::tui::{
     input::Action,
     view::{
-        component::{Component, Draw, DrawContext, Event, Update},
-        util::{layout, ToTui},
+        draw::{Draw, DrawContext, Generate},
+        event::{Event, EventHandler, Update, UpdateContext},
+        util::layout,
     },
 };
-use derive_more::Display;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
     text::{Line, Text},
@@ -19,9 +19,9 @@ use std::{cell::Cell, cmp, fmt::Debug};
 ///
 /// The generic parameter allows for any type that can be converted to ratatui's
 /// `Text`, e.g. `String` or `TemplatePreview`.
-#[derive(Debug, Display)]
-#[display(fmt = "TextWindow")]
+#[derive(derive_more::Debug)]
 pub struct TextWindow<T> {
+    #[debug(skip)]
     text: T,
     offset_y: u16,
     text_height: Cell<u16>,
@@ -53,12 +53,8 @@ impl<T> TextWindow<T> {
     }
 }
 
-impl<T: Debug> Component for TextWindow<T> {
-    fn update(
-        &mut self,
-        _context: &mut super::UpdateContext,
-        event: Event,
-    ) -> Update {
+impl<T: Debug> EventHandler for TextWindow<T> {
+    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::Up),
@@ -79,9 +75,12 @@ impl<T: Debug> Component for TextWindow<T> {
     }
 }
 
-impl<'a, T: 'a + ToTui<Output<'a> = Text<'a>>> Draw for &'a TextWindow<T> {
+impl<'a, T> Draw for &'a TextWindow<T>
+where
+    &'a T: 'a + Generate<Output<'a> = Text<'a>>,
+{
     fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
-        let text = self.text.to_tui(context);
+        let text = self.text.generate();
         // TODO how do we handle text longer than 65k lines?
         let text_height = text.lines.len() as u16;
         self.text_height.set(text_height);
@@ -115,8 +114,7 @@ impl<'a, T: 'a + ToTui<Output<'a> = Text<'a>>> Draw for &'a TextWindow<T> {
 
         // Darw the text content
         context.frame.render_widget(
-            Paragraph::new(self.text.to_tui(context))
-                .scroll((self.offset_y, 0)),
+            Paragraph::new(self.text.generate()).scroll((self.offset_y, 0)),
             text_chunk,
         );
     }

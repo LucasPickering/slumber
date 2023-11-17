@@ -4,18 +4,15 @@ use crate::{
     tui::{
         input::Action,
         view::{
-            component::{
-                primary::PrimaryPane,
-                root::FullscreenMode,
-                table::{Table, TableProps},
-                tabs::Tabs,
-                template_preview::TemplatePreview,
-                text_window::TextWindow,
-                Component, Draw, Event, Update, UpdateContext,
+            common::{
+                table::Table, tabs::Tabs, template_preview::TemplatePreview,
+                text_window::TextWindow, Block,
             },
-            state::{FixedSelect, StateCell},
-            util::{layout, BlockBrick, ToTui},
-            DrawContext,
+            component::{primary::PrimaryPane, root::FullscreenMode},
+            draw::{Draw, DrawContext, Generate},
+            event::{Event, EventHandler, Update, UpdateContext},
+            state::StateCell,
+            util::layout,
         },
     },
 };
@@ -23,25 +20,31 @@ use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
     prelude::{Constraint, Direction, Rect},
-    text::Text,
     widgets::Paragraph,
 };
 use strum::EnumIter;
 
 /// Display a request recipe
-#[derive(Debug, Display, Default)]
-#[display(fmt = "RequestPane")]
+#[derive(Debug, Default)]
 pub struct RequestPane {
     tabs: Tabs<Tab>,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
-    recipe_state: StateCell<(Option<ProfileId>, RequestRecipeId), RecipeState>,
+    recipe_state: StateCell<RecipeStateKey, RecipeState>,
 }
 
 pub struct RequestPaneProps<'a> {
     pub is_selected: bool,
     pub selected_recipe: Option<&'a RequestRecipe>,
     pub selected_profile_id: Option<&'a ProfileId>,
+}
+
+/// Template preview state will be recalculated when any of these fields change
+#[derive(Debug, PartialEq)]
+struct RecipeStateKey {
+    selected_profile_id: Option<ProfileId>,
+    recipe_id: RequestRecipeId,
+    preview_templates: bool,
 }
 
 #[derive(Debug)]
@@ -60,9 +63,7 @@ enum Tab {
     Headers,
 }
 
-impl FixedSelect for Tab {}
-
-impl Component for RequestPane {
+impl EventHandler for RequestPane {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Toggle fullscreen
@@ -80,8 +81,8 @@ impl Component for RequestPane {
         }
     }
 
-    fn children(&mut self) -> Vec<&mut dyn Component> {
-        let mut children: Vec<&mut dyn Component> = vec![&mut self.tabs];
+    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
+        let mut children: Vec<&mut dyn EventHandler> = vec![&mut self.tabs];
         // If the body is initialized and present, send events there too
         if let Some(body) = self
             .recipe_state
@@ -103,11 +104,11 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
     ) {
         // Render outermost block
         let pane_kind = PrimaryPane::Request;
-        let block = BlockBrick {
-            title: pane_kind.to_string(),
+        let block = Block {
+            title: &pane_kind.to_string(),
             is_focused: props.is_selected,
         };
-        let block = block.to_tui(context);
+        let block = block.generate();
         let inner_chunk = block.inner(chunk);
         context.frame.render_widget(block, chunk);
 
@@ -139,12 +140,17 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             // would require reloading the whole collection which will reset
             // UI state.
             let recipe_state = self.recipe_state.get_or_update(
-                (props.selected_profile_id.cloned(), recipe.id.clone()),
+                RecipeStateKey {
+                    selected_profile_id: props.selected_profile_id.cloned(),
+                    recipe_id: recipe.id.clone(),
+                    preview_templates: context.config.preview_templates,
+                },
                 || RecipeState {
                     url: TemplatePreview::new(
                         context,
                         recipe.url.clone(),
                         props.selected_profile_id.cloned(),
+                        context.config.preview_templates,
                     ),
                     query: to_template_previews(
                         context,
@@ -161,6 +167,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                             context,
                             body.clone(),
                             props.selected_profile_id.cloned(),
+                            context.config.preview_templates,
                         ))
                     }),
                 },
@@ -183,22 +190,34 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                         body.draw(context, (), content_chunk);
                     }
                 }
-                Tab::Query => Table.draw(
-                    context,
-                    TableProps {
-                        key_label: "Parameter",
-                        value_label: "Value",
-                        data: to_table_text(context, &recipe_state.query),
-                    },
+                Tab::Query => context.frame.render_widget(
+                    Table {
+                        rows: recipe_state
+                            .query
+                            .iter()
+                            .map(|(param, value)| {
+                                [param.as_str().into(), value.generate()]
+                            })
+                            .collect_vec(),
+                        header: Some(["Parameter", "Value"]),
+                        ..Default::default()
+                    }
+                    .generate(),
                     content_chunk,
                 ),
-                Tab::Headers => Table.draw(
-                    context,
-                    TableProps {
-                        key_label: "Header",
-                        value_label: "Value",
-                        data: to_table_text(context, &recipe_state.headers),
-                    },
+                Tab::Headers => context.frame.render_widget(
+                    Table {
+                        rows: recipe_state
+                            .headers
+                            .iter()
+                            .map(|(param, value)| {
+                                [param.as_str().into(), value.generate()]
+                            })
+                            .collect_vec(),
+                        header: Some(["Header", "Value"]),
+                        ..Default::default()
+                    }
+                    .generate(),
                     content_chunk,
                 ),
             }
@@ -218,20 +237,13 @@ fn to_template_previews<'a>(
         .map(|(k, v)| {
             (
                 k.clone(),
-                TemplatePreview::new(context, v.clone(), profile_id.cloned()),
+                TemplatePreview::new(
+                    context,
+                    v.clone(),
+                    profile_id.cloned(),
+                    context.config.preview_templates,
+                ),
             )
         })
         .collect()
-}
-
-/// Convert a map of (string, template preview) to (text, text) so it can be
-/// displayed in a table.
-fn to_table_text<'a>(
-    context: &DrawContext,
-    iter: impl IntoIterator<Item = &'a (String, TemplatePreview)>,
-) -> Vec<(Text<'a>, Text<'a>)> {
-    iter.into_iter()
-        .map(|(param, value)| (param.as_str().into(), value.to_tui(context)))
-        // Collect required to drop reference to context
-        .collect_vec()
 }

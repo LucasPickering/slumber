@@ -41,7 +41,7 @@ pub struct TemplateContext {
 /// during creation to identify template keys, hence the immutability.
 #[derive(Clone, Debug, Deref, Display, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[display(fmt = "{template}")]
+#[display("{template}")]
 #[serde(try_from = "String", into = "String")]
 pub struct Template {
     #[deref(forward)]
@@ -127,10 +127,10 @@ enum TemplateKey<T> {
     /// A plain field, which can come from the profile or an override
     Field(T),
     /// A value from a predefined chain of another recipe
-    #[display(fmt = "{}{}", "CHAIN_PREFIX", "_0")]
+    #[display("{CHAIN_PREFIX}{_0}")]
     Chain(T),
     /// A value pulled from the process environment
-    #[display(fmt = "{}{}", "ENV_PREFIX", "_0")]
+    #[display("{ENV_PREFIX}{_0}")]
     Environment(T),
 }
 

@@ -1,33 +1,32 @@
 use crate::tui::{
     input::Action,
+    message::Message,
     view::{
-        component::{
-            Component, Draw, DrawContext, Event, Modal, Update, UpdateContext,
-        },
-        util::{Checkbox, ToTui},
+        common::{modal::Modal, table::Table, Checkbox},
+        draw::{Draw, DrawContext, Generate},
+        event::{Event, EventHandler, Update, UpdateContext},
+        state::select::FixedSelectState,
+        ViewConfig,
     },
 };
 use derive_more::Display;
+use itertools::Itertools;
 use ratatui::{
     prelude::{Constraint, Rect},
-    widgets::{Cell, Row, Table, TableState},
+    widgets::{Cell, TableState},
 };
-use std::{cell::RefCell, ops::DerefMut};
-use tracing::error;
+use strum::{EnumIter, IntoEnumIterator};
 
 /// Modal to view and modify user/view configuration
-#[derive(Debug, Display)]
-#[display(fmt = "SettingsModal")]
+#[derive(Debug)]
 pub struct SettingsModal {
-    table_state: RefCell<TableState>,
+    table: FixedSelectState<Setting, TableState>,
 }
 
 impl Default for SettingsModal {
     fn default() -> Self {
         Self {
-            table_state: RefCell::new(
-                TableState::default().with_selected(Some(0)),
-            ),
+            table: FixedSelectState::new(),
         }
     }
 }
@@ -41,64 +40,84 @@ impl Modal for SettingsModal {
         (Constraint::Length(30), Constraint::Length(5))
     }
 
-    fn as_component(&mut self) -> &mut dyn Component {
+    fn as_component(&mut self) -> &mut dyn EventHandler {
         self
     }
 }
 
-impl Component for SettingsModal {
+impl EventHandler for SettingsModal {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        let table_state = self.table_state.get_mut();
         match event {
             Event::Input {
-                action: Some(action),
+                action: Some(Action::Submit),
                 ..
-            } => match action {
-                // There are no other settings to scroll through yet, implement
-                // that when necessary
-                Action::Up => Update::Consumed,
-                Action::Down => Update::Consumed,
-                Action::Submit => {
-                    match table_state.selected() {
-                        Some(0) => {
-                            context.config.preview_templates =
-                                !context.config.preview_templates;
-                        }
-                        other => {
-                            // Huh?
-                            error!(
-                                state = ?other,
-                                "Unexpected settings table select state"
-                            );
-                        }
+            } => {
+                match self.table.selected() {
+                    Setting::PreviewTemplates => {
+                        context.config().preview_templates ^= true;
                     }
-                    Update::Consumed
+                    Setting::CaptureMouse => {
+                        context.config().capture_mouse ^= true;
+                        let capture = context.config().capture_mouse;
+                        context.send_message(Message::ToggleMouseCapture {
+                            capture,
+                        });
+                    }
                 }
-                _ => Update::Propagate(event),
-            },
+                Update::Consumed
+            }
             _ => Update::Propagate(event),
         }
+    }
+
+    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
+        vec![&mut self.table]
     }
 }
 
 impl Draw for SettingsModal {
     fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
-        let preview_templates_checkbox = Checkbox {
-            checked: context.config.preview_templates,
-        };
-        let rows = vec![Row::new(vec![
-            Cell::from("Preview Templates"),
-            preview_templates_checkbox.to_tui(context).into(),
-        ])];
-        let table = Table::new(rows)
-            .style(context.theme.table_text_style)
-            .highlight_style(context.theme.table_highlight_style)
-            .widths(&[Constraint::Percentage(80), Constraint::Percentage(20)]);
-
         context.frame.render_stateful_widget(
-            table,
+            Table {
+                rows: Setting::iter()
+                    .map::<[Cell; 2], _>(|setting| {
+                        [
+                            setting.to_string().into(),
+                            Checkbox {
+                                checked: setting.get_value(context.config),
+                            }
+                            .generate()
+                            .into(),
+                        ]
+                    })
+                    .collect_vec(),
+                alternate_row_style: false,
+                column_widths: &[Constraint::Min(24), Constraint::Length(3)],
+                ..Default::default()
+            }
+            .generate(),
             chunk,
-            self.table_state.borrow_mut().deref_mut(),
+            &mut self.table.state_mut(),
         );
+    }
+}
+
+/// Various configurable settings
+#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
+enum Setting {
+    #[default]
+    #[display("Preview Templates")]
+    PreviewTemplates,
+    #[display("Capture Mouse")]
+    CaptureMouse,
+}
+
+impl Setting {
+    /// Get the value of a setting from the config
+    fn get_value(self, config: &ViewConfig) -> bool {
+        match self {
+            Self::PreviewTemplates => config.preview_templates,
+            Self::CaptureMouse => config.capture_mouse,
+        }
     }
 }

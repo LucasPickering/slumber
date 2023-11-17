@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Added
+
+- Option to toggle cursor capture
+
 ## [0.8.0] - 2023-11-21
 
 ### Added

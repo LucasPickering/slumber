@@ -6,27 +6,23 @@ use crate::{
     tui::{
         input::Action,
         view::{
-            component::{
-                modal::IntoModal, primary::PrimaryPane, root::FullscreenMode,
-                Component, Draw, Event, Modal, Update, UpdateContext,
-            },
+            common::modal::{IntoModal, Modal},
+            component::{primary::PrimaryPane, root::FullscreenMode},
+            draw::{Draw, DrawContext, Generate},
+            event::{Event, EventHandler, Update, UpdateContext},
             state::Notification,
-            util::{layout, ButtonBrick, ToTui},
-            DrawContext,
         },
     },
 };
-use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
-    prelude::{Alignment, Constraint, Direction, Rect},
+    prelude::{Constraint, Rect},
     widgets::{Paragraph, Wrap},
 };
 use std::fmt::Debug;
 use tui_textarea::TextArea;
 
-#[derive(Debug, Display)]
-#[display(fmt = "ErrorModal")]
+#[derive(Debug)]
 pub struct ErrorModal(anyhow::Error);
 
 impl Modal for ErrorModal {
@@ -38,12 +34,12 @@ impl Modal for ErrorModal {
         (Constraint::Percentage(60), Constraint::Percentage(20))
     }
 
-    fn as_component(&mut self) -> &mut dyn Component {
+    fn as_component(&mut self) -> &mut dyn EventHandler {
         self
     }
 }
 
-impl Component for ErrorModal {
+impl EventHandler for ErrorModal {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Extra close action
@@ -62,28 +58,9 @@ impl Component for ErrorModal {
 
 impl Draw for ErrorModal {
     fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
-        let [content_chunk, footer_chunk] = layout(
+        context.frame.render_widget(
+            Paragraph::new(self.0.generate()).wrap(Wrap::default()),
             chunk,
-            Direction::Vertical,
-            [Constraint::Min(0), Constraint::Length(1)],
-        );
-
-        context.frame.render_widget(
-            Paragraph::new(self.0.to_tui(context)).wrap(Wrap::default()),
-            content_chunk,
-        );
-
-        // Prompt the user to get out of here
-        context.frame.render_widget(
-            Paragraph::new(
-                ButtonBrick {
-                    text: "OK",
-                    is_highlighted: true,
-                }
-                .to_tui(context),
-            )
-            .alignment(Alignment::Center),
-            footer_chunk,
         );
     }
 }
@@ -98,8 +75,7 @@ impl IntoModal for anyhow::Error {
 
 /// Inner state forfn update(&mut self, context:&mut UpdateContext, message:
 /// Event) -> UpdateOutcome the prompt modal
-#[derive(Debug, Display)]
-#[display(fmt = "PromptModal")]
+#[derive(Debug)]
 pub struct PromptModal {
     /// Prompt currently being shown
     prompt: Prompt,
@@ -141,12 +117,12 @@ impl Modal for PromptModal {
         }
     }
 
-    fn as_component(&mut self) -> &mut dyn Component {
+    fn as_component(&mut self) -> &mut dyn EventHandler {
         self
     }
 }
 
-impl Component for PromptModal {
+impl EventHandler for PromptModal {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Submit
@@ -267,9 +243,8 @@ impl NotificationText {
 
 impl Draw for NotificationText {
     fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
-        context.frame.render_widget(
-            Paragraph::new(self.notification.to_tui(context)),
-            chunk,
-        );
+        context
+            .frame
+            .render_widget(Paragraph::new(self.notification.generate()), chunk);
     }
 }

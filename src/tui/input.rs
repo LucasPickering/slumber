@@ -2,10 +2,7 @@
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use derive_more::Display;
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Display},
-};
+use std::{collections::HashMap, fmt::Debug};
 use tracing::trace;
 
 /// Top-level input manager. This handles things like bindings and mapping
@@ -101,10 +98,10 @@ pub enum Action {
     ForceQuit,
 
     /// Focus the previous pane
-    #[display(fmt = "Prev Pane")]
+    #[display("Prev Pane")]
     PreviousPane,
     /// Focus the next pane
-    #[display(fmt = "Next Pane")]
+    #[display("Next Pane")]
     NextPane,
 
     Up,
@@ -115,12 +112,12 @@ pub enum Action {
     /// Do a thing. E.g. select an item in a list
     Submit,
     /// Send the active request from *any* context
-    #[display(fmt = "Send Request")]
+    #[display("Send Request")]
     SendRequest,
     /// Embiggen a pane
     Fullscreen,
     /// Open the settings modal
-    #[display(fmt = "Settings")]
+    #[display("Settings")]
     OpenSettings,
     /// Close the current modal/dialog/etc.
     Cancel,

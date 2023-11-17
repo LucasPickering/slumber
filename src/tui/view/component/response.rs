@@ -3,17 +3,14 @@ use crate::{
     tui::{
         input::Action,
         view::{
-            component::{
-                primary::PrimaryPane,
-                root::FullscreenMode,
-                table::{Table, TableProps},
-                tabs::Tabs,
-                text_window::TextWindow,
-                Component, Draw, Event, Update, UpdateContext,
+            common::{
+                table::Table, tabs::Tabs, text_window::TextWindow, Block,
             },
-            state::{FixedSelect, RequestState, StateCell},
-            util::{layout, BlockBrick, ToTui},
-            DrawContext,
+            component::{primary::PrimaryPane, root::FullscreenMode},
+            draw::{Draw, DrawContext, Generate},
+            event::{Event, EventHandler, Update, UpdateContext},
+            state::{RequestState, StateCell},
+            util::layout,
         },
     },
 };
@@ -21,7 +18,7 @@ use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
-    text::Line,
+    text::{Line, Text},
     widgets::{Paragraph, Wrap},
 };
 use std::ops::Deref;
@@ -29,8 +26,7 @@ use strum::EnumIter;
 
 /// Display HTTP response state, which could be in progress, complete, or
 /// failed. This can be used in both a paned and fullscreen view.
-#[derive(Debug, Default, Display)]
-#[display(fmt = "ResponsePane")]
+#[derive(Debug, Default)]
 pub struct ResponsePane {
     content: ResponseContent,
 }
@@ -47,9 +43,7 @@ enum Tab {
     Headers,
 }
 
-impl FixedSelect for Tab {}
-
-impl Component for ResponsePane {
+impl EventHandler for ResponsePane {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Toggle fullscreen
@@ -67,7 +61,7 @@ impl Component for ResponsePane {
         }
     }
 
-    fn children(&mut self) -> Vec<&mut dyn Component> {
+    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
         vec![&mut self.content]
     }
 }
@@ -81,11 +75,11 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
     ) {
         // Render outermost block
         let pane_kind = PrimaryPane::Response;
-        let block = BlockBrick {
-            title: pane_kind.to_string(),
+        let block = Block {
+            title: &pane_kind.to_string(),
             is_focused: props.is_selected,
         };
-        let block = block.to_tui(context);
+        let block = block.generate();
         let inner_chunk = block.inner(chunk);
         context.frame.render_widget(block, chunk);
 
@@ -110,9 +104,9 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
             {
                 context.frame.render_widget(
                     Paragraph::new(Line::from(vec![
-                        start_time.to_tui(context),
+                        start_time.generate(),
                         " / ".into(),
-                        duration.to_tui(context),
+                        duration.generate(),
                     ]))
                     .alignment(Alignment::Right),
                     header_right_chunk,
@@ -130,8 +124,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 // :(
                 RequestState::BuildError { error } => {
                     context.frame.render_widget(
-                        Paragraph::new(error.to_tui(context))
-                            .wrap(Wrap::default()),
+                        Paragraph::new(error.generate()).wrap(Wrap::default()),
                         content_chunk,
                     );
                 }
@@ -167,8 +160,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 // Sadge
                 RequestState::RequestError { error } => {
                     context.frame.render_widget(
-                        Paragraph::new(error.to_tui(context))
-                            .wrap(Wrap::default()),
+                        Paragraph::new(error.generate()).wrap(Wrap::default()),
                         content_chunk,
                     );
                 }
@@ -178,8 +170,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 }
 
 /// Display response success state (tab container)
-#[derive(Debug, Default, Display)]
-#[display(fmt = "ResponsePane")]
+#[derive(Debug, Default)]
 struct ResponseContent {
     tabs: Tabs<Tab>,
     /// Persist the response body to track view state. Update whenever the
@@ -192,7 +183,7 @@ struct ResponseContentProps<'a> {
     pretty_body: Option<&'a str>,
 }
 
-impl Component for ResponseContent {
+impl EventHandler for ResponseContent {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Toggle fullscreen
@@ -210,8 +201,8 @@ impl Component for ResponseContent {
         }
     }
 
-    fn children(&mut self) -> Vec<&mut dyn Component> {
-        let mut children: Vec<&mut dyn Component> = vec![&mut self.tabs];
+    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
+        let mut children: Vec<&mut dyn EventHandler> = vec![&mut self.tabs];
         if let Some(body) = self.body.get_mut() {
             children.push(body);
         }
@@ -252,20 +243,19 @@ impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
                 });
                 body.deref().draw(context, (), content_chunk)
             }
-            Tab::Headers => Table.draw(
-                context,
-                TableProps {
-                    key_label: "Header",
-                    value_label: "Value",
-                    data: response
+            Tab::Headers => context.frame.render_widget(
+                Table {
+                    rows: response
                         .headers
                         .iter()
                         .map(|(k, v)| {
-                            (k.as_str().into(), v.to_tui(context).into())
+                            [Text::from(k.as_str()), v.generate().into()]
                         })
-                        // Collect required to close context ref
                         .collect_vec(),
-                },
+                    header: Some(["Header", "Value"]),
+                    ..Default::default()
+                }
+                .generate(),
                 content_chunk,
             ),
         }

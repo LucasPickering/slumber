@@ -14,8 +14,9 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
-    execute,
-    terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    event::{DisableMouseCapture, EnableMouseCapture},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
 };
 use futures::Future;
 use indexmap::IndexMap;
@@ -65,15 +66,8 @@ impl Tui {
     /// because they prevent TUI execution.
     pub async fn start(collection_file: PathBuf) {
         initialize_panic_handler();
-
-        // Set up terminal
-        enable_raw_mode().expect("Error initializing terminal");
-        let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)
-            .expect("Error initializing terminal");
-        let backend = CrosstermBackend::new(stdout);
         let terminal =
-            Terminal::new(backend).expect("Error initializing terminal");
+            initialize_terminal().expect("Error initializing terminal");
 
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
@@ -189,6 +183,10 @@ impl Tui {
                 self.reload_collection(collection);
             }
 
+            Message::Error { error } => {
+                self.view.open_modal(error, ModalPriority::High)
+            }
+
             // Manage HTTP life cycle
             Message::HttpBeginRequest {
                 recipe_id,
@@ -237,6 +235,8 @@ impl Tui {
                 self.view.open_modal(prompt, ModalPriority::Low);
             }
 
+            Message::Quit => self.quit(),
+
             Message::TemplatePreview {
                 template,
                 profile_id,
@@ -249,10 +249,14 @@ impl Tui {
                 )?;
             }
 
-            Message::Error { error } => {
-                self.view.open_modal(error, ModalPriority::High)
+            Message::ToggleMouseCapture { capture } => {
+                let mut stdout = io::stdout();
+                if capture {
+                    stdout.execute(EnableMouseCapture)?;
+                } else {
+                    stdout.execute(DisableMouseCapture)?;
+                }
             }
-            Message::Quit => self.quit(),
         }
         Ok(())
     }
@@ -449,10 +453,23 @@ fn initialize_panic_handler() {
     }));
 }
 
+/// Set up terminal for TUI
+fn initialize_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
+    crossterm::terminal::enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    crossterm::execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    Ok(Terminal::new(backend)?)
+}
+
 /// Return terminal to initial state
 fn restore_terminal() -> anyhow::Result<()> {
     debug!("Restoring terminal");
     crossterm::terminal::disable_raw_mode()?;
-    crossterm::execute!(std::io::stderr(), LeaveAlternateScreen)?;
+    crossterm::execute!(
+        io::stderr(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     Ok(())
 }

@@ -1,16 +1,13 @@
 //! State types for the view.
 
+pub mod select;
+
 use crate::http::{RequestBuildError, RequestError, RequestId, RequestRecord};
 use chrono::{DateTime, Duration, Utc};
-use itertools::Itertools;
-use ratatui::widgets::*;
 use std::{
     cell::{Ref, RefCell},
-    fmt::Display,
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
+    ops::Deref,
 };
-use strum::IntoEnumIterator;
 
 /// An internally mutable cell for UI state. Certain state needs to be updated
 /// during the draw phase, typically because it's derived from parent data
@@ -186,143 +183,5 @@ impl Notification {
             message,
             timestamp: Utc::now(),
         }
-    }
-}
-
-/// A list of items in the UI
-#[derive(Debug)]
-pub struct StatefulList<T> {
-    /// Use interior mutability because this needs to be modified during the
-    /// draw phase, by [Frame::render_stateful_widget]. This allows rendering
-    /// without a mutable reference.
-    state: RefCell<ListState>,
-    pub items: Vec<T>,
-}
-
-impl<T> StatefulList<T> {
-    pub fn with_items(items: Vec<T>) -> StatefulList<T> {
-        let mut state = ListState::default();
-        // Pre-select the first item if possible
-        if !items.is_empty() {
-            state.select(Some(0));
-        }
-        StatefulList {
-            state: RefCell::new(state),
-            items,
-        }
-    }
-
-    /// Get the currently selected item (if any)
-    pub fn selected(&self) -> Option<&T> {
-        self.items.get(self.state.borrow().selected()?)
-    }
-
-    /// Get the number of items in the list
-    pub fn len(&self) -> usize {
-        self.items.len()
-    }
-
-    /// Get a mutable reference to state. This uses `RefCell` underneath so it
-    /// will panic if aliased. Only call this during the draw phase!
-    pub fn state_mut(&self) -> impl DerefMut<Target = ListState> + '_ {
-        self.state.borrow_mut()
-    }
-
-    /// Select the previous item in the list. This should only be called during
-    /// the message phase, so we can take `&mut self`.
-    pub fn previous(&mut self) {
-        let state = self.state.get_mut();
-        let i = match state.selected() {
-            Some(i) => {
-                // Avoid underflow here
-                if i == 0 {
-                    self.items.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        state.select(Some(i));
-    }
-
-    /// Select the next item in the list. This should only be called during the
-    /// message phase, so we can take `&mut self`.
-    pub fn next(&mut self) {
-        let state = self.state.get_mut();
-        let i = match state.selected() {
-            Some(i) => (i + 1) % self.items.len(),
-            None => 0,
-        };
-        state.select(Some(i));
-    }
-}
-
-/// A fixed-size collection of selectable items, e.g. panes or tabs. User can
-/// cycle between them.
-#[derive(Debug)]
-pub struct StatefulSelect<T: FixedSelect> {
-    selected_index: usize,
-    _phantom: PhantomData<T>,
-}
-
-/// Friendly marker trait indicating a type can be cycled through, e.g. a set
-/// of panes or tabs
-pub trait FixedSelect:
-    Default + Display + IntoEnumIterator + PartialEq
-{
-}
-
-impl<T: FixedSelect> StatefulSelect<T> {
-    pub fn new() -> Self {
-        Self {
-            // Find the index of the select type's default value
-            selected_index: T::iter()
-                .find_position(|value| value == &T::default())
-                .unwrap()
-                .0,
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Get the index of the selected element
-    pub fn selected_index(&self) -> usize {
-        self.selected_index
-    }
-
-    /// Get the selected element
-    pub fn selected(&self) -> T {
-        T::iter()
-            .nth(self.selected_index)
-            .expect("StatefulSelect index out of bounds")
-    }
-
-    /// Is the given item selected?
-    pub fn is_selected(&self, item: &T) -> bool {
-        &self.selected() == item
-    }
-
-    /// Select previous item, returning whether the selection changed
-    pub fn previous(&mut self) -> bool {
-        // Prevent underflow
-        let old = self.selected_index;
-        self.selected_index = self
-            .selected_index
-            .checked_sub(1)
-            .unwrap_or(T::iter().count() - 1);
-        old != self.selected_index
-    }
-
-    /// Select next item, returning whether the selection changed
-    pub fn next(&mut self) -> bool {
-        let old = self.selected_index;
-        self.selected_index = (self.selected_index + 1) % T::iter().count();
-        old != self.selected_index
-    }
-}
-
-impl<T: FixedSelect> Default for StatefulSelect<T> {
-    fn default() -> Self {
-        Self::new()
     }
 }

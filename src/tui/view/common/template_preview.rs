@@ -4,9 +4,8 @@ use crate::{
     tui::{
         message::Message,
         view::{
-            component::{Draw, DrawContext},
+            draw::{Draw, DrawContext, Generate},
             theme::Theme,
-            util::ToTui,
         },
     },
 };
@@ -26,12 +25,17 @@ use std::{
 /// rendered version. This switch is stored in render context, so it can be
 /// changed globally.
 #[derive(Debug)]
-pub struct TemplatePreview {
-    template: Template,
-    /// Rendered chunks. On init we send a message which will trigger a task to
-    /// start the render. When the task is done, it'll dump its result back
-    /// here.
-    chunks: Arc<OnceLock<Vec<TemplateChunk>>>,
+pub enum TemplatePreview {
+    /// Template previewing is disabled, just show the raw text
+    Disabled { template: Template },
+    /// Template previewing is enabled, render the template
+    Enabled {
+        template: Template,
+        /// Rendered chunks. On init we send a message which will trigger a
+        /// task to start the render. When the task is done, it'll dump
+        /// its result back here.
+        chunks: Arc<OnceLock<Vec<TemplateChunk>>>,
+    },
 }
 
 impl TemplatePreview {
@@ -42,54 +46,59 @@ impl TemplatePreview {
         context: &DrawContext,
         template: Template,
         profile_id: Option<ProfileId>,
+        enabled: bool,
     ) -> Self {
-        // Tell the controller to start rendering the preview, and it'll store
-        // it back here when done
-        let lock = Arc::new(OnceLock::new());
-        context.messages_tx.send(Message::TemplatePreview {
-            template: template.clone(), // If this is a bottleneck we can Arc it
-            profile_id,
-            destination: Arc::clone(&lock),
-        });
+        if enabled {
+            // Tell the controller to start rendering the preview, and it'll
+            // store it back here when done
+            let lock = Arc::new(OnceLock::new());
+            context.messages_tx.send(Message::TemplatePreview {
+                template: template.clone(), /* If this is a bottleneck we can
+                                             * Arc it */
+                profile_id,
+                destination: Arc::clone(&lock),
+            });
 
-        Self {
-            template,
-            chunks: lock,
+            Self::Enabled {
+                template,
+                chunks: lock,
+            }
+        } else {
+            Self::Disabled { template }
         }
     }
 }
 
-impl ToTui for TemplatePreview {
+impl Generate for &TemplatePreview {
     type Output<'this> = Text<'this>
     where
         Self: 'this;
 
-    fn to_tui(&self, context: &DrawContext) -> Self::Output<'_> {
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
         // The raw template string
-        let raw = self.template.deref();
-
-        if context.config.preview_templates {
-            // If the preview render is ready, show it. Otherwise fall back to
-            // the raw
-            match self.chunks.get() {
-                Some(chunks) => TextStitcher::stitch_chunks(
-                    &self.template,
-                    chunks,
-                    context.theme,
-                ),
-                // Preview still rendering
-                None => raw.into(),
+        match self {
+            TemplatePreview::Disabled { template } => template.deref().into(),
+            TemplatePreview::Enabled { template, chunks } => {
+                // If the preview render is ready, show it. Otherwise fall back
+                // to the raw
+                match chunks.get() {
+                    Some(chunks) => {
+                        TextStitcher::stitch_chunks(template, chunks)
+                    }
+                    // Preview still rendering
+                    None => template.deref().into(),
+                }
             }
-        } else {
-            raw.into()
         }
     }
 }
 
-/// Anything that can be converted to text can be drawn
 impl Draw for TemplatePreview {
     fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
-        let text = self.to_tui(context);
+        let text = self.generate();
         context.frame.render_widget(Paragraph::new(text), chunk);
     }
 }
@@ -111,8 +120,9 @@ impl<'a> TextStitcher<'a> {
     fn stitch_chunks(
         template: &'a Template,
         chunks: &'a [TemplateChunk],
-        theme: &Theme,
     ) -> Text<'a> {
+        let theme = Theme::get();
+
         // Each chunk will get its own styling, but we can't just make each
         // chunk a Span, because one chunk might have multiple lines. And we
         // can't make each chunk a Line, because multiple chunks might be
@@ -202,9 +212,9 @@ mod tests {
         let profile = indexmap! { "user_id".into() => "🧡\n💛".into() };
         let context = create!(TemplateContext, profile: profile);
         let chunks = template.render_chunks(&context).await;
-        let theme = Theme::default();
+        let theme = Theme::get();
 
-        let text = TextStitcher::stitch_chunks(&template, &chunks, &theme);
+        let text = TextStitcher::stitch_chunks(&template, &chunks);
         let rendered_style = theme.template_preview_text;
         let error_style = theme.template_preview_error;
         let expected = Text::from(vec![

@@ -7,8 +7,6 @@ license = "MIT"
 name = "slumber"
 repository = "https://github.com/LucasPickering/slumber"
 version = "0.7.0"
-# Keep in sync w/ rust-toolchain.toml
-rust-version = "1.72.0"
 
 [dependencies]
 anyhow = {version = "^1.0.75", features = ["backtrace"]}

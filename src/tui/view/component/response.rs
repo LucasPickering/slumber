@@ -99,7 +99,8 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
             let [header_left_chunk, header_right_chunk] = layout(
                 header_chunk,
                 Direction::Horizontal,
-                [Constraint::Length(20), Constraint::Min(0)],
+                // The longest canonical status reason in reqwest is 31 chars
+                [Constraint::Length(3 + 1 + 31), Constraint::Min(0)],
             );
 
             // Time-related data. start_time and duration should always be

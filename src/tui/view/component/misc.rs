@@ -37,6 +37,10 @@ impl Modal for ErrorModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         (Constraint::Percentage(60), Constraint::Percentage(20))
     }
+
+    fn as_component(&mut self) -> &mut dyn Component {
+        self
+    }
 }
 
 impl Component for ErrorModal {
@@ -135,6 +139,10 @@ impl Modal for PromptModal {
             let input = self.text_area.into_lines().join("\n");
             self.prompt.respond(input);
         }
+    }
+
+    fn as_component(&mut self) -> &mut dyn Component {
+        self
     }
 }
 

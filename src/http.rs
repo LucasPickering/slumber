@@ -113,19 +113,7 @@ impl HttpEngine {
             // Technically the elapsed time will include the conversion time,
             // but that should be extremely minimal compared to network IO
             let start_time = Utc::now();
-            let result: reqwest::Result<Response> = try {
-                // Convert to reqwest format as part of the execution. This
-                // means certain builder errors will show up as "request" errors
-                // which is janky, but reqwest already doesn't report some
-                // builder erorrs until you execute the request, and this is
-                // much easier than frontloading the conversion during the build
-                // process.
-                let reqwest_request = self.convert_request(&request)?;
-                let reqwest_response =
-                    self.client.execute(reqwest_request).await?;
-                // Load the full response and convert it to our format
-                self.convert_response(reqwest_response).await?
-            };
+            let result = self.send_request_helper(&request).await;
             let end_time = Utc::now();
 
             // Attach metadata to the error and yeet it
@@ -156,6 +144,23 @@ impl HttpEngine {
             }
         })
         .await
+    }
+
+    /// An exact encapsulation of the "request". The execution of this function
+    /// is synonymous with a request's elapsed time.
+    async fn send_request_helper(
+        &self,
+        request: &Request,
+    ) -> reqwest::Result<Response> {
+        // Convert to reqwest format as part of the execution. This means
+        // certain builder errors will show up as "request" errors which is
+        // janky, but reqwest already doesn't report some builder erorrs until
+        // you execute the request, and this is much easier than frontloading
+        // the conversion during the build process.
+        let reqwest_request = self.convert_request(request)?;
+        let reqwest_response = self.client.execute(reqwest_request).await?;
+        // Load the full response and convert it to our format
+        self.convert_response(reqwest_response).await
     }
 
     /// Convert from our request type to reqwest's. The input request should

@@ -1,10 +1,5 @@
+#![forbid(unsafe_code)]
 #![deny(clippy::all)]
-#![feature(associated_type_defaults)]
-#![feature(iterator_try_collect)]
-#![feature(lazy_cell)]
-#![feature(trait_upcasting)]
-#![feature(try_blocks)]
-#![feature(type_changing_struct_update)]
 
 mod cli;
 mod collection;

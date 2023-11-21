@@ -12,7 +12,7 @@ use ratatui::{
     prelude::{Constraint, Rect},
     widgets::{Block, BorderType, Borders, Clear},
 };
-use std::{collections::VecDeque, ops::DerefMut};
+use std::collections::VecDeque;
 use tracing::trace;
 
 /// A modal (AKA popup or dialog) is a high-priority element to be shown to the
@@ -33,6 +33,10 @@ pub trait Modal: Draw<()> + Component {
     /// Optional callback when the modal is closed. Useful for finishing
     /// operations that require ownership of the modal data.
     fn on_close(self: Box<Self>) {}
+
+    /// Annoying thing to cast from a modal to a base component. Remove after
+    /// https://github.com/rust-lang/rust/issues/65991
+    fn as_component(&mut self) -> &mut dyn Component;
 }
 
 /// Define how a type can be converted into a modal. Often times, implementors
@@ -129,7 +133,7 @@ impl Component for ModalQueue {
 
     fn children(&mut self) -> Vec<&mut dyn Component> {
         match self.queue.front_mut() {
-            Some(first) => vec![first.deref_mut()],
+            Some(first) => vec![first.as_component()],
             None => vec![],
         }
     }

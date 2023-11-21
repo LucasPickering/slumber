@@ -182,7 +182,13 @@ pub enum ChainSource {
 impl<S> RequestCollection<S> {
     /// Replace the source value on this collection
     pub fn with_source<T>(self, source: T) -> RequestCollection<T> {
-        RequestCollection { source, ..self }
+        RequestCollection {
+            source,
+            id: self.id,
+            profiles: self.profiles,
+            chains: self.chains,
+            recipes: self.recipes,
+        }
     }
 }
 

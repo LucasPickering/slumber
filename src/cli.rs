@@ -52,7 +52,7 @@ pub enum Subcommand {
     },
 
     /// Show meta information about slumber
-    Info,
+    Show,
 }
 
 impl Subcommand {
@@ -148,7 +148,7 @@ impl Subcommand {
                 Ok(())
             }
 
-            Subcommand::Info => {
+            Subcommand::Show => {
                 println!("Directory: {}", data_directory().display());
                 Ok(())
             }

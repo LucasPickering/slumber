@@ -4,12 +4,13 @@
 
 ### Added
 
-- Add `slumber info` subcommand
+- Add `slumber show` subcommand
 
 ### Changed
 
 - Remove keybinding to reload collection
   - Not useful now that the TUI has automatic reloading
+- Move to stable Rust channel and add MSRV of 1.74
 
 ### Fixed
 

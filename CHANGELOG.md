@@ -16,6 +16,7 @@
 - Don't panic if the collection file is invalid on first startup [#34](https://github.com/LucasPickering/slumber/issues/34)
   - The TUI will now show an empty screen, and watch the collection file for changes
 - Fix long status code reasons getting cut off in response header [#40](https://github.com/LucasPickering/slumber/issues/40)
+- Trim leading/trailing newlines from header values to prevent validation error
 
 ## [0.7.0] - 2023-11-16
 

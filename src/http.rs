@@ -42,7 +42,9 @@ pub use record::*;
 pub use repository::*;
 
 use crate::{
-    collection::RequestRecipe, template::TemplateContext, util::ResultExt,
+    collection::RequestRecipe,
+    template::{Template, TemplateContext},
+    util::ResultExt,
 };
 use anyhow::Context;
 use chrono::Utc;
@@ -256,75 +258,16 @@ impl RequestBuilder {
     /// Outsourced build function, to make error conversion easier later
     async fn build_helper(self) -> anyhow::Result<Request> {
         let recipe = self.recipe;
-        // Don't let any sub-futures try to move the context
         let template_context = &self.template_context;
-
         let method = recipe.method.parse()?;
 
-        // Build all the futures separately, then resolve them in parallel
-
-        let url_future = recipe.url.render(template_context, "URL");
-
-        // Build header map
-        let headers_future = async {
-            Ok(future::try_join_all(recipe.headers.iter().map(
-                |(header, value_template)| async move {
-                    // String -> header conversions are fallible, if headers
-                    // are invalid
-                    Ok::<_, anyhow::Error>((
-                        HeaderName::try_from(header).with_context(|| {
-                            format!("Error parsing header name `{header}`")
-                        })?,
-                        HeaderValue::try_from(
-                            value_template
-                                .render(
-                                    template_context,
-                                    &format!("header {header}"),
-                                )
-                                .await?,
-                        )?,
-                    ))
-                },
-            ))
-            .await?
-            .into_iter()
-            .collect::<HeaderMap>())
-        };
-
-        // Add query parameters
-        let query_future = async {
-            Ok(future::try_join_all(recipe.query.iter().map(
-                |(k, v)| async move {
-                    Ok::<_, anyhow::Error>((
-                        k.clone(),
-                        v.render(
-                            template_context,
-                            &format!("Query parameter {k}"),
-                        )
-                        .await?,
-                    ))
-                },
-            ))
-            .await?
-            .into_iter()
-            .collect::<IndexMap<String, String>>())
-        };
-
-        // Render the body
-        let body_future = async {
-            match &recipe.body {
-                Some(body) => Ok(Some(
-                    body.render(template_context, "body")
-                        .await
-                        .context("Body")?,
-                )),
-                None => Ok(None),
-            }
-        };
-
-        // Zoooooooooooom!
-        let (url, headers, query, body) =
-            try_join!(url_future, headers_future, query_future, body_future,)?;
+        // Render everything in parallel
+        let (url, headers, query, body) = try_join!(
+            Self::render_url(template_context, &recipe.url),
+            Self::render_headers(template_context, &recipe.headers),
+            Self::render_query(template_context, &recipe.query),
+            Self::render_body(template_context, recipe.body.as_ref()),
+        )?;
 
         info!(
             recipe_id = %recipe.id,
@@ -340,5 +283,76 @@ impl RequestBuilder {
             body,
             headers,
         })
+    }
+
+    async fn render_url(
+        template_context: &TemplateContext,
+        url: &Template,
+    ) -> anyhow::Result<String> {
+        url.render(template_context)
+            .await
+            .context("Error rendering URL")
+    }
+
+    async fn render_headers(
+        template_context: &TemplateContext,
+        headers: &IndexMap<String, Template>,
+    ) -> anyhow::Result<HeaderMap> {
+        let iter = headers.iter().map(|(header, value_template)| async move {
+            let value = value_template
+                .render(template_context)
+                .await
+                .context(format!("Error rendering header `{header}`"))?;
+            // Strip leading/trailing line breaks because they're going to
+            // trigger a validation error and are probably a mistake. This is
+            // a balance between convenience and explicitness
+            let value = value.trim_matches(|c| c == '\n' || c == '\r');
+            // String -> header conversions are fallible, if headers
+            // are invalid
+            Ok::<(HeaderName, HeaderValue), anyhow::Error>((
+                header.try_into().with_context(|| {
+                    format!("Error parsing header name `{header}`")
+                })?,
+                value.try_into().with_context(|| {
+                    format!("Error parsing value for header `{header}`")
+                })?,
+            ))
+        });
+        Ok(future::try_join_all(iter)
+            .await?
+            .into_iter()
+            .collect::<HeaderMap>())
+    }
+
+    async fn render_query(
+        template_context: &TemplateContext,
+        query: &IndexMap<String, Template>,
+    ) -> anyhow::Result<IndexMap<String, String>> {
+        let iter = query.iter().map(|(k, v)| async move {
+            Ok::<_, anyhow::Error>((
+                k.clone(),
+                v.render(template_context).await.context(format!(
+                    "Error rendering query parameter `{k}`"
+                ))?,
+            ))
+        });
+        Ok(future::try_join_all(iter)
+            .await?
+            .into_iter()
+            .collect::<IndexMap<String, String>>())
+    }
+
+    async fn render_body(
+        template_context: &TemplateContext,
+        body: Option<&Template>,
+    ) -> anyhow::Result<Option<String>> {
+        match body {
+            Some(body) => Ok(Some(
+                body.render(template_context)
+                    .await
+                    .context("Error rendering body")?,
+            )),
+            None => Ok(None),
+        }
     }
 }

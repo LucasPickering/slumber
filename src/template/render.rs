@@ -69,16 +69,16 @@ impl Template {
                         }
                         None => {
                             // Standard case - parse the key and render it
-                            try {
-                                let value =
-                                    key.into_source().render(context).await?;
+                            let result =
+                                key.into_source().render(context).await;
+                            if let Ok(value) = &result {
                                 trace!(
                                     key = raw,
-                                    value = value.deref(),
+                                    value,
                                     "Rendered template key"
                                 );
-                                value
                             }
+                            result
                         }
                     };
                     result.into()
@@ -192,7 +192,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
         let chain_id = self.chain_id;
 
         // Any error in here is the chain error subtype
-        let result: Result<_, ChainError> = try {
+        let result: Result<_, ChainError> = async {
             // Resolve chained value
             let chain = context
                 .chains
@@ -220,11 +220,12 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
             };
 
             // If a selector path is present, filter down the value
-            match &chain.selector {
+            Ok(match &chain.selector {
                 Some(path) => self.apply_selector(&value, path)?,
                 None => value,
-            }
-        };
+            })
+        }
+        .await;
 
         // Wrap the chain error into a TemplateError
         result.map_err(|error| TemplateError::Chain {

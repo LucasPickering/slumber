@@ -40,6 +40,10 @@ impl Modal for SettingsModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         (Constraint::Length(30), Constraint::Length(5))
     }
+
+    fn as_component(&mut self) -> &mut dyn Component {
+        self
+    }
 }
 
 impl Component for SettingsModal {

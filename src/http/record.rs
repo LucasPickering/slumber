@@ -255,7 +255,7 @@ mod serde_header_map {
                     v.try_into().map_err(de::Error::custom)?,
                 ))
             })
-            .try_collect()
+            .collect()
     }
 }
 

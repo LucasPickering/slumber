@@ -2,6 +2,10 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add `slumber info` subcommand
+
 ### Changed
 
 - Remove keybinding to reload collection

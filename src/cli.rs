@@ -2,7 +2,7 @@ use crate::{
     collection::{ProfileId, RequestCollection, RequestRecipeId},
     http::{HttpEngine, Repository, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
-    util::{find_by, ResultExt},
+    util::{data_directory, find_by, ResultExt},
 };
 use anyhow::Context;
 use dialoguer::{Input, Password};
@@ -50,6 +50,9 @@ pub enum Subcommand {
         /// stdout.
         output_file: Option<PathBuf>,
     },
+
+    /// Show meta information about slumber
+    Info,
 }
 
 impl Subcommand {
@@ -142,6 +145,11 @@ impl Subcommand {
                 };
                 serde_yaml::to_writer(&mut writer, &collection)?;
 
+                Ok(())
+            }
+
+            Subcommand::Info => {
+                println!("Directory: {}", data_directory().display());
                 Ok(())
             }
         }

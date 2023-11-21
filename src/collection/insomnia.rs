@@ -27,17 +27,14 @@ impl RequestCollection<()> {
             is meant to give you a skeleton for a Slumber collection, and \
             nothing more."
         );
-        let file = File::open(insomnia_file).with_context(|| {
-            format!("Error opening Insomnia collection file {insomnia_file:?}")
-        })?;
+        let file = File::open(insomnia_file).context(format!(
+            "Error opening Insomnia collection file {insomnia_file:?}"
+        ))?;
         // The format can be YAML or JSON, so we can just treat it all as YAML
         let insomnia: Insomnia =
-            serde_yaml::from_reader(file).with_context(|| {
-                format!(
-                    "Error deserializing Insomnia collection file\
-                    {insomnia_file:?}"
-                )
-            })?;
+            serde_yaml::from_reader(file).context(format!(
+                "Error deserializing Insomnia collection file {insomnia_file:?}"
+            ))?;
 
         // Convert everything
         let mut profiles = Vec::new();

@@ -134,12 +134,10 @@ impl Subcommand {
                             .truncate(true)
                             .write(true)
                             .open(&output_file)
-                            .with_context(|| {
-                                format!(
-                                    "Error opening collection output file \
+                            .context(format!(
+                                "Error opening collection output file \
                                 {output_file:?}"
-                                )
-                            })?,
+                            ))?,
                     ),
                     None => Box::new(io::stdout()),
                 };

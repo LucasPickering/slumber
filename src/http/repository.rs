@@ -47,8 +47,6 @@ pub struct Repository {
 impl Repository {
     /// Load the repository database. This will perform first-time setup, so
     /// this should only be called at the main session entrypoint.
-    ///
-    /// Each collection gets its own
     pub fn load(collection_id: &CollectionId) -> anyhow::Result<Self> {
         let mut connection = Connection::open(Self::path(collection_id))?;
         // Use WAL for concurrency

@@ -11,8 +11,17 @@ jobs:
   fmt:
     name: "Rustfmt"
     runs-on: ubuntu-latest
+    env:
+      # Rustfmt requires a nightly toolchain because we use unstable rules. The
+      # chosen version is fairly arbitrary
+      TOOLCHAIN: nightly-2023-09-20
     steps:
       - uses: actions/checkout@v3
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.TOOLCHAIN}}
+          components: rustfmt
 
       - name: Cache cargo files
         uses: actions/cache@v3
@@ -23,11 +32,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Rustfmt
         uses: actions-rs/cargo@v1
         with:
+          toolchain: ${{ env.TOOLCHAIN}}
           command: fmt
           args: -- --check
 

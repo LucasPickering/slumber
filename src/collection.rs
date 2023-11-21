@@ -214,7 +214,7 @@ impl RequestCollection<PathBuf> {
 
         Ok(future
             .await
-            .with_context(|| format!("Error loading collection from {path:?}"))?
+            .context(format!("Error loading collection from {path:?}"))?
             .with_source(path))
     }
 

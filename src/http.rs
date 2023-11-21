@@ -315,12 +315,12 @@ impl RequestBuilder {
             // String -> header conversions are fallible, if headers
             // are invalid
             Ok::<(HeaderName, HeaderValue), anyhow::Error>((
-                header.try_into().with_context(|| {
-                    format!("Error parsing header name `{header}`")
-                })?,
-                value.try_into().with_context(|| {
-                    format!("Error parsing value for header `{header}`")
-                })?,
+                header
+                    .try_into()
+                    .context(format!("Error parsing header name `{header}`"))?,
+                value.try_into().context(format!(
+                    "Error parsing value for header `{header}`"
+                ))?,
             ))
         });
         Ok(future::try_join_all(iter)

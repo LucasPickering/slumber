@@ -9,7 +9,6 @@ use crate::{
     },
     util::ResultExt,
 };
-use anyhow::Context;
 use async_trait::async_trait;
 use futures::future::join_all;
 use serde_json_path::JsonPath;
@@ -28,13 +27,10 @@ impl Template {
     pub async fn render(
         &self,
         context: &TemplateContext,
-        name: &str,
     ) -> anyhow::Result<String> {
         self.render_stitched(context)
             .await
-            .with_context(|| {
-                format!("Error rendering {name} {:?}", self.template)
-            })
+            .map_err(anyhow::Error::from)
             .traced()
     }
 

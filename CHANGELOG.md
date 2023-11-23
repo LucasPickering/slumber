@@ -4,7 +4,12 @@
 
 ### Added
 
-- Option to toggle cursor capture
+- Add setting to toggle cursor capture
+- Add help modal
+
+### Changed
+
+- Always show help text in footer, regardless of notification state
 
 ## [0.8.0] - 2023-11-21
 

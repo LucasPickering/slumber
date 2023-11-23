@@ -218,12 +218,15 @@ impl Draw for Root {
         }
 
         // Footer
-        match &self.notification_text {
-            Some(notification_text) => {
-                notification_text.draw(context, (), footer_chunk)
-            }
-            None => HelpFooter.draw(context, (), footer_chunk),
+        let [notification_chunk, help_chunk] = layout(
+            footer_chunk,
+            Direction::Horizontal,
+            [Constraint::Min(10), Constraint::Length(29)],
+        );
+        if let Some(notification_text) = &self.notification_text {
+            notification_text.draw(context, (), notification_chunk);
         }
+        HelpFooter.draw(context, (), help_chunk);
 
         // Render modals last so they go on top
         self.modal_queue.draw(context, (), context.frame.size());

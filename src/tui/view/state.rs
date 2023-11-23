@@ -4,10 +4,8 @@ pub mod select;
 
 use crate::http::{RequestBuildError, RequestError, RequestId, RequestRecord};
 use chrono::{DateTime, Duration, Utc};
-use std::{
-    cell::{Ref, RefCell},
-    ops::Deref,
-};
+use derive_more::Deref;
+use std::cell::{Ref, RefCell};
 
 /// An internally mutable cell for UI state. Certain state needs to be updated
 /// during the draw phase, typically because it's derived from parent data

@@ -4,6 +4,7 @@ use crate::tui::{
         common::{modal::Modal, table::Table},
         draw::{Draw, DrawContext, Generate},
         event::EventHandler,
+        theme::Theme,
     },
 };
 use itertools::Itertools;
@@ -36,7 +37,13 @@ impl Draw for HelpFooter {
                     .unwrap_or_else(|| "???".into())
             })
             .join(" / ");
-        context.frame.render_widget(Paragraph::new(text), chunk);
+
+        context.frame.render_widget(
+            Paragraph::new(text)
+                .alignment(Alignment::Right)
+                .style(Theme::get().text_highlight),
+            chunk,
+        );
     }
 }
 

@@ -47,7 +47,7 @@ use tracing::{debug, error};
 /// - Signal phase: Check for process signals that should trigger an exit
 #[derive(Debug)]
 pub struct Tui {
-    terminal: Terminal<CrosstermBackend<Stdout>>,
+    terminal: Term,
     messages_rx: UnboundedReceiver<Message>,
     messages_tx: MessageSender,
     http_engine: HttpEngine,
@@ -57,6 +57,8 @@ pub struct Tui {
     repository: Repository,
     should_run: bool,
 }
+
+type Term = Terminal<CrosstermBackend<Stdout>>;
 
 impl Tui {
     /// Rough maximum time for each iteration of the main loop
@@ -454,7 +456,7 @@ fn initialize_panic_handler() {
 }
 
 /// Set up terminal for TUI
-fn initialize_terminal() -> anyhow::Result<Terminal<CrosstermBackend<Stdout>>> {
+fn initialize_terminal() -> anyhow::Result<Term> {
     crossterm::terminal::enable_raw_mode()?;
     let mut stdout = io::stdout();
     crossterm::execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -467,7 +469,7 @@ fn restore_terminal() -> anyhow::Result<()> {
     debug!("Restoring terminal");
     crossterm::terminal::disable_raw_mode()?;
     crossterm::execute!(
-        io::stderr(),
+        io::stdout(),
         LeaveAlternateScreen,
         DisableMouseCapture
     )?;

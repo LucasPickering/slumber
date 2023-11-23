@@ -8,6 +8,7 @@ use crate::{
         view::{
             common::{list::List, Block},
             component::{
+                help::HelpModal,
                 request::{RequestPane, RequestPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
                 settings::SettingsModal,
@@ -84,11 +85,6 @@ impl PrimaryView {
         self.profile_list_pane.profiles.selected()
     }
 
-    /// Which pane is selected?
-    pub fn selected_pane(&self) -> PrimaryPane {
-        *self.selected_pane.selected()
-    }
-
     /// Expose request pane, for fullscreening
     pub fn request_pane(&self) -> &RequestPane {
         &self.request_pane
@@ -145,6 +141,13 @@ impl EventHandler for PrimaryView {
                 Some(Action::OpenSettings) => {
                     context.queue_event(Event::OpenModal {
                         modal: Box::<SettingsModal>::default(),
+                        priority: ModalPriority::Low,
+                    });
+                    Update::Consumed
+                }
+                Some(Action::OpenHelp) => {
+                    context.queue_event(Event::OpenModal {
+                        modal: Box::<HelpModal>::default(),
                         priority: ModalPriority::Low,
                     });
                     Update::Consumed

@@ -7,14 +7,12 @@ use crate::{
         input::Action,
         view::{
             common::modal::{IntoModal, Modal},
-            component::{primary::PrimaryPane, root::FullscreenMode},
             draw::{Draw, DrawContext, Generate},
             event::{Event, EventHandler, Update, UpdateContext},
             state::Notification,
         },
     },
 };
-use itertools::Itertools;
 use ratatui::{
     prelude::{Constraint, Rect},
     widgets::{Paragraph, Wrap},
@@ -34,27 +32,12 @@ impl Modal for ErrorModal {
         (Constraint::Percentage(60), Constraint::Percentage(20))
     }
 
-    fn as_component(&mut self) -> &mut dyn EventHandler {
+    fn as_event_handler(&mut self) -> &mut dyn EventHandler {
         self
     }
 }
 
-impl EventHandler for ErrorModal {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            // Extra close action
-            Event::Input {
-                action: Some(Action::Submit),
-                ..
-            } => {
-                context.queue_event(Event::CloseModal);
-                Update::Consumed
-            }
-
-            _ => Update::Propagate(event),
-        }
-    }
-}
+impl EventHandler for ErrorModal {}
 
 impl Draw for ErrorModal {
     fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
@@ -117,7 +100,7 @@ impl Modal for PromptModal {
         }
     }
 
-    fn as_component(&mut self) -> &mut dyn EventHandler {
+    fn as_event_handler(&mut self) -> &mut dyn EventHandler {
         self
     }
 }
@@ -165,68 +148,6 @@ impl IntoModal for Prompt {
 
     fn into_modal(self) -> Self::Target {
         PromptModal::new(self)
-    }
-}
-
-/// Tell the user about keybindings
-#[derive(Debug)]
-pub struct HelpText;
-
-pub struct HelpTextProps {
-    pub has_modal: bool,
-    pub fullscreen_mode: Option<FullscreenMode>,
-    pub selected_pane: PrimaryPane,
-}
-
-impl Draw<HelpTextProps> for HelpText {
-    fn draw(
-        &self,
-        context: &mut DrawContext,
-        props: HelpTextProps,
-        chunk: Rect,
-    ) {
-        // Decide which actions to show based on context. This is definitely
-        // spaghetti and easy to get out of sync, but it's the easiest way to
-        // get granular control
-        let mut actions = vec![Action::Quit];
-
-        // Modal overrides everything else
-        if props.has_modal {
-            actions.push(Action::Cancel);
-        } else {
-            match props.fullscreen_mode {
-                None => {
-                    actions.extend([
-                        Action::SendRequest,
-                        Action::NextPane,
-                        Action::PreviousPane,
-                        Action::OpenSettings,
-                    ]);
-                    // Pane-specific actions
-                    actions.extend(match props.selected_pane {
-                        PrimaryPane::ProfileList => &[] as &[Action],
-                        PrimaryPane::RecipeList => &[],
-                        PrimaryPane::Request => &[Action::Fullscreen],
-                        PrimaryPane::Response => &[Action::Fullscreen],
-                    });
-                }
-                Some(_) => actions.extend([Action::Fullscreen]),
-            }
-        }
-
-        let text = actions
-            .into_iter()
-            .map(|action| {
-                context
-                    .input_engine
-                    .binding(action)
-                    .as_ref()
-                    .map(ToString::to_string)
-                    // This *shouldn't* happen, all actions get a binding
-                    .unwrap_or_else(|| "???".into())
-            })
-            .join(" / ");
-        context.frame.render_widget(Paragraph::new(text), chunk);
     }
 }
 

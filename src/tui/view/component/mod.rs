@@ -1,5 +1,6 @@
 //! Specific single-use components
 
+pub mod help;
 pub mod misc;
 pub mod primary;
 pub mod request;

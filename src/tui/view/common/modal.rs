@@ -34,7 +34,7 @@ pub trait Modal: Draw<()> + EventHandler {
 
     /// Annoying thing to cast from a modal to a base component. Remove after
     /// https://github.com/rust-lang/rust/issues/65991
-    fn as_component(&mut self) -> &mut dyn EventHandler;
+    fn as_event_handler(&mut self) -> &mut dyn EventHandler;
 }
 
 /// Define how a type can be converted into a modal. Often times, implementors
@@ -130,7 +130,7 @@ impl EventHandler for ModalQueue {
 
     fn children(&mut self) -> Vec<&mut dyn EventHandler> {
         match self.queue.front_mut() {
-            Some(first) => vec![first.as_component()],
+            Some(first) => vec![first.as_event_handler()],
             None => vec![],
         }
     }

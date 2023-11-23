@@ -200,6 +200,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                             })
                             .collect_vec(),
                         header: Some(["Parameter", "Value"]),
+                        alternate_row_style: true,
                         ..Default::default()
                     }
                     .generate(),
@@ -215,6 +216,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                             })
                             .collect_vec(),
                         header: Some(["Header", "Value"]),
+                        alternate_row_style: true,
                         ..Default::default()
                     }
                     .generate(),

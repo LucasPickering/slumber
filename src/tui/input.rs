@@ -2,7 +2,8 @@
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use derive_more::Display;
-use std::{collections::HashMap, fmt::Debug};
+use indexmap::IndexMap;
+use std::fmt::Debug;
 use tracing::trace;
 
 /// Top-level input manager. This handles things like bindings and mapping
@@ -15,7 +16,7 @@ pub struct InputEngine {
     /// keys can be ignored). We have to iterate over map when checking inputs,
     /// but keying by action at least allows us to look up action=>binding for
     /// help text.
-    bindings: HashMap<Action, InputBinding>,
+    bindings: IndexMap<Action, InputBinding>,
 }
 
 impl InputEngine {
@@ -29,16 +30,18 @@ impl InputEngine {
                         modifiers: KeyModifiers::CONTROL,
                     },
                     Action::ForceQuit,
-                ),
+                )
+                .hide(),
                 InputBinding::new(KeyCode::Char('x'), Action::OpenSettings),
+                InputBinding::new(KeyCode::Char('?'), Action::OpenHelp),
                 InputBinding::new(KeyCode::F(2), Action::SendRequest),
                 InputBinding::new(KeyCode::F(11), Action::Fullscreen),
                 InputBinding::new(KeyCode::BackTab, Action::PreviousPane),
                 InputBinding::new(KeyCode::Tab, Action::NextPane),
-                InputBinding::new(KeyCode::Up, Action::Up),
-                InputBinding::new(KeyCode::Down, Action::Down),
-                InputBinding::new(KeyCode::Left, Action::Left),
-                InputBinding::new(KeyCode::Right, Action::Right),
+                InputBinding::new(KeyCode::Up, Action::Up).hide(),
+                InputBinding::new(KeyCode::Down, Action::Down).hide(),
+                InputBinding::new(KeyCode::Left, Action::Left).hide(),
+                InputBinding::new(KeyCode::Right, Action::Right).hide(),
                 InputBinding::new(KeyCode::Enter, Action::Submit),
                 InputBinding::new(KeyCode::Esc, Action::Cancel),
             ]
@@ -46,6 +49,11 @@ impl InputEngine {
             .map(|binding| (binding.action, binding))
             .collect(),
         }
+    }
+
+    /// Get a map of all available bindings
+    pub fn bindings(&self) -> &IndexMap<Action, InputBinding> {
+        &self.bindings
     }
 
     /// Get the binding associated with a particular action. Useful for mapping
@@ -86,8 +94,8 @@ impl InputEngine {
 /// abstraction to map all possible input events to the things we actually
 /// care about handling.
 ///
-/// This is a middle abstraction layer between the input ([KeyCombination]) and
-/// the output ([Mutator]).
+/// The order of the variants matters! It defines the ordering used in the help
+/// modal (but doesn't affect behavior).
 #[derive(Copy, Clone, Debug, Display, Eq, Hash, PartialEq)]
 pub enum Action {
     /// Exit the app
@@ -95,6 +103,7 @@ pub enum Action {
     /// A special keybinding that short-circuits the standard view input
     /// process to force an exit. Standard shutdown will *still run*, but this
     /// input can't be consumed by any components in the view tree.
+    #[display("Force Quit")]
     ForceQuit,
 
     /// Focus the previous pane
@@ -119,6 +128,9 @@ pub enum Action {
     /// Open the settings modal
     #[display("Settings")]
     OpenSettings,
+    #[display("Help")]
+    /// Open the help modal
+    OpenHelp,
     /// Close the current modal/dialog/etc.
     Cancel,
 }
@@ -129,6 +141,7 @@ pub enum Action {
 pub struct InputBinding {
     action: Action,
     input: KeyCombination,
+    hidden: bool,
 }
 
 impl InputBinding {
@@ -136,11 +149,33 @@ impl InputBinding {
         Self {
             action,
             input: input.into(),
+            hidden: false,
         }
+    }
+
+    /// Don't show this binding in help dialogs
+    fn hide(mut self) -> Self {
+        self.hidden = true;
+        self
     }
 
     fn matches(&self, event: &KeyEvent) -> bool {
         self.input.matches(event)
+    }
+
+    /// Should this be visible in help dialogs?
+    pub fn visible(&self) -> bool {
+        !self.hidden
+    }
+
+    /// Get the action associated with this binding
+    pub fn action(&self) -> Action {
+        self.action
+    }
+
+    /// Get the key combination associated with this binding
+    pub fn input(&self) -> KeyCombination {
+        self.input
     }
 }
 
@@ -153,7 +188,7 @@ impl Display for InputBinding {
 
 /// Key input sequence, which can trigger an action
 #[derive(Copy, Clone, Debug)]
-struct KeyCombination {
+pub struct KeyCombination {
     key_code: KeyCode,
     modifiers: KeyModifiers,
 }
@@ -177,7 +212,7 @@ impl Display for KeyCombination {
             KeyCode::Enter => write!(f, "<enter>"),
             KeyCode::F(num) => write!(f, "F{}", num),
             KeyCode::Char(' ') => write!(f, "<space>"),
-            KeyCode::Char(c) => write!(f, "<{c}>"),
+            KeyCode::Char(c) => write!(f, "{c}"),
             // Punting on everything else until we need it
             _ => write!(f, "???"),
         }

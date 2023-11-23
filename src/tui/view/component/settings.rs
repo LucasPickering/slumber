@@ -15,7 +15,7 @@ use ratatui::{
     prelude::{Constraint, Rect},
     widgets::{Cell, TableState},
 };
-use strum::{EnumIter, IntoEnumIterator};
+use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Modal to view and modify user/view configuration
 #[derive(Debug)]
@@ -37,10 +37,13 @@ impl Modal for SettingsModal {
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
-        (Constraint::Length(30), Constraint::Length(5))
+        (
+            Constraint::Length(30),
+            Constraint::Length(Setting::COUNT as u16 + 2),
+        )
     }
 
-    fn as_component(&mut self) -> &mut dyn EventHandler {
+    fn as_event_handler(&mut self) -> &mut dyn EventHandler {
         self
     }
 }
@@ -91,7 +94,6 @@ impl Draw for SettingsModal {
                         ]
                     })
                     .collect_vec(),
-                alternate_row_style: false,
                 column_widths: &[Constraint::Min(24), Constraint::Length(3)],
                 ..Default::default()
             }
@@ -103,7 +105,9 @@ impl Draw for SettingsModal {
 }
 
 /// Various configurable settings
-#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
+#[derive(
+    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
+)]
 enum Setting {
     #[default]
     #[display("Preview Templates")]

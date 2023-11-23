@@ -22,7 +22,7 @@ impl<'a, const COLS: usize, Rows: Default> Default for Table<'a, COLS, Rows> {
         Self {
             rows: Default::default(),
             header: None,
-            alternate_row_style: true,
+            alternate_row_style: false,
             // Evenly spaced by default
             column_widths: &[Constraint::Ratio(1, COLS as u32); COLS],
         }

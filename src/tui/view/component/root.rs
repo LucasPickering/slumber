@@ -6,7 +6,8 @@ use crate::{
         view::{
             common::modal::ModalQueue,
             component::{
-                misc::{HelpText, HelpTextProps, NotificationText},
+                help::HelpFooter,
+                misc::NotificationText,
                 primary::{PrimaryView, PrimaryViewProps},
                 request::RequestPaneProps,
                 response::ResponsePaneProps,
@@ -221,15 +222,7 @@ impl Draw for Root {
             Some(notification_text) => {
                 notification_text.draw(context, (), footer_chunk)
             }
-            None => HelpText.draw(
-                context,
-                HelpTextProps {
-                    has_modal: self.modal_queue.is_open(),
-                    fullscreen_mode: self.fullscreen_mode,
-                    selected_pane: self.primary_view.selected_pane(),
-                },
-                footer_chunk,
-            ),
+            None => HelpFooter.draw(context, (), footer_chunk),
         }
 
         // Render modals last so they go on top

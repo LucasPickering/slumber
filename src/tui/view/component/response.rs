@@ -253,6 +253,7 @@ impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
                         })
                         .collect_vec(),
                     header: Some(["Header", "Value"]),
+                    alternate_row_style: true,
                     ..Default::default()
                 }
                 .generate(),

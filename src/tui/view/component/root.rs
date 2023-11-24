@@ -9,13 +9,12 @@ use crate::{
                 help::HelpFooter,
                 misc::NotificationText,
                 primary::{PrimaryView, PrimaryViewProps},
-                request::RequestPaneProps,
-                response::ResponsePaneProps,
             },
             draw::{Draw, DrawContext},
             event::{Event, EventHandler, Update, UpdateContext},
             state::RequestState,
             util::layout,
+            Component,
         },
     },
 };
@@ -32,29 +31,18 @@ pub struct Root {
     /// - It has beed focused by the user during this process
     /// This will be populated on-demand when a user selects a recipe in the
     /// list.
+    #[debug(skip)]
     active_requests: HashMap<RequestRecipeId, RequestState>,
-    fullscreen_mode: Option<FullscreenMode>,
 
     // ==== Children =====
     /// We hold onto the primary view even when it's not visible, because we
     /// don't want the state to reset when changing views
     #[debug(skip)]
-    primary_view: PrimaryView,
+    primary_view: Component<PrimaryView>,
     #[debug(skip)]
-    modal_queue: ModalQueue,
+    modal_queue: Component<ModalQueue>,
     #[debug(skip)]
-    notification_text: Option<NotificationText>,
-}
-
-/// The various things that can be requested (haha get it, requested) to be
-/// shown in fullscreen. If one of these is requested while not available, we
-/// simply won't show it.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum FullscreenMode {
-    /// Fullscreen the active request recipe
-    Request,
-    /// Fullscreen the active response
-    Response,
+    notification_text: Option<Component<NotificationText>>,
 }
 
 impl Root {
@@ -62,11 +50,10 @@ impl Root {
         Self {
             // State
             active_requests: HashMap::new(),
-            fullscreen_mode: None,
 
             // Children
-            primary_view: PrimaryView::new(collection),
-            modal_queue: ModalQueue::new(),
+            primary_view: PrimaryView::new(collection).into(),
+            modal_queue: Component::default(),
             notification_text: None,
         }
     }
@@ -121,18 +108,9 @@ impl EventHandler for Root {
                 self.update_request(recipe_id, state)
             }
 
-            // Other state messages
-            Event::ToggleFullscreen(mode) => {
-                // If we're already in the given mode, exit
-                self.fullscreen_mode = if Some(mode) == self.fullscreen_mode {
-                    None
-                } else {
-                    Some(mode)
-                };
-            }
             Event::Notify(notification) => {
                 self.notification_text =
-                    Some(NotificationText::new(notification))
+                    Some(NotificationText::new(notification).into())
             }
 
             // Any input here should be handled regardless of current screen
@@ -143,30 +121,26 @@ impl EventHandler for Root {
                 ..
             } => context.send_message(Message::Quit),
 
+            // Any other unhandled input event should *not* log an error,
+            // because it is probably just unmapped input
+            Event::Input { .. } => {}
+
             // There shouldn't be anything left unhandled. Bubble up to log it
             _ => return Update::Propagate(event),
         }
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         let modal_open = self.modal_queue.is_open();
-        let mut children: Vec<&mut dyn EventHandler> =
-            vec![&mut self.modal_queue];
+        let mut children: Vec<Component<&mut dyn EventHandler>> =
+            vec![self.modal_queue.as_child()];
 
         // If a modal is open, don't allow *any* input to the background. We'll
         // still accept input ourselves though, which should only be
         // high-priority stuff
         if !modal_open {
-            children.push(match self.fullscreen_mode {
-                None => &mut self.primary_view,
-                Some(FullscreenMode::Request) => {
-                    self.primary_view.request_pane_mut()
-                }
-                Some(FullscreenMode::Response) => {
-                    self.primary_view.response_pane_mut()
-                }
-            });
+            children.push(self.primary_view.as_child());
         }
 
         children
@@ -174,59 +148,33 @@ impl EventHandler for Root {
 }
 
 impl Draw for Root {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         // Create layout
-        let [main_chunk, footer_chunk] = layout(
-            chunk,
+        let [main_area, footer_area] = layout(
+            area,
             Direction::Vertical,
             [Constraint::Min(0), Constraint::Length(1)],
         );
 
         // Main content
-        match self.fullscreen_mode {
-            None => self.primary_view.draw(
-                context,
-                PrimaryViewProps {
-                    active_request: self.active_request(),
-                },
-                main_chunk,
-            ),
-            Some(FullscreenMode::Request) => {
-                self.primary_view.request_pane().draw(
-                    context,
-                    RequestPaneProps {
-                        is_selected: false,
-                        selected_recipe: self.primary_view.selected_recipe(),
-                        selected_profile_id: self
-                            .primary_view
-                            .selected_profile()
-                            .map(|profile| &profile.id),
-                    },
-                    main_chunk,
-                );
-            }
-            Some(FullscreenMode::Response) => {
-                self.primary_view.response_pane().draw(
-                    context,
-                    ResponsePaneProps {
-                        is_selected: false,
-                        active_request: self.active_request(),
-                    },
-                    main_chunk,
-                );
-            }
-        }
+        self.primary_view.draw(
+            context,
+            PrimaryViewProps {
+                active_request: self.active_request(),
+            },
+            main_area,
+        );
 
         // Footer
-        let [notification_chunk, help_chunk] = layout(
-            footer_chunk,
+        let [notification_area, help_area] = layout(
+            footer_area,
             Direction::Horizontal,
             [Constraint::Min(10), Constraint::Length(29)],
         );
         if let Some(notification_text) = &self.notification_text {
-            notification_text.draw(context, (), notification_chunk);
+            notification_text.draw(context, (), notification_area);
         }
-        HelpFooter.draw(context, (), help_chunk);
+        HelpFooter.draw(context, (), help_area);
 
         // Render modals last so they go on top
         self.modal_queue.draw(context, (), context.frame.size());

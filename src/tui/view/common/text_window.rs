@@ -57,19 +57,19 @@ impl<T: Debug> EventHandler for TextWindow<T> {
     fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Input {
-                action: Some(Action::Up),
+                action: Some(action),
                 ..
-            } => {
-                self.scroll_up(1);
-                Update::Consumed
-            }
-            Event::Input {
-                action: Some(Action::Down),
-                ..
-            } => {
-                self.scroll_down(1);
-                Update::Consumed
-            }
+            } => match action {
+                Action::Up | Action::ScrollUp => {
+                    self.scroll_up(1);
+                    Update::Consumed
+                }
+                Action::Down | Action::ScrollDown => {
+                    self.scroll_down(1);
+                    Update::Consumed
+                }
+                _ => Update::Propagate(event),
+            },
             _ => Update::Propagate(event),
         }
     }
@@ -79,15 +79,15 @@ impl<'a, T> Draw for &'a TextWindow<T>
 where
     &'a T: 'a + Generate<Output<'a> = Text<'a>>,
 {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         let text = self.text.generate();
         // TODO how do we handle text longer than 65k lines?
         let text_height = text.lines.len() as u16;
         self.text_height.set(text_height);
-        self.window_height.set(chunk.height);
+        self.window_height.set(area.height);
 
-        let [gutter_chunk, _, text_chunk] = layout(
-            chunk,
+        let [gutter_area, _, text_area] = layout(
+            area,
             Direction::Horizontal,
             [
                 // Size gutter based on width of max line number
@@ -101,7 +101,7 @@ where
 
         // Draw line numbers in the gutter
         let first_line = self.offset_y + 1;
-        let last_line = cmp::min(first_line + chunk.height, text_height);
+        let last_line = cmp::min(first_line + area.height, text_height);
         context.frame.render_widget(
             Paragraph::new(
                 (first_line..=last_line)
@@ -109,13 +109,13 @@ where
                     .collect::<Vec<Line>>(),
             )
             .alignment(Alignment::Right),
-            gutter_chunk,
+            gutter_area,
         );
 
         // Darw the text content
         context.frame.render_widget(
             Paragraph::new(self.text.generate()).scroll((self.offset_y, 0)),
-            text_chunk,
+            text_area,
         );
     }
 }

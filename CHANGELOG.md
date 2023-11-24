@@ -6,6 +6,7 @@
 
 - Add setting to toggle cursor capture
 - Add help modal
+- Add cursor navigation
 
 ### Changed
 

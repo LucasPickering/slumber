@@ -46,14 +46,14 @@ impl<T: FixedSelect> EventHandler for Tabs<T> {
 }
 
 impl<T: FixedSelect> Draw for Tabs<T> {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         context.frame.render_widget(
             ratatui::widgets::Tabs::new(
                 T::iter().map(|e| e.to_string()).collect(),
             )
             .select(self.tabs.selected_index())
             .highlight_style(Theme::get().tab_highlight_style),
-            chunk,
+            area,
         )
     }
 }

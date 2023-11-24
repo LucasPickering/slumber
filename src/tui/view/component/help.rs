@@ -19,7 +19,7 @@ use ratatui::{
 pub struct HelpFooter;
 
 impl Draw for HelpFooter {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         // Decide which actions to show based on context. This is definitely
         // spaghetti and easy to get out of sync, but it's the easiest way to
         // get granular control
@@ -42,7 +42,7 @@ impl Draw for HelpFooter {
             Paragraph::new(text)
                 .alignment(Alignment::Right)
                 .style(Theme::get().text_highlight),
-            chunk,
+            area,
         );
     }
 }
@@ -59,16 +59,12 @@ impl Modal for HelpModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         (Constraint::Length(30), Constraint::Length(11))
     }
-
-    fn as_event_handler(&mut self) -> &mut dyn EventHandler {
-        self
-    }
 }
 
 impl EventHandler for HelpModal {}
 
 impl Draw for HelpModal {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         let table = Table {
             rows: context
                 .input_engine
@@ -83,6 +79,6 @@ impl Draw for HelpModal {
                 .collect_vec(),
             ..Default::default()
         };
-        context.frame.render_widget(table.generate(), chunk);
+        context.frame.render_widget(table.generate(), area);
     }
 }

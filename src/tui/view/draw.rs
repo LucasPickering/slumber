@@ -19,7 +19,7 @@ use ratatui::{layout::Rect, Frame};
 /// attaching a lifetime to the associated type makes using this in a trait
 /// object very difficult (maybe impossible?). This is an easy shortcut.
 pub trait Draw<Props = ()> {
-    fn draw(&self, context: &mut DrawContext, props: Props, chunk: Rect);
+    fn draw(&self, context: &mut DrawContext, props: Props, area: Rect);
 }
 
 /// Global data that various components need during rendering. A mutable

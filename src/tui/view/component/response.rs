@@ -6,11 +6,12 @@ use crate::{
             common::{
                 table::Table, tabs::Tabs, text_window::TextWindow, Block,
             },
-            component::{primary::PrimaryPane, root::FullscreenMode},
+            component::primary::{FullscreenMode, PrimaryPane},
             draw::{Draw, DrawContext, Generate},
             event::{Event, EventHandler, Update, UpdateContext},
             state::{RequestState, StateCell},
             util::layout,
+            Component,
         },
     },
 };
@@ -28,7 +29,7 @@ use strum::EnumIter;
 /// failed. This can be used in both a paned and fullscreen view.
 #[derive(Debug, Default)]
 pub struct ResponsePane {
-    content: ResponseContent,
+    content: Component<ResponseContent>,
 }
 
 pub struct ResponsePaneProps<'a> {
@@ -61,8 +62,8 @@ impl EventHandler for ResponsePane {
         }
     }
 
-    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
-        vec![&mut self.content]
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        vec![self.content.as_child()]
     }
 }
 
@@ -71,7 +72,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
         &self,
         context: &mut DrawContext,
         props: ResponsePaneProps<'a>,
-        chunk: Rect,
+        area: Rect,
     ) {
         // Render outermost block
         let pane_kind = PrimaryPane::Response;
@@ -80,18 +81,18 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
             is_focused: props.is_selected,
         };
         let block = block.generate();
-        let inner_chunk = block.inner(chunk);
-        context.frame.render_widget(block, chunk);
+        let inner_area = block.inner(area);
+        context.frame.render_widget(block, area);
 
         // Don't render anything else unless we have a request state
         if let Some(request_state) = props.active_request {
-            let [header_chunk, content_chunk] = layout(
-                inner_chunk,
+            let [header_area, content_area] = layout(
+                inner_area,
                 Direction::Vertical,
                 [Constraint::Length(1), Constraint::Min(0)],
             );
-            let [header_left_chunk, header_right_chunk] = layout(
-                header_chunk,
+            let [header_left_area, header_right_area] = layout(
+                header_area,
                 Direction::Horizontal,
                 // The longest canonical status reason in reqwest is 31 chars
                 [Constraint::Length(3 + 1 + 31), Constraint::Min(0)],
@@ -109,7 +110,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                         duration.generate(),
                     ]))
                     .alignment(Alignment::Right),
-                    header_right_chunk,
+                    header_right_area,
                 );
             }
 
@@ -117,7 +118,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 RequestState::Building { .. } => {
                     context.frame.render_widget(
                         Paragraph::new("Initializing request..."),
-                        header_left_chunk,
+                        header_left_area,
                     );
                 }
 
@@ -125,14 +126,14 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 RequestState::BuildError { error } => {
                     context.frame.render_widget(
                         Paragraph::new(error.generate()).wrap(Wrap::default()),
-                        content_chunk,
+                        content_area,
                     );
                 }
 
                 RequestState::Loading { .. } => {
                     context.frame.render_widget(
                         Paragraph::new("Loading..."),
-                        header_left_chunk,
+                        header_left_area,
                     );
                 }
 
@@ -144,7 +145,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                     // Status code
                     context.frame.render_widget(
                         Paragraph::new(response.status.to_string()),
-                        header_left_chunk,
+                        header_left_area,
                     );
 
                     self.content.draw(
@@ -153,7 +154,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                             record,
                             pretty_body: pretty_body.as_deref(),
                         },
-                        content_chunk,
+                        content_area,
                     );
                 }
 
@@ -161,7 +162,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 RequestState::RequestError { error } => {
                     context.frame.render_widget(
                         Paragraph::new(error.generate()).wrap(Wrap::default()),
-                        content_chunk,
+                        content_area,
                     );
                 }
             }
@@ -172,10 +173,10 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 /// Display response success state (tab container)
 #[derive(Debug, Default)]
 struct ResponseContent {
-    tabs: Tabs<Tab>,
+    tabs: Component<Tabs<Tab>>,
     /// Persist the response body to track view state. Update whenever the
     /// loaded request changes
-    body: StateCell<RequestId, TextWindow<String>>,
+    body: StateCell<RequestId, Component<TextWindow<String>>>,
 }
 
 struct ResponseContentProps<'a> {
@@ -201,10 +202,10 @@ impl EventHandler for ResponseContent {
         }
     }
 
-    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
-        let mut children: Vec<&mut dyn EventHandler> = vec![&mut self.tabs];
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        let mut children = vec![self.tabs.as_child()];
         if let Some(body) = self.body.get_mut() {
-            children.push(body);
+            children.push(body.as_child());
         }
         children
     }
@@ -215,19 +216,19 @@ impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
         &self,
         context: &mut DrawContext,
         props: ResponseContentProps<'a>,
-        chunk: Rect,
+        area: Rect,
     ) {
         let response = &props.record.response;
 
-        // Split the main chunk again to allow tabs
-        let [tabs_chunk, content_chunk] = layout(
-            chunk,
+        // Split the main area again to allow tabs
+        let [tabs_area, content_area] = layout(
+            area,
             Direction::Vertical,
             [Constraint::Length(1), Constraint::Min(0)],
         );
 
         // Navigation tabs
-        self.tabs.draw(context, (), tabs_chunk);
+        self.tabs.draw(context, (), tabs_area);
 
         // Main content for the response
         match self.tabs.selected() {
@@ -239,9 +240,9 @@ impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
                         .pretty_body
                         .unwrap_or_else(|| response.body.text())
                         .to_owned();
-                    TextWindow::new(body)
+                    TextWindow::new(body).into()
                 });
-                body.deref().draw(context, (), content_chunk)
+                body.deref().draw(context, (), content_area)
             }
             Tab::Headers => context.frame.render_widget(
                 Table {
@@ -257,7 +258,7 @@ impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
                     ..Default::default()
                 }
                 .generate(),
-                content_chunk,
+                content_area,
             ),
         }
     }

@@ -1,6 +1,9 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
+    MouseEvent, MouseEventKind,
+};
 use derive_more::Display;
 use indexmap::IndexMap;
 use std::fmt::Debug;
@@ -64,28 +67,50 @@ impl InputEngine {
 
     /// Convert an input event into its bound action, if any
     pub fn action(&self, event: &Event) -> Option<Action> {
-        if let Event::Key(
-            key @ KeyEvent {
-                kind: KeyEventKind::Press,
-                ..
+        let action = match event {
+            // Trigger click on mouse *up* (feels the most natural)
+            Event::Mouse(MouseEvent { kind, .. }) => match kind {
+                MouseEventKind::Up(MouseButton::Left) => {
+                    Some(Action::LeftClick)
+                }
+                MouseEventKind::Up(MouseButton::Right) => {
+                    Some(Action::RightClick)
+                }
+                MouseEventKind::Up(MouseButton::Middle) => None,
+                MouseEventKind::ScrollDown => Some(Action::ScrollDown),
+                MouseEventKind::ScrollUp => Some(Action::ScrollUp),
+                _ => None,
             },
-        ) = event
-        {
-            // Scan all bindings for a match
-            let action = self
-                .bindings
-                .values()
-                .find(|binding| binding.matches(key))
-                .map(|binding| binding.action);
 
-            if let Some(action) = action {
-                trace!(?action, "Input action");
+            Event::Key(
+                key @ KeyEvent {
+                    kind: KeyEventKind::Press,
+                    ..
+                },
+            ) => {
+                // Scan all bindings for a match
+                let action = self
+                    .bindings
+                    .values()
+                    .find(|binding| binding.matches(key))
+                    .map(|binding| binding.action);
+
+                action
             }
+            _ => None,
+        };
 
-            action
-        } else {
-            None
+        if let Some(action) = action {
+            trace!(?action, "Input action");
         }
+
+        action
+    }
+}
+
+impl Default for InputEngine {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -98,6 +123,17 @@ impl InputEngine {
 /// modal (but doesn't affect behavior).
 #[derive(Copy, Clone, Debug, Display, Eq, Hash, PartialEq)]
 pub enum Action {
+    /// This is mapped to mouse events, so it's a bit unique. Use the
+    /// associated event for button/position info
+    // #[display("Click")]
+    // Click(MouseEvent),
+    // Mouse actions do *not* get mapped, they're hard-coded. Use the
+    // associated raw event for button/position info if needed
+    LeftClick,
+    RightClick,
+    ScrollUp,
+    ScrollDown,
+
     /// Exit the app
     Quit,
     /// A special keybinding that short-circuits the standard view input

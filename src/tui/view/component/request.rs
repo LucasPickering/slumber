@@ -8,11 +8,12 @@ use crate::{
                 table::Table, tabs::Tabs, template_preview::TemplatePreview,
                 text_window::TextWindow, Block,
             },
-            component::{primary::PrimaryPane, root::FullscreenMode},
+            component::primary::{FullscreenMode, PrimaryPane},
             draw::{Draw, DrawContext, Generate},
             event::{Event, EventHandler, Update, UpdateContext},
             state::StateCell,
             util::layout,
+            Component,
         },
     },
 };
@@ -27,7 +28,7 @@ use strum::EnumIter;
 /// Display a request recipe
 #[derive(Debug, Default)]
 pub struct RequestPane {
-    tabs: Tabs<Tab>,
+    tabs: Component<Tabs<Tab>>,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
     recipe_state: StateCell<RecipeStateKey, RecipeState>,
@@ -52,7 +53,7 @@ struct RecipeState {
     url: TemplatePreview,
     query: Vec<(String, TemplatePreview)>,
     headers: Vec<(String, TemplatePreview)>,
-    body: Option<TextWindow<TemplatePreview>>,
+    body: Option<Component<TextWindow<TemplatePreview>>>,
 }
 
 #[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
@@ -81,15 +82,15 @@ impl EventHandler for RequestPane {
         }
     }
 
-    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
-        let mut children: Vec<&mut dyn EventHandler> = vec![&mut self.tabs];
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        let mut children = vec![self.tabs.as_child()];
         // If the body is initialized and present, send events there too
         if let Some(body) = self
             .recipe_state
             .get_mut()
             .and_then(|state| state.body.as_mut())
         {
-            children.push(body);
+            children.push(body.as_child());
         }
         children
     }
@@ -100,7 +101,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
         &self,
         context: &mut DrawContext,
         props: RequestPaneProps<'a>,
-        chunk: Rect,
+        area: Rect,
     ) {
         // Render outermost block
         let pane_kind = PrimaryPane::Request;
@@ -109,13 +110,13 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             is_focused: props.is_selected,
         };
         let block = block.generate();
-        let inner_chunk = block.inner(chunk);
-        context.frame.render_widget(block, chunk);
+        let inner_area = block.inner(area);
+        context.frame.render_widget(block, area);
 
         // Render request contents
         if let Some(recipe) = props.selected_recipe {
-            let [metadata_chunk, tabs_chunk, content_chunk] = layout(
-                inner_chunk,
+            let [metadata_area, tabs_area, content_area] = layout(
+                inner_area,
                 Direction::Vertical,
                 [
                     Constraint::Length(1),
@@ -124,8 +125,8 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                 ],
             );
 
-            let [method_chunk, url_chunk] = layout(
-                metadata_chunk,
+            let [method_area, url_area] = layout(
+                metadata_area,
                 Direction::Horizontal,
                 // Method gets just as much as it needs, URL gets the rest
                 [
@@ -169,6 +170,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                             props.selected_profile_id.cloned(),
                             context.config.preview_templates,
                         ))
+                        .into()
                     }),
                 },
             );
@@ -176,18 +178,18 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             // First line: Method + URL
             context.frame.render_widget(
                 Paragraph::new(recipe.method.as_str()),
-                method_chunk,
+                method_area,
             );
-            recipe_state.url.draw(context, (), url_chunk);
+            context.frame.render_widget(&recipe_state.url, url_area);
 
             // Navigation tabs
-            self.tabs.draw(context, (), tabs_chunk);
+            self.tabs.draw(context, (), tabs_area);
 
             // Request content
             match self.tabs.selected() {
                 Tab::Body => {
                     if let Some(body) = &recipe_state.body {
-                        body.draw(context, (), content_chunk);
+                        body.draw(context, (), content_area);
                     }
                 }
                 Tab::Query => context.frame.render_widget(
@@ -204,7 +206,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                         ..Default::default()
                     }
                     .generate(),
-                    content_chunk,
+                    content_area,
                 ),
                 Tab::Headers => context.frame.render_widget(
                     Table {
@@ -220,7 +222,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                         ..Default::default()
                     }
                     .generate(),
-                    content_chunk,
+                    content_area,
                 ),
             }
         }

@@ -26,11 +26,13 @@ pub struct SelectState<Kind: SelectStateKind, Item, State = ListState> {
     /// draw phase, by [Frame::render_stateful_widget]. This allows rendering
     /// without a mutable reference.
     state: RefCell<State>,
+    #[debug(skip)]
     items: Vec<Item>,
     #[debug(skip)]
     on_select: Option<Callback<Item>>,
     #[debug(skip)]
     on_submit: Option<Callback<Item>>,
+    #[debug(skip)]
     _kind: PhantomData<Kind>,
 }
 
@@ -91,17 +93,42 @@ where
         self.state.borrow_mut()
     }
 
-    /// Select the previous item in the list. This should only be called during
-    /// the message phase, so we can take `&mut self`. Context is required for
-    /// callbacks.
+    /// Select an item by value. Context is required for callbacks.
+    pub fn select(&mut self, context: &mut UpdateContext, item: &Item)
+    where
+        Item: PartialEq,
+    {
+        if let Some((index, _)) =
+            self.items.iter().find_position(|i| *i == item)
+        {
+            self.select_index(context, index);
+            self.state.get_mut().select(index);
+        }
+    }
+
+    /// Select the previous item in the list. Context is required for callbacks.
     pub fn previous(&mut self, context: &mut UpdateContext) {
         self.select_delta(context, -1);
     }
 
-    /// Select the next item in the list. This should only be called during the
-    /// message phase, so we can take `&mut self`.
+    /// Select the next item in the list. Context is required for callbacks.
     pub fn next(&mut self, context: &mut UpdateContext) {
         self.select_delta(context, 1);
+    }
+
+    /// Select an item by index
+    fn select_index(&mut self, context: &mut UpdateContext, index: usize) {
+        let state = self.state.get_mut();
+        let current = state.selected();
+        state.select(index);
+
+        // If the selection changed, call the callback
+        match &self.on_select {
+            Some(on_select) if current != state.selected() => {
+                on_select(context, self.selected_opt().unwrap());
+            }
+            _ => {}
+        }
     }
 
     /// Move some number of items up or down the list. Selection will wrap if
@@ -109,9 +136,7 @@ where
     fn select_delta(&mut self, context: &mut UpdateContext, delta: isize) {
         // If there's nothing in the list, we can't do anything
         if !self.items.is_empty() {
-            let state = self.state.get_mut();
-            let current = state.selected();
-            let i = match state.selected() {
+            let index = match self.state.get_mut().selected() {
                 Some(i) => {
                     // Banking on the list not being longer than 2.4B items...
                     (i as isize + delta).rem_euclid(self.items.len() as isize)
@@ -120,14 +145,7 @@ where
                 // Nothing selected yet, pick the first item
                 None => 0,
             };
-            state.select(i);
-            // If the selection changed, call the callback
-            match &self.on_select {
-                Some(on_select) if current != state.selected() => {
-                    on_select(context, self.selected_opt().unwrap());
-                }
-                _ => {}
-            }
+            self.select_index(context, index);
         }
     }
 
@@ -233,15 +251,17 @@ where
 {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
+            // Up/down keys/scrolling. Scrolling will only work if .set_area()
+            // is called on the wrapping Component by our parent
             Event::Input {
                 action: Some(action),
                 ..
             } => match action {
-                Action::Up => {
+                Action::Up | Action::ScrollUp => {
                     self.previous(context);
                     Update::Consumed
                 }
-                Action::Down => {
+                Action::Down | Action::ScrollDown => {
                     self.next(context);
                     Update::Consumed
                 }
@@ -260,6 +280,7 @@ where
                 }
                 _ => Update::Propagate(event),
             },
+
             _ => Update::Propagate(event),
         }
     }

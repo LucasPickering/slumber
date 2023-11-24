@@ -16,7 +16,7 @@ use crate::{
         input::{Action, InputEngine},
         message::MessageSender,
         view::{
-            component::root::Root,
+            component::{root::Root, Component},
             draw::{Draw, DrawContext},
             event::{Event, EventHandler, Update, UpdateContext},
             state::Notification,
@@ -36,7 +36,7 @@ use tracing::{error, trace, trace_span};
 pub struct View {
     messages_tx: MessageSender,
     config: ViewConfig,
-    root: Root,
+    root: Component<Root>,
 }
 
 impl View {
@@ -47,7 +47,7 @@ impl View {
         let mut view = Self {
             messages_tx,
             config: ViewConfig::default(),
-            root: Root::new(collection),
+            root: Root::new(collection).into(),
         };
         // Tell the components to wake up
         view.handle_event(Event::Init);
@@ -124,6 +124,12 @@ impl View {
         // Each event being handled could potentially queue more. Keep going
         // until the queue is drained
         while let Some(event) = event_queue.pop_front() {
+            // Certain events *just don't matter*, AT ALL. They're not even
+            // supposed to be around, like, in the area
+            if event.should_kill() {
+                continue;
+            }
+
             let span = trace_span!("View event", ?event);
             span.in_scope(|| {
                 let mut context = UpdateContext::new(
@@ -131,7 +137,10 @@ impl View {
                     &mut event_queue,
                     &mut self.config,
                 );
-                match Self::update_all(&mut self.root, &mut context, event) {
+
+                let update =
+                    Self::update_all(self.root.as_child(), &mut context, event);
+                match update {
                     Update::Consumed => {
                         trace!("View event consumed")
                     }
@@ -148,22 +157,25 @@ impl View {
     /// lowest descendant. Recursively walk up the tree until a component
     /// consumes the event.
     fn update_all(
-        component: &mut dyn EventHandler,
+        mut component: Component<&mut dyn EventHandler>,
         context: &mut UpdateContext,
         mut event: Event,
     ) -> Update {
         // If we have a child, send them the event. If not, eat it ourselves
         for child in component.children() {
-            let outcome = Self::update_all(child, context, event); // RECURSION
-            match outcome {
-                Update::Propagate(returned) => {
-                    // Keep going to the next child. It's possible the child
-                    // returned something other than the original event, which
-                    // we'll just pass along anyway.
-                    event = returned;
-                }
-                Update::Consumed => {
-                    return outcome;
+            if event.should_handle(&child) {
+                let update = Self::update_all(child, context, event); // RECURSION
+                match update {
+                    Update::Propagate(returned) => {
+                        // Keep going to the next child. It's possible the child
+                        // returned something other than the original event,
+                        // which we'll just pass along
+                        // anyway.
+                        event = returned;
+                    }
+                    Update::Consumed => {
+                        return update;
+                    }
                 }
             }
         }
@@ -173,16 +185,16 @@ impl View {
         // TODO figure out a way to print just the component type name
         let span = trace_span!("Component handling", ?component);
         span.in_scope(|| {
-            let outcome = component.update(context, event);
-            trace!(?outcome);
-            outcome
+            let update = component.update(context, event);
+            trace!(?update);
+            update
         })
     }
 }
 
 /// Settings that control the behavior of the view
 #[derive(Debug)]
-struct ViewConfig {
+pub struct ViewConfig {
     /// Should templates be rendered inline in the UI, or should we show the
     /// raw text?
     preview_templates: bool,

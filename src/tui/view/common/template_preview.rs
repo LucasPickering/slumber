@@ -4,20 +4,21 @@ use crate::{
     tui::{
         message::Message,
         view::{
-            draw::{Draw, DrawContext, Generate},
+            draw::{DrawContext, Generate},
             theme::Theme,
         },
     },
 };
+use derive_more::Deref;
 use ratatui::{
+    buffer::Buffer,
     prelude::Rect,
     style::Style,
     text::{Line, Span, Text},
-    widgets::Paragraph,
+    widgets::{Paragraph, Widget},
 };
 use std::{
     mem,
-    ops::Deref,
     sync::{Arc, OnceLock},
 };
 
@@ -31,10 +32,10 @@ pub enum TemplatePreview {
     /// Template previewing is enabled, render the template
     Enabled {
         template: Template,
-        /// Rendered chunks. On init we send a message which will trigger a
+        /// Rendered areas. On init we send a message which will trigger a
         /// task to start the render. When the task is done, it'll dump
         /// its result back here.
-        chunks: Arc<OnceLock<Vec<TemplateChunk>>>,
+        areas: Arc<OnceLock<Vec<TemplateChunk>>>,
     },
 }
 
@@ -53,15 +54,15 @@ impl TemplatePreview {
             // store it back here when done
             let lock = Arc::new(OnceLock::new());
             context.messages_tx.send(Message::TemplatePreview {
-                template: template.clone(), /* If this is a bottleneck we can
-                                             * Arc it */
+                // If this is a bottleneck we can Arc it
+                template: template.clone(),
                 profile_id,
                 destination: Arc::clone(&lock),
             });
 
             Self::Enabled {
                 template,
-                chunks: lock,
+                areas: lock,
             }
         } else {
             Self::Disabled { template }
@@ -81,13 +82,11 @@ impl Generate for &TemplatePreview {
         // The raw template string
         match self {
             TemplatePreview::Disabled { template } => template.deref().into(),
-            TemplatePreview::Enabled { template, chunks } => {
+            TemplatePreview::Enabled { template, areas } => {
                 // If the preview render is ready, show it. Otherwise fall back
                 // to the raw
-                match chunks.get() {
-                    Some(chunks) => {
-                        TextStitcher::stitch_chunks(template, chunks)
-                    }
+                match areas.get() {
+                    Some(areas) => TextStitcher::stitch_chunks(template, areas),
                     // Preview still rendering
                     None => template.deref().into(),
                 }
@@ -96,14 +95,14 @@ impl Generate for &TemplatePreview {
     }
 }
 
-impl Draw for TemplatePreview {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+impl Widget for &TemplatePreview {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         let text = self.generate();
-        context.frame.render_widget(Paragraph::new(text), chunk);
+        Paragraph::new(text).render(area, buf)
     }
 }
 
-/// A helper for stitching rendered template chunks into ratatui `Text`. This
+/// A helper for stitching rendered template areas into ratatui `Text`. This
 /// requires some effort because ratatui *loves* line breaks, so we have to
 /// very manually construct the text to make sure the structure reflects the
 /// line breaks in the input.
@@ -116,21 +115,21 @@ struct TextStitcher<'a> {
 }
 
 impl<'a> TextStitcher<'a> {
-    /// Convert chunks into a series of spans, which can be turned into a line
+    /// Convert areas into a series of spans, which can be turned into a line
     fn stitch_chunks(
         template: &'a Template,
-        chunks: &'a [TemplateChunk],
+        areas: &'a [TemplateChunk],
     ) -> Text<'a> {
         let theme = Theme::get();
 
-        // Each chunk will get its own styling, but we can't just make each
-        // chunk a Span, because one chunk might have multiple lines. And we
-        // can't make each chunk a Line, because multiple chunks might be
+        // Each area will get its own styling, but we can't just make each
+        // area a Span, because one area might have multiple lines. And we
+        // can't make each area a Line, because multiple areas might be
         // together on the same line. So we need to walk down each line and
         // manually split the lines
         let mut stitcher = Self::default();
-        for chunk in chunks {
-            let (chunk_text, style) = match &chunk {
+        for area in areas {
+            let (area_text, style) = match &area {
                 TemplateChunk::Raw(span) => {
                     (template.substring(*span), Style::default())
                 }
@@ -143,24 +142,24 @@ impl<'a> TextStitcher<'a> {
                 }
             };
 
-            stitcher.add_chunk(chunk_text, style);
+            stitcher.add_area(area_text, style);
         }
         stitcher.into_text()
     }
 
-    /// Add one chunk to the text. This will recursively split on any line
+    /// Add one area to the text. This will recursively split on any line
     /// breaks in the text until it reaches the end.
-    fn add_chunk(&mut self, chunk_text: &'a str, style: Style) {
+    fn add_area(&mut self, area_text: &'a str, style: Style) {
         // If we've reached a line ending, push the line and start a new one.
         // Intentionally ignore \r; it won't cause any harm in the output text
-        match chunk_text.split_once('\n') {
+        match area_text.split_once('\n') {
             Some((a, b)) => {
                 self.add_span(a, style);
                 self.end_line();
-                self.add_chunk(b, style);
+                self.add_area(b, style);
             }
-            // This chunk has no line breaks, just add it and move on
-            None => self.add_span(chunk_text, style),
+            // This area has no line breaks, just add it and move on
+            None => self.add_span(area_text, style),
         }
     }
 
@@ -193,10 +192,10 @@ mod tests {
     use indexmap::indexmap;
 
     /// Test these cases related to line breaks:
-    /// - Line break within a raw chunk
-    /// - Line break within a rendered chunk
-    /// - Line break at chunk boundary
-    /// - NO line break at chunk boundary
+    /// - Line break within a raw area
+    /// - Line break within a rendered area
+    /// - Line break at area boundary
+    /// - NO line break at area boundary
     /// Ratatui is fucky with how it handles line breaks in text, so we need
     /// to make sure our output reflects the input
     ///
@@ -211,10 +210,10 @@ mod tests {
         .unwrap();
         let profile = indexmap! { "user_id".into() => "🧡\n💛".into() };
         let context = create!(TemplateContext, profile: profile);
-        let chunks = template.render_chunks(&context).await;
+        let areas = template.render_chunks(&context).await;
         let theme = Theme::get();
 
-        let text = TextStitcher::stitch_chunks(&template, &chunks);
+        let text = TextStitcher::stitch_chunks(&template, &areas);
         let rendered_style = theme.template_preview_text;
         let error_style = theme.template_preview_error;
         let expected = Text::from(vec![

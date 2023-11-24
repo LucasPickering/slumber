@@ -5,7 +5,7 @@ use crate::tui::{
         draw::{Draw, DrawContext, Generate},
         event::{EventHandler, UpdateContext},
         state::select::{Fixed, SelectState},
-        ViewConfig,
+        Component, ViewConfig,
     },
 };
 use derive_more::Display;
@@ -19,7 +19,7 @@ use strum::{EnumCount, EnumIter, IntoEnumIterator};
 /// Modal to view and modify user/view configuration
 #[derive(Debug)]
 pub struct SettingsModal {
-    table: SelectState<Fixed, Setting, TableState>,
+    table: Component<SelectState<Fixed, Setting, TableState>>,
 }
 
 impl Default for SettingsModal {
@@ -40,7 +40,7 @@ impl Default for SettingsModal {
             };
 
         Self {
-            table: SelectState::fixed().on_submit(on_submit),
+            table: SelectState::fixed().on_submit(on_submit).into(),
         }
     }
 }
@@ -56,20 +56,16 @@ impl Modal for SettingsModal {
             Constraint::Length(Setting::COUNT as u16 + 2),
         )
     }
-
-    fn as_event_handler(&mut self) -> &mut dyn EventHandler {
-        self
-    }
 }
 
 impl EventHandler for SettingsModal {
-    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
-        vec![&mut self.table]
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        vec![self.table.as_child()]
     }
 }
 
 impl Draw for SettingsModal {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         context.frame.render_stateful_widget(
             Table {
                 rows: Setting::iter()
@@ -88,7 +84,7 @@ impl Draw for SettingsModal {
                 ..Default::default()
             }
             .generate(),
-            chunk,
+            area,
             &mut self.table.state_mut(),
         );
     }

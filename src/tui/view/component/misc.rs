@@ -31,19 +31,15 @@ impl Modal for ErrorModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         (Constraint::Percentage(60), Constraint::Percentage(20))
     }
-
-    fn as_event_handler(&mut self) -> &mut dyn EventHandler {
-        self
-    }
 }
 
 impl EventHandler for ErrorModal {}
 
 impl Draw for ErrorModal {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         context.frame.render_widget(
             Paragraph::new(self.0.generate()).wrap(Wrap::default()),
-            chunk,
+            area,
         );
     }
 }
@@ -99,10 +95,6 @@ impl Modal for PromptModal {
             self.prompt.respond(input);
         }
     }
-
-    fn as_event_handler(&mut self) -> &mut dyn EventHandler {
-        self
-    }
 }
 
 impl EventHandler for PromptModal {
@@ -138,8 +130,8 @@ impl EventHandler for PromptModal {
 }
 
 impl Draw for PromptModal {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
-        context.frame.render_widget(self.text_area.widget(), chunk);
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+        context.frame.render_widget(self.text_area.widget(), area);
     }
 }
 
@@ -163,9 +155,9 @@ impl NotificationText {
 }
 
 impl Draw for NotificationText {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         context
             .frame
-            .render_widget(Paragraph::new(self.notification.generate()), chunk);
+            .render_widget(Paragraph::new(self.notification.generate()), area);
     }
 }

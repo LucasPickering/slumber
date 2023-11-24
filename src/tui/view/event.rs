@@ -10,10 +10,11 @@ use crate::{
             common::modal::{Modal, ModalPriority},
             component::FullscreenMode,
             state::{Notification, RequestState},
-            ViewConfig,
+            Component, ViewConfig,
         },
     },
 };
+use crossterm::event::{MouseEvent, MouseEventKind};
 use std::{collections::VecDeque, fmt::Debug};
 use tracing::trace;
 
@@ -33,7 +34,7 @@ pub trait EventHandler: Debug {
     /// focused component will receive first dibs on any update messages, in
     /// the order of the returned list. If none of the children consume the
     /// message, it will be passed to this component.
-    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         Vec::new()
     }
 }
@@ -123,8 +124,52 @@ pub enum Event {
     Notify(Notification),
 }
 
+impl Event {
+    /// Should this event immediately be killed, meaning it will never be
+    /// handled by a component. This is used to filter out junk events that will
+    /// never be handled, mostly to make debug logging cleaner.
+    pub fn should_kill(&self) -> bool {
+        use crossterm::event::Event;
+        matches!(
+            self,
+            Self::Input {
+                event: Event::FocusGained
+                    | Event::FocusLost
+                    | Event::Resize(_, _)
+                    | Event::Mouse(MouseEvent {
+                        kind: MouseEventKind::Moved,
+                        ..
+                    }),
+                ..
+            }
+        )
+    }
+
+    /// Is this event pertinent to the component? Most events should be handled,
+    /// but some (e.g. cursor events) need to be selectively filtered
+    pub fn should_handle<T>(&self, component: &Component<T>) -> bool {
+        use crossterm::event::Event;
+        if let Self::Input { event, .. } = self {
+            match event {
+                Event::Key(_) | Event::Paste(_) => true,
+
+                Event::Mouse(mouse_event) => {
+                    // Check if the mouse is over the component
+                    component.intersects(mouse_event)
+                }
+
+                // We expect everything else to have already been killed, but if
+                // it made it through, handle it to be safe
+                _ => true,
+            }
+        } else {
+            true
+        }
+    }
+}
+
 /// The result of a component state update operation. This corresponds to a
-/// single input [ViewMessage].
+/// single input [Event].
 #[derive(Debug)]
 pub enum Update {
     /// The consuming component updated its state accordingly, and no further

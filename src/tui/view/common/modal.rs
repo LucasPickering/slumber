@@ -4,13 +4,14 @@ use crate::tui::{
         draw::{Draw, DrawContext},
         event::{Event, EventHandler, Update, UpdateContext},
         util::centered_rect,
+        Component,
     },
 };
 use ratatui::{
     prelude::{Constraint, Rect},
     widgets::{Block, BorderType, Borders, Clear},
 };
-use std::collections::VecDeque;
+use std::{collections::VecDeque, ops::DerefMut};
 use tracing::trace;
 
 /// A modal (AKA popup or dialog) is a high-priority element to be shown to the
@@ -31,10 +32,6 @@ pub trait Modal: Draw<()> + EventHandler {
     /// Optional callback when the modal is closed. Useful for finishing
     /// operations that require ownership of the modal data.
     fn on_close(self: Box<Self>) {}
-
-    /// Annoying thing to cast from a modal to a base component. Remove after
-    /// https://github.com/rust-lang/rust/issues/65991
-    fn as_event_handler(&mut self) -> &mut dyn EventHandler;
 }
 
 /// Define how a type can be converted into a modal. Often times, implementors
@@ -48,9 +45,11 @@ pub trait IntoModal {
     fn into_modal(self) -> Self::Target;
 }
 
-#[derive(Debug)]
+/// A singleton component to hold all modals at the root of the tree, so that
+/// they render on top.
+#[derive(Debug, Default)]
 pub struct ModalQueue {
-    queue: VecDeque<Box<dyn Modal>>,
+    queue: VecDeque<Component<Box<dyn Modal>>>,
 }
 
 /// Priority defines where in the modal queue to add a new modal. Most modals
@@ -65,12 +64,6 @@ pub enum ModalPriority {
 }
 
 impl ModalQueue {
-    pub fn new() -> Self {
-        Self {
-            queue: VecDeque::new(),
-        }
-    }
-
     /// Is there a modal open right now?
     pub fn is_open(&self) -> bool {
         !self.queue.is_empty()
@@ -82,10 +75,10 @@ impl ModalQueue {
         trace!(?priority, "Opening modal");
         match priority {
             ModalPriority::Low => {
-                self.queue.push_back(modal);
+                self.queue.push_back(modal.into());
             }
             ModalPriority::High => {
-                self.queue.push_front(modal);
+                self.queue.push_front(modal.into());
             }
         }
     }
@@ -93,7 +86,7 @@ impl ModalQueue {
     /// Close the current modal, and return the closed modal if any
     pub fn close(&mut self) -> Option<Box<dyn Modal>> {
         trace!("Closing modal");
-        self.queue.pop_front()
+        self.queue.pop_front().map(Component::into_inner)
     }
 }
 
@@ -128,31 +121,41 @@ impl EventHandler for ModalQueue {
         }
     }
 
-    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         match self.queue.front_mut() {
-            Some(first) => vec![first.as_event_handler()],
+            Some(first) => vec![first.as_child()],
             None => vec![],
         }
     }
 }
 
 impl Draw for ModalQueue {
-    fn draw(&self, context: &mut DrawContext, _: (), chunk: Rect) {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         if let Some(modal) = self.queue.front() {
             let (x, y) = modal.dimensions();
-            let chunk = centered_rect(x, y, chunk);
+            let area = centered_rect(x, y, area);
             let block = Block::default()
                 .title(modal.title())
                 .borders(Borders::ALL)
                 .border_type(BorderType::Thick);
-            let inner_chunk = block.inner(chunk);
+            let inner_area = block.inner(area);
 
             // Draw the outline of the modal
-            context.frame.render_widget(Clear, chunk);
-            context.frame.render_widget(block, chunk);
+            context.frame.render_widget(Clear, area);
+            context.frame.render_widget(block, area);
 
             // Render the actual content
-            modal.draw(context, (), inner_chunk);
+            modal.draw(context, (), inner_area);
         }
+    }
+}
+
+impl EventHandler for Box<dyn Modal> {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+        self.deref_mut().update(context, event)
+    }
+
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        self.deref_mut().children()
     }
 }

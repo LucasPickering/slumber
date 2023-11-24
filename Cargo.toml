@@ -16,7 +16,7 @@ async-trait = "^0.1.73"
 chrono = {version = "^0.4.31", default-features = false, features = ["clock", "serde", "std"]}
 clap = {version = "^4.4.2", features = ["derive"]}
 crossterm = "^0.27.0"
-derive_more = {version = "1.0.0-beta.6", features = ["debug", "deref", "display", "from"]}
+derive_more = {version = "1.0.0-beta.6", features = ["debug", "deref", "deref_mut", "display", "from"]}
 dialoguer = {version = "^0.11.0", default-features = false, features = ["password"]}
 dirs = "^5.0.1"
 futures = "^0.3.28"

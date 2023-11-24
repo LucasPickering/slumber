@@ -1,5 +1,8 @@
 use crate::tui::view::{
-    common::Block, draw::Generate, state::select::SelectState, theme::Theme,
+    common::Block,
+    draw::Generate,
+    state::select::{SelectState, SelectStateKind},
+    theme::Theme,
 };
 use ratatui::{
     text::Span,
@@ -7,14 +10,15 @@ use ratatui::{
 };
 
 /// A list with a border and title. Each item has to be convertible to text
-pub struct List<'a, T> {
+pub struct List<'a, Kind: SelectStateKind, Item> {
     pub block: Block<'a>,
-    pub list: &'a SelectState<T, ListState>,
+    pub list: &'a SelectState<Kind, Item, ListState>,
 }
 
-impl<'a, T> Generate for List<'a, T>
+impl<'a, Kind, Item> Generate for List<'a, Kind, Item>
 where
-    &'a T: Generate<Output<'a> = Span<'a>>,
+    Kind: SelectStateKind,
+    &'a Item: Generate<Output<'a> = Span<'a>>,
 {
     type Output<'this> = ratatui::widgets::List<'this> where Self: 'this;
 

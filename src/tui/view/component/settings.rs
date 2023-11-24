@@ -1,11 +1,10 @@
 use crate::tui::{
-    input::Action,
     message::Message,
     view::{
         common::{modal::Modal, table::Table, Checkbox},
         draw::{Draw, DrawContext, Generate},
-        event::{Event, EventHandler, Update, UpdateContext},
-        state::select::FixedSelectState,
+        event::{EventHandler, UpdateContext},
+        state::select::{Fixed, SelectState},
         ViewConfig,
     },
 };
@@ -20,13 +19,28 @@ use strum::{EnumCount, EnumIter, IntoEnumIterator};
 /// Modal to view and modify user/view configuration
 #[derive(Debug)]
 pub struct SettingsModal {
-    table: FixedSelectState<Setting, TableState>,
+    table: SelectState<Fixed, Setting, TableState>,
 }
 
 impl Default for SettingsModal {
     fn default() -> Self {
+        // Toggle the selected setting on Enter
+        let on_submit =
+            |context: &mut UpdateContext, setting: &Setting| match setting {
+                Setting::PreviewTemplates => {
+                    context.config().preview_templates ^= true;
+                }
+                Setting::CaptureMouse => {
+                    context.config().capture_mouse ^= true;
+                    // Tell the terminal to actually do the switch
+                    let capture = context.config().capture_mouse;
+                    context
+                        .send_message(Message::ToggleMouseCapture { capture });
+                }
+            };
+
         Self {
-            table: FixedSelectState::new(),
+            table: SelectState::fixed().on_submit(on_submit),
         }
     }
 }
@@ -49,30 +63,6 @@ impl Modal for SettingsModal {
 }
 
 impl EventHandler for SettingsModal {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            Event::Input {
-                action: Some(Action::Submit),
-                ..
-            } => {
-                match self.table.selected() {
-                    Setting::PreviewTemplates => {
-                        context.config().preview_templates ^= true;
-                    }
-                    Setting::CaptureMouse => {
-                        context.config().capture_mouse ^= true;
-                        let capture = context.config().capture_mouse;
-                        context.send_message(Message::ToggleMouseCapture {
-                            capture,
-                        });
-                    }
-                }
-                Update::Consumed
-            }
-            _ => Update::Propagate(event),
-        }
-    }
-
     fn children(&mut self) -> Vec<&mut dyn EventHandler> {
         vec![&mut self.table]
     }

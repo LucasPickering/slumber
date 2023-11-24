@@ -7,6 +7,7 @@ use ratatui::widgets::{ListState, TableState};
 use std::{
     cell::RefCell,
     fmt::{Debug, Display},
+    marker::PhantomData,
     ops::DerefMut,
 };
 use strum::IntoEnumIterator;
@@ -14,40 +15,69 @@ use strum::IntoEnumIterator;
 /// State manager for a dynamic list of items. This supports a generic type for
 /// the state "backend", which is the ratatui type that stores the selection
 /// state. Typically you want `ListState` or `TableState`.
-#[derive(Debug)]
-pub struct SelectState<Item, State = ListState> {
+///
+/// This uses a typestate pattern to differentiate between dynamic- and
+/// fixed-size lists. Fixed-size lists must be based on an iterable enum. The
+/// two share most behavior, but have some differences in API, which the `Kind`
+/// parameter will switch between.
+#[derive(derive_more::Debug)]
+pub struct SelectState<Kind: SelectStateKind, Item, State = ListState> {
     /// Use interior mutability because this needs to be modified during the
     /// draw phase, by [Frame::render_stateful_widget]. This allows rendering
     /// without a mutable reference.
     state: RefCell<State>,
     items: Vec<Item>,
+    #[debug(skip)]
+    on_select: Option<Callback<Item>>,
+    #[debug(skip)]
+    on_submit: Option<Callback<Item>>,
+    _kind: PhantomData<Kind>,
 }
 
-impl<Item, State: SelectStateData> SelectState<Item, State> {
-    pub fn new(items: Vec<Item>) -> Self {
-        let mut state = State::default();
-        // Pre-select the first item if possible
-        if !items.is_empty() {
-            state.select(0);
-        }
-        SelectState {
-            state: RefCell::new(state),
-            items,
-        }
+/// Marker trait to restrict type-state options
+pub trait SelectStateKind {}
+
+/// Type-state for a dynamically sized [SelectState]
+pub struct Dynamic;
+impl SelectStateKind for Dynamic {}
+/// Type-state for a fixed-size [SelectState]
+pub struct Fixed;
+impl SelectStateKind for Fixed {}
+
+type Callback<Item> = Box<dyn Fn(&mut UpdateContext, &Item)>;
+
+impl<Kind, Item, State: SelectStateData> SelectState<Kind, Item, State>
+where
+    Kind: SelectStateKind,
+{
+    /// Set the callback to be called when the user highlights a new item
+    pub fn on_select(
+        mut self,
+        on_select: impl 'static + Fn(&mut UpdateContext, &Item),
+    ) -> Self {
+        self.on_select = Some(Box::new(on_select));
+        self
+    }
+
+    /// Set the callback to be called when the user hits enter on an item
+    pub fn on_submit(
+        mut self,
+        on_submit: impl 'static + Fn(&mut UpdateContext, &Item),
+    ) -> Self {
+        self.on_submit = Some(Box::new(on_submit));
+        self
     }
 
     pub fn items(&self) -> &[Item] {
         &self.items
     }
 
-    /// Get the index of the currently selected item (if any)
-    pub fn selected_index(&self) -> Option<usize> {
-        self.state.borrow().selected()
-    }
-
-    /// Get the currently selected item (if any)
-    pub fn selected(&self) -> Option<&Item> {
-        self.items.get(self.state.borrow().selected()?)
+    /// Is the given item selected?
+    pub fn is_selected(&self, item: &Item) -> bool
+    where
+        Item: PartialEq,
+    {
+        self.selected_opt() == Some(item)
     }
 
     /// Get the number of items in the list
@@ -62,83 +92,99 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     }
 
     /// Select the previous item in the list. This should only be called during
-    /// the message phase, so we can take `&mut self`.
-    pub fn previous(&mut self) {
-        let state = self.state.get_mut();
-        let i = match state.selected() {
-            Some(i) => {
-                // Avoid underflow here
-                if i == 0 {
-                    self.items.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        state.select(i);
+    /// the message phase, so we can take `&mut self`. Context is required for
+    /// callbacks.
+    pub fn previous(&mut self, context: &mut UpdateContext) {
+        self.select_delta(context, -1);
     }
 
     /// Select the next item in the list. This should only be called during the
     /// message phase, so we can take `&mut self`.
-    pub fn next(&mut self) {
-        let state = self.state.get_mut();
-        let i = match state.selected() {
-            Some(i) => (i + 1) % self.items.len(),
-            None => 0,
-        };
-        state.select(i);
+    pub fn next(&mut self, context: &mut UpdateContext) {
+        self.select_delta(context, 1);
     }
-}
 
-/// Handle input events to cycle between items
-impl<Item: Debug, State: Debug + SelectStateData> EventHandler
-    for SelectState<Item, State>
-{
-    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            Event::Input {
-                action: Some(action),
-                ..
-            } => match action {
-                Action::Up => {
-                    self.previous();
-                    Update::Consumed
+    /// Move some number of items up or down the list. Selection will wrap if
+    /// it underflows/overflows. Context is required for callbacks.
+    fn select_delta(&mut self, context: &mut UpdateContext, delta: isize) {
+        // If there's nothing in the list, we can't do anything
+        if !self.items.is_empty() {
+            let state = self.state.get_mut();
+            let current = state.selected();
+            let i = match state.selected() {
+                Some(i) => {
+                    // Banking on the list not being longer than 2.4B items...
+                    (i as isize + delta).rem_euclid(self.items.len() as isize)
+                        as usize
                 }
-                Action::Down => {
-                    self.next();
-                    Update::Consumed
+                // Nothing selected yet, pick the first item
+                None => 0,
+            };
+            state.select(i);
+            // If the selection changed, call the callback
+            match &self.on_select {
+                Some(on_select) if current != state.selected() => {
+                    on_select(context, self.selected_opt().unwrap());
                 }
-                _ => Update::Propagate(event),
-            },
-            _ => Update::Propagate(event),
+                _ => {}
+            }
         }
     }
+
+    /// Kind-agnostic helper for the selected item
+    fn selected_opt(&self) -> Option<&Item> {
+        self.items.get(self.state.borrow().selected()?)
+    }
 }
 
-/// State manager for a fixed-size collection of statically known selectable
-/// items, e.g. panes or tabs. User can cycle between them. This is mostly a
-/// wrapper around [SelectState], with some extra convenience based around the
-/// fact that we statically know the available options.
-#[derive(Debug)]
-pub struct FixedSelectState<
-    Item: FixedSelect,
-    State: SelectStateData = ListState,
-> {
-    /// Internally use a dynamic list. We know it's not empty though, so we can
-    /// assume that an item is always selected.
-    state: SelectState<Item, State>,
+/// Functions available only on dynamic selects, which may have an empty list
+impl<Item, State: SelectStateData> SelectState<Dynamic, Item, State> {
+    pub fn new(items: Vec<Item>) -> Self {
+        let mut state = State::default();
+        // Pre-select the first item if possible
+        if !items.is_empty() {
+            state.select(0);
+        }
+        Self {
+            state: RefCell::new(state),
+            items,
+            on_select: None,
+            on_submit: None,
+            _kind: PhantomData,
+        }
+    }
+
+    /// Get the currently selected item (if any)
+    pub fn selected(&self) -> Option<&Item> {
+        self.items.get(self.state.borrow().selected()?)
+    }
 }
 
-impl<Item, State> FixedSelectState<Item, State>
+/// Functions available only on fixed selects, which *cannot* have an empty list
+impl<Item, State> SelectState<Fixed, Item, State>
 where
     Item: FixedSelect,
     State: SelectStateData,
 {
-    pub fn new() -> Self {
+    /// Create a new fixed-size list, with options derived from a static enum.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the enum is empty.
+    pub fn fixed() -> Self {
         let items = Item::iter().collect_vec();
-        let mut state = State::default();
+
+        if items.is_empty() {
+            // Wr run on the assumption that it's not empty, to prevent
+            // returning Options
+            panic!(
+                "Empty fixed-size collection not allow. \
+                Add a variant to your enum."
+            );
+        }
+
         // Pre-select the default item
+        let mut state = State::default();
         let selected = items
             .iter()
             .find_position(|value| *value == &Item::default())
@@ -147,63 +193,75 @@ where
         state.select(selected);
 
         Self {
-            state: SelectState {
-                state: RefCell::new(state),
-                items,
-            },
+            state: RefCell::new(state),
+            items,
+            on_select: None,
+            on_submit: None,
+            _kind: PhantomData,
         }
     }
 
-    /// Get the index of the selected element
+    /// Get the index of the currently selected item (if any)
     pub fn selected_index(&self) -> usize {
-        self.state.selected_index().unwrap()
+        // We know the select list is not empty
+        self.state.borrow().selected().unwrap()
     }
 
-    /// Get the selected element
+    /// Get the currently selected item (if any)
     pub fn selected(&self) -> &Item {
-        self.state.selected().unwrap()
-    }
-
-    /// Is the given item selected?
-    pub fn is_selected(&self, item: &Item) -> bool {
-        self.selected() == item
-    }
-
-    /// Select previous item
-    pub fn previous(&mut self) {
-        self.state.previous()
-    }
-
-    /// Select next item
-    pub fn next(&mut self) {
-        self.state.next()
-    }
-
-    /// Get a mutable reference to state. This uses `RefCell` underneath so it
-    /// will panic if aliased. Only call this during the draw phase!
-    pub fn state_mut(&self) -> impl DerefMut<Target = State> + '_ {
-        self.state.state_mut()
+        // We know the select list is not empty
+        self.selected_opt().unwrap()
     }
 }
 
-impl<Item, State> Default for FixedSelectState<Item, State>
+impl<Item, State> Default for SelectState<Fixed, Item, State>
 where
     Item: FixedSelect,
     State: SelectStateData,
 {
     fn default() -> Self {
-        Self::new()
+        Self::fixed()
     }
 }
 
 /// Handle input events to cycle between items
-impl<Item, State> EventHandler for FixedSelectState<Item, State>
+impl<Kind, Item, State> EventHandler for SelectState<Kind, Item, State>
 where
-    Item: FixedSelect,
+    Kind: SelectStateKind,
+    Item: Debug,
     State: Debug + SelectStateData,
 {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        self.state.update(context, event)
+        match event {
+            Event::Input {
+                action: Some(action),
+                ..
+            } => match action {
+                Action::Up => {
+                    self.previous(context);
+                    Update::Consumed
+                }
+                Action::Down => {
+                    self.next(context);
+                    Update::Consumed
+                }
+                Action::Submit => {
+                    // If we have an on_submit, our parent wants us to handle
+                    // submit events so consume it even if nothing is selected
+                    if let Some(on_submit) = &self.on_submit {
+                        if let Some(selected) = self.selected_opt() {
+                            on_submit(context, selected);
+                        }
+
+                        Update::Consumed
+                    } else {
+                        Update::Propagate(event)
+                    }
+                }
+                _ => Update::Propagate(event),
+            },
+            _ => Update::Propagate(event),
+        }
     }
 }
 

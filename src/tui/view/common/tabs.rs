@@ -3,7 +3,7 @@ use crate::tui::{
     view::{
         draw::{Draw, DrawContext},
         event::{Event, EventHandler, Update, UpdateContext},
-        state::select::{FixedSelect, FixedSelectState},
+        state::select::{Fixed, FixedSelect, SelectState},
         theme::Theme,
     },
 };
@@ -13,7 +13,7 @@ use std::fmt::Debug;
 /// Multi-tab display. Generic parameter defines the available tabs.
 #[derive(Debug, Default)]
 pub struct Tabs<T: FixedSelect> {
-    tabs: FixedSelectState<T, usize>,
+    tabs: SelectState<Fixed, T, usize>,
 }
 
 impl<T: FixedSelect> Tabs<T> {
@@ -23,18 +23,18 @@ impl<T: FixedSelect> Tabs<T> {
 }
 
 impl<T: FixedSelect> EventHandler for Tabs<T> {
-    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(action),
                 ..
             } => match action {
                 Action::Left => {
-                    self.tabs.previous();
+                    self.tabs.previous(context);
                     Update::Consumed
                 }
                 Action::Right => {
-                    self.tabs.next();
+                    self.tabs.next(context);
                     Update::Consumed
                 }
 

@@ -16,7 +16,7 @@ use crate::{
             draw::{Draw, DrawContext, Generate},
             event::{Event, EventHandler, Update, UpdateContext},
             state::{
-                select::{FixedSelectState, SelectState},
+                select::{Dynamic, Fixed, SelectState},
                 RequestState,
             },
             util::layout,
@@ -25,14 +25,17 @@ use crate::{
     },
 };
 use derive_more::Display;
-use ratatui::prelude::{Constraint, Direction, Rect};
+use ratatui::{
+    prelude::{Constraint, Direction, Rect},
+    widgets::ListState,
+};
 use strum::EnumIter;
 
 /// Primary TUI view, which shows request/response panes
 #[derive(Debug)]
 pub struct PrimaryView {
     // Own state
-    selected_pane: FixedSelectState<PrimaryPane>,
+    selected_pane: SelectState<Fixed, PrimaryPane, ListState>,
 
     // Children
     profile_list_pane: ProfileListPane,
@@ -126,11 +129,11 @@ impl EventHandler for PrimaryView {
             // Input messages
             Event::Input { action, .. } => match action {
                 Some(Action::PreviousPane) => {
-                    self.selected_pane.previous();
+                    self.selected_pane.previous(context);
                     Update::Consumed
                 }
                 Some(Action::NextPane) => {
-                    self.selected_pane.next();
+                    self.selected_pane.next(context);
                     Update::Consumed
                 }
                 Some(Action::SendRequest) => {
@@ -246,7 +249,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
 
 #[derive(Debug)]
 struct ProfileListPane {
-    profiles: SelectState<Profile>,
+    profiles: SelectState<Dynamic, Profile>,
 }
 
 struct ListPaneProps {
@@ -291,55 +294,37 @@ impl Draw<ListPaneProps> for ProfileListPane {
 
 #[derive(Debug)]
 struct RecipeListPane {
-    recipes: SelectState<RequestRecipe>,
+    recipes: SelectState<Dynamic, RequestRecipe>,
 }
 
 impl RecipeListPane {
     pub fn new(recipes: Vec<RequestRecipe>) -> Self {
+        // When highlighting a new recipe, load it from the repo
+        let on_select = |context: &mut UpdateContext,
+                         recipe: &RequestRecipe| {
+            context.send_message(Message::RepositoryStartLoad {
+                recipe_id: recipe.id.clone(),
+            });
+        };
+
+        // Trigger a request on submit
+        let on_submit = |context: &mut UpdateContext, _: &RequestRecipe| {
+            // Parent has to be responsible for actually sending the request
+            // because it also needs access to the profile list state
+            context.queue_event(Event::HttpSendRequest);
+        };
+
         Self {
-            recipes: SelectState::new(recipes),
+            recipes: SelectState::new(recipes)
+                .on_select(on_select)
+                .on_submit(on_submit),
         }
     }
 }
 
 impl EventHandler for RecipeListPane {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        let mut load_from_repo = |pane: &RecipeListPane| -> Update {
-            if let Some(recipe) = pane.recipes.selected() {
-                context.send_message(Message::RepositoryStartLoad {
-                    recipe_id: recipe.id.clone(),
-                });
-            }
-            Update::Consumed
-        };
-
-        match event {
-            Event::Input {
-                action: Some(Action::Submit),
-                ..
-            } => {
-                // Parent has to be responsible for sending the request because
-                // it also needs access to the profile list state
-                context.queue_event(Event::HttpSendRequest);
-                Update::Consumed
-            }
-            // TODO use input handling from StatefulList
-            Event::Input {
-                action: Some(Action::Up),
-                ..
-            } => {
-                self.recipes.previous();
-                load_from_repo(self)
-            }
-            Event::Input {
-                action: Some(Action::Down),
-                ..
-            } => {
-                self.recipes.next();
-                load_from_repo(self)
-            }
-            _ => Update::Propagate(event),
-        }
+    fn children(&mut self) -> Vec<&mut dyn EventHandler> {
+        vec![&mut self.recipes]
     }
 }
 

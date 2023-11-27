@@ -8,13 +8,13 @@ mod util;
 
 pub use common::modal::{IntoModal, ModalPriority};
 pub use state::RequestState;
+pub use theme::Theme;
 pub use util::PreviewPrompter;
 
 use crate::{
     collection::{RequestCollection, RequestRecipeId},
     tui::{
-        input::{Action, InputEngine},
-        message::MessageSender,
+        input::Action,
         view::{
             component::{root::Root, Component},
             draw::{Draw, DrawContext},
@@ -34,18 +34,13 @@ use tracing::{error, trace, trace_span};
 /// by the controller and exposed via event passing.
 #[derive(Debug)]
 pub struct View {
-    messages_tx: MessageSender,
     config: ViewConfig,
     root: Component<Root>,
 }
 
 impl View {
-    pub fn new(
-        collection: &RequestCollection,
-        messages_tx: MessageSender,
-    ) -> Self {
+    pub fn new(collection: &RequestCollection) -> Self {
         let mut view = Self {
-            messages_tx,
             config: ViewConfig::default(),
             root: Root::new(collection).into(),
         };
@@ -56,18 +51,11 @@ impl View {
 
     /// Draw the view to screen. This needs access to the input engine in order
     /// to render input bindings as help messages to the user.
-    pub fn draw<'a>(
-        &'a self,
-        input_engine: &'a InputEngine,
-        messages_tx: MessageSender,
-        frame: &'a mut Frame,
-    ) {
+    pub fn draw<'a>(&'a self, frame: &'a mut Frame) {
         let chunk = frame.size();
         self.root.draw(
             &mut DrawContext {
-                input_engine,
                 config: &self.config,
-                messages_tx,
                 frame,
             },
             (),
@@ -132,11 +120,8 @@ impl View {
 
             let span = trace_span!("View event", ?event);
             span.in_scope(|| {
-                let mut context = UpdateContext::new(
-                    self.messages_tx.clone(),
-                    &mut event_queue,
-                    &mut self.config,
-                );
+                let mut context =
+                    UpdateContext::new(&mut event_queue, &mut self.config);
 
                 let update =
                     Self::update_all(self.root.as_child(), &mut context, event);
@@ -194,7 +179,7 @@ impl View {
 
 /// Settings that control the behavior of the view
 #[derive(Debug)]
-pub struct ViewConfig {
+struct ViewConfig {
     /// Should templates be rendered inline in the UI, or should we show the
     /// raw text?
     preview_templates: bool,

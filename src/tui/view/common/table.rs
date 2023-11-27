@@ -1,4 +1,4 @@
-use crate::tui::view::{draw::Generate, theme::Theme};
+use crate::tui::{context::TuiContext, view::draw::Generate};
 use ratatui::{
     prelude::Constraint,
     widgets::{Cell, Row},
@@ -42,7 +42,7 @@ where
     where
         Self: 'this,
     {
-        let theme = Theme::get();
+        let theme = &TuiContext::get().theme;
         let rows = self.rows.into_iter().enumerate().map(|(i, row)| {
             // Alternate row style for readability
             let style = if self.alternate_row_style && i % 2 == 1 {

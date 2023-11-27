@@ -1,8 +1,4 @@
 use ratatui::style::{Color, Modifier, Style};
-use std::sync::OnceLock;
-
-/// The theme is a singleton so we don't have to pass it everywhere
-static THEME: OnceLock<Theme> = OnceLock::new();
 
 // Ideally these should be part of the theme, but that requires some sort of
 // two-stage themeing
@@ -46,13 +42,6 @@ impl Theme {
         } else {
             self.pane_border_style
         }
-    }
-
-    /// Get a reference to the global theme
-    pub fn get() -> &'static Self {
-        // Right now the theme isn't configurable so this is fine. To make it
-        // configurable we'll need to populate the static value during startup
-        THEME.get_or_init(Self::default)
     }
 }
 

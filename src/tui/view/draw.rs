@@ -1,8 +1,6 @@
 //! Traits for rendering stuff
 
-use crate::tui::{
-    input::InputEngine, message::MessageSender, view::ViewConfig,
-};
+use crate::tui::view::ViewConfig;
 use ratatui::{layout::Rect, Frame};
 
 /// Something that can be drawn onto screen as one or more TUI widgets.
@@ -27,11 +25,7 @@ pub trait Draw<Props = ()> {
 /// don't modify anything :)
 #[derive(Debug)]
 pub struct DrawContext<'a, 'f> {
-    pub input_engine: &'a InputEngine,
     pub config: &'a ViewConfig,
-    /// Allows draw functions to trigger async operations, if the drawn content
-    /// needs some async calculation (e.g. template previews)
-    pub messages_tx: MessageSender,
     pub frame: &'a mut Frame<'f>,
 }
 

@@ -1,3 +1,4 @@
+mod context;
 mod input;
 mod message;
 mod view;
@@ -7,7 +8,8 @@ use crate::{
     http::{HttpEngine, Repository, RequestBuilder},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
-        input::{Action, InputEngine},
+        context::TuiContext,
+        input::Action,
         message::{Message, MessageSender},
         view::{ModalPriority, PreviewPrompter, RequestState, View},
     },
@@ -51,7 +53,6 @@ pub struct Tui {
     messages_rx: UnboundedReceiver<Message>,
     messages_tx: MessageSender,
     http_engine: HttpEngine,
-    input_engine: InputEngine,
     view: View,
     collection: RequestCollection,
     repository: Repository,
@@ -75,6 +76,9 @@ impl Tui {
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx = MessageSender::new(messages_tx);
 
+        // Initialize read-only global data as early as possible
+        TuiContext::init(messages_tx.clone());
+
         // If the collection fails to load, create an empty one just so we can
         // move along. We'll watch the file and hopefully the user can fix it
         let collection = RequestCollection::load(collection_file.clone())
@@ -84,14 +88,13 @@ impl Tui {
                 RequestCollection::<()>::default().with_source(collection_file)
             });
 
-        let view = View::new(&collection, messages_tx.clone());
+        let view = View::new(&collection);
         let repository = Repository::load(&collection.id).unwrap();
         let app = Tui {
             terminal,
             messages_rx,
             messages_tx,
             http_engine: HttpEngine::new(repository.clone()),
-            input_engine: InputEngine::new(),
 
             collection,
             should_run: true,
@@ -128,7 +131,7 @@ impl Tui {
                 // Forward input to the view. Include the raw event for text
                 // editors and such
                 let event = crossterm::event::read()?;
-                let action = self.input_engine.action(&event);
+                let action = TuiContext::get().input_engine.action(&event);
                 if let Some(Action::ForceQuit) = action {
                     // Short-circuit the view/message cycle, to make sure this
                     // doesn't get ate
@@ -150,10 +153,7 @@ impl Tui {
             }
 
             // ===== Draw Phase =====
-            self.terminal.draw(|f| {
-                self.view
-                    .draw(&self.input_engine, self.messages_tx.clone(), f)
-            })?;
+            self.terminal.draw(|f| self.view.draw(f))?;
 
             // ===== Signal Phase =====
             if quit_signals.pending().next().is_some() {
@@ -286,7 +286,7 @@ impl Tui {
         self.collection = collection;
 
         // Rebuild the whole view, because tons of things can change
-        self.view = View::new(&self.collection, self.messages_tx.clone());
+        self.view = View::new(&self.collection);
         self.view.notify(format!(
             "Reloaded collection from {}",
             self.collection.path().to_string_lossy()

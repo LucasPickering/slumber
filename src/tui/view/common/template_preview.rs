@@ -1,13 +1,7 @@
 use crate::{
     collection::ProfileId,
     template::{Template, TemplateChunk},
-    tui::{
-        message::Message,
-        view::{
-            draw::{DrawContext, Generate},
-            theme::Theme,
-        },
-    },
+    tui::{context::TuiContext, message::Message, view::draw::Generate},
 };
 use derive_more::Deref;
 use ratatui::{
@@ -44,7 +38,6 @@ impl TemplatePreview {
     /// render the template. Profile ID defines which profile to use for the
     /// render.
     pub fn new(
-        context: &DrawContext,
         template: Template,
         profile_id: Option<ProfileId>,
         enabled: bool,
@@ -53,7 +46,7 @@ impl TemplatePreview {
             // Tell the controller to start rendering the preview, and it'll
             // store it back here when done
             let lock = Arc::new(OnceLock::new());
-            context.messages_tx.send(Message::TemplatePreview {
+            TuiContext::send_message(Message::TemplatePreview {
                 // If this is a bottleneck we can Arc it
                 template: template.clone(),
                 profile_id,
@@ -120,7 +113,7 @@ impl<'a> TextStitcher<'a> {
         template: &'a Template,
         areas: &'a [TemplateChunk],
     ) -> Text<'a> {
-        let theme = Theme::get();
+        let theme = &TuiContext::get().theme;
 
         // Each area will get its own styling, but we can't just make each
         // area a Span, because one area might have multiple lines. And we
@@ -220,7 +213,8 @@ mod tests {
         let profile = indexmap! { "user_id".into() => "🧡\n💛".into() };
         let context = create!(TemplateContext, profile: profile);
         let areas = template.render_chunks(&context).await;
-        let theme = Theme::get();
+        TuiContext::init_test();
+        let theme = &TuiContext::get().theme;
 
         let text = TextStitcher::stitch_chunks(&template, &areas);
         let rendered_style = theme.template_preview_text;

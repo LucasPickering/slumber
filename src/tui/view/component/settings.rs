@@ -1,4 +1,5 @@
 use crate::tui::{
+    context::TuiContext,
     message::Message,
     view::{
         common::{modal::Modal, table::Table, Checkbox},
@@ -34,8 +35,9 @@ impl Default for SettingsModal {
                     context.config().capture_mouse ^= true;
                     // Tell the terminal to actually do the switch
                     let capture = context.config().capture_mouse;
-                    context
-                        .send_message(Message::ToggleMouseCapture { capture });
+                    TuiContext::send_message(Message::ToggleMouseCapture {
+                        capture,
+                    });
                 }
             };
 

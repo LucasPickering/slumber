@@ -11,7 +11,10 @@ pub mod text_window;
 use crate::{
     collection::{Profile, RequestRecipe},
     http::{RequestBuildError, RequestError},
-    tui::view::{draw::Generate, state::Notification, theme::Theme},
+    tui::{
+        context::TuiContext,
+        view::{draw::Generate, state::Notification},
+    },
 };
 use chrono::{DateTime, Duration, Local, Utc};
 use itertools::Itertools;
@@ -36,7 +39,9 @@ impl<'a> Generate for Block<'a> {
     {
         ratatui::widgets::Block::default()
             .borders(Borders::ALL)
-            .border_style(Theme::get().pane_border_style(self.is_focused))
+            .border_style(
+                TuiContext::get().theme.pane_border_style(self.is_focused),
+            )
             .title(self.title)
     }
 }

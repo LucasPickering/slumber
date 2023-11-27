@@ -3,6 +3,7 @@
 use crate::{
     collection::{Profile, RequestCollection, RequestRecipe},
     tui::{
+        context::TuiContext,
         input::Action,
         message::Message,
         view::{
@@ -123,7 +124,7 @@ impl EventHandler for PrimaryView {
             // Send HTTP request (bubbled up from child *or* queued by parent)
             Event::HttpSendRequest => {
                 if let Some(recipe) = self.selected_recipe() {
-                    context.send_message(Message::HttpBeginRequest {
+                    TuiContext::send_message(Message::HttpBeginRequest {
                         // Reach into the children to grab state (ugly!)
                         recipe_id: recipe.id.clone(),
                         profile_id: self
@@ -390,9 +391,8 @@ struct RecipeListPane {
 impl RecipeListPane {
     pub fn new(recipes: Vec<RequestRecipe>) -> Self {
         // When highlighting a new recipe, load it from the repo
-        let on_select = |context: &mut UpdateContext,
-                         recipe: &RequestRecipe| {
-            context.send_message(Message::RepositoryStartLoad {
+        let on_select = |_: &mut UpdateContext, recipe: &RequestRecipe| {
+            TuiContext::send_message(Message::RepositoryStartLoad {
                 recipe_id: recipe.id.clone(),
             });
         };

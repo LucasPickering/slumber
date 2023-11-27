@@ -1,6 +1,7 @@
 use crate::{
     collection::{RequestCollection, RequestRecipeId},
     tui::{
+        context::TuiContext,
         input::Action,
         message::Message,
         view::{
@@ -92,12 +93,12 @@ impl Root {
 }
 
 impl EventHandler for Root {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Init => {
                 // Load the initial state for the selected recipe
                 if let Some(recipe) = self.primary_view.selected_recipe() {
-                    context.send_message(Message::RepositoryStartLoad {
+                    TuiContext::send_message(Message::RepositoryStartLoad {
                         recipe_id: recipe.id.clone(),
                     });
                 }
@@ -119,7 +120,7 @@ impl EventHandler for Root {
             Event::Input {
                 action: Some(Action::Quit),
                 ..
-            } => context.send_message(Message::Quit),
+            } => TuiContext::send_message(Message::Quit),
 
             // Any other unhandled input event should *not* log an error,
             // because it is probably just unmapped input

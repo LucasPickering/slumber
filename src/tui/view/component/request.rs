@@ -120,6 +120,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             // preview will either involve changing one of those two things, or
             // would require reloading the whole collection which will reset
             // UI state.
+            let preview_templates = context.config.preview_templates;
             let recipe_state = self.recipe_state.get_or_update(
                 RecipeStateKey {
                     selected_profile_id: props.selected_profile_id.cloned(),
@@ -128,27 +129,25 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                 },
                 || RecipeState {
                     url: TemplatePreview::new(
-                        context,
                         recipe.url.clone(),
                         props.selected_profile_id.cloned(),
-                        context.config.preview_templates,
+                        preview_templates,
                     ),
                     query: to_template_previews(
-                        context,
                         props.selected_profile_id,
                         &recipe.query,
+                        preview_templates,
                     ),
                     headers: to_template_previews(
-                        context,
                         props.selected_profile_id,
                         &recipe.headers,
+                        preview_templates,
                     ),
                     body: recipe.body.as_ref().map(|body| {
                         TextWindow::new(TemplatePreview::new(
-                            context,
                             body.clone(),
                             props.selected_profile_id.cloned(),
-                            context.config.preview_templates,
+                            preview_templates,
                         ))
                         .into()
                     }),
@@ -213,19 +212,18 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
 /// preview) to kick off the template preview for each value. The output should
 /// be stored in state.
 fn to_template_previews<'a>(
-    context: &DrawContext,
     profile_id: Option<&ProfileId>,
     iter: impl IntoIterator<Item = (&'a String, &'a Template)>,
+    preview_templates: bool,
 ) -> Vec<(String, TemplatePreview)> {
     iter.into_iter()
         .map(|(k, v)| {
             (
                 k.clone(),
                 TemplatePreview::new(
-                    context,
                     v.clone(),
                     profile_id.cloned(),
-                    context.config.preview_templates,
+                    preview_templates,
                 ),
             )
         })

@@ -1,8 +1,10 @@
-use crate::tui::view::{
-    common::Block,
-    draw::Generate,
-    state::select::{SelectState, SelectStateKind},
-    theme::Theme,
+use crate::tui::{
+    context::TuiContext,
+    view::{
+        common::Block,
+        draw::Generate,
+        state::select::{SelectState, SelectStateKind},
+    },
 };
 use ratatui::{
     text::Span,
@@ -38,6 +40,6 @@ where
 
         ratatui::widgets::List::new(items)
             .block(block)
-            .highlight_style(Theme::get().list_highlight_style)
+            .highlight_style(TuiContext::get().theme.list_highlight_style)
     }
 }

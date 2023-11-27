@@ -1,10 +1,10 @@
 use crate::tui::{
+    context::TuiContext,
     input::Action,
     view::{
         draw::{Draw, DrawContext},
         event::{Event, EventHandler, Update, UpdateContext},
         state::select::{Fixed, FixedSelect, SelectState},
-        theme::Theme,
     },
 };
 use ratatui::prelude::Rect;
@@ -52,7 +52,7 @@ impl<T: FixedSelect> Draw for Tabs<T> {
                 T::iter().map(|e| e.to_string()).collect(),
             )
             .select(self.tabs.selected_index())
-            .highlight_style(Theme::get().tab_highlight_style),
+            .highlight_style(TuiContext::get().theme.tab_highlight_style),
             area,
         )
     }

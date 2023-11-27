@@ -5,7 +5,6 @@ use crate::{
     collection::RequestRecipeId,
     tui::{
         input::Action,
-        message::{Message, MessageSender},
         view::{
             common::modal::{Modal, ModalPriority},
             state::{Notification, RequestState},
@@ -41,27 +40,19 @@ pub trait EventHandler: Debug {
 /// Mutable context passed to each update call. Allows for triggering side
 /// effects.
 pub struct UpdateContext<'a> {
-    messages_tx: MessageSender,
     event_queue: &'a mut VecDeque<Event>,
     config: &'a mut ViewConfig,
 }
 
 impl<'a> UpdateContext<'a> {
     pub fn new(
-        messages_tx: MessageSender,
         event_queue: &'a mut VecDeque<Event>,
         config: &'a mut ViewConfig,
     ) -> Self {
         Self {
-            messages_tx,
             event_queue,
             config,
         }
-    }
-
-    /// Send a message to trigger an async action
-    pub fn send_message(&mut self, message: Message) {
-        self.messages_tx.send(message);
     }
 
     /// Queue a subsequent view event to be handled after the current one

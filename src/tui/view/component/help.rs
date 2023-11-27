@@ -1,10 +1,10 @@
 use crate::tui::{
+    context::TuiContext,
     input::Action,
     view::{
         common::{modal::Modal, table::Table},
         draw::{Draw, DrawContext, Generate},
         event::EventHandler,
-        theme::Theme,
     },
 };
 use itertools::Itertools;
@@ -25,10 +25,12 @@ impl Draw for HelpFooter {
         // get granular control
         let actions = [Action::OpenSettings, Action::OpenHelp, Action::Quit];
 
+        let tui_context = TuiContext::get();
+
         let text = actions
             .into_iter()
             .map(|action| {
-                context
+                tui_context
                     .input_engine
                     .binding(action)
                     .as_ref()
@@ -41,7 +43,7 @@ impl Draw for HelpFooter {
         context.frame.render_widget(
             Paragraph::new(text)
                 .alignment(Alignment::Right)
-                .style(Theme::get().text_highlight),
+                .style(tui_context.theme.text_highlight),
             area,
         );
     }
@@ -66,7 +68,7 @@ impl EventHandler for HelpModal {}
 impl Draw for HelpModal {
     fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         let table = Table {
-            rows: context
+            rows: TuiContext::get()
                 .input_engine
                 .bindings()
                 .values()

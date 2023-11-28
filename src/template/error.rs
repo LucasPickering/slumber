@@ -4,8 +4,6 @@ use serde_json_path::ExactlyOneError;
 use std::{env::VarError, io, path::PathBuf, string::FromUtf8Error};
 use thiserror::Error;
 
-pub type TemplateResult = Result<String, TemplateError>;
-
 /// An error while parsing a template. This is derived from a nom error
 #[derive(Debug, Error)]
 #[error("{0}")]

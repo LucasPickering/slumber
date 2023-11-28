@@ -3,7 +3,7 @@ mod parse;
 mod prompt;
 mod render;
 
-pub use error::{ChainError, TemplateError, TemplateResult};
+pub use error::{ChainError, TemplateError};
 pub use parse::Span;
 pub use prompt::{Prompt, Prompter};
 
@@ -102,7 +102,7 @@ pub enum TemplateChunk {
     /// large block of text.
     Raw(Span),
     /// Outcome of rendering a template key
-    Rendered(String),
+    Rendered { value: String, sensitive: bool },
     /// An error occurred while rendering a template key
     Error(TemplateError),
 }
@@ -396,7 +396,6 @@ mod tests {
 
         let chains = vec![create!(
             Chain,
-
             source: ChainSource::File(file_path),
         )];
         let context = create!(TemplateContext, chains: chains);
@@ -424,13 +423,11 @@ mod tests {
     async fn test_chain_prompt() {
         let chains = vec![create!(
             Chain,
-
             source: ChainSource::Prompt(Some("password".into())),
         )];
         let context = create!(
             TemplateContext,
             chains: chains,
-            // Prompter gives no response
             prompter: Box::new(TestPrompter::new(Some("hello!"))),
         );
 
@@ -455,6 +452,31 @@ mod tests {
         assert_err!(
             render!("{{chains.chain1}}", context),
             "No response from prompt"
+        );
+    }
+
+    /// Values marked sensitive should have that flag set in the rendered output
+    #[tokio::test]
+    async fn test_chain_sensitive() {
+        let chains = vec![create!(
+            Chain,
+            source: ChainSource::Prompt(Some("password".into())),
+            sensitive: true,
+        )];
+        let context = create!(
+            TemplateContext,
+            chains: chains,
+            // Prompter gives no response
+            prompter: Box::new(TestPrompter::new(Some("hello!"))),
+        );
+        assert_eq!(
+            Template::from("{{chains.chain1}}")
+                .render_chunks(&context)
+                .await,
+            vec![TemplateChunk::Rendered {
+                value: "hello!".into(),
+                sensitive: true
+            }]
         );
     }
 
@@ -488,7 +510,10 @@ mod tests {
             chunks,
             vec![
                 TemplateChunk::Raw(Span::new(0, 6)),
-                TemplateChunk::Rendered("🧡💛".into()),
+                TemplateChunk::Rendered {
+                    value: "🧡💛".into(),
+                    sensitive: false
+                },
                 // Each emoji is 4 bytes
                 TemplateChunk::Raw(Span::new(17, 14)),
                 TemplateChunk::Error(TemplateError::FieldUnknown {

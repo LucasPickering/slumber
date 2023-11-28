@@ -133,8 +133,16 @@ impl<'a> TextStitcher<'a> {
                 TemplateChunk::Raw(span) => {
                     (template.substring(*span), Style::default())
                 }
-                TemplateChunk::Rendered(value) => {
-                    (value.as_str(), theme.template_preview_text)
+                TemplateChunk::Rendered { value, sensitive } => {
+                    let value = if *sensitive {
+                        // Hide sensitive values. Ratatui has a Masked type, but
+                        // it complicates the string ownership a lot and also
+                        // exposes the length of the sensitive text
+                        "<sensitive>"
+                    } else {
+                        value.as_str()
+                    };
+                    (value, theme.template_preview_text)
                 }
                 // There's no good way to render the entire error inline
                 TemplateChunk::Error(_) => {
@@ -156,6 +164,7 @@ impl<'a> TextStitcher<'a> {
             Some((a, b)) => {
                 self.add_span(a, style);
                 self.end_line();
+                // Recursion!
                 self.add_area(b, style);
             }
             // This area has no line breaks, just add it and move on

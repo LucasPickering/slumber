@@ -5,7 +5,7 @@ use crate::{
     http::{ContentType, Json},
     template::{
         parse::TemplateInputChunk, ChainError, Prompt, Template, TemplateChunk,
-        TemplateContext, TemplateError, TemplateKey, TemplateResult,
+        TemplateContext, TemplateError, TemplateKey,
     },
     util::ResultExt,
 };
@@ -19,6 +19,16 @@ use std::{
 };
 use tokio::{fs, process::Command, sync::oneshot};
 use tracing::{info, instrument, trace};
+
+/// Outcome of rendering a single chunk. This allows attaching some metadata to
+/// the render.
+#[derive(Debug)]
+struct RenderedChunk {
+    value: String,
+    sensitive: bool,
+}
+
+type TemplateResult = Result<RenderedChunk, TemplateError>;
 
 impl Template {
     /// Render the template string using values from the given context. If an
@@ -65,7 +75,13 @@ impl Template {
                                 value,
                                 "Rendered template key from override"
                             );
-                            Ok(value.into())
+                            Ok(RenderedChunk {
+                                value: value.clone(),
+                                // The overriden value *could* be marked
+                                // sensitive, but we're taking a shortcut and
+                                // assuming it isn't
+                                sensitive: false,
+                            })
                         }
                         None => {
                             // Standard case - parse the key and render it
@@ -74,7 +90,7 @@ impl Template {
                             if let Ok(value) = &result {
                                 trace!(
                                     key = raw,
-                                    value,
+                                    ?value,
                                     "Rendered template key"
                                 );
                             }
@@ -95,7 +111,7 @@ impl Template {
     pub(super) async fn render_stitched(
         &self,
         context: &TemplateContext,
-    ) -> TemplateResult {
+    ) -> Result<String, TemplateError> {
         // Render each individual template chunk in the string
         let chunks = self.render_chunks(context).await;
 
@@ -106,7 +122,9 @@ impl Template {
                 TemplateChunk::Raw(span) => {
                     buffer.push_str(self.substring(span));
                 }
-                TemplateChunk::Rendered(value) => buffer.push_str(&value),
+                TemplateChunk::Rendered { value, .. } => {
+                    buffer.push_str(&value)
+                }
                 TemplateChunk::Error(error) => return Err(error),
             }
         }
@@ -117,7 +135,10 @@ impl Template {
 impl From<TemplateResult> for TemplateChunk {
     fn from(result: TemplateResult) -> Self {
         match result {
-            Ok(value) => Self::Rendered(value),
+            Ok(outcome) => Self::Rendered {
+                value: outcome.value,
+                sensitive: outcome.sensitive,
+            },
             Err(error) => Self::Error(error),
         }
     }
@@ -165,8 +186,8 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
                 field: field.to_owned(),
             }
         })?;
-        match value {
-            ProfileValue::Raw(value) => Ok(value.clone()),
+        let rendered = match value {
+            ProfileValue::Raw(value) => value.clone(),
             // recursion!
             ProfileValue::Template(template) => {
                 trace!(%field, %template, "Rendering recursive template");
@@ -175,9 +196,13 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
                         template: template.clone(),
                         error: Box::new(error),
                     }
-                })
+                })?
             }
-        }
+        };
+        Ok(RenderedChunk {
+            value: rendered,
+            sensitive: false,
+        })
     }
 }
 
@@ -220,9 +245,14 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
             };
 
             // If a selector path is present, filter down the value
-            Ok(match &chain.selector {
+            let value = match &chain.selector {
                 Some(path) => self.apply_selector(&value, path)?,
                 None => value,
+            };
+
+            Ok(RenderedChunk {
+                value,
+                sensitive: chain.sensitive,
             })
         }
         .await;
@@ -346,11 +376,15 @@ struct EnvironmentTemplateSource<'a> {
 #[async_trait]
 impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
     async fn render(&self, _: &'a TemplateContext) -> TemplateResult {
-        env::var(self.variable).map_err(|err| {
+        let value = env::var(self.variable).map_err(|err| {
             TemplateError::EnvironmentVariable {
                 variable: self.variable.to_owned(),
                 error: err,
             }
+        })?;
+        Ok(RenderedChunk {
+            value,
+            sensitive: false,
         })
     }
 }

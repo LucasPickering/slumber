@@ -69,7 +69,7 @@ impl PromptModal {
     pub fn new(prompt: Prompt) -> Self {
         let mut text_area = TextArea::default();
         if prompt.sensitive() {
-            text_area.set_mask_char('\u{2022}');
+            text_area.set_mask_char('•');
         }
         Self {
             prompt,

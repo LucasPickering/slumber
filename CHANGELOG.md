@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Changed
+
+- Hide sensitive chain values in preview
+
 ## [0.9.0] - 2023-11-28
 
 ### Added

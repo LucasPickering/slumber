@@ -8,7 +8,6 @@ use crate::{
         message::{Message, MessageSender},
         view::{
             common::modal::{Modal, ModalPriority},
-            component::FullscreenMode,
             state::{Notification, RequestState},
             Component, ViewConfig,
         },
@@ -107,9 +106,6 @@ pub enum Event {
         #[debug(skip)]
         state: RequestState,
     },
-
-    /// Enter a particular fullscreen mode. If we're already in that mode, exit
-    ToggleFullscreen(FullscreenMode),
 
     /// Show a modal to the user
     OpenModal {

@@ -1,20 +1,17 @@
 use crate::{
     collection::{ProfileId, RequestRecipe, RequestRecipeId},
     template::Template,
-    tui::{
-        input::Action,
-        view::{
-            common::{
-                table::Table, tabs::Tabs, template_preview::TemplatePreview,
-                text_window::TextWindow, Block,
-            },
-            component::primary::{FullscreenMode, PrimaryPane},
-            draw::{Draw, DrawContext, Generate},
-            event::{Event, EventHandler, Update, UpdateContext},
-            state::StateCell,
-            util::layout,
-            Component,
+    tui::view::{
+        common::{
+            table::Table, tabs::Tabs, template_preview::TemplatePreview,
+            text_window::TextWindow, Block,
         },
+        component::primary::PrimaryPane,
+        draw::{Draw, DrawContext, Generate},
+        event::EventHandler,
+        state::StateCell,
+        util::layout,
+        Component,
     },
 };
 use derive_more::Display;
@@ -65,23 +62,6 @@ enum Tab {
 }
 
 impl EventHandler for RequestPane {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            // Toggle fullscreen
-            Event::Input {
-                action: Some(Action::Fullscreen),
-                ..
-            } => {
-                context.queue_event(Event::ToggleFullscreen(
-                    FullscreenMode::Request,
-                ));
-                Update::Consumed
-            }
-
-            _ => Update::Propagate(event),
-        }
-    }
-
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         let mut children = vec![self.tabs.as_child()];
         // If the body is initialized and present, send events there too

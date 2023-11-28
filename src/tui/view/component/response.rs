@@ -1,18 +1,13 @@
 use crate::{
     http::{RequestId, RequestRecord},
-    tui::{
-        input::Action,
-        view::{
-            common::{
-                table::Table, tabs::Tabs, text_window::TextWindow, Block,
-            },
-            component::primary::{FullscreenMode, PrimaryPane},
-            draw::{Draw, DrawContext, Generate},
-            event::{Event, EventHandler, Update, UpdateContext},
-            state::{RequestState, StateCell},
-            util::layout,
-            Component,
-        },
+    tui::view::{
+        common::{table::Table, tabs::Tabs, text_window::TextWindow, Block},
+        component::primary::PrimaryPane,
+        draw::{Draw, DrawContext, Generate},
+        event::EventHandler,
+        state::{RequestState, StateCell},
+        util::layout,
+        Component,
     },
 };
 use derive_more::Display;
@@ -45,23 +40,6 @@ enum Tab {
 }
 
 impl EventHandler for ResponsePane {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            // Toggle fullscreen
-            Event::Input {
-                action: Some(Action::Fullscreen),
-                ..
-            } => {
-                context.queue_event(Event::ToggleFullscreen(
-                    FullscreenMode::Response,
-                ));
-                Update::Consumed
-            }
-
-            _ => Update::Propagate(event),
-        }
-    }
-
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         vec![self.content.as_child()]
     }
@@ -185,23 +163,6 @@ struct ResponseContentProps<'a> {
 }
 
 impl EventHandler for ResponseContent {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            // Toggle fullscreen
-            Event::Input {
-                action: Some(Action::Fullscreen),
-                ..
-            } => {
-                context.queue_event(Event::ToggleFullscreen(
-                    FullscreenMode::Response,
-                ));
-                Update::Consumed
-            }
-
-            _ => Update::Propagate(event),
-        }
-    }
-
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         let mut children = vec![self.tabs.as_child()];
         if let Some(body) = self.body.get_mut() {

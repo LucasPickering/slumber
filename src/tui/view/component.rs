@@ -8,15 +8,15 @@ pub mod response;
 pub mod root;
 pub mod settings;
 
+pub use root::Root;
+
 use crate::tui::view::{
     draw::{Draw, DrawContext},
     event::{Event, EventHandler, Update, UpdateContext},
 };
 use crossterm::event::MouseEvent;
 use derive_more::{Deref, DerefMut};
-pub use primary::FullscreenMode;
 use ratatui::layout::Rect;
-pub use root::Root;
 use std::cell::Cell;
 
 /// A wrapper around the various component types. The main job of this is to

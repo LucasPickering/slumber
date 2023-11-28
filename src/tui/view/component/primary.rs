@@ -69,7 +69,7 @@ pub enum PrimaryPane {
 /// shown in fullscreen. If one of these is requested while not available, we
 /// simply won't show it.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum FullscreenMode {
+enum FullscreenMode {
     /// Fullscreen the active request recipe
     Request,
     /// Fullscreen the active response
@@ -106,6 +106,15 @@ impl PrimaryView {
     fn selected_profile(&self) -> Option<&Profile> {
         self.profile_list_pane.profiles.selected()
     }
+
+    fn toggle_fullscreen(&mut self, mode: FullscreenMode) {
+        // If we're already in the given mode, exit
+        self.fullscreen_mode = if Some(mode) == self.fullscreen_mode {
+            None
+        } else {
+            Some(mode)
+        };
+    }
 }
 
 impl EventHandler for PrimaryView {
@@ -127,10 +136,10 @@ impl EventHandler for PrimaryView {
 
             // Input messages
             Event::Input {
-                action,
+                action: Some(action),
                 event: term_event,
             } => match action {
-                Some(Action::LeftClick) => {
+                Action::LeftClick => {
                     let crossterm::event::Event::Mouse(mouse) = term_event
                     else {
                         unreachable!("Mouse action must have mouse event")
@@ -151,46 +160,56 @@ impl EventHandler for PrimaryView {
                     }
                     Update::Consumed
                 }
-                Some(Action::PreviousPane) => {
+                Action::PreviousPane => {
                     self.selected_pane.previous(context);
                     Update::Consumed
                 }
-                Some(Action::NextPane) => {
+                Action::NextPane => {
                     self.selected_pane.next(context);
                     Update::Consumed
                 }
-                Some(Action::SendRequest) => {
+                Action::SendRequest => {
                     // Send a request from anywhere
                     context.queue_event(Event::HttpSendRequest);
                     Update::Consumed
                 }
-                Some(Action::OpenSettings) => {
+                Action::OpenSettings => {
                     context.queue_event(Event::OpenModal {
                         modal: Box::<SettingsModal>::default(),
                         priority: ModalPriority::Low,
                     });
                     Update::Consumed
                 }
-                Some(Action::OpenHelp) => {
+                Action::OpenHelp => {
                     context.queue_event(Event::OpenModal {
                         modal: Box::<HelpModal>::default(),
                         priority: ModalPriority::Low,
                     });
                     Update::Consumed
                 }
+
+                // Toggle fullscreen
+                Action::Fullscreen => {
+                    match self.selected_pane.selected() {
+                        // These aren't fullscreenable. Still consume the event
+                        // though, no one else will need it anyway
+                        PrimaryPane::ProfileList | PrimaryPane::RecipeList => {}
+                        PrimaryPane::Request => {
+                            self.toggle_fullscreen(FullscreenMode::Request)
+                        }
+                        PrimaryPane::Response => {
+                            self.toggle_fullscreen(FullscreenMode::Response)
+                        }
+                    }
+                    Update::Consumed
+                }
+                // Exit fullscreen
+                Action::Cancel if self.fullscreen_mode.is_some() => {
+                    self.fullscreen_mode = None;
+                    Update::Consumed
+                }
                 _ => Update::Propagate(event),
             },
-
-            Event::ToggleFullscreen(mode) => {
-                // If we're already in the given mode, exit
-                self.fullscreen_mode =
-                    if Some(mode) == self.fullscreen_mode.as_ref() {
-                        None
-                    } else {
-                        Some(*mode)
-                    };
-                Update::Consumed
-            }
 
             _ => Update::Propagate(event),
         }
@@ -294,7 +313,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 self.request_pane.draw(
                     context,
                     RequestPaneProps {
-                        is_selected: false,
+                        is_selected: true,
                         selected_recipe: self.selected_recipe(),
                         selected_profile_id: self
                             .selected_profile()
@@ -307,7 +326,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 self.response_pane.draw(
                     context,
                     ResponsePaneProps {
-                        is_selected: false,
+                        is_selected: true,
                         active_request: props.active_request,
                     },
                     area,

@@ -17,6 +17,8 @@
 ### Changed
 
 - Always show help text in footer, regardless of notification state
+- Add highlight border to fullscreened pane
+- Allow exiting fullscreen mode with ESC
 
 ## [0.8.0] - 2023-11-21
 

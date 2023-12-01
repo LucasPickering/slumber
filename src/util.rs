@@ -1,6 +1,5 @@
-use anyhow::anyhow;
+use crate::http::RequestError;
 use std::{
-    fmt::Debug,
     ops::Deref,
     path::{Path, PathBuf},
 };
@@ -16,27 +15,6 @@ pub fn data_directory() -> PathBuf {
         // According to the docs, this dir will be present on all platforms
         // https://docs.rs/dirs/latest/dirs/fn.data_dir.html
         dirs::data_dir().unwrap().join("slumber")
-    }
-}
-
-/// A slightly spaghetti helper for finding an item in a list by value. We
-/// expect the item to be there, so if it's missing return an error with a
-/// friendly message for the user.
-pub fn find_by<E, K: Debug + PartialEq>(
-    mut vec: Vec<E>,
-    extractor: impl Fn(&E) -> &K,
-    target: &K,
-    not_found_message: &str,
-) -> anyhow::Result<E> {
-    let index = vec.iter().position(|element| extractor(element) == target);
-    match index {
-        Some(index) => Ok(vec.swap_remove(index)),
-        None => {
-            let options: Vec<&K> = vec.iter().map(extractor).collect();
-            Err(anyhow!(
-                "{not_found_message} {target:?}; Options are: {options:?}"
-            ))
-        }
     }
 }
 
@@ -81,6 +59,5 @@ macro_rules! assert_err {
     }};
 }
 
-use crate::http::RequestError;
 #[cfg(test)]
 pub(crate) use assert_err;

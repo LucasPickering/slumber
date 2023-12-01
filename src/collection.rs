@@ -1,22 +1,20 @@
 //! A request collection defines recipes, profiles, etc. that make requests
 //! possible
 
+mod cereal;
 mod insomnia;
 
 use crate::template::Template;
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
+use equivalent::Equivalent;
 use indexmap::IndexMap;
-use serde::{
-    de::{EnumAccess, VariantAccess},
-    Deserialize, Deserializer, Serialize,
-};
+use serde::{Deserialize, Serialize};
 use serde_json_path::JsonPath;
 use std::{
-    fmt,
     fmt::Debug,
     future::Future,
-    marker::PhantomData,
+    hash::Hash,
     path::{Path, PathBuf},
 };
 use tokio::fs;
@@ -43,14 +41,18 @@ pub struct RequestCollection<S = PathBuf> {
     /// Unique ID for this collection. This should be unique for across all
     /// collections used on one computer.
     pub id: CollectionId,
-    #[serde(default)]
-    pub profiles: Vec<Profile>,
-    #[serde(default)]
-    pub chains: Vec<Chain>,
+    #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
+    pub profiles: IndexMap<ProfileId, Profile>,
+    #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
+    pub chains: IndexMap<ChainId, Chain>,
     /// Internally we call these recipes, but to a user `requests` is more
     /// intuitive
-    #[serde(default, rename = "requests")]
-    pub recipes: Vec<RequestRecipe>,
+    #[serde(
+        default,
+        rename = "requests",
+        deserialize_with = "cereal::deserialize_id_map"
+    )]
+    pub recipes: IndexMap<RequestRecipeId, RequestRecipe>,
 }
 
 /// A unique ID for a collection. This is necessary to differentiate between
@@ -61,6 +63,7 @@ pub struct CollectionId(String);
 /// Mutually exclusive hot-swappable config group
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Profile {
+    #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
     pub name: Option<String>,
     pub data: IndexMap<String, ProfileValue>,
@@ -102,6 +105,7 @@ pub enum ProfileValue {
 /// meaning related to string interpolation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestRecipe {
+    #[serde(skip)] // This will be auto-populated from the map key
     pub id: RequestRecipeId,
     pub name: Option<String>,
     /// *Not* a template string because the usefulness doesn't justify the
@@ -135,6 +139,7 @@ pub struct RequestRecipeId(String);
 /// can use it in a template via `{{chains.<chain_id>}}`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Chain {
+    #[serde(skip)] // This will be auto-populated from the map key
     pub id: ChainId,
     pub source: ChainSource,
     /// Mask chained value in the UI
@@ -144,6 +149,8 @@ pub struct Chain {
     pub selector: Option<JsonPath>,
 }
 
+/// Unique ID for a chain. Takes a generic param so we can create these during
+/// templating without having to clone the underlying string.
 #[derive(
     Clone,
     Debug,
@@ -157,11 +164,24 @@ pub struct Chain {
     Serialize,
     Deserialize,
 )]
-pub struct ChainId(String);
+pub struct ChainId<S = String>(S);
 
 impl From<&str> for ChainId {
     fn from(value: &str) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<&ChainId<&str>> for ChainId {
+    fn from(value: &ChainId<&str>) -> Self {
+        Self(value.0.into())
+    }
+}
+
+/// Allow looking up by ChainId<&tr> in a map
+impl Equivalent<ChainId> for ChainId<&str> {
+    fn equivalent(&self, key: &ChainId) -> bool {
+        self.0 == key.0
     }
 }
 
@@ -290,130 +310,5 @@ impl RequestRecipe {
     /// Get a presentable name for this recipe
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
-    }
-}
-
-/// Deserialize a string OR enum into a ProfileValue. This is based on the
-/// generated derive code, with extra logic to default to !raw for a string.
-impl<'de> Deserialize<'de> for ProfileValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        const VARIANTS: &[&str] = &["raw", "template"];
-
-        enum Field {
-            Raw,
-            Template,
-        }
-
-        struct FieldVisitor;
-        impl<'de> serde::de::Visitor<'de> for FieldVisitor {
-            type Value = Field;
-
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "variant identifier")
-            }
-
-            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                match value {
-                    0u64 => Ok(Field::Raw),
-                    1u64 => Ok(Field::Template),
-                    _ => Err(serde::de::Error::invalid_value(
-                        serde::de::Unexpected::Unsigned(value),
-                        &"variant index 0 <= i < 2",
-                    )),
-                }
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                match value {
-                    "raw" => Ok(Field::Raw),
-                    "template" => Ok(Field::Template),
-                    _ => {
-                        Err(serde::de::Error::unknown_variant(value, VARIANTS))
-                    }
-                }
-            }
-
-            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                match value {
-                    b"raw" => Ok(Field::Raw),
-                    b"template" => Ok(Field::Template),
-                    _ => {
-                        let value = String::from_utf8_lossy(value);
-                        Err(serde::de::Error::unknown_variant(&value, VARIANTS))
-                    }
-                }
-            }
-        }
-
-        impl<'de> serde::Deserialize<'de> for Field {
-            #[inline]
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                serde::Deserializer::deserialize_identifier(
-                    deserializer,
-                    FieldVisitor,
-                )
-            }
-        }
-
-        struct Visitor<'de> {
-            lifetime: PhantomData<&'de ()>,
-        }
-
-        impl<'de> serde::de::Visitor<'de> for Visitor<'de> {
-            type Value = ProfileValue;
-
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "enum ProfileValue or string",)
-            }
-
-            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
-            where
-                A: EnumAccess<'de>,
-            {
-                match EnumAccess::variant(data)? {
-                    (Field::Raw, variant) => Result::map(
-                        VariantAccess::newtype_variant::<String>(variant),
-                        ProfileValue::Raw,
-                    ),
-                    (Field::Template, variant) => Result::map(
-                        VariantAccess::newtype_variant::<Template>(variant),
-                        ProfileValue::Template,
-                    ),
-                }
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(ProfileValue::Raw(value.into()))
-            }
-
-            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(ProfileValue::Raw(value))
-            }
-        }
-
-        deserializer.deserialize_any(Visitor {
-            lifetime: PhantomData,
-        })
     }
 }

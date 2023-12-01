@@ -5,6 +5,9 @@
 ### Changed
 
 - Hide sensitive chain values in preview
+- [BREAKING] Key profiles/chains/requests by ID in collection file
+- Add collection ID/path to help modal ([#59](https://github.com/LucasPickering/slumber/issues/59))
+  - Also add collection ID to terminal title
 
 ### Fixed
 

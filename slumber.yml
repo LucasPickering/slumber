@@ -1,28 +1,28 @@
 id: example
 
 profiles:
-  - id: works
+  works:
     name: Works
     data:
       host: https://httpbin.org
       username: !template "xX{{chains.username}}Xx"
       user_guid: abc123
-  - id: init-fails
+  init-fails:
     name: Request Init Fails
     data:
-  - id: request-fails
+  request-fails:
     name: Request Fails
     data:
       host: http://localhost:5000
       user_guid: abc123
 
 chains:
-  - id: username
+  username:
     source: !command ["sh", "-c", "whoami | tr -d '\n'"]
-  - id: password
+  password:
     source: !prompt Password
     sensitive: true
-  - id: auth_token
+  auth_token:
     source: !request login
     selector: $.headers["X-Amzn-Trace-Id"]
 
@@ -33,7 +33,7 @@ base: &base
     Content-Type: application/json
 
 requests:
-  - id: login
+  login:
     method: POST
     url: "{{host}}/anything/login"
     query:
@@ -44,22 +44,22 @@ requests:
         "password": "{{chains.password}}"
       }
 
-  - <<: *base
-    id: get_users
+  get_users:
+    <<: *base
     name: Get Users
     method: GET
     url: "{{host}}/get"
     query:
       foo: bar
 
-  - <<: *base
-    id: get_user
+  get_user:
+    <<: *base
     name: Get User
     method: GET
     url: "{{host}}/anything/{{user_guid}}"
 
-  - <<: *base
-    id: modify_user
+  modify_user:
+    <<: *base
     name: Modify User
     method: PUT
     url: "{{host}}/anything/{{user_guid}}"

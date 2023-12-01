@@ -37,13 +37,17 @@ impl RequestCollection<()> {
             ))?;
 
         // Convert everything
-        let mut profiles = Vec::new();
-        let mut recipes = Vec::new();
+        let mut profiles = IndexMap::new();
+        let mut recipes = IndexMap::new();
         for resource in insomnia.resources {
             match resource {
-                Resource::Request(request) => recipes.push(request.into()),
+                Resource::Request(request) => {
+                    let request: super::RequestRecipe = request.into();
+                    recipes.insert(request.id.clone(), request);
+                }
                 Resource::Environment(environment) => {
-                    profiles.push(environment.into())
+                    let profile: super::Profile = environment.into();
+                    profiles.insert(profile.id.clone(), profile);
                 }
                 // Everything else is TRASH
                 _ => {}
@@ -55,7 +59,7 @@ impl RequestCollection<()> {
             id: Uuid::new_v4().to_string().into(),
             profiles,
             recipes,
-            chains: Vec::new(),
+            chains: IndexMap::new(),
         })
     }
 }

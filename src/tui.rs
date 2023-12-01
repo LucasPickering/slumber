@@ -302,8 +302,7 @@ impl Tui {
         let recipe = self
             .collection
             .recipes
-            .iter()
-            .find(|recipe| recipe.id == recipe_id)
+            .get(&recipe_id)
             .ok_or_else(|| anyhow!("No recipe with ID `{recipe_id}`"))?
             .clone();
 
@@ -414,14 +413,10 @@ impl Tui {
         // Find profile by ID
         let profile = match profile_id {
             Some(profile_id) => {
-                let profile = self
-                    .collection
-                    .profiles
-                    .iter()
-                    .find(|profile| &profile.id == profile_id)
-                    .ok_or_else(|| {
-                        anyhow!("No profile with ID `{profile_id}`")
-                    })?;
+                let profile =
+                    self.collection.profiles.get(profile_id).ok_or_else(
+                        || anyhow!("No profile with ID `{profile_id}`"),
+                    )?;
                 profile.data.clone()
             }
             None => IndexMap::new(),

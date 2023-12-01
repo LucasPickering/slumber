@@ -2,9 +2,9 @@ use crate::{
     collection::{ProfileId, RequestCollection, RequestRecipeId},
     http::{HttpEngine, Repository, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
-    util::{data_directory, find_by, ResultExt},
+    util::{data_directory, ResultExt},
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use dialoguer::{Input, Password};
 use indexmap::IndexMap;
 use std::{
@@ -70,30 +70,25 @@ impl Subcommand {
             } => {
                 let collection_path =
                     RequestCollection::try_path(collection_override)?;
-                let collection =
+                let mut collection =
                     RequestCollection::load(collection_path).await?;
 
                 // Find profile and recipe by ID
-                let profile = profile
-                    .map(|profile| {
-                        Ok::<_, anyhow::Error>(
-                            find_by(
-                                collection.profiles,
-                                |e| &e.id,
-                                &profile,
-                                "No profile with ID",
-                            )?
-                            .data,
-                        )
+                // TODO include list of valid IDs in error msgs here
+                let profile_data = profile
+                    .map::<anyhow::Result<_>, _>(|id| {
+                        let profile =
+                            collection.profiles.swap_remove(&id).ok_or_else(
+                                || anyhow!("No profile with ID `{id}`"),
+                            )?;
+                        Ok(profile.data)
                     })
                     .transpose()?
                     .unwrap_or_default();
-                let recipe = find_by(
-                    collection.recipes,
-                    |r| &r.id,
-                    &request_id,
-                    "No request recipe with ID",
-                )?;
+                let recipe =
+                    collection.recipes.swap_remove(&request_id).ok_or_else(
+                        || anyhow!("No request with ID `{request_id}`"),
+                    )?;
 
                 // Build the request
                 let repository = Repository::load(&collection.id)?;
@@ -101,7 +96,7 @@ impl Subcommand {
                 let request = RequestBuilder::new(
                     recipe,
                     TemplateContext {
-                        profile,
+                        profile: profile_data,
                         overrides,
                         chains: collection.chains,
                         repository: repository.clone(),

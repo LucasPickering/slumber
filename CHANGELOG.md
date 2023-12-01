@@ -5,6 +5,7 @@
 ### Changed
 
 - Hide sensitive chain values in preview
+- [BREAKING] Key profiles/chains/requests by ID in collection file
 
 ### Fixed
 

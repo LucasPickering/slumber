@@ -8,7 +8,7 @@ pub use parse::Span;
 pub use prompt::{Prompt, Prompter};
 
 use crate::{
-    collection::{Chain, ProfileValue},
+    collection::{Chain, ChainId, ProfileValue},
     http::Repository,
     template::{
         error::TemplateParseError,
@@ -28,7 +28,7 @@ pub struct TemplateContext {
     /// Key-value mapping
     pub profile: IndexMap<String, ProfileValue>,
     /// Chained values from dynamic sources
-    pub chains: Vec<Chain>,
+    pub chains: IndexMap<ChainId, Chain>,
     /// Needed for accessing response bodies for chaining
     pub repository: Repository,
     /// Additional key=value overrides passed directly from the user
@@ -179,7 +179,8 @@ mod tests {
             "env.ENV1".into() => "override".into(),
             "override1".into() => "override".into(),
         };
-        let chains = vec![create!(Chain, source: source)];
+        let chains =
+            indexmap! {"chain1".into() => create!(Chain, source: source)};
         let context = create!(
             TemplateContext,
             profile: profile,
@@ -283,11 +284,11 @@ mod tests {
             .await
             .unwrap();
         let selector = selector.map(|s| s.parse().unwrap());
-        let chains = vec![create!(
+        let chains = indexmap! {"chain1".into() => create!(
             Chain,
             source: ChainSource::Request(recipe_id),
             selector: selector,
-        )];
+        )};
         let context = create!(
             TemplateContext, repository: repository, chains: chains,
         );
@@ -301,13 +302,15 @@ mod tests {
     /// Test all possible error cases for chained requests. This covers all
     /// chain-specific error variants
     #[rstest]
-    #[case(create!(Chain, id: "unknown".into()), None, "Unknown chain")]
+    #[case("unknown", create!(Chain), None, "Unknown chain")]
     #[case(
+        "chain1",
         create!(Chain, source: ChainSource::Request("unknown".into())),
         None,
         "No response available",
     )]
     #[case(
+        "chain1",
         create!(
             Chain,
             source: ChainSource::Request("recipe1".into()),
@@ -320,6 +323,7 @@ mod tests {
         "Error parsing response",
     )]
     #[case(
+        "chain1",
         create!(
             Chain,
             source: ChainSource::Request("recipe1".into()),
@@ -333,6 +337,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_chain_request_error(
+        #[case] chain_id: impl Into<ChainId>,
         #[case] chain: Chain,
         // Optional request data to store in the repository
         #[case] request_response: Option<(Request, Response)>,
@@ -346,7 +351,7 @@ mod tests {
                 .await
                 .unwrap();
         }
-        let chains = vec![chain];
+        let chains = indexmap! {chain_id.into() => chain};
         let context = create!(
             TemplateContext, repository: repository, chains: chains
         );
@@ -358,10 +363,10 @@ mod tests {
     #[tokio::test]
     async fn test_chain_command() {
         let command = vec!["echo".into(), "-n".into(), "hello!".into()];
-        let chains = vec![create!(
+        let chains = indexmap! {"chain1".into() => create!(
             Chain,
             source: ChainSource::Command(command),
-        )];
+        )};
         let context = create!(TemplateContext, chains: chains);
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
@@ -380,7 +385,8 @@ mod tests {
         let source = ChainSource::Command(
             command.iter().cloned().map(String::from).collect(),
         );
-        let chains = vec![create!(Chain, source: source)];
+        let chains =
+            indexmap! {"chain1".into() => create!(Chain, source: source)};
         let context = create!(TemplateContext, chains: chains);
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
@@ -394,10 +400,10 @@ mod tests {
         let file_path = temp_dir.join("stuff.txt");
         fs::write(&file_path, "hello!").await.unwrap();
 
-        let chains = vec![create!(
+        let chains = indexmap! {"chain1".into() => create!(
             Chain,
             source: ChainSource::File(file_path),
-        )];
+        )};
         let context = create!(TemplateContext, chains: chains);
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
@@ -406,11 +412,10 @@ mod tests {
     /// Test failure with chained file
     #[tokio::test]
     async fn test_chain_file_error() {
-        let chains = vec![create!(
+        let chains = indexmap! {"chain1".into() => create!(
             Chain,
-
             source: ChainSource::File("not-a-real-file".into()),
-        )];
+        )};
         let context = create!(TemplateContext, chains: chains);
 
         assert_err!(
@@ -421,10 +426,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_chain_prompt() {
-        let chains = vec![create!(
+        let chains = indexmap! {"chain1".into() => create!(
             Chain,
             source: ChainSource::Prompt(Some("password".into())),
-        )];
+        )};
         let context = create!(
             TemplateContext,
             chains: chains,
@@ -437,11 +442,10 @@ mod tests {
     /// Prompting gone wrong
     #[tokio::test]
     async fn test_chain_prompt_error() {
-        let chains = vec![create!(
+        let chains = indexmap! {"chain1".into() => create!(
             Chain,
-
             source: ChainSource::Prompt(Some("password".into())),
-        )];
+        )};
         let context = create!(
             TemplateContext,
             chains: chains,
@@ -458,11 +462,11 @@ mod tests {
     /// Values marked sensitive should have that flag set in the rendered output
     #[tokio::test]
     async fn test_chain_sensitive() {
-        let chains = vec![create!(
+        let chains = indexmap! {"chain1".into() => create!(
             Chain,
             source: ChainSource::Prompt(Some("password".into())),
             sensitive: true,
-        )];
+        )};
         let context = create!(
             TemplateContext,
             chains: chains,

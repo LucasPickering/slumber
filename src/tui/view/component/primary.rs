@@ -26,6 +26,7 @@ use crate::{
     },
 };
 use derive_more::Display;
+use itertools::Itertools;
 use ratatui::{
     prelude::{Constraint, Direction, Rect},
     widgets::ListState,
@@ -84,11 +85,11 @@ impl PrimaryView {
             fullscreen_mode: None,
 
             profile_list_pane: ProfileListPane::new(
-                collection.profiles.to_owned(),
+                collection.profiles.values().cloned().collect_vec(),
             )
             .into(),
             recipe_list_pane: RecipeListPane::new(
-                collection.recipes.to_owned(),
+                collection.recipes.values().cloned().collect_vec(),
             )
             .into(),
             request_pane: Default::default(),

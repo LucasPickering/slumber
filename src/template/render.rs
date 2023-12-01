@@ -1,7 +1,7 @@
 //! Template rendering implementation
 
 use crate::{
-    collection::{ChainSource, ProfileValue, RequestRecipeId},
+    collection::{ChainId, ChainSource, ProfileValue, RequestRecipeId},
     http::{ContentType, Json},
     template::{
         parse::TemplateInputChunk, ChainError, Prompt, Template, TemplateChunk,
@@ -14,7 +14,6 @@ use futures::future::join_all;
 use serde_json_path::JsonPath;
 use std::{
     env::{self},
-    ops::Deref as _,
     path::Path,
 };
 use tokio::{fs, process::Command, sync::oneshot};
@@ -149,7 +148,9 @@ impl<'a> TemplateKey<&'a str> {
     fn into_source(self) -> Box<dyn TemplateSource<'a>> {
         match self {
             Self::Field(field) => Box::new(FieldTemplateSource { field }),
-            Self::Chain(chain_id) => Box::new(ChainTemplateSource { chain_id }),
+            Self::Chain(chain_id) => Box::new(ChainTemplateSource {
+                chain_id: chain_id.into(),
+            }),
             Self::Environment(variable) => {
                 Box::new(EnvironmentTemplateSource { variable })
             }
@@ -208,21 +209,18 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
 
 /// A chained value from a complex source. Could be an HTTP response, file, etc.
 struct ChainTemplateSource<'a> {
-    pub chain_id: &'a str,
+    pub chain_id: ChainId<&'a str>,
 }
 
 #[async_trait]
 impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
     async fn render(&self, context: &'a TemplateContext) -> TemplateResult {
-        let chain_id = self.chain_id;
-
         // Any error in here is the chain error subtype
         let result: Result<_, ChainError> = async {
             // Resolve chained value
             let chain = context
                 .chains
-                .iter()
-                .find(|chain| chain.id.deref() == chain_id)
+                .get(&self.chain_id)
                 .ok_or(ChainError::Unknown)?;
 
             // Resolve the value based on the source type
@@ -259,7 +257,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
 
         // Wrap the chain error into a TemplateError
         result.map_err(|error| TemplateError::Chain {
-            chain_id: chain_id.into(),
+            chain_id: (&self.chain_id).into(),
             error,
         })
     }
@@ -334,7 +332,7 @@ impl<'a> ChainTemplateSource<'a> {
         // on the prompt channel
         let (tx, rx) = oneshot::channel();
         context.prompter.prompt(Prompt {
-            label: label.unwrap_or(self.chain_id).into(),
+            label: label.unwrap_or(&self.chain_id).into(),
             sensitive,
             channel: tx,
         });

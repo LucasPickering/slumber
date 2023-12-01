@@ -19,6 +19,7 @@ crossterm = "^0.27.0"
 derive_more = {version = "1.0.0-beta.6", features = ["debug", "deref", "deref_mut", "display", "from"]}
 dialoguer = {version = "^0.11.0", default-features = false, features = ["password"]}
 dirs = "^5.0.1"
+equivalent = "^1"
 futures = "^0.3.28"
 indexmap = {version = "^2.0.1", features = ["serde"]}
 itertools = "^0.11.0"

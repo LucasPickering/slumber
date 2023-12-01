@@ -57,7 +57,10 @@ pub enum Subcommand {
 
 impl Subcommand {
     /// Execute a non-TUI command
-    pub async fn execute(self, collection_file: PathBuf) -> anyhow::Result<()> {
+    pub async fn execute(
+        self,
+        collection_override: Option<PathBuf>,
+    ) -> anyhow::Result<()> {
         match self {
             Subcommand::Request {
                 request_id,
@@ -65,8 +68,10 @@ impl Subcommand {
                 overrides,
                 dry_run,
             } => {
+                let collection_path =
+                    RequestCollection::try_path(collection_override)?;
                 let collection =
-                    RequestCollection::load(collection_file).await?;
+                    RequestCollection::load(collection_path).await?;
 
                 // Find profile and recipe by ID
                 let profile = profile

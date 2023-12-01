@@ -14,7 +14,7 @@ use crate::{
     cli::Subcommand, collection::RequestCollection, tui::Tui,
     util::data_directory,
 };
-use anyhow::{bail, Context};
+use anyhow::Context;
 use clap::Parser;
 use std::path::PathBuf;
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
@@ -43,22 +43,18 @@ async fn main() -> anyhow::Result<()> {
     // Global initialization
     initialize_tracing().unwrap();
     let args = Args::parse();
-    let Some(collection_path) =
-        args.collection.or_else(RequestCollection::detect_path)
-    else {
-        bail!("No collection file given and none found in current directory");
-    };
 
     // Select mode based on whether request ID(s) were given
     match args.subcommand {
         // Run the TUI
         None => {
+            let collection_path = RequestCollection::try_path(args.collection)?;
             Tui::start(collection_path).await;
             Ok(())
         }
 
         // Execute one request without a TUI
-        Some(subcommand) => subcommand.execute(collection_path).await,
+        Some(subcommand) => subcommand.execute(args.collection).await,
     }
 }
 

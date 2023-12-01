@@ -6,6 +6,10 @@
 
 - Hide sensitive chain values in preview
 
+### Fixed
+
+- Don't require collection file to be present for `show` subcommand ([#62](https://github.com/LucasPickering/slumber/issues/62))
+
 ## [0.9.0] - 2023-11-28
 
 ### Added

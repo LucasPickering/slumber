@@ -4,7 +4,7 @@
 mod insomnia;
 
 use crate::template::Template;
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
 use indexmap::IndexMap;
 use serde::{
@@ -196,7 +196,7 @@ impl RequestCollection<PathBuf> {
     /// Load config from the given file. The caller is responsible for using
     /// [Self::detect_path] to find the file themself. This pattern enables the
     /// TUI to start up and watch the collection file, even if it's invalid.
-    pub async fn load(path: PathBuf) -> Result<Self, anyhow::Error> {
+    pub async fn load(path: PathBuf) -> anyhow::Result<Self> {
         // Figure out which file we want to load from
         info!(?path, "Loading collection file");
 
@@ -221,7 +221,7 @@ impl RequestCollection<PathBuf> {
     /// Reload a new collection from the same file used for this one.
     ///
     /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
-    pub fn reload(&self) -> impl Future<Output = Result<Self, anyhow::Error>> {
+    pub fn reload(&self) -> impl Future<Output = anyhow::Result<Self>> {
         Self::load(self.source.clone())
     }
 
@@ -230,9 +230,20 @@ impl RequestCollection<PathBuf> {
         &self.source
     }
 
+    /// Get the path to the collection file, returning an error if none is
+    /// available. This will use the override if given, otherwise it will fall
+    /// back to searching the current directory for a collection.
+    pub fn try_path(override_path: Option<PathBuf>) -> anyhow::Result<PathBuf> {
+        override_path
+            .or_else(RequestCollection::detect_path)
+            .ok_or(anyhow!(
+                "No collection file given and none found in current directory"
+            ))
+    }
+
     /// Search the current directory for a config file matching one of the known
     /// file names, and return it if found
-    pub fn detect_path() -> Option<PathBuf> {
+    fn detect_path() -> Option<PathBuf> {
         let paths: Vec<&Path> = CONFIG_FILES
             .iter()
             .map(Path::new)

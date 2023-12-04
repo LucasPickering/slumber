@@ -20,7 +20,10 @@ use crate::{
     },
 };
 use ratatui::prelude::{Constraint, Direction, Rect};
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    rc::Rc,
+};
 
 /// The root view component
 #[derive(derive_more::Debug)]
@@ -47,7 +50,7 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new(collection: &RequestCollection) -> Self {
+    pub fn new(collection: Rc<RequestCollection>) -> Self {
         Self {
             // State
             active_requests: HashMap::new(),

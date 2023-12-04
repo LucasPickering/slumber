@@ -1,7 +1,7 @@
 use crate::tui::{
     context::TuiContext,
     view::{
-        common::Block,
+        common::Pane,
         draw::Generate,
         state::select::{SelectState, SelectStateKind},
     },
@@ -13,7 +13,7 @@ use ratatui::{
 
 /// A list with a border and title. Each item has to be convertible to text
 pub struct List<'a, Kind: SelectStateKind, Item> {
-    pub block: Block<'a>,
+    pub block: Pane<'a>,
     pub list: &'a SelectState<Kind, Item, ListState>,
 }
 

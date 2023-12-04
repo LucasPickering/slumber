@@ -1,7 +1,7 @@
 use crate::{
     http::{RequestId, RequestRecord},
     tui::view::{
-        common::{table::Table, tabs::Tabs, text_window::TextWindow, Block},
+        common::{table::Table, tabs::Tabs, text_window::TextWindow, Pane},
         component::primary::PrimaryPane,
         draw::{Draw, DrawContext, Generate},
         event::EventHandler,
@@ -54,7 +54,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
     ) {
         // Render outermost block
         let pane_kind = PrimaryPane::Response;
-        let block = Block {
+        let block = Pane {
             title: &pane_kind.to_string(),
             is_focused: props.is_selected,
         };

@@ -4,7 +4,7 @@ use crate::{
     tui::view::{
         common::{
             table::Table, tabs::Tabs, template_preview::TemplatePreview,
-            text_window::TextWindow, Block,
+            text_window::TextWindow, Pane,
         },
         component::primary::PrimaryPane,
         draw::{Draw, DrawContext, Generate},
@@ -85,7 +85,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
     ) {
         // Render outermost block
         let pane_kind = PrimaryPane::Request;
-        let block = Block {
+        let block = Pane {
             title: &pane_kind.to_string(),
             is_focused: props.is_selected,
         };

@@ -7,7 +7,7 @@ use crate::{
         input::Action,
         message::Message,
         view::{
-            common::{list::List, Block},
+            common::{list::List, Pane},
             component::{
                 help::HelpModal,
                 request::{RequestPane, RequestPaneProps},
@@ -31,12 +31,14 @@ use ratatui::{
     prelude::{Constraint, Direction, Rect},
     widgets::ListState,
 };
+use std::rc::Rc;
 use strum::EnumIter;
 
 /// Primary TUI view, which shows request/response panes
 #[derive(derive_more::Debug)]
 pub struct PrimaryView {
     // Own state
+    collection: Rc<RequestCollection>,
     selected_pane: SelectState<Fixed, PrimaryPane, ListState>,
     fullscreen_mode: Option<FullscreenMode>,
 
@@ -79,19 +81,22 @@ enum FullscreenMode {
 }
 
 impl PrimaryView {
-    pub fn new(collection: &RequestCollection) -> Self {
+    pub fn new(collection: Rc<RequestCollection>) -> Self {
+        let profile_list_pane = ProfileListPane::new(
+            collection.profiles.values().cloned().collect_vec(),
+        )
+        .into();
+        let recipe_list_pane = RecipeListPane::new(
+            collection.recipes.values().cloned().collect_vec(),
+        )
+        .into();
         Self {
+            collection,
             selected_pane: Default::default(),
             fullscreen_mode: None,
 
-            profile_list_pane: ProfileListPane::new(
-                collection.profiles.values().cloned().collect_vec(),
-            )
-            .into(),
-            recipe_list_pane: RecipeListPane::new(
-                collection.recipes.values().cloned().collect_vec(),
-            )
-            .into(),
+            profile_list_pane,
+            recipe_list_pane,
             request_pane: Default::default(),
             response_pane: Default::default(),
         }
@@ -184,7 +189,9 @@ impl EventHandler for PrimaryView {
                 }
                 Action::OpenHelp => {
                     context.queue_event(Event::OpenModal {
-                        modal: Box::<HelpModal>::default(),
+                        modal: Box::new(HelpModal::new(Rc::clone(
+                            &self.collection,
+                        ))),
                         priority: ModalPriority::Low,
                     });
                     Update::Consumed
@@ -370,7 +377,7 @@ impl Draw<ListPaneProps> for ProfileListPane {
     ) {
         self.profiles.set_area(area); // Needed for tracking cursor events
         let list = List {
-            block: Block {
+            block: Pane {
                 title: &PrimaryPane::ProfileList.to_string(),
                 is_focused: props.is_selected,
             },
@@ -430,7 +437,7 @@ impl Draw<ListPaneProps> for RecipeListPane {
         self.recipes.set_area(area); // Needed for tracking cursor events
         let pane_kind = PrimaryPane::RecipeList;
         let list = List {
-            block: Block {
+            block: Pane {
                 title: &pane_kind.to_string(),
                 is_focused: props.is_selected,
             },

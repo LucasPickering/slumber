@@ -13,11 +13,12 @@ use crate::{
         message::{Message, MessageSender},
         view::{ModalPriority, PreviewPrompter, RequestState, View},
     },
+    util::ResultExt,
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, SetTitle},
     ExecutableCommand,
 };
 use futures::Future;
@@ -32,11 +33,14 @@ use std::{
     io::{self, Stdout},
     ops::Deref,
     path::PathBuf,
+    rc::Rc,
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 use tracing::{debug, error};
+
+const EXE_NAME: &str = env!("CARGO_BIN_NAME");
 
 /// Main controller struct for the TUI. The app uses a React-like architecture
 /// for the view, with a wrapping controller (this struct). The main loop goes
@@ -54,7 +58,7 @@ pub struct Tui {
     messages_tx: MessageSender,
     http_engine: HttpEngine,
     view: View,
-    collection: RequestCollection,
+    collection: Rc<RequestCollection>,
     repository: Repository,
     should_run: bool,
 }
@@ -81,14 +85,17 @@ impl Tui {
 
         // If the collection fails to load, create an empty one just so we can
         // move along. We'll watch the file and hopefully the user can fix it
-        let collection = RequestCollection::load(collection_file.clone())
-            .await
-            .unwrap_or_else(|error| {
-                messages_tx.send(Message::Error { error });
-                RequestCollection::<()>::default().with_source(collection_file)
-            });
+        let collection: Rc<_> =
+            RequestCollection::load(collection_file.clone())
+                .await
+                .unwrap_or_else(|error| {
+                    messages_tx.send(Message::Error { error });
+                    RequestCollection::<()>::default()
+                        .with_source(collection_file)
+                })
+                .into();
 
-        let view = View::new(&collection);
+        let view = View::new(Rc::clone(&collection));
         let repository = Repository::load(&collection.id).unwrap();
         let app = Tui {
             terminal,
@@ -102,6 +109,8 @@ impl Tui {
             view,
             repository,
         };
+
+        app.set_terminal_title();
 
         // Any error during execution that gets this far is fatal. We expect the
         // error to already have context attached so we can just unwrap
@@ -283,10 +292,11 @@ impl Tui {
 
     /// Reload state with a new collection
     fn reload_collection(&mut self, collection: RequestCollection) {
-        self.collection = collection;
+        self.collection = Rc::new(collection);
+        self.set_terminal_title();
 
         // Rebuild the whole view, because tons of things can change
-        self.view = View::new(&self.collection);
+        self.view = View::new(Rc::clone(&self.collection));
         self.view.notify(format!(
             "Reloaded collection from {}",
             self.collection.path().to_string_lossy()
@@ -429,6 +439,15 @@ impl Tui {
             overrides: Default::default(),
             prompter: Box::new(prompter),
         })
+    }
+
+    /// TODO
+    fn set_terminal_title(&self) {
+        let title = format!("{} ({})", EXE_NAME, &self.collection.id);
+        // This error shouldn't be fatal
+        let _ = crossterm::execute!(io::stdout(), SetTitle(title))
+            .context("Error setting terminal title")
+            .traced();
     }
 }
 

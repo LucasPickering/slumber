@@ -27,6 +27,7 @@ pub struct Theme {
     pub table_text_style: Style,
     pub table_alt_text_style: Style,
     pub table_highlight_style: Style,
+    pub table_title_style: Style,
 
     pub template_preview_text: Style,
     pub template_preview_error: Style,
@@ -74,6 +75,7 @@ impl Default for Theme {
                 .bg(PRIMARY_COLOR)
                 .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
+            table_title_style: Style::default().add_modifier(Modifier::BOLD),
 
             template_preview_text: Style::default().fg(Color::Blue),
             template_preview_error: Style::default().bg(ERROR_COLOR),

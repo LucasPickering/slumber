@@ -25,12 +25,12 @@ use ratatui::{
 use reqwest::header::HeaderValue;
 
 /// A container with a title and border
-pub struct Block<'a> {
+pub struct Pane<'a> {
     pub title: &'a str,
     pub is_focused: bool,
 }
 
-impl<'a> Generate for Block<'a> {
+impl<'a> Generate for Pane<'a> {
     type Output<'this> = ratatui::widgets::Block<'this> where Self: 'this;
 
     fn generate<'this>(self) -> Self::Output<'this>

@@ -1,12 +1,13 @@
 use crate::tui::{context::TuiContext, view::draw::Generate};
 use ratatui::{
     prelude::Constraint,
-    widgets::{Cell, Row},
+    widgets::{Block, Cell, Row},
 };
 
 /// Tabular data display with a static number of columns
 #[derive(Debug)]
 pub struct Table<'a, const COLS: usize, Rows> {
+    pub title: Option<&'a str>,
     pub rows: Rows,
     /// Optional header row. Length should match column length
     pub header: Option<[&'a str; COLS]>,
@@ -20,6 +21,7 @@ pub struct Table<'a, const COLS: usize, Rows> {
 impl<'a, const COLS: usize, Rows: Default> Default for Table<'a, COLS, Rows> {
     fn default() -> Self {
         Self {
+            title: None,
             rows: Default::default(),
             header: None,
             alternate_row_style: false,
@@ -55,6 +57,15 @@ where
         let mut table = ratatui::widgets::Table::new(rows)
             .highlight_style(theme.table_highlight_style)
             .widths(self.column_widths);
+
+        // Add title
+        if let Some(title) = self.title {
+            table = table.block(
+                Block::default()
+                    .title(title)
+                    .title_style(theme.table_title_style),
+            );
+        }
 
         // Add optional header if given
         if let Some(header) = self.header {

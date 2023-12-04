@@ -57,7 +57,7 @@ use reqwest::{
 use tokio::try_join;
 use tracing::{debug, info, info_span};
 
-static USER_AGENT: &str =
+const USER_AGENT: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 /// Utility for handling all HTTP operations. The main purpose of this is to

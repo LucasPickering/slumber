@@ -1,18 +1,23 @@
-use crate::tui::{
-    context::TuiContext,
-    input::Action,
-    view::{
-        common::{modal::Modal, table::Table},
-        draw::{Draw, DrawContext, Generate},
-        event::EventHandler,
+use crate::{
+    collection::RequestCollection,
+    tui::{
+        context::TuiContext,
+        input::Action,
+        view::{
+            common::{modal::Modal, table::Table},
+            draw::{Draw, DrawContext, Generate},
+            event::EventHandler,
+            util::layout,
+        },
     },
 };
 use itertools::Itertools;
 use ratatui::{
-    layout::{Alignment, Constraint, Rect},
+    layout::{Alignment, Constraint, Direction, Rect},
     text::Line,
     widgets::Paragraph,
 };
+use std::rc::Rc;
 
 /// A mini helper in the footer for showing a few important key bindings
 #[derive(Debug)]
@@ -50,8 +55,16 @@ impl Draw for HelpFooter {
 }
 
 /// A whole ass modal for showing key binding help
-#[derive(Debug, Default)]
-pub struct HelpModal;
+#[derive(Debug)]
+pub struct HelpModal {
+    collection: Rc<RequestCollection>,
+}
+
+impl HelpModal {
+    pub fn new(collection: Rc<RequestCollection>) -> Self {
+        Self { collection }
+    }
+}
 
 impl Modal for HelpModal {
     fn title(&self) -> &str {
@@ -59,7 +72,7 @@ impl Modal for HelpModal {
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
-        (Constraint::Length(30), Constraint::Length(11))
+        (Constraint::Length(40), Constraint::Length(16))
     }
 }
 
@@ -67,7 +80,34 @@ impl EventHandler for HelpModal {}
 
 impl Draw for HelpModal {
     fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
-        let table = Table {
+        // Create layout
+        let [collection_area, _, keybindings_area] = layout(
+            area,
+            Direction::Vertical,
+            [
+                Constraint::Length(3),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ],
+        );
+
+        // Collection metadata
+        let collection_metadata = Table {
+            title: Some("Collection"),
+            rows: [
+                ["ID", self.collection.id.as_str()],
+                ["Path", &self.collection.path().display().to_string()],
+            ],
+            column_widths: &[Constraint::Length(5), Constraint::Max(100)],
+            ..Default::default()
+        };
+        context
+            .frame
+            .render_widget(collection_metadata.generate(), collection_area);
+
+        // Keybindings
+        let keybindings = Table {
+            title: Some("Keybindings"),
             rows: TuiContext::get()
                 .input_engine
                 .bindings()
@@ -81,6 +121,8 @@ impl Draw for HelpModal {
                 .collect_vec(),
             ..Default::default()
         };
-        context.frame.render_widget(table.generate(), area);
+        context
+            .frame
+            .render_widget(keybindings.generate(), keybindings_area);
     }
 }

@@ -3,6 +3,7 @@
 
 mod cli;
 mod collection;
+mod db;
 #[cfg(test)]
 mod factory;
 mod http;

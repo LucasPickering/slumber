@@ -30,8 +30,8 @@ use tracing::{error, trace, trace_span};
 /// Primary entrypoint for the view. This contains the main draw functions, as
 /// well as bindings for externally modifying the view state. We use a component
 /// architecture based on React, meaning the view is responsible for managing
-/// its own state. Certain global state (e.g. the request repository) is managed
-/// by the controller and exposed via event passing.
+/// its own state. Certain global state (e.g. the database) is managed by the
+/// controller and exposed via event passing.
 #[derive(Debug)]
 pub struct View {
     config: ViewConfig,

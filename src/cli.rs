@@ -1,6 +1,7 @@
 use crate::{
     collection::{ProfileId, RequestCollection, RequestRecipeId},
-    http::{HttpEngine, Repository, RequestBuilder},
+    db::Database,
+    http::{HttpEngine, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
     util::{Directory, ResultExt},
 };
@@ -91,7 +92,7 @@ impl Subcommand {
                     )?;
 
                 // Build the request
-                let repository = Repository::load(&collection.id)?;
+                let database = Database::load(&collection.id)?;
                 let overrides: IndexMap<_, _> = overrides.into_iter().collect();
                 let request = RequestBuilder::new(
                     recipe,
@@ -99,7 +100,7 @@ impl Subcommand {
                         profile: profile_data,
                         overrides,
                         chains: collection.chains,
-                        repository: repository.clone(),
+                        database: database.clone(),
                         prompter: Box::new(CliPrompter),
                     },
                 )
@@ -110,7 +111,7 @@ impl Subcommand {
                     println!("{:#?}", request);
                 } else {
                     // Run the request
-                    let http_engine = HttpEngine::new(repository);
+                    let http_engine = HttpEngine::new(database);
                     let record = http_engine.send(request).await?;
 
                     // Print response

@@ -5,7 +5,8 @@ mod view;
 
 use crate::{
     collection::{ProfileId, RequestCollection, RequestRecipeId},
-    http::{HttpEngine, Repository, RequestBuilder},
+    db::Database,
+    http::{HttpEngine, RequestBuilder},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
         context::TuiContext,
@@ -59,7 +60,7 @@ pub struct Tui {
     http_engine: HttpEngine,
     view: View,
     collection: Rc<RequestCollection>,
-    repository: Repository,
+    database: Database,
     should_run: bool,
 }
 
@@ -96,18 +97,18 @@ impl Tui {
                 .into();
 
         let view = View::new(Rc::clone(&collection));
-        let repository = Repository::load(&collection.id).unwrap();
+        let database = Database::load(&collection.id).unwrap();
         let app = Tui {
             terminal,
             messages_rx,
             messages_tx,
-            http_engine: HttpEngine::new(repository.clone()),
+            http_engine: HttpEngine::new(database.clone()),
 
             collection,
             should_run: true,
 
             view,
-            repository,
+            database,
         };
 
         app.set_terminal_title();
@@ -232,10 +233,10 @@ impl Tui {
                 self.view.set_request_state(recipe_id, state);
             }
 
-            Message::RepositoryStartLoad { recipe_id } => {
+            Message::RequestStartLoad { recipe_id } => {
                 self.load_request(recipe_id);
             }
-            Message::RepositoryEndLoad { record } => {
+            Message::RequestEndLoad { record } => {
                 self.view.set_request_state(
                     record.request.recipe_id.clone(),
                     RequestState::response(record),
@@ -362,13 +363,13 @@ impl Tui {
     }
 
     /// Load the most recent request+response for a particular recipe from the
-    /// repository, and store it in state.
+    /// database, and store it in state.
     fn load_request(&self, recipe_id: RequestRecipeId) {
-        let repository = self.repository.clone();
+        let database = self.database.clone();
         let messages_tx = self.messages_tx.clone();
         self.spawn(async move {
-            if let Some(record) = repository.get_last(&recipe_id).await? {
-                messages_tx.send(Message::RepositoryEndLoad { record });
+            if let Some(record) = database.get_last_request(&recipe_id).await? {
+                messages_tx.send(Message::RequestEndLoad { record });
             }
             Ok(())
         });
@@ -434,7 +435,7 @@ impl Tui {
 
         Ok(TemplateContext {
             profile,
-            repository: self.repository.clone(),
+            database: self.database.clone(),
             chains: self.collection.chains.to_owned(),
             overrides: Default::default(),
             prompter: Box::new(prompter),

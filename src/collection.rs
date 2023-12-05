@@ -55,8 +55,8 @@ pub struct RequestCollection<S = PathBuf> {
     pub recipes: IndexMap<RequestRecipeId, RequestRecipe>,
 }
 
-/// A unique ID for a collection. This is necessary to differentiate between
-/// responses from different collections in the repository.
+/// A unique ID for a collection. This is necessary to give each collection its
+/// own database.
 #[derive(
     Clone, Debug, Default, Deref, Display, From, Serialize, Deserialize,
 )]

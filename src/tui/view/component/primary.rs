@@ -400,7 +400,7 @@ impl RecipeListPane {
     pub fn new(recipes: Vec<RequestRecipe>) -> Self {
         // When highlighting a new recipe, load it from the repo
         let on_select = |_: &mut UpdateContext, recipe: &RequestRecipe| {
-            TuiContext::send_message(Message::RepositoryStartLoad {
+            TuiContext::send_message(Message::RequestStartLoad {
                 recipe_id: recipe.id.clone(),
             });
         };

@@ -35,14 +35,13 @@
 
 mod parse;
 mod record;
-mod repository;
 
 pub use parse::*;
 pub use record::*;
-pub use repository::*;
 
 use crate::{
     collection::RequestRecipe,
+    db::Database,
     template::{Template, TemplateContext},
     util::ResultExt,
 };
@@ -70,24 +69,24 @@ const USER_AGENT: &str =
 #[derive(Clone, Debug)]
 pub struct HttpEngine {
     client: Client,
-    repository: Repository,
+    database: Database,
 }
 
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
-    pub fn new(repository: Repository) -> Self {
+    pub fn new(database: Database) -> Self {
         Self {
             client: Client::builder()
                 .user_agent(USER_AGENT)
                 .build()
                 // This should be infallible
                 .expect("Error building reqwest client"),
-            repository,
+            database,
         }
     }
 
     /// Launch an HTTP request. Upon completion, it will automatically be
-    /// registered in the repository for posterity.
+    /// registered in the database for posterity.
     ///
     /// This consumes the HTTP engine so that the future can outlive the scope
     /// that created the future. This allows the future to be created outside
@@ -131,7 +130,7 @@ impl HttpEngine {
                     };
 
                     // Error here should *not* kill the request
-                    let _ = self.repository.insert(&record).await;
+                    let _ = self.database.insert_request(&record).await;
                     Ok(record)
                 }
                 Err(error) => Err(RequestError {

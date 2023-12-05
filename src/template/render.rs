@@ -169,7 +169,7 @@ trait TemplateSource<'a>: 'a + Send + Sync {
     /// Render this intermediate value into a string. Return a Cow because
     /// sometimes this can be a reference to the template context, but
     /// other times it has to be owned data (e.g. when pulling response data
-    /// from the repository).
+    /// from the database).
     async fn render(&self, context: &'a TemplateContext) -> TemplateResult;
 }
 
@@ -271,10 +271,10 @@ impl<'a> ChainTemplateSource<'a> {
         recipe_id: &RequestRecipeId,
     ) -> Result<String, ChainError> {
         let record = context
-            .repository
-            .get_last(recipe_id)
+            .database
+            .get_last_request(recipe_id)
             .await
-            .map_err(ChainError::Repository)?
+            .map_err(ChainError::Database)?
             .ok_or(ChainError::NoResponse)?;
 
         Ok(record.response.body.into_text())

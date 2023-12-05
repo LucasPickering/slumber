@@ -9,7 +9,7 @@ pub use prompt::{Prompt, Prompter};
 
 use crate::{
     collection::{Chain, ChainId, ProfileValue},
-    http::Repository,
+    db::Database,
     template::{
         error::TemplateParseError,
         parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
@@ -30,7 +30,7 @@ pub struct TemplateContext {
     /// Chained values from dynamic sources
     pub chains: IndexMap<ChainId, Chain>,
     /// Needed for accessing response bodies for chaining
-    pub repository: Repository,
+    pub database: Database,
     /// Additional key=value overrides passed directly from the user
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
@@ -266,7 +266,7 @@ mod tests {
         #[case] expected_value: &str,
     ) {
         let recipe_id: RequestRecipeId = "recipe1".into();
-        let repository = Repository::testing();
+        let database = Database::testing();
         let response_body = json!({
             "string": "Hello World!",
             "number": 6,
@@ -277,8 +277,8 @@ mod tests {
         let request = create!(Request, recipe_id: recipe_id.clone());
         let response =
             create!(Response, body: response_body.to_string().into());
-        repository
-            .insert_test(
+        database
+            .insert_request(
                 &create!(RequestRecord, request: request, response: response),
             )
             .await
@@ -290,7 +290,7 @@ mod tests {
             selector: selector,
         )};
         let context = create!(
-            TemplateContext, repository: repository, chains: chains,
+            TemplateContext, database: database, chains: chains,
         );
 
         assert_eq!(
@@ -339,21 +339,21 @@ mod tests {
     async fn test_chain_request_error(
         #[case] chain_id: impl Into<ChainId>,
         #[case] chain: Chain,
-        // Optional request data to store in the repository
+        // Optional request data to store in the database
         #[case] request_response: Option<(Request, Response)>,
         #[case] expected_error: &str,
     ) {
-        let repository = Repository::testing();
+        let database = Database::testing();
         if let Some((request, response)) = request_response {
-            repository
-                .insert_test(&create!(
+            database
+                .insert_request(&create!(
                 RequestRecord, request: request, response: response))
                 .await
                 .unwrap();
         }
         let chains = indexmap! {chain_id.into() => chain};
         let context = create!(
-            TemplateContext, repository: repository, chains: chains
+            TemplateContext, database: database, chains: chains
         );
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);

@@ -1,6 +1,7 @@
 use crate::{
     collection::{Chain, ChainSource, RequestRecipeId},
-    http::{Body, Repository, Request, RequestId, RequestRecord, Response},
+    db::Database,
+    http::{Body, Request, RequestId, RequestRecord, Response},
     template::{Prompt, Prompter, Template, TemplateContext},
 };
 use chrono::Utc;
@@ -61,7 +62,7 @@ factori!(TemplateContext, {
         profile = Default::default()
         chains = Default::default()
         prompter = Box::<TestPrompter>::default(),
-        repository = Repository::testing()
+        database = Database::testing()
         overrides = Default::default()
     }
 });

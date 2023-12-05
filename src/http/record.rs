@@ -58,10 +58,7 @@ pub struct RequestError {
     Serialize,
     Deserialize,
 )]
-pub struct RequestId(
-    /// Private to enforce construction via deserialization or [Self::new]
-    pub(super) Uuid,
-);
+pub struct RequestId(pub Uuid);
 
 impl RequestId {
     pub fn new() -> Self {

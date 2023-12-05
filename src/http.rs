@@ -130,7 +130,7 @@ impl HttpEngine {
                     };
 
                     // Error here should *not* kill the request
-                    let _ = self.database.insert_request(&record).await;
+                    let _ = self.database.insert_request(&record);
                     Ok(record)
                 }
                 Err(error) => Err(RequestError {

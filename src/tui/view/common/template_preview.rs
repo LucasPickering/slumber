@@ -189,9 +189,10 @@ impl<'a> TextStitcher<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::factory::*;
+    use crate::{factory::*, tui::context::tui_context};
     use factori::create;
     use indexmap::indexmap;
+    use rstest::rstest;
 
     /// Test these cases related to line breaks:
     /// - Line break within a raw area
@@ -203,8 +204,9 @@ mod tests {
     ///
     /// Additionally, test multi-byte unicode characters to make sure string
     /// offset indexes work correctly
+    #[rstest]
     #[tokio::test]
-    async fn test_template_stitch() {
+    async fn test_template_stitch(_tui_context: ()) {
         // Render a template
         let template = Template::parse(
             "intro\n{{user_id}} 💚💙💜 {{unknown}}\noutro\r\nmore outro".into(),
@@ -213,7 +215,6 @@ mod tests {
         let profile = indexmap! { "user_id".into() => "🧡\n💛".into() };
         let context = create!(TemplateContext, profile: profile);
         let areas = template.render_chunks(&context).await;
-        TuiContext::init_test();
         let theme = &TuiContext::get().theme;
 
         let text = TextStitcher::stitch_chunks(&template, &areas);

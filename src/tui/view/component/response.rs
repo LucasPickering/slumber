@@ -5,7 +5,7 @@ use crate::{
         component::primary::PrimaryPane,
         draw::{Draw, DrawContext, Generate},
         event::EventHandler,
-        state::{RequestState, StateCell},
+        state::{persistence::PersistentKey, RequestState, StateCell},
         util::layout,
         Component,
     },
@@ -17,6 +17,7 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Paragraph, Wrap},
 };
+use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use strum::EnumIter;
 
@@ -30,13 +31,6 @@ pub struct ResponsePane {
 pub struct ResponsePaneProps<'a> {
     pub is_selected: bool,
     pub active_request: Option<&'a RequestState>,
-}
-
-#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
-enum Tab {
-    #[default]
-    Body,
-    Headers,
 }
 
 impl EventHandler for ResponsePane {
@@ -149,7 +143,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 }
 
 /// Display response success state (tab container)
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ResponseContent {
     tabs: Component<Tabs<Tab>>,
     /// Persist the response body to track view state. Update whenever the
@@ -157,9 +151,35 @@ struct ResponseContent {
     body: StateCell<RequestId, Component<TextWindow<String>>>,
 }
 
+impl Default for ResponseContent {
+    fn default() -> Self {
+        Self {
+            tabs: Tabs::new(PersistentKey::ResponseTab).into(),
+            body: Default::default(),
+        }
+    }
+}
+
 struct ResponseContentProps<'a> {
     record: &'a RequestRecord,
     pretty_body: Option<&'a str>,
+}
+
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Display,
+    EnumIter,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
+enum Tab {
+    #[default]
+    Body,
+    Headers,
 }
 
 impl EventHandler for ResponseContent {

@@ -101,7 +101,7 @@ impl EventHandler for Root {
             Event::Init => {
                 // Load the initial state for the selected recipe
                 if let Some(recipe) = self.primary_view.selected_recipe() {
-                    TuiContext::send_message(Message::RequestStartLoad {
+                    TuiContext::send_message(Message::RequestLoad {
                         recipe_id: recipe.id.clone(),
                     });
                 }

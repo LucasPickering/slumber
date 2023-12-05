@@ -1,5 +1,6 @@
 //! State types for the view.
 
+pub mod persistence;
 pub mod select;
 
 use crate::http::{RequestBuildError, RequestError, RequestId, RequestRecord};

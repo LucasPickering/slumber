@@ -1,6 +1,9 @@
 use crate::tui::{
     input::Action,
-    view::event::{Event, EventHandler, Update, UpdateContext},
+    view::{
+        event::{Event, EventHandler, Update, UpdateContext},
+        state::persistence::{Persistable, PersistentContainer},
+    },
 };
 use itertools::Itertools;
 use ratatui::widgets::{ListState, TableState};
@@ -21,7 +24,11 @@ use strum::IntoEnumIterator;
 /// two share most behavior, but have some differences in API, which the `Kind`
 /// parameter will switch between.
 #[derive(derive_more::Debug)]
-pub struct SelectState<Kind: SelectStateKind, Item, State = ListState> {
+pub struct SelectState<Kind, Item, State = ListState>
+where
+    Kind: SelectStateKind,
+    State: SelectStateData,
+{
     /// Use interior mutability because this needs to be modified during the
     /// draw phase, by [Frame::render_stateful_widget]. This allows rendering
     /// without a mutable reference.
@@ -93,16 +100,17 @@ where
         self.state.borrow_mut()
     }
 
-    /// Select an item by value. Context is required for callbacks.
-    pub fn select(&mut self, context: &mut UpdateContext, item: &Item)
+    /// Select an item by value. Context is required for callbacks. Generally
+    /// the given value will be the type `Item`, but it could be anything that
+    /// compares to `Item` (e.g. an ID type).
+    pub fn select<T>(&mut self, context: &mut UpdateContext, value: &T)
     where
-        Item: PartialEq,
+        T: PartialEq<Item>,
     {
         if let Some((index, _)) =
-            self.items.iter().find_position(|i| *i == item)
+            self.items.iter().find_position(|item| value == *item)
         {
             self.select_index(context, index);
-            self.state.get_mut().select(index);
         }
     }
 
@@ -156,7 +164,10 @@ where
 }
 
 /// Functions available only on dynamic selects, which may have an empty list
-impl<Item, State: SelectStateData> SelectState<Dynamic, Item, State> {
+impl<Item, State> SelectState<Dynamic, Item, State>
+where
+    State: SelectStateData,
+{
     pub fn new(items: Vec<Item>) -> Self {
         let mut state = State::default();
         // Pre-select the first item if possible
@@ -282,6 +293,32 @@ where
             },
 
             _ => Update::Propagate(event),
+        }
+    }
+}
+
+impl<Kind, Item, State> PersistentContainer for SelectState<Kind, Item, State>
+where
+    Kind: SelectStateKind,
+    Item: Persistable,
+    Item::Persisted: PartialEq<Item>,
+    State: SelectStateData,
+{
+    type Value = Item;
+
+    fn get(&self) -> Option<&Self::Value> {
+        self.selected_opt()
+    }
+
+    fn set(&mut self, value: <Self::Value as Persistable>::Persisted) {
+        // Do *not* use the helper methods for selecting by value. That requires
+        // UpdateContext because it wants to call the callbacks. It'd be nice if
+        // we could trigger callbacks here, but with no access to the update
+        // context it's not possible.
+        if let Some((index, _)) =
+            self.items.iter().find_position(|item| &value == *item)
+        {
+            self.state.get_mut().select(index);
         }
     }
 }

@@ -9,7 +9,7 @@ use crate::{
         component::primary::PrimaryPane,
         draw::{Draw, DrawContext, Generate},
         event::EventHandler,
-        state::StateCell,
+        state::{persistence::PersistentKey, StateCell},
         util::layout,
         Component,
     },
@@ -20,15 +20,25 @@ use ratatui::{
     prelude::{Constraint, Direction, Rect},
     widgets::Paragraph,
 };
+use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
 /// Display a request recipe
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RequestPane {
     tabs: Component<Tabs<Tab>>,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
     recipe_state: StateCell<RecipeStateKey, RecipeState>,
+}
+
+impl Default for RequestPane {
+    fn default() -> Self {
+        Self {
+            tabs: Tabs::new(PersistentKey::RequestTab).into(),
+            recipe_state: Default::default(),
+        }
+    }
 }
 
 pub struct RequestPaneProps<'a> {
@@ -53,7 +63,17 @@ struct RecipeState {
     body: Option<Component<TextWindow<TemplatePreview>>>,
 }
 
-#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Display,
+    EnumIter,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
 enum Tab {
     #[default]
     Body,

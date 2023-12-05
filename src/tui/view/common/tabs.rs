@@ -4,25 +4,34 @@ use crate::tui::{
     view::{
         draw::{Draw, DrawContext},
         event::{Event, EventHandler, Update, UpdateContext},
-        state::select::{Fixed, FixedSelect, SelectState},
+        state::{
+            persistence::{Persistable, Persistent, PersistentKey},
+            select::{Fixed, FixedSelect, SelectState},
+        },
     },
 };
 use ratatui::prelude::Rect;
 use std::fmt::Debug;
 
 /// Multi-tab display. Generic parameter defines the available tabs.
-#[derive(Debug, Default)]
-pub struct Tabs<T: FixedSelect> {
-    tabs: SelectState<Fixed, T, usize>,
+#[derive(Debug)]
+pub struct Tabs<T: FixedSelect + Persistable> {
+    tabs: Persistent<SelectState<Fixed, T, usize>>,
 }
 
-impl<T: FixedSelect> Tabs<T> {
+impl<T: FixedSelect + Persistable> Tabs<T> {
+    pub fn new(persistent_key: PersistentKey) -> Self {
+        Self {
+            tabs: Persistent::new(persistent_key, SelectState::default()),
+        }
+    }
+
     pub fn selected(&self) -> &T {
         self.tabs.selected()
     }
 }
 
-impl<T: FixedSelect> EventHandler for Tabs<T> {
+impl<T: FixedSelect + Persistable> EventHandler for Tabs<T> {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Input {
@@ -45,7 +54,7 @@ impl<T: FixedSelect> EventHandler for Tabs<T> {
     }
 }
 
-impl<T: FixedSelect> Draw for Tabs<T> {
+impl<T: FixedSelect + Persistable> Draw for Tabs<T> {
     fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         context.frame.render_widget(
             ratatui::widgets::Tabs::new(

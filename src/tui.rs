@@ -14,7 +14,7 @@ use crate::{
         message::{Message, MessageSender},
         view::{ModalPriority, PreviewPrompter, RequestState, View},
     },
-    util::ResultExt,
+    util::{Replaceable, ResultExt},
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
@@ -58,7 +58,10 @@ pub struct Tui {
     messages_rx: UnboundedReceiver<Message>,
     messages_tx: MessageSender,
     http_engine: HttpEngine,
-    view: View,
+    /// Replaceable allows us to enforce that the view is dropped before being
+    /// recreated. The view persists its state on drop, so that has to happen
+    /// before the new one is created.
+    view: Replaceable<View>,
     collection: Rc<RequestCollection>,
     database: Database,
     should_run: bool,
@@ -81,9 +84,6 @@ impl Tui {
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx = MessageSender::new(messages_tx);
 
-        // Initialize read-only global data as early as possible
-        TuiContext::init(messages_tx.clone());
-
         // If the collection fails to load, create an empty one just so we can
         // move along. We'll watch the file and hopefully the user can fix it
         let collection: Rc<_> =
@@ -96,8 +96,12 @@ impl Tui {
                 })
                 .into();
 
-        let view = View::new(Rc::clone(&collection));
         let database = Database::load(&collection.id).unwrap();
+
+        // Initialize global view context
+        TuiContext::init(messages_tx.clone(), database.clone());
+
+        let view = View::new(Rc::clone(&collection));
         let app = Tui {
             terminal,
             messages_rx,
@@ -107,7 +111,7 @@ impl Tui {
             collection,
             should_run: true,
 
-            view,
+            view: Replaceable::new(view),
             database,
         };
 
@@ -233,14 +237,8 @@ impl Tui {
                 self.view.set_request_state(recipe_id, state);
             }
 
-            Message::RequestStartLoad { recipe_id } => {
-                self.load_request(recipe_id);
-            }
-            Message::RequestEndLoad { record } => {
-                self.view.set_request_state(
-                    record.request.recipe_id.clone(),
-                    RequestState::response(record),
-                );
+            Message::RequestLoad { recipe_id } => {
+                self.load_request(recipe_id)?;
             }
 
             Message::PromptStart(prompt) => {
@@ -296,8 +294,12 @@ impl Tui {
         self.collection = Rc::new(collection);
         self.set_terminal_title();
 
-        // Rebuild the whole view, because tons of things can change
-        self.view = View::new(Rc::clone(&self.collection));
+        // Rebuild the whole view, because tons of things can change. Drop the
+        // old one *first* to make sure UI state is saved before being restored
+        self.view.replace(|old| {
+            drop(old);
+            View::new(Rc::clone(&self.collection))
+        });
         self.view.notify(format!(
             "Reloaded collection from {}",
             self.collection.path().to_string_lossy()
@@ -364,15 +366,17 @@ impl Tui {
 
     /// Load the most recent request+response for a particular recipe from the
     /// database, and store it in state.
-    fn load_request(&self, recipe_id: RequestRecipeId) {
-        let database = self.database.clone();
-        let messages_tx = self.messages_tx.clone();
-        self.spawn(async move {
-            if let Some(record) = database.get_last_request(&recipe_id).await? {
-                messages_tx.send(Message::RequestEndLoad { record });
-            }
-            Ok(())
-        });
+    fn load_request(
+        &mut self,
+        recipe_id: RequestRecipeId,
+    ) -> anyhow::Result<()> {
+        if let Some(record) = self.database.get_last_request(&recipe_id)? {
+            self.view.set_request_state(
+                record.request.recipe_id.clone(),
+                RequestState::response(record),
+            );
+        }
+        Ok(())
     }
 
     /// Spawn a task to render a template, storing the result in a pre-defined

@@ -121,9 +121,15 @@ impl EventHandler for Root {
             // context (barring any focused text element, which will eat all
             // input)
             Event::Input {
-                action: Some(Action::Quit),
+                action: Some(action),
                 ..
-            } => TuiContext::send_message(Message::Quit),
+            } => match action {
+                Action::Quit => TuiContext::send_message(Message::Quit),
+                Action::ReloadCollection => {
+                    TuiContext::send_message(Message::CollectionStartReload)
+                }
+                _ => return Update::Propagate(event),
+            },
 
             // Any other unhandled input event should *not* log an error,
             // because it is probably just unmapped input

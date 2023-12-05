@@ -37,8 +37,9 @@ impl InputEngine {
                 .hide(),
                 InputBinding::new(KeyCode::Char('x'), Action::OpenSettings),
                 InputBinding::new(KeyCode::Char('?'), Action::OpenHelp),
+                InputBinding::new(KeyCode::Char('f'), Action::Fullscreen),
+                InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
                 InputBinding::new(KeyCode::F(2), Action::SendRequest),
-                InputBinding::new(KeyCode::F(11), Action::Fullscreen),
                 InputBinding::new(KeyCode::BackTab, Action::PreviousPane),
                 InputBinding::new(KeyCode::Tab, Action::NextPane),
                 InputBinding::new(KeyCode::Up, Action::Up).hide(),
@@ -159,6 +160,9 @@ pub enum Action {
     /// Send the active request from *any* context
     #[display("Send Request")]
     SendRequest,
+    /// Force a collection reload (typically it's automatic)
+    #[display("Reload")]
+    ReloadCollection,
     /// Embiggen a pane
     Fullscreen,
     /// Open the settings modal

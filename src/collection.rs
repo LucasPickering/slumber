@@ -57,7 +57,9 @@ pub struct RequestCollection<S = PathBuf> {
 
 /// A unique ID for a collection. This is necessary to differentiate between
 /// responses from different collections in the repository.
-#[derive(Clone, Debug, Default, Display, From, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, Default, Deref, Display, From, Serialize, Deserialize,
+)]
 pub struct CollectionId(String);
 
 /// Mutually exclusive hot-swappable config group

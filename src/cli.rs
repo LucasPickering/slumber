@@ -2,7 +2,7 @@ use crate::{
     collection::{ProfileId, RequestCollection, RequestRecipeId},
     http::{HttpEngine, Repository, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
-    util::{data_directory, ResultExt},
+    util::{Directory, ResultExt},
 };
 use anyhow::{anyhow, Context};
 use dialoguer::{Input, Password};
@@ -147,7 +147,7 @@ impl Subcommand {
             }
 
             Subcommand::Show => {
-                println!("Directory: {}", data_directory().display());
+                println!("Directory: {}", Directory::root());
                 Ok(())
             }
         }

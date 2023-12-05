@@ -11,12 +11,10 @@ mod tui;
 mod util;
 
 use crate::{
-    cli::Subcommand, collection::RequestCollection, tui::Tui,
-    util::data_directory,
+    cli::Subcommand, collection::RequestCollection, tui::Tui, util::Directory,
 };
-use anyhow::Context;
 use clap::Parser;
-use std::path::PathBuf;
+use std::{fs::File, path::PathBuf};
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
 #[derive(Debug, Parser)]
@@ -60,12 +58,8 @@ async fn main() -> anyhow::Result<()> {
 
 /// Set up tracing to log to a file
 fn initialize_tracing() -> anyhow::Result<()> {
-    let directory = data_directory();
-
-    std::fs::create_dir_all(&directory)
-        .context(format!("Error creating log directory {directory:?}"))?;
-    let log_path = directory.join("slumber.log");
-    let log_file = std::fs::File::create(log_path)?;
+    let path = Directory::log().create()?.join("slumber.log");
+    let log_file = File::create(path)?;
     let file_subscriber = tracing_subscriber::fmt::layer()
         .with_file(true)
         .with_line_number(true)

@@ -1,20 +1,52 @@
-use crate::http::RequestError;
+use crate::{collection::CollectionId, http::RequestError};
 use std::{
+    fs,
     ops::Deref,
     path::{Path, PathBuf},
 };
 use tracing::error;
 
-/// Where to store data and log files. The value is contextual:
-/// - In development, use a directory in the current directory
-/// - In release, use a platform-specific directory in the user's home
-pub fn data_directory() -> PathBuf {
-    if cfg!(debug_assertions) {
-        Path::new("./data/").into()
-    } else {
-        // According to the docs, this dir will be present on all platforms
-        // https://docs.rs/dirs/latest/dirs/fn.data_dir.html
-        dirs::data_dir().unwrap().join("slumber")
+/// A wrapper around `PathBuf` that makes it impossible to access a directory
+/// path without creating the dir first. The idea is to prevent all the possible
+/// bugs that could occur when a directory doesn't exist.
+///
+/// If you just want to print the path without having to create it (e.g. for
+/// debug output), use the `Debug` or `Display` impls.
+#[derive(Debug, Display)]
+#[display("{}", _0.display())]
+pub struct Directory(PathBuf);
+
+impl Directory {
+    /// Root directory for all generated files. The value is contextual:
+    /// - In development, use a directory in the current directory
+    /// - In release, use a platform-specific directory in the user's home
+    pub fn root() -> Self {
+        if cfg!(debug_assertions) {
+            Self(Path::new("./data/").into())
+        } else {
+            // According to the docs, this dir will be present on all platforms
+            // https://docs.rs/dirs/latest/dirs/fn.data_dir.html
+            Self(dirs::data_dir().unwrap().join("slumber"))
+        }
+    }
+
+    /// Directory to store log files
+    pub fn log() -> Self {
+        Self(Self::root().0.join("log"))
+    }
+
+    /// Directory to store collection-specific data files
+    pub fn data(collection_id: &CollectionId) -> Self {
+        Self(Self::root().0.join(collection_id.as_str()))
+    }
+
+    /// Create this directory, and return the path. This is the only way to
+    /// access the path value directly, enforcing that it can't be used without
+    /// being created.
+    pub fn create(self) -> anyhow::Result<PathBuf> {
+        fs::create_dir_all(&self.0)
+            .context("Error creating directory `{self}`")?;
+        Ok(self.0)
     }
 }
 
@@ -59,5 +91,7 @@ macro_rules! assert_err {
     }};
 }
 
+use anyhow::Context;
 #[cfg(test)]
 pub(crate) use assert_err;
+use derive_more::Display;

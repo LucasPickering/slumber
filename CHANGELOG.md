@@ -4,8 +4,10 @@
 
 ### Changed
 
-- Hide sensitive chain values in preview
 - [BREAKING] Key profiles/chains/requests by ID in collection file
+- [BREAKING] Move request history from `slumber/{id}.sqlite` to `slumber/{id}/requests.sqlite`
+  - Request history will be lost. If you want to recover it, you can move the old file to the new location (use `slumber show` to find the directory location)
+- Hide sensitive chain values in preview
 - Add collection ID/path to help modal ([#59](https://github.com/LucasPickering/slumber/issues/59))
   - Also add collection ID to terminal title
 

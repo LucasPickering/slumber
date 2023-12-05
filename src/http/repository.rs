@@ -5,7 +5,7 @@
 use crate::{
     collection::{CollectionId, RequestRecipeId},
     http::{Request, RequestId, RequestRecord, Response},
-    util::{data_directory, ResultExt},
+    util::{Directory, ResultExt},
 };
 use anyhow::Context;
 use rusqlite::{
@@ -48,7 +48,7 @@ impl Repository {
     /// Load the repository database. This will perform first-time setup, so
     /// this should only be called at the main session entrypoint.
     pub fn load(collection_id: &CollectionId) -> anyhow::Result<Self> {
-        let mut connection = Connection::open(Self::path(collection_id))?;
+        let mut connection = Connection::open(Self::path(collection_id)?)?;
         // Use WAL for concurrency
         connection.pragma_update(None, "journal_mode", "WAL")?;
         Self::setup(&mut connection)?;
@@ -57,9 +57,12 @@ impl Repository {
         })
     }
 
-    /// Path to the repository database file
-    fn path(collection_id: &CollectionId) -> PathBuf {
-        data_directory().join(format!("{collection_id}.sqlite"))
+    /// Path to the repository database file. This will create the directory if
+    /// it doesn't exist
+    fn path(collection_id: &CollectionId) -> anyhow::Result<PathBuf> {
+        Ok(Directory::data(collection_id)
+            .create()?
+            .join("requests.sqlite"))
     }
 
     /// Apply first-time setup

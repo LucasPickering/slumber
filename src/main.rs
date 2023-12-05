@@ -11,8 +11,7 @@ mod tui;
 mod util;
 
 use crate::{
-    cli::Subcommand, collection::RequestCollection, tui::Tui,
-    util::data_directory,
+    cli::Subcommand, collection::RequestCollection, tui::Tui, util::Directory,
 };
 use anyhow::Context;
 use clap::Parser;
@@ -60,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
 
 /// Set up tracing to log to a file
 fn initialize_tracing() -> anyhow::Result<()> {
-    let directory = data_directory();
+    let directory = Directory::log().create()?;
 
     std::fs::create_dir_all(&directory)
         .context(format!("Error creating log directory {directory:?}"))?;

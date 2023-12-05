@@ -273,7 +273,6 @@ impl<'a> ChainTemplateSource<'a> {
         let record = context
             .database
             .get_last_request(recipe_id)
-            .await
             .map_err(ChainError::Database)?
             .ok_or(ChainError::NoResponse)?;
 

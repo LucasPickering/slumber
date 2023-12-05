@@ -1,7 +1,9 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
-    collection::{Profile, RequestCollection, RequestRecipe},
+    collection::{
+        Profile, ProfileId, RequestCollection, RequestRecipe, RequestRecipeId,
+    },
     tui::{
         context::TuiContext,
         input::Action,
@@ -17,6 +19,7 @@ use crate::{
             draw::{Draw, DrawContext, Generate},
             event::{Event, EventHandler, Update, UpdateContext},
             state::{
+                persistence::{Persistable, Persistent, PersistentKey},
                 select::{Dynamic, Fixed, SelectState},
                 RequestState,
             },
@@ -27,10 +30,8 @@ use crate::{
 };
 use derive_more::Display;
 use itertools::Itertools;
-use ratatui::{
-    prelude::{Constraint, Direction, Rect},
-    widgets::ListState,
-};
+use ratatui::prelude::{Constraint, Direction, Rect};
+use serde::{Deserialize, Serialize};
 use std::rc::Rc;
 use strum::EnumIter;
 
@@ -39,8 +40,8 @@ use strum::EnumIter;
 pub struct PrimaryView {
     // Own state
     collection: Rc<RequestCollection>,
-    selected_pane: SelectState<Fixed, PrimaryPane, ListState>,
-    fullscreen_mode: Option<FullscreenMode>,
+    selected_pane: Persistent<SelectState<Fixed, PrimaryPane>>,
+    fullscreen_mode: Persistent<Option<FullscreenMode>>,
 
     // Children
     #[debug(skip)]
@@ -58,7 +59,17 @@ pub struct PrimaryViewProps<'a> {
 }
 
 /// Selectable panes in the primary view mode
-#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Display,
+    EnumIter,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
 pub enum PrimaryPane {
     #[display("Profiles")]
     ProfileList,
@@ -72,7 +83,7 @@ pub enum PrimaryPane {
 /// The various things that can be requested (haha get it, requested) to be
 /// shown in fullscreen. If one of these is requested while not available, we
 /// simply won't show it.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 enum FullscreenMode {
     /// Fullscreen the active request recipe
     Request,
@@ -92,8 +103,14 @@ impl PrimaryView {
         .into();
         Self {
             collection,
-            selected_pane: Default::default(),
-            fullscreen_mode: None,
+            selected_pane: Persistent::new(
+                PersistentKey::PrimaryPane,
+                Default::default(),
+            ),
+            fullscreen_mode: Persistent::new(
+                PersistentKey::FullscreenMode,
+                None,
+            ),
 
             profile_list_pane,
             recipe_list_pane,
@@ -116,7 +133,7 @@ impl PrimaryView {
 
     fn toggle_fullscreen(&mut self, mode: FullscreenMode) {
         // If we're already in the given mode, exit
-        self.fullscreen_mode = if Some(mode) == self.fullscreen_mode {
+        *self.fullscreen_mode = if Some(mode) == *self.fullscreen_mode {
             None
         } else {
             Some(mode)
@@ -214,7 +231,7 @@ impl EventHandler for PrimaryView {
                 }
                 // Exit fullscreen
                 Action::Cancel if self.fullscreen_mode.is_some() => {
-                    self.fullscreen_mode = None;
+                    *self.fullscreen_mode = None;
                     Update::Consumed
                 }
                 _ => Update::Propagate(event),
@@ -225,7 +242,7 @@ impl EventHandler for PrimaryView {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        let child = match (self.fullscreen_mode, self.selected_pane.selected())
+        let child = match (*self.fullscreen_mode, self.selected_pane.selected())
         {
             (Some(FullscreenMode::Request), _)
             | (None, PrimaryPane::Request) => self.request_pane.as_child(),
@@ -247,7 +264,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
         props: PrimaryViewProps<'a>,
         area: Rect,
     ) {
-        match self.fullscreen_mode {
+        match *self.fullscreen_mode {
             // Show all panes
             None => {
                 // Split the main pane horizontally
@@ -347,7 +364,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
 
 #[derive(Debug)]
 struct ProfileListPane {
-    profiles: Component<SelectState<Dynamic, Profile>>,
+    profiles: Component<Persistent<SelectState<Dynamic, Profile>>>,
 }
 
 struct ListPaneProps {
@@ -357,7 +374,11 @@ struct ListPaneProps {
 impl ProfileListPane {
     pub fn new(profiles: Vec<Profile>) -> Self {
         Self {
-            profiles: SelectState::new(profiles).into(),
+            profiles: Persistent::new(
+                PersistentKey::ProfileId,
+                SelectState::new(profiles),
+            )
+            .into(),
         }
     }
 }
@@ -391,16 +412,25 @@ impl Draw<ListPaneProps> for ProfileListPane {
     }
 }
 
+/// Persist profile by ID
+impl Persistable for Profile {
+    type Persisted = ProfileId;
+
+    fn get_persistent(&self) -> &Self::Persisted {
+        &self.id
+    }
+}
+
 #[derive(Debug)]
 struct RecipeListPane {
-    recipes: Component<SelectState<Dynamic, RequestRecipe>>,
+    recipes: Component<Persistent<SelectState<Dynamic, RequestRecipe>>>,
 }
 
 impl RecipeListPane {
     pub fn new(recipes: Vec<RequestRecipe>) -> Self {
         // When highlighting a new recipe, load it from the repo
         let on_select = |_: &mut UpdateContext, recipe: &RequestRecipe| {
-            TuiContext::send_message(Message::RequestStartLoad {
+            TuiContext::send_message(Message::RequestLoad {
                 recipe_id: recipe.id.clone(),
             });
         };
@@ -413,10 +443,13 @@ impl RecipeListPane {
         };
 
         Self {
-            recipes: SelectState::new(recipes)
-                .on_select(on_select)
-                .on_submit(on_submit)
-                .into(),
+            recipes: Persistent::new(
+                PersistentKey::RecipeId,
+                SelectState::new(recipes)
+                    .on_select(on_select)
+                    .on_submit(on_submit),
+            )
+            .into(),
         }
     }
 }
@@ -448,5 +481,14 @@ impl Draw<ListPaneProps> for RecipeListPane {
             area,
             &mut self.recipes.state_mut(),
         )
+    }
+}
+
+/// Persist recipe by ID
+impl Persistable for RequestRecipe {
+    type Persisted = RequestRecipeId;
+
+    fn get_persistent(&self) -> &Self::Persisted {
+        &self.id
     }
 }

@@ -6,6 +6,47 @@ use std::{
 };
 use tracing::error;
 
+/// A value that can be replaced in-place. This is useful for two purposes:
+/// - Transferring ownership of values from old to new
+/// - Dropping the old value before creating the new one
+/// This struct has one invariant: The value is always defined, *except* while
+/// the replacement closure is executing. Better make sure that guy doesn't
+/// panic!
+#[derive(Debug)]
+pub struct Replaceable<T>(Option<T>);
+
+impl<T> Replaceable<T> {
+    pub fn new(value: T) -> Self {
+        Self(Some(value))
+    }
+
+    /// Replace the old value with the new one. The function that generates the
+    /// new value consumes the old one.
+    ///
+    /// The only time this value will panic on access is while the passed
+    /// closure is executing (or during unwind if it panicked).
+    pub fn replace(&mut self, f: impl Fn(T) -> T) {
+        let old = self.0.take().expect("Replaceable value not present!");
+        self.0 = Some(f(old));
+    }
+}
+
+/// Access the inner value. If mid-replacement, this will panic
+impl<T> Deref for Replaceable<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().expect("Replacement in progress or failed")
+    }
+}
+
+/// Access the inner value. If mid-replacement, this will panic
+impl<T> DerefMut for Replaceable<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut().expect("Replacement in progress or failed")
+    }
+}
+
 /// A wrapper around `PathBuf` that makes it impossible to access a directory
 /// path without creating the dir first. The idea is to prevent all the possible
 /// bugs that could occur when a directory doesn't exist.
@@ -94,4 +135,4 @@ macro_rules! assert_err {
 use anyhow::Context;
 #[cfg(test)]
 pub(crate) use assert_err;
-use derive_more::Display;
+use derive_more::{DerefMut, Display};

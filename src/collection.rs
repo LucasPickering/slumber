@@ -86,6 +86,13 @@ pub struct Profile {
 )]
 pub struct ProfileId(String);
 
+/// Needed for persistence loading
+impl PartialEq<Profile> for ProfileId {
+    fn eq(&self, other: &Profile) -> bool {
+        self == &other.id
+    }
+}
+
 /// The value type of a profile's data mapping
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -135,6 +142,13 @@ pub struct RequestRecipe {
     Deserialize,
 )]
 pub struct RequestRecipeId(String);
+
+/// Needed for persistence loading
+impl PartialEq<RequestRecipe> for RequestRecipeId {
+    fn eq(&self, other: &RequestRecipe) -> bool {
+        self == &other.id
+    }
+}
 
 /// A chain is a means to data from one response in another request. The chain
 /// is the middleman: it defines where and how to pull the value, then recipes

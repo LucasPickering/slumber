@@ -8,6 +8,7 @@
   - Mostly for development purposes
 - Add collection ID/path to help modal ([#59](https://github.com/LucasPickering/slumber/issues/59))
   - Also add collection ID to terminal title
+- Persist UI state between sessions ([#39](https://github.com/LucasPickering/slumber/issues/39))
 
 ### Changed
 

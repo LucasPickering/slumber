@@ -85,9 +85,7 @@ pub enum Message {
     Quit,
 
     /// Load the most recent response for a recipe from the database
-    RequestStartLoad { recipe_id: RequestRecipeId },
-    /// Finished loading a response from the database
-    RequestEndLoad { record: RequestRecord },
+    RequestLoad { recipe_id: RequestRecipeId },
 
     /// Render a template string, to be previewed in the UI. Ideally this could
     /// be launched directly by the component that needs it, but only the

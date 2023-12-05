@@ -441,7 +441,7 @@ impl Tui {
         })
     }
 
-    /// TODO
+    /// Set the title of the terminal based on collection ID
     fn set_terminal_title(&self) {
         let title = format!("{} ({})", EXE_NAME, &self.collection.id);
         // This error shouldn't be fatal

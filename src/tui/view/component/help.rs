@@ -72,7 +72,7 @@ impl Modal for HelpModal {
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
-        (Constraint::Length(40), Constraint::Length(16))
+        (Constraint::Length(40), Constraint::Length(17))
     }
 }
 

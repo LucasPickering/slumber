@@ -53,7 +53,16 @@ pub enum Subcommand {
     },
 
     /// Show meta information about slumber
-    Show,
+    Show {
+        #[command(subcommand)]
+        target: ShowTarget,
+    },
+}
+
+#[derive(Copy, Clone, Debug, clap::Subcommand)]
+pub enum ShowTarget {
+    /// Show the directory where slumber stores data and log files
+    Dir,
 }
 
 impl Subcommand {
@@ -147,8 +156,10 @@ impl Subcommand {
                 Ok(())
             }
 
-            Subcommand::Show => {
-                println!("Directory: {}", Directory::root());
+            Subcommand::Show { target } => {
+                match target {
+                    ShowTarget::Dir => println!("{}", Directory::root()),
+                }
                 Ok(())
             }
         }

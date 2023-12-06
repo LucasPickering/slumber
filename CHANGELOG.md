@@ -15,6 +15,8 @@
 - [BREAKING] Key profiles/chains/requests by ID in collection file
 - [BREAKING] Move request history from `slumber/{id}.sqlite` to `slumber/{id}/state.sqlite`
   - Request history will be lost. If you want to recover it, you can move the old file to the new location (use `slumber show` to find the directory location)
+- [BREAKING] `show` subcommand now takes a `target` argument
+  - Right now the only option is `slumber show dir`, which has the same behavior as the old `slumber show` (except now it prints the bare directory)
 - Hide sensitive chain values in preview
 - Change fullscreen keybinding from F11 to F
   - F11 in some cases is eaten by the IDE or OS, which is annoying

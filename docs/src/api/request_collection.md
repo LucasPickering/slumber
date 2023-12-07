@@ -27,12 +27,12 @@ Each collection needs a unique ID (via the `id` field). This ID is used to tie t
 
 A request collection supports the following top-level fields:
 
-| Field      | Type                                         | Description                   | Default  |
-| ---------- | -------------------------------------------- | ----------------------------- | -------- |
-| `id`       | `string`                                     | Unique ID for this collection | Required |
-| `profiles` | [`list[Profile]`](./profile.md)              | Static template values        | []       |
-| `requests` | [`list[RequestRecipe]`](./request_recipe.md) | Requests Slumber can send     | []       |
-| `chains`   | [`list[Chain]`](./chain.md)                  | Complex template values       | []       |
+| Field      | Type                                                    | Description                   | Default  |
+| ---------- | ------------------------------------------------------- | ----------------------------- | -------- |
+| `id`       | `string`                                                | Unique ID for this collection | Required |
+| `profiles` | [`mapping[string, Profile]`](./profile.md)              | Static template values        | []       |
+| `requests` | [`mapping[string, RequestRecipe]`](./request_recipe.md) | Requests Slumber can send     | []       |
+| `chains`   | [`mapping[string, Chain]`](./chain.md)                  | Complex template values       | []       |
 
 ## Examples
 
@@ -40,24 +40,24 @@ A request collection supports the following top-level fields:
 id: example
 
 profiles:
-  - id: local
+  local:
     name: Local
     data:
       host: http://localhost:5000
       user_guid: abc123
-  - id: prd
+  prd:
     name: Production
     data:
       host: https://httpbin.org
       user_guid: abc123
 
 chains:
-  - id: username
+  username:
     source: !file ./username.txt
-  - id: password
+  password:
     source: !prompt Password
     sensitive: true
-  - id: auth_token
+  auth_token:
     source: !request login
     selector: $.token
 
@@ -68,8 +68,8 @@ base: &base
     Content-Type: application/json
 
 requests:
-  - <<: *base
-    id: login
+  login:
+    <<: *base
     method: POST
     url: "{{host}}/anything/login"
     body: |
@@ -78,8 +78,8 @@ requests:
         "password": "{{chains.password}}"
       }
 
-  - <<: *base
-    id: Get User
+  get_user:
+    <<: *base
     method: GET
     url: "{{host}}/anything/current-user"
     query:

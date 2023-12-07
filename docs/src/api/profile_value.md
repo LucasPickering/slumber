@@ -14,10 +14,10 @@ In the case of a nested template, the inner template will be rendered into its o
 ## Examples
 
 ```yaml
-!raw http://localhost:5000
----
 # The !raw key is the default, and can be omitted
 http://localhost:5000
+---
+!raw http://localhost:5000
 ---
 !template http://{{hostname}}
 ```

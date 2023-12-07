@@ -8,7 +8,6 @@ To use a chain in a template, reference it as `{{chains.<id>}}`.
 
 | Field       | Type                                                                                   | Description                                             | Default  |
 | ----------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------- |
-| `id`        | `string`                                                                               | Unique identifier for this chain                        | Required |
 | `source`    | [`ChainSource`](./chain_source.md)                                                     | Source of the chained value                             | Required |
 | `sensitive` | `boolean`                                                                              | Should the value be hidden in the UI?                   | `false`  |
 | `selector`  | [`JSONPath`](https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html) | Selector to narrow down results in a chained JSON value | `null`   |

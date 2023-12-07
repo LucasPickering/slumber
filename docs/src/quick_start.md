@@ -8,7 +8,7 @@ Create a file called `slumber.yml` and add the following contents:
 
 ```yaml
 requests:
-  - id: get
+  get:
     method: GET
     url: https://httpbin.org/get
 ```

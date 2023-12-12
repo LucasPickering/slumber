@@ -1,6 +1,6 @@
 use crate::{
     collection::{Chain, ChainSource, RequestRecipeId},
-    db::Database,
+    db::CollectionDatabase,
     http::{Body, Request, RequestId, RequestRecord, Response},
     template::{Prompt, Prompter, Template, TemplateContext},
 };
@@ -12,7 +12,7 @@ use reqwest::{header::HeaderMap, Method, StatusCode};
 factori!(Request, {
     default {
         id = RequestId::new(),
-        recipe_id = String::new().into(),
+        recipe_id = "recipe1".into(),
         method = Method::GET,
         url = "/url".into(),
         headers = HeaderMap::new(),
@@ -62,7 +62,7 @@ factori!(TemplateContext, {
         profile = Default::default()
         chains = Default::default()
         prompter = Box::<TestPrompter>::default(),
-        database = Database::testing()
+        database = CollectionDatabase::testing()
         overrides = Default::default()
     }
 });

@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Context;
 use chrono::{DateTime, Duration, Utc};
-use derive_more::{Deref, Display, From};
+use derive_more::{Display, From};
 use indexmap::IndexMap;
 use reqwest::{
     header::{self, HeaderMap, HeaderValue},
@@ -47,16 +47,7 @@ pub struct RequestError {
 
 /// Unique ID for a single launched request
 #[derive(
-    Copy,
-    Clone,
-    Debug,
-    Deref,
-    Display,
-    Eq,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
+    Copy, Clone, Debug, Display, Eq, Hash, PartialEq, Serialize, Deserialize,
 )]
 pub struct RequestId(pub Uuid);
 
@@ -89,11 +80,6 @@ pub struct RequestRecord {
 }
 
 impl RequestRecord {
-    /// Unique ID for this record
-    pub fn id(&self) -> RequestId {
-        self.id
-    }
-
     /// Get the elapsed time for this request
     pub fn duration(&self) -> Duration {
         self.end_time - self.start_time

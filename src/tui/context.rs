@@ -1,5 +1,5 @@
 use crate::{
-    db::Database,
+    db::CollectionDatabase,
     tui::{
         input::InputEngine,
         message::{Message, MessageSender},
@@ -36,12 +36,12 @@ pub struct TuiContext {
     /// view.
     pub messages_tx: MessageSender,
     /// Persistence database
-    pub database: Database,
+    pub database: CollectionDatabase,
 }
 
 impl TuiContext {
     /// Initialize global context. Should be called only once, during startup.
-    pub fn init(messages_tx: MessageSender, database: Database) {
+    pub fn init(messages_tx: MessageSender, database: CollectionDatabase) {
         CONTEXT
             .set(Self {
                 theme: Theme::default(),
@@ -73,6 +73,6 @@ pub fn tui_context() {
     use tokio::sync::mpsc;
     TuiContext::init(
         MessageSender::new(mpsc::unbounded_channel().0),
-        Database::testing(),
+        CollectionDatabase::testing(),
     );
 }

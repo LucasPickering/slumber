@@ -5,7 +5,7 @@ mod view;
 
 use crate::{
     collection::{ProfileId, RequestCollection, RequestRecipeId},
-    db::Database,
+    db::{CollectionDatabase, Database},
     http::{HttpEngine, RequestBuilder},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
@@ -14,12 +14,12 @@ use crate::{
         message::{Message, MessageSender},
         view::{ModalPriority, PreviewPrompter, RequestState, View},
     },
-    util::{Replaceable, ResultExt},
+    util::Replaceable,
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, SetTitle},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
 use futures::Future;
@@ -41,8 +41,6 @@ use std::{
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 use tracing::{debug, error};
 
-const EXE_NAME: &str = env!("CARGO_BIN_NAME");
-
 /// Main controller struct for the TUI. The app uses a React-like architecture
 /// for the view, with a wrapping controller (this struct). The main loop goes
 /// through the following phases on each iteration:
@@ -63,7 +61,9 @@ pub struct Tui {
     /// before the new one is created.
     view: Replaceable<View>,
     collection: Rc<RequestCollection>,
-    database: Database,
+    /// We only ever need to run DB ops related to our collection, so we can
+    /// use a collection-restricted DB handle
+    database: CollectionDatabase,
     should_run: bool,
 }
 
@@ -75,14 +75,21 @@ impl Tui {
 
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
-    pub async fn start(collection_file: PathBuf) {
+    pub async fn start(collection_file: PathBuf) -> anyhow::Result<()> {
         initialize_panic_handler();
-        let terminal =
-            initialize_terminal().expect("Error initializing terminal");
+
+        // ===== Initialize global state =====
+        // This stuff only needs to be set up *once per session*
 
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx = MessageSender::new(messages_tx);
+        // Load a database for this particular collection
+        let database = Database::load()?.into_collection(&collection_file)?;
+        // Initialize global view context
+        TuiContext::init(messages_tx.clone(), database.clone());
+
+        // ===== Initialize collection & view =====
 
         // If the collection fails to load, create an empty one just so we can
         // move along. We'll watch the file and hopefully the user can fix it
@@ -95,13 +102,13 @@ impl Tui {
                         .with_source(collection_file)
                 })
                 .into();
-
-        let database = Database::load(&collection.id).unwrap();
-
-        // Initialize global view context
-        TuiContext::init(messages_tx.clone(), database.clone());
-
         let view = View::new(Rc::clone(&collection));
+
+        // The code to revert the terminal takeover is in `Tui::drop`, so we
+        // shouldn't take over the terminal until right before creating the
+        // `Tui`.
+        let terminal = initialize_terminal()?;
+
         let app = Tui {
             terminal,
             messages_rx,
@@ -115,11 +122,7 @@ impl Tui {
             database,
         };
 
-        app.set_terminal_title();
-
-        // Any error during execution that gets this far is fatal. We expect the
-        // error to already have context attached so we can just unwrap
-        app.run().unwrap();
+        app.run()
     }
 
     /// Run the main TUI update loop. Any error returned from this is fatal. See
@@ -292,7 +295,6 @@ impl Tui {
     /// Reload state with a new collection
     fn reload_collection(&mut self, collection: RequestCollection) {
         self.collection = Rc::new(collection);
-        self.set_terminal_title();
 
         // Rebuild the whole view, because tons of things can change. Drop the
         // old one *first* to make sure UI state is saved before being restored
@@ -444,15 +446,6 @@ impl Tui {
             overrides: Default::default(),
             prompter: Box::new(prompter),
         })
-    }
-
-    /// Set the title of the terminal based on collection ID
-    fn set_terminal_title(&self) {
-        let title = format!("{} ({})", EXE_NAME, &self.collection.id);
-        // This error shouldn't be fatal
-        let _ = crossterm::execute!(io::stdout(), SetTitle(title))
-            .context("Error setting terminal title")
-            .traced();
     }
 }
 

@@ -10,7 +10,6 @@ use indexmap::IndexMap;
 use serde::Deserialize;
 use std::{fs::File, path::Path};
 use tracing::info;
-use uuid::Uuid;
 
 impl RequestCollection<()> {
     /// Convert an Insomnia exported collection into the slumber format. This
@@ -56,7 +55,6 @@ impl RequestCollection<()> {
 
         Ok(RequestCollection {
             source: (),
-            id: Uuid::new_v4().to_string().into(),
             profiles,
             recipes,
             chains: IndexMap::new(),

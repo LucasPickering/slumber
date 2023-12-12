@@ -41,7 +41,7 @@ pub use record::*;
 
 use crate::{
     collection::RequestRecipe,
-    db::Database,
+    db::CollectionDatabase,
     template::{Template, TemplateContext},
     util::ResultExt,
 };
@@ -69,12 +69,12 @@ const USER_AGENT: &str =
 #[derive(Clone, Debug)]
 pub struct HttpEngine {
     client: Client,
-    database: Database,
+    database: CollectionDatabase,
 }
 
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
-    pub fn new(database: Database) -> Self {
+    pub fn new(database: CollectionDatabase) -> Self {
         Self {
             client: Client::builder()
                 .user_agent(USER_AGENT)

@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
         // Run the TUI
         None => {
             let collection_path = RequestCollection::try_path(args.collection)?;
-            Tui::start(collection_path).await;
+            Tui::start(collection_path).await?;
             Ok(())
         }
 

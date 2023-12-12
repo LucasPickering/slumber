@@ -13,8 +13,8 @@
 ### Changed
 
 - [BREAKING] Key profiles/chains/requests by ID in collection file
-- [BREAKING] Move request history from `slumber/{id}.sqlite` to `slumber/{id}/state.sqlite`
-  - Request history will be lost. If you want to recover it, you can move the old file to the new location (use `slumber show` to find the directory location)
+- [BREAKING] Merge request history into a single DB file
+  - Request history (and UI state) will be lost
 - [BREAKING] `show` subcommand now takes a `target` argument
   - Right now the only option is `slumber show dir`, which has the same behavior as the old `slumber show` (except now it prints the bare directory)
 - Hide sensitive chain values in preview

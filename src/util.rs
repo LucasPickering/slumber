@@ -1,4 +1,4 @@
-use crate::{collection::CollectionId, http::RequestError};
+use crate::http::RequestError;
 use std::{
     fs,
     ops::Deref,
@@ -74,11 +74,6 @@ impl Directory {
     /// Directory to store log files
     pub fn log() -> Self {
         Self(Self::root().0.join("log"))
-    }
-
-    /// Directory to store collection-specific data files
-    pub fn data(collection_id: &CollectionId) -> Self {
-        Self(Self::root().0.join(collection_id.as_str()))
     }
 
     /// Create this directory, and return the path. This is the only way to

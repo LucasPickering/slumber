@@ -19,6 +19,7 @@ use std::{
 /// A non-TUI command
 #[derive(Clone, Debug, clap::Subcommand)]
 pub enum Subcommand {
+    // TODO Break this apart into multiple files
     /// Execute a single request
     #[clap(aliases=&["req", "rq"])]
     Request {
@@ -52,6 +53,12 @@ pub enum Subcommand {
         output_file: Option<PathBuf>,
     },
 
+    /// View and modify request collection history
+    Collections {
+        #[command(subcommand)]
+        subcommand: CollectionsSubcommand,
+    },
+
     /// Show meta information about slumber
     Show {
         #[command(subcommand)]
@@ -63,6 +70,23 @@ pub enum Subcommand {
 pub enum ShowTarget {
     /// Show the directory where slumber stores data and log files
     Dir,
+}
+
+#[derive(Clone, Debug, clap::Subcommand)]
+pub enum CollectionsSubcommand {
+    /// List all known request collections
+    #[command(visible_alias = "ls")]
+    List,
+    /// Move all data from one collection to another.
+    ///
+    /// The data from the source collection will be merged into the target
+    /// collection, then all traces of the source collection will be deleted!
+    Migrate {
+        /// The path the collection to migrate *from*
+        from: PathBuf,
+        /// The path the collection to migrate *into*
+        to: PathBuf,
+    },
 }
 
 impl Subcommand {
@@ -80,6 +104,8 @@ impl Subcommand {
             } => {
                 let collection_path =
                     RequestCollection::try_path(collection_override)?;
+                let database =
+                    Database::load()?.into_collection(&collection_path)?;
                 let mut collection =
                     RequestCollection::load(collection_path).await?;
 
@@ -101,7 +127,6 @@ impl Subcommand {
                     )?;
 
                 // Build the request
-                let database = Database::load(&collection.id)?;
                 let overrides: IndexMap<_, _> = overrides.into_iter().collect();
                 let request = RequestBuilder::new(
                     recipe,
@@ -156,6 +181,8 @@ impl Subcommand {
                 Ok(())
             }
 
+            Subcommand::Collections { subcommand } => subcommand.execute(),
+
             Subcommand::Show { target } => {
                 match target {
                     ShowTarget::Dir => println!("{}", Directory::root()),
@@ -163,6 +190,24 @@ impl Subcommand {
                 Ok(())
             }
         }
+    }
+}
+
+impl CollectionsSubcommand {
+    fn execute(self) -> anyhow::Result<()> {
+        let database = Database::load()?;
+        match self {
+            CollectionsSubcommand::List => {
+                for path in database.get_collections()? {
+                    println!("{}", path.display());
+                }
+            }
+            CollectionsSubcommand::Migrate { from, to } => {
+                database.merge_collections(&from, &to)?;
+                println!("Migrated {} into {}", from.display(), to.display());
+            }
+        }
+        Ok(())
     }
 }
 

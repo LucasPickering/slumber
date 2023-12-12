@@ -16,18 +16,18 @@ A request recipe defines how to make a particular request. For a REST API, you'l
 ## Examples
 
 ```yaml
-id: login
-name: Login
-method: POST
-url: "{{host}}/anything/login"
-headers:
-  accept: application/json
-  content-type: application/json
-query:
-  root_access: yes_please
-body: |
-  {
-    "username": "{{chains.username}}",
-    "password": "{{chains.password}}"
-  }
+login:
+  name: Login
+  method: POST
+  url: "{{host}}/anything/login"
+  headers:
+    accept: application/json
+    content-type: application/json
+  query:
+    root_access: yes_please
+  body: |
+    {
+      "username": "{{chains.username}}",
+      "password": "{{chains.password}}"
+    }
 ```

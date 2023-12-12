@@ -9,7 +9,7 @@ pub use prompt::{Prompt, Prompter};
 
 use crate::{
     collection::{Chain, ChainId, ProfileValue},
-    db::Database,
+    db::CollectionDatabase,
     template::{
         error::TemplateParseError,
         parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
@@ -30,7 +30,7 @@ pub struct TemplateContext {
     /// Chained values from dynamic sources
     pub chains: IndexMap<ChainId, Chain>,
     /// Needed for accessing response bodies for chaining
-    pub database: Database,
+    pub database: CollectionDatabase,
     /// Additional key=value overrides passed directly from the user
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
@@ -266,7 +266,7 @@ mod tests {
         #[case] expected_value: &str,
     ) {
         let recipe_id: RequestRecipeId = "recipe1".into();
-        let database = Database::testing();
+        let database = CollectionDatabase::testing();
         let response_body = json!({
             "string": "Hello World!",
             "number": 6,
@@ -342,7 +342,7 @@ mod tests {
         #[case] request_response: Option<(Request, Response)>,
         #[case] expected_error: &str,
     ) {
-        let database = Database::testing();
+        let database = CollectionDatabase::testing();
         if let Some((request, response)) = request_response {
             database
                 .insert_request(&create!(

@@ -19,26 +19,33 @@ Whichever of those files is found _first_ will be used. If you want to use a dif
 slumber -c my-collection.yml
 ```
 
-## Collection ID
+## Collection History & Migration
 
-Each collection needs a unique ID (via the `id` field). This ID is used to tie the collection to its history. If the ID of a collection changes, you'll lose the history for it. If two collections share an ID, their request history could start interfering with each other. Make sure each collection used on your computer is unique.
+Each collection needs a unique ID generated when the collection is first loaded by Slumber. This ID is used to persist request history and other data related to the collection. If you move a collection file, a new ID will be generated and it will be unlinked from its previous history. If you want to retain that history, you can migrate data from the old ID to the new one like so:
+
+```sh
+slumber collections migrate /slumber/old.yml /slumber/new.yml
+```
+
+If you don't remember the path of the old file, you can list all known collections with:
+
+```sh
+slumber collections list
+```
 
 ## Fields
 
 A request collection supports the following top-level fields:
 
-| Field      | Type                                                    | Description                   | Default  |
-| ---------- | ------------------------------------------------------- | ----------------------------- | -------- |
-| `id`       | `string`                                                | Unique ID for this collection | Required |
-| `profiles` | [`mapping[string, Profile]`](./profile.md)              | Static template values        | []       |
-| `requests` | [`mapping[string, RequestRecipe]`](./request_recipe.md) | Requests Slumber can send     | []       |
-| `chains`   | [`mapping[string, Chain]`](./chain.md)                  | Complex template values       | []       |
+| Field      | Type                                                    | Description               | Default |
+| ---------- | ------------------------------------------------------- | ------------------------- | ------- |
+| `profiles` | [`mapping[string, Profile]`](./profile.md)              | Static template values    | []      |
+| `requests` | [`mapping[string, RequestRecipe]`](./request_recipe.md) | Requests Slumber can send | []      |
+| `chains`   | [`mapping[string, Chain]`](./chain.md)                  | Complex template values   | []      |
 
 ## Examples
 
 ```yaml
-id: example
-
 profiles:
   local:
     name: Local

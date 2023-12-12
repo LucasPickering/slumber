@@ -80,6 +80,8 @@ impl EventHandler for HelpModal {}
 
 impl Draw for HelpModal {
     fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+        let tui_context = TuiContext::get();
+
         // Create layout
         let [collection_area, _, keybindings_area] = layout(
             area,
@@ -95,7 +97,7 @@ impl Draw for HelpModal {
         let collection_metadata = Table {
             title: Some("Collection"),
             rows: [
-                ["ID", self.collection.id.as_str()],
+                ["ID", &tui_context.database.collection_id().to_string()],
                 ["Path", &self.collection.path().display().to_string()],
             ],
             column_widths: &[Constraint::Length(5), Constraint::Max(100)],
@@ -108,7 +110,7 @@ impl Draw for HelpModal {
         // Keybindings
         let keybindings = Table {
             title: Some("Keybindings"),
-            rows: TuiContext::get()
+            rows: tui_context
                 .input_engine
                 .bindings()
                 .values()

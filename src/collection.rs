@@ -38,9 +38,6 @@ pub struct RequestCollection<S = PathBuf> {
     #[serde(skip)]
     source: S,
 
-    /// Unique ID for this collection. This should be unique for across all
-    /// collections used on one computer.
-    pub id: CollectionId,
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
     pub profiles: IndexMap<ProfileId, Profile>,
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
@@ -54,13 +51,6 @@ pub struct RequestCollection<S = PathBuf> {
     )]
     pub recipes: IndexMap<RequestRecipeId, RequestRecipe>,
 }
-
-/// A unique ID for a collection. This is necessary to give each collection its
-/// own database.
-#[derive(
-    Clone, Debug, Default, Deref, Display, From, Serialize, Deserialize,
-)]
-pub struct CollectionId(String);
 
 /// Mutually exclusive hot-swappable config group
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -220,7 +210,6 @@ impl<S> RequestCollection<S> {
     pub fn with_source<T>(self, source: T) -> RequestCollection<T> {
         RequestCollection {
             source,
-            id: self.id,
             profiles: self.profiles,
             chains: self.chains,
             recipes: self.recipes,

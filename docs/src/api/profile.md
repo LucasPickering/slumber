@@ -14,10 +14,10 @@ Profiles also support nested templates, via the `!template` tag.
 ## Examples
 
 ```yaml
-id: local
-name: Local
-data:
-  host: localhost:5000
-  url: !template "https://{{host}}"
-  user_guid: abc123
+local:
+  name: Local
+  data:
+    host: localhost:5000
+    url: !template "https://{{host}}"
+    user_guid: abc123
 ```

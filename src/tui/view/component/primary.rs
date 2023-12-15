@@ -184,11 +184,11 @@ impl EventHandler for PrimaryView {
                     }
                     Update::Consumed
                 }
-                Action::PreviousPane => {
+                Action::PreviousPane if self.fullscreen_mode.is_none() => {
                     self.selected_pane.previous(context);
                     Update::Consumed
                 }
-                Action::NextPane => {
+                Action::NextPane if self.fullscreen_mode.is_none() => {
                     self.selected_pane.next(context);
                     Update::Consumed
                 }

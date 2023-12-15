@@ -46,6 +46,10 @@ impl InputEngine {
                 InputBinding::new(KeyCode::Down, Action::Down).hide(),
                 InputBinding::new(KeyCode::Left, Action::Left).hide(),
                 InputBinding::new(KeyCode::Right, Action::Right).hide(),
+                InputBinding::new(KeyCode::PageUp, Action::PageUp).hide(),
+                InputBinding::new(KeyCode::PageDown, Action::PageDown).hide(),
+                InputBinding::new(KeyCode::Home, Action::Home).hide(),
+                InputBinding::new(KeyCode::End, Action::End).hide(),
                 InputBinding::new(KeyCode::Enter, Action::Submit),
                 InputBinding::new(KeyCode::Esc, Action::Cancel),
             ]
@@ -154,6 +158,10 @@ pub enum Action {
     Down,
     Left,
     Right,
+    PageUp,
+    PageDown,
+    Home,
+    End,
 
     /// Do a thing. E.g. select an item in a list
     Submit,

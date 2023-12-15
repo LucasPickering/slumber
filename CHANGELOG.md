@@ -9,6 +9,7 @@
 - Add collection ID/path to help modal ([#59](https://github.com/LucasPickering/slumber/issues/59))
   - Also add collection ID to terminal title
 - Persist UI state between sessions ([#39](https://github.com/LucasPickering/slumber/issues/39))
+- Text window can be controlled with PgUp/PgDown/Home/End ([#77](https://github.com/LucasPickering/slumber/issues/77))
 
 ### Changed
 
@@ -24,6 +25,7 @@
 ### Fixed
 
 - Don't require collection file to be present for `show` subcommand ([#62](https://github.com/LucasPickering/slumber/issues/62))
+- Fix state file being created in root Slumber directory if collection file is invalid ([#71](https://github.com/LucasPickering/slumber/issues/71))
 
 ## [0.9.0] - 2023-11-28
 

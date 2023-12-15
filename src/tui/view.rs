@@ -24,7 +24,7 @@ use crate::{
     },
 };
 use ratatui::Frame;
-use std::{collections::VecDeque, fmt::Debug, rc::Rc};
+use std::{collections::VecDeque, fmt::Debug};
 use tracing::{error, trace, trace_span};
 
 /// Primary entrypoint for the view. This contains the main draw functions, as
@@ -39,7 +39,7 @@ pub struct View {
 }
 
 impl View {
-    pub fn new(collection: Rc<RequestCollection>) -> Self {
+    pub fn new(collection: &RequestCollection) -> Self {
         let mut view = Self {
             config: ViewConfig::default(),
             root: Root::new(collection).into(),

@@ -34,7 +34,6 @@ use std::{
     io::{self, Stdout},
     ops::Deref,
     path::PathBuf,
-    rc::Rc,
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
@@ -60,7 +59,7 @@ pub struct Tui {
     /// recreated. The view persists its state on drop, so that has to happen
     /// before the new one is created.
     view: Replaceable<View>,
-    collection: Rc<RequestCollection>,
+    collection: RequestCollection,
     /// We only ever need to run DB ops related to our collection, so we can
     /// use a collection-restricted DB handle
     database: CollectionDatabase,
@@ -93,16 +92,13 @@ impl Tui {
 
         // If the collection fails to load, create an empty one just so we can
         // move along. We'll watch the file and hopefully the user can fix it
-        let collection: Rc<_> =
-            RequestCollection::load(collection_file.clone())
-                .await
-                .unwrap_or_else(|error| {
-                    messages_tx.send(Message::Error { error });
-                    RequestCollection::<()>::default()
-                        .with_source(collection_file)
-                })
-                .into();
-        let view = View::new(Rc::clone(&collection));
+        let collection = RequestCollection::load(collection_file.clone())
+            .await
+            .unwrap_or_else(|error| {
+                messages_tx.send(Message::Error { error });
+                RequestCollection::<()>::default().with_source(collection_file)
+            });
+        let view = View::new(&collection);
 
         // The code to revert the terminal takeover is in `Tui::drop`, so we
         // shouldn't take over the terminal until right before creating the
@@ -294,13 +290,13 @@ impl Tui {
 
     /// Reload state with a new collection
     fn reload_collection(&mut self, collection: RequestCollection) {
-        self.collection = Rc::new(collection);
+        self.collection = collection;
 
         // Rebuild the whole view, because tons of things can change. Drop the
         // old one *first* to make sure UI state is saved before being restored
         self.view.replace(|old| {
             drop(old);
-            View::new(Rc::clone(&self.collection))
+            View::new(&self.collection)
         });
         self.view.notify(format!(
             "Reloaded collection from {}",

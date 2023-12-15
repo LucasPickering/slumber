@@ -1,14 +1,11 @@
-use crate::{
-    collection::RequestCollection,
-    tui::{
-        context::TuiContext,
-        input::Action,
-        view::{
-            common::{modal::Modal, table::Table},
-            draw::{Draw, DrawContext, Generate},
-            event::EventHandler,
-            util::layout,
-        },
+use crate::tui::{
+    context::TuiContext,
+    input::Action,
+    view::{
+        common::{modal::Modal, table::Table},
+        draw::{Draw, DrawContext, Generate},
+        event::EventHandler,
+        util::layout,
     },
 };
 use itertools::Itertools;
@@ -17,7 +14,6 @@ use ratatui::{
     text::Line,
     widgets::Paragraph,
 };
-use std::rc::Rc;
 
 /// A mini helper in the footer for showing a few important key bindings
 #[derive(Debug)]
@@ -55,16 +51,8 @@ impl Draw for HelpFooter {
 }
 
 /// A whole ass modal for showing key binding help
-#[derive(Debug)]
-pub struct HelpModal {
-    collection: Rc<RequestCollection>,
-}
-
-impl HelpModal {
-    pub fn new(collection: Rc<RequestCollection>) -> Self {
-        Self { collection }
-    }
-}
+#[derive(Debug, Default)]
+pub struct HelpModal;
 
 impl Modal for HelpModal {
     fn title(&self) -> &str {
@@ -72,7 +60,7 @@ impl Modal for HelpModal {
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
-        (Constraint::Length(40), Constraint::Length(17))
+        (Constraint::Percentage(80), Constraint::Length(16))
     }
 }
 
@@ -87,7 +75,7 @@ impl Draw for HelpModal {
             area,
             Direction::Vertical,
             [
-                Constraint::Length(3),
+                Constraint::Length(2),
                 Constraint::Length(1),
                 Constraint::Min(0),
             ],
@@ -96,10 +84,17 @@ impl Draw for HelpModal {
         // Collection metadata
         let collection_metadata = Table {
             title: Some("Collection"),
-            rows: [
-                ["ID", &tui_context.database.collection_id().to_string()],
-                ["Path", &self.collection.path().display().to_string()],
-            ],
+            rows: [[
+                Line::from("Path"),
+                Line::from(
+                    tui_context
+                        .database
+                        .collection_path()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_default(),
+                )
+                .alignment(Alignment::Right),
+            ]],
             column_widths: &[Constraint::Length(5), Constraint::Max(100)],
             ..Default::default()
         };

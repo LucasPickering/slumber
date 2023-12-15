@@ -38,18 +38,26 @@ impl<T> TextWindow<T> {
         }
     }
 
+    /// Get the final line that we can't scroll past. This will be the first
+    /// line of the last page of text
+    fn max_scroll_line(&self) -> u16 {
+        self.text_height
+            .get()
+            .saturating_sub(self.window_height.get())
+    }
+
     fn scroll_up(&mut self, lines: u16) {
         self.offset_y = self.offset_y.saturating_sub(lines);
     }
 
     fn scroll_down(&mut self, lines: u16) {
-        self.offset_y = cmp::min(
-            self.offset_y + lines,
-            // Don't scroll past the bottom of the text
-            self.text_height
-                .get()
-                .saturating_sub(self.window_height.get()),
-        );
+        self.offset_y = cmp::min(self.offset_y + lines, self.max_scroll_line());
+    }
+
+    /// Scroll to a specific line number. The target line will end up as close
+    /// to the top of the page as possible
+    fn scroll_to(&mut self, line: u16) {
+        self.offset_y = cmp::min(line, self.max_scroll_line());
     }
 }
 
@@ -68,6 +76,22 @@ impl<T: Debug> EventHandler for TextWindow<T> {
                     self.scroll_down(1);
                     Update::Consumed
                 }
+                Action::PageUp => {
+                    self.scroll_up(self.window_height.get());
+                    Update::Consumed
+                }
+                Action::PageDown => {
+                    self.scroll_down(self.window_height.get());
+                    Update::Consumed
+                }
+                Action::Home => {
+                    self.scroll_to(0);
+                    Update::Consumed
+                }
+                Action::End => {
+                    self.scroll_to(u16::MAX);
+                    Update::Consumed
+                }
                 _ => Update::Propagate(event),
             },
             _ => Update::Propagate(event),
@@ -81,7 +105,6 @@ where
 {
     fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         let text = self.text.generate();
-        // TODO how do we handle text longer than 65k lines?
         let text_height = text.lines.len() as u16;
         self.text_height.set(text_height);
         self.window_height.set(area.height);

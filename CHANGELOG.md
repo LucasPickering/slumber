@@ -26,6 +26,7 @@
 
 - Don't require collection file to be present for `show` subcommand ([#62](https://github.com/LucasPickering/slumber/issues/62))
 - Fix state file being created in root Slumber directory if collection file is invalid ([#71](https://github.com/LucasPickering/slumber/issues/71))
+- Fix pane cycling while in fullscreen ([#76](https://github.com/LucasPickering/slumber/issues/76))
 
 ## [0.9.0] - 2023-11-28
 

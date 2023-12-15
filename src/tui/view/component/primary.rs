@@ -32,14 +32,12 @@ use derive_more::Display;
 use itertools::Itertools;
 use ratatui::prelude::{Constraint, Direction, Rect};
 use serde::{Deserialize, Serialize};
-use std::rc::Rc;
 use strum::EnumIter;
 
 /// Primary TUI view, which shows request/response panes
 #[derive(derive_more::Debug)]
 pub struct PrimaryView {
     // Own state
-    collection: Rc<RequestCollection>,
     selected_pane: Persistent<SelectState<Fixed, PrimaryPane>>,
     fullscreen_mode: Persistent<Option<FullscreenMode>>,
 
@@ -92,7 +90,7 @@ enum FullscreenMode {
 }
 
 impl PrimaryView {
-    pub fn new(collection: Rc<RequestCollection>) -> Self {
+    pub fn new(collection: &RequestCollection) -> Self {
         let profile_list_pane = ProfileListPane::new(
             collection.profiles.values().cloned().collect_vec(),
         )
@@ -102,7 +100,6 @@ impl PrimaryView {
         )
         .into();
         Self {
-            collection,
             selected_pane: Persistent::new(
                 PersistentKey::PrimaryPane,
                 Default::default(),
@@ -206,9 +203,7 @@ impl EventHandler for PrimaryView {
                 }
                 Action::OpenHelp => {
                     context.queue_event(Event::OpenModal {
-                        modal: Box::new(HelpModal::new(Rc::clone(
-                            &self.collection,
-                        ))),
+                        modal: Box::<HelpModal>::default(),
                         priority: ModalPriority::Low,
                     });
                     Update::Consumed

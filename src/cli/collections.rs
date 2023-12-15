@@ -33,7 +33,7 @@ impl Subcommand for CollectionsCommand {
         let database = Database::load()?;
         match self.subcommand {
             CollectionsSubcommand::List => {
-                for path in database.get_collections()? {
+                for path in database.collections()? {
                     println!("{}", path.display());
                 }
             }

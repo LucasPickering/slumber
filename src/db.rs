@@ -128,40 +128,13 @@ impl Database {
     }
 
     /// Get a list of all collections
-    pub fn get_collections(&self) -> anyhow::Result<Vec<PathBuf>> {
+    pub fn collections(&self) -> anyhow::Result<Vec<PathBuf>> {
         self.connection()
             .prepare("SELECT path FROM collections")?
             .query_map([], |row| Ok(row.get::<_, Bytes<_>>("path")?.0))
             .context("Error fetching collections")?
             .collect::<rusqlite::Result<Vec<_>>>()
             .context("Error extracting collection data")
-    }
-
-    /// Get a collection ID by path. Return an error if there is no collection
-    /// with the given path
-    pub fn get_collection_id(
-        &self,
-        path: &Path,
-    ) -> anyhow::Result<CollectionId> {
-        // Convert to canonicalize and make serializable
-        let path: CollectionPath = path.try_into()?;
-
-        self.connection()
-            .query_row(
-                "SELECT id FROM collections WHERE path = :path",
-                named_params! {":path": &path},
-                |row| row.get::<_, CollectionId>("id"),
-            )
-            .map_err(|err| match err {
-                rusqlite::Error::QueryReturnedNoRows => {
-                    // Use Display impl here because this will get shown in
-                    // CLI output
-                    anyhow!("Unknown collection `{path}`")
-                }
-                other => anyhow::Error::from(other)
-                    .context("Error fetching collection ID"),
-            })
-            .traced()
     }
 
     /// Migrate all data for one collection into another, deleting the source
@@ -171,14 +144,39 @@ impl Database {
         source: &Path,
         target: &Path,
     ) -> anyhow::Result<()> {
+        fn get_collection_id(
+            connection: &Connection,
+            path: &Path,
+        ) -> anyhow::Result<CollectionId> {
+            // Convert to canonicalize and make serializable
+            let path: CollectionPath = path.try_into()?;
+
+            connection
+                .query_row(
+                    "SELECT id FROM collections WHERE path = :path",
+                    named_params! {":path": &path},
+                    |row| row.get::<_, CollectionId>("id"),
+                )
+                .map_err(|err| match err {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        // Use Display impl here because this will get shown in
+                        // CLI output
+                        anyhow!("Unknown collection `{path}`")
+                    }
+                    other => anyhow::Error::from(other)
+                        .context("Error fetching collection ID"),
+                })
+                .traced()
+        }
+
         info!(?source, ?target, "Merging database state");
+        let connection = self.connection();
 
         // Exchange each path for an ID
-        let source = self.get_collection_id(source)?;
-        let target = self.get_collection_id(target)?;
+        let source = get_collection_id(&connection, source)?;
+        let target = get_collection_id(&connection, target)?;
 
         // Update each table in individually
-        let connection = self.connection();
         connection
             .execute(
                 "UPDATE requests SET collection_id = :target
@@ -261,6 +259,20 @@ pub struct CollectionDatabase {
 impl CollectionDatabase {
     pub fn collection_id(&self) -> CollectionId {
         self.collection_id
+    }
+
+    /// Get the full path for the collection file associated with this DB handle
+    pub fn collection_path(&self) -> anyhow::Result<PathBuf> {
+        self.database
+            .connection()
+            .query_row(
+                "SELECT path FROM collections WHERE id = :id",
+                named_params! {":id": self.collection_id},
+                |row| row.get::<_, CollectionPath>("path"),
+            )
+            .context("Error fetching collection path")
+            .traced()
+            .map(PathBuf::from)
     }
 
     /// Get the most recent request+response for a recipe, or `None` if there
@@ -449,6 +461,12 @@ impl FromSql for RequestRecipeId {
 #[display("{}", _0.0.display())]
 struct CollectionPath(Bytes<PathBuf>);
 
+impl From<CollectionPath> for PathBuf {
+    fn from(path: CollectionPath) -> Self {
+        path.0 .0
+    }
+}
+
 impl TryFrom<&Path> for CollectionPath {
     type Error = anyhow::Error;
 
@@ -566,7 +584,7 @@ mod tests {
 
         // Make sure collection2 was deleted
         assert_eq!(
-            database.get_collections().unwrap(),
+            database.collections().unwrap(),
             vec![path1.canonicalize().unwrap()]
         );
     }

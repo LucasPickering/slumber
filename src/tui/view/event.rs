@@ -2,7 +2,7 @@
 //! events (e.g. HTTP responses)
 
 use crate::{
-    collection::RequestRecipeId,
+    collection::{ProfileId, RequestRecipeId},
     tui::{
         input::Action,
         view::{
@@ -89,10 +89,15 @@ pub enum Event {
     },
 
     // HTTP
-    /// User wants to send a new request (upstream)
+    /// Load a request from the database. Used to communicate from the recipe
+    /// list to the parent, where more context is available.
+    HttpLoadRequest,
+    /// User wants to send a new request. Used to communicate from the recipe
+    /// list to the parent, where more context is available.
     HttpSendRequest,
     /// Update our state based on external HTTP events
     HttpSetState {
+        profile_id: Option<ProfileId>,
         recipe_id: RequestRecipeId,
         #[debug(skip)]
         state: RequestState,

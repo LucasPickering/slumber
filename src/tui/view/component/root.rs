@@ -1,5 +1,5 @@
 use crate::{
-    collection::{RequestCollection, RequestRecipeId},
+    collection::{ProfileId, RequestCollection, RequestRecipeId},
     tui::{
         context::TuiContext,
         input::Action,
@@ -26,14 +26,16 @@ use std::collections::{hash_map::Entry, HashMap};
 #[derive(derive_more::Debug)]
 pub struct Root {
     // ===== Own State =====
-    /// Cached request state. A recipe will appear in this map if two
-    /// conditions are met:
+    /// Cached request state. Request history is specific to both a recipe
+    /// **and** a profile, so we must key on both. A profile+recipe pair will
+    /// appear in this map if two conditions are met:
     /// - It has at least one *successful* request in history
     /// - It has beed focused by the user during this process
     /// This will be populated on-demand when a user selects a recipe in the
     /// list.
     #[debug(skip)]
-    active_requests: HashMap<RequestRecipeId, RequestState>,
+    active_requests:
+        HashMap<(Option<ProfileId>, RequestRecipeId), RequestState>,
 
     // ==== Children =====
     /// We hold onto the primary view even when it's not visible, because we
@@ -61,13 +63,19 @@ impl Root {
 
     /// Get the request state to be displayed
     fn active_request(&self) -> Option<&RequestState> {
-        let recipe = self.primary_view.selected_recipe()?;
-        self.active_requests.get(&recipe.id)
+        // "No Profile" _is_ a profile
+        let profile_id = self
+            .primary_view
+            .selected_profile()
+            .map(|profile| profile.id.clone());
+        let recipe_id = self.primary_view.selected_recipe()?.id.clone();
+        self.active_requests.get(&(profile_id, recipe_id))
     }
 
     /// Update the active HTTP request state
     fn update_request(
         &mut self,
+        profile_id: Option<ProfileId>,
         recipe_id: RequestRecipeId,
         state: RequestState,
     ) {
@@ -75,7 +83,7 @@ impl Root {
         // - There's nothing there yet
         // - This is a new request
         // - This is an update to the request already in place
-        match self.active_requests.entry(recipe_id) {
+        match self.active_requests.entry((profile_id, recipe_id)) {
             Entry::Vacant(entry) => {
                 entry.insert(state);
             }
@@ -93,21 +101,20 @@ impl Root {
 }
 
 impl EventHandler for Root {
-    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Init => {
-                // Load the initial state for the selected recipe
-                if let Some(recipe) = self.primary_view.selected_recipe() {
-                    TuiContext::send_message(Message::RequestLoad {
-                        recipe_id: recipe.id.clone(),
-                    });
-                }
+                // Tell PrimaryPane to load for whatever recipe is selected
+                // TODO make SelectState call on_select on startup instead
+                context.queue_event(Event::HttpLoadRequest);
             }
 
             // Update state of HTTP request
-            Event::HttpSetState { recipe_id, state } => {
-                self.update_request(recipe_id, state)
-            }
+            Event::HttpSetState {
+                profile_id,
+                recipe_id,
+                state,
+            } => self.update_request(profile_id, recipe_id, state),
 
             Event::Notify(notification) => {
                 self.notification_text =

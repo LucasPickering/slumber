@@ -12,7 +12,7 @@ pub use theme::Theme;
 pub use util::PreviewPrompter;
 
 use crate::{
-    collection::{RequestCollection, RequestRecipeId},
+    collection::{ProfileId, RequestCollection, RequestRecipeId},
     tui::{
         input::Action,
         view::{
@@ -63,15 +63,21 @@ impl View {
         )
     }
 
-    /// Update the request state for the given recipe. The state will only be
-    /// updated if this is a new request or it matches the current request for
-    /// this recipe. We only store one request per recipe at a time.
+    /// Update the request state for the given profile+recipe. The state will
+    /// only be updated if this is a new request or it matches the current
+    /// request for this recipe. We only store one request per profile+recipe at
+    /// a time.
     pub fn set_request_state(
         &mut self,
+        profile_id: Option<ProfileId>,
         recipe_id: RequestRecipeId,
         state: RequestState,
     ) {
-        self.handle_event(Event::HttpSetState { recipe_id, state });
+        self.handle_event(Event::HttpSetState {
+            profile_id,
+            recipe_id,
+            state,
+        });
     }
 
     /// Open a new modal. The input can be anything that converts to modal

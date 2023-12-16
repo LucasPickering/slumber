@@ -212,8 +212,9 @@ mod tests {
             "intro\n{{user_id}} 💚💙💜 {{unknown}}\noutro\r\nmore outro".into(),
         )
         .unwrap();
-        let profile = indexmap! { "user_id".into() => "🧡\n💛".into() };
-        let context = create!(TemplateContext, profile: profile);
+        let profile_data = indexmap! { "user_id".into() => "🧡\n💛".into() };
+        let profile = create!(Profile, data: profile_data);
+        let context = create!(TemplateContext, profile: Some(profile));
         let areas = template.render_chunks(&context).await;
         let theme = &TuiContext::get().theme;
 

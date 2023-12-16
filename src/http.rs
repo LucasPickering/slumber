@@ -232,7 +232,7 @@ impl RequestBuilder {
     pub fn new(
         recipe: RequestRecipe,
         template_context: TemplateContext,
-    ) -> RequestBuilder {
+    ) -> Self {
         debug!(recipe_id = %recipe.id, "Building request from recipe");
         let request_id = RequestId::new();
 
@@ -280,6 +280,10 @@ impl RequestBuilder {
 
         Ok(Request {
             id: self.id,
+            profile_id: template_context
+                .profile
+                .as_ref()
+                .map(|profile| profile.id.clone()),
             recipe_id: recipe.id.clone(),
             method,
             url,

@@ -59,16 +59,18 @@ pub enum Message {
 
     /// Launch an HTTP request from the given recipe/profile.
     HttpBeginRequest {
-        recipe_id: RequestRecipeId,
         profile_id: Option<ProfileId>,
+        recipe_id: RequestRecipeId,
     },
     /// Request failed to build
     HttpBuildError {
+        profile_id: Option<ProfileId>,
         recipe_id: RequestRecipeId,
         error: RequestBuildError,
     },
     /// We launched the HTTP request
     HttpLoading {
+        profile_id: Option<ProfileId>,
         recipe_id: RequestRecipeId,
         request_id: RequestId,
     },
@@ -85,7 +87,10 @@ pub enum Message {
     Quit,
 
     /// Load the most recent response for a recipe from the database
-    RequestLoad { recipe_id: RequestRecipeId },
+    RequestLoad {
+        profile_id: Option<ProfileId>,
+        recipe_id: RequestRecipeId,
+    },
 
     /// Render a template string, to be previewed in the UI. Ideally this could
     /// be launched directly by the component that needs it, but only the

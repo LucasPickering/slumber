@@ -124,7 +124,7 @@ impl PrimaryView {
 
     /// Which profile in the list is selected? `None` iff the list is empty.
     /// Exposing inner state is hacky but it's an easy shortcut
-    fn selected_profile(&self) -> Option<&Profile> {
+    pub fn selected_profile(&self) -> Option<&Profile> {
         self.profile_list_pane.profiles.selected()
     }
 
@@ -141,7 +141,19 @@ impl PrimaryView {
 impl EventHandler for PrimaryView {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match &event {
-            // Send HTTP request (bubbled up from child *or* queued by parent)
+            // Load latest request for selected recipe from database
+            Event::HttpLoadRequest => {
+                if let Some(recipe) = self.selected_recipe() {
+                    TuiContext::send_message(Message::RequestLoad {
+                        profile_id: self
+                            .selected_profile()
+                            .map(|profile| profile.id.clone()),
+                        recipe_id: recipe.id.clone(),
+                    });
+                }
+                Update::Consumed
+            }
+            // Send HTTP request
             Event::HttpSendRequest => {
                 if let Some(recipe) = self.selected_recipe() {
                     TuiContext::send_message(Message::HttpBeginRequest {
@@ -368,10 +380,15 @@ struct ListPaneProps {
 
 impl ProfileListPane {
     pub fn new(profiles: Vec<Profile>) -> Self {
+        // Loaded request depends on the profile, so refresh on change
+        let on_select = |context: &mut UpdateContext, _: &Profile| {
+            context.queue_event(Event::HttpLoadRequest);
+        };
+
         Self {
             profiles: Persistent::new(
                 PersistentKey::ProfileId,
-                SelectState::new(profiles),
+                SelectState::new(profiles).on_select(on_select),
             )
             .into(),
         }
@@ -424,10 +441,8 @@ struct RecipeListPane {
 impl RecipeListPane {
     pub fn new(recipes: Vec<RequestRecipe>) -> Self {
         // When highlighting a new recipe, load it from the repo
-        let on_select = |_: &mut UpdateContext, recipe: &RequestRecipe| {
-            TuiContext::send_message(Message::RequestLoad {
-                recipe_id: recipe.id.clone(),
-            });
+        let on_select = |context: &mut UpdateContext, _: &RequestRecipe| {
+            context.queue_event(Event::HttpLoadRequest);
         };
 
         // Trigger a request on submit

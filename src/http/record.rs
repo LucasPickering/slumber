@@ -1,7 +1,7 @@
 //! HTTP-related data types
 
 use crate::{
-    collection::RequestRecipeId,
+    collection::{ProfileId, RequestRecipeId},
     http::{parse, ContentType},
     util::ResultExt,
 };
@@ -93,6 +93,8 @@ impl RequestRecord {
 pub struct Request {
     /// Unique ID for this request. Private to prevent mutation
     pub id: RequestId,
+    /// The profile used to render this request (for historical context)
+    pub profile_id: Option<ProfileId>,
     /// The recipe used to generate this request (for historical context)
     pub recipe_id: RequestRecipeId,
 

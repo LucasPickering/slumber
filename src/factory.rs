@@ -1,5 +1,5 @@
 use crate::{
-    collection::{Chain, ChainSource, RequestRecipeId},
+    collection::{Chain, ChainSource, Profile, ProfileId, RequestRecipeId},
     db::CollectionDatabase,
     http::{Body, Request, RequestId, RequestRecord, Response},
     template::{Prompt, Prompter, Template, TemplateContext},
@@ -9,9 +9,18 @@ use factori::{create, factori};
 use indexmap::IndexMap;
 use reqwest::{header::HeaderMap, Method, StatusCode};
 
+factori!(Profile, {
+    default {
+        id = "profile1".into(),
+        name = None,
+        data = Default::default(),
+    }
+});
+
 factori!(Request, {
     default {
         id = RequestId::new(),
+        profile_id = None,
         recipe_id = "recipe1".into(),
         method = Method::GET,
         url = "/url".into(),
@@ -59,7 +68,7 @@ factori!(Chain, {
 
 factori!(TemplateContext, {
     default {
-        profile = Default::default()
+        profile = None
         chains = Default::default()
         prompter = Box::<TestPrompter>::default(),
         database = CollectionDatabase::testing()
@@ -91,6 +100,12 @@ impl Prompter for TestPrompter {
 }
 
 // Some helpful conversion implementations
+impl From<&str> for ProfileId {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+
 impl From<&str> for RequestRecipeId {
     fn from(value: &str) -> Self {
         value.to_owned().into()

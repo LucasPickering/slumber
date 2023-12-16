@@ -47,20 +47,18 @@ impl Subcommand for RequestCommand {
         let mut collection = RequestCollection::load(collection_path).await?;
 
         // Find profile and recipe by ID
-        let profile_data = self
+        let profile = self
             .profile
-            .map::<anyhow::Result<_>, _>(|id| {
-                let profile =
-                    collection.profiles.swap_remove(&id).ok_or_else(|| {
-                        anyhow!(
-                            "No profile with ID `{id}`; options are: {}",
-                            collection.profiles.keys().join(", ")
-                        )
-                    })?;
-                Ok(profile.data)
+            .map(|profile_id| {
+                collection.profiles.swap_remove(&profile_id).ok_or_else(|| {
+                    anyhow!(
+                        "No profile with ID `{profile_id}`; options are: {}",
+                        collection.profiles.keys().join(", ")
+                    )
+                })
             })
-            .transpose()?
-            .unwrap_or_default();
+            .transpose()?;
+
         let recipe = collection
             .recipes
             .swap_remove(&self.request_id)
@@ -77,10 +75,10 @@ impl Subcommand for RequestCommand {
         let request = RequestBuilder::new(
             recipe,
             TemplateContext {
-                profile: profile_data,
-                overrides,
-                chains: collection.chains,
+                profile,
+                chains: collection.chains.clone(),
                 database: database.clone(),
+                overrides,
                 prompter: Box::new(CliPrompter),
             },
         )

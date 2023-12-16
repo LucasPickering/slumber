@@ -2,7 +2,7 @@
 //! responses.
 
 use crate::{
-    collection::RequestRecipeId,
+    collection::{ProfileId, RequestRecipeId},
     http::{RequestId, RequestRecord},
     util::{Directory, ResultExt},
 };
@@ -48,11 +48,13 @@ pub struct Database {
 /// A unique ID for a collection. This is generated when the collection is
 /// inserted into the DB.
 #[derive(Copy, Clone, Debug, Display)]
+#[cfg_attr(test, derive(Eq, Hash, PartialEq))]
 pub struct CollectionId(Uuid);
 
 impl Database {
-    /// Load the database. This will perform first-time setup, so this should
-    /// only be called at the main session entrypoint.
+    /// Load the database. This will perform migrations, but can be called from
+    /// anywhere in the app. The migrations will run on first connection, and
+    /// not after that.
     pub fn load() -> anyhow::Result<Self> {
         let path = Self::path()?;
         info!(?path, "Loading database");
@@ -96,6 +98,7 @@ impl Database {
                 "CREATE TABLE requests (
                     id              UUID PRIMARY KEY NOT NULL,
                     collection_id   UUID NOT NULL,
+                    profile_id      TEXT,
                     recipe_id       TEXT NOT NULL,
                     start_time      TEXT NOT NULL,
                     end_time        TEXT NOT NULL,
@@ -275,20 +278,26 @@ impl CollectionDatabase {
             .map(PathBuf::from)
     }
 
-    /// Get the most recent request+response for a recipe, or `None` if there
-    /// has never been one received.
+    /// Get the most recent request+response for a profile+recipe, or `None` if
+    /// there has never been one received. If the given profile is `None`, match
+    /// all requests that have no associated profile.
     pub fn get_last_request(
         &self,
+        profile_id: Option<&ProfileId>,
         recipe_id: &RequestRecipeId,
     ) -> anyhow::Result<Option<RequestRecord>> {
         self.database
             .connection()
             .query_row(
+                // `IS` needed for profile_id so `None` will match `NULL`
                 "SELECT * FROM requests
-                WHERE collection_id = :collection_id AND recipe_id = :recipe_id
+                WHERE collection_id = :collection_id
+                    AND profile_id IS :profile_id
+                    AND recipe_id = :recipe_id
                 ORDER BY start_time DESC LIMIT 1",
                 named_params! {
                     ":collection_id": self.collection_id,
+                    ":profile_id": profile_id,
                     ":recipe_id": recipe_id,
                 },
                 |row| row.try_into(),
@@ -316,6 +325,7 @@ impl CollectionDatabase {
                 requests (
                     id,
                     collection_id,
+                    profile_id,
                     recipe_id,
                     start_time,
                     end_time,
@@ -323,11 +333,12 @@ impl CollectionDatabase {
                     response,
                     status_code
                 )
-                VALUES (:id, :collection_id, :recipe_id, :start_time,
-                    :end_time, :request, :response, :status_code)",
+                VALUES (:id, :collection_id, :profile_id, :recipe_id,
+                    :start_time, :end_time, :request, :response, :status_code)",
                 named_params! {
                     ":id": record.id,
                     ":collection_id": self.collection_id,
+                    ":profile_id": &record.request.profile_id,
                     ":recipe_id": &record.request.recipe_id,
                     ":start_time": &record.start_time,
                     ":end_time": &record.end_time,
@@ -428,6 +439,18 @@ impl ToSql for CollectionId {
 impl FromSql for CollectionId {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         Ok(Self(Uuid::column_result(value)?))
+    }
+}
+
+impl ToSql for ProfileId {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        self.deref().to_sql()
+    }
+}
+
+impl FromSql for ProfileId {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Ok(String::column_result(value)?.into())
     }
 }
 
@@ -533,6 +556,7 @@ mod tests {
     use super::*;
     use crate::factory::*;
     use factori::create;
+    use std::collections::HashMap;
 
     #[test]
     fn test_merge() {
@@ -544,6 +568,7 @@ mod tests {
 
         let record1 = create!(RequestRecord);
         let record2 = create!(RequestRecord);
+        let profile_id = record1.request.profile_id.as_ref();
         let recipe_id = &record1.request.recipe_id;
         let ui_key = "key1";
         collection1.insert_request(&record1).unwrap();
@@ -553,7 +578,11 @@ mod tests {
 
         // Sanity checks
         assert_eq!(
-            collection1.get_last_request(recipe_id).unwrap().unwrap().id,
+            collection1
+                .get_last_request(profile_id, recipe_id)
+                .unwrap()
+                .unwrap()
+                .id,
             record1.id
         );
         assert_eq!(
@@ -561,7 +590,11 @@ mod tests {
             Some("value1".into())
         );
         assert_eq!(
-            collection2.get_last_request(recipe_id).unwrap().unwrap().id,
+            collection2
+                .get_last_request(profile_id, recipe_id)
+                .unwrap()
+                .unwrap()
+                .id,
             record2.id
         );
         assert_eq!(
@@ -574,7 +607,11 @@ mod tests {
 
         // Collection 2 values should've overwritten
         assert_eq!(
-            collection1.get_last_request(recipe_id).unwrap().unwrap().id,
+            collection1
+                .get_last_request(profile_id, recipe_id)
+                .unwrap()
+                .unwrap()
+                .id,
             record2.id
         );
         assert_eq!(
@@ -602,24 +639,71 @@ mod tests {
             .into_collection(Path::new("README.md"))
             .unwrap();
 
-        let record1 = create!(RequestRecord);
         let record2 = create!(RequestRecord);
-        collection1.insert_request(&record1).unwrap();
         collection2.insert_request(&record2).unwrap();
 
-        // Make sure the two have a conflicting recipe ID, which should be
-        // de-conflicted via the collection ID
-        assert_eq!(record1.request.recipe_id, record2.request.recipe_id);
-        let recipe_id = &record1.request.recipe_id;
+        // We separate requests by 3 columns. Create multiple of each column to
+        // make sure we filter by each column correctly
+        let collections = [collection1, collection2];
 
-        assert_eq!(
-            collection1.get_last_request(recipe_id).unwrap().unwrap().id,
-            record1.id
-        );
-        assert_eq!(
-            collection2.get_last_request(recipe_id).unwrap().unwrap().id,
-            record2.id
-        );
+        // Store the created request ID for each cell in the matrix, so we can
+        // compare to what the DB spits back later
+        let mut request_ids: HashMap<
+            (CollectionId, Option<ProfileId>, RequestRecipeId),
+            RequestId,
+        > = Default::default();
+
+        // Create and insert each request
+        for collection in &collections {
+            for profile_id in [None, Some("profile1"), Some("profile2")] {
+                for recipe_id in ["recipe1", "recipe2"] {
+                    let recipe_id: RequestRecipeId = recipe_id.into();
+                    let profile_id = profile_id.map(ProfileId::from);
+                    let request = create!(
+                        Request,
+                        profile_id: profile_id.clone(),
+                        recipe_id: recipe_id.clone(),
+                    );
+                    let record = create!(RequestRecord, request: request);
+                    collection.insert_request(&record).unwrap();
+                    request_ids.insert(
+                        (collection.collection_id(), profile_id, recipe_id),
+                        record.id,
+                    );
+                }
+            }
+        }
+
+        // Try to find each inserted recipe individually. Also try some
+        // expected non-matches
+        for collection in &collections {
+            for profile_id in [None, Some("profile1"), Some("extra_profile")] {
+                for recipe_id in ["recipe1", "extra_recipe"] {
+                    let collection_id = collection.collection_id();
+                    let profile_id = profile_id.map(ProfileId::from);
+                    let recipe_id = recipe_id.into();
+
+                    // Leave the Option here so a non-match will trigger a handy
+                    // assertion error
+                    let record_id = collection
+                        .get_last_request(profile_id.as_ref(), &recipe_id)
+                        .unwrap()
+                        .map(|record| record.id);
+                    let expected_id = request_ids.get(&(
+                        collection_id,
+                        profile_id.clone(),
+                        recipe_id.clone(),
+                    ));
+
+                    assert_eq!(
+                        record_id.as_ref(),
+                        expected_id,
+                        "Request mismatch for collection = {collection_id}, \
+                        profile = {profile_id:?}, recipe = {recipe_id}"
+                    );
+                }
+            }
+        }
     }
 
     /// Test UI state storage and retrieval

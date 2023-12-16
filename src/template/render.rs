@@ -182,11 +182,16 @@ struct FieldTemplateSource<'a> {
 impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
     async fn render(&self, context: &'a TemplateContext) -> TemplateResult {
         let field = self.field;
-        let value = context.profile.get(field).ok_or_else(|| {
-            TemplateError::FieldUnknown {
+
+        // Get the value from the profile
+        let value = context
+            .profile
+            .as_ref()
+            .and_then(|profile| profile.data.get(field))
+            .ok_or_else(|| TemplateError::FieldUnknown {
                 field: field.to_owned(),
-            }
-        })?;
+            })?;
+
         let rendered = match value {
             ProfileValue::Raw(value) => value.clone(),
             // recursion!
@@ -272,7 +277,10 @@ impl<'a> ChainTemplateSource<'a> {
     ) -> Result<String, ChainError> {
         let record = context
             .database
-            .get_last_request(recipe_id)
+            .get_last_request(
+                context.profile.as_ref().map(|profile| &profile.id),
+                recipe_id,
+            )
             .map_err(ChainError::Database)?
             .ok_or(ChainError::NoResponse)?;
 

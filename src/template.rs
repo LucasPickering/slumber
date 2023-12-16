@@ -8,7 +8,7 @@ pub use parse::Span;
 pub use prompt::{Prompt, Prompter};
 
 use crate::{
-    collection::{Chain, ChainId, ProfileValue},
+    collection::{Chain, ChainId, Profile},
     db::CollectionDatabase,
     template::{
         error::TemplateParseError,
@@ -22,11 +22,13 @@ use std::fmt::Debug;
 
 /// A little container struct for all the data that the user can access via
 /// templating. Unfortunately this has to own all data so templating can be
-/// defered into a task.
+/// deferred into a task (tokio requires `'static` for spawned tasks). If this
+/// becomes a bottleneck, we can `Arc` some stuff.
 #[derive(Debug)]
 pub struct TemplateContext {
-    /// Key-value mapping
-    pub profile: IndexMap<String, ProfileValue>,
+    /// Associated data to be injected while rendering. The profile ID is also
+    /// used to filter chained requests.
+    pub profile: Option<Profile>,
     /// Chained values from dynamic sources
     pub chains: IndexMap<ChainId, Chain>,
     /// Needed for accessing response bodies for chaining
@@ -150,7 +152,7 @@ impl<T> TemplateKey<T> {
 mod tests {
     use super::*;
     use crate::{
-        collection::{ChainSource, RequestRecipeId},
+        collection::{ChainSource, ProfileValue, RequestRecipeId},
         factory::*,
         http::{Request, Response},
         util::assert_err,
@@ -165,7 +167,8 @@ mod tests {
     /// Test overriding all key types, as well as missing keys
     #[tokio::test]
     async fn test_override() {
-        let profile = indexmap! {"field1".into() => "field".into()};
+        let profile_data = indexmap! {"field1".into() => "field".into()};
+        let profile = create!(Profile, data: profile_data);
         let source = ChainSource::Command(
             ["echo", "chain"]
                 .iter()
@@ -183,7 +186,7 @@ mod tests {
             indexmap! {"chain1".into() => create!(Chain, source: source)};
         let context = create!(
             TemplateContext,
-            profile: profile,
+            profile: Some(profile),
             chains: chains,
             overrides: overrides,
         );
@@ -211,12 +214,13 @@ mod tests {
     async fn test_field() {
         let nested_template =
             Template::parse("user id: {{user_id}}".into()).unwrap();
-        let profile = indexmap! {
+        let profile_data = indexmap! {
             "user_id".into() => "1".into(),
             "group_id".into() => "3".into(),
             "recursive".into() => ProfileValue::Template(nested_template),
         };
-        let context = create!(TemplateContext, profile: profile);
+        let profile = create!(Profile, data: profile_data);
+        let context = create!(TemplateContext, profile: Some(profile));
 
         assert_eq!(&render!("", context).unwrap(), "");
         assert_eq!(&render!("plain", context).unwrap(), "plain");
@@ -234,10 +238,11 @@ mod tests {
     #[tokio::test]
     async fn test_field_error() {
         let nested_template = Template::parse("{{onion_id}}".into()).unwrap();
-        let profile = indexmap! {
+        let profile_data = indexmap! {
             "recursive".into() => ProfileValue::Template(nested_template),
         };
-        let context = create!(TemplateContext, profile: profile);
+        let profile = create!(Profile, data: profile_data);
+        let context = create!(TemplateContext, profile: Some(profile));
 
         assert_err!(
             render!("{{onion_id}}", context),
@@ -346,12 +351,15 @@ mod tests {
         if let Some((request, response)) = request_response {
             database
                 .insert_request(&create!(
-                RequestRecord, request: request, response: response))
+                    RequestRecord,
+                    request: request,
+                    response: response,
+                ))
                 .unwrap();
         }
         let chains = indexmap! {chain_id.into() => chain};
         let context = create!(
-            TemplateContext, database: database, chains: chains
+            TemplateContext, database: database, chains: chains,
         );
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
@@ -501,8 +509,9 @@ mod tests {
     /// Test rendering into individual chunks with complex unicode
     #[tokio::test]
     async fn test_render_chunks() {
-        let profile = indexmap! { "user_id".into() => "🧡💛".into() };
-        let context = create!(TemplateContext, profile: profile);
+        let profile_data = indexmap! { "user_id".into() => "🧡💛".into() };
+        let profile = create!(Profile, data: profile_data);
+        let context = create!(TemplateContext, profile: Some(profile));
 
         let chunks =
             Template::from("intro {{user_id}} 💚💙💜 {{unknown}} outro")

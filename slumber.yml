@@ -12,6 +12,7 @@ profiles:
     name: Request Fails
     data:
       host: http://localhost:5000
+      username: !template "xX{{chains.username}}Xx"
       user_guid: abc123
 
 chains:

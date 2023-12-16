@@ -23,7 +23,6 @@ use crossterm::{
     ExecutableCommand,
 };
 use futures::Future;
-use indexmap::IndexMap;
 use notify::{RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use signal_hook::{
@@ -206,38 +205,50 @@ impl Tui {
             Message::HttpBeginRequest {
                 recipe_id,
                 profile_id,
-            } => self.send_request(recipe_id, profile_id.as_ref())?,
-            Message::HttpBuildError { recipe_id, error } => {
+            } => self.send_request(profile_id, recipe_id)?,
+            Message::HttpBuildError {
+                profile_id,
+                recipe_id,
+                error,
+            } => {
                 self.view.set_request_state(
+                    profile_id,
                     recipe_id,
                     RequestState::BuildError { error },
                 );
             }
             Message::HttpLoading {
+                profile_id,
                 recipe_id,
                 request_id,
             } => {
                 self.view.set_request_state(
+                    profile_id,
                     recipe_id,
                     RequestState::loading(request_id),
                 );
             }
             Message::HttpComplete(result) => {
-                let (recipe_id, state) = match result {
+                let (profile_id, recipe_id, state) = match result {
                     Ok(record) => (
+                        record.request.profile_id.clone(),
                         record.request.recipe_id.clone(),
                         RequestState::response(record),
                     ),
                     Err(error) => (
+                        error.request.profile_id.clone(),
                         error.request.recipe_id.clone(),
                         RequestState::RequestError { error },
                     ),
                 };
-                self.view.set_request_state(recipe_id, state);
+                self.view.set_request_state(profile_id, recipe_id, state);
             }
 
-            Message::RequestLoad { recipe_id } => {
-                self.load_request(recipe_id)?;
+            Message::RequestLoad {
+                profile_id,
+                recipe_id,
+            } => {
+                self.load_request(profile_id.as_ref(), &recipe_id)?;
             }
 
             Message::PromptStart(prompt) => {
@@ -307,8 +318,8 @@ impl Tui {
     /// Launch an HTTP request in a separate task
     fn send_request(
         &mut self,
+        profile_id: Option<ProfileId>,
         recipe_id: RequestRecipeId,
-        profile_id: Option<&ProfileId>,
     ) -> anyhow::Result<()> {
         let recipe = self
             .collection
@@ -319,8 +330,8 @@ impl Tui {
 
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
-        let template_context =
-            self.template_context(profile_id, self.messages_tx.clone())?;
+        let template_context = self
+            .template_context(profile_id.as_ref(), self.messages_tx.clone())?;
         let http_engine = self.http_engine.clone();
         let builder = RequestBuilder::new(recipe, template_context);
         let messages_tx = self.messages_tx.clone();
@@ -328,6 +339,7 @@ impl Tui {
         // Mark request state as building
         let request_id = builder.id();
         self.view.set_request_state(
+            profile_id.clone(),
             recipe_id.clone(),
             RequestState::building(request_id),
         );
@@ -339,6 +351,7 @@ impl Tui {
             let request = builder.build().await.map_err(|error| {
                 // Report the error, but don't actually return anything
                 messages_tx.send(Message::HttpBuildError {
+                    profile_id: profile_id.clone(),
                     recipe_id: recipe_id.clone(),
                     error,
                 });
@@ -346,6 +359,7 @@ impl Tui {
 
             // Report liftoff
             messages_tx.send(Message::HttpLoading {
+                profile_id,
                 recipe_id,
                 request_id,
             });
@@ -366,10 +380,14 @@ impl Tui {
     /// database, and store it in state.
     fn load_request(
         &mut self,
-        recipe_id: RequestRecipeId,
+        profile_id: Option<&ProfileId>,
+        recipe_id: &RequestRecipeId,
     ) -> anyhow::Result<()> {
-        if let Some(record) = self.database.get_last_request(&recipe_id)? {
+        if let Some(record) =
+            self.database.get_last_request(profile_id, recipe_id)?
+        {
             self.view.set_request_state(
+                profile_id.cloned(),
                 record.request.recipe_id.clone(),
                 RequestState::response(record),
             );
@@ -416,29 +434,30 @@ impl Tui {
     /// Expose app state to the templater. Most of the data has to be cloned out
     /// to be passed across async boundaries. This is annoying but in reality
     /// it should be small data.
-    ///
-    /// Fails if the given profile ID doesn't match any profiles
     fn template_context(
         &self,
         profile_id: Option<&ProfileId>,
         prompter: impl 'static + Prompter,
     ) -> anyhow::Result<TemplateContext> {
         // Find profile by ID
-        let profile = match profile_id {
-            Some(profile_id) => {
-                let profile =
-                    self.collection.profiles.get(profile_id).ok_or_else(
-                        || anyhow!("No profile with ID `{profile_id}`"),
-                    )?;
-                profile.data.clone()
-            }
-            None => IndexMap::new(),
-        };
+        let profile = profile_id
+            .map(|profile_id| {
+                Ok::<_, anyhow::Error>(
+                    self.collection
+                        .profiles
+                        .get(profile_id)
+                        .ok_or_else(|| {
+                            anyhow!("No profile with ID `{profile_id}`")
+                        })?
+                        .clone(),
+                )
+            })
+            .transpose()?;
 
         Ok(TemplateContext {
             profile,
+            chains: self.collection.chains.clone(),
             database: self.database.clone(),
-            chains: self.collection.chains.to_owned(),
             overrides: Default::default(),
             prompter: Box::new(prompter),
         })

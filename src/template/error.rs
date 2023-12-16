@@ -1,4 +1,7 @@
-use crate::{collection::ChainId, template::Template};
+use crate::{
+    collection::{ChainId, ProfileId},
+    template::Template,
+};
 use nom::error::VerboseError;
 use serde_json_path::ExactlyOneError;
 use std::{env::VarError, io, path::PathBuf, string::FromUtf8Error};
@@ -27,6 +30,10 @@ impl TemplateParseError {
 #[derive(Debug, Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum TemplateError {
+    /// Unknown profile ID
+    #[error("Unknown profile `{profile_id}`")]
+    ProfileUnknown { profile_id: ProfileId },
+
     /// A profile field key contained an unknown field
     #[error("Unknown field `{field}`")]
     FieldUnknown { field: String },

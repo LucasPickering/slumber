@@ -190,7 +190,7 @@ impl Modal for TextWindowActionsModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         (
             Constraint::Length(30),
-            Constraint::Length(TextWindowAction::COUNT as u16 + 2),
+            Constraint::Length(TextWindowAction::COUNT as u16),
         )
     }
 }

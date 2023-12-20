@@ -31,7 +31,11 @@ pub fn layout<const N: usize>(
 }
 
 /// Created a rectangle centered on the given `Rect`.
-pub fn centered_rect(x: Constraint, y: Constraint, rect: Rect) -> Rect {
+pub fn centered_rect(
+    width: Constraint,
+    height: Constraint,
+    rect: Rect,
+) -> Rect {
     fn buffer(constraint: Constraint, full_size: u16) -> Constraint {
         match constraint {
             Constraint::Percentage(percent) => {
@@ -45,15 +49,15 @@ pub fn centered_rect(x: Constraint, y: Constraint, rect: Rect) -> Rect {
         }
     }
 
-    let buffer_x = buffer(x, rect.width);
-    let buffer_y = buffer(y, rect.height);
+    let buffer_x = buffer(width, rect.width);
+    let buffer_y = buffer(height, rect.height);
     let columns = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([buffer_y, y, buffer_y].as_ref())
+        .constraints([buffer_y, height, buffer_y].as_ref())
         .split(rect);
 
     Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([buffer_x, x, buffer_x].as_ref())
+        .constraints([buffer_x, width, buffer_x].as_ref())
         .split(columns[1])[1]
 }

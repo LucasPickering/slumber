@@ -96,7 +96,8 @@ impl EventHandler for ModalQueue {
             // Close the active modal. If there's no modal open, we'll propagate
             // the event down
             Event::Input {
-                action: Some(Action::Cancel),
+                // Enter to close is a convenience thing, modals may override
+                action: Some(Action::Cancel | Action::Submit),
                 ..
             }
             | Event::CloseModal => {
@@ -132,8 +133,16 @@ impl EventHandler for ModalQueue {
 impl Draw for ModalQueue {
     fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         if let Some(modal) = self.queue.front() {
-            let (x, y) = modal.dimensions();
-            let area = centered_rect(x, y, area);
+            let (width, height) = modal.dimensions();
+
+            // The child gave us the content dimensions, we need to add one cell
+            // of buffer for the border
+            let mut area = centered_rect(width, height, area);
+            area.x -= 1;
+            area.y -= 1;
+            area.width += 2;
+            area.height += 2;
+
             let block = Block::default()
                 .title(modal.title())
                 .borders(Borders::ALL)

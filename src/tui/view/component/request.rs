@@ -83,14 +83,21 @@ enum Tab {
 
 impl EventHandler for RequestPane {
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        let selected_tab = *self.tabs.selected();
         let mut children = vec![self.tabs.as_child()];
-        // If the body is initialized and present, send events there too
-        if let Some(body) = self
-            .recipe_state
-            .get_mut()
-            .and_then(|state| state.body.as_mut())
-        {
-            children.push(body.as_child());
+        match selected_tab {
+            Tab::Body => {
+                // If the body is initialized and present, send events there too
+                if let Some(body) = self
+                    .recipe_state
+                    .get_mut()
+                    .and_then(|state| state.body.as_mut())
+                {
+                    children.push(body.as_child());
+                }
+            }
+            Tab::Query => {}
+            Tab::Headers => {}
         }
         children
     }

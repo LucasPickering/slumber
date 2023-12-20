@@ -35,7 +35,8 @@ impl InputEngine {
                     Action::ForceQuit,
                 )
                 .hide(),
-                InputBinding::new(KeyCode::Char('x'), Action::OpenSettings),
+                InputBinding::new(KeyCode::Char('x'), Action::OpenActions),
+                InputBinding::new(KeyCode::Char('s'), Action::OpenSettings),
                 InputBinding::new(KeyCode::Char('?'), Action::OpenHelp),
                 InputBinding::new(KeyCode::Char('f'), Action::Fullscreen),
                 InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
@@ -173,6 +174,9 @@ pub enum Action {
     ReloadCollection,
     /// Embiggen a pane
     Fullscreen,
+    /// Open the actions modal
+    #[display("Actions")]
+    OpenActions,
     /// Open the settings modal
     #[display("Settings")]
     OpenSettings,

@@ -1,6 +1,6 @@
 use crate::tui::{
     context::TuiContext,
-    input::Action,
+    input::{Action, InputBinding},
     view::{
         common::{modal::Modal, table::Table},
         draw::{Draw, DrawContext, Generate},
@@ -21,10 +21,7 @@ pub struct HelpFooter;
 
 impl Draw for HelpFooter {
     fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
-        // Decide which actions to show based on context. This is definitely
-        // spaghetti and easy to get out of sync, but it's the easiest way to
-        // get granular control
-        let actions = [Action::OpenSettings, Action::OpenHelp, Action::Quit];
+        let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
 
         let tui_context = TuiContext::get();
 
@@ -54,13 +51,29 @@ impl Draw for HelpFooter {
 #[derive(Debug, Default)]
 pub struct HelpModal;
 
+impl HelpModal {
+    /// Get the list of bindings that will be shown in the modal
+    fn bindings() -> impl Iterator<Item = InputBinding> {
+        TuiContext::get()
+            .input_engine
+            .bindings()
+            .values()
+            .copied()
+            .filter(InputBinding::visible)
+    }
+}
+
 impl Modal for HelpModal {
     fn title(&self) -> &str {
         "Help"
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
-        (Constraint::Percentage(80), Constraint::Length(16))
+        let num_bindings = Self::bindings().count() as u16;
+        (
+            Constraint::Percentage(80),
+            Constraint::Length(6 + num_bindings),
+        )
     }
 }
 
@@ -105,11 +118,7 @@ impl Draw for HelpModal {
         // Keybindings
         let keybindings = Table {
             title: Some("Keybindings"),
-            rows: tui_context
-                .input_engine
-                .bindings()
-                .values()
-                .filter(|binding| binding.visible())
+            rows: Self::bindings()
                 .map(|binding| {
                     let action: Line = binding.action().to_string().into();
                     let input: Line = binding.input().to_string().into();

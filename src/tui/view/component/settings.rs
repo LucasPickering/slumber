@@ -26,8 +26,8 @@ pub struct SettingsModal {
 impl Default for SettingsModal {
     fn default() -> Self {
         // Toggle the selected setting on Enter
-        let on_submit =
-            |context: &mut UpdateContext, setting: &Setting| match setting {
+        fn on_submit(context: &mut UpdateContext, setting: &Setting) {
+            match setting {
                 Setting::PreviewTemplates => {
                     context.config().preview_templates ^= true;
                 }
@@ -39,7 +39,8 @@ impl Default for SettingsModal {
                         capture,
                     });
                 }
-            };
+            }
+        }
 
         Self {
             table: SelectState::fixed().on_submit(on_submit).into(),

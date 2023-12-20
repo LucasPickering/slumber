@@ -143,6 +143,30 @@ impl IntoModal for Prompt {
     }
 }
 
+/// An empty actions modal, to show when no actions are available
+#[derive(Debug, Default)]
+pub struct EmptyActionsModal;
+
+impl Modal for EmptyActionsModal {
+    fn title(&self) -> &str {
+        "Actions"
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        (Constraint::Length(30), Constraint::Length(3))
+    }
+}
+
+impl EventHandler for EmptyActionsModal {}
+
+impl Draw for EmptyActionsModal {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+        context
+            .frame
+            .render_widget(Paragraph::new("No actions available"), area);
+    }
+}
+
 #[derive(Debug)]
 pub struct NotificationText {
     notification: Notification,

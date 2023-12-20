@@ -11,9 +11,10 @@ use ratatui::{
     widgets::{ListItem, ListState},
 };
 
-/// A list with a border and title. Each item has to be convertible to text
+/// A list with optional border and title. Each item has to be convertible to
+/// text
 pub struct List<'a, Kind: SelectStateKind, Item> {
-    pub block: Pane<'a>,
+    pub block: Option<Pane<'a>>,
     pub list: &'a SelectState<Kind, Item, ListState>,
 }
 
@@ -28,7 +29,7 @@ where
     where
         Self: 'this,
     {
-        let block = self.block.generate();
+        let block = self.block.map(Pane::generate).unwrap_or_default();
 
         // Convert each list item into text
         let items: Vec<ListItem<'_>> = self

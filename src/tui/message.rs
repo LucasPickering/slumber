@@ -105,7 +105,4 @@ pub enum Message {
         profile_id: Option<ProfileId>,
         destination: Arc<OnceLock<Vec<TemplateChunk>>>,
     },
-
-    /// Enable/disable mouse capture in the terminal
-    ToggleMouseCapture { capture: bool },
 }

@@ -20,7 +20,6 @@ use anyhow::{anyhow, Context};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
 };
 use futures::Future;
 use notify::{RecursiveMode, Watcher};
@@ -267,15 +266,6 @@ impl Tui {
                     profile_id.as_ref(),
                     destination,
                 )?;
-            }
-
-            Message::ToggleMouseCapture { capture } => {
-                let mut stdout = io::stdout();
-                if capture {
-                    stdout.execute(EnableMouseCapture)?;
-                } else {
-                    stdout.execute(DisableMouseCapture)?;
-                }
             }
         }
         Ok(())

@@ -1,13 +1,9 @@
-use crate::tui::{
-    context::TuiContext,
-    message::Message,
-    view::{
-        common::{modal::Modal, table::Table, Checkbox},
-        draw::{Draw, DrawContext, Generate},
-        event::{EventHandler, UpdateContext},
-        state::select::{Fixed, SelectState},
-        Component, ViewConfig,
-    },
+use crate::tui::view::{
+    common::{modal::Modal, table::Table, Checkbox},
+    draw::{Draw, DrawContext, Generate},
+    event::{EventHandler, UpdateContext},
+    state::select::{Fixed, SelectState},
+    Component, ViewConfig,
 };
 use derive_more::Display;
 use itertools::Itertools;
@@ -30,14 +26,6 @@ impl Default for SettingsModal {
             match setting {
                 Setting::PreviewTemplates => {
                     context.config().preview_templates ^= true;
-                }
-                Setting::CaptureMouse => {
-                    context.config().capture_mouse ^= true;
-                    // Tell the terminal to actually do the switch
-                    let capture = context.config().capture_mouse;
-                    TuiContext::send_message(Message::ToggleMouseCapture {
-                        capture,
-                    });
                 }
             }
         }
@@ -101,8 +89,6 @@ enum Setting {
     #[default]
     #[display("Preview Templates")]
     PreviewTemplates,
-    #[display("Capture Mouse")]
-    CaptureMouse,
 }
 
 impl Setting {
@@ -110,7 +96,6 @@ impl Setting {
     fn get_value(self, config: &ViewConfig) -> bool {
         match self {
             Self::PreviewTemplates => config.preview_templates,
-            Self::CaptureMouse => config.capture_mouse,
         }
     }
 }

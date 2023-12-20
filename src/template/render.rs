@@ -364,7 +364,7 @@ impl<'a> ChainTemplateSource<'a> {
         let found_value = selector
             .query(&json_value)
             .exactly_one()
-            .map_err(|err| ChainError::InvalidResult { error: err })?;
+            .map_err(|error| ChainError::InvalidResult { error })?;
 
         match found_value {
             serde_json::Value::String(s) => Ok(s.clone()),

@@ -12,6 +12,7 @@ use crate::{
             common::{list::List, Pane},
             component::{
                 help::HelpModal,
+                misc::EmptyActionsModal,
                 request::{RequestPane, RequestPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
                 settings::SettingsModal,
@@ -24,7 +25,7 @@ use crate::{
                 RequestState,
             },
             util::layout,
-            Component, ModalPriority,
+            Component,
         },
     },
 };
@@ -206,18 +207,16 @@ impl EventHandler for PrimaryView {
                     context.queue_event(Event::HttpSendRequest);
                     Update::Consumed
                 }
+                Action::OpenActions => {
+                    context.open_modal_default::<EmptyActionsModal>();
+                    Update::Consumed
+                }
                 Action::OpenSettings => {
-                    context.queue_event(Event::OpenModal {
-                        modal: Box::<SettingsModal>::default(),
-                        priority: ModalPriority::Low,
-                    });
+                    context.open_modal_default::<SettingsModal>();
                     Update::Consumed
                 }
                 Action::OpenHelp => {
-                    context.queue_event(Event::OpenModal {
-                        modal: Box::<HelpModal>::default(),
-                        priority: ModalPriority::Low,
-                    });
+                    context.open_modal_default::<HelpModal>();
                     Update::Consumed
                 }
 
@@ -381,9 +380,9 @@ struct ListPaneProps {
 impl ProfileListPane {
     pub fn new(profiles: Vec<Profile>) -> Self {
         // Loaded request depends on the profile, so refresh on change
-        let on_select = |context: &mut UpdateContext, _: &Profile| {
+        fn on_select(context: &mut UpdateContext, _: &Profile) {
             context.queue_event(Event::HttpLoadRequest);
-        };
+        }
 
         Self {
             profiles: Persistent::new(
@@ -409,11 +408,12 @@ impl Draw<ListPaneProps> for ProfileListPane {
         area: Rect,
     ) {
         self.profiles.set_area(area); // Needed for tracking cursor events
+        let title = PrimaryPane::ProfileList.to_string();
         let list = List {
-            block: Pane {
-                title: &PrimaryPane::ProfileList.to_string(),
+            block: Some(Pane {
+                title: &title,
                 is_focused: props.is_selected,
-            },
+            }),
             list: &self.profiles,
         };
         context.frame.render_stateful_widget(
@@ -441,16 +441,16 @@ struct RecipeListPane {
 impl RecipeListPane {
     pub fn new(recipes: Vec<RequestRecipe>) -> Self {
         // When highlighting a new recipe, load it from the repo
-        let on_select = |context: &mut UpdateContext, _: &RequestRecipe| {
+        fn on_select(context: &mut UpdateContext, _: &RequestRecipe) {
             context.queue_event(Event::HttpLoadRequest);
-        };
+        }
 
         // Trigger a request on submit
-        let on_submit = |context: &mut UpdateContext, _: &RequestRecipe| {
+        fn on_submit(context: &mut UpdateContext, _: &RequestRecipe) {
             // Parent has to be responsible for actually sending the request
             // because it also needs access to the profile list state
             context.queue_event(Event::HttpSendRequest);
-        };
+        }
 
         Self {
             recipes: Persistent::new(
@@ -478,12 +478,12 @@ impl Draw<ListPaneProps> for RecipeListPane {
         area: Rect,
     ) {
         self.recipes.set_area(area); // Needed for tracking cursor events
-        let pane_kind = PrimaryPane::RecipeList;
+        let title = PrimaryPane::RecipeList.to_string();
         let list = List {
-            block: Pane {
-                title: &pane_kind.to_string(),
+            block: Some(Pane {
+                title: &title,
                 is_focused: props.is_selected,
-            },
+            }),
             list: &self.recipes,
         };
         context.frame.render_stateful_widget(

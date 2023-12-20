@@ -61,6 +61,28 @@ impl<'a> UpdateContext<'a> {
         self.event_queue.push_back(event);
     }
 
+    /// Open a modal
+    pub fn open_modal(
+        &mut self,
+        modal: impl Modal + 'static,
+        priority: ModalPriority,
+    ) {
+        self.queue_event(Event::OpenModal {
+            modal: Box::new(modal),
+            priority,
+        });
+    }
+
+    /// Open a modal that implements `Default`, with low priority
+    pub fn open_modal_default<T: Modal + Default + 'static>(&mut self) {
+        self.open_modal(T::default(), ModalPriority::Low);
+    }
+
+    /// Send an informational notification to the user
+    pub fn notify(&mut self, message: impl ToString) {
+        self.queue_event(Event::Notify(Notification::new(message.to_string())));
+    }
+
     pub fn config(&mut self) -> &mut ViewConfig {
         self.config
     }
@@ -114,6 +136,10 @@ pub enum Event {
 
     /// Tell the user something informational
     Notify(Notification),
+
+    // Niche component-specific actions (yuck)
+    /// Copy current text. Which text to copy is contextual
+    CopyText,
 }
 
 impl Event {

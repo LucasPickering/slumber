@@ -1,17 +1,25 @@
 use crate::tui::{
+    context::TuiContext,
     input::Action,
+    message::Message,
     view::{
+        common::{list::List, modal::Modal},
         draw::{Draw, DrawContext, Generate},
         event::{Event, EventHandler, Update, UpdateContext},
+        state::select::{Fixed, SelectState},
         util::layout,
+        Component, ModalPriority,
     },
 };
+use anyhow::anyhow;
+use derive_more::Display;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
-    text::{Line, Text},
-    widgets::Paragraph,
+    text::{Line, Span, Text},
+    widgets::{ListState, Paragraph},
 };
 use std::{cell::Cell, cmp, fmt::Debug};
+use strum::{EnumCount, EnumIter};
 
 /// A scrollable (but not editable) block of text. Text is not externally
 /// mutable. If you need to update the text, store this in a `StateCell` and
@@ -59,43 +67,51 @@ impl<T> TextWindow<T> {
     fn scroll_to(&mut self, line: u16) {
         self.offset_y = cmp::min(line, self.max_scroll_line());
     }
+
+    /// Copy all text in the window to the clipboard
+    fn copy_text(&self, context: &mut UpdateContext)
+    where
+        T: ToString,
+    {
+        match cli_clipboard::set_contents(self.text.to_string()) {
+            Ok(()) => {
+                context.notify("Copied text to clipboard");
+            }
+            Err(error) => {
+                // Returned error doesn't impl 'static so we can't
+                // directly convert it to anyhow
+                TuiContext::send_message(Message::Error {
+                    error: anyhow!("Error copying text: {error}"),
+                })
+            }
+        }
+    }
 }
 
-impl<T: Debug> EventHandler for TextWindow<T> {
-    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
+/// ToString required for copy action
+impl<T: Debug + ToString> EventHandler for TextWindow<T> {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(action),
                 ..
             } => match action {
-                Action::Up | Action::ScrollUp => {
-                    self.scroll_up(1);
-                    Update::Consumed
-                }
-                Action::Down | Action::ScrollDown => {
-                    self.scroll_down(1);
-                    Update::Consumed
-                }
-                Action::PageUp => {
-                    self.scroll_up(self.window_height.get());
-                    Update::Consumed
-                }
-                Action::PageDown => {
-                    self.scroll_down(self.window_height.get());
-                    Update::Consumed
-                }
-                Action::Home => {
-                    self.scroll_to(0);
-                    Update::Consumed
-                }
-                Action::End => {
-                    self.scroll_to(u16::MAX);
-                    Update::Consumed
-                }
-                _ => Update::Propagate(event),
+                Action::Up | Action::ScrollUp => self.scroll_up(1),
+                Action::Down | Action::ScrollDown => self.scroll_down(1),
+                Action::PageUp => self.scroll_up(self.window_height.get()),
+                Action::PageDown => self.scroll_down(self.window_height.get()),
+                Action::Home => self.scroll_to(0),
+                Action::End => self.scroll_to(u16::MAX),
+                Action::OpenActions => context.open_modal(
+                    TextWindowActionsModal::default(),
+                    ModalPriority::Low,
+                ),
+                _ => return Update::Propagate(event),
             },
-            _ => Update::Propagate(event),
+            Event::CopyText => self.copy_text(context),
+            _ => return Update::Propagate(event),
         }
+        Update::Consumed
     }
 }
 
@@ -140,5 +156,81 @@ where
             Paragraph::new(self.text.generate()).scroll((self.offset_y, 0)),
             text_area,
         );
+    }
+}
+
+/// Modal to trigger useful commands
+#[derive(Debug)]
+struct TextWindowActionsModal {
+    actions: Component<SelectState<Fixed, TextWindowAction, ListState>>,
+}
+
+impl Default for TextWindowActionsModal {
+    fn default() -> Self {
+        fn on_submit(context: &mut UpdateContext, action: &TextWindowAction) {
+            // Close the modal *first*, so the action event gets handled by our
+            // parent rather than the modal. Jank but it works
+            context.queue_event(Event::CloseModal);
+            match action {
+                TextWindowAction::Copy => context.queue_event(Event::CopyText),
+            }
+        }
+
+        Self {
+            actions: SelectState::fixed().on_submit(on_submit).into(),
+        }
+    }
+}
+
+impl Modal for TextWindowActionsModal {
+    fn title(&self) -> &str {
+        "Actions"
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        (
+            Constraint::Length(30),
+            Constraint::Length(TextWindowAction::COUNT as u16 + 2),
+        )
+    }
+}
+
+impl EventHandler for TextWindowActionsModal {
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        vec![self.actions.as_child()]
+    }
+}
+
+impl Draw for TextWindowActionsModal {
+    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+        let list = List {
+            block: None,
+            list: &self.actions,
+        };
+        context.frame.render_stateful_widget(
+            list.generate(),
+            area,
+            &mut self.actions.state_mut(),
+        );
+    }
+}
+
+/// Items in the actions popup menu
+#[derive(
+    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
+)]
+enum TextWindowAction {
+    #[default]
+    Copy,
+}
+
+impl Generate for &TextWindowAction {
+    type Output<'this> = Span<'this> where Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        self.to_string().into()
     }
 }

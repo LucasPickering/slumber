@@ -132,6 +132,7 @@ impl EventHandler for ModalQueue {
 impl Draw for ModalQueue {
     fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
         if let Some(modal) = self.queue.front() {
+            // TODO treat dimensions as inner, not outer
             let (x, y) = modal.dimensions();
             let area = centered_rect(x, y, area);
             let block = Block::default()

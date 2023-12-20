@@ -79,6 +79,10 @@ impl<T> Component<T> {
         })
     }
 
+    pub fn inner(&self) -> &T {
+        &self.inner
+    }
+
     /// Move the inner component out
     pub fn into_inner(self) -> T {
         self.inner

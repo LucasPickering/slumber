@@ -173,8 +173,10 @@ impl View {
 
         // None of our children handled it, we'll take it ourselves.
         // Message is already traced in the parent span, so don't dupe it.
-        // TODO figure out a way to print just the component type name
-        let span = trace_span!("Component handling", ?component);
+        let span = trace_span!(
+            "Component handling",
+            component = ?component.inner(),
+        );
         span.in_scope(|| {
             let update = component.update(context, event);
             trace!(?update);

@@ -4,12 +4,13 @@
 
 ### Added
 
+- Add action to copy entire request/response body ([#74](https://github.com/LucasPickering/slumber/issues/45))
+- Persist UI state between sessions ([#39](https://github.com/LucasPickering/slumber/issues/39))
+- Text window can be controlled with PgUp/PgDown/Home/End ([#77](https://github.com/LucasPickering/slumber/issues/77))
 - Add back manual reload keybinding (R)
   - Mostly for development purposes
 - Add collection ID/path to help modal ([#59](https://github.com/LucasPickering/slumber/issues/59))
   - Also add collection ID to terminal title
-- Persist UI state between sessions ([#39](https://github.com/LucasPickering/slumber/issues/39))
-- Text window can be controlled with PgUp/PgDown/Home/End ([#77](https://github.com/LucasPickering/slumber/issues/77))
 
 ### Changed
 
@@ -18,6 +19,9 @@
   - Request history (and UI state) will be lost
 - [BREAKING] `show` subcommand now takes a `target` argument
   - Right now the only option is `slumber show dir`, which has the same behavior as the old `slumber show` (except now it prints the bare directory)
+- [BREAKING] Remove option to toggle cursor capture
+  - Turns out it's not that useful, since most terminals provide override behavior
+- Filter request history by profile ([#74](https://github.com/LucasPickering/slumber/issues/74))
 - Hide sensitive chain values in preview
 - Change fullscreen keybinding from F11 to F
   - F11 in some cases is eaten by the IDE or OS, which is annoying

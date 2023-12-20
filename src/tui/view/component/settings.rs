@@ -44,7 +44,7 @@ impl Modal for SettingsModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         (
             Constraint::Length(30),
-            Constraint::Length(Setting::COUNT as u16 + 2),
+            Constraint::Length(Setting::COUNT as u16),
         )
     }
 }

@@ -72,7 +72,7 @@ impl Modal for HelpModal {
         let num_bindings = Self::bindings().count() as u16;
         (
             Constraint::Percentage(80),
-            Constraint::Length(6 + num_bindings),
+            Constraint::Length(4 + num_bindings),
         )
     }
 }

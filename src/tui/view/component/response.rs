@@ -184,9 +184,15 @@ enum Tab {
 
 impl EventHandler for ResponseContent {
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        let selected_tab = *self.tabs.selected();
         let mut children = vec![self.tabs.as_child()];
-        if let Some(body) = self.body.get_mut() {
-            children.push(body.as_child());
+        match selected_tab {
+            Tab::Body => {
+                if let Some(body) = self.body.get_mut() {
+                    children.push(body.as_child());
+                }
+            }
+            Tab::Headers => {}
         }
         children
     }

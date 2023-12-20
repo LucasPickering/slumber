@@ -85,7 +85,7 @@ impl Modal for PromptModal {
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
-        (Constraint::Percentage(60), Constraint::Length(3))
+        (Constraint::Percentage(60), Constraint::Length(1))
     }
 
     fn on_close(self: Box<Self>) {
@@ -153,7 +153,7 @@ impl Modal for EmptyActionsModal {
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
-        (Constraint::Length(30), Constraint::Length(3))
+        (Constraint::Length(30), Constraint::Length(1))
     }
 }
 

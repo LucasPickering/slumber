@@ -54,9 +54,8 @@ where
             };
             Row::new(row).style(style)
         });
-        let mut table = ratatui::widgets::Table::new(rows)
-            .highlight_style(theme.table_highlight_style)
-            .widths(self.column_widths);
+        let mut table = ratatui::widgets::Table::new(rows, self.column_widths)
+            .highlight_style(theme.table_highlight_style);
 
         // Add title
         if let Some(title) = self.title {

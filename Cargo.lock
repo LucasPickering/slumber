@@ -1739,7 +1739,7 @@ dependencies = [
 
 [[package]]
 name = "slumber"
-version = "0.10.0-beta.2"
+version = "0.10.0-beta.3"
 dependencies = [
  "anyhow",
  "async-trait",

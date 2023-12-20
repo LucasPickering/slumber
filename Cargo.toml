@@ -23,14 +23,14 @@ dirs = "^5.0.1"
 equivalent = "^1"
 futures = "^0.3.28"
 indexmap = {version = "^2.0.1", features = ["serde"]}
-itertools = "^0.11.0"
+itertools = "^0.12.0"
 nom = "7.1.3"
 notify = {version = "^6.1.1", default-features = false, features = ["macos_fsevent"]}
-ratatui = "^0.24.0"
+ratatui = "^0.25.0"
 reqwest = {version = "^0.11.20", default-features = false, features = ["rustls-tls"]}
 rmp-serde = "^1.1.2"
-rusqlite = {version = "^0.29.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
-rusqlite_migration = "^1.0.2"
+rusqlite = {version = "^0.30.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
+rusqlite_migration = "^1.1.0"
 serde = {version = "^1.0.188", features = ["derive"]}
 serde_json = {version = "^1.0.107", default-features = false}
 serde_json_path = "^0.6.3"
@@ -41,7 +41,7 @@ thiserror = "^1.0.48"
 tokio = {version = "^1.32.0", default-features = false, features = ["full"]}
 tracing = "^0.1.37"
 tracing-subscriber = {version = "^0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}
-tui-textarea = "^0.3.0"
+tui-textarea = "^0.4.0"
 uuid = {version = "^1.4.1", default-features = false, features = ["serde", "v4"]}
 
 [dev-dependencies]

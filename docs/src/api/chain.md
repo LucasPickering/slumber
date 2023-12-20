@@ -1,6 +1,6 @@
 # Chain
 
-A chain is a intermediate data type to enable complex template values. Chains enable complex value sources and additional customization, such as much values as sensitive to be masked in the UI.
+A chain is a intermediate data type to enable complex template values. Chains also provide additional customization, such as marking values as sensitive.
 
 To use a chain in a template, reference it as `{{chains.<id>}}`.
 

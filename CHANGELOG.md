@@ -11,6 +11,7 @@
   - Mostly for development purposes
 - Add collection ID/path to help modal ([#59](https://github.com/LucasPickering/slumber/issues/59))
   - Also add collection ID to terminal title
+- Add new docs for templates and collection reuse ([#67](https://github.com/LucasPickering/slumber/issues/67))
 
 ### Changed
 

@@ -17,6 +17,7 @@ use async_trait::async_trait;
 #[derive(Clone, Debug, clap::Subcommand)]
 pub enum CliCommand {
     Request(RequestCommand),
+    #[clap(name = "import-experimental")]
     Import(ImportCommand),
     Collections(CollectionsCommand),
     Show(ShowCommand),

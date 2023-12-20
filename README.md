@@ -20,3 +20,5 @@ requests:
 ```
 
 Create this file, then run the TUI with `slumber`.
+
+For a more extensive example, see [the docs](https://slumber.lucaspickering.me/book/getting_started.html).

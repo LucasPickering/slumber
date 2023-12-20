@@ -10,7 +10,6 @@ use std::{
 
 /// Generate a Slumber request collection from an external format
 #[derive(Clone, Debug, Parser)]
-#[clap(name = "import-experimental")]
 pub struct ImportCommand {
     /// Collection to import
     input_file: PathBuf,

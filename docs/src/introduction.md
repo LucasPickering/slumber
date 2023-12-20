@@ -4,4 +4,4 @@ Slumber is a terminal-based HTTP client, built for interacting with REST and oth
 
 The goal of Slumber is to be **easy to use, configurable, and sharable**. To that end, configuration is defined in a YAML file called the **request collection**. Both usage modes share the same basic configuration, which is called the [request collection](./api/request_collection.md).
 
-Check out the [Quick Start guide](./quick_start.md) to try it out, or move onto [Key Concepts](./user_guide/key_concepts.md) to start learning in depth about Slumber.
+Check out the [Getting Started guide](./getting_started.md) to try it out, or move onto [Key Concepts](./user_guide/key_concepts.md) to start learning in depth about Slumber.

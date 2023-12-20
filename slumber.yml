@@ -1,6 +1,6 @@
 profiles:
   works:
-    name: Works
+    name: This Works
     data:
       host: https://httpbin.org
       username: !template "xX{{chains.username}}Xx"

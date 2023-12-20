@@ -2,14 +2,15 @@
 
 - [Introduction](./introduction.md)
 - [Install](./install.md)
-- [Quick Start](./quick_start.md)
+- [Getting Started](./getting_started.md)
 
 # User Guide
 
 - [Key Concepts](./user_guide/key_concepts.md)
+- [Terminal User Interface (TUI)](./user_guide/tui.md)
+- [Command Line Interface (CLI)](./user_guide/cli.md)
 - [Templates](./user_guide/templates.md)
-- [TUI (Terminal User Interface)]()
-- [CLI (Command Line Interface)]()
+- [Collection Reuse & Inheritance](./user_guide/inheritance.md)
 
 # API Reference
 

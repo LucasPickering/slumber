@@ -120,6 +120,7 @@ where
     &'a T: 'a + Generate<Output<'a> = Text<'a>>,
 {
     fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+        let theme = &TuiContext::get().theme;
         let text = self.text.generate();
         let text_height = text.lines.len() as u16;
         self.text_height.set(text_height);
@@ -147,7 +148,8 @@ where
                     .map(|n| n.to_string().into())
                     .collect::<Vec<Line>>(),
             )
-            .alignment(Alignment::Right),
+            .alignment(Alignment::Right)
+            .style(theme.line_number_style),
             gutter_area,
         );
 

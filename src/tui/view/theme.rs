@@ -49,7 +49,7 @@ impl Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            line_number_style: Style::default(),
+            line_number_style: Style::default().fg(Color::DarkGray),
 
             list_highlight_style: Style::default()
                 .bg(PRIMARY_COLOR)

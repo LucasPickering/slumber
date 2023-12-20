@@ -189,17 +189,12 @@ struct ViewConfig {
     /// Should templates be rendered inline in the UI, or should we show the
     /// raw text?
     preview_templates: bool,
-
-    /// Are we capture cursor events, or are they being handled by the terminal
-    /// emulator? This can be toggled by the user
-    capture_mouse: bool,
 }
 
 impl Default for ViewConfig {
     fn default() -> Self {
         Self {
             preview_templates: true,
-            capture_mouse: true,
         }
     }
 }

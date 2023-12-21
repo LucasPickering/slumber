@@ -1,11 +1,20 @@
 # Slumber
 
+![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)
+![crates.io](https://img.shields.io/crates/v/slumber.svg)
+
 - [Home Page](https://slumber.lucaspickering.me)
 - [Installation](https://slumber.lucaspickering.me/artifacts/)
 - [Docs](https://slumber.lucaspickering.me/book/)
 - [Changelog](https://slumber.lucaspickering.me/changelog/)
 
-Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and share configurable HTTP requests.
+![Slumber example](./static/banner.png)
+
+Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and share configurable HTTP requests. Slumber is built on some basic principles:
+
+- It will remain free to use forever
+- You own your data: all configuration and data is stored locally and can be checked into version control
+- It will never be [enshittified](https://en.wikipedia.org/wiki/Enshittification)
 
 ## Examples
 

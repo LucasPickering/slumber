@@ -296,7 +296,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 let [request_area, response_area] = layout(
                     right_area,
                     Direction::Vertical,
-                    [Constraint::Percentage(50), Constraint::Percentage(50)],
+                    [Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)],
                 );
 
                 // Primary panes

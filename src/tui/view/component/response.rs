@@ -3,7 +3,7 @@ use crate::{
     tui::view::{
         common::{table::Table, tabs::Tabs, text_window::TextWindow, Pane},
         component::primary::PrimaryPane,
-        draw::{Draw, DrawContext, Generate},
+        draw::{Draw, Generate},
         event::EventHandler,
         state::{persistence::PersistentKey, RequestState, StateCell},
         util::layout,
@@ -16,6 +16,7 @@ use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
     text::{Line, Text},
     widgets::{Paragraph, Wrap},
+    Frame,
 };
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
@@ -42,7 +43,7 @@ impl EventHandler for ResponsePane {
 impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
     fn draw(
         &self,
-        context: &mut DrawContext,
+        frame: &mut Frame,
         props: ResponsePaneProps<'a>,
         area: Rect,
     ) {
@@ -54,7 +55,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
         };
         let block = block.generate();
         let inner_area = block.inner(area);
-        context.frame.render_widget(block, area);
+        frame.render_widget(block, area);
 
         // Don't render anything else unless we have a request state
         if let Some(request_state) = props.active_request {
@@ -75,7 +76,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
             if let (Some(start_time), Some(duration)) =
                 (request_state.start_time(), request_state.duration())
             {
-                context.frame.render_widget(
+                frame.render_widget(
                     Paragraph::new(Line::from(vec![
                         start_time.generate(),
                         " / ".into(),
@@ -88,7 +89,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 
             match &request_state {
                 RequestState::Building { .. } => {
-                    context.frame.render_widget(
+                    frame.render_widget(
                         Paragraph::new("Initializing request..."),
                         header_left_area,
                     );
@@ -96,14 +97,14 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 
                 // :(
                 RequestState::BuildError { error } => {
-                    context.frame.render_widget(
+                    frame.render_widget(
                         Paragraph::new(error.generate()).wrap(Wrap::default()),
                         content_area,
                     );
                 }
 
                 RequestState::Loading { .. } => {
-                    context.frame.render_widget(
+                    frame.render_widget(
                         Paragraph::new("Loading..."),
                         header_left_area,
                     );
@@ -115,13 +116,13 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 } => {
                     let response = &record.response;
                     // Status code
-                    context.frame.render_widget(
+                    frame.render_widget(
                         Paragraph::new(response.status.to_string()),
                         header_left_area,
                     );
 
                     self.content.draw(
-                        context,
+                        frame,
                         ResponseContentProps {
                             record,
                             pretty_body: pretty_body.as_deref(),
@@ -132,7 +133,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 
                 // Sadge
                 RequestState::RequestError { error } => {
-                    context.frame.render_widget(
+                    frame.render_widget(
                         Paragraph::new(error.generate()).wrap(Wrap::default()),
                         content_area,
                     );
@@ -201,7 +202,7 @@ impl EventHandler for ResponseContent {
 impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
     fn draw(
         &self,
-        context: &mut DrawContext,
+        frame: &mut Frame,
         props: ResponseContentProps<'a>,
         area: Rect,
     ) {
@@ -215,7 +216,7 @@ impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
         );
 
         // Navigation tabs
-        self.tabs.draw(context, (), tabs_area);
+        self.tabs.draw(frame, (), tabs_area);
 
         // Main content for the response
         match self.tabs.selected() {
@@ -229,9 +230,9 @@ impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
                         .to_owned();
                     TextWindow::new(body).into()
                 });
-                body.deref().draw(context, (), content_area)
+                body.deref().draw(frame, (), content_area)
             }
-            Tab::Headers => context.frame.render_widget(
+            Tab::Headers => frame.render_widget(
                 Table {
                     rows: response
                         .headers

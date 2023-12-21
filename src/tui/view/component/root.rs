@@ -11,7 +11,7 @@ use crate::{
                 misc::NotificationText,
                 primary::{PrimaryView, PrimaryViewProps},
             },
-            draw::{Draw, DrawContext},
+            draw::Draw,
             event::{Event, EventHandler, Update, UpdateContext},
             state::RequestState,
             util::layout,
@@ -19,7 +19,10 @@ use crate::{
         },
     },
 };
-use ratatui::prelude::{Constraint, Direction, Rect};
+use ratatui::{
+    prelude::{Constraint, Direction, Rect},
+    Frame,
+};
 use std::collections::{hash_map::Entry, HashMap};
 
 /// The root view component
@@ -162,7 +165,7 @@ impl EventHandler for Root {
 }
 
 impl Draw for Root {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         // Create layout
         let [main_area, footer_area] = layout(
             area,
@@ -172,7 +175,7 @@ impl Draw for Root {
 
         // Main content
         self.primary_view.draw(
-            context,
+            frame,
             PrimaryViewProps {
                 active_request: self.active_request(),
             },
@@ -186,11 +189,11 @@ impl Draw for Root {
             [Constraint::Min(10), Constraint::Length(29)],
         );
         if let Some(notification_text) = &self.notification_text {
-            notification_text.draw(context, (), notification_area);
+            notification_text.draw(frame, (), notification_area);
         }
-        HelpFooter.draw(context, (), help_area);
+        HelpFooter.draw(frame, (), help_area);
 
         // Render modals last so they go on top
-        self.modal_queue.draw(context, (), context.frame.size());
+        self.modal_queue.draw(frame, (), frame.size());
     }
 }

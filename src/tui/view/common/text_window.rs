@@ -4,7 +4,7 @@ use crate::tui::{
     message::Message,
     view::{
         common::{list::List, modal::Modal},
-        draw::{Draw, DrawContext, Generate},
+        draw::{Draw, Generate},
         event::{Event, EventHandler, Update, UpdateContext},
         state::select::{Fixed, SelectState},
         util::layout,
@@ -17,6 +17,7 @@ use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
     text::{Line, Span, Text},
     widgets::{ListState, Paragraph},
+    Frame,
 };
 use std::{cell::Cell, cmp, fmt::Debug};
 use strum::{EnumCount, EnumIter};
@@ -119,7 +120,7 @@ impl<'a, T> Draw for &'a TextWindow<T>
 where
     &'a T: 'a + Generate<Output<'a> = Text<'a>>,
 {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         let theme = &TuiContext::get().theme;
         let text = self.text.generate();
         let text_height = text.lines.len() as u16;
@@ -142,7 +143,7 @@ where
         // Draw line numbers in the gutter
         let first_line = self.offset_y + 1;
         let last_line = cmp::min(first_line + area.height, text_height);
-        context.frame.render_widget(
+        frame.render_widget(
             Paragraph::new(
                 (first_line..=last_line)
                     .map(|n| n.to_string().into())
@@ -154,7 +155,7 @@ where
         );
 
         // Darw the text content
-        context.frame.render_widget(
+        frame.render_widget(
             Paragraph::new(self.text.generate()).scroll((self.offset_y, 0)),
             text_area,
         );
@@ -204,12 +205,12 @@ impl EventHandler for TextWindowActionsModal {
 }
 
 impl Draw for TextWindowActionsModal {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         let list = List {
             block: None,
             list: &self.actions,
         };
-        context.frame.render_stateful_widget(
+        frame.render_stateful_widget(
             list.generate(),
             area,
             &mut self.actions.state_mut(),

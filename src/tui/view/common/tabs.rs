@@ -2,7 +2,7 @@ use crate::tui::{
     context::TuiContext,
     input::Action,
     view::{
-        draw::{Draw, DrawContext},
+        draw::Draw,
         event::{Event, EventHandler, Update, UpdateContext},
         state::{
             persistence::{Persistable, Persistent, PersistentKey},
@@ -10,7 +10,7 @@ use crate::tui::{
         },
     },
 };
-use ratatui::prelude::Rect;
+use ratatui::{prelude::Rect, Frame};
 use std::fmt::Debug;
 
 /// Multi-tab display. Generic parameter defines the available tabs.
@@ -55,8 +55,8 @@ impl<T: FixedSelect + Persistable> EventHandler for Tabs<T> {
 }
 
 impl<T: FixedSelect + Persistable> Draw for Tabs<T> {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
-        context.frame.render_widget(
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+        frame.render_widget(
             ratatui::widgets::Tabs::new(
                 T::iter().map(|e| e.to_string()).collect(),
             )

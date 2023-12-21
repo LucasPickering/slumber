@@ -9,17 +9,16 @@ mod recipe_list;
 mod request;
 mod response;
 mod root;
-mod settings;
 
 pub use root::Root;
 
 use crate::tui::view::{
-    draw::{Draw, DrawContext},
+    draw::Draw,
     event::{Event, EventHandler, Update, UpdateContext},
 };
 use crossterm::event::MouseEvent;
 use derive_more::{Deref, DerefMut};
-use ratatui::layout::Rect;
+use ratatui::{layout::Rect, Frame};
 use std::cell::Cell;
 
 /// A wrapper around the various component types. The main job of this is to
@@ -103,9 +102,9 @@ impl<T: EventHandler> EventHandler for Component<T> {
 }
 
 impl<P, T: Draw<P>> Draw<P> for Component<T> {
-    fn draw(&self, context: &mut DrawContext, props: P, area: Rect) {
+    fn draw(&self, frame: &mut Frame, props: P, area: Rect) {
         self.area.set(area); // Cache the visual area, for event handling
-        self.inner.draw(context, props, area);
+        self.inner.draw(frame, props, area);
     }
 }
 
@@ -113,9 +112,9 @@ impl<'a, P, T> Draw<P> for &'a Component<T>
 where
     &'a T: Draw<P>,
 {
-    fn draw(&self, context: &mut DrawContext, props: P, area: Rect) {
+    fn draw(&self, frame: &mut Frame, props: P, area: Rect) {
         self.area.set(area); // Cache the visual area, for event handling
-        (&self.inner).draw(context, props, area);
+        (&self.inner).draw(frame, props, area);
     }
 }
 

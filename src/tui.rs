@@ -5,6 +5,7 @@ mod view;
 
 use crate::{
     collection::{ProfileId, RequestCollection, RequestRecipeId},
+    config::Config,
     db::{CollectionDatabase, Database},
     http::{HttpEngine, RequestBuilder},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
@@ -78,13 +79,14 @@ impl Tui {
         // ===== Initialize global state =====
         // This stuff only needs to be set up *once per session*
 
+        let config = Config::load()?;
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx = MessageSender::new(messages_tx);
         // Load a database for this particular collection
         let database = Database::load()?.into_collection(&collection_file)?;
         // Initialize global view context
-        TuiContext::init(messages_tx.clone(), database.clone());
+        TuiContext::init(config, messages_tx.clone(), database.clone());
 
         // ===== Initialize collection & view =====
 

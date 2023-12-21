@@ -2,9 +2,16 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Move app-level configuration into a file ([#89](https://github.com/LucasPickering/slumber/issues/89))
+  - Right now the only supported field is `preview_templates`
+
 ### Changed
 
 - Show profile contents while in the profile list ([#26](https://github.com/LucasPickering/slumber/issues/26))
+- Remove settings modal in favor of the settings file
+  - Supporting changing configuration values during a session adds a lot of complexity
 
 ## [0.11.0] - 2023-12-20
 

@@ -3,7 +3,7 @@ use crate::{
     tui::view::{
         common::{list::List, Pane},
         component::primary::PrimaryPane,
-        draw::{Draw, DrawContext, Generate},
+        draw::{Draw, Generate},
         event::{Event, EventHandler, UpdateContext},
         state::{
             persistence::{Persistable, Persistent, PersistentKey},
@@ -12,7 +12,7 @@ use crate::{
         Component,
     },
 };
-use ratatui::prelude::Rect;
+use ratatui::{prelude::Rect, Frame};
 
 #[derive(Debug)]
 pub struct ProfileListPane {
@@ -51,12 +51,7 @@ impl EventHandler for ProfileListPane {
 }
 
 impl Draw<ProfileListPaneProps> for ProfileListPane {
-    fn draw(
-        &self,
-        context: &mut DrawContext,
-        props: ProfileListPaneProps,
-        area: Rect,
-    ) {
+    fn draw(&self, frame: &mut Frame, props: ProfileListPaneProps, area: Rect) {
         self.profiles.set_area(area); // Needed for tracking cursor events
         let title = PrimaryPane::ProfileList.to_string();
         let list = List {
@@ -66,7 +61,7 @@ impl Draw<ProfileListPaneProps> for ProfileListPane {
             }),
             list: &self.profiles,
         };
-        context.frame.render_stateful_widget(
+        frame.render_stateful_widget(
             list.generate(),
             area,
             &mut self.profiles.state_mut(),

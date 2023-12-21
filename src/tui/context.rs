@@ -1,4 +1,5 @@
 use crate::{
+    config::Config,
     db::CollectionDatabase,
     tui::{
         input::InputEngine,
@@ -28,6 +29,8 @@ static CONTEXT: OnceLock<TuiContext> = OnceLock::new();
 /// Both are safe to access in statics!
 #[derive(Debug)]
 pub struct TuiContext {
+    /// App-level configuration
+    pub config: Config,
     /// Visual theme. Colors!
     pub theme: Theme,
     /// Input:action bindings
@@ -41,9 +44,14 @@ pub struct TuiContext {
 
 impl TuiContext {
     /// Initialize global context. Should be called only once, during startup.
-    pub fn init(messages_tx: MessageSender, database: CollectionDatabase) {
+    pub fn init(
+        config: Config,
+        messages_tx: MessageSender,
+        database: CollectionDatabase,
+    ) {
         CONTEXT
             .set(Self {
+                config,
                 theme: Theme::default(),
                 input_engine: InputEngine::default(),
                 messages_tx,
@@ -72,6 +80,7 @@ impl TuiContext {
 pub fn tui_context() {
     use tokio::sync::mpsc;
     TuiContext::init(
+        Config::default(),
         MessageSender::new(mpsc::unbounded_channel().0),
         CollectionDatabase::testing(),
     );

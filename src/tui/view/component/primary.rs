@@ -15,9 +15,8 @@ use crate::{
                 recipe_list::{RecipeListPane, RecipeListPaneProps},
                 request::{RequestPane, RequestPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
-                settings::SettingsModal,
             },
-            draw::{Draw, DrawContext},
+            draw::Draw,
             event::{Event, EventHandler, Update, UpdateContext},
             state::{
                 persistence::{Persistent, PersistentKey},
@@ -31,7 +30,10 @@ use crate::{
 };
 use derive_more::Display;
 use itertools::Itertools;
-use ratatui::prelude::{Constraint, Direction, Rect};
+use ratatui::{
+    prelude::{Constraint, Direction, Rect},
+    Frame,
+};
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
@@ -214,10 +216,6 @@ impl EventHandler for PrimaryView {
                     context.open_modal_default::<EmptyActionsModal>();
                     Update::Consumed
                 }
-                Action::OpenSettings => {
-                    context.open_modal_default::<SettingsModal>();
-                    Update::Consumed
-                }
                 Action::OpenHelp => {
                     context.open_modal_default::<HelpModal>();
                     Update::Consumed
@@ -267,12 +265,7 @@ impl EventHandler for PrimaryView {
 }
 
 impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
-    fn draw(
-        &self,
-        context: &mut DrawContext,
-        props: PrimaryViewProps<'a>,
-        area: Rect,
-    ) {
+    fn draw(&self, frame: &mut Frame, props: PrimaryViewProps<'a>, area: Rect) {
         match *self.fullscreen_mode {
             // Show all panes
             None => {
@@ -309,7 +302,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 // Primary panes
                 let panes = &self.selected_pane;
                 self.profile_list_pane.draw(
-                    context,
+                    frame,
                     ProfileListPaneProps {
                         is_selected: panes
                             .is_selected(&PrimaryPane::ProfileList),
@@ -317,7 +310,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     profiles_area,
                 );
                 self.recipe_list_pane.draw(
-                    context,
+                    frame,
                     RecipeListPaneProps {
                         is_selected: panes
                             .is_selected(&PrimaryPane::RecipeList),
@@ -331,13 +324,13 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                     (self.selected_pane.selected(), self.selected_profile())
                 {
                     self.profile_pane.draw(
-                        context,
+                        frame,
                         ProfilePaneProps { profile },
                         request_area,
                     )
                 } else {
                     self.request_pane.draw(
-                        context,
+                        frame,
                         RequestPaneProps {
                             is_selected: panes
                                 .is_selected(&PrimaryPane::Request),
@@ -351,7 +344,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 }
 
                 self.response_pane.draw(
-                    context,
+                    frame,
                     ResponsePaneProps {
                         is_selected: panes.is_selected(&PrimaryPane::Response),
                         active_request: props.active_request,
@@ -361,7 +354,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
             }
             Some(FullscreenMode::Request) => {
                 self.request_pane.draw(
-                    context,
+                    frame,
                     RequestPaneProps {
                         is_selected: true,
                         selected_recipe: self.selected_recipe(),
@@ -374,7 +367,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
             }
             Some(FullscreenMode::Response) => {
                 self.response_pane.draw(
-                    context,
+                    frame,
                     ResponsePaneProps {
                         is_selected: true,
                         active_request: props.active_request,

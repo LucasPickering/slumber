@@ -8,7 +8,7 @@ use crate::{
         view::{
             common::modal::{Modal, ModalPriority},
             state::{Notification, RequestState},
-            Component, ViewConfig,
+            Component,
         },
     },
 };
@@ -41,18 +41,11 @@ pub trait EventHandler: Debug {
 /// effects.
 pub struct UpdateContext<'a> {
     event_queue: &'a mut VecDeque<Event>,
-    config: &'a mut ViewConfig,
 }
 
 impl<'a> UpdateContext<'a> {
-    pub fn new(
-        event_queue: &'a mut VecDeque<Event>,
-        config: &'a mut ViewConfig,
-    ) -> Self {
-        Self {
-            event_queue,
-            config,
-        }
+    pub fn new(event_queue: &'a mut VecDeque<Event>) -> Self {
+        Self { event_queue }
     }
 
     /// Queue a subsequent view event to be handled after the current one
@@ -81,10 +74,6 @@ impl<'a> UpdateContext<'a> {
     /// Send an informational notification to the user
     pub fn notify(&mut self, message: impl ToString) {
         self.queue_event(Event::Notify(Notification::new(message.to_string())));
-    }
-
-    pub fn config(&mut self) -> &mut ViewConfig {
-        self.config
     }
 }
 

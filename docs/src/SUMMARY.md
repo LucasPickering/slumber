@@ -14,6 +14,7 @@
 
 # API Reference
 
+- [Configuration](./api/configuration.md)
 - [Request Collection](./api/request_collection.md)
   - [Profile](./api/profile.md)
   - [Profile Value](./api/profile_value.md)

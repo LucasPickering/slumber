@@ -1,27 +1,27 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
-    collection::{
-        Profile, ProfileId, RequestCollection, RequestRecipe, RequestRecipeId,
-    },
+    collection::{Profile, RequestCollection, RequestRecipe},
     tui::{
         context::TuiContext,
         input::Action,
         message::Message,
         view::{
-            common::{list::List, Pane},
             component::{
                 help::HelpModal,
                 misc::EmptyActionsModal,
+                profile::{ProfilePane, ProfilePaneProps},
+                profile_list::{ProfileListPane, ProfileListPaneProps},
+                recipe_list::{RecipeListPane, RecipeListPaneProps},
                 request::{RequestPane, RequestPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
                 settings::SettingsModal,
             },
-            draw::{Draw, DrawContext, Generate},
+            draw::{Draw, DrawContext},
             event::{Event, EventHandler, Update, UpdateContext},
             state::{
-                persistence::{Persistable, Persistent, PersistentKey},
-                select::{Dynamic, Fixed, SelectState},
+                persistence::{Persistent, PersistentKey},
+                select::{Fixed, SelectState},
                 RequestState,
             },
             util::layout,
@@ -47,6 +47,8 @@ pub struct PrimaryView {
     profile_list_pane: Component<ProfileListPane>,
     #[debug(skip)]
     recipe_list_pane: Component<RecipeListPane>,
+    #[debug(skip)]
+    profile_pane: Component<ProfilePane>,
     #[debug(skip)]
     request_pane: Component<RequestPane>,
     #[debug(skip)]
@@ -112,6 +114,7 @@ impl PrimaryView {
 
             profile_list_pane,
             recipe_list_pane,
+            profile_pane: Default::default(),
             request_pane: Default::default(),
             response_pane: Default::default(),
         }
@@ -120,13 +123,13 @@ impl PrimaryView {
     /// Which recipe in the recipe list is selected? `None` iff the list is
     /// empty.
     pub fn selected_recipe(&self) -> Option<&RequestRecipe> {
-        self.recipe_list_pane.recipes.selected()
+        self.recipe_list_pane.recipes().selected()
     }
 
     /// Which profile in the list is selected? `None` iff the list is empty.
     /// Exposing inner state is hacky but it's an easy shortcut
     pub fn selected_profile(&self) -> Option<&Profile> {
-        self.profile_list_pane.profiles.selected()
+        self.profile_list_pane.profiles().selected()
     }
 
     fn toggle_fullscreen(&mut self, mode: FullscreenMode) {
@@ -288,7 +291,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                         // Make profile list as small as possible, with a max
                         // size
                         Constraint::Max(
-                            self.profile_list_pane.profiles.len().clamp(1, 16)
+                            self.profile_list_pane.profiles().len().clamp(1, 16)
                                 as u16
                                 + 2, // Account for top/bottom border
                         ),
@@ -307,7 +310,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 let panes = &self.selected_pane;
                 self.profile_list_pane.draw(
                     context,
-                    ListPaneProps {
+                    ProfileListPaneProps {
                         is_selected: panes
                             .is_selected(&PrimaryPane::ProfileList),
                     },
@@ -315,23 +318,38 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 );
                 self.recipe_list_pane.draw(
                     context,
-                    ListPaneProps {
+                    RecipeListPaneProps {
                         is_selected: panes
                             .is_selected(&PrimaryPane::RecipeList),
                     },
                     recipes_area,
                 );
-                self.request_pane.draw(
-                    context,
-                    RequestPaneProps {
-                        is_selected: panes.is_selected(&PrimaryPane::Request),
-                        selected_recipe: self.selected_recipe(),
-                        selected_profile_id: self
-                            .selected_profile()
-                            .map(|profile| &profile.id),
-                    },
-                    request_area,
-                );
+
+                // If profile list is selected, show the profile contents.
+                // Otherwise show the recipe pane
+                if let (PrimaryPane::ProfileList, Some(profile)) =
+                    (self.selected_pane.selected(), self.selected_profile())
+                {
+                    self.profile_pane.draw(
+                        context,
+                        ProfilePaneProps { profile },
+                        request_area,
+                    )
+                } else {
+                    self.request_pane.draw(
+                        context,
+                        RequestPaneProps {
+                            is_selected: panes
+                                .is_selected(&PrimaryPane::Request),
+                            selected_recipe: self.selected_recipe(),
+                            selected_profile_id: self
+                                .selected_profile()
+                                .map(|profile| &profile.id),
+                        },
+                        request_area,
+                    );
+                }
+
                 self.response_pane.draw(
                     context,
                     ResponsePaneProps {
@@ -365,140 +383,5 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 );
             }
         }
-    }
-}
-
-#[derive(Debug)]
-struct ProfileListPane {
-    profiles: Component<Persistent<SelectState<Dynamic, Profile>>>,
-}
-
-struct ListPaneProps {
-    is_selected: bool,
-}
-
-impl ProfileListPane {
-    pub fn new(profiles: Vec<Profile>) -> Self {
-        // Loaded request depends on the profile, so refresh on change
-        fn on_select(context: &mut UpdateContext, _: &Profile) {
-            context.queue_event(Event::HttpLoadRequest);
-        }
-
-        Self {
-            profiles: Persistent::new(
-                PersistentKey::ProfileId,
-                SelectState::new(profiles).on_select(on_select),
-            )
-            .into(),
-        }
-    }
-}
-
-impl EventHandler for ProfileListPane {
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.profiles.as_child()]
-    }
-}
-
-impl Draw<ListPaneProps> for ProfileListPane {
-    fn draw(
-        &self,
-        context: &mut DrawContext,
-        props: ListPaneProps,
-        area: Rect,
-    ) {
-        self.profiles.set_area(area); // Needed for tracking cursor events
-        let title = PrimaryPane::ProfileList.to_string();
-        let list = List {
-            block: Some(Pane {
-                title: &title,
-                is_focused: props.is_selected,
-            }),
-            list: &self.profiles,
-        };
-        context.frame.render_stateful_widget(
-            list.generate(),
-            area,
-            &mut self.profiles.state_mut(),
-        )
-    }
-}
-
-/// Persist profile by ID
-impl Persistable for Profile {
-    type Persisted = ProfileId;
-
-    fn get_persistent(&self) -> &Self::Persisted {
-        &self.id
-    }
-}
-
-#[derive(Debug)]
-struct RecipeListPane {
-    recipes: Component<Persistent<SelectState<Dynamic, RequestRecipe>>>,
-}
-
-impl RecipeListPane {
-    pub fn new(recipes: Vec<RequestRecipe>) -> Self {
-        // When highlighting a new recipe, load it from the repo
-        fn on_select(context: &mut UpdateContext, _: &RequestRecipe) {
-            context.queue_event(Event::HttpLoadRequest);
-        }
-
-        // Trigger a request on submit
-        fn on_submit(context: &mut UpdateContext, _: &RequestRecipe) {
-            // Parent has to be responsible for actually sending the request
-            // because it also needs access to the profile list state
-            context.queue_event(Event::HttpSendRequest);
-        }
-
-        Self {
-            recipes: Persistent::new(
-                PersistentKey::RecipeId,
-                SelectState::new(recipes)
-                    .on_select(on_select)
-                    .on_submit(on_submit),
-            )
-            .into(),
-        }
-    }
-}
-
-impl EventHandler for RecipeListPane {
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.recipes.as_child()]
-    }
-}
-
-impl Draw<ListPaneProps> for RecipeListPane {
-    fn draw(
-        &self,
-        context: &mut DrawContext,
-        props: ListPaneProps,
-        area: Rect,
-    ) {
-        self.recipes.set_area(area); // Needed for tracking cursor events
-        let title = PrimaryPane::RecipeList.to_string();
-        let list = List {
-            block: Some(Pane {
-                title: &title,
-                is_focused: props.is_selected,
-            }),
-            list: &self.recipes,
-        };
-        context.frame.render_stateful_widget(
-            list.generate(),
-            area,
-            &mut self.recipes.state_mut(),
-        )
-    }
-}
-
-/// Persist recipe by ID
-impl Persistable for RequestRecipe {
-    type Persisted = RequestRecipeId;
-
-    fn get_persistent(&self) -> &Self::Persisted {
-        &self.id
     }
 }

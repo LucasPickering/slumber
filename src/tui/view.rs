@@ -16,7 +16,7 @@ use crate::{
     tui::{
         input::Action,
         view::{
-            component::{root::Root, Component},
+            component::{Component, Root},
             draw::{Draw, DrawContext},
             event::{Event, EventHandler, Update, UpdateContext},
             state::Notification,

@@ -1,12 +1,15 @@
 //! Specific single-use components
 
-pub mod help;
-pub mod misc;
-pub mod primary;
-pub mod request;
-pub mod response;
-pub mod root;
-pub mod settings;
+mod help;
+mod misc;
+mod primary;
+mod profile;
+mod profile_list;
+mod recipe_list;
+mod request;
+mod response;
+mod root;
+mod settings;
 
 pub use root::Root;
 

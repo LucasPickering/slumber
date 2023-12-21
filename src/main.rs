@@ -13,7 +13,7 @@ mod tui;
 mod util;
 
 use crate::{
-    cli::CliCommand, collection::RequestCollection, tui::Tui, util::Directory,
+    cli::CliCommand, collection::CollectionFile, tui::Tui, util::Directory,
 };
 use clap::Parser;
 use std::{fs::File, path::PathBuf};
@@ -55,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
         // Run the TUI
         None => {
             let collection_path =
-                RequestCollection::try_path(args.global.collection)?;
+                CollectionFile::try_path(args.global.collection)?;
             Tui::start(collection_path).await?;
             Ok(())
         }

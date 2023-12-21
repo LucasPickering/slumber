@@ -3,23 +3,19 @@
 
 mod cereal;
 mod insomnia;
+mod models;
 
-use crate::{
-    template::Template,
-    util::{parse_yaml, ResultExt},
-};
+pub use models::*;
+
+use crate::util::{parse_yaml, ResultExt};
 use anyhow::{anyhow, Context};
-use derive_more::{Deref, Display, From};
-use equivalent::Equivalent;
-use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
-use serde_json_path::JsonPath;
 use std::{
     fmt::Debug,
+    fs,
     future::Future,
-    hash::Hash,
     path::{Path, PathBuf},
 };
+use tokio::task;
 use tracing::{info, warn};
 
 /// The support file names to be automatically loaded as a config. We only
@@ -32,281 +28,104 @@ pub const CONFIG_FILES: &[&str] = &[
     ".slumber.yaml",
 ];
 
-/// A collection of requests
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct RequestCollection<S = PathBuf> {
-    /// The source of the collection, typically a path to the file it was
-    /// loaded from
-    #[serde(skip)]
-    source: S,
-
-    #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
-    pub profiles: IndexMap<ProfileId, Profile>,
-    #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
-    pub chains: IndexMap<ChainId, Chain>,
-    /// Internally we call these recipes, but to a user `requests` is more
-    /// intuitive
-    #[serde(
-        default,
-        rename = "requests",
-        deserialize_with = "cereal::deserialize_id_map"
-    )]
-    pub recipes: IndexMap<RequestRecipeId, RequestRecipe>,
+/// A wrapper around a request collection, to handle functionality around the
+/// file system.
+#[derive(Debug)]
+pub struct CollectionFile {
+    /// Path to the file that this collection was loaded from
+    path: PathBuf,
+    pub collection: Collection,
 }
 
-/// Mutually exclusive hot-swappable config group
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Profile {
-    #[serde(skip)] // This will be auto-populated from the map key
-    pub id: ProfileId,
-    pub name: Option<String>,
-    pub data: IndexMap<String, ProfileValue>,
-}
-
-#[derive(
-    Clone,
-    Debug,
-    Deref,
-    Default,
-    Display,
-    Eq,
-    From,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-pub struct ProfileId(String);
-
-/// Needed for persistence loading
-impl PartialEq<Profile> for ProfileId {
-    fn eq(&self, other: &Profile) -> bool {
-        self == &other.id
-    }
-}
-
-/// The value type of a profile's data mapping
-#[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(PartialEq))]
-#[serde(rename_all = "snake_case")]
-pub enum ProfileValue {
-    /// A raw text string
-    Raw(String),
-    /// A nested template, which allows for recursion. By requiring the user to
-    /// declare this up front, we can parse the template during collection
-    /// deserialization. It also keeps a cap on the complexity of nested
-    /// templates, which is a balance between usability and simplicity (both
-    /// for the user and the code).
-    Template(Template),
-}
-
-/// A definition of how to make a request. This is *not* called `Request` in
-/// order to distinguish it from a single instance of an HTTP request. And it's
-/// not called `RequestTemplate` because the word "template" has a specific
-/// meaning related to string interpolation.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RequestRecipe {
-    #[serde(skip)] // This will be auto-populated from the map key
-    pub id: RequestRecipeId,
-    pub name: Option<String>,
-    /// *Not* a template string because the usefulness doesn't justify the
-    /// complexity
-    pub method: String,
-    pub url: Template,
-    pub body: Option<Template>,
-    #[serde(default)]
-    pub query: IndexMap<String, Template>,
-    #[serde(default)]
-    pub headers: IndexMap<String, Template>,
-}
-
-#[derive(
-    Clone,
-    Debug,
-    Deref,
-    Default,
-    Display,
-    Eq,
-    From,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-pub struct RequestRecipeId(String);
-
-/// Needed for persistence loading
-impl PartialEq<RequestRecipe> for RequestRecipeId {
-    fn eq(&self, other: &RequestRecipe) -> bool {
-        self == &other.id
-    }
-}
-
-/// A chain is a means to data from one response in another request. The chain
-/// is the middleman: it defines where and how to pull the value, then recipes
-/// can use it in a template via `{{chains.<chain_id>}}`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Chain {
-    #[serde(skip)] // This will be auto-populated from the map key
-    pub id: ChainId,
-    pub source: ChainSource,
-    /// Mask chained value in the UI
-    #[serde(default)]
-    pub sensitive: bool,
-    /// JSONpath to extract a value from the response. For JSON data only.
-    pub selector: Option<JsonPath>,
-}
-
-/// Unique ID for a chain. Takes a generic param so we can create these during
-/// templating without having to clone the underlying string.
-#[derive(
-    Clone,
-    Debug,
-    Deref,
-    Default,
-    Display,
-    Eq,
-    From,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-pub struct ChainId<S = String>(S);
-
-impl From<&str> for ChainId {
-    fn from(value: &str) -> Self {
-        Self(value.into())
-    }
-}
-
-impl From<&ChainId<&str>> for ChainId {
-    fn from(value: &ChainId<&str>) -> Self {
-        Self(value.0.into())
-    }
-}
-
-/// Allow looking up by ChainId<&tr> in a map
-impl Equivalent<ChainId> for ChainId<&str> {
-    fn equivalent(&self, key: &ChainId) -> bool {
-        self.0 == key.0
-    }
-}
-
-/// The source of data for a chain
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ChainSource {
-    /// Load data from the most recent response of a particular request recipe
-    Request(RequestRecipeId),
-    /// Run an external command to get a result
-    Command(Vec<String>),
-    /// Load data from a file
-    File(PathBuf),
-    /// Prompt the user for a value, with an optional label
-    Prompt(Option<String>),
-}
-
-impl<S> RequestCollection<S> {
-    /// Replace the source value on this collection
-    pub fn with_source<T>(self, source: T) -> RequestCollection<T> {
-        RequestCollection {
-            source,
-            profiles: self.profiles,
-            chains: self.chains,
-            recipes: self.recipes,
+impl CollectionFile {
+    /// Create a new collection file with the given path and a default
+    /// collection. Useful when the collection failed to load and you want a
+    /// placeholder.
+    pub fn with_path(path: PathBuf) -> Self {
+        Self {
+            path,
+            collection: Default::default(),
         }
     }
-}
 
-impl RequestCollection<PathBuf> {
     /// Load config from the given file. The caller is responsible for using
     /// [Self::detect_path] to find the file themself. This pattern enables the
     /// TUI to start up and watch the collection file, even if it's invalid.
     pub async fn load(path: PathBuf) -> anyhow::Result<Self> {
-        info!(?path, "Loading collection file");
-        // This async block is really just a try block
-        let collection: RequestCollection = async {
-            let bytes = tokio::fs::read(&path).await?;
-            parse_yaml(&bytes).map_err(anyhow::Error::from)
-        }
-        .await
-        .context(format!("Error loading data from {path:?}"))
-        .traced()?;
-        Ok(collection.with_source(path))
+        let collection = load_collection(path.clone()).await?;
+        Ok(Self { path, collection })
     }
 
     /// Reload a new collection from the same file used for this one.
     ///
     /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
-    pub fn reload(&self) -> impl Future<Output = anyhow::Result<Self>> {
-        Self::load(self.source.clone())
+    pub fn reload(&self) -> impl Future<Output = anyhow::Result<Collection>> {
+        load_collection(self.path.clone())
     }
 
     /// Get the path of the file that this collection was loaded from
     pub fn path(&self) -> &Path {
-        &self.source
+        &self.path
     }
 
     /// Get the path to the collection file, returning an error if none is
     /// available. This will use the override if given, otherwise it will fall
     /// back to searching the current directory for a collection.
     pub fn try_path(override_path: Option<PathBuf>) -> anyhow::Result<PathBuf> {
-        override_path
-            .or_else(RequestCollection::detect_path)
-            .ok_or(anyhow!(
-                "No collection file given and none found in current directory"
-            ))
+        override_path.or_else(detect_path).ok_or(anyhow!(
+            "No collection file given and none found in current directory"
+        ))
     }
+}
 
-    /// Search the current directory for a config file matching one of the known
-    /// file names, and return it if found
-    fn detect_path() -> Option<PathBuf> {
-        let paths: Vec<&Path> = CONFIG_FILES
-            .iter()
-            .map(Path::new)
-            // This could be async but I'm being lazy and skipping it for now,
-            // since we only do this at startup anyway (mid-process reloading
-            // reuses the detected path so we don't re-detect)
-            .filter(|p| p.exists())
-            .collect();
-        match paths.as_slice() {
-            [] => None,
-            [path] => Some(path.to_path_buf()),
-            [first, rest @ ..] => {
-                // Print a warning, but don't actually fail
-                warn!(
-                    "Multiple config files detected. {first:?} will be used \
+/// Search the current directory for a config file matching one of the known
+/// file names, and return it if found
+fn detect_path() -> Option<PathBuf> {
+    let paths: Vec<&Path> = CONFIG_FILES
+        .iter()
+        .map(Path::new)
+        // This could be async but I'm being lazy and skipping it for now,
+        // since we only do this at startup anyway (mid-process reloading
+        // reuses the detected path so we don't re-detect)
+        .filter(|p| p.exists())
+        .collect();
+    match paths.as_slice() {
+        [] => None,
+        [path] => Some(path.to_path_buf()),
+        [first, rest @ ..] => {
+            // Print a warning, but don't actually fail
+            warn!(
+                "Multiple config files detected. {first:?} will be used \
                     and the following will be ignored: {rest:?}"
-                );
-                Some(first.to_path_buf())
-            }
+            );
+            Some(first.to_path_buf())
         }
     }
 }
 
-impl Profile {
-    /// Get a presentable name for this profile
-    pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or(&self.id)
-    }
-}
+/// Load a collection from the given file. Takes an owned path because it
+/// needs to be passed to a future
+async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
+    info!(?path, "Loading collection file");
+    // A bit pessimistic, huh... This gets around some lifetime struggles
+    let error_context = format!("Error loading data from {path:?}");
 
-impl From<String> for ProfileValue {
-    fn from(value: String) -> Self {
-        Self::Raw(value)
-    }
-}
+    // This async block is really just a try block
+    let result =
+        task::spawn_blocking::<_, anyhow::Result<Collection>>(move || {
+            let bytes = fs::read(path)?;
+            let collection = parse_yaml(&bytes)?;
+            Ok(collection)
+        })
+        .await;
 
-impl From<&str> for ProfileValue {
-    fn from(value: &str) -> Self {
-        Self::Raw(value.into())
-    }
-}
+    // Flatten the join error result into the inner task result. Result::flatten
+    // is experimental :(
+    // https://doc.rust-lang.org/std/result/enum.Result.html#method.flatten
+    let result = match result {
+        Ok(result) => result,
+        Err(error) => Err(error.into()),
+    };
 
-impl RequestRecipe {
-    /// Get a presentable name for this recipe
-    pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or(&self.id)
-    }
+    result.context(error_context).traced()
 }

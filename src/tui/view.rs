@@ -12,7 +12,7 @@ pub use theme::Theme;
 pub use util::PreviewPrompter;
 
 use crate::{
-    collection::{ProfileId, RequestCollection, RequestRecipeId},
+    collection::{Collection, ProfileId, RecipeId},
     tui::{
         input::Action,
         view::{
@@ -38,7 +38,7 @@ pub struct View {
 }
 
 impl View {
-    pub fn new(collection: &RequestCollection) -> Self {
+    pub fn new(collection: &Collection) -> Self {
         let mut view = Self {
             root: Root::new(collection).into(),
         };
@@ -61,7 +61,7 @@ impl View {
     pub fn set_request_state(
         &mut self,
         profile_id: Option<ProfileId>,
-        recipe_id: RequestRecipeId,
+        recipe_id: RecipeId,
         state: RequestState,
     ) {
         self.handle_event(Event::HttpSetState {

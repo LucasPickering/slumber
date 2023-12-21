@@ -1,7 +1,7 @@
 //! Recipe list
 
 use crate::{
-    collection::{RequestRecipe, RequestRecipeId},
+    collection::{Recipe, RecipeId},
     tui::view::{
         common::{list::List, Pane},
         component::primary::PrimaryPane,
@@ -18,7 +18,7 @@ use ratatui::{prelude::Rect, Frame};
 
 #[derive(Debug)]
 pub struct RecipeListPane {
-    recipes: Component<Persistent<SelectState<Dynamic, RequestRecipe>>>,
+    recipes: Component<Persistent<SelectState<Dynamic, Recipe>>>,
 }
 
 pub struct RecipeListPaneProps {
@@ -26,14 +26,14 @@ pub struct RecipeListPaneProps {
 }
 
 impl RecipeListPane {
-    pub fn new(recipes: Vec<RequestRecipe>) -> Self {
+    pub fn new(recipes: Vec<Recipe>) -> Self {
         // When highlighting a new recipe, load it from the repo
-        fn on_select(context: &mut UpdateContext, _: &RequestRecipe) {
+        fn on_select(context: &mut UpdateContext, _: &Recipe) {
             context.queue_event(Event::HttpLoadRequest);
         }
 
         // Trigger a request on submit
-        fn on_submit(context: &mut UpdateContext, _: &RequestRecipe) {
+        fn on_submit(context: &mut UpdateContext, _: &Recipe) {
             // Parent has to be responsible for actually sending the request
             // because it also needs access to the profile list state
             context.queue_event(Event::HttpSendRequest);
@@ -50,7 +50,7 @@ impl RecipeListPane {
         }
     }
 
-    pub fn recipes(&self) -> &SelectState<Dynamic, RequestRecipe> {
+    pub fn recipes(&self) -> &SelectState<Dynamic, Recipe> {
         &self.recipes
     }
 }
@@ -81,8 +81,8 @@ impl Draw<RecipeListPaneProps> for RecipeListPane {
 }
 
 /// Persist recipe by ID
-impl Persistable for RequestRecipe {
-    type Persisted = RequestRecipeId;
+impl Persistable for Recipe {
+    type Persisted = RecipeId;
 
     fn get_persistent(&self) -> &Self::Persisted {
         &self.id

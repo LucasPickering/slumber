@@ -4,7 +4,7 @@ mod message;
 mod view;
 
 use crate::{
-    collection::{ProfileId, RequestCollection, RequestRecipeId},
+    collection::{Collection, CollectionFile, ProfileId, RecipeId},
     config::Config,
     db::{CollectionDatabase, Database},
     http::{HttpEngine, RequestBuilder},
@@ -58,7 +58,7 @@ pub struct Tui {
     /// recreated. The view persists its state on drop, so that has to happen
     /// before the new one is created.
     view: Replaceable<View>,
-    collection: RequestCollection,
+    collection_file: CollectionFile,
     /// We only ever need to run DB ops related to our collection, so we can
     /// use a collection-restricted DB handle
     database: CollectionDatabase,
@@ -73,7 +73,7 @@ impl Tui {
 
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
-    pub async fn start(collection_file: PathBuf) -> anyhow::Result<()> {
+    pub async fn start(collection_path: PathBuf) -> anyhow::Result<()> {
         initialize_panic_handler();
 
         // ===== Initialize global state =====
@@ -84,7 +84,7 @@ impl Tui {
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx = MessageSender::new(messages_tx);
         // Load a database for this particular collection
-        let database = Database::load()?.into_collection(&collection_file)?;
+        let database = Database::load()?.into_collection(&collection_path)?;
         // Initialize global view context
         TuiContext::init(config, messages_tx.clone(), database.clone());
 
@@ -92,13 +92,13 @@ impl Tui {
 
         // If the collection fails to load, create an empty one just so we can
         // move along. We'll watch the file and hopefully the user can fix it
-        let collection = RequestCollection::load(collection_file.clone())
+        let collection_file = CollectionFile::load(collection_path.clone())
             .await
             .unwrap_or_else(|error| {
                 messages_tx.send(Message::Error { error });
-                RequestCollection::<()>::default().with_source(collection_file)
+                CollectionFile::with_path(collection_path)
             });
-        let view = View::new(&collection);
+        let view = View::new(&collection_file.collection);
 
         // The code to revert the terminal takeover is in `Tui::drop`, so we
         // shouldn't take over the terminal until right before creating the
@@ -111,7 +111,7 @@ impl Tui {
             messages_tx,
             http_engine: HttpEngine::new(database.clone()),
 
-            collection,
+            collection_file,
             should_run: true,
 
             view: Replaceable::new(view),
@@ -187,7 +187,7 @@ impl Tui {
         match message {
             Message::CollectionStartReload => {
                 let messages_tx = self.messages_tx.clone();
-                let future = self.collection.reload();
+                let future = self.collection_file.reload();
                 self.spawn(async move {
                     let collection = future.await?;
                     messages_tx.send(Message::CollectionEndReload(collection));
@@ -287,23 +287,24 @@ impl Tui {
                     }
                 }
             })?;
-        watcher.watch(self.collection.path(), RecursiveMode::NonRecursive)?;
+        watcher
+            .watch(self.collection_file.path(), RecursiveMode::NonRecursive)?;
         Ok(watcher)
     }
 
     /// Reload state with a new collection
-    fn reload_collection(&mut self, collection: RequestCollection) {
-        self.collection = collection;
+    fn reload_collection(&mut self, collection: Collection) {
+        self.collection_file.collection = collection;
 
         // Rebuild the whole view, because tons of things can change. Drop the
         // old one *first* to make sure UI state is saved before being restored
         self.view.replace(|old| {
             drop(old);
-            View::new(&self.collection)
+            View::new(&self.collection_file.collection)
         });
         self.view.notify(format!(
             "Reloaded collection from {}",
-            self.collection.path().to_string_lossy()
+            self.collection_file.path().to_string_lossy()
         ));
     }
 
@@ -311,9 +312,10 @@ impl Tui {
     fn send_request(
         &mut self,
         profile_id: Option<ProfileId>,
-        recipe_id: RequestRecipeId,
+        recipe_id: RecipeId,
     ) -> anyhow::Result<()> {
         let recipe = self
+            .collection_file
             .collection
             .recipes
             .get(&recipe_id)
@@ -373,7 +375,7 @@ impl Tui {
     fn load_request(
         &mut self,
         profile_id: Option<&ProfileId>,
-        recipe_id: &RequestRecipeId,
+        recipe_id: &RecipeId,
     ) -> anyhow::Result<()> {
         if let Some(record) =
             self.database.get_last_request(profile_id, recipe_id)?
@@ -431,11 +433,13 @@ impl Tui {
         profile_id: Option<&ProfileId>,
         prompter: impl 'static + Prompter,
     ) -> anyhow::Result<TemplateContext> {
+        let collection = &self.collection_file.collection;
+
         // Find profile by ID
         let profile = profile_id
             .map(|profile_id| {
                 Ok::<_, anyhow::Error>(
-                    self.collection
+                    collection
                         .profiles
                         .get(profile_id)
                         .ok_or_else(|| {
@@ -448,7 +452,7 @@ impl Tui {
 
         Ok(TemplateContext {
             profile,
-            chains: self.collection.chains.clone(),
+            chains: collection.chains.clone(),
             database: self.database.clone(),
             overrides: Default::default(),
             prompter: Box::new(prompter),

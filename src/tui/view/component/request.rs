@@ -1,5 +1,5 @@
 use crate::{
-    collection::{ProfileId, RequestRecipe, RequestRecipeId},
+    collection::{ProfileId, Recipe, RecipeId},
     template::Template,
     tui::view::{
         common::{
@@ -44,7 +44,7 @@ impl Default for RequestPane {
 
 pub struct RequestPaneProps<'a> {
     pub is_selected: bool,
-    pub selected_recipe: Option<&'a RequestRecipe>,
+    pub selected_recipe: Option<&'a Recipe>,
     pub selected_profile_id: Option<&'a ProfileId>,
 }
 
@@ -52,7 +52,7 @@ pub struct RequestPaneProps<'a> {
 #[derive(Debug, PartialEq)]
 struct RecipeStateKey {
     selected_profile_id: Option<ProfileId>,
-    recipe_id: RequestRecipeId,
+    recipe_id: RecipeId,
 }
 
 #[derive(Debug)]

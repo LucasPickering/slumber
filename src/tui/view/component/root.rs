@@ -1,5 +1,5 @@
 use crate::{
-    collection::{ProfileId, RequestCollection, RequestRecipeId},
+    collection::{Collection, ProfileId, RecipeId},
     tui::{
         context::TuiContext,
         input::Action,
@@ -37,8 +37,7 @@ pub struct Root {
     /// This will be populated on-demand when a user selects a recipe in the
     /// list.
     #[debug(skip)]
-    active_requests:
-        HashMap<(Option<ProfileId>, RequestRecipeId), RequestState>,
+    active_requests: HashMap<(Option<ProfileId>, RecipeId), RequestState>,
 
     // ==== Children =====
     /// We hold onto the primary view even when it's not visible, because we
@@ -52,7 +51,7 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new(collection: &RequestCollection) -> Self {
+    pub fn new(collection: &Collection) -> Self {
         Self {
             // State
             active_requests: HashMap::new(),
@@ -79,7 +78,7 @@ impl Root {
     fn update_request(
         &mut self,
         profile_id: Option<ProfileId>,
-        recipe_id: RequestRecipeId,
+        recipe_id: RecipeId,
         state: RequestState,
     ) {
         // Update the state if any of these conditions match:

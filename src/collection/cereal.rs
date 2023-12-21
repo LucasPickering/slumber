@@ -2,8 +2,7 @@
 
 use crate::{
     collection::{
-        Chain, ChainId, Profile, ProfileId, ProfileValue, RequestRecipe,
-        RequestRecipeId,
+        Chain, ChainId, Profile, ProfileId, ProfileValue, Recipe, RecipeId,
     },
     template::Template,
 };
@@ -29,8 +28,8 @@ impl HasId for Profile {
     }
 }
 
-impl HasId for RequestRecipe {
-    type Id = RequestRecipeId;
+impl HasId for Recipe {
+    type Id = RecipeId;
 
     fn set_id(&mut self, id: Self::Id) {
         self.id = id;

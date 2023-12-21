@@ -6,6 +6,15 @@ use std::{
 };
 use tracing::error;
 
+/// Parse bytes (probably from a file) into YAML. This will merge any
+/// anchors/aliases.
+pub fn parse_yaml<T: DeserializeOwned>(bytes: &[u8]) -> serde_yaml::Result<T> {
+    // Two-step parsing is required for anchor/alias merging
+    let mut yaml_value = serde_yaml::from_slice::<serde_yaml::Value>(bytes)?;
+    yaml_value.apply_merge()?;
+    serde_yaml::from_value(yaml_value)
+}
+
 /// A value that can be replaced in-place. This is useful for two purposes:
 /// - Transferring ownership of values from old to new
 /// - Dropping the old value before creating the new one
@@ -131,3 +140,4 @@ use anyhow::Context;
 #[cfg(test)]
 pub(crate) use assert_err;
 use derive_more::{DerefMut, Display};
+use serde::de::DeserializeOwned;

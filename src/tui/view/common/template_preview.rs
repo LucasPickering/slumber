@@ -22,7 +22,6 @@ use std::{
 /// changed globally.
 #[derive(Debug)]
 pub enum TemplatePreview {
-    // TODO key state on preview_templates
     /// Template previewing is disabled, just show the raw text
     Disabled { template: Template },
     /// Template previewing is enabled, render the template
@@ -37,14 +36,10 @@ pub enum TemplatePreview {
 
 impl TemplatePreview {
     /// Create a new template preview. This will spawn a background task to
-    /// render the template. Profile ID defines which profile to use for the
-    /// render.
-    pub fn new(
-        template: Template,
-        profile_id: Option<ProfileId>,
-        enabled: bool,
-    ) -> Self {
-        if enabled {
+    /// render the template, *if* template preview is enabled. Profile ID
+    /// defines which profile to use for the render.
+    pub fn new(template: Template, profile_id: Option<ProfileId>) -> Self {
+        if TuiContext::get().config.preview_templates {
             // Tell the controller to start rendering the preview, and it'll
             // store it back here when done
             let lock = Arc::new(OnceLock::new());
@@ -74,7 +69,6 @@ impl Generate for &TemplatePreview {
     where
         Self: 'this,
     {
-        // The raw template string
         match self {
             TemplatePreview::Disabled { template } => template.deref().into(),
             // If the preview render is ready, show it. Otherwise fall back

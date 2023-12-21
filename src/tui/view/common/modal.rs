@@ -1,7 +1,7 @@
 use crate::tui::{
     input::Action,
     view::{
-        draw::{Draw, DrawContext},
+        draw::Draw,
         event::{Event, EventHandler, Update, UpdateContext},
         util::centered_rect,
         Component,
@@ -10,6 +10,7 @@ use crate::tui::{
 use ratatui::{
     prelude::{Constraint, Rect},
     widgets::{Block, BorderType, Borders, Clear},
+    Frame,
 };
 use std::{collections::VecDeque, ops::DerefMut};
 use tracing::trace;
@@ -131,7 +132,7 @@ impl EventHandler for ModalQueue {
 }
 
 impl Draw for ModalQueue {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         if let Some(modal) = self.queue.front() {
             let (width, height) = modal.dimensions();
 
@@ -150,11 +151,11 @@ impl Draw for ModalQueue {
             let inner_area = block.inner(area);
 
             // Draw the outline of the modal
-            context.frame.render_widget(Clear, area);
-            context.frame.render_widget(block, area);
+            frame.render_widget(Clear, area);
+            frame.render_widget(block, area);
 
             // Render the actual content
-            modal.draw(context, (), inner_area);
+            modal.draw(frame, (), inner_area);
         }
     }
 }

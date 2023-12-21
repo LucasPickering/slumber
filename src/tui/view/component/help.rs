@@ -3,7 +3,7 @@ use crate::tui::{
     input::{Action, InputBinding},
     view::{
         common::{modal::Modal, table::Table},
-        draw::{Draw, DrawContext, Generate},
+        draw::{Draw, Generate},
         event::EventHandler,
         util::layout,
     },
@@ -13,6 +13,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Rect},
     text::Line,
     widgets::Paragraph,
+    Frame,
 };
 
 /// A mini helper in the footer for showing a few important key bindings
@@ -20,7 +21,7 @@ use ratatui::{
 pub struct HelpFooter;
 
 impl Draw for HelpFooter {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
 
         let tui_context = TuiContext::get();
@@ -38,7 +39,7 @@ impl Draw for HelpFooter {
             })
             .join(" / ");
 
-        context.frame.render_widget(
+        frame.render_widget(
             Paragraph::new(text)
                 .alignment(Alignment::Right)
                 .style(tui_context.theme.text_highlight),
@@ -71,8 +72,8 @@ impl Modal for HelpModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         let num_bindings = Self::bindings().count() as u16;
         (
-            Constraint::Percentage(80),
-            Constraint::Length(4 + num_bindings),
+            Constraint::Percentage(60),
+            Constraint::Length(5 + num_bindings),
         )
     }
 }
@@ -80,7 +81,7 @@ impl Modal for HelpModal {
 impl EventHandler for HelpModal {}
 
 impl Draw for HelpModal {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         let tui_context = TuiContext::get();
 
         // Create layout
@@ -88,7 +89,7 @@ impl Draw for HelpModal {
             area,
             Direction::Vertical,
             [
-                Constraint::Length(2),
+                Constraint::Length(3),
                 Constraint::Length(1),
                 Constraint::Min(0),
             ],
@@ -96,24 +97,29 @@ impl Draw for HelpModal {
 
         // Collection metadata
         let collection_metadata = Table {
-            title: Some("Collection"),
-            rows: [[
-                Line::from("Path"),
-                Line::from(
-                    tui_context
-                        .database
-                        .collection_path()
-                        .map(|path| path.display().to_string())
-                        .unwrap_or_default(),
-                )
-                .alignment(Alignment::Right),
-            ]],
-            column_widths: &[Constraint::Length(5), Constraint::Max(100)],
+            title: Some("General"),
+            rows: [
+                [
+                    Line::from("Configuration"),
+                    Line::from(tui_context.config.path().display().to_string())
+                        .alignment(Alignment::Right),
+                ],
+                [
+                    Line::from("Collection"),
+                    Line::from(
+                        tui_context
+                            .database
+                            .collection_path()
+                            .map(|path| path.display().to_string())
+                            .unwrap_or_default(),
+                    )
+                    .alignment(Alignment::Right),
+                ],
+            ],
+            column_widths: &[Constraint::Length(13), Constraint::Max(1000)],
             ..Default::default()
         };
-        context
-            .frame
-            .render_widget(collection_metadata.generate(), collection_area);
+        frame.render_widget(collection_metadata.generate(), collection_area);
 
         // Keybindings
         let keybindings = Table {
@@ -127,8 +133,6 @@ impl Draw for HelpModal {
                 .collect_vec(),
             ..Default::default()
         };
-        context
-            .frame
-            .render_widget(keybindings.generate(), keybindings_area);
+        frame.render_widget(keybindings.generate(), keybindings_area);
     }
 }

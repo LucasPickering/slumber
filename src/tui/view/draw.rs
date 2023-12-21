@@ -1,6 +1,5 @@
 //! Traits for rendering stuff
 
-use crate::tui::view::ViewConfig;
 use ratatui::{layout::Rect, Frame};
 
 /// Something that can be drawn onto screen as one or more TUI widgets.
@@ -17,16 +16,7 @@ use ratatui::{layout::Rect, Frame};
 /// attaching a lifetime to the associated type makes using this in a trait
 /// object very difficult (maybe impossible?). This is an easy shortcut.
 pub trait Draw<Props = ()> {
-    fn draw(&self, context: &mut DrawContext, props: Props, area: Rect);
-}
-
-/// Global data that various components need during rendering. A mutable
-/// reference to this is passed around to give access to the frame, but please
-/// don't modify anything :)
-#[derive(Debug)]
-pub struct DrawContext<'a, 'f> {
-    pub config: &'a ViewConfig,
-    pub frame: &'a mut Frame<'f>,
+    fn draw(&self, frame: &mut Frame, props: Props, area: Rect);
 }
 
 /// A helper for building a UI. It can be converted into some UI element to be

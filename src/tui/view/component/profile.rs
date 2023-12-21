@@ -2,12 +2,12 @@ use crate::{
     collection::{Profile, ProfileId, ProfileValue},
     tui::view::{
         common::{table::Table, template_preview::TemplatePreview, Pane},
-        draw::{Draw, DrawContext, Generate},
+        draw::{Draw, Generate},
         state::StateCell,
     },
 };
 use itertools::Itertools;
-use ratatui::layout::Rect;
+use ratatui::{layout::Rect, Frame};
 
 /// Display the contents of a profile
 #[derive(Debug, Default)]
@@ -26,12 +26,7 @@ enum FieldValue {
 }
 
 impl<'a> Draw<ProfilePaneProps<'a>> for ProfilePane {
-    fn draw(
-        &self,
-        context: &mut DrawContext,
-        props: ProfilePaneProps<'a>,
-        area: Rect,
-    ) {
+    fn draw(&self, frame: &mut Frame, props: ProfilePaneProps<'a>, area: Rect) {
         // Whenever the selected profile changes, rebuild the internal state.
         // This is needed because the template preview rendering is async.
         let fields =
@@ -49,7 +44,6 @@ impl<'a> Draw<ProfilePaneProps<'a>> for ProfilePane {
                                 FieldValue::Template(TemplatePreview::new(
                                     template.clone(),
                                     Some(props.profile.id.clone()),
-                                    context.config.preview_templates,
                                 ))
                             }
                         };
@@ -77,8 +71,6 @@ impl<'a> Draw<ProfilePaneProps<'a>> for ProfilePane {
             alternate_row_style: true,
             ..Default::default()
         };
-        context
-            .frame
-            .render_widget(table.generate().block(pane.generate()), area);
+        frame.render_widget(table.generate().block(pane.generate()), area);
     }
 }

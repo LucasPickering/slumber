@@ -7,7 +7,7 @@ use crate::{
         input::Action,
         view::{
             common::modal::{IntoModal, Modal},
-            draw::{Draw, DrawContext, Generate},
+            draw::{Draw, Generate},
             event::{Event, EventHandler, Update, UpdateContext},
             state::Notification,
         },
@@ -16,6 +16,7 @@ use crate::{
 use ratatui::{
     prelude::{Constraint, Rect},
     widgets::{Paragraph, Wrap},
+    Frame,
 };
 use std::fmt::Debug;
 use tui_textarea::TextArea;
@@ -36,8 +37,8 @@ impl Modal for ErrorModal {
 impl EventHandler for ErrorModal {}
 
 impl Draw for ErrorModal {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
-        context.frame.render_widget(
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+        frame.render_widget(
             Paragraph::new(self.0.generate()).wrap(Wrap::default()),
             area,
         );
@@ -130,8 +131,8 @@ impl EventHandler for PromptModal {
 }
 
 impl Draw for PromptModal {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
-        context.frame.render_widget(self.text_area.widget(), area);
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+        frame.render_widget(self.text_area.widget(), area);
     }
 }
 
@@ -160,10 +161,8 @@ impl Modal for EmptyActionsModal {
 impl EventHandler for EmptyActionsModal {}
 
 impl Draw for EmptyActionsModal {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
-        context
-            .frame
-            .render_widget(Paragraph::new("No actions available"), area);
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+        frame.render_widget(Paragraph::new("No actions available"), area);
     }
 }
 
@@ -179,9 +178,7 @@ impl NotificationText {
 }
 
 impl Draw for NotificationText {
-    fn draw(&self, context: &mut DrawContext, _: (), area: Rect) {
-        context
-            .frame
-            .render_widget(Paragraph::new(self.notification.generate()), area);
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+        frame.render_widget(Paragraph::new(self.notification.generate()), area);
     }
 }

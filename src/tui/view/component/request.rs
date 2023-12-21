@@ -7,7 +7,7 @@ use crate::{
             text_window::TextWindow, Pane,
         },
         component::primary::PrimaryPane,
-        draw::{Draw, DrawContext, Generate},
+        draw::{Draw, Generate},
         event::EventHandler,
         state::{persistence::PersistentKey, StateCell},
         util::layout,
@@ -19,6 +19,7 @@ use itertools::Itertools;
 use ratatui::{
     prelude::{Constraint, Direction, Rect},
     widgets::Paragraph,
+    Frame,
 };
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
@@ -52,7 +53,6 @@ pub struct RequestPaneProps<'a> {
 struct RecipeStateKey {
     selected_profile_id: Option<ProfileId>,
     recipe_id: RequestRecipeId,
-    preview_templates: bool,
 }
 
 #[derive(Debug)]
@@ -104,12 +104,7 @@ impl EventHandler for RequestPane {
 }
 
 impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
-    fn draw(
-        &self,
-        context: &mut DrawContext,
-        props: RequestPaneProps<'a>,
-        area: Rect,
-    ) {
+    fn draw(&self, frame: &mut Frame, props: RequestPaneProps<'a>, area: Rect) {
         // Render outermost block
         let pane_kind = PrimaryPane::Request;
         let block = Pane {
@@ -118,7 +113,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
         };
         let block = block.generate();
         let inner_area = block.inner(area);
-        context.frame.render_widget(block, area);
+        frame.render_widget(block, area);
 
         // Render request contents
         if let Some(recipe) = props.selected_recipe {
@@ -147,34 +142,28 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             // preview will either involve changing one of those two things, or
             // would require reloading the whole collection which will reset
             // UI state.
-            let preview_templates = context.config.preview_templates;
             let recipe_state = self.recipe_state.get_or_update(
                 RecipeStateKey {
                     selected_profile_id: props.selected_profile_id.cloned(),
                     recipe_id: recipe.id.clone(),
-                    preview_templates: context.config.preview_templates,
                 },
                 || RecipeState {
                     url: TemplatePreview::new(
                         recipe.url.clone(),
                         props.selected_profile_id.cloned(),
-                        preview_templates,
                     ),
                     query: to_template_previews(
-                        props.selected_profile_id,
                         &recipe.query,
-                        preview_templates,
+                        props.selected_profile_id,
                     ),
                     headers: to_template_previews(
-                        props.selected_profile_id,
                         &recipe.headers,
-                        preview_templates,
+                        props.selected_profile_id,
                     ),
                     body: recipe.body.as_ref().map(|body| {
                         TextWindow::new(TemplatePreview::new(
                             body.clone(),
                             props.selected_profile_id.cloned(),
-                            preview_templates,
                         ))
                         .into()
                     }),
@@ -182,23 +171,23 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
             );
 
             // First line: Method + URL
-            context.frame.render_widget(
+            frame.render_widget(
                 Paragraph::new(recipe.method.as_str()),
                 method_area,
             );
-            context.frame.render_widget(&recipe_state.url, url_area);
+            frame.render_widget(&recipe_state.url, url_area);
 
             // Navigation tabs
-            self.tabs.draw(context, (), tabs_area);
+            self.tabs.draw(frame, (), tabs_area);
 
             // Request content
             match self.tabs.selected() {
                 Tab::Body => {
                     if let Some(body) = &recipe_state.body {
-                        body.draw(context, (), content_area);
+                        body.draw(frame, (), content_area);
                     }
                 }
-                Tab::Query => context.frame.render_widget(
+                Tab::Query => frame.render_widget(
                     Table {
                         rows: recipe_state
                             .query
@@ -214,7 +203,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                     .generate(),
                     content_area,
                 ),
-                Tab::Headers => context.frame.render_widget(
+                Tab::Headers => frame.render_widget(
                     Table {
                         rows: recipe_state
                             .headers
@@ -239,19 +228,14 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
 /// preview) to kick off the template preview for each value. The output should
 /// be stored in state.
 fn to_template_previews<'a>(
-    profile_id: Option<&ProfileId>,
     iter: impl IntoIterator<Item = (&'a String, &'a Template)>,
-    preview_templates: bool,
+    profile_id: Option<&ProfileId>,
 ) -> Vec<(String, TemplatePreview)> {
     iter.into_iter()
         .map(|(k, v)| {
             (
                 k.clone(),
-                TemplatePreview::new(
-                    v.clone(),
-                    profile_id.cloned(),
-                    preview_templates,
-                ),
+                TemplatePreview::new(v.clone(), profile_id.cloned()),
             )
         })
         .collect()

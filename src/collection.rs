@@ -4,7 +4,10 @@
 mod cereal;
 mod insomnia;
 
-use crate::template::Template;
+use crate::{
+    template::Template,
+    util::{parse_yaml, ResultExt},
+};
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
 use equivalent::Equivalent;
@@ -17,7 +20,6 @@ use std::{
     hash::Hash,
     path::{Path, PathBuf},
 };
-use tokio::fs;
 use tracing::{info, warn};
 
 /// The support file names to be automatically loaded as a config. We only
@@ -222,25 +224,16 @@ impl RequestCollection<PathBuf> {
     /// [Self::detect_path] to find the file themself. This pattern enables the
     /// TUI to start up and watch the collection file, even if it's invalid.
     pub async fn load(path: PathBuf) -> anyhow::Result<Self> {
-        // Figure out which file we want to load from
         info!(?path, "Loading collection file");
-
-        // First, parse the file to raw YAML values, so we can apply
-        // anchor/alias merging. Then parse that to our config type
-        let future = async {
-            let content = fs::read(&path).await?;
-            let mut yaml_value =
-                serde_yaml::from_slice::<serde_yaml::Value>(&content)?;
-            yaml_value.apply_merge()?;
-            Ok::<RequestCollection, anyhow::Error>(serde_yaml::from_value(
-                yaml_value,
-            )?)
-        };
-
-        Ok(future
-            .await
-            .context(format!("Error loading collection from {path:?}"))?
-            .with_source(path))
+        // This async block is really just a try block
+        let collection: RequestCollection = async {
+            let bytes = tokio::fs::read(&path).await?;
+            parse_yaml(&bytes).map_err(anyhow::Error::from)
+        }
+        .await
+        .context(format!("Error loading data from {path:?}"))
+        .traced()?;
+        Ok(collection.with_source(path))
     }
 
     /// Reload a new collection from the same file used for this one.

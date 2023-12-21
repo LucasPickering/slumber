@@ -17,7 +17,7 @@ use crate::{
         input::Action,
         view::{
             component::{Component, Root},
-            draw::{Draw, DrawContext},
+            draw::Draw,
             event::{Event, EventHandler, Update, UpdateContext},
             state::Notification,
         },
@@ -34,14 +34,12 @@ use tracing::{error, trace, trace_span};
 /// controller and exposed via event passing.
 #[derive(Debug)]
 pub struct View {
-    config: ViewConfig,
     root: Component<Root>,
 }
 
 impl View {
     pub fn new(collection: &RequestCollection) -> Self {
         let mut view = Self {
-            config: ViewConfig::default(),
             root: Root::new(collection).into(),
         };
         // Tell the components to wake up
@@ -53,14 +51,7 @@ impl View {
     /// to render input bindings as help messages to the user.
     pub fn draw<'a>(&'a self, frame: &'a mut Frame) {
         let chunk = frame.size();
-        self.root.draw(
-            &mut DrawContext {
-                config: &self.config,
-                frame,
-            },
-            (),
-            chunk,
-        )
+        self.root.draw(frame, (), chunk)
     }
 
     /// Update the request state for the given profile+recipe. The state will
@@ -126,8 +117,7 @@ impl View {
 
             let span = trace_span!("View event", ?event);
             span.in_scope(|| {
-                let mut context =
-                    UpdateContext::new(&mut event_queue, &mut self.config);
+                let mut context = UpdateContext::new(&mut event_queue);
 
                 let update =
                     Self::update_all(self.root.as_child(), &mut context, event);
@@ -182,21 +172,5 @@ impl View {
             trace!(?update);
             update
         })
-    }
-}
-
-/// Settings that control the behavior of the view
-#[derive(Debug)]
-struct ViewConfig {
-    /// Should templates be rendered inline in the UI, or should we show the
-    /// raw text?
-    preview_templates: bool,
-}
-
-impl Default for ViewConfig {
-    fn default() -> Self {
-        Self {
-            preview_templates: true,
-        }
     }
 }

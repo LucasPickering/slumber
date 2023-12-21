@@ -36,7 +36,6 @@ impl InputEngine {
                 )
                 .hide(),
                 InputBinding::new(KeyCode::Char('x'), Action::OpenActions),
-                InputBinding::new(KeyCode::Char('s'), Action::OpenSettings),
                 InputBinding::new(KeyCode::Char('?'), Action::OpenHelp),
                 InputBinding::new(KeyCode::Char('f'), Action::Fullscreen),
                 InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
@@ -177,9 +176,6 @@ pub enum Action {
     /// Open the actions modal
     #[display("Actions")]
     OpenActions,
-    /// Open the settings modal
-    #[display("Settings")]
-    OpenSettings,
     #[display("Help")]
     /// Open the help modal
     OpenHelp,

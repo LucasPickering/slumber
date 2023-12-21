@@ -40,7 +40,7 @@ pub use parse::*;
 pub use record::*;
 
 use crate::{
-    collection::RequestRecipe,
+    collection::Recipe,
     db::CollectionDatabase,
     template::{Template, TemplateContext},
     util::ResultExt,
@@ -219,7 +219,7 @@ pub struct RequestBuilder {
     // only in-flight time
     id: RequestId,
     // We need this during the build
-    recipe: RequestRecipe,
+    recipe: Recipe,
     template_context: TemplateContext,
 }
 
@@ -229,10 +229,7 @@ impl RequestBuilder {
     ///
     /// This needs an owned recipe and context so they can be moved into a
     /// subtask for the build.
-    pub fn new(
-        recipe: RequestRecipe,
-        template_context: TemplateContext,
-    ) -> Self {
+    pub fn new(recipe: Recipe, template_context: TemplateContext) -> Self {
         debug!(recipe_id = %recipe.id, "Building request from recipe");
         let request_id = RequestId::new();
 

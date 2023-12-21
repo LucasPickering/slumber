@@ -2,7 +2,7 @@
 //! state updates.
 
 use crate::{
-    collection::{ProfileId, RequestCollection, RequestRecipeId},
+    collection::{Collection, ProfileId, RecipeId},
     http::{RequestBuildError, RequestError, RequestId, RequestRecord},
     template::{Prompt, Prompter, Template, TemplateChunk},
     util::ResultExt,
@@ -52,7 +52,7 @@ pub enum Message {
     /// Trigger collection reload
     CollectionStartReload,
     /// Store a reloaded collection value in state
-    CollectionEndReload(RequestCollection),
+    CollectionEndReload(Collection),
 
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
@@ -60,18 +60,18 @@ pub enum Message {
     /// Launch an HTTP request from the given recipe/profile.
     HttpBeginRequest {
         profile_id: Option<ProfileId>,
-        recipe_id: RequestRecipeId,
+        recipe_id: RecipeId,
     },
     /// Request failed to build
     HttpBuildError {
         profile_id: Option<ProfileId>,
-        recipe_id: RequestRecipeId,
+        recipe_id: RecipeId,
         error: RequestBuildError,
     },
     /// We launched the HTTP request
     HttpLoading {
         profile_id: Option<ProfileId>,
-        recipe_id: RequestRecipeId,
+        recipe_id: RecipeId,
         request_id: RequestId,
     },
     /// The HTTP request either succeeded or failed. We don't need to store the
@@ -89,7 +89,7 @@ pub enum Message {
     /// Load the most recent response for a recipe from the database
     RequestLoad {
         profile_id: Option<ProfileId>,
-        recipe_id: RequestRecipeId,
+        recipe_id: RecipeId,
     },
 
     /// Render a template string, to be previewed in the UI. Ideally this could

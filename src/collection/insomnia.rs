@@ -2,7 +2,7 @@
 //! format
 
 use crate::{
-    collection::{Profile, RequestCollection, RequestRecipe},
+    collection::{Collection, Profile, Recipe},
     template::Template,
 };
 use anyhow::Context;
@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::{fs::File, path::Path};
 use tracing::info;
 
-impl RequestCollection<()> {
+impl Collection {
     /// Convert an Insomnia exported collection into the slumber format. This
     /// supports YAML *or* JSON input.
     ///
@@ -41,7 +41,7 @@ impl RequestCollection<()> {
         for resource in insomnia.resources {
             match resource {
                 Resource::Request(request) => {
-                    let request: super::RequestRecipe = request.into();
+                    let request: super::Recipe = request.into();
                     recipes.insert(request.id.clone(), request);
                 }
                 Resource::Environment(environment) => {
@@ -53,8 +53,7 @@ impl RequestCollection<()> {
             }
         }
 
-        Ok(RequestCollection {
-            source: (),
+        Ok(Collection {
             profiles,
             recipes,
             chains: IndexMap::new(),
@@ -151,7 +150,7 @@ impl From<Environment> for Profile {
     }
 }
 
-impl From<Request> for RequestRecipe {
+impl From<Request> for Recipe {
     fn from(request: Request) -> Self {
         let mut headers: IndexMap<String, Template> = IndexMap::new();
 
@@ -175,7 +174,7 @@ impl From<Request> for RequestRecipe {
             headers.insert(header.name, header.value);
         }
 
-        RequestRecipe {
+        Recipe {
             id: request.id.into(),
             name: Some(request.name),
             method: request.method,

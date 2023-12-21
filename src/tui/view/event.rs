@@ -2,7 +2,7 @@
 //! events (e.g. HTTP responses)
 
 use crate::{
-    collection::{ProfileId, RequestRecipeId},
+    collection::{ProfileId, RecipeId},
     tui::{
         input::Action,
         view::{
@@ -109,7 +109,7 @@ pub enum Event {
     /// Update our state based on external HTTP events
     HttpSetState {
         profile_id: Option<ProfileId>,
-        recipe_id: RequestRecipeId,
+        recipe_id: RecipeId,
         #[debug(skip)]
         state: RequestState,
     },

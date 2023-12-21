@@ -1,7 +1,7 @@
 //! HTTP-related data types
 
 use crate::{
-    collection::{ProfileId, RequestRecipeId},
+    collection::{ProfileId, RecipeId},
     http::{parse, ContentType},
     util::ResultExt,
 };
@@ -96,7 +96,7 @@ pub struct Request {
     /// The profile used to render this request (for historical context)
     pub profile_id: Option<ProfileId>,
     /// The recipe used to generate this request (for historical context)
-    pub recipe_id: RequestRecipeId,
+    pub recipe_id: RecipeId,
 
     #[serde(with = "serde_method")]
     pub method: Method,

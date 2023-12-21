@@ -1,6 +1,6 @@
 use crate::{
     cli::Subcommand,
-    collection::{ProfileId, RequestCollection, RequestRecipeId},
+    collection::{CollectionFile, ProfileId, RecipeId},
     db::Database,
     http::{HttpEngine, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
@@ -20,7 +20,7 @@ use std::{error::Error, str::FromStr};
 #[clap(aliases=&["req", "rq"])]
 pub struct RequestCommand {
     /// ID of the request recipe to execute
-    request_id: RequestRecipeId,
+    request_id: RecipeId,
 
     /// ID of the profile to pull template values from
     #[clap(long = "profile", short)]
@@ -42,9 +42,10 @@ pub struct RequestCommand {
 #[async_trait]
 impl Subcommand for RequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<()> {
-        let collection_path = RequestCollection::try_path(global.collection)?;
+        let collection_path = CollectionFile::try_path(global.collection)?;
         let database = Database::load()?.into_collection(&collection_path)?;
-        let mut collection = RequestCollection::load(collection_path).await?;
+        let mut collection_file = CollectionFile::load(collection_path).await?;
+        let collection = &mut collection_file.collection;
 
         // Find profile and recipe by ID
         let profile = self

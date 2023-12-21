@@ -1,4 +1,4 @@
-use crate::{cli::Subcommand, collection::RequestCollection, GlobalArgs};
+use crate::{cli::Subcommand, collection::Collection, GlobalArgs};
 use anyhow::Context;
 use async_trait::async_trait;
 use clap::Parser;
@@ -22,7 +22,7 @@ pub struct ImportCommand {
 impl Subcommand for ImportCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<()> {
         // Load the input
-        let collection = RequestCollection::from_insomnia(&self.input_file)?;
+        let collection = Collection::from_insomnia(&self.input_file)?;
 
         // Write the output
         let mut writer: Box<dyn Write> = match self.output_file {

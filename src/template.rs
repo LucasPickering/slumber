@@ -152,7 +152,7 @@ impl<T> TemplateKey<T> {
 mod tests {
     use super::*;
     use crate::{
-        collection::{ChainSource, ProfileValue, RequestRecipeId},
+        collection::{ChainSource, ProfileValue, RecipeId},
         factory::*,
         http::{Request, Response},
         util::assert_err,
@@ -270,7 +270,7 @@ mod tests {
         #[case] selector: Option<&str>,
         #[case] expected_value: &str,
     ) {
-        let recipe_id: RequestRecipeId = "recipe1".into();
+        let recipe_id: RecipeId = "recipe1".into();
         let database = CollectionDatabase::testing();
         let response_body = json!({
             "string": "Hello World!",

@@ -9,7 +9,7 @@ pub mod template_preview;
 pub mod text_window;
 
 use crate::{
-    collection::{Profile, RequestRecipe},
+    collection::{Profile, Recipe},
     http::{RequestBuildError, RequestError},
     tui::{
         context::TuiContext,
@@ -101,7 +101,7 @@ impl Generate for &Profile {
     }
 }
 
-impl Generate for &RequestRecipe {
+impl Generate for &Recipe {
     type Output<'this> = Span<'this> where Self: 'this;
 
     fn generate<'this>(self) -> Self::Output<'this>

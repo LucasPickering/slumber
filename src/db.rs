@@ -2,7 +2,7 @@
 //! responses.
 
 use crate::{
-    collection::{ProfileId, RequestRecipeId},
+    collection::{ProfileId, RecipeId},
     http::{RequestId, RequestRecord},
     util::{Directory, ResultExt},
 };
@@ -284,7 +284,7 @@ impl CollectionDatabase {
     pub fn get_last_request(
         &self,
         profile_id: Option<&ProfileId>,
-        recipe_id: &RequestRecipeId,
+        recipe_id: &RecipeId,
     ) -> anyhow::Result<Option<RequestRecord>> {
         self.database
             .connection()
@@ -466,13 +466,13 @@ impl FromSql for RequestId {
     }
 }
 
-impl ToSql for RequestRecipeId {
+impl ToSql for RecipeId {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         self.deref().to_sql()
     }
 }
 
-impl FromSql for RequestRecipeId {
+impl FromSql for RecipeId {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         Ok(String::column_result(value)?.into())
     }
@@ -649,7 +649,7 @@ mod tests {
         // Store the created request ID for each cell in the matrix, so we can
         // compare to what the DB spits back later
         let mut request_ids: HashMap<
-            (CollectionId, Option<ProfileId>, RequestRecipeId),
+            (CollectionId, Option<ProfileId>, RecipeId),
             RequestId,
         > = Default::default();
 
@@ -657,7 +657,7 @@ mod tests {
         for collection in &collections {
             for profile_id in [None, Some("profile1"), Some("profile2")] {
                 for recipe_id in ["recipe1", "recipe2"] {
-                    let recipe_id: RequestRecipeId = recipe_id.into();
+                    let recipe_id: RecipeId = recipe_id.into();
                     let profile_id = profile_id.map(ProfileId::from);
                     let request = create!(
                         Request,

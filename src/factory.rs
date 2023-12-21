@@ -1,5 +1,5 @@
 use crate::{
-    collection::{Chain, ChainSource, Profile, ProfileId, RequestRecipeId},
+    collection::{Chain, ChainSource, Profile, ProfileId, RecipeId},
     db::CollectionDatabase,
     http::{Body, Request, RequestId, RequestRecord, Response},
     template::{Prompt, Prompter, Template, TemplateContext},
@@ -60,7 +60,7 @@ factori!(RequestRecord, {
 factori!(Chain, {
     default {
         id = "chain1".into(),
-        source = ChainSource::Request(RequestRecipeId::default()),
+        source = ChainSource::Request(RecipeId::default()),
         sensitive = false,
         selector = None,
     }
@@ -106,7 +106,7 @@ impl From<&str> for ProfileId {
     }
 }
 
-impl From<&str> for RequestRecipeId {
+impl From<&str> for RecipeId {
     fn from(value: &str) -> Self {
         value.to_owned().into()
     }

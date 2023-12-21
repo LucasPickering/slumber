@@ -1,7 +1,7 @@
 //! Template rendering implementation
 
 use crate::{
-    collection::{ChainId, ChainSource, ProfileValue, RequestRecipeId},
+    collection::{ChainId, ChainSource, ProfileValue, RecipeId},
     http::{ContentType, Json},
     template::{
         parse::TemplateInputChunk, ChainError, Prompt, Template, TemplateChunk,
@@ -273,7 +273,7 @@ impl<'a> ChainTemplateSource<'a> {
     async fn render_request(
         &self,
         context: &'a TemplateContext,
-        recipe_id: &RequestRecipeId,
+        recipe_id: &RecipeId,
     ) -> Result<String, ChainError> {
         let record = context
             .database

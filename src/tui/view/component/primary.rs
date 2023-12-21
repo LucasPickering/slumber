@@ -1,7 +1,7 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
-    collection::{Profile, RequestCollection, RequestRecipe},
+    collection::{Collection, Profile, Recipe},
     tui::{
         context::TuiContext,
         input::Action,
@@ -95,7 +95,7 @@ enum FullscreenMode {
 }
 
 impl PrimaryView {
-    pub fn new(collection: &RequestCollection) -> Self {
+    pub fn new(collection: &Collection) -> Self {
         let profile_list_pane = ProfileListPane::new(
             collection.profiles.values().cloned().collect_vec(),
         )
@@ -124,7 +124,7 @@ impl PrimaryView {
 
     /// Which recipe in the recipe list is selected? `None` iff the list is
     /// empty.
-    pub fn selected_recipe(&self) -> Option<&RequestRecipe> {
+    pub fn selected_recipe(&self) -> Option<&Recipe> {
         self.recipe_list_pane.recipes().selected()
     }
 

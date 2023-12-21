@@ -22,6 +22,7 @@ use std::{
 /// changed globally.
 #[derive(Debug)]
 pub enum TemplatePreview {
+    // TODO key state on preview_templates
     /// Template previewing is disabled, just show the raw text
     Disabled { template: Template },
     /// Template previewing is enabled, render the template

@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Changed
+
+- Show profile contents while in the profile list ([#26](https://github.com/LucasPickering/slumber/issues/26))
+
 ## [0.11.0] - 2023-12-20
 
 ### Added

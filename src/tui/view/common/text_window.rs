@@ -170,7 +170,10 @@ struct TextWindowActionsModal {
 
 impl Default for TextWindowActionsModal {
     fn default() -> Self {
-        fn on_submit(context: &mut UpdateContext, action: &TextWindowAction) {
+        fn on_submit(
+            context: &mut UpdateContext,
+            action: &mut TextWindowAction,
+        ) {
             // Close the modal *first*, so the action event gets handled by our
             // parent rather than the modal. Jank but it works
             context.queue_event(Event::CloseModal);

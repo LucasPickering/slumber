@@ -3,7 +3,10 @@
 
 use crate::{
     collection::{Collection, ProfileId, RecipeId},
-    http::{RequestBuildError, RequestError, RequestId, RequestRecord},
+    http::{
+        RecipeOptions, RequestBuildError, RequestError, RequestId,
+        RequestRecord,
+    },
     template::{Prompt, Prompter, Template, TemplateChunk},
     util::ResultExt,
 };
@@ -61,6 +64,7 @@ pub enum Message {
     HttpBeginRequest {
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
+        options: RecipeOptions,
     },
     /// Request failed to build
     HttpBuildError {

@@ -26,7 +26,7 @@ pub struct ProfileListPaneProps {
 impl ProfileListPane {
     pub fn new(profiles: Vec<Profile>) -> Self {
         // Loaded request depends on the profile, so refresh on change
-        fn on_select(context: &mut UpdateContext, _: &Profile) {
+        fn on_select(context: &mut UpdateContext, _: &mut Profile) {
             context.queue_event(Event::HttpLoadRequest);
         }
 

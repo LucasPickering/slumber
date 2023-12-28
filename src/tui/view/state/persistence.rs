@@ -1,13 +1,16 @@
 //! Utilities for persisting UI state between sessions
 
-use crate::tui::{
-    context::TuiContext,
-    view::{
-        component::Component,
-        event::{Event, EventHandler, Update, UpdateContext},
+use crate::{
+    collection::RecipeId,
+    tui::{
+        context::TuiContext,
+        view::{
+            component::Component,
+            event::{Event, EventHandler, Update, UpdateContext},
+        },
     },
 };
-use derive_more::{Deref, DerefMut, Display};
+use derive_more::{Deref, DerefMut};
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Debug;
 
@@ -30,7 +33,7 @@ impl<T: PersistentContainer> Persistent<T> {
         if let Ok(Some(value)) =
             TuiContext::get()
                 .database
-                .get_ui::<_, <T::Value as Persistable>::Persisted>(key)
+                .get_ui::<_, <T::Value as Persistable>::Persisted>(&key)
         {
             container.set(value);
         }
@@ -56,19 +59,33 @@ where
 impl<T: PersistentContainer> Drop for Persistent<T> {
     fn drop(&mut self) {
         let _ = TuiContext::get().database.set_ui(
-            self.key,
+            &self.key,
             self.container.get().map(Persistable::get_persistent),
         );
     }
 }
 
-#[derive(Copy, Clone, Debug, Display)]
+#[derive(Clone, Debug, Serialize)]
 pub enum PersistentKey {
     PrimaryPane,
     FullscreenMode,
     ProfileId,
     RecipeId,
-    RequestTab,
+    RecipeTab,
+    /// Selected query param, per recipe. Value is the query param name
+    RecipeSelectedQuery(RecipeId),
+    /// Toggle state for a single recipe+query param
+    RecipeQuery {
+        recipe: RecipeId,
+        param: String,
+    },
+    /// Selected header, per recipe. Value is the header name
+    RecipeSelectedHeader(RecipeId),
+    /// Toggle state for a single recipe+header
+    RecipeHeader {
+        recipe: RecipeId,
+        header: String,
+    },
     ResponseTab,
 }
 

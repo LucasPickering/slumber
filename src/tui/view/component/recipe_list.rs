@@ -28,12 +28,12 @@ pub struct RecipeListPaneProps {
 impl RecipeListPane {
     pub fn new(recipes: Vec<Recipe>) -> Self {
         // When highlighting a new recipe, load it from the repo
-        fn on_select(context: &mut UpdateContext, _: &Recipe) {
+        fn on_select(context: &mut UpdateContext, _: &mut Recipe) {
             context.queue_event(Event::HttpLoadRequest);
         }
 
         // Trigger a request on submit
-        fn on_submit(context: &mut UpdateContext, _: &Recipe) {
+        fn on_submit(context: &mut UpdateContext, _: &mut Recipe) {
             // Parent has to be responsible for actually sending the request
             // because it also needs access to the profile list state
             context.queue_event(Event::HttpSendRequest);

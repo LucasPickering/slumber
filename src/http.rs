@@ -40,9 +40,7 @@ pub use parse::*;
 pub use record::*;
 
 use crate::{
-    collection::Recipe,
-    db::CollectionDatabase,
-    template::{Template, TemplateContext},
+    collection::Recipe, db::CollectionDatabase, template::TemplateContext,
     util::ResultExt,
 };
 use anyhow::Context;
@@ -53,6 +51,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Client,
 };
+use std::collections::HashSet;
 use tokio::try_join;
 use tracing::{debug, info, info_span};
 
@@ -220,7 +219,23 @@ pub struct RequestBuilder {
     id: RequestId,
     // We need this during the build
     recipe: Recipe,
+    options: RecipeOptions,
     template_context: TemplateContext,
+}
+
+/// OPtions for modifying a recipe during a build. This is helpful for applying
+/// temporary modifications made by the user. By providing this in a separate
+/// struct, we prevent the need to clone, modify, and pass recipes everywhere.
+/// Recipes could be very large so cloning may be expensive, and this options
+/// layer makes the available modifications clear and restricted.
+#[derive(Clone, Debug, Default)]
+pub struct RecipeOptions {
+    /// Which headers should be excluded? A blacklist allows the default to be
+    /// "include all".
+    pub disabled_headers: HashSet<String>,
+    /// Which query parameters should be excluded?  A blacklist allows the
+    /// default to be "include all".
+    pub disabled_query_parameters: HashSet<String>,
 }
 
 impl RequestBuilder {
@@ -229,13 +244,18 @@ impl RequestBuilder {
     ///
     /// This needs an owned recipe and context so they can be moved into a
     /// subtask for the build.
-    pub fn new(recipe: Recipe, template_context: TemplateContext) -> Self {
+    pub fn new(
+        recipe: Recipe,
+        options: RecipeOptions,
+        template_context: TemplateContext,
+    ) -> Self {
         debug!(recipe_id = %recipe.id, "Building request from recipe");
         let request_id = RequestId::new();
 
         Self {
             id: request_id,
             recipe,
+            options,
             template_context,
         }
     }
@@ -258,20 +278,20 @@ impl RequestBuilder {
 
     /// Outsourced build function, to make error conversion easier later
     async fn build_helper(self) -> anyhow::Result<Request> {
-        let recipe = self.recipe;
+        // let recipe = self.recipe;
         let template_context = &self.template_context;
-        let method = recipe.method.parse()?;
+        let method = self.recipe.method.parse()?;
 
         // Render everything in parallel
         let (url, headers, query, body) = try_join!(
-            Self::render_url(template_context, &recipe.url),
-            Self::render_headers(template_context, &recipe.headers),
-            Self::render_query(template_context, &recipe.query),
-            Self::render_body(template_context, recipe.body.as_ref()),
+            self.render_url(),
+            self.render_headers(),
+            self.render_query(),
+            self.render_body(),
         )?;
 
         info!(
-            recipe_id = %recipe.id,
+            recipe_id = %self.recipe.id,
             "Built request from recipe",
         );
 
@@ -281,7 +301,7 @@ impl RequestBuilder {
                 .profile
                 .as_ref()
                 .map(|profile| profile.id.clone()),
-            recipe_id: recipe.id.clone(),
+            recipe_id: self.recipe.id,
             method,
             url,
             query,
@@ -290,70 +310,79 @@ impl RequestBuilder {
         })
     }
 
-    async fn render_url(
-        template_context: &TemplateContext,
-        url: &Template,
-    ) -> anyhow::Result<String> {
-        url.render(template_context)
+    async fn render_url(&self) -> anyhow::Result<String> {
+        self.recipe
+            .url
+            .render(&self.template_context)
             .await
             .context("Error rendering URL")
     }
 
-    async fn render_headers(
-        template_context: &TemplateContext,
-        headers: &IndexMap<String, Template>,
-    ) -> anyhow::Result<HeaderMap> {
-        let iter = headers.iter().map(|(header, value_template)| async move {
-            let value = value_template
-                .render(template_context)
-                .await
-                .context(format!("Error rendering header `{header}`"))?;
-            // Strip leading/trailing line breaks because they're going to
-            // trigger a validation error and are probably a mistake. This is
-            // a balance between convenience and explicitness
-            let value = value.trim_matches(|c| c == '\n' || c == '\r');
-            // String -> header conversions are fallible, if headers
-            // are invalid
-            Ok::<(HeaderName, HeaderValue), anyhow::Error>((
-                header
-                    .try_into()
-                    .context(format!("Error parsing header name `{header}`"))?,
-                value.try_into().context(format!(
-                    "Error parsing value for header `{header}`"
-                ))?,
-            ))
-        });
+    async fn render_headers(&self) -> anyhow::Result<HeaderMap> {
+        let template_context = &self.template_context;
+        let iter = self
+            .recipe
+            .headers
+            .iter()
+            // Filter out disabled headers
+            .filter(|(header, _)| {
+                !self.options.disabled_headers.contains(*header)
+            })
+            .map(|(header, value_template)| async move {
+                let value = value_template
+                    .render(template_context)
+                    .await
+                    .context(format!("Error rendering header `{header}`"))?;
+                // Strip leading/trailing line breaks because they're going to
+                // trigger a validation error and are probably a mistake. This
+                // is a balance between convenience and
+                // explicitness
+                let value = value.trim_matches(|c| c == '\n' || c == '\r');
+                // String -> header conversions are fallible, if headers
+                // are invalid
+                Ok::<(HeaderName, HeaderValue), anyhow::Error>((
+                    header.try_into().context(format!(
+                        "Error parsing header name `{header}`"
+                    ))?,
+                    value.try_into().context(format!(
+                        "Error parsing value for header `{header}`"
+                    ))?,
+                ))
+            });
         Ok(future::try_join_all(iter)
             .await?
             .into_iter()
             .collect::<HeaderMap>())
     }
 
-    async fn render_query(
-        template_context: &TemplateContext,
-        query: &IndexMap<String, Template>,
-    ) -> anyhow::Result<IndexMap<String, String>> {
-        let iter = query.iter().map(|(k, v)| async move {
-            Ok::<_, anyhow::Error>((
-                k.clone(),
-                v.render(template_context).await.context(format!(
-                    "Error rendering query parameter `{k}`"
-                ))?,
-            ))
-        });
+    async fn render_query(&self) -> anyhow::Result<IndexMap<String, String>> {
+        let template_context = &self.template_context;
+        let iter = self
+            .recipe
+            .query
+            .iter()
+            // Filter out disabled params
+            .filter(|(param, _)| {
+                !self.options.disabled_query_parameters.contains(*param)
+            })
+            .map(|(k, v)| async move {
+                Ok::<_, anyhow::Error>((
+                    k.clone(),
+                    v.render(template_context).await.context(format!(
+                        "Error rendering query parameter `{k}`"
+                    ))?,
+                ))
+            });
         Ok(future::try_join_all(iter)
             .await?
             .into_iter()
             .collect::<IndexMap<String, String>>())
     }
 
-    async fn render_body(
-        template_context: &TemplateContext,
-        body: Option<&Template>,
-    ) -> anyhow::Result<Option<String>> {
-        match body {
+    async fn render_body(&self) -> anyhow::Result<Option<String>> {
+        match &self.recipe.body {
             Some(body) => Ok(Some(
-                body.render(template_context)
+                body.render(&self.template_context)
                     .await
                     .context("Error rendering body")?,
             )),

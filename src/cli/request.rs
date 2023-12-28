@@ -2,7 +2,7 @@ use crate::{
     cli::Subcommand,
     collection::{CollectionFile, ProfileId, RecipeId},
     db::Database,
-    http::{HttpEngine, RequestBuilder},
+    http::{HttpEngine, RecipeOptions, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
     util::ResultExt,
     GlobalArgs,
@@ -75,6 +75,7 @@ impl Subcommand for RequestCommand {
         let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
         let request = RequestBuilder::new(
             recipe,
+            RecipeOptions::default(),
             TemplateContext {
                 profile,
                 chains: collection.chains.clone(),

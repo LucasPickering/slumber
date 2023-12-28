@@ -53,7 +53,7 @@ impl SelectStateKind for Dynamic {}
 pub struct Fixed;
 impl SelectStateKind for Fixed {}
 
-type Callback<Item> = Box<dyn Fn(&mut UpdateContext, &Item)>;
+type Callback<Item> = Box<dyn Fn(&mut UpdateContext, &mut Item)>;
 
 impl<Kind, Item, State: SelectStateData> SelectState<Kind, Item, State>
 where
@@ -62,7 +62,7 @@ where
     /// Set the callback to be called when the user highlights a new item
     pub fn on_select(
         mut self,
-        on_select: impl 'static + Fn(&mut UpdateContext, &Item),
+        on_select: impl 'static + Fn(&mut UpdateContext, &mut Item),
     ) -> Self {
         self.on_select = Some(Box::new(on_select));
         self
@@ -71,7 +71,7 @@ where
     /// Set the callback to be called when the user hits enter on an item
     pub fn on_submit(
         mut self,
-        on_submit: impl 'static + Fn(&mut UpdateContext, &Item),
+        on_submit: impl 'static + Fn(&mut UpdateContext, &mut Item),
     ) -> Self {
         self.on_submit = Some(Box::new(on_submit));
         self
@@ -129,11 +129,19 @@ where
         let state = self.state.get_mut();
         let current = state.selected();
         state.select(index);
+        let new = state.selected();
 
         // If the selection changed, call the callback
         match &self.on_select {
-            Some(on_select) if current != state.selected() => {
-                on_select(context, self.selected_opt().unwrap());
+            Some(on_select) if current != new => {
+                let selected = self
+                    .state
+                    .get_mut()
+                    .selected()
+                    .and_then(|index| self.items.get_mut(index));
+                if let Some(selected) = selected {
+                    on_select(context, selected);
+                }
             }
             _ => {}
         }
@@ -280,7 +288,12 @@ where
                     // If we have an on_submit, our parent wants us to handle
                     // submit events so consume it even if nothing is selected
                     if let Some(on_submit) = &self.on_submit {
-                        if let Some(selected) = self.selected_opt() {
+                        let selected = self
+                            .state
+                            .get_mut()
+                            .selected()
+                            .and_then(|index| self.items.get_mut(index));
+                        if let Some(selected) = selected {
                             on_submit(context, selected);
                         }
 

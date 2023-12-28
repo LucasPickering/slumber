@@ -168,6 +168,7 @@ impl EventHandler for PrimaryView {
                         profile_id: self
                             .selected_profile()
                             .map(|profile| profile.id.clone()),
+                        options: self.request_pane.recipe_options(),
                     });
                 }
                 Update::Consumed

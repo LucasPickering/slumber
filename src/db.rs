@@ -110,9 +110,9 @@ impl Database {
             )
             .down("DROP TABLE requests"),
             M::up(
-                // Values will be serialized as msgpack
+                // keys+values will be serialized as msgpack
                 "CREATE TABLE ui_state (
-                    key             TEXT NOT NULL,
+                    key             BLOB NOT NULL,
                     collection_id   UUID NOT NULL,
                     value           BLOB NOT NULL,
                     PRIMARY KEY (key, collection_id),
@@ -355,7 +355,7 @@ impl CollectionDatabase {
     /// Get the value of a UI state field
     pub fn get_ui<K, V>(&self, key: K) -> anyhow::Result<Option<V>>
     where
-        K: Display,
+        K: Debug + Serialize,
         V: Debug + DeserializeOwned,
     {
         let value = self
@@ -366,7 +366,7 @@ impl CollectionDatabase {
                 WHERE collection_id = :collection_id AND key = :key",
                 named_params! {
                     ":collection_id": self.collection_id,
-                    ":key": key.to_string(),
+                    ":key": Bytes(&key),
                 },
                 |row| {
                     let value: Bytes<V> = row.get("value")?;
@@ -376,17 +376,17 @@ impl CollectionDatabase {
             .optional()
             .context("Error fetching UI state from database")
             .traced()?;
-        debug!(%key, ?value, "Fetched UI state");
+        debug!(?key, ?value, "Fetched UI state");
         Ok(value)
     }
 
     /// Set the value of a UI state field
     pub fn set_ui<K, V>(&self, key: K, value: V) -> anyhow::Result<()>
     where
-        K: Display,
+        K: Debug + Serialize,
         V: Debug + Serialize,
     {
-        debug!(%key, ?value, "Setting UI state");
+        debug!(?key, ?value, "Setting UI state");
         self.database
             .connection()
             .execute(
@@ -396,7 +396,7 @@ impl CollectionDatabase {
                 ON CONFLICT DO UPDATE SET value = excluded.value",
                 named_params! {
                     ":collection_id": self.collection_id,
-                    ":key": key.to_string(),
+                    ":key": Bytes(key),
                     ":value": Bytes(value),
                 },
             )

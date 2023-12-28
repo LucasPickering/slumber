@@ -6,6 +6,8 @@
 
 - Move app-level configuration into a file ([#89](https://github.com/LucasPickering/slumber/issues/89))
   - Right now the only supported field is `preview_templates`
+- Toggle query parameters and headers in recipe pane ([#30](https://github.com/LucasPickering/slumber/issues/30))
+  - You can easily enable/disable parameters and headers without having to modify the collection file now
 
 ### Changed
 

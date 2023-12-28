@@ -7,7 +7,7 @@ use crate::{
     collection::{Collection, CollectionFile, ProfileId, RecipeId},
     config::Config,
     db::{CollectionDatabase, Database},
-    http::{HttpEngine, RequestBuilder},
+    http::{HttpEngine, RecipeOptions, RequestBuilder},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
         context::TuiContext,
@@ -206,7 +206,8 @@ impl Tui {
             Message::HttpBeginRequest {
                 recipe_id,
                 profile_id,
-            } => self.send_request(profile_id, recipe_id)?,
+                options,
+            } => self.send_request(profile_id, recipe_id, options)?,
             Message::HttpBuildError {
                 profile_id,
                 recipe_id,
@@ -313,6 +314,7 @@ impl Tui {
         &mut self,
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
+        options: RecipeOptions,
     ) -> anyhow::Result<()> {
         let recipe = self
             .collection_file
@@ -327,7 +329,7 @@ impl Tui {
         let template_context = self
             .template_context(profile_id.as_ref(), self.messages_tx.clone())?;
         let http_engine = self.http_engine.clone();
-        let builder = RequestBuilder::new(recipe, template_context);
+        let builder = RequestBuilder::new(recipe, options, template_context);
         let messages_tx = self.messages_tx.clone();
 
         // Mark request state as building

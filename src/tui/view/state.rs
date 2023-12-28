@@ -47,9 +47,19 @@ impl<K, V> StateCell<K, V> {
         Ref::map(self.state.borrow(), |state| &state.as_ref().unwrap().1)
     }
 
-    /// Get a mutable reference to the V. This will never panic because
-    /// `&mut self` guarantees exclusive access. Returns `None` iff the state
-    /// cell is uninitialized.
+    /// Get a reference to the state value. This can panic, if the state value
+    /// is already borrowed elsewhere. Returns `None` iff the state cell is
+    /// uninitialized.
+    pub fn get(&self) -> Option<Ref<'_, V>> {
+        Ref::filter_map(self.state.borrow(), |state| {
+            state.as_ref().map(|(_, v)| v)
+        })
+        .ok()
+    }
+
+    /// Get a mutable reference to the state value. This will never panic
+    /// because `&mut self` guarantees exclusive access. Returns `None` iff
+    /// the state cell is uninitialized.
     pub fn get_mut(&mut self) -> Option<&mut V> {
         self.state.get_mut().as_mut().map(|state| &mut state.1)
     }

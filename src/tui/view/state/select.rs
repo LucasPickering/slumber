@@ -377,11 +377,26 @@ impl SelectStateData for usize {
 
 /// Trait alias for a static list of items to be cycled through
 pub trait FixedSelect:
-    Debug + Default + Display + IntoEnumIterator + PartialEq
+    'static
+    + Copy
+    + Clone
+    + Debug
+    + Default
+    + Display
+    + IntoEnumIterator
+    + PartialEq
 {
 }
 
-impl<T: Debug + Default + Display + IntoEnumIterator + PartialEq> FixedSelect
-    for T
+/// Auto-impl for anything we can
+impl<T> FixedSelect for T where
+    T: 'static
+        + Copy
+        + Clone
+        + Debug
+        + Default
+        + Display
+        + IntoEnumIterator
+        + PartialEq
 {
 }

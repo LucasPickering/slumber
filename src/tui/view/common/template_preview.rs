@@ -12,7 +12,6 @@ use ratatui::{
     widgets::{Paragraph, Widget},
 };
 use std::{
-    fmt::{self, Display, Formatter},
     mem,
     sync::{Arc, OnceLock},
 };
@@ -58,6 +57,39 @@ impl TemplatePreview {
             Self::Disabled { template }
         }
     }
+
+    /// Convert rendered template to plain text for the purposes of copypasta.
+    /// If the render isn't ready, return the raw template. If any chunk failed,
+    /// it will be left empty.
+    pub fn to_copy_text(&self) -> String {
+        // If the preview render is ready, show it. Otherwise fall back to raw
+        match self {
+            TemplatePreview::Disabled { template } => template.to_string(),
+            TemplatePreview::Enabled { template, chunks } => match chunks.get()
+            {
+                // The goal here is to minimize "wonky" output, so loading and
+                // errors are replaced with minimal placeholders
+                Some(chunks) => {
+                    let mut s = String::new();
+                    for chunk in chunks {
+                        let content = match chunk {
+                            TemplateChunk::Raw(span) => {
+                                template.substring(*span)
+                            }
+                            TemplateChunk::Rendered { value, .. } => {
+                                value.as_str()
+                            }
+                            TemplateChunk::Error(_) => "",
+                        };
+                        s.push_str(content);
+                    }
+                    s
+                }
+                // Preview still rendering
+                None => template.to_string(),
+            },
+        }
+    }
 }
 
 impl Generate for &TemplatePreview {
@@ -90,28 +122,6 @@ impl Widget for &TemplatePreview {
     }
 }
 
-/// Convert to raw text. Useful for copypasta
-impl Display for TemplatePreview {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            TemplatePreview::Disabled { template } => write!(f, "{template}"),
-            // If the preview render is ready, show it. Otherwise fall back
-            // to the raw
-            TemplatePreview::Enabled { template, chunks } => match chunks.get()
-            {
-                Some(chunks) => {
-                    for chunk in chunks {
-                        write!(f, "{}", get_chunk_text(template, chunk))?;
-                    }
-                    Ok(())
-                }
-                // Preview still rendering
-                None => write!(f, "{template}"),
-            },
-        }
-    }
-}
-
 /// A helper for stitching rendered template chunks into ratatui `Text`. This
 /// requires some effort because ratatui *loves* line breaks, so we have to
 /// very manually construct the text to make sure the structure reflects the
@@ -139,7 +149,7 @@ impl<'a> TextStitcher<'a> {
         // manually split the lines
         let mut stitcher = Self::default();
         for chunk in chunks {
-            let chunk_text = get_chunk_text(template, chunk);
+            let chunk_text = Self::get_chunk_text(template, chunk);
             let style = match &chunk {
                 TemplateChunk::Raw(_) => Style::default(),
                 TemplateChunk::Rendered { .. } => theme.template_preview_text,
@@ -168,6 +178,28 @@ impl<'a> TextStitcher<'a> {
         }
     }
 
+    /// Get the renderable text for a chunk of a template
+    fn get_chunk_text(
+        template: &'a Template,
+        chunk: &'a TemplateChunk,
+    ) -> &'a str {
+        match chunk {
+            TemplateChunk::Raw(span) => template.substring(*span),
+            TemplateChunk::Rendered { value, sensitive } => {
+                if *sensitive {
+                    // Hide sensitive values. Ratatui has a Masked type, but
+                    // it complicates the string ownership a lot and also
+                    // exposes the length of the sensitive text
+                    "<sensitive>"
+                } else {
+                    value.as_str()
+                }
+            }
+            // There's no good way to render the entire error inline
+            TemplateChunk::Error(_) => "Error",
+        }
+    }
+
     fn add_span(&mut self, text: &'a str, style: Style) {
         if !text.is_empty() {
             self.next_line.push(Span::styled(text, style));
@@ -186,28 +218,6 @@ impl<'a> TextStitcher<'a> {
     fn into_text(mut self) -> Text<'a> {
         self.end_line(); // Make sure to include whatever wasn't finished
         Text::from(self.completed_lines)
-    }
-}
-
-/// Get the plain text for a chunk of a template
-fn get_chunk_text<'a>(
-    template: &'a Template,
-    chunk: &'a TemplateChunk,
-) -> &'a str {
-    match chunk {
-        TemplateChunk::Raw(span) => template.substring(*span),
-        TemplateChunk::Rendered { value, sensitive } => {
-            if *sensitive {
-                // Hide sensitive values. Ratatui has a Masked type, but
-                // it complicates the string ownership a lot and also
-                // exposes the length of the sensitive text
-                "<sensitive>"
-            } else {
-                value.as_str()
-            }
-        }
-        // There's no good way to render the entire error inline
-        TemplateChunk::Error(_) => "Error",
     }
 }
 

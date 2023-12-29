@@ -1,13 +1,19 @@
 use crate::{
     http::{RequestId, RequestRecord},
-    tui::view::{
-        common::{table::Table, tabs::Tabs, text_window::TextWindow, Pane},
-        component::primary::PrimaryPane,
-        draw::{Draw, Generate},
-        event::EventHandler,
-        state::{persistence::PersistentKey, RequestState, StateCell},
-        util::layout,
-        Component,
+    tui::{
+        input::Action,
+        view::{
+            common::{
+                actions::ActionsModal, table::Table, tabs::Tabs,
+                text_window::TextWindow, Pane,
+            },
+            component::primary::PrimaryPane,
+            draw::{Draw, Generate, ToStringGenerate},
+            event::{Event, EventHandler, Update, UpdateContext},
+            state::{persistence::PersistentKey, RequestState, StateCell},
+            util::layout,
+            Component,
+        },
     },
 };
 use derive_more::Display;
@@ -32,6 +38,14 @@ pub struct ResponsePane {
 pub struct ResponsePaneProps<'a> {
     pub is_selected: bool,
     pub active_request: Option<&'a RequestState>,
+}
+
+/// Items in the actions popup menu
+#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
+enum MenuAction {
+    #[default]
+    #[display("Copy Body")]
+    CopyBody,
 }
 
 impl EventHandler for ResponsePane {
@@ -184,6 +198,27 @@ enum Tab {
 }
 
 impl EventHandler for ResponseContent {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+        match &event {
+            Event::Input {
+                action: Some(Action::OpenActions),
+                ..
+            } => context.open_modal_default::<ActionsModal<MenuAction>>(),
+            Event::Other(callback) => {
+                match callback.downcast_ref::<MenuAction>() {
+                    Some(MenuAction::CopyBody) => {
+                        if let Some(body) = self.body.get() {
+                            context.copy_text(body.inner().text().to_owned())
+                        }
+                    }
+                    None => return Update::Propagate(event),
+                }
+            }
+            _ => return Update::Propagate(event),
+        }
+        Update::Consumed
+    }
+
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         let selected_tab = *self.tabs.selected();
         let mut children = vec![self.tabs.as_child()];
@@ -251,3 +286,5 @@ impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
         }
     }
 }
+
+impl ToStringGenerate for MenuAction {}

@@ -2,23 +2,29 @@ use crate::{
     collection::{ProfileId, Recipe, RecipeId},
     http::RecipeOptions,
     template::Template,
-    tui::view::{
-        common::{
-            table::Table, tabs::Tabs, template_preview::TemplatePreview,
-            text_window::TextWindow, Checkbox, Pane,
+    tui::{
+        input::Action,
+        view::{
+            common::{
+                actions::ActionsModal, table::Table, tabs::Tabs,
+                template_preview::TemplatePreview, text_window::TextWindow,
+                Checkbox, Pane,
+            },
+            component::primary::PrimaryPane,
+            draw::{Draw, Generate, ToStringGenerate},
+            event::{Event, EventHandler, Update, UpdateContext},
+            state::{
+                persistence::{Persistable, Persistent, PersistentKey},
+                select::{Dynamic, SelectState},
+                StateCell,
+            },
+            util::layout,
+            Component,
         },
-        component::primary::PrimaryPane,
-        draw::{Draw, Generate},
-        event::{EventHandler, UpdateContext},
-        state::{
-            persistence::{Persistable, Persistent, PersistentKey},
-            select::{Dynamic, SelectState},
-            StateCell,
-        },
-        util::layout,
-        Component,
     },
+    util::ResultExt,
 };
+use anyhow::Context;
 use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
@@ -30,6 +36,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use strum::EnumIter;
+use url::Url;
 
 /// Display a request recipe
 #[derive(Debug)]
@@ -96,6 +103,16 @@ struct RowState {
     enabled: Persistent<bool>,
 }
 
+/// Items in the actions popup menu
+#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
+enum MenuAction {
+    #[default]
+    #[display("Copy URL")]
+    CopyUrl,
+    #[display("Copy Body")]
+    CopyBody,
+}
+
 impl RecipePane {
     /// Generate a [RecipeOptions] instance based on current UI state
     pub fn recipe_options(&self) -> RecipeOptions {
@@ -122,9 +139,71 @@ impl RecipePane {
             RecipeOptions::default()
         }
     }
+
+    /// Get the full URL (including query params) of the request, for copypasta
+    fn url(&self) -> Option<String> {
+        self.recipe_state.get().and_then(|state| {
+            // Parse the base URL
+            let mut url = Url::parse(&state.url.to_copy_text())
+                .context("Error parsing URL")
+                .traced()
+                .ok()?;
+
+            // Add additional query params. We need to make sure to append, in
+            // case the base URL includes some query params already
+            {
+                let mut query_pairs = url.query_pairs_mut();
+                for row in state.query.items() {
+                    // Don't include disabled params
+                    if *row.enabled {
+                        query_pairs
+                            .append_pair(&row.key, &row.value.to_copy_text());
+                    }
+                }
+            }
+
+            Some(url.to_string())
+        })
+    }
+
+    /// Get the full *prettified* body of the request, for copypasta
+    fn body(&self) -> Option<String> {
+        self.recipe_state.get().and_then(|state| {
+            state
+                .body
+                .as_ref()
+                .map(|body| body.inner().text().to_copy_text())
+        })
+    }
 }
 
 impl EventHandler for RecipePane {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+        match &event {
+            Event::Input {
+                action: Some(Action::OpenActions),
+                ..
+            } => context.open_modal_default::<ActionsModal<MenuAction>>(),
+            Event::Other(callback) => {
+                match callback.downcast_ref::<MenuAction>() {
+                    Some(MenuAction::CopyUrl) => {
+                        if let Some(url) = self.url() {
+                            context.copy_text(url);
+                        }
+                    }
+                    Some(MenuAction::CopyBody) => {
+                        if let Some(body) = self.body() {
+                            context.copy_text(body);
+                        }
+                    }
+                    None => return Update::Propagate(event),
+                }
+            }
+            _ => return Update::Propagate(event),
+        }
+        Update::Consumed
+    }
+
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         let selected_tab = *self.tabs.selected();
         let mut children = vec![self.tabs.as_child()];
@@ -357,3 +436,5 @@ impl PartialEq<RowState> for String {
         self == &other.key
     }
 }
+
+impl ToStringGenerate for MenuAction {}

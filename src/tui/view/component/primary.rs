@@ -12,8 +12,8 @@ use crate::{
                 misc::EmptyActionsModal,
                 profile::{ProfilePane, ProfilePaneProps},
                 profile_list::{ProfileListPane, ProfileListPaneProps},
+                recipe::{RecipePane, RequestPaneProps},
                 recipe_list::{RecipeListPane, RecipeListPaneProps},
-                request::{RequestPane, RequestPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
             },
             draw::Draw,
@@ -52,7 +52,7 @@ pub struct PrimaryView {
     #[debug(skip)]
     profile_pane: Component<ProfilePane>,
     #[debug(skip)]
-    request_pane: Component<RequestPane>,
+    request_pane: Component<RecipePane>,
     #[debug(skip)]
     response_pane: Component<ResponsePane>,
 }

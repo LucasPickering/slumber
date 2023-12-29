@@ -1,6 +1,7 @@
 //! Traits for rendering stuff
 
-use ratatui::{layout::Rect, Frame};
+use ratatui::{layout::Rect, text::Span, Frame};
+use std::fmt::Display;
 
 /// Something that can be drawn onto screen as one or more TUI widgets.
 ///
@@ -30,4 +31,24 @@ pub trait Generate {
     fn generate<'this>(self) -> Self::Output<'this>
     where
         Self: 'this;
+}
+
+/// Marker trait th pull in a blanket impl of [Generate], which simply calls
+/// [ToString::to_string] on the value to create a [ratatui::text::Span].
+pub trait ToStringGenerate: Display {}
+
+impl<T> Generate for &T
+where
+    T: ToStringGenerate,
+{
+    type Output<'this> = Span<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        self.to_string().into()
+    }
 }

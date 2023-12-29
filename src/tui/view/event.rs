@@ -4,7 +4,9 @@
 use crate::{
     collection::{ProfileId, RecipeId},
     tui::{
+        context::TuiContext,
         input::Action,
+        message::Message,
         view::{
             common::modal::{Modal, ModalPriority},
             state::{Notification, RequestState},
@@ -12,8 +14,9 @@ use crate::{
         },
     },
 };
+use anyhow::anyhow;
 use crossterm::event::{MouseEvent, MouseEventKind};
-use std::{collections::VecDeque, fmt::Debug};
+use std::{any::Any, collections::VecDeque, fmt::Debug};
 use tracing::trace;
 
 /// A UI element that can handle user/async input. This trait facilitates an
@@ -75,6 +78,22 @@ impl<'a> UpdateContext<'a> {
     pub fn notify(&mut self, message: impl ToString) {
         self.queue_event(Event::Notify(Notification::new(message.to_string())));
     }
+
+    /// Copy text to the user's clipboard, and notify them
+    pub fn copy_text(&mut self, text: String) {
+        match cli_clipboard::set_contents(text) {
+            Ok(()) => {
+                self.notify("Copied text to clipboard");
+            }
+            Err(error) => {
+                // Returned error doesn't impl 'static so we can't
+                // directly convert it to anyhow
+                TuiContext::send_message(Message::Error {
+                    error: anyhow!("Error copying text: {error}"),
+                })
+            }
+        }
+    }
 }
 
 /// A trigger for state change in the view. Events are handled by
@@ -126,9 +145,18 @@ pub enum Event {
     /// Tell the user something informational
     Notify(Notification),
 
-    // Niche component-specific actions (yuck)
-    /// Copy current text. Which text to copy is contextual
-    CopyText,
+    /// A dynamically dispatched variant, which can hold any type. This is
+    /// useful for passing component-specific action types, e.g. when bubbling
+    /// up a callback. Use [Any::downcast_ref] to convert into the expected
+    /// type.
+    Other(Box<dyn Any>),
+}
+
+impl Event {
+    /// Helper for creating a dynamic "other" variant
+    pub fn other<T: Any>(value: T) -> Event {
+        Event::Other(Box::new(value))
+    }
 }
 
 impl Event {

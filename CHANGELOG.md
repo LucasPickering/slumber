@@ -8,6 +8,7 @@
   - Right now the only supported field is `preview_templates`
 - Toggle query parameters and headers in recipe pane ([#30](https://github.com/LucasPickering/slumber/issues/30))
   - You can easily enable/disable parameters and headers without having to modify the collection file now
+- Add Copy URL action, to get the full URL that a request will generate ([#93](https://github.com/LucasPickering/slumber/issues/93))
 
 ### Changed
 

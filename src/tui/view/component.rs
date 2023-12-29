@@ -5,8 +5,8 @@ mod misc;
 mod primary;
 mod profile;
 mod profile_list;
+mod recipe;
 mod recipe_list;
-mod request;
 mod response;
 mod root;
 

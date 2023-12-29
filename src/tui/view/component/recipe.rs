@@ -33,14 +33,14 @@ use strum::EnumIter;
 
 /// Display a request recipe
 #[derive(Debug)]
-pub struct RequestPane {
+pub struct RecipePane {
     tabs: Component<Tabs<Tab>>,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
     recipe_state: StateCell<RecipeStateKey, RecipeState>,
 }
 
-impl Default for RequestPane {
+impl Default for RecipePane {
     fn default() -> Self {
         Self {
             tabs: Tabs::new(PersistentKey::RecipeTab).into(),
@@ -96,7 +96,7 @@ struct RowState {
     enabled: Persistent<bool>,
 }
 
-impl RequestPane {
+impl RecipePane {
     /// Generate a [RecipeOptions] instance based on current UI state
     pub fn recipe_options(&self) -> RecipeOptions {
         if let Some(state) = self.recipe_state.get() {
@@ -124,7 +124,7 @@ impl RequestPane {
     }
 }
 
-impl EventHandler for RequestPane {
+impl EventHandler for RecipePane {
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         let selected_tab = *self.tabs.selected();
         let mut children = vec![self.tabs.as_child()];
@@ -146,7 +146,7 @@ impl EventHandler for RequestPane {
     }
 }
 
-impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
+impl<'a> Draw<RequestPaneProps<'a>> for RecipePane {
     fn draw(&self, frame: &mut Frame, props: RequestPaneProps<'a>, area: Rect) {
         // Render outermost block
         let pane_kind = PrimaryPane::Request;

@@ -152,8 +152,8 @@ impl<'a> TextStitcher<'a> {
             let chunk_text = Self::get_chunk_text(template, chunk);
             let style = match &chunk {
                 TemplateChunk::Raw(_) => Style::default(),
-                TemplateChunk::Rendered { .. } => theme.template_preview_text,
-                TemplateChunk::Error(_) => theme.template_preview_error,
+                TemplateChunk::Rendered { .. } => theme.template_preview.text,
+                TemplateChunk::Error(_) => theme.template_preview.error,
             };
 
             stitcher.add_chunk(chunk_text, style);
@@ -254,8 +254,8 @@ mod tests {
         let theme = &TuiContext::get().theme;
 
         let text = TextStitcher::stitch_chunks(&template, &chunks);
-        let rendered_style = theme.template_preview_text;
-        let error_style = theme.template_preview_error;
+        let rendered_style = theme.template_preview.text;
+        let error_style = theme.template_preview.error;
         let expected = Text::from(vec![
             Line::from("intro"),
             Line::from(Span::styled("🧡", rendered_style)),

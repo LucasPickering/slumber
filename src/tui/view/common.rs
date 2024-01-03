@@ -42,7 +42,7 @@ impl<'a> Generate for Pane<'a> {
         ratatui::widgets::Block::default()
             .borders(Borders::ALL)
             .border_style(
-                TuiContext::get().theme.pane_border_style(self.is_focused),
+                TuiContext::get().theme.pane.border_style(self.is_focused),
             )
             .title(self.title)
     }

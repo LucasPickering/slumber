@@ -2,7 +2,7 @@
 
 It's easy!
 
-- Make sure `CHANGELOG.md` has the latest release notes under `Unreleased`
+- Make sure `CHANGELOG.md` has the latest release notes under `[Unreleased] - ReleaseDate`
 - `cargo release <major|minor|patch>`
   - If it looks good, add `--execute`
 

@@ -41,6 +41,6 @@ where
 
         ratatui::widgets::List::new(items)
             .block(block)
-            .highlight_style(TuiContext::get().theme.list_highlight_style)
+            .highlight_style(TuiContext::get().theme.list.highlight)
     }
 }

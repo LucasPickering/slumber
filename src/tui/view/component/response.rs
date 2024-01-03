@@ -1,16 +1,20 @@
+mod body;
+
 use crate::{
-    http::{RequestId, RequestRecord},
+    http::{RequestRecord, ResponseContent},
     tui::{
         input::Action,
         view::{
-            common::{
-                actions::ActionsModal, table::Table, tabs::Tabs,
-                text_window::TextWindow, Pane,
+            common::{actions::ActionsModal, table::Table, tabs::Tabs, Pane},
+            component::{
+                primary::PrimaryPane,
+                response::body::{
+                    ResponseContentBody, ResponseContentBodyProps,
+                },
             },
-            component::primary::PrimaryPane,
             draw::{Draw, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update, UpdateContext},
-            state::{persistence::PersistentKey, RequestState, StateCell},
+            state::{persistence::PersistentKey, RequestState},
             util::layout,
             Component,
         },
@@ -25,14 +29,13 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
 use strum::EnumIter;
 
 /// Display HTTP response state, which could be in progress, complete, or
 /// failed. This can be used in both a paned and fullscreen view.
 #[derive(Debug, Default)]
 pub struct ResponsePane {
-    content: Component<ResponseContent>,
+    content: Component<CompleteResponseContent>,
 }
 
 pub struct ResponsePaneProps<'a> {
@@ -47,6 +50,8 @@ enum MenuAction {
     #[display("Copy Body")]
     CopyBody,
 }
+
+impl ToStringGenerate for MenuAction {}
 
 impl EventHandler for ResponsePane {
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
@@ -126,7 +131,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 
                 RequestState::Response {
                     record,
-                    pretty_body,
+                    parsed_body,
                 } => {
                     let response = &record.response;
                     // Status code
@@ -139,7 +144,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                         frame,
                         ResponseContentProps {
                             record,
-                            pretty_body: pretty_body.as_deref(),
+                            parsed_body: parsed_body.as_deref(),
                         },
                         content_area,
                     );
@@ -159,14 +164,14 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 
 /// Display response success state (tab container)
 #[derive(Debug)]
-struct ResponseContent {
+struct CompleteResponseContent {
     tabs: Component<Tabs<Tab>>,
     /// Persist the response body to track view state. Update whenever the
     /// loaded request changes
-    body: StateCell<RequestId, Component<TextWindow<String>>>,
+    body: Component<ResponseContentBody>,
 }
 
-impl Default for ResponseContent {
+impl Default for CompleteResponseContent {
     fn default() -> Self {
         Self {
             tabs: Tabs::new(PersistentKey::ResponseTab).into(),
@@ -177,7 +182,7 @@ impl Default for ResponseContent {
 
 struct ResponseContentProps<'a> {
     record: &'a RequestRecord,
-    pretty_body: Option<&'a str>,
+    parsed_body: Option<&'a dyn ResponseContent>,
 }
 
 #[derive(
@@ -197,18 +202,19 @@ enum Tab {
     Headers,
 }
 
-impl EventHandler for ResponseContent {
+impl EventHandler for CompleteResponseContent {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        match &event {
+        match event {
             Event::Input {
                 action: Some(Action::OpenActions),
                 ..
             } => context.open_modal_default::<ActionsModal<MenuAction>>(),
-            Event::Other(callback) => {
-                match callback.downcast_ref::<MenuAction>() {
+            Event::Other(ref other) => {
+                // Check for an action menu event
+                match other.downcast_ref::<MenuAction>() {
                     Some(MenuAction::CopyBody) => {
-                        if let Some(body) = self.body.get() {
-                            context.copy_text(body.inner().text().to_owned())
+                        if let Some(body) = self.body.text() {
+                            context.copy_text(body);
                         }
                     }
                     None => return Update::Propagate(event),
@@ -221,20 +227,20 @@ impl EventHandler for ResponseContent {
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         let selected_tab = *self.tabs.selected();
-        let mut children = vec![self.tabs.as_child()];
+        let mut children = vec![];
         match selected_tab {
             Tab::Body => {
-                if let Some(body) = self.body.get_mut() {
-                    children.push(body.as_child());
-                }
+                children.push(self.body.as_child());
             }
             Tab::Headers => {}
         }
+        // Tabs goes last, because pane content gets priority
+        children.push(self.tabs.as_child());
         children
     }
 }
 
-impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
+impl<'a> Draw<ResponseContentProps<'a>> for CompleteResponseContent {
     fn draw(
         &self,
         frame: &mut Frame,
@@ -256,16 +262,14 @@ impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
         // Main content for the response
         match self.tabs.selected() {
             Tab::Body => {
-                let body = self.body.get_or_update(props.record.id, || {
-                    // Use the pretty body if available. If not,
-                    // fall back to the ugly one
-                    let body = props
-                        .pretty_body
-                        .unwrap_or_else(|| response.body.text())
-                        .to_owned();
-                    TextWindow::new(body).into()
-                });
-                body.deref().draw(frame, (), content_area)
+                self.body.draw(
+                    frame,
+                    ResponseContentBodyProps {
+                        record: props.record,
+                        parsed_body: props.parsed_body,
+                    },
+                    content_area,
+                );
             }
             Tab::Headers => frame.render_widget(
                 Table {
@@ -286,5 +290,3 @@ impl<'a> Draw<ResponseContentProps<'a>> for ResponseContent {
         }
     }
 }
-
-impl ToStringGenerate for MenuAction {}

@@ -70,10 +70,10 @@ impl PromptModal {
         let submit = Rc::new(Cell::new(false));
         let submit_cell = Rc::clone(&submit);
         let text_box = TextBox::default()
-            .sensitive(true)
+            .with_sensitive(true)
             // Make sure cancel gets propagated to close the modal
-            .on_cancel(|_, context| context.queue_event(Event::CloseModal))
-            .on_submit(move |_, context| {
+            .with_on_cancel(|_, context| context.queue_event(Event::CloseModal))
+            .with_on_submit(move |_, context| {
                 // We have to defer submission to on_close, because we need the
                 // owned value of `self.prompt`. We could have just put that in
                 // a refcell, but this felt a bit cleaner because we know this

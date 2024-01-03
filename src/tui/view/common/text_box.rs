@@ -12,7 +12,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nom::AsChar;
 use ratatui::{
     layout::Rect,
-    text::{Masked, Text},
+    text::{Line, Masked, Text},
     widgets::Paragraph,
     Frame,
 };
@@ -23,6 +23,10 @@ pub struct TextBox {
     // Parameters
     sensitive: bool,
     focused: bool,
+    placeholder_text: String,
+    /// Predicate function to apply visual validation effect
+    #[debug(skip)]
+    validator: Option<Validator>,
 
     state: TextState,
 
@@ -35,11 +39,16 @@ pub struct TextBox {
 
 type Callback = Box<dyn Fn(&TextBox, &mut UpdateContext)>;
 
+type Validator = Box<dyn Fn(&str) -> bool>;
+
 impl Default for TextBox {
     fn default() -> Self {
         Self {
             sensitive: false,
             focused: true,
+            placeholder_text: Default::default(),
+            validator: None,
+
             state: Default::default(),
             on_submit: Default::default(),
             on_cancel: Default::default(),
@@ -48,14 +57,35 @@ impl Default for TextBox {
 }
 
 impl TextBox {
+    /// Set focus state on initialization
+    pub fn with_focus(mut self, focused: bool) -> Self {
+        self.focused = focused;
+        self
+    }
+
     /// Mark content as sensitive, to be replaced with a placeholder character
-    pub fn sensitive(mut self, sensitive: bool) -> Self {
+    pub fn with_sensitive(mut self, sensitive: bool) -> Self {
         self.sensitive = sensitive;
         self
     }
 
+    /// Set placeholder (text to show when content is empty) on initialization
+    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.placeholder_text = placeholder.into();
+        self
+    }
+
+    /// Set validation function
+    pub fn with_validator(
+        mut self,
+        validator: impl 'static + Fn(&str) -> bool,
+    ) -> Self {
+        self.validator = Some(Box::new(validator));
+        self
+    }
+
     /// Set the callback to be called when the user hits escape
-    pub fn on_cancel(
+    pub fn with_on_cancel(
         mut self,
         on_cancel: impl 'static + Fn(&Self, &mut UpdateContext),
     ) -> Self {
@@ -64,12 +94,16 @@ impl TextBox {
     }
 
     /// Set the callback to be called when the user hits enter
-    pub fn on_submit(
+    pub fn with_on_submit(
         mut self,
         on_submit: impl 'static + Fn(&Self, &mut UpdateContext),
     ) -> Self {
         self.on_submit = Some(Box::new(on_submit));
         self
+    }
+
+    pub fn is_focused(&self) -> bool {
+        self.focused
     }
 
     /// Style this text box to look active
@@ -82,9 +116,25 @@ impl TextBox {
         self.focused = false;
     }
 
+    /// Get current text
+    pub fn text(&self) -> &str {
+        &self.state.text
+    }
+
     /// Move the text out of this text box and return it
     pub fn into_text(self) -> String {
         self.state.text
+    }
+
+    /// Check if the current input text is valid. Always returns true if there
+    /// is no validator
+    fn is_valid(&self) -> bool {
+        self.text().is_empty()
+            || self
+                .validator
+                .as_ref()
+                .map(|validator| validator(self.text()))
+                .unwrap_or(true)
     }
 
     /// Call parent's submissionc callback
@@ -103,7 +153,7 @@ impl TextBox {
         self.unfocus();
     }
 
-    /// Handle input key event to modify state
+    /// Handle input key event to modify text/cursor state
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Char(c) => self.state.insert(c),
@@ -160,27 +210,36 @@ impl Draw for TextBox {
         let theme = &TuiContext::get().theme;
 
         // Hide top secret data
-        let text: Text = if self.sensitive {
+        let text: Text = if self.state.text.is_empty() {
+            Line::from(self.placeholder_text.as_str())
+                .style(theme.text_box.placeholder)
+                .into()
+        } else if self.sensitive {
             Masked::new(&self.state.text, '•').into()
         } else {
             self.state.text.as_str().into()
         };
 
-        frame.render_widget(
-            Paragraph::new(text).style(theme.text_box_text),
-            area,
-        );
-
-        // Apply cursor styling on type
-        let cursor_area = Rect {
-            x: area.x + self.state.cursor_offset() as u16,
-            y: area.y,
-            width: 1,
-            height: 1,
+        // Draw the text
+        let style = if self.is_valid() {
+            theme.text_box.text
+        } else {
+            theme.text_box.invalid
         };
-        frame
-            .buffer_mut()
-            .set_style(cursor_area, theme.text_box_cursor);
+        frame.render_widget(Paragraph::new(text).style(style), area);
+
+        if self.focused {
+            // Apply cursor styling on type
+            let cursor_area = Rect {
+                x: area.x + self.state.cursor_offset() as u16,
+                y: area.y,
+                width: 1,
+                height: 1,
+            };
+            frame
+                .buffer_mut()
+                .set_style(cursor_area, theme.text_box.cursor);
+        }
     }
 }
 

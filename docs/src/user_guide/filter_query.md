@@ -61,6 +61,6 @@ requests:
       auth: "{{chains.auth_token}}"
 ```
 
-While this example simple extracts inner fields, JSONPath can be used for much more powerful transformations. See the [JSONPath docs](https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html) for more examples.
+While this example simple extracts inner fields, JSONPath can be used for much more powerful transformations. See the [JSONPath docs](https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html) or [this JSONPath editor](https://jsonpath.com/) for more examples.
 
 <!-- TODO add screenshot of in-TUI querying -->

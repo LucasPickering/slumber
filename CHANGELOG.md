@@ -7,6 +7,7 @@
 - New informational flags to `slumber request`
   - `--exit-status` to set exit code based on response status ([#97](https://github.com/LucasPickering/slumber/issues/97))
   - `--status`, `--headers`, and `--no-body` to control printed output
+- Filter response via JSONPath ([#78](https://github.com/LucasPickering/slumber/issues/78))
 
 ## [0.12.1] - 2024-01-22
 

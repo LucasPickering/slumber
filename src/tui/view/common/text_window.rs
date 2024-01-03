@@ -21,7 +21,7 @@ use std::{cell::Cell, cmp, fmt::Debug};
 ///
 /// The generic parameter allows for any type that can be converted to ratatui's
 /// `Text`, e.g. `String` or `TemplatePreview`.
-#[derive(derive_more::Debug)]
+#[derive(derive_more::Debug, Default)]
 pub struct TextWindow<T> {
     #[debug(skip)]
     text: T,
@@ -122,7 +122,7 @@ where
                     .collect::<Vec<Line>>(),
             )
             .alignment(Alignment::Right)
-            .style(theme.line_number_style),
+            .style(theme.text_window.line_number),
             gutter_area,
         );
 

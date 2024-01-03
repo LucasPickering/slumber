@@ -3,7 +3,9 @@
 pub mod persistence;
 pub mod select;
 
-use crate::http::{RequestBuildError, RequestError, RequestId, RequestRecord};
+use crate::http::{
+    RequestBuildError, RequestError, RequestId, RequestRecord, ResponseContent,
+};
 use chrono::{DateTime, Duration, Utc};
 use derive_more::Deref;
 use std::cell::{Ref, RefCell};
@@ -99,7 +101,9 @@ pub enum RequestState {
     /// received response is considered a "success".
     Response {
         record: RequestRecord,
-        pretty_body: Option<String>,
+        /// For responses of a known content type, we'll pre-parsed it so we
+        /// can do fancy things like prettification and filtering later
+        parsed_body: Option<Box<dyn ResponseContent>>,
     },
 
     /// Error occurred sending the request or receiving the response.
@@ -167,12 +171,12 @@ impl RequestState {
     /// Create a request state from a completed response. This is **expensive**,
     /// don't call it unless you need the value.
     pub fn response(record: RequestRecord) -> Self {
-        // Prettification might get slow on large responses, maybe we
-        // want to punt this into a separate task?
-        let pretty_body = record.response.prettify_body().ok();
+        // Parsing might get slow on large responses, maybe we want to punt
+        // this into a separate task?
+        let parsed_body = record.response.parse_body().ok();
         Self::Response {
             record,
-            pretty_body,
+            parsed_body,
         }
     }
 }

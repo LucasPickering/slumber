@@ -79,29 +79,26 @@ impl<'a, const COLS: usize> Generate for Table<'a, COLS, Row<'a>> {
         let rows = self.rows.into_iter().enumerate().map(|(i, row)| {
             // Apply theme styles, but let the row's individual styles override
             let base_style = if self.alternate_row_style && i % 2 == 1 {
-                theme.table_alt_style
+                theme.table.alt
             } else {
-                theme.table_text_style
+                theme.table.text
             };
             let row_style = Styled::style(&row);
             row.set_style(base_style.patch(row_style))
         });
         let mut table = ratatui::widgets::Table::new(rows, self.column_widths)
-            .highlight_style(theme.table_highlight_style);
+            .highlight_style(theme.table.highlight);
 
         // Add title
         if let Some(title) = self.title {
             table = table.block(
-                Block::default()
-                    .title(title)
-                    .title_style(theme.table_title_style),
+                Block::default().title(title).title_style(theme.table.title),
             );
         }
 
         // Add optional header if given
         if let Some(header) = self.header {
-            table =
-                table.header(Row::new(header).style(theme.table_header_style));
+            table = table.header(Row::new(header).style(theme.table.header));
         }
 
         table
@@ -154,9 +151,9 @@ where
             )),
         )
         .style(if self.enabled {
-            theme.table_text_style
+            theme.table.text
         } else {
-            theme.table_disabled_style
+            theme.table.disabled
         })
     }
 }

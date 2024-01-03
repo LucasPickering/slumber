@@ -37,10 +37,10 @@ impl CliCommand {
     /// Execute a non-TUI command
     pub async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self {
-            CliCommand::Request(command) => command.execute(global).await,
-            CliCommand::Import(command) => command.execute(global).await,
-            CliCommand::Collections(command) => command.execute(global).await,
-            CliCommand::Show(command) => command.execute(global).await,
+            Self::Request(command) => command.execute(global).await,
+            Self::Import(command) => command.execute(global).await,
+            Self::Collections(command) => command.execute(global).await,
+            Self::Show(command) => command.execute(global).await,
         }
     }
 }

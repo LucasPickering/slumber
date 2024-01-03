@@ -59,7 +59,7 @@ impl<T: FixedSelect + Persistable> Draw for Tabs<T> {
         frame.render_widget(
             ratatui::widgets::Tabs::new(T::iter().map(|e| e.to_string()))
                 .select(self.tabs.selected_index())
-                .highlight_style(TuiContext::get().theme.tab_highlight_style),
+                .highlight_style(TuiContext::get().theme.tab.highlight),
             area,
         )
     }

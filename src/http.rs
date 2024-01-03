@@ -58,7 +58,7 @@ use tokio::try_join;
 use tracing::{debug, info, info_span};
 
 const USER_AGENT: &str =
-    concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+    concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 /// Utility for handling all HTTP operations. The main purpose of this is to
 /// de-asyncify HTTP so it can be called in the main TUI thread. All heavy

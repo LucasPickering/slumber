@@ -115,6 +115,8 @@ enum MenuAction {
     CopyBody,
 }
 
+impl ToStringGenerate for MenuAction {}
+
 impl RecipePane {
     /// Generate a [RecipeOptions] instance based on current UI state
     pub fn recipe_options(&self) -> RecipeOptions {
@@ -434,5 +436,3 @@ impl PartialEq<RowState> for String {
         self == &other.key
     }
 }
-
-impl ToStringGenerate for MenuAction {}

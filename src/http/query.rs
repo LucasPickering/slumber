@@ -4,11 +4,12 @@ use crate::http::ResponseContent;
 use derive_more::{Display, FromStr};
 use serde::{Deserialize, Serialize};
 use serde_json_path::{ExactlyOneError, JsonPath};
+use std::borrow::Cow;
 use thiserror::Error;
 
 /// A wrapper around a JSONPath. This combines some common behavior, and will
 /// make it easy to swap out the query language in the future if necessary.
-#[derive(Clone, Debug, Display, FromStr, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, FromStr, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Query(JsonPath);
 
@@ -24,6 +25,22 @@ pub enum QueryError {
 }
 
 impl Query {
+    /// Apply a query to some content, returning the result in the original
+    /// format. This will convert to a common format, apply the query, then
+    /// convert back.
+    pub fn query(
+        &self,
+        value: &dyn ResponseContent,
+    ) -> Box<dyn ResponseContent> {
+        let content_type = value.content_type();
+        let json_value = value.to_json();
+        // We have to clone all the elements to put them into a JSON array
+        let queried = serde_json::Value::Array(
+            self.0.query(&json_value).into_iter().cloned().collect(),
+        );
+        content_type.parse_json(Cow::Owned(queried))
+    }
+
     /// Apply a query to some content, returning a string. The query should
     /// return a single result. If it's a scalar, that will be stringified. If
     /// it's an array/object, it'll be converted back into its input format,
@@ -37,17 +54,17 @@ impl Query {
         // All content types get converted to JSON for querying, then converted
         // back. This is fucky but we need *some* common format
         let json_value = value.to_json();
-        let filtered = self.0.query(&json_value).exactly_one()?;
+        let queried = self.0.query(&json_value).exactly_one()?;
 
         // If we got a scalar value, use that. Otherwise convert back to the
         // input content type to re-stringify
-        let stringified = match filtered {
+        let stringified = match queried {
             serde_json::Value::Null => "".into(),
             serde_json::Value::Number(n) => n.to_string(),
             serde_json::Value::Bool(b) => b.to_string(),
             serde_json::Value::String(s) => s.clone(),
             serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-                content_type.parse_json(filtered).to_string()
+                content_type.parse_json(Cow::Borrowed(queried)).to_string()
             }
         };
 

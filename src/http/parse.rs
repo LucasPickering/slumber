@@ -86,14 +86,16 @@ impl ContentType {
         }
     }
 
-    /// Parse content from JSON into this format. Valid JSON should be valid
-    /// in any other format too, so this is infallible.
+    /// Convert content from JSON into this format. Valid JSON should be valid
+    /// in any other format too, so this is infallible. This takes a `Cow`
+    /// because some formats may need an owned JSON value while others may not.
+    /// You should pass an owned value if you have it, but it's not necessary.
     pub fn parse_json(
         self,
-        content: &serde_json::Value,
+        content: Cow<'_, serde_json::Value>,
     ) -> Box<dyn ResponseContent> {
         match self {
-            Self::Json => Box::new(Json(content.clone())),
+            Self::Json => Box::new(Json(content.into_owned())),
         }
     }
 

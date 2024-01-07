@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en" id="oranda" class="dark">
+    <head>
+        <title>slumber</title>
+        
+        
+            <link rel="icon" href="/favicon.ico" />
+        
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        
+            <meta name="description" content="Terminal-based HTTP client" />
+            <meta property="og:description" content="Terminal-based HTTP client" />
+        
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content="slumber" />
+        
+        
+        
+        <meta http-equiv="Permissions-Policy" content="interest-cohort=()" />
+        <link rel="stylesheet" href="/oranda-v0.5.0.css" />
+        
+        
+    </head>
+    <body>
+        <div class="container">
+            <div class="page-body">
+                
+                    <div class="repo_banner">
+                        <a href="https://github.com/LucasPickering/slumber">
+                            <div class="github-icon" aria-hidden="true"></div>
+                            Check out our GitHub!
+                        </a>
+                    </div>
+                
+
+                <main>
+                    <header>
+                        
+                        <h1 class="title">slumber</h1>
+                        
+    <nav class="nav">
+        <ul>
+            <li><a href="/">Home</a></li>
+
+            
+
+            
+                <li><a href="/artifacts/">Install</a></li>
+            
+
+            
+                <li><a href="/book/">Docs</a></li>
+            
+
+            
+
+            
+                <li><a href="/changelog/">Changelog</a></li>
+            
+        </ul>
+    </nav>
+
+                    </header>
+
+                    
+<div>
+    <h1>0.11.0 - 2023-12-20</h1>
+    <div class="releases-body">
+        
+        
+        <section class="release ">
+    
+    <div class="release-info">
+        <span class="flex items-center gap-2">
+            <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'>
+    <path stroke-linecap='round' stroke-linejoin='round' d='M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z' />
+    <path stroke-linecap='round' stroke-linejoin='round' d='M6 6h.008v.008H6V6z' /></svg>
+            v0.11.0
+        </span>
+        <span class="flex items-center gap-2">
+            
+                <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'><path stroke-linecap='round' stroke-linejoin='round' d='M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5' /></svg>
+                Dec 20 2023 at 22:28 UTC
+            
+        </span>
+    </div>
+    <div class="release-body">
+        <h3>Added</h3>
+<ul>
+<li>Add action to copy entire request/response body (<a href="https://github.com/LucasPickering/slumber/issues/45" rel="noopener noreferrer">#74</a>)</li>
+<li>Persist UI state between sessions (<a href="https://github.com/LucasPickering/slumber/issues/39" rel="noopener noreferrer">#39</a>)</li>
+<li>Text window can be controlled with PgUp/PgDown/Home/End (<a href="https://github.com/LucasPickering/slumber/issues/77" rel="noopener noreferrer">#77</a>)</li>
+<li>Add back manual reload keybinding (R)
+<ul>
+<li>Mostly for development purposes</li>
+</ul>
+</li>
+<li>Add collection ID/path to help modal (<a href="https://github.com/LucasPickering/slumber/issues/59" rel="noopener noreferrer">#59</a>)
+<ul>
+<li>Also add collection ID to terminal title</li>
+</ul>
+</li>
+<li>Add new docs for templates and collection reuse (<a href="https://github.com/LucasPickering/slumber/issues/67" rel="noopener noreferrer">#67</a>)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>[BREAKING] Key profiles/chains/requests by ID in collection file</li>
+<li>[BREAKING] Merge request history into a single DB file
+<ul>
+<li>Request history (and UI state) will be lost</li>
+</ul>
+</li>
+<li>[BREAKING] <code>show</code> subcommand now takes a <code>target</code> argument
+<ul>
+<li>Right now the only option is <code>slumber show dir</code>, which has the same behavior as the old <code>slumber show</code> (except now it prints the bare directory)</li>
+</ul>
+</li>
+<li>[BREAKING] Remove option to toggle cursor capture
+<ul>
+<li>Turns out it's not that useful, since most terminals provide override behavior</li>
+</ul>
+</li>
+<li>Filter request history by profile (<a href="https://github.com/LucasPickering/slumber/issues/74" rel="noopener noreferrer">#74</a>)</li>
+<li>Hide sensitive chain values in preview</li>
+<li>Change fullscreen keybinding from F11 to F
+<ul>
+<li>F11 in some cases is eaten by the IDE or OS, which is annoying</li>
+</ul>
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Don't require collection file to be present for <code>show</code> subcommand (<a href="https://github.com/LucasPickering/slumber/issues/62" rel="noopener noreferrer">#62</a>)</li>
+<li>Fix state file being created in root Slumber directory if collection file is invalid (<a href="https://github.com/LucasPickering/slumber/issues/71" rel="noopener noreferrer">#71</a>)</li>
+<li>Fix pane cycling while in fullscreen (<a href="https://github.com/LucasPickering/slumber/issues/76" rel="noopener noreferrer">#76</a>)</li>
+</ul>
+
+    </div>
+</section>
+    </div>
+</div>
+
+                </main>
+            </div>
+
+            <footer>
+                
+                    <a href="https://github.com/LucasPickering/slumber"><div class="github-icon" aria-hidden="true"></div></a>
+                
+                <span>
+                    slumber, MIT
+                </span>
+            </footer>
+        </div>
+
+        
+        
+
+        
+    </body>
+</html>

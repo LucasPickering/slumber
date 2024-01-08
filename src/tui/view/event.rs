@@ -4,9 +4,7 @@
 use crate::{
     collection::{ProfileId, RecipeId},
     tui::{
-        context::TuiContext,
         input::Action,
-        message::Message,
         view::{
             common::modal::{Modal, ModalPriority},
             state::{Notification, RequestState},
@@ -14,7 +12,6 @@ use crate::{
         },
     },
 };
-use anyhow::anyhow;
 use crossterm::event::{MouseEvent, MouseEventKind};
 use std::{any::Any, collections::VecDeque, fmt::Debug};
 use tracing::trace;
@@ -72,27 +69,6 @@ impl<'a> UpdateContext<'a> {
     /// Open a modal that implements `Default`, with low priority
     pub fn open_modal_default<T: Modal + Default + 'static>(&mut self) {
         self.open_modal(T::default(), ModalPriority::Low);
-    }
-
-    /// Send an informational notification to the user
-    pub fn notify(&mut self, message: impl ToString) {
-        self.queue_event(Event::Notify(Notification::new(message.to_string())));
-    }
-
-    /// Copy text to the user's clipboard, and notify them
-    pub fn copy_text(&mut self, text: String) {
-        match cli_clipboard::set_contents(text) {
-            Ok(()) => {
-                self.notify("Copied text to clipboard");
-            }
-            Err(error) => {
-                // Returned error doesn't impl 'static so we can't
-                // directly convert it to anyhow
-                TuiContext::send_message(Message::Error {
-                    error: anyhow!("Error copying text: {error}"),
-                })
-            }
-        }
     }
 }
 

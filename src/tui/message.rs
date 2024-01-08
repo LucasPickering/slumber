@@ -59,15 +59,20 @@ pub enum Message {
     /// Open the collection in the user's editor
     CollectionEdit,
 
+    /// Render request URL, then copy rendered URL. This needs to be deferred
+    /// to the main loop because the render is async.
+    CopyRequestUrl(RequestConfig),
+    /// Render request body, then copy rendered text. This needs to be deferred
+    /// to the main loop because the render is async.
+    CopyRequestBody(RequestConfig),
+    /// Copy some text to the clipboard
+    CopyText(String),
+
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
 
     /// Launch an HTTP request from the given recipe/profile.
-    HttpBeginRequest {
-        profile_id: Option<ProfileId>,
-        recipe_id: RecipeId,
-        options: RecipeOptions,
-    },
+    HttpBeginRequest(RequestConfig),
     /// Request failed to build
     HttpBuildError {
         profile_id: Option<ProfileId>,
@@ -111,4 +116,12 @@ pub enum Message {
         profile_id: Option<ProfileId>,
         destination: Arc<OnceLock<Vec<TemplateChunk>>>,
     },
+}
+
+/// Configuration that defines how to render a request
+#[derive(Clone, Debug)]
+pub struct RequestConfig {
+    pub profile_id: Option<ProfileId>,
+    pub recipe_id: RecipeId,
+    pub options: RecipeOptions,
 }

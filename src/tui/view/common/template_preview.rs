@@ -57,39 +57,6 @@ impl TemplatePreview {
             Self::Disabled { template }
         }
     }
-
-    /// Convert rendered template to plain text for the purposes of copypasta.
-    /// If the render isn't ready, return the raw template. If any chunk failed,
-    /// it will be left empty.
-    pub fn to_copy_text(&self) -> String {
-        // If the preview render is ready, show it. Otherwise fall back to raw
-        match self {
-            TemplatePreview::Disabled { template } => template.to_string(),
-            TemplatePreview::Enabled { template, chunks } => match chunks.get()
-            {
-                // The goal here is to minimize "wonky" output, so loading and
-                // errors are replaced with minimal placeholders
-                Some(chunks) => {
-                    let mut s = String::new();
-                    for chunk in chunks {
-                        let content = match chunk {
-                            TemplateChunk::Raw(span) => {
-                                template.substring(*span)
-                            }
-                            TemplateChunk::Rendered { value, .. } => {
-                                value.as_str()
-                            }
-                            TemplateChunk::Error(_) => "",
-                        };
-                        s.push_str(content);
-                    }
-                    s
-                }
-                // Preview still rendering
-                None => template.to_string(),
-            },
-        }
-    }
 }
 
 impl Generate for &TemplatePreview {

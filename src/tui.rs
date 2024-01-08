@@ -7,12 +7,12 @@ use crate::{
     collection::{Collection, CollectionFile, ProfileId, RecipeId},
     config::Config,
     db::{CollectionDatabase, Database},
-    http::{HttpEngine, RecipeOptions, RequestBuilder},
+    http::{HttpEngine, RequestBuilder},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
         context::TuiContext,
         input::Action,
-        message::{Message, MessageSender},
+        message::{Message, MessageSender, RequestConfig},
         view::{ModalPriority, PreviewPrompter, RequestState, View},
     },
     util::Replaceable,
@@ -203,16 +203,22 @@ impl Tui {
                 open::that_detached(path).context("Error opening {path:?}")?;
             }
 
+            Message::CopyRequestUrl(request_config) => {
+                self.copy_request_url(request_config)?;
+            }
+            Message::CopyRequestBody(request_config) => {
+                self.copy_request_body(request_config)?;
+            }
+            Message::CopyText(text) => self.view.copy_text(text),
+
             Message::Error { error } => {
                 self.view.open_modal(error, ModalPriority::High)
             }
 
             // Manage HTTP life cycle
-            Message::HttpBeginRequest {
-                recipe_id,
-                profile_id,
-                options,
-            } => self.send_request(profile_id, recipe_id, options)?,
+            Message::HttpBeginRequest(request_config) => {
+                self.send_request(request_config)?
+            }
             Message::HttpBuildError {
                 profile_id,
                 recipe_id,
@@ -314,28 +320,60 @@ impl Tui {
         ));
     }
 
+    /// Render URL for a request, then copy it to the clipboard
+    fn copy_request_url(
+        &self,
+        request_config: RequestConfig,
+    ) -> anyhow::Result<()> {
+        let builder = self.get_request_builder(request_config)?;
+        let messages_tx = self.messages_tx.clone();
+        // Spawn a task to do the render+copy
+        self.spawn(async move {
+            let url = builder.build_url().await?;
+            messages_tx.send(Message::CopyText(url.to_string()));
+            Ok(())
+        });
+        Ok(())
+    }
+
+    /// Render body for a request, then copy it to the clipboard
+    fn copy_request_body(
+        &self,
+        request_config: RequestConfig,
+    ) -> anyhow::Result<()> {
+        let builder = self.get_request_builder(request_config)?;
+        let messages_tx = self.messages_tx.clone();
+        // Spawn a task to do the render+copy
+        self.spawn(async move {
+            let body = builder
+                .build_body()
+                .await?
+                .ok_or(anyhow!("Request has no body"))?;
+            let body = String::from_utf8(body.into())
+                .context("Cannot copy request bodyj")?;
+            messages_tx.send(Message::CopyText(body));
+            Ok(())
+        });
+        Ok(())
+    }
+
     /// Launch an HTTP request in a separate task
     fn send_request(
         &mut self,
-        profile_id: Option<ProfileId>,
-        recipe_id: RecipeId,
-        options: RecipeOptions,
+        request_config: RequestConfig,
     ) -> anyhow::Result<()> {
-        let recipe = self
-            .collection_file
-            .collection
-            .recipes
-            .get(&recipe_id)
-            .ok_or_else(|| anyhow!("No recipe with ID `{recipe_id}`"))?
-            .clone();
-
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
-        let template_context = self
-            .template_context(profile_id.as_ref(), self.messages_tx.clone())?;
+
         let http_engine = self.http_engine.clone();
-        let builder = RequestBuilder::new(recipe, options, template_context);
+        let builder = self.get_request_builder(request_config.clone())?;
         let messages_tx = self.messages_tx.clone();
+
+        let RequestConfig {
+            profile_id,
+            recipe_id,
+            ..
+        } = request_config;
 
         // Mark request state as building
         let request_id = builder.id();
@@ -394,6 +432,27 @@ impl Tui {
             );
         }
         Ok(())
+    }
+
+    /// Helper to create a [RequestBuilder] based on request parameters
+    fn get_request_builder(
+        &self,
+        RequestConfig {
+            profile_id,
+            recipe_id,
+            options,
+        }: RequestConfig,
+    ) -> anyhow::Result<RequestBuilder> {
+        let recipe = self
+            .collection_file
+            .collection
+            .recipes
+            .get(&recipe_id)
+            .ok_or_else(|| anyhow!("No recipe with ID `{recipe_id}`"))?
+            .clone();
+        let template_context = self
+            .template_context(profile_id.as_ref(), self.messages_tx.clone())?;
+        Ok(RequestBuilder::new(recipe, options, template_context))
     }
 
     /// Spawn a task to render a template, storing the result in a pre-defined

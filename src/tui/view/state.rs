@@ -49,6 +49,16 @@ impl<K, V> StateCell<K, V> {
         Ref::map(self.state.borrow(), |state| &state.as_ref().unwrap().1)
     }
 
+    /// Get a reference to the state key. This can panic, if the state key/value
+    /// is already borrowed elsewhere. Returns `None` iff the setate cell is
+    /// uninitialized.
+    pub fn key(&self) -> Option<Ref<'_, K>> {
+        Ref::filter_map(self.state.borrow(), |state| {
+            state.as_ref().map(|(k, _)| k)
+        })
+        .ok()
+    }
+
     /// Get a reference to the state value. This can panic, if the state value
     /// is already borrowed elsewhere. Returns `None` iff the state cell is
     /// uninitialized.
@@ -110,6 +120,15 @@ pub enum RequestState {
     RequestError { error: RequestError },
 }
 
+#[derive(Debug)]
+pub struct RequestMetadata {
+    /// When was the request launched?
+    pub start_time: DateTime<Utc>,
+    /// Elapsed time for the active request. If pending, this is a running
+    /// total. Otherwise end time - start time.
+    pub duration: Duration,
+}
+
 impl RequestState {
     /// Unique ID for this request, which will be retained throughout its life
     /// cycle
@@ -127,28 +146,23 @@ impl RequestState {
         matches!(self, Self::Building { .. })
     }
 
-    /// When was the request launched? Returns `None` if the request hasn't
-    /// been launched yet.
-    pub fn start_time(&self) -> Option<DateTime<Utc>> {
+    /// Get metadata about a request. Return `None` if the request hasn't been
+    /// successfully built (yet)
+    pub fn metadata(&self) -> Option<RequestMetadata> {
         match self {
             Self::Building { .. } | Self::BuildError { .. } => None,
-            Self::Loading { start_time, .. } => Some(*start_time),
-            Self::Response { record, .. } => Some(record.start_time),
-            Self::RequestError { error } => Some(error.start_time),
-        }
-    }
-
-    /// Elapsed time for the active request. If pending, this is a running
-    /// total. Otherwise end time - start time.  Returns `None` if the request
-    /// hasn't been launched yet.
-    pub fn duration(&self) -> Option<Duration> {
-        match self {
-            Self::Building { .. } | Self::BuildError { .. } => None,
-            Self::Loading { start_time, .. } => Some(Utc::now() - start_time),
-            Self::Response { record, .. } => Some(record.duration()),
-            Self::RequestError { error } => {
-                Some(error.end_time - error.start_time)
-            }
+            Self::Loading { start_time, .. } => Some(RequestMetadata {
+                start_time: *start_time,
+                duration: Utc::now() - start_time,
+            }),
+            Self::Response { record, .. } => Some(RequestMetadata {
+                start_time: record.start_time,
+                duration: record.duration(),
+            }),
+            Self::RequestError { error } => Some(RequestMetadata {
+                start_time: error.start_time,
+                duration: error.end_time - error.start_time,
+            }),
         }
     }
 

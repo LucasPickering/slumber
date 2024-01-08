@@ -308,7 +308,14 @@ impl CollectionDatabase {
                 |row| row.try_into(),
             )
             .optional()
-            .context("Error fetching request ID from database")
+            .with_context(|| {
+                format!(
+                    "Error fetching request [profile={}; recipe={}] \
+                    from database",
+                    profile_id.map(ProfileId::to_string).unwrap_or_default(),
+                    recipe_id
+                )
+            })
             .traced()
     }
 
@@ -352,7 +359,7 @@ impl CollectionDatabase {
                     ":status_code": record.response.status.as_u16(),
                 },
             )
-            .context("Error saving request to database")
+            .context(format!("Error saving request {} to database", record.id))
             .traced()?;
         Ok(())
     }

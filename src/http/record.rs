@@ -88,9 +88,13 @@ impl RequestRecord {
     }
 }
 
-/// A single instance of an HTTP request. Simpler alternative to
-/// [reqwest::Request] that suits our needs better. This intentionally does
-/// *not* implement `Clone`, because each request is unique.
+/// A single instance of an HTTP request. There are a few reasons we need this
+/// in addition to [reqwest::Request]:
+/// - It stores additional Slumber-specific metadata
+/// - It is serializable/deserializable, for database access
+///
+/// This intentionally does *not* implement `Clone`, because each request is
+/// unique.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Request {

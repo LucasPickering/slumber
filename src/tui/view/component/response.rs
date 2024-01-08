@@ -3,7 +3,9 @@ mod body;
 use crate::{
     http::{RequestRecord, ResponseContent},
     tui::{
+        context::TuiContext,
         input::Action,
+        message::Message,
         view::{
             common::{actions::ActionsModal, table::Table, tabs::Tabs, Pane},
             component::{
@@ -82,26 +84,23 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 Direction::Vertical,
                 [Constraint::Length(1), Constraint::Min(0)],
             );
-            let [header_left_area, header_right_area] = layout(
+            let [status_area, time_area] = layout(
                 header_area,
                 Direction::Horizontal,
                 // The longest canonical status reason in reqwest is 31 chars
                 [Constraint::Length(3 + 1 + 31), Constraint::Min(0)],
             );
 
-            // Time-related data. start_time and duration should always be
-            // defined together
-            if let (Some(start_time), Some(duration)) =
-                (request_state.start_time(), request_state.duration())
-            {
+            // Request/response metadata
+            if let Some(metadata) = request_state.metadata() {
                 frame.render_widget(
                     Paragraph::new(Line::from(vec![
-                        start_time.generate(),
+                        metadata.start_time.generate(),
                         " / ".into(),
-                        duration.generate(),
+                        metadata.duration.generate(),
                     ]))
                     .alignment(Alignment::Right),
-                    header_right_area,
+                    time_area,
                 );
             }
 
@@ -109,7 +108,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 RequestState::Building { .. } => {
                     frame.render_widget(
                         Paragraph::new("Initializing request..."),
-                        header_left_area,
+                        status_area,
                     );
                 }
 
@@ -124,7 +123,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 RequestState::Loading { .. } => {
                     frame.render_widget(
                         Paragraph::new("Loading..."),
-                        header_left_area,
+                        status_area,
                     );
                 }
 
@@ -136,7 +135,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                     // Status code
                     frame.render_widget(
                         Paragraph::new(response.status.to_string()),
-                        header_left_area,
+                        status_area,
                     );
 
                     self.content.draw(
@@ -214,7 +213,7 @@ impl EventHandler for CompleteResponseContent {
                 match other.downcast_ref::<MenuAction>() {
                     Some(MenuAction::CopyBody) => {
                         if let Some(body) = self.body.text() {
-                            context.copy_text(body);
+                            TuiContext::send_message(Message::CopyText(body));
                         }
                     }
                     None => return Update::Propagate(event),

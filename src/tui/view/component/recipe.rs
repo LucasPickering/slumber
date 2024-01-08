@@ -3,7 +3,9 @@ use crate::{
     http::RecipeOptions,
     template::Template,
     tui::{
+        context::TuiContext,
         input::Action,
+        message::{Message, RequestConfig},
         view::{
             common::{
                 actions::ActionsModal,
@@ -25,9 +27,7 @@ use crate::{
             Component,
         },
     },
-    util::ResultExt,
 };
-use anyhow::Context;
 use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
@@ -38,7 +38,6 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use strum::{EnumCount, EnumIter};
-use url::Url;
 
 /// Display a request recipe
 #[derive(Debug)]
@@ -109,6 +108,7 @@ struct RowState {
 enum MenuAction {
     #[display("Copy URL")]
     CopyUrl,
+    // TODO disable this if request doesn't have body
     #[display("Copy Body")]
     CopyBody,
 }
@@ -142,40 +142,32 @@ impl RecipePane {
         }
     }
 
-    /// Get the full URL (including query params) of the request, for copypasta
-    fn url(&self) -> Option<String> {
-        self.recipe_state.get().and_then(|state| {
-            // Parse the base URL
-            let mut url = Url::parse(&state.url.to_copy_text())
-                .context("Error parsing URL")
-                .traced()
-                .ok()?;
-
-            // Add additional query params. We need to make sure to append, in
-            // case the base URL includes some query params already
-            {
-                let mut query_pairs = url.query_pairs_mut();
-                for row in state.query.items() {
-                    // Don't include disabled params
-                    if *row.enabled {
-                        query_pairs
-                            .append_pair(&row.key, &row.value.to_copy_text());
+    fn handle_menu_action(&mut self, action: MenuAction) {
+        match action {
+            // This branch is exhaustive so it's redundant to match, but we made
+            // add disjoint branches in the future
+            MenuAction::CopyUrl | MenuAction::CopyBody => {
+                // Should always be initialized after first render
+                let key = self
+                    .recipe_state
+                    .key()
+                    .expect("Request state not initialized");
+                let request_config = RequestConfig {
+                    profile_id: key.selected_profile_id.clone(),
+                    recipe_id: key.recipe_id.clone(),
+                    options: self.recipe_options(),
+                };
+                let message = match action {
+                    MenuAction::CopyUrl => {
+                        Message::CopyRequestUrl(request_config)
                     }
-                }
+                    MenuAction::CopyBody => {
+                        Message::CopyRequestBody(request_config)
+                    }
+                };
+                TuiContext::send_message(message);
             }
-
-            Some(url.to_string())
-        })
-    }
-
-    /// Get the full *prettified* body of the request, for copypasta
-    fn body(&self) -> Option<String> {
-        self.recipe_state.get().and_then(|state| {
-            state
-                .body
-                .as_ref()
-                .map(|body| body.inner().text().to_copy_text())
-        })
+        }
     }
 }
 
@@ -188,15 +180,8 @@ impl EventHandler for RecipePane {
             } => context.open_modal_default::<ActionsModal<MenuAction>>(),
             Event::Other(callback) => {
                 match callback.downcast_ref::<MenuAction>() {
-                    Some(MenuAction::CopyUrl) => {
-                        if let Some(url) = self.url() {
-                            context.copy_text(url);
-                        }
-                    }
-                    Some(MenuAction::CopyBody) => {
-                        if let Some(body) = self.body() {
-                            context.copy_text(body);
-                        }
+                    Some(action) => {
+                        self.handle_menu_action(*action);
                     }
                     None => return Update::Propagate(event),
                 }

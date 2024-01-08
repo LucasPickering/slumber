@@ -5,7 +5,7 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
-        message::Message,
+        message::{Message, RequestConfig},
         view::{
             common::actions::ActionsModal,
             component::{
@@ -161,14 +161,16 @@ impl EventHandler for PrimaryView {
             // Send HTTP request
             Event::HttpSendRequest => {
                 if let Some(recipe) = self.selected_recipe() {
-                    TuiContext::send_message(Message::HttpBeginRequest {
-                        // Reach into the children to grab state (ugly!)
-                        recipe_id: recipe.id.clone(),
-                        profile_id: self
-                            .selected_profile()
-                            .map(|profile| profile.id.clone()),
-                        options: self.request_pane.recipe_options(),
-                    });
+                    TuiContext::send_message(Message::HttpBeginRequest(
+                        RequestConfig {
+                            // Reach into the children to grab state (ugly!)
+                            recipe_id: recipe.id.clone(),
+                            profile_id: self
+                                .selected_profile()
+                                .map(|profile| profile.id.clone()),
+                            options: self.request_pane.recipe_options(),
+                        },
+                    ));
                 }
                 Update::Consumed
             }

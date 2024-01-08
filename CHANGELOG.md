@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Changed
+
+- Run prompts while rendering request URL/body to be copied
+
 ## [0.14.0] - 2024-03-18
 
 ### Added

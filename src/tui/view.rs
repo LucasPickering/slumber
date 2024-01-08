@@ -14,7 +14,9 @@ pub use util::PreviewPrompter;
 use crate::{
     collection::{Collection, ProfileId, RecipeId},
     tui::{
+        context::TuiContext,
         input::Action,
+        message::Message,
         view::{
             component::{Component, Root},
             draw::Draw,
@@ -23,6 +25,7 @@ use crate::{
         },
     },
 };
+use anyhow::anyhow;
 use ratatui::Frame;
 use std::{collections::VecDeque, fmt::Debug};
 use tracing::{error, trace, trace_span};
@@ -85,9 +88,25 @@ impl View {
     }
 
     /// Send an informational notification to the user
-    pub fn notify(&mut self, message: String) {
-        let notification = Notification::new(message);
+    pub fn notify(&mut self, message: impl ToString) {
+        let notification = Notification::new(message.to_string());
         self.handle_event(Event::Notify(notification));
+    }
+
+    /// Copy text to the user's clipboard, and notify them
+    pub fn copy_text(&mut self, text: String) {
+        match cli_clipboard::set_contents(text) {
+            Ok(()) => {
+                self.notify("Copied text to clipboard");
+            }
+            Err(error) => {
+                // Returned error doesn't impl 'static so we can't
+                // directly convert it to anyhow
+                TuiContext::send_message(Message::Error {
+                    error: anyhow!("Error copying text: {error}"),
+                })
+            }
+        }
     }
 
     /// Update the view according to an input event from the user. If possible,

@@ -58,7 +58,7 @@ use reqwest::{
     header::{self, HeaderMap, HeaderName, HeaderValue},
     Client,
 };
-use std::{collections::HashSet, io::Write};
+use std::{collections::HashSet, future::Future, io::Write};
 use tokio::try_join;
 use tracing::{debug, info, info_span};
 use url::Url;
@@ -299,15 +299,32 @@ impl RequestBuilder {
     /// Build the request. This is async because templated values may require IO
     /// or other async actions.
     pub async fn build(self) -> Result<Request, RequestBuildError> {
-        let id = self.id;
-        self.build_helper()
-            .await
-            .traced()
-            .map_err(|error| RequestBuildError { id, error })
+        self.apply_error(self.render_request()).await
     }
 
-    /// Outsourced build function, to make error conversion easier later
-    async fn build_helper(self) -> anyhow::Result<Request> {
+    /// Build just a request's URL
+    pub async fn build_url(self) -> Result<Url, RequestBuildError> {
+        self.apply_error(self.render_url()).await
+    }
+
+    /// Build just a request's body
+    pub async fn build_body(self) -> Result<Option<Bytes>, RequestBuildError> {
+        self.apply_error(self.render_body()).await
+    }
+
+    /// Wrapper to apply a helpful error around some request build step
+    async fn apply_error<T>(
+        &self,
+        future: impl Future<Output = anyhow::Result<T>>,
+    ) -> Result<T, RequestBuildError> {
+        future
+            .await
+            .traced()
+            .map_err(|error| RequestBuildError { id: self.id, error })
+    }
+
+    /// Render the entire request
+    async fn render_request(&self) -> anyhow::Result<Request> {
         // let recipe = self.recipe;
         let template_context = &self.template_context;
         let method = self.recipe.method.parse()?;
@@ -330,7 +347,7 @@ impl RequestBuilder {
                 .profile
                 .as_ref()
                 .map(|profile| profile.id.clone()),
-            recipe_id: self.recipe.id,
+            recipe_id: self.recipe.id.clone(),
             method,
             url,
             headers,

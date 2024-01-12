@@ -6,9 +6,12 @@ use crate::{
         input::Action,
         view::{
             common::{
-                actions::ActionsModal, table::Table, tabs::Tabs,
-                template_preview::TemplatePreview, text_window::TextWindow,
-                Checkbox, Pane,
+                actions::ActionsModal,
+                table::{Table, ToggleRow},
+                tabs::Tabs,
+                template_preview::TemplatePreview,
+                text_window::TextWindow,
+                Pane,
             },
             component::primary::PrimaryPane,
             draw::{Draw, Generate, ToStringGenerate},
@@ -29,8 +32,7 @@ use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
     prelude::{Constraint, Direction, Rect},
-    text::Text,
-    widgets::{Paragraph, TableState},
+    widgets::{Paragraph, Row, TableState},
     Frame,
 };
 use serde::{Deserialize, Serialize};
@@ -395,20 +397,17 @@ impl RowState {
 fn to_table<'a>(
     state: &'a SelectState<Dynamic, RowState, TableState>,
     header: [&'a str; 3],
-) -> Table<'a, 3, Vec<[Text<'a>; 3]>> {
+) -> Table<'a, 3, Row<'a>> {
     Table {
         rows: state
             .items()
             .iter()
             .map(|item| {
-                [
-                    item.key.as_str().into(),
-                    item.value.generate(),
-                    Checkbox {
-                        checked: *item.enabled,
-                    }
-                    .generate(),
-                ]
+                ToggleRow::new(
+                    [item.key.as_str().into(), item.value.generate()],
+                    *item.enabled,
+                )
+                .generate()
             })
             .collect_vec(),
         header: Some(header),
@@ -417,7 +416,6 @@ fn to_table<'a>(
             Constraint::Percentage(50),
             Constraint::Min(3),
         ],
-        alternate_row_style: true,
         ..Default::default()
     }
 }

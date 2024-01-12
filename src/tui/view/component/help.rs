@@ -98,7 +98,7 @@ impl Draw for HelpModal {
         // Collection metadata
         let collection_metadata = Table {
             title: Some("General"),
-            rows: [
+            rows: vec![
                 [
                     Line::from("Configuration"),
                     Line::from(tui_context.config.path().display().to_string())

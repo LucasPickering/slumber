@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased] - 2024-01-14
+
+### Changed
+
+- Improved styling of toggled table rows
+
 ## [0.12.0] - 2024-01-07
 
 ### Added

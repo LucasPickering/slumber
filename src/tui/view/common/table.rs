@@ -1,14 +1,26 @@
-use crate::tui::{context::TuiContext, view::draw::Generate};
+use crate::tui::{
+    context::TuiContext,
+    view::{common::Checkbox, draw::Generate},
+};
+use itertools::Itertools;
 use ratatui::{
     prelude::Constraint,
+    style::Styled,
+    text::Text,
     widgets::{Block, Cell, Row},
 };
+use std::{iter, marker::PhantomData};
 
-/// Tabular data display with a static number of columns
+/// Tabular data display with a static number of columns.
+///
+/// The `R` generic defines the row type, which should be either an array of
+/// cell types (e.g. `[Text; 3]`) or [ratatui::widgets::Row]. If using an array,
+/// the length should match `COLS`. Allowing `Row` makes it possible to override
+/// styling on a row-by-row basis.
 #[derive(Debug)]
-pub struct Table<'a, const COLS: usize, Rows> {
+pub struct Table<'a, const COLS: usize, R> {
     pub title: Option<&'a str>,
-    pub rows: Rows,
+    pub rows: Vec<R>,
     /// Optional header row. Length should match column length
     pub header: Option<[&'a str; COLS]>,
     /// Use a different styling for alternating rows
@@ -31,11 +43,30 @@ impl<'a, const COLS: usize, Rows: Default> Default for Table<'a, COLS, Rows> {
     }
 }
 
-impl<'a, const COLS: usize, Cll, Rows> Generate for Table<'a, COLS, Rows>
+impl<'a, const COLS: usize, Cll> Generate for Table<'a, COLS, [Cll; COLS]>
 where
     Cll: Into<Cell<'a>>,
-    Rows: IntoIterator<Item = [Cll; COLS]>,
 {
+    type Output<'this> = ratatui::widgets::Table<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        let table = Table {
+            title: self.title,
+            alternate_row_style: self.alternate_row_style,
+            header: self.header,
+            column_widths: self.column_widths,
+            rows: self.rows.into_iter().map(Row::new).collect_vec(),
+        };
+        table.generate()
+    }
+}
+
+impl<'a, const COLS: usize> Generate for Table<'a, COLS, Row<'a>> {
     type Output<'this> = ratatui::widgets::Table<'this>
     where
         Self: 'this;
@@ -46,13 +77,14 @@ where
     {
         let theme = &TuiContext::get().theme;
         let rows = self.rows.into_iter().enumerate().map(|(i, row)| {
-            // Alternate row style for readability
-            let style = if self.alternate_row_style && i % 2 == 1 {
-                theme.table_alt_text_style
+            // Apply theme styles, but let the row's individual styles override
+            let base_style = if self.alternate_row_style && i % 2 == 1 {
+                theme.table_alt_style
             } else {
                 theme.table_text_style
             };
-            Row::new(row).style(style)
+            let row_style = Styled::style(&row);
+            row.set_style(base_style.patch(row_style))
         });
         let mut table = ratatui::widgets::Table::new(rows, self.column_widths)
             .highlight_style(theme.table_highlight_style);
@@ -73,5 +105,58 @@ where
         }
 
         table
+    }
+}
+
+/// A row in a table that can be toggled on/off. This will generate the checkbox
+/// column, and apply the appropriate row styling.
+#[derive(Debug)]
+pub struct ToggleRow<'a, Cells> {
+    /// Needed to attach the lifetime of this value to the lifetime of the
+    /// generated row
+    phantom: PhantomData<&'a ()>,
+    cells: Cells,
+    enabled: bool,
+}
+
+impl<'a, Cells> ToggleRow<'a, Cells> {
+    pub fn new(cells: Cells, enabled: bool) -> Self {
+        Self {
+            phantom: PhantomData,
+            cells,
+            enabled,
+        }
+    }
+}
+
+impl<'a, Cells> Generate for ToggleRow<'a, Cells>
+where
+    Cells: IntoIterator,
+    Cells::Item: Into<Text<'a>>,
+{
+    type Output<'this> = Row<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        let theme = &TuiContext::get().theme;
+        // Include the given cells, then tack on the checkbox for enabled state
+        Row::new(
+            self.cells.into_iter().map(Cell::from).chain(iter::once(
+                Checkbox {
+                    checked: self.enabled,
+                }
+                .generate()
+                .into(),
+            )),
+        )
+        .style(if self.enabled {
+            theme.table_text_style
+        } else {
+            theme.table_disabled_style
+        })
     }
 }

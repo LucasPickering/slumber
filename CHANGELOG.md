@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Added
+
+- New informational flags to `slumber request`
+  - `--exit-status` to set exit code based on response status ([#97](https://github.com/LucasPickering/slumber/issues/97))
+  - `--status`, `--headers`, and `--no-body` to control printed output
+
 ## [0.12.1] - 2024-01-22
 
 ### Changed

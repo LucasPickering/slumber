@@ -10,12 +10,22 @@ use crate::{
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use clap::Parser;
-use dialoguer::{Input, Password};
+use dialoguer::{console::Style, Input, Password};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use std::{error::Error, str::FromStr};
+use reqwest::header::HeaderMap;
+use std::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+    process::ExitCode,
+    str::FromStr,
+};
 
-/// Execute a single request
+/// Exit code to return when `exit_status` flag is set and the HTTP response has
+/// an error status code
+const HTTP_ERROR_EXIT_CODE: u8 = 2;
+
+/// Execute a single request, and print its response
 #[derive(Clone, Debug, Parser)]
 #[clap(aliases=&["req", "rq"])]
 pub struct RequestCommand {
@@ -26,12 +36,29 @@ pub struct RequestCommand {
     #[clap(long = "profile", short)]
     profile: Option<ProfileId>,
 
-    /// List of key=value overrides
+    /// Print HTTP response status
+    #[clap(long)]
+    status: bool,
+
+    /// Print HTTP request and response headers
+    #[clap(long)]
+    headers: bool,
+
+    /// Do not print HTTP response body
+    #[clap(long)]
+    no_body: bool,
+
+    /// Set process exit code based on HTTP response status. If the status is
+    /// <400, exit code is 0. If it's >=400, exit code is 2.
+    #[clap(long)]
+    exit_status: bool,
+
+    /// List of key=value template field overrides
     #[clap(
-            long = "override",
-            short = 'o',
-            value_parser = parse_key_val::<String, String>,
-        )]
+        long = "override",
+        short = 'o',
+        value_parser = parse_key_val::<String, String>,
+    )]
     overrides: Vec<(String, String)>,
 
     /// Just print the generated request, instead of sending it
@@ -41,7 +68,7 @@ pub struct RequestCommand {
 
 #[async_trait]
 impl Subcommand for RequestCommand {
-    async fn execute(self, global: GlobalArgs) -> anyhow::Result<()> {
+    async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         let collection_path = CollectionFile::try_path(global.collection)?;
         let database = Database::load()?.into_collection(&collection_path)?;
         let mut collection_file = CollectionFile::load(collection_path).await?;
@@ -89,15 +116,34 @@ impl Subcommand for RequestCommand {
 
         if self.dry_run {
             println!("{:#?}", request);
+            Ok(ExitCode::SUCCESS)
         } else {
+            if self.headers {
+                eprintln!("{}", HeaderDisplay(&request.headers));
+            }
+
             // Run the request
             let http_engine = HttpEngine::new(database);
             let record = http_engine.send(request).await?;
+            let status = record.response.status;
 
-            // Print response
-            print!("{}", record.response.body.text());
+            // Print stuff!
+            if self.status {
+                println!("{}", status.as_u16());
+            }
+            if self.headers {
+                println!("{}", HeaderDisplay(&record.response.headers));
+            }
+            if !self.no_body {
+                print!("{}", record.response.body.text());
+            }
+
+            if self.exit_status && status.as_u16() >= 400 {
+                Ok(ExitCode::from(HTTP_ERROR_EXIT_CODE))
+            } else {
+                Ok(ExitCode::SUCCESS)
+            }
         }
-        Ok(())
     }
 }
 
@@ -139,4 +185,22 @@ where
         .split_once('=')
         .ok_or_else(|| format!("invalid key=value: no \"=\" found in `{s}`"))?;
     Ok((key.parse()?, value.parse()?))
+}
+
+/// Wrapper making it easy to print a header map
+struct HeaderDisplay<'a>(&'a HeaderMap);
+
+impl<'a> Display for HeaderDisplay<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let key_style = Style::new().bold();
+        for (key, value) in self.0 {
+            writeln!(
+                f,
+                "{}: {}",
+                key_style.apply_to(key),
+                value.to_str().unwrap_or("<invalid utf-8>")
+            )?;
+        }
+        Ok(())
+    }
 }

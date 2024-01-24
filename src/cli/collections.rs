@@ -1,7 +1,7 @@
 use crate::{cli::Subcommand, db::Database, GlobalArgs};
 use async_trait::async_trait;
 use clap::Parser;
-use std::path::PathBuf;
+use std::{path::PathBuf, process::ExitCode};
 
 /// View and modify request collection history
 #[derive(Clone, Debug, Parser)]
@@ -29,7 +29,7 @@ enum CollectionsSubcommand {
 
 #[async_trait]
 impl Subcommand for CollectionsCommand {
-    async fn execute(self, _global: GlobalArgs) -> anyhow::Result<()> {
+    async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
         let database = Database::load()?;
         match self.subcommand {
             CollectionsSubcommand::List => {
@@ -42,6 +42,6 @@ impl Subcommand for CollectionsCommand {
                 println!("Migrated {} into {}", from.display(), to.display());
             }
         }
-        Ok(())
+        Ok(ExitCode::SUCCESS)
     }
 }

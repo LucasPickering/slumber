@@ -12,6 +12,7 @@ use crate::{
     GlobalArgs,
 };
 use async_trait::async_trait;
+use std::process::ExitCode;
 
 /// A CLI subcommand
 #[derive(Clone, Debug, clap::Subcommand)]
@@ -29,12 +30,12 @@ pub enum CliCommand {
 #[async_trait]
 pub trait Subcommand {
     /// Execute the subcommand
-    async fn execute(self, global: GlobalArgs) -> anyhow::Result<()>;
+    async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode>;
 }
 
 impl CliCommand {
     /// Execute a non-TUI command
-    pub async fn execute(self, global: GlobalArgs) -> anyhow::Result<()> {
+    pub async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self {
             CliCommand::Request(command) => command.execute(global).await,
             CliCommand::Import(command) => command.execute(global).await,

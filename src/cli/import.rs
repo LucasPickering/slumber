@@ -6,6 +6,7 @@ use std::{
     fs::File,
     io::{self, Write},
     path::PathBuf,
+    process::ExitCode,
 };
 
 /// Generate a Slumber request collection from an external format
@@ -20,7 +21,7 @@ pub struct ImportCommand {
 
 #[async_trait]
 impl Subcommand for ImportCommand {
-    async fn execute(self, _global: GlobalArgs) -> anyhow::Result<()> {
+    async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
         // Load the input
         let collection = Collection::from_insomnia(&self.input_file)?;
 
@@ -41,6 +42,6 @@ impl Subcommand for ImportCommand {
         };
         serde_yaml::to_writer(&mut writer, &collection)?;
 
-        Ok(())
+        Ok(ExitCode::SUCCESS)
     }
 }

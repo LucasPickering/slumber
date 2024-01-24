@@ -16,7 +16,7 @@ use crate::{
     cli::CliCommand, collection::CollectionFile, tui::Tui, util::Directory,
 };
 use clap::Parser;
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf, process::ExitCode};
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
 #[derive(Debug, Parser)]
@@ -45,7 +45,7 @@ struct GlobalArgs {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> anyhow::Result<ExitCode> {
     // Global initialization
     initialize_tracing().unwrap();
     let args = Args::parse();
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
             let collection_path =
                 CollectionFile::try_path(args.global.collection)?;
             Tui::start(collection_path).await?;
-            Ok(())
+            Ok(ExitCode::SUCCESS)
         }
 
         // Execute one request without a TUI

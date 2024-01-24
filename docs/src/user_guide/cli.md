@@ -34,3 +34,15 @@ You can use the `request` subcommand:
 slumber request --profile production list_fishes
 slumber rq -p production list_fishes # This is equivalent, just shorter
 ```
+
+### Exit Code
+
+By default, the CLI returns exit code 1 if there is a fatal error, e.g. the request failed to build or a network error occurred. If an HTTP response was received and parsed, the process will exit with code 0, regardless of HTTP status.
+
+If you want to set the exit code based on the HTTP response status, use the flag `--exit-code`.
+
+| Code | Reason                                              |
+| ---- | --------------------------------------------------- |
+| 0    | HTTP response received                              |
+| 1    | Fatal error                                         |
+| 2    | HTTP response had status >=400 (with `--exit-code`) |

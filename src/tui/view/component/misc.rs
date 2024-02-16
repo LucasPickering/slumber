@@ -3,14 +3,15 @@
 
 use crate::{
     template::Prompt,
-    tui::{
-        input::Action,
-        view::{
-            common::modal::{IntoModal, Modal},
-            draw::{Draw, Generate},
-            event::{Event, EventHandler, Update, UpdateContext},
-            state::Notification,
+    tui::view::{
+        common::{
+            modal::{IntoModal, Modal},
+            text_box::TextBox,
         },
+        component::Component,
+        draw::{Draw, Generate},
+        event::{Event, EventHandler},
+        state::Notification,
     },
 };
 use ratatui::{
@@ -18,8 +19,7 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
     Frame,
 };
-use std::fmt::Debug;
-use tui_textarea::TextArea;
+use std::{cell::Cell, fmt::Debug, rc::Rc};
 
 #[derive(Debug)]
 pub struct ErrorModal(anyhow::Error);
@@ -53,29 +53,39 @@ impl IntoModal for anyhow::Error {
     }
 }
 
-/// Inner state forfn update(&mut self, context:&mut UpdateContext, message:
-/// Event) -> UpdateOutcome the prompt modal
+/// Inner state for the prompt modal
 #[derive(Debug)]
 pub struct PromptModal {
     /// Prompt currently being shown
     prompt: Prompt,
-    /// A queue of additional prompts to shown. If the queue is populated,
-    /// closing one prompt will open a the next one.
-    text_area: TextArea<'static>,
-    /// Flag set before closing to indicate if we should submit in `on_close``
-    submit: bool,
+    /// Flag set before closing to indicate if we should submit in our own
+    /// `on_close`. This is set from the text box's `on_submit`.
+    submit: Rc<Cell<bool>>,
+    /// Little editor fucker
+    text_box: Component<TextBox>,
 }
 
 impl PromptModal {
     pub fn new(prompt: Prompt) -> Self {
-        let mut text_area = TextArea::default();
-        if prompt.sensitive() {
-            text_area.set_mask_char('•');
-        }
+        let submit = Rc::new(Cell::new(false));
+        let submit_cell = Rc::clone(&submit);
+        let text_box = TextBox::default()
+            .sensitive(true)
+            // Make sure cancel gets propagated to close the modal
+            .on_cancel(|_, context| context.queue_event(Event::CloseModal))
+            .on_submit(move |_, context| {
+                // We have to defer submission to on_close, because we need the
+                // owned value of `self.prompt`. We could have just put that in
+                // a refcell, but this felt a bit cleaner because we know this
+                // submitter will only be called once.
+                submit_cell.set(true);
+                context.queue_event(Event::CloseModal);
+            })
+            .into();
         Self {
             prompt,
-            text_area,
-            submit: false,
+            submit,
+            text_box,
         }
     }
 }
@@ -90,49 +100,22 @@ impl Modal for PromptModal {
     }
 
     fn on_close(self: Box<Self>) {
-        if self.submit {
+        if self.submit.get() {
             // Return the user's value and close the prompt
-            let input = self.text_area.into_lines().join("\n");
-            self.prompt.respond(input);
+            self.prompt.respond(self.text_box.into_inner().into_text());
         }
     }
 }
 
 impl EventHandler for PromptModal {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            // Submit
-            Event::Input {
-                action: Some(Action::Submit),
-                ..
-            } => {
-                // Submission is handled in on_close. The control flow here is
-                // ugly but it's hard with the top-down nature of modals
-                self.submit = true;
-                context.queue_event(Event::CloseModal);
-                Update::Consumed
-            }
-
-            // Make sure cancel gets propagated to close the modal
-            event @ Event::Input {
-                action: Some(Action::Cancel),
-                ..
-            } => Update::Propagate(event),
-
-            // All other input gets forwarded to the text editor
-            Event::Input { event, .. } => {
-                self.text_area.input(event);
-                Update::Consumed
-            }
-
-            _ => Update::Propagate(event),
-        }
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        vec![self.text_box.as_child()]
     }
 }
 
 impl Draw for PromptModal {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
-        frame.render_widget(self.text_area.widget(), area);
+        self.text_box.draw(frame, (), area);
     }
 }
 

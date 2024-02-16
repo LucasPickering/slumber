@@ -33,6 +33,9 @@ pub struct Theme {
     pub template_preview_text: Style,
     pub template_preview_error: Style,
 
+    pub text_box_text: Style,
+    pub text_box_cursor: Style,
+
     /// Text that needs some visual emphasis/separation
     pub text_highlight: Style,
 }
@@ -84,6 +87,9 @@ impl Default for Theme {
 
             template_preview_text: Style::default().fg(Color::Blue),
             template_preview_error: Style::default().bg(ERROR_COLOR),
+
+            text_box_text: Style::default(),
+            text_box_cursor: Style::default().bg(Color::White).fg(Color::Black),
 
             text_highlight: Style::default().fg(Color::Black).bg(PRIMARY_COLOR),
         }

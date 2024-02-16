@@ -41,7 +41,6 @@ thiserror = "^1.0.48"
 tokio = {version = "^1.32.0", default-features = false, features = ["full"]}
 tracing = "^0.1.37"
 tracing-subscriber = {version = "^0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}
-tui-textarea = "^0.4.0"
 url = "^2.5.0"
 uuid = {version = "^1.4.1", default-features = false, features = ["serde", "v4"]}
 

@@ -7,6 +7,7 @@ pub mod modal;
 pub mod table;
 pub mod tabs;
 pub mod template_preview;
+pub mod text_box;
 pub mod text_window;
 
 use crate::{

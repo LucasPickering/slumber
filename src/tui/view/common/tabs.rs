@@ -57,11 +57,9 @@ impl<T: FixedSelect + Persistable> EventHandler for Tabs<T> {
 impl<T: FixedSelect + Persistable> Draw for Tabs<T> {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         frame.render_widget(
-            ratatui::widgets::Tabs::new(
-                T::iter().map(|e| e.to_string()).collect(),
-            )
-            .select(self.tabs.selected_index())
-            .highlight_style(TuiContext::get().theme.tab_highlight_style),
+            ratatui::widgets::Tabs::new(T::iter().map(|e| e.to_string()))
+                .select(self.tabs.selected_index())
+                .highlight_style(TuiContext::get().theme.tab_highlight_style),
             area,
         )
     }

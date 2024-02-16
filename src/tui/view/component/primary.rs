@@ -274,7 +274,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 let [left_area, right_area] = layout(
                     area,
                     Direction::Horizontal,
-                    [Constraint::Max(40), Constraint::Percentage(50)],
+                    [Constraint::Max(40), Constraint::Min(40)],
                 );
 
                 // Split left column vertically

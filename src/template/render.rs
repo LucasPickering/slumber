@@ -11,7 +11,6 @@ use crate::{
 };
 use async_trait::async_trait;
 use futures::future::join_all;
-use serde_json_path::JsonPath;
 use std::{
     env::{self},
     path::Path,
@@ -269,11 +268,13 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
 
             // If a selector path is present, filter down the value
             let value = if let Some(selector) = &chain.selector {
-                self.apply_selector(
-                    content_type.ok_or(ChainError::UnknownContentType)?,
-                    &value,
-                    selector,
-                )?
+                let content_type =
+                    content_type.ok_or(ChainError::UnknownContentType)?;
+                // Parse according to detected content type
+                let value = content_type
+                    .parse(&value)
+                    .map_err(|err| ChainError::ParseResponse { error: err })?;
+                selector.query_to_string(&*value)?
             } else {
                 value
             };
@@ -369,43 +370,6 @@ impl<'a> ChainTemplateSource<'a> {
             channel: tx,
         });
         rx.await.map_err(|_| ChainError::PromptNoResponse)
-    }
-
-    /// Apply a selector path to a string value to filter it down. The filtering
-    /// method will be determined based on the content type of the response.
-    /// See [ResponseContent].
-    fn apply_selector(
-        &self,
-        content_type: ContentType,
-        value: &str,
-        selector: &JsonPath,
-    ) -> Result<String, ChainError> {
-        // Parse according to detected content type
-        let value = content_type
-            .parse(value)
-            .map_err(|err| ChainError::ParseResponse { error: err })?;
-
-        // All content types get converted to JSON for formatting, then
-        // converted back. This is fucky but we need *some* common format
-        let json_value = value.to_json();
-        let filtered = selector
-            .query(&json_value)
-            .exactly_one()
-            .map_err(|error| ChainError::InvalidResult { error })?;
-
-        // If we got a scalar value, use that. Otherwise convert back to the
-        // input content type to re-stringify
-        let stringified = match filtered {
-            serde_json::Value::Null => "".into(),
-            serde_json::Value::Number(n) => n.to_string(),
-            serde_json::Value::Bool(b) => b.to_string(),
-            serde_json::Value::String(s) => s.clone(),
-            serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-                content_type.parse_json(filtered).to_string()
-            }
-        };
-
-        Ok(stringified)
     }
 }
 

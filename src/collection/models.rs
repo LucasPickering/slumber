@@ -1,11 +1,14 @@
 //! The plain data types that make up a request collection
 
-use crate::{collection::cereal, http::ContentType, template::Template};
+use crate::{
+    collection::cereal,
+    http::{ContentType, Query},
+    template::Template,
+};
 use derive_more::{Deref, Display, From};
 use equivalent::Equivalent;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use serde_json_path::JsonPath;
 use std::path::PathBuf;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
@@ -128,7 +131,7 @@ pub struct Chain {
     /// Selector to extract a value from the response. This uses JSONPath
     /// regardless of the content type. Non-JSON values will be converted to
     /// JSON, then converted back. See [ResponseContent::select].
-    pub selector: Option<JsonPath>,
+    pub selector: Option<Query>,
     /// Hard-code the content type of the response. Only needed if a selector
     /// is given and the content type can't be dynamically determined
     /// correctly. This is needed if the chain source is not an HTTP

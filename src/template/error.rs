@@ -1,6 +1,7 @@
 use crate::{
     collection::{ChainId, ProfileId},
     template::Template,
+    util::doc_link,
 };
 use nom::error::VerboseError;
 use serde_json_path::ExactlyOneError;
@@ -78,6 +79,12 @@ pub enum ChainError {
     /// response
     #[error("No response available")]
     NoResponse,
+    #[error(
+        "Selector cannot be applied; content type not provided and could not \
+        be determined from metadata. See docs for supported content types: {}",
+        doc_link("api/content_type")
+    )]
+    UnknownContentType,
     /// Failed to parse the response body before applying a selector
     #[error("Error parsing response")]
     ParseResponse {

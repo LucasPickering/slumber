@@ -6,6 +6,21 @@ use std::{
 };
 use tracing::error;
 
+const WEBSITE: &str = "https://slumber.lucaspickering.me";
+
+/// Get a link to a page on the doc website. This will append the doc prefix,
+/// as well as the suffix.
+///
+/// ```
+/// assert_eq!(
+///     doc_link("api/chain"),
+///     "https://slumber.lucaspickering.me/book/api/chain.html",
+/// );
+/// ```
+pub fn doc_link(path: &str) -> String {
+    format!("{WEBSITE}/book/{path}.html")
+}
+
 /// Parse bytes (probably from a file) into YAML. This will merge any
 /// anchors/aliases.
 pub fn parse_yaml<T: DeserializeOwned>(bytes: &[u8]) -> serde_yaml::Result<T> {

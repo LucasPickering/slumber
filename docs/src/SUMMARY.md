@@ -11,6 +11,7 @@
 - [Command Line Interface (CLI)](./user_guide/cli.md)
 - [Templates](./user_guide/templates.md)
 - [Collection Reuse & Inheritance](./user_guide/inheritance.md)
+- [Data Filtering & Querying](./user_guide/filter_query.md)
 
 # API Reference
 
@@ -22,3 +23,4 @@
   - [Chain](./api/chain.md)
   - [Chain Source](./api/chain_source.md)
   - [Template](./api/template.md)
+  - [Content Type](./api/content_type.md)

@@ -1,6 +1,6 @@
 //! The plain data types that make up a request collection
 
-use crate::{collection::cereal, template::Template};
+use crate::{collection::cereal, http::ContentType, template::Template};
 use derive_more::{Deref, Display, From};
 use equivalent::Equivalent;
 use indexmap::IndexMap;
@@ -125,8 +125,16 @@ pub struct Chain {
     /// Mask chained value in the UI
     #[serde(default)]
     pub sensitive: bool,
-    /// JSONpath to extract a value from the response. For JSON data only.
+    /// Selector to extract a value from the response. This uses JSONPath
+    /// regardless of the content type. Non-JSON values will be converted to
+    /// JSON, then converted back. See [ResponseContent::select].
     pub selector: Option<JsonPath>,
+    /// Hard-code the content type of the response. Only needed if a selector
+    /// is given and the content type can't be dynamically determined
+    /// correctly. This is needed if the chain source is not an HTTP
+    /// response (e.g. a file) **or** if the response's `Content-Type` header
+    /// is incorrect.
+    pub content_type: Option<ContentType>,
 }
 
 /// Unique ID for a chain. Takes a generic param so we can create these during

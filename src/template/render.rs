@@ -2,7 +2,7 @@
 
 use crate::{
     collection::{ChainId, ChainSource, ProfileValue, RecipeId},
-    http::{ContentType, Json},
+    http::{ContentType, Response},
     template::{
         parse::TemplateInputChunk, ChainError, Prompt, Template, TemplateChunk,
         TemplateContext, TemplateError, TemplateKey,
@@ -228,29 +228,54 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                 .get(&self.chain_id)
                 .ok_or(ChainError::Unknown)?;
 
-            // Resolve the value based on the source type
-            let value = match &chain.source {
+            // Resolve the value based on the source type. Also resolve its
+            // content type. For responses this will come from its header. For
+            // anything else, we'll fall back to the content_type field defined
+            // by the user.
+            //
+            // We intentionally throw the content detection error away here,
+            // because it isn't that intuitive for users and is hard to plumb
+            let (value, content_type) = match &chain.source {
                 ChainSource::Request(recipe_id) => {
-                    self.render_request(context, recipe_id).await?
+                    let response =
+                        self.get_response(context, recipe_id).await?;
+                    // Guess content type based on HTTP header
+                    let content_type = ContentType::from_header(&response).ok();
+                    (response.body.into_text(), content_type)
                 }
-                ChainSource::File(path) => self.render_file(path).await?,
+                ChainSource::File(path) => {
+                    // Guess content type based on file extension
+                    let content_type = ContentType::from_extension(path).ok();
+                    (self.render_file(path).await?, content_type)
+                }
                 ChainSource::Command(command) => {
-                    self.render_command(command).await?
+                    // No way to guess content type on this
+                    (self.render_command(command).await?, None)
                 }
-                ChainSource::Prompt(label) => {
+                ChainSource::Prompt(label) => (
                     self.render_prompt(
                         context,
                         label.as_deref(),
                         chain.sensitive,
                     )
-                    .await?
-                }
+                    .await?,
+                    // No way to guess content type on this
+                    None,
+                ),
             };
+            // If the user provided a content type, prefer that over the
+            // detected one
+            let content_type = chain.content_type.or(content_type);
 
             // If a selector path is present, filter down the value
-            let value = match &chain.selector {
-                Some(path) => self.apply_selector(&value, path)?,
-                None => value,
+            let value = if let Some(selector) = &chain.selector {
+                self.apply_selector(
+                    content_type.ok_or(ChainError::UnknownContentType)?,
+                    &value,
+                    selector,
+                )?
+            } else {
+                value
             };
 
             Ok(RenderedChunk {
@@ -269,12 +294,12 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
 }
 
 impl<'a> ChainTemplateSource<'a> {
-    /// Render a chained template value from a response
-    async fn render_request(
+    /// Get the most recent request for a recipe
+    async fn get_response(
         &self,
         context: &'a TemplateContext,
         recipe_id: &RecipeId,
-    ) -> Result<String, ChainError> {
+    ) -> Result<Response, ChainError> {
         let record = context
             .database
             .get_last_request(
@@ -284,7 +309,7 @@ impl<'a> ChainTemplateSource<'a> {
             .map_err(ChainError::Database)?
             .ok_or(ChainError::NoResponse)?;
 
-        Ok(record.response.body.into_text())
+        Ok(record.response)
     }
 
     /// Render a chained value from a file
@@ -346,30 +371,41 @@ impl<'a> ChainTemplateSource<'a> {
         rx.await.map_err(|_| ChainError::PromptNoResponse)
     }
 
-    /// Apply a selector path to a string value to filter it down. Right now
-    /// this only supports JSONpath but we could add support for more in the
-    /// future. The string value will be parsed as a JSON value.
+    /// Apply a selector path to a string value to filter it down. The filtering
+    /// method will be determined based on the content type of the response.
+    /// See [ResponseContent].
     fn apply_selector(
         &self,
+        content_type: ContentType,
         value: &str,
         selector: &JsonPath,
     ) -> Result<String, ChainError> {
-        // Parse the response as JSON. Intentionally ignore the
-        // content-type. If the user wants to treat it as JSON, we
-        // should allow that even if the server is wrong.
-        let json_value = Json::parse(value)
+        // Parse according to detected content type
+        let value = content_type
+            .parse(value)
             .map_err(|err| ChainError::ParseResponse { error: err })?;
 
-        // Apply the path to the json
-        let found_value = selector
+        // All content types get converted to JSON for formatting, then
+        // converted back. This is fucky but we need *some* common format
+        let json_value = value.to_json();
+        let filtered = selector
             .query(&json_value)
             .exactly_one()
             .map_err(|error| ChainError::InvalidResult { error })?;
 
-        match found_value {
-            serde_json::Value::String(s) => Ok(s.clone()),
-            other => Ok(other.to_string()),
-        }
+        // If we got a scalar value, use that. Otherwise convert back to the
+        // input content type to re-stringify
+        let stringified = match filtered {
+            serde_json::Value::Null => "".into(),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                content_type.parse_json(filtered).to_string()
+            }
+        };
+
+        Ok(stringified)
     }
 }
 

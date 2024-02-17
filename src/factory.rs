@@ -63,6 +63,7 @@ factori!(Chain, {
         source = ChainSource::Request(RecipeId::default()),
         sensitive = false,
         selector = None,
+        content_type = None,
     }
 });
 

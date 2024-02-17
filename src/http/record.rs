@@ -2,7 +2,7 @@
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    http::{parse, ContentType},
+    http::{ContentType, ResponseContent},
     util::ResultExt,
 };
 use anyhow::Context;
@@ -124,8 +124,8 @@ pub struct Response {
 
 impl Response {
     /// Parse the body of this response, based on its `content-type` header
-    pub fn parse_body(&self) -> anyhow::Result<Box<dyn ContentType>> {
-        parse::parse_body(self)
+    pub fn parse_body(&self) -> anyhow::Result<Box<dyn ResponseContent>> {
+        ContentType::parse_response(self)
             .context("Error parsing response body")
             .traced()
     }

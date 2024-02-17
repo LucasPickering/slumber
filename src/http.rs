@@ -34,9 +34,11 @@
 //! +---------------+
 
 mod parse;
+mod query;
 mod record;
 
 pub use parse::*;
+pub use query::*;
 pub use record::*;
 
 use crate::{

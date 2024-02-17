@@ -7,7 +7,7 @@
 
 use crate::http::Response;
 use anyhow::{anyhow, Context};
-use derive_more::{Deref, Display};
+use derive_more::{Deref, Display, From};
 use serde::{de::IntoDeserializer, Deserialize, Serialize};
 use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path, str::FromStr};
 
@@ -25,6 +25,9 @@ pub enum ContentType {
 /// A response content type that we know how to parse. This is defined as a
 /// trait rather than an enum because it breaks apart the logic more clearly.
 pub trait ResponseContent: Debug + Display {
+    /// Get the type of this content
+    fn content_type(&self) -> ContentType;
+
     /// Parse the response body as this type
     fn parse(body: &str) -> anyhow::Result<Self>
     where
@@ -44,10 +47,14 @@ pub trait ResponseContent: Debug + Display {
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
-#[derive(Debug, Display, Deref, PartialEq)]
+#[derive(Debug, Display, Deref, From, PartialEq)]
 pub struct Json(serde_json::Value);
 
 impl ResponseContent for Json {
+    fn content_type(&self) -> ContentType {
+        ContentType::Json
+    }
+
     fn parse(body: &str) -> anyhow::Result<Self> {
         Ok(Self(serde_json::from_str(body)?))
     }

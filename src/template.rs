@@ -154,7 +154,7 @@ mod tests {
     use crate::{
         collection::{ChainSource, ProfileValue, RecipeId},
         factory::*,
-        http::{Request, Response},
+        http::{ContentType, Request, Response},
         util::assert_err,
     };
     use factori::create;
@@ -292,6 +292,7 @@ mod tests {
             Chain,
             source: ChainSource::Request(recipe_id),
             selector: selector,
+            content_type: Some(ContentType::Json),
         )};
         let context = create!(
             TemplateContext, database: database, chains: chains,
@@ -324,6 +325,20 @@ mod tests {
             create!(Request, recipe_id: "recipe1".into()),
             create!(Response, body: "not json!".into()),
         )),
+        "content type not provided",
+    )]
+    #[case(
+        "chain1",
+        create!(
+            Chain,
+            source: ChainSource::Request("recipe1".into()),
+            selector: Some("$.message".parse().unwrap()),
+            content_type: Some(ContentType::Json),
+        ),
+        Some((
+            create!(Request, recipe_id: "recipe1".into()),
+            create!(Response, body: "not json!".into()),
+        )),
         "Error parsing response",
     )]
     #[case(
@@ -332,6 +347,7 @@ mod tests {
             Chain,
             source: ChainSource::Request("recipe1".into()),
             selector: Some("$.*".parse().unwrap()),
+            content_type: Some(ContentType::Json),
         ),
         Some((
             create!(Request, recipe_id: "recipe1".into()),

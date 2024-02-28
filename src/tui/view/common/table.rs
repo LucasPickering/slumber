@@ -142,13 +142,14 @@ where
         let theme = &TuiContext::get().theme;
         // Include the given cells, then tack on the checkbox for enabled state
         Row::new(
-            self.cells.into_iter().map(Cell::from).chain(iter::once(
+            iter::once(
                 Checkbox {
                     checked: self.enabled,
                 }
                 .generate()
                 .into(),
-            )),
+            )
+            .chain(self.cells.into_iter().map(Cell::from)),
         )
         .style(if self.enabled {
             theme.table.text

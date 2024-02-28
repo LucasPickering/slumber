@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Changed
+
+- Move checkbox to left side of toggle tables
+
 ## [0.13.0] - 2024-02-21
 
 ### Added

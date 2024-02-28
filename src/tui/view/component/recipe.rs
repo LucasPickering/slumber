@@ -294,13 +294,13 @@ impl<'a> Draw<RequestPaneProps<'a>> for RecipePane {
                     }
                 }
                 Tab::Query => frame.render_stateful_widget(
-                    to_table(&recipe_state.query, ["Parameter", "Value", ""])
+                    to_table(&recipe_state.query, ["", "Parameter", "Value"])
                         .generate(),
                     content_area,
                     &mut recipe_state.query.state_mut(),
                 ),
                 Tab::Headers => frame.render_stateful_widget(
-                    to_table(&recipe_state.headers, ["Header", "Value", ""])
+                    to_table(&recipe_state.headers, ["", "Header", "Value"])
                         .generate(),
                     content_area,
                     &mut recipe_state.headers.state_mut(),
@@ -414,9 +414,9 @@ fn to_table<'a>(
             .collect_vec(),
         header: Some(header),
         column_widths: &[
-            Constraint::Percentage(50),
-            Constraint::Percentage(50),
             Constraint::Min(3),
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
         ],
         ..Default::default()
     }

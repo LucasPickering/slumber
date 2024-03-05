@@ -6,6 +6,10 @@
 
 - Move checkbox to left side of toggle tables
 
+### Fixed
+
+- Fix scrolling on response body pane
+
 ## [0.13.0] - 2024-02-21
 
 ### Added

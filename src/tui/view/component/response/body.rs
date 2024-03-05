@@ -16,6 +16,7 @@ use crate::{
     util::ResultExt,
 };
 use anyhow::Context;
+use derive_more::Debug;
 use ratatui::{
     layout::{Constraint, Direction},
     prelude::Rect,
@@ -28,10 +29,12 @@ use serde_json_path::JsonPath;
 pub struct ResponseContentBody {
     /// Response body text content. State cell allows us to reset this whenever
     /// the request changes
+    #[debug(skip)]
     text_window: StateCell<StateKey, Component<TextWindow<String>>>,
     /// Expression used to filter the content of the body down
     query: Option<Query>,
     /// Where the user enters their body query
+    #[debug(skip)]
     query_text_box: Component<TextBox>,
 }
 
@@ -141,7 +144,7 @@ impl<'a> Draw<ResponseContentBodyProps<'a>> for ResponseContentBody {
                 self.query.as_ref(),
             )
         });
-        text.inner().draw(frame, (), body_area);
+        text.draw(frame, (), body_area);
 
         self.query_text_box.draw(frame, (), query_area);
     }

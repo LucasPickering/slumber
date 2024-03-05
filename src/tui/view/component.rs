@@ -108,16 +108,6 @@ impl<P, T: Draw<P>> Draw<P> for Component<T> {
     }
 }
 
-impl<'a, P, T> Draw<P> for &'a Component<T>
-where
-    &'a T: Draw<P>,
-{
-    fn draw(&self, frame: &mut Frame, props: P, area: Rect) {
-        self.area.set(area); // Cache the visual area, for event handling
-        (&self.inner).draw(frame, props, area);
-    }
-}
-
 impl<T> From<T> for Component<T> {
     fn from(inner: T) -> Self {
         Self::new(inner)

@@ -20,7 +20,7 @@ use crate::{
         },
     },
 };
-use derive_more::Display;
+use derive_more::{Debug, Display};
 use itertools::Itertools;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
@@ -165,9 +165,11 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
 /// Display response success state (tab container)
 #[derive(Debug)]
 struct CompleteResponseContent {
+    #[debug(skip)]
     tabs: Component<Tabs<Tab>>,
     /// Persist the response body to track view state. Update whenever the
     /// loaded request changes
+    #[debug(skip)]
     body: Component<ResponseContentBody>,
 }
 

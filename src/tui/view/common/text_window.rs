@@ -88,9 +88,10 @@ impl<T: Debug> EventHandler for TextWindow<T> {
     }
 }
 
-impl<'a, T> Draw for &'a TextWindow<T>
+impl<T> Draw for TextWindow<T>
 where
-    &'a T: 'a + Generate<Output<'a> = Text<'a>>,
+    T: 'static,
+    for<'a> &'a T: Generate<Output<'a> = Text<'a>>,
 {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         let theme = &TuiContext::get().theme;
@@ -128,7 +129,7 @@ where
 
         // Darw the text content
         frame.render_widget(
-            Paragraph::new(self.text.generate()).scroll((self.offset_y, 0)),
+            Paragraph::new(text).scroll((self.offset_y, 0)),
             text_area,
         );
     }

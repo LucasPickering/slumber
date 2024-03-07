@@ -37,7 +37,7 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use strum::EnumIter;
+use strum::{EnumCount, EnumIter};
 use url::Url;
 
 /// Display a request recipe
@@ -83,15 +83,14 @@ struct RecipeState {
     Copy,
     Clone,
     Debug,
-    Default,
     Display,
+    EnumCount,
     EnumIter,
     PartialEq,
     Serialize,
     Deserialize,
 )]
 enum Tab {
-    #[default]
     Body,
     Query,
     Headers,
@@ -106,9 +105,8 @@ struct RowState {
 }
 
 /// Items in the actions popup menu
-#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
+#[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
 enum MenuAction {
-    #[default]
     #[display("Copy URL")]
     CopyUrl,
     #[display("Copy Body")]

@@ -29,7 +29,7 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
-use strum::EnumIter;
+use strum::{EnumCount, EnumIter};
 
 /// Display HTTP response state, which could be in progress, complete, or
 /// failed. This can be used in both a paned and fullscreen view.
@@ -44,9 +44,8 @@ pub struct ResponsePaneProps<'a> {
 }
 
 /// Items in the actions popup menu
-#[derive(Copy, Clone, Debug, Default, Display, EnumIter, PartialEq)]
+#[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
 enum MenuAction {
-    #[default]
     #[display("Copy Body")]
     CopyBody,
 }
@@ -191,15 +190,14 @@ struct ResponseContentProps<'a> {
     Copy,
     Clone,
     Debug,
-    Default,
     Display,
+    EnumCount,
     EnumIter,
     PartialEq,
     Serialize,
     Deserialize,
 )]
 enum Tab {
-    #[default]
     Body,
     Headers,
 }

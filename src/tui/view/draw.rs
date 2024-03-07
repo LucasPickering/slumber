@@ -1,5 +1,6 @@
 //! Traits for rendering stuff
 
+use crate::util::EnumChain;
 use ratatui::{layout::Rect, text::Span, Frame};
 use std::fmt::Display;
 
@@ -33,7 +34,7 @@ pub trait Generate {
         Self: 'this;
 }
 
-/// Marker trait th pull in a blanket impl of [Generate], which simply calls
+/// Marker trait to pull in a blanket impl of [Generate], which simply calls
 /// [ToString::to_string] on the value to create a [ratatui::text::Span].
 pub trait ToStringGenerate: Display {}
 
@@ -52,3 +53,5 @@ where
         self.to_string().into()
     }
 }
+
+impl<T: Display, U: Display> ToStringGenerate for EnumChain<T, U> {}

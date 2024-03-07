@@ -56,6 +56,8 @@ pub enum Message {
     CollectionStartReload,
     /// Store a reloaded collection value in state
     CollectionEndReload(Collection),
+    /// Open the collection in the user's editor
+    CollectionEdit,
 
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },

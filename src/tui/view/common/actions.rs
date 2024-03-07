@@ -1,32 +1,45 @@
-use crate::tui::view::{
-    common::{list::List, modal::Modal},
-    component::Component,
-    draw::{Draw, Generate},
-    event::{Event, EventHandler, UpdateContext},
-    state::select::{Fixed, FixedSelect, SelectState},
+use crate::{
+    tui::view::{
+        common::{list::List, modal::Modal},
+        component::Component,
+        draw::{Draw, Generate, ToStringGenerate},
+        event::{Event, EventHandler, UpdateContext},
+        state::select::{Fixed, FixedSelect, SelectState},
+    },
+    util::EnumChain,
 };
+use derive_more::Display;
 use ratatui::{
     layout::{Constraint, Rect},
     text::Span,
     widgets::ListState,
     Frame,
 };
+use strum::{EnumCount, EnumIter};
 
 /// Modal to list and trigger arbitrary actions. The list of available actions
 /// is defined by the generic parameter
 #[derive(Debug)]
-pub struct ActionsModal<T: FixedSelect> {
-    actions: Component<SelectState<Fixed, T, ListState>>,
+pub struct ActionsModal<T: FixedSelect = EmptyAction> {
+    /// Join the list of global actions into the given one
+    actions:
+        Component<SelectState<Fixed, EnumChain<GlobalAction, T>, ListState>>,
 }
 
 impl<T: FixedSelect> Default for ActionsModal<T> {
     fn default() -> Self {
-        let wrapper = move |context: &mut UpdateContext, action: &mut T| {
-            // Close the modal *first*, so the parent can handle the callback
-            // event. Jank but it works
-            context.queue_event(Event::CloseModal);
-            context.queue_event(Event::other(*action));
-        };
+        let wrapper =
+            move |context: &mut UpdateContext,
+                  action: &mut EnumChain<GlobalAction, T>| {
+                // Close the modal *first*, so the parent can handle the
+                // callback event. Jank but it works
+                context.queue_event(Event::CloseModal);
+                let event = match action {
+                    EnumChain::T(action) => Event::other(*action),
+                    EnumChain::U(action) => Event::other(*action),
+                };
+                context.queue_event(event);
+            };
 
         Self {
             actions: SelectState::fixed().on_submit(wrapper).into(),
@@ -46,7 +59,7 @@ where
     fn dimensions(&self) -> (Constraint, Constraint) {
         (
             Constraint::Length(30),
-            Constraint::Length(T::iter().count() as u16),
+            Constraint::Length(EnumChain::<GlobalAction, T>::COUNT as u16),
         )
     }
 }
@@ -74,3 +87,18 @@ where
         );
     }
 }
+
+/// Actions that appear in all action modals
+#[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
+pub enum GlobalAction {
+    #[display("Edit Collection")]
+    EditCollection,
+}
+
+impl ToStringGenerate for GlobalAction {}
+
+/// Empty action list. Used when only the default global actions should be shown
+#[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
+pub enum EmptyAction {}
+
+impl ToStringGenerate for EmptyAction {}

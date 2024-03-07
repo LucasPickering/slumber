@@ -7,9 +7,9 @@ use crate::{
         input::Action,
         message::Message,
         view::{
+            common::actions::ActionsModal,
             component::{
                 help::HelpModal,
-                misc::EmptyActionsModal,
                 profile::{ProfilePane, ProfilePaneProps},
                 profile_list::{ProfileListPane, ProfileListPaneProps},
                 recipe::{RecipePane, RequestPaneProps},
@@ -35,7 +35,7 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
-use strum::EnumIter;
+use strum::{EnumCount, EnumIter};
 
 /// Primary TUI view, which shows request/response panes
 #[derive(derive_more::Debug)]
@@ -66,8 +66,8 @@ pub struct PrimaryViewProps<'a> {
     Copy,
     Clone,
     Debug,
-    Default,
     Display,
+    EnumCount,
     EnumIter,
     PartialEq,
     Serialize,
@@ -76,7 +76,6 @@ pub struct PrimaryViewProps<'a> {
 pub enum PrimaryPane {
     #[display("Profiles")]
     ProfileList,
-    #[default]
     #[display("Recipes")]
     RecipeList,
     Request,
@@ -214,7 +213,7 @@ impl EventHandler for PrimaryView {
                     Update::Consumed
                 }
                 Action::OpenActions => {
-                    context.open_modal_default::<EmptyActionsModal>();
+                    context.open_modal_default::<ActionsModal>();
                     Update::Consumed
                 }
                 Action::OpenHelp => {

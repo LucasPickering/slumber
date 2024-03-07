@@ -13,7 +13,7 @@ use std::{
     marker::PhantomData,
     ops::DerefMut,
 };
-use strum::IntoEnumIterator;
+use strum::{EnumCount, IntoEnumIterator};
 
 /// State manager for a dynamic list of items. This supports a generic type for
 /// the state "backend", which is the ratatui type that stores the selection
@@ -220,14 +220,9 @@ where
             );
         }
 
-        // Pre-select the default item
+        // Pre-select first item
         let mut state = State::default();
-        let selected = items
-            .iter()
-            .find_position(|value| *value == &Item::default())
-            .expect("Empty fixed select")
-            .0;
-        state.select(selected);
+        state.select(0);
 
         Self {
             state: RefCell::new(state),
@@ -381,8 +376,8 @@ pub trait FixedSelect:
     + Copy
     + Clone
     + Debug
-    + Default
     + Display
+    + EnumCount
     + IntoEnumIterator
     + PartialEq
 {
@@ -394,8 +389,8 @@ impl<T> FixedSelect for T where
         + Copy
         + Clone
         + Debug
-        + Default
         + Display
+        + EnumCount
         + IntoEnumIterator
         + PartialEq
 {

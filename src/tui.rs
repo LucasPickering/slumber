@@ -198,6 +198,10 @@ impl Tui {
             Message::CollectionEndReload(collection) => {
                 self.reload_collection(collection);
             }
+            Message::CollectionEdit => {
+                let path = self.collection_file.path();
+                open::that_detached(path).context("Error opening {path:?}")?;
+            }
 
             Message::Error { error } => {
                 self.view.open_modal(error, ModalPriority::High)

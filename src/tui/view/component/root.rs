@@ -5,7 +5,7 @@ use crate::{
         input::Action,
         message::Message,
         view::{
-            common::modal::ModalQueue,
+            common::{actions::GlobalAction, modal::ModalQueue},
             component::{
                 help::HelpFooter,
                 misc::NotificationText,
@@ -140,6 +140,15 @@ impl EventHandler for Root {
             // Any other unhandled input event should *not* log an error,
             // because it is probably just unmapped input
             Event::Input { .. } => {}
+
+            Event::Other(ref callback) => {
+                match callback.downcast_ref::<GlobalAction>() {
+                    Some(GlobalAction::EditCollection) => {
+                        TuiContext::send_message(Message::CollectionEdit)
+                    }
+                    None => return Update::Propagate(event),
+                }
+            }
 
             // There shouldn't be anything left unhandled. Bubble up to log it
             _ => return Update::Propagate(event),

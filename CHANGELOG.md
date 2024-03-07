@@ -5,6 +5,7 @@
 ### Added
 
 - Add config option `ignore_certificate_hosts` ([#109](https://github.com/LucasPickering/slumber/issues/109))
+- Add menu action to open collection file in editor ([#105](https://github.com/LucasPickering/slumber/issues/105))
 
 ### Fixed
 

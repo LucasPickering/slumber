@@ -70,7 +70,7 @@ impl PromptModal {
         let submit = Rc::new(Cell::new(false));
         let submit_cell = Rc::clone(&submit);
         let text_box = TextBox::default()
-            .with_sensitive(true)
+            .with_sensitive(prompt.sensitive())
             // Make sure cancel gets propagated to close the modal
             .with_on_cancel(|_, context| context.queue_event(Event::CloseModal))
             .with_on_submit(move |_, context| {

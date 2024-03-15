@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Fixed
+
+- Fix prompt in TUI always rendering as sensitive ([#108](https://github.com/LucasPickering/slumber/issues/108))
+
 ## [0.13.1] - 2024-03-07
 
 ### Changed

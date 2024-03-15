@@ -24,3 +24,7 @@
   - [Chain Source](./api/chain_source.md)
   - [Template](./api/template.md)
   - [Content Type](./api/content_type.md)
+
+# Troubleshooting
+
+- [TLS Certificate Errors](./troubleshooting/tls.md)

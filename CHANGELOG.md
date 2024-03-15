@@ -2,6 +2,10 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add config option `ignore_certificate_hosts` ([#109](https://github.com/LucasPickering/slumber/issues/109))
+
 ### Fixed
 
 - Fix prompt in TUI always rendering as sensitive ([#108](https://github.com/LucasPickering/slumber/issues/108))

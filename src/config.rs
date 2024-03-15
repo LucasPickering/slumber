@@ -18,6 +18,10 @@ pub struct Config {
     /// the file didn't exist
     #[serde(skip)]
     path: PathBuf,
+
+    /// TLS cert errors on these hostnames are ignored. Be careful!
+    #[serde(default)]
+    pub ignore_certificate_hosts: Vec<String>,
     /// Should templates be rendered inline in the UI, or should we show the
     /// raw text?
     pub preview_templates: bool,
@@ -64,6 +68,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             path: PathBuf::default(),
+            ignore_certificate_hosts: Vec::new(),
             preview_templates: true,
         }
     }

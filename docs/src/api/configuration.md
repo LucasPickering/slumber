@@ -21,6 +21,7 @@ If the root directory doesn't exist yet, you can create it yourself or have Slum
 
 ## Fields
 
-| Field               | Type      | Description                                                                  | Default |
-| ------------------- | --------- | ---------------------------------------------------------------------------- | ------- |
-| `preview_templates` | `boolean` | Render template values in the TUI? If false, the raw template will be shown. | `true`  |
+| Field                      | Type       | Description                                                                                     | Default |
+| -------------------------- | ---------- | ----------------------------------------------------------------------------------------------- | ------- |
+| `preview_templates`        | `boolean`  | Render template values in the TUI? If false, the raw template will be shown.                    | `true`  |
+| `ignore_certificate_hosts` | `string[]` | Hostnames whose TLS certificate errors will be ignored. [More info](../troubleshooting/tls.md). | `[]`    |

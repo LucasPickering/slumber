@@ -85,6 +85,7 @@ impl Tui {
         let messages_tx = MessageSender::new(messages_tx);
         // Load a database for this particular collection
         let database = Database::load()?.into_collection(&collection_path)?;
+        let http_engine = HttpEngine::new(&config, database.clone());
         // Initialize global view context
         TuiContext::init(config, messages_tx.clone(), database.clone());
 
@@ -109,7 +110,7 @@ impl Tui {
             terminal,
             messages_rx,
             messages_tx,
-            http_engine: HttpEngine::new(database.clone()),
+            http_engine,
 
             collection_file,
             should_run: true,

@@ -1,6 +1,7 @@
 use crate::{
     cli::Subcommand,
     collection::{CollectionFile, ProfileId, RecipeId},
+    config::Config,
     db::Database,
     http::{HttpEngine, RecipeOptions, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
@@ -70,6 +71,7 @@ pub struct RequestCommand {
 impl Subcommand for RequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         let collection_path = CollectionFile::try_path(global.collection)?;
+        let config = Config::load()?;
         let database = Database::load()?.into_collection(&collection_path)?;
         let mut collection_file = CollectionFile::load(collection_path).await?;
         let collection = &mut collection_file.collection;
@@ -123,7 +125,7 @@ impl Subcommand for RequestCommand {
             }
 
             // Run the request
-            let http_engine = HttpEngine::new(database);
+            let http_engine = HttpEngine::new(&config, database);
             let record = http_engine.send(request).await?;
             let status = record.response.status;
 

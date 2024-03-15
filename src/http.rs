@@ -42,8 +42,8 @@ pub use query::*;
 pub use record::*;
 
 use crate::{
-    collection::Recipe, db::CollectionDatabase, template::TemplateContext,
-    util::ResultExt,
+    collection::Recipe, config::Config, db::CollectionDatabase,
+    template::TemplateContext, util::ResultExt,
 };
 use anyhow::Context;
 use chrono::Utc;
@@ -70,19 +70,32 @@ const USER_AGENT: &str =
 #[derive(Clone, Debug)]
 pub struct HttpEngine {
     client: Client,
+    /// This client ignores TLS cert errors. Only use it if the user
+    /// specifically wants to ignore errors for the request!
+    danger_client: Client,
     database: CollectionDatabase,
+    danger_hostnames: HashSet<String>,
 }
 
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
-    pub fn new(database: CollectionDatabase) -> Self {
+    pub fn new(config: &Config, database: CollectionDatabase) -> Self {
         Self {
             client: Client::builder()
                 .user_agent(USER_AGENT)
                 .build()
-                // This should be infallible
+                .expect("Error building reqwest client"),
+            danger_client: Client::builder()
+                .user_agent(USER_AGENT)
+                .danger_accept_invalid_certs(true)
+                .build()
                 .expect("Error building reqwest client"),
             database,
+            danger_hostnames: config
+                .ignore_certificate_hosts
+                .iter()
+                .cloned()
+                .collect(),
         }
     }
 
@@ -158,7 +171,17 @@ impl HttpEngine {
         // you execute the request, and this is much easier than frontloading
         // the conversion during the build process.
         let reqwest_request = self.convert_request(request)?;
-        let reqwest_response = self.client.execute(reqwest_request).await?;
+
+        // If the user wants to ignore cert errors on this host, use the client
+        // that's set up for that
+        let host = reqwest_request.url().host_str().unwrap_or_default();
+        let client = if self.danger_hostnames.contains(host) {
+            &self.danger_client
+        } else {
+            &self.client
+        };
+
+        let reqwest_response = client.execute(reqwest_request).await?;
         // Load the full response and convert it to our format
         self.convert_response(reqwest_response).await
     }

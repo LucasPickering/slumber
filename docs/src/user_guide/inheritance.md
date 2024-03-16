@@ -21,14 +21,14 @@ requests:
     url: "{{host}}/fishes"
     headers:
       Accept: application/json
-      Authorization: Bearer {{chains.token}}
+    authentication: !bearer "{{chains.token}}"
 
   get_fish:
     method: GET
     url: "{{host}}/fishes/{{fish_id}}"
     headers:
       Accept: application/json
-      Authorization: Bearer {{chains.token}}
+    authentication: !bearer "{{chains.token}}"
 ```
 
 ## The Solution
@@ -51,7 +51,7 @@ chains:
 request_base: &request_base
   headers:
     Accept: application/json
-    Authorization: Bearer {{chains.auth_token}}
+  authentication: !bearer "{{chains.token}}"
 
 requests:
   list_fish:
@@ -85,7 +85,7 @@ chains:
 request_base: &request_base
   headers: &headers_base # This will let us pull in the header map to extend it
     Accept: application/json
-    Authorization: Bearer {{chains.auth_token}}
+  authentication: !bearer "{{chains.token}}"
 
 requests:
   list_fish:
@@ -99,9 +99,6 @@ requests:
     url: "{{host}}/fishes/{{chains.fish_id}}"
 
   create_fish:
-    # Note: in this case, pulling in request_base doesn't do anything since we
-    # then overwite its only field (headers), but this is good practice in case
-    # you add an additional field to request_base
     <<: *request_base
     method: POST
     url: "{{host}}/fishes"

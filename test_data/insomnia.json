@@ -1,0 +1,210 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2024-03-16T21:32:08.712Z",
+  "__export_source": "insomnia.desktop.app:v8.6.1",
+  "resources": [
+    {
+      "_id": "req_467d7ec5ceee4893aa443b09e25c6e53",
+      "parentId": "wrk_scratchpad",
+      "modified": 1710623983901,
+      "created": 1710623974770,
+      "url": "https://httpbin.org/get",
+      "name": "No Auth",
+      "description": "",
+      "method": "GET",
+      "body": {},
+      "parameters": [],
+      "headers": [
+        {
+          "name": "User-Agent",
+          "value": "insomnia/8.6.1"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": -1710623974770,
+      "isPrivate": false,
+      "pathParameters": [],
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "wrk_scratchpad",
+      "parentId": null,
+      "modified": 1710623607163,
+      "created": 1710623607163,
+      "name": "Scratch Pad",
+      "description": "",
+      "scope": "collection",
+      "_type": "workspace"
+    },
+    {
+      "_id": "req_30f68ae3069b4ec59707bf793a4b74cb",
+      "parentId": "wrk_scratchpad",
+      "modified": 1710623989622,
+      "created": 1710623967061,
+      "url": "https://httpbin.org/get",
+      "name": "Bearer Auth",
+      "description": "",
+      "method": "GET",
+      "body": {},
+      "parameters": [],
+      "headers": [
+        {
+          "name": "User-Agent",
+          "value": "insomnia/8.6.1"
+        }
+      ],
+      "authentication": {
+        "type": "bearer",
+        "token": "asdfasdf"
+      },
+      "metaSortKey": -1710623967061,
+      "isPrivate": false,
+      "pathParameters": [],
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_b537f7f12d2f4dffbda12fdff2ff3704",
+      "parentId": "wrk_scratchpad",
+      "modified": 1710623995429,
+      "created": 1710623638685,
+      "url": "https://httpbin.org/get",
+      "name": "Basic Auth",
+      "description": "",
+      "method": "GET",
+      "body": {},
+      "parameters": [],
+      "headers": [
+        {
+          "name": "User-Agent",
+          "value": "insomnia/8.6.1"
+        }
+      ],
+      "authentication": {
+        "type": "basic",
+        "useISO88591": false,
+        "disabled": false,
+        "username": "user",
+        "password": "pass"
+      },
+      "metaSortKey": -1710623638685,
+      "isPrivate": false,
+      "pathParameters": [],
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "req_bff9461c4e81463b890856a283d5e2f3",
+      "parentId": "wrk_scratchpad",
+      "modified": 1710624637410,
+      "created": 1710624620060,
+      "url": "https://httpbin.org/post",
+      "name": "With Body",
+      "description": "",
+      "method": "POST",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n\t\"message\": \"hello!\"\n}"
+      },
+      "parameters": [],
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "name": "User-Agent",
+          "value": "insomnia/8.6.1"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": -1700797504081.5,
+      "isPrivate": false,
+      "pathParameters": [],
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "env_99d30891da4bdcebc63947a8fc17f076de878684",
+      "parentId": "wrk_scratchpad",
+      "modified": 1710624720355,
+      "created": 1710623619898,
+      "name": "Base Environment",
+      "data": {},
+      "dataPropertyOrder": {},
+      "color": null,
+      "isPrivate": false,
+      "metaSortKey": 1710623619898,
+      "_type": "environment"
+    },
+    {
+      "_id": "jar_99d30891da4bdcebc63947a8fc17f076de878684",
+      "parentId": "wrk_scratchpad",
+      "modified": 1710623619901,
+      "created": 1710623619901,
+      "name": "Default Jar",
+      "cookies": [],
+      "_type": "cookie_jar"
+    },
+    {
+      "_id": "env_b54010f85b024f5d89724bd918f983ec",
+      "parentId": "env_99d30891da4bdcebc63947a8fc17f076de878684",
+      "modified": 1710624708900,
+      "created": 1710624684621,
+      "name": "Local",
+      "data": {
+        "host": "http://localhost:3000"
+      },
+      "dataPropertyOrder": {
+        "&": [
+          "host"
+        ]
+      },
+      "color": null,
+      "isPrivate": false,
+      "metaSortKey": 1710624684621,
+      "_type": "environment"
+    },
+    {
+      "_id": "env_6203e0435e4f44e19406bde63f7bfa62",
+      "parentId": "env_99d30891da4bdcebc63947a8fc17f076de878684",
+      "modified": 1710624701808,
+      "created": 1710624689589,
+      "name": "Remote",
+      "data": {
+        "host": "https://httpbin.org"
+      },
+      "dataPropertyOrder": {
+        "&": [
+          "host"
+        ]
+      },
+      "color": null,
+      "isPrivate": false,
+      "metaSortKey": 1710624689589,
+      "_type": "environment"
+    }
+  ]
+}

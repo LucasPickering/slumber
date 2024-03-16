@@ -26,9 +26,9 @@ chains:
     selector: $.headers["X-Amzn-Trace-Id"]
 
 base: &base
+  authentication: !bearer "{{chains.auth_token}}"
   headers:
     Accept: application/json
-    Authorization: Bearer {{chains.auth_token}}
     Content-Type: application/json
 
 requests:

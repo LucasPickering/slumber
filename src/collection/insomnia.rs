@@ -2,11 +2,12 @@
 //! format
 
 use crate::{
-    collection::{Collection, Profile, Recipe},
+    collection::{self, Collection, Profile, Recipe},
     template::Template,
 };
 use anyhow::Context;
 use indexmap::IndexMap;
+use reqwest::header;
 use serde::Deserialize;
 use std::{fs::File, path::Path};
 use tracing::info;
@@ -17,7 +18,10 @@ impl Collection {
     ///
     /// This is not async because it's only called by the CLI, where we don't
     /// care about blocking. It keeps the code simpler.
-    pub fn from_insomnia(insomnia_file: &Path) -> anyhow::Result<Self> {
+    pub fn from_insomnia(
+        insomnia_file: impl AsRef<Path>,
+    ) -> anyhow::Result<Self> {
+        let insomnia_file = insomnia_file.as_ref();
         // First, deserialize into the insomnia format
         info!(file = ?insomnia_file, "Loading Insomnia collection");
         eprintln!(
@@ -80,6 +84,15 @@ enum Resource {
     ApiSpec,
 }
 
+/// A shitty option type. Insomnia uses empty map instead of `null` for empty
+/// values in some cases. This type makes that easy to deserialize.
+#[derive(Debug, Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+enum Opshit<T> {
+    None {},
+    Some(T),
+}
+
 #[derive(Debug, Deserialize)]
 struct Environment {
     #[serde(rename = "_id")]
@@ -96,15 +109,16 @@ struct Request {
     name: String,
     url: Template,
     method: String,
-    authentication: Authentication,
+    authentication: Opshit<Authentication>,
     headers: Vec<Header>,
     parameters: Vec<Parameter>,
-    body: Body,
+    body: Opshit<Body>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Authentication {
+    Basic { username: String, password: String },
     Bearer { token: String },
     // Punting on other types for now
 }
@@ -121,19 +135,11 @@ struct Parameter {
     value: Template,
 }
 
-/// This can't be an `Option` because the empty case is an empty object, not
-/// null
 #[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum Body {
-    // This has to go *first*, otherwise all objects will match the empty case
-    #[serde(rename_all = "camelCase")]
-    Body {
-        mime_type: String,
-        text: Template,
-    },
-    // This matches empty object, so it has to be a struct variant
-    Empty {},
+#[serde(rename_all = "camelCase")]
+struct Body {
+    mime_type: String,
+    text: Template,
 }
 
 impl From<Environment> for Profile {
@@ -155,24 +161,31 @@ impl From<Request> for Recipe {
         let mut headers: IndexMap<String, Template> = IndexMap::new();
 
         // Preload headers from implicit sources
-        if let Body::Body { mime_type, .. } = &request.body {
+        if let Opshit::Some(Body { mime_type, .. }) = &request.body {
             headers.insert(
-                "content-type".into(),
-                Template::dangerous_new(mime_type.clone()),
+                header::CONTENT_TYPE.as_str().into(),
+                Template::dangerous(mime_type.clone()),
             );
-        }
-        match request.authentication {
-            Authentication::Bearer { token } => {
-                headers.insert(
-                    "authorization".into(),
-                    Template::dangerous_new(format!("Bearer {token}")),
-                );
-            }
         }
         // Load explicit headers *after* so we can override the implicit stuff
         for header in request.headers {
-            headers.insert(header.name, header.value);
+            headers.insert(header.name.to_lowercase(), header.value);
         }
+        headers.remove(header::USER_AGENT.as_str());
+
+        // Load authentication scheme
+        let authentication = match request.authentication {
+            Opshit::None {} => None,
+            Opshit::Some(Authentication::Basic { username, password }) => {
+                Some(collection::Authentication::Basic {
+                    username: Template::dangerous(username),
+                    password: Some(Template::dangerous(password)),
+                })
+            }
+            Opshit::Some(Authentication::Bearer { token }) => Some(
+                collection::Authentication::Bearer(Template::dangerous(token)),
+            ),
+        };
 
         Recipe {
             id: request.id.into(),
@@ -180,8 +193,8 @@ impl From<Request> for Recipe {
             method: request.method,
             url: request.url,
             body: match request.body {
-                Body::Empty {} => None,
-                Body::Body { text, .. } => Some(text),
+                Opshit::None {} => None,
+                Opshit::Some(Body { text, .. }) => Some(text),
             },
             query: request
                 .parameters
@@ -189,6 +202,28 @@ impl From<Request> for Recipe {
                 .map(|parameter| (parameter.name, parameter.value))
                 .collect(),
             headers,
+            authentication,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::collection::CollectionFile;
+    use pretty_assertions::assert_eq;
+
+    const INSOMNIA_FILE: &str = "./test_data/insomnia.json";
+    const INSOMNIA_IMPORTED_FILE: &str = "./test_data/insomnia_imported.yml";
+
+    /// Catch-all test for insomnia import
+    #[tokio::test]
+    async fn test_insomnia_import() {
+        let imported = Collection::from_insomnia(INSOMNIA_FILE).unwrap();
+        let expected = CollectionFile::load(INSOMNIA_IMPORTED_FILE.into())
+            .await
+            .unwrap()
+            .collection;
+        assert_eq!(imported, expected);
     }
 }

@@ -24,6 +24,7 @@ factori!(Request, {
         method = Method::GET,
         url = "http://localhost/url".parse().unwrap(),
         headers = HeaderMap::new(),
+        authentication = None,
         body = None,
     }
 });

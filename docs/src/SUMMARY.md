@@ -20,6 +20,7 @@
   - [Profile](./api/profile.md)
   - [Profile Value](./api/profile_value.md)
   - [Request Recipe](./api/request_recipe.md)
+  - [Authentication](./api/authentication.md)
   - [Chain](./api/chain.md)
   - [Chain Source](./api/chain_source.md)
   - [Template](./api/template.md)

@@ -1,0 +1,50 @@
+# What we expect the Insomnia example collection to import as
+profiles:
+  env_99d30891da4bdcebc63947a8fc17f076de878684:
+    name: Base Environment
+    data: {}
+  env_b54010f85b024f5d89724bd918f983ec:
+    name: Local
+    data:
+      host: !raw http://localhost:3000
+  env_6203e0435e4f44e19406bde63f7bfa62:
+    name: Remote
+    data:
+      host: !raw https://httpbin.org
+chains: {}
+requests:
+  req_467d7ec5ceee4893aa443b09e25c6e53:
+    name: No Auth
+    method: GET
+    url: https://httpbin.org/get
+    body: null
+    authentication: null
+    query: {}
+    headers: {}
+  req_30f68ae3069b4ec59707bf793a4b74cb:
+    name: Bearer Auth
+    method: GET
+    url: https://httpbin.org/get
+    body: null
+    authentication: !bearer asdfasdf
+    query: {}
+    headers: {}
+  req_b537f7f12d2f4dffbda12fdff2ff3704:
+    name: Basic Auth
+    method: GET
+    url: https://httpbin.org/get
+    body: null
+    authentication: !basic
+      username: user
+      password: pass
+    query: {}
+    headers: {}
+  req_bff9461c4e81463b890856a283d5e2f3:
+    name: With Body
+    method: POST
+    url: https://httpbin.org/post
+    body: "{\n\t\"message\": \"hello!\"\n}"
+    authentication: null
+    query: {}
+    headers:
+      content-type: application/json

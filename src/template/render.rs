@@ -42,6 +42,19 @@ impl Template {
             .traced()
     }
 
+    /// Render an optional template. This is useful because `Option::map`
+    /// doesn't work with an async operation in the closure
+    pub async fn render_opt(
+        template: &Option<Self>,
+        context: &TemplateContext,
+    ) -> anyhow::Result<Option<String>> {
+        if let Some(template) = template {
+            Ok(Some(template.render(context).await?))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Render the template string using values from the given context,
     /// returning the individual rendered chunks. This is useful in any
     /// application where rendered chunks need to be handled differently from

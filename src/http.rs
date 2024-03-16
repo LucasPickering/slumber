@@ -42,8 +42,11 @@ pub use query::*;
 pub use record::*;
 
 use crate::{
-    collection::Recipe, config::Config, db::CollectionDatabase,
-    template::TemplateContext, util::ResultExt,
+    collection::{self, Recipe},
+    config::Config,
+    db::CollectionDatabase,
+    template::{Template, TemplateContext},
+    util::ResultExt,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -206,6 +209,17 @@ impl HttpEngine {
             .request(request.method.clone(), request.url.clone())
             .headers(request.headers.clone());
 
+        // Add auth
+        request_builder = match &request.authentication {
+            Some(Authentication::Basic { username, password }) => {
+                request_builder.basic_auth(username, password.as_ref())
+            }
+            Some(Authentication::Bearer(token)) => {
+                request_builder.bearer_auth(token)
+            }
+            None => request_builder,
+        };
+
         // Add body
         if let Some(body) = &request.body {
             request_builder = request_builder.body(body.clone());
@@ -309,10 +323,11 @@ impl RequestBuilder {
         let method = self.recipe.method.parse()?;
 
         // Render everything in parallel
-        let (mut url, headers, query, body) = try_join!(
+        let (mut url, query, headers, authentication, body) = try_join!(
             self.render_url(),
-            self.render_headers(),
             self.render_query(),
+            self.render_headers(),
+            self.render_authentication(),
             self.render_body(),
         )?;
 
@@ -335,11 +350,13 @@ impl RequestBuilder {
             recipe_id: self.recipe.id,
             method,
             url,
-            body,
             headers,
+            authentication,
+            body,
         })
     }
 
+    /// Render a base URL, *without* query params
     async fn render_url(&self) -> anyhow::Result<Url> {
         // Shitty try block
         async {
@@ -348,6 +365,31 @@ impl RequestBuilder {
         }
         .await
         .context("Error rendering URL")
+    }
+
+    /// Render query key=value params
+    async fn render_query(&self) -> anyhow::Result<IndexMap<String, String>> {
+        let template_context = &self.template_context;
+        let iter = self
+            .recipe
+            .query
+            .iter()
+            // Filter out disabled params
+            .filter(|(param, _)| {
+                !self.options.disabled_query_parameters.contains(*param)
+            })
+            .map(|(k, v)| async move {
+                Ok::<_, anyhow::Error>((
+                    k.clone(),
+                    v.render(template_context).await.context(format!(
+                        "Error rendering query parameter `{k}`"
+                    ))?,
+                ))
+            });
+        Ok(future::try_join_all(iter)
+            .await?
+            .into_iter()
+            .collect::<IndexMap<String, String>>())
     }
 
     async fn render_headers(&self) -> anyhow::Result<HeaderMap> {
@@ -387,41 +429,41 @@ impl RequestBuilder {
             .collect::<HeaderMap>())
     }
 
-    async fn render_query(&self) -> anyhow::Result<IndexMap<String, String>> {
-        let template_context = &self.template_context;
-        let iter = self
-            .recipe
-            .query
-            .iter()
-            // Filter out disabled params
-            .filter(|(param, _)| {
-                !self.options.disabled_query_parameters.contains(*param)
-            })
-            .map(|(k, v)| async move {
-                Ok::<_, anyhow::Error>((
-                    k.clone(),
-                    v.render(template_context).await.context(format!(
-                        "Error rendering query parameter `{k}`"
-                    ))?,
-                ))
-            });
-        Ok(future::try_join_all(iter)
-            .await?
-            .into_iter()
-            .collect::<IndexMap<String, String>>())
+    async fn render_authentication(
+        &self,
+    ) -> anyhow::Result<Option<record::Authentication>> {
+        let context = &self.template_context;
+        if let Some(authentication) = &self.recipe.authentication {
+            let output = match authentication {
+                collection::Authentication::Basic { username, password } => {
+                    let username = username
+                        .render(context)
+                        .await
+                        .context("Error rendering username")?;
+                    let password = Template::render_opt(password, context)
+                        .await
+                        .context("Error rendering password")?;
+                    record::Authentication::Basic { username, password }
+                }
+                collection::Authentication::Bearer(token) => {
+                    let token = token
+                        .render(context)
+                        .await
+                        .context("Error rendering bearer token")?;
+                    record::Authentication::Bearer(token)
+                }
+            };
+            Ok(Some(output))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn render_body(&self) -> anyhow::Result<Option<Bytes>> {
-        match &self.recipe.body {
-            Some(body) => {
-                let body = body
-                    .render(&self.template_context)
-                    .await
-                    .context("Error rendering body")?
-                    .into();
-                Ok(Some(body))
-            }
-            None => Ok(None),
-        }
+        let body =
+            Template::render_opt(&self.recipe.body, &self.template_context)
+                .await
+                .context("Error rendering body")?;
+        Ok(body.map(Bytes::from))
     }
 }

@@ -6,6 +6,7 @@
 
 - Add config option `ignore_certificate_hosts` ([#109](https://github.com/LucasPickering/slumber/issues/109))
 - Add menu action to open collection file in editor ([#105](https://github.com/LucasPickering/slumber/issues/105))
+- Add `authentication` field to request recipe ([#110](https://github.com/LucasPickering/slumber/issues/110))
 
 ### Fixed
 
@@ -13,6 +14,7 @@
 - Fix content type identification for extended JSON MIME types ([#103](https://github.com/LucasPickering/slumber/issues/103))
 - Use named records in binary blobs in the local DB
   - This required wiping out existing binary blobs, meaning **all request history and UI state will be lost on upgrade**
+- Fix basic auth in Insomnia import
 
 ## [0.13.1] - 2024-03-07
 

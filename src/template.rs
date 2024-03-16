@@ -65,15 +65,17 @@ impl Template {
     /// for the purpose of being serialized, e.g. when importing an external
     /// config into a request collection.
     ///
-    /// If you try to render this thing, you'll get garbage. The "correct" thing
-    /// to do would be to add some safeguards to make that impossible (either
-    /// type state or a runtime check), but it's not worth the extra code for
-    /// something that is very unlikely to happen. It says "dangerous", don't be
-    /// stupid.
-    pub(crate) fn dangerous_new(template: String) -> Self {
+    /// If you try to render this thing, you'll always get the raw string back.
+    /// The "correct" thing to do would be to add some safeguards to make that
+    /// impossible (either type state or a runtime check), but it's not worth
+    /// the extra code for something that is very unlikely to happen. It says
+    /// "dangerous", don't be stupid.
+    pub(crate) fn dangerous(template: String) -> Self {
+        // Create one raw chunk for everything
+        let chunk = TemplateInputChunk::Raw(Span::new(0, template.len()));
         Self {
             template,
-            chunks: Vec::new(),
+            chunks: vec![chunk],
         }
     }
 }

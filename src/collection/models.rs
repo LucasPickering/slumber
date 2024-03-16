@@ -14,6 +14,7 @@ use std::path::PathBuf;
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
 #[derive(Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
     pub profiles: IndexMap<ProfileId, Profile>,
@@ -31,6 +32,7 @@ pub struct Collection {
 
 /// Mutually exclusive hot-swappable config group
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
@@ -80,6 +82,7 @@ pub enum ProfileValue {
 /// not called `RequestTemplate` because the word "template" has a specific
 /// meaning related to string interpolation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
@@ -89,6 +92,7 @@ pub struct Recipe {
     pub method: String,
     pub url: Template,
     pub body: Option<Template>,
+    pub authentication: Option<Authentication>,
     #[serde(default)]
     pub query: IndexMap<String, Template>,
     #[serde(default)]
@@ -117,10 +121,27 @@ impl PartialEq<Recipe> for RecipeId {
     }
 }
 
+/// Shortcut for defining authentication method. If this is defined in addition
+/// to the `Authorization` header, that header will end up being included in the
+/// request twice.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(rename_all = "snake_case")]
+pub enum Authentication {
+    /// `Authorization: Basic {username:password | base64}`
+    Basic {
+        username: Template,
+        password: Option<Template>,
+    },
+    /// `Authorization: Bearer {token}`
+    Bearer(Template),
+}
+
 /// A chain is a means to data from one response in another request. The chain
 /// is the middleman: it defines where and how to pull the value, then recipes
 /// can use it in a template via `{{chains.<chain_id>}}`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Chain {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ChainId,
@@ -178,6 +199,7 @@ impl Equivalent<ChainId> for ChainId<&str> {
 
 /// The source of data for a chain
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "snake_case")]
 pub enum ChainSource {
     /// Load data from the most recent response of a particular request recipe

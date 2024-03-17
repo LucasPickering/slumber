@@ -10,6 +10,7 @@
 ### Fixed
 
 - Fix prompt in TUI always rendering as sensitive ([#108](https://github.com/LucasPickering/slumber/issues/108))
+- Fix content type identification for extended JSON MIME types ([#103](https://github.com/LucasPickering/slumber/issues/103))
 
 ## [0.13.1] - 2024-03-07
 

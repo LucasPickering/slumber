@@ -106,20 +106,8 @@ pub struct Request {
     pub url: Url,
     #[serde(with = "serde_header_map")]
     pub headers: HeaderMap,
-    #[serde(default)]
-    pub authentication: Option<Authentication>,
     /// Body content as bytes. This should be decoded as needed
     pub body: Option<Bytes>,
-}
-
-/// A copy of [collection::Authentication], with templates rendered to strings
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Authentication {
-    Basic {
-        username: String,
-        password: Option<String>,
-    },
-    Bearer(String),
 }
 
 /// A resolved HTTP response, with all content loaded and ready to be displayed

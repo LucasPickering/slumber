@@ -6,7 +6,6 @@ use crate::{
 };
 use chrono::Utc;
 use factori::{create, factori};
-use indexmap::IndexMap;
 use reqwest::{header::HeaderMap, Method, StatusCode};
 
 factori!(Profile, {
@@ -23,9 +22,8 @@ factori!(Request, {
         profile_id = None,
         recipe_id = "recipe1".into(),
         method = Method::GET,
-        url = "/url".into(),
+        url = "http://localhost/url".parse().unwrap(),
         headers = HeaderMap::new(),
-        query = IndexMap::new(),
         body = None,
     }
 });

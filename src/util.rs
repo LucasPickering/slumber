@@ -3,7 +3,7 @@ use anyhow::Context;
 use derive_more::{DerefMut, Display};
 use serde::de::DeserializeOwned;
 use std::{
-    fs,
+    fmt, fs,
     ops::Deref,
     path::{Path, PathBuf},
 };
@@ -136,6 +136,22 @@ impl<T> ResultExt<T, RequestError> for Result<T, RequestError> {
             error!(error = %err);
         }
         self
+    }
+}
+
+/// Helper to printing bytes. If the bytes aren't valid UTF-8, a message about
+/// them being invalid will be printed instead.
+pub struct MaybeStr<'a>(pub &'a [u8]);
+
+impl<'a> MaybeStr<'a> {
+    pub fn to_str(&self) -> &'a str {
+        std::str::from_utf8(self.0).unwrap_or("<invalid utf-8>")
+    }
+}
+
+impl<'a> Display for MaybeStr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_str())
     }
 }
 

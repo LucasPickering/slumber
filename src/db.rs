@@ -120,6 +120,11 @@ impl Database {
                 )",
             )
             .down("DROP TABLE ui_state"),
+            // This is a sledgehammer migration. Added when we switch from
+            // rmp_serde::to_vec to rmp_serde::to_vec_named. This affected the
+            // serialization of all binary blobs, so there's no easy way to
+            // migrate it all. It's easiest just to wipe it all out.
+            M::up("DELETE FROM requests; DELETE FROM ui_state;").down(""),
         ]);
         migrations.to_latest(connection)?;
         Ok(())
@@ -519,7 +524,7 @@ struct Bytes<T>(T);
 
 impl<T: Serialize> ToSql for Bytes<T> {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        let bytes = rmp_serde::to_vec(&self.0).map_err(|err| {
+        let bytes = rmp_serde::to_vec_named(&self.0).map_err(|err| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(err))
         })?;
         Ok(ToSqlOutput::Owned(bytes.into()))

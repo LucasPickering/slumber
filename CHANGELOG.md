@@ -11,6 +11,8 @@
 
 - Fix prompt in TUI always rendering as sensitive ([#108](https://github.com/LucasPickering/slumber/issues/108))
 - Fix content type identification for extended JSON MIME types ([#103](https://github.com/LucasPickering/slumber/issues/103))
+- Use named records in binary blobs in the local DB
+  - This required wiping out existing binary blobs, meaning **all request history and UI state will be lost on upgrade**
 
 ## [0.13.1] - 2024-03-07
 

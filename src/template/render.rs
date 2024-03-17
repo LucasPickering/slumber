@@ -241,7 +241,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     // Guess content type based on HTTP header
                     let content_type =
                         ContentType::from_response(&response).ok();
-                    (response.body.into_text(), content_type)
+                    (response.body.into_bytes(), content_type)
                 }
                 ChainSource::File(path) => {
                     // Guess content type based on file extension
@@ -258,7 +258,8 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                         label.as_deref(),
                         chain.sensitive,
                     )
-                    .await?,
+                    .await?
+                    .into_bytes(),
                     // No way to guess content type on this
                     None,
                 ),
@@ -277,7 +278,9 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     .map_err(|err| ChainError::ParseResponse { error: err })?;
                 selector.query_to_string(&*value)?
             } else {
-                value
+                // We just want raw text - decode as UTF-8
+                String::from_utf8(value)
+                    .map_err(|error| ChainError::InvalidUtf8 { error })?
             };
 
             Ok(RenderedChunk {
@@ -315,20 +318,18 @@ impl<'a> ChainTemplateSource<'a> {
     }
 
     /// Render a chained value from a file
-    async fn render_file(&self, path: &'a Path) -> Result<String, ChainError> {
-        fs::read_to_string(path)
-            .await
-            .map_err(|error| ChainError::File {
-                path: path.to_owned(),
-                error,
-            })
+    async fn render_file(&self, path: &'a Path) -> Result<Vec<u8>, ChainError> {
+        fs::read(path).await.map_err(|error| ChainError::File {
+            path: path.to_owned(),
+            error,
+        })
     }
 
     /// Render a chained value from an external command
     async fn render_command(
         &self,
         command: &[String],
-    ) -> Result<String, ChainError> {
+    ) -> Result<Vec<u8>, ChainError> {
         match command {
             [] => Err(ChainError::CommandMissing),
             [program, args @ ..] => {
@@ -343,14 +344,9 @@ impl<'a> ChainTemplateSource<'a> {
                     ?command,
                     stdout = %String::from_utf8_lossy(&output.stdout),
                     stderr = %String::from_utf8_lossy(&output.stderr),
-                    "Executing subcommand"
+                    "Executed subcommand"
                 );
-                String::from_utf8(output.stdout).map_err(|error| {
-                    ChainError::CommandInvalidUtf8 {
-                        command: command.to_owned(),
-                        error,
-                    }
-                })
+                Ok(output.stdout)
             }
         }
     }

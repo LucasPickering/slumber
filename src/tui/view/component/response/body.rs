@@ -13,7 +13,7 @@ use crate::{
             Component,
         },
     },
-    util::ResultExt,
+    util::{MaybeStr, ResultExt},
 };
 use anyhow::Context;
 use derive_more::Debug;
@@ -167,7 +167,8 @@ fn init_text_window(
                 .unwrap_or_else(|| parsed_body.prettify())
         })
         // Content couldn't be parsed, fall back to the raw text
-        .unwrap_or_else(|| record.response.body.text().to_owned());
+        // If the text isn't UTF-8, we'll show a placeholder instead
+        .unwrap_or_else(|| MaybeStr(record.response.body.bytes()).to_string());
 
     TextWindow::new(body).into()
 }

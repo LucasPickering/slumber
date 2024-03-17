@@ -36,7 +36,7 @@ pub trait ResponseContent: Debug + Display {
     fn content_type(&self) -> ContentType;
 
     /// Parse the response body as this type
-    fn parse(body: &str) -> anyhow::Result<Self>
+    fn parse(body: &[u8]) -> anyhow::Result<Self>
     where
         Self: Sized;
 
@@ -62,8 +62,8 @@ impl ResponseContent for Json {
         ContentType::Json
     }
 
-    fn parse(body: &str) -> anyhow::Result<Self> {
-        Ok(Self(serde_json::from_str(body)?))
+    fn parse(body: &[u8]) -> anyhow::Result<Self> {
+        Ok(Self(serde_json::from_slice(body)?))
     }
 
     fn prettify(&self) -> String {
@@ -86,7 +86,7 @@ impl ContentType {
     /// object.
     pub fn parse_content(
         self,
-        content: &str,
+        content: &[u8],
     ) -> anyhow::Result<Box<dyn ResponseContent>> {
         match self {
             Self::Json => Ok(Box::new(Json::parse(content)?)),
@@ -111,7 +111,8 @@ impl ContentType {
     pub(super) fn parse_response(
         response: &Response,
     ) -> anyhow::Result<Box<dyn ResponseContent>> {
-        Self::from_response(response)?.parse_content(response.body.text())
+        let content_type = Self::from_response(response)?;
+        content_type.parse_content(response.body.bytes())
     }
 
     /// Parse the content type from a file's extension
@@ -128,10 +129,10 @@ impl ContentType {
     /// Parse the content type from a response's `Content-Type` header
     pub fn from_response(response: &Response) -> anyhow::Result<Self> {
         // If the header value isn't utf-8, we're hosed
-        let header_value =
-            std::str::from_utf8(response.content_type().ok_or_else(|| {
-                anyhow!("Response has no content-type header")
-            })?)
+        let header_value = response
+            .content_type()
+            .ok_or_else(|| anyhow!("Response has no content-type header"))?;
+        let header_value = std::str::from_utf8(header_value)
             .context("content-type header is not valid utf-8")?;
         Self::from_header(header_value)
     }

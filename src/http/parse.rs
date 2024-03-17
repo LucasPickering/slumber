@@ -8,17 +8,24 @@
 use crate::http::Response;
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
+use regex::Regex;
 use serde::{de::IntoDeserializer, Deserialize, Serialize};
-use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path, str::FromStr};
+use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path, sync::OnceLock};
 
 /// All supported content types. Each variant should have a corresponding
 /// implementation of [ResponseContent].
+///
+/// Serialization/deserialization of this only uses the short name. To parse
+/// a MIME type (from an HTTP header), use [Self::try_from_mime]. This is to
+/// prevent accidentally supporting invalid MIME types.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[serde(rename_all = "snake_case")]
 pub enum ContentType {
-    // Primary serialization string here should match the HTTP Content-Type
-    // header. Others are for file extensions.
-    #[serde(rename = "application/json", alias = "json")]
+    // Primary serialization string here should match the string we expect
+    // users to enter in their collection file for manual overrides, i.e. the
+    // most obvious/user-friendly value. MIME types are implemented
+    // separately.
     Json,
 }
 
@@ -77,7 +84,7 @@ impl ResponseContent for Json {
 impl ContentType {
     /// Parse some content of this type. Return a dynamically dispatched content
     /// object.
-    pub fn parse(
+    pub fn parse_content(
         self,
         content: &str,
     ) -> anyhow::Result<Box<dyn ResponseContent>> {
@@ -104,25 +111,36 @@ impl ContentType {
     pub(super) fn parse_response(
         response: &Response,
     ) -> anyhow::Result<Box<dyn ResponseContent>> {
-        Self::from_header(response)?.parse(response.body.text())
+        Self::from_response(response)?.parse_content(response.body.text())
     }
 
     /// Parse the content type from a file's extension
     pub fn from_extension(path: &Path) -> anyhow::Result<Self> {
-        path.extension()
+        let extension = path
+            .extension()
             .and_then(OsStr::to_str)
-            .ok_or_else(|| anyhow!("Path {path:?} has no extension"))?
-            .parse()
+            .ok_or_else(|| anyhow!("Path {path:?} has no extension"))?;
+        // Lean on serde for parsing
+        ContentType::deserialize(extension.into_deserializer())
+            .map_err(serde::de::value::Error::into)
     }
 
     /// Parse the content type from a response's `Content-Type` header
-    pub fn from_header(response: &Response) -> anyhow::Result<Self> {
+    pub fn from_response(response: &Response) -> anyhow::Result<Self> {
         // If the header value isn't utf-8, we're hosed
         let header_value =
             std::str::from_utf8(response.content_type().ok_or_else(|| {
                 anyhow!("Response has no content-type header")
             })?)
             .context("content-type header is not valid utf-8")?;
+        Self::from_header(header_value)
+    }
+
+    /// Parse the value of the content-type header and map it to a known content
+    /// type
+    fn from_header(header_value: &str) -> anyhow::Result<Self> {
+        // unstable: use LazyLock https://github.com/rust-lang/rust/pull/121377
+        static JSON_REGEX: OnceLock<Regex> = OnceLock::new();
 
         // Remove extra metadata from the header. It feels like there should be
         // a helper for this in hyper or reqwest but I couldn't find it.
@@ -132,17 +150,15 @@ impl ContentType {
             .map(|t| t.0)
             .unwrap_or(header_value);
 
-        content_type.parse()
-    }
-}
+        let regex = JSON_REGEX.get_or_init(|| {
+            Regex::new("^application/(\\w+\\+)?json$").unwrap()
+        });
 
-impl FromStr for ContentType {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Lean on serde for parsing
-        ContentType::deserialize(s.into_deserializer())
-            .map_err(serde::de::value::Error::into)
+        if regex.is_match(content_type) {
+            Ok(Self::Json)
+        } else {
+            Err(anyhow!("Unknown content type {header_value:?}"))
+        }
     }
 }
 
@@ -157,6 +173,36 @@ mod tests {
     use rstest::rstest;
     use serde_json::json;
     use std::ops::Deref;
+
+    /// Test all content types and their variants
+    #[rstest]
+    #[case("application/json", ContentType::Json)]
+    #[case(
+        // Test extra metadata in the content-type header
+        "application/json; charset=utf-8; boundary=asdf",
+        ContentType::Json
+    )]
+    // Test extended MIME type
+    #[case("application/geo+json", ContentType::Json)]
+    fn test_try_from_mime(
+        #[case] mime_type: &str,
+        #[case] expected: ContentType,
+    ) {
+        assert_eq!(ContentType::from_header(mime_type).unwrap(), expected);
+    }
+
+    /// Test invalid/unknown MIME types
+    #[rstest]
+    #[case("json")] // Bare types not supported
+    #[case("application/+json")]
+    #[case("application/ +json")] // Spaces are bad!
+    #[case("text/html")]
+    fn test_try_from_mime_error(#[case] mime_type: &str) {
+        assert_err!(
+            ContentType::from_header(mime_type),
+            "Unknown content type"
+        );
+    }
 
     #[test]
     fn test_from_extension() {
@@ -183,12 +229,6 @@ mod tests {
         "{\"hello\": \"goodbye\"}",
         Json(json!({"hello": "goodbye"}))
     )]
-    #[case(
-        // Test extra metadata in the content-type header
-        "application/json; charset=utf-8; boundary=asdf",
-        "{\"hello\": \"goodbye\"}",
-        Json(json!({"hello": "goodbye"}))
-    )]
     fn test_parse_body<T: ResponseContent + PartialEq + 'static>(
         #[case] content_type: &str,
         #[case] body: String,
@@ -212,7 +252,7 @@ mod tests {
     /// Test various failure cases
     #[rstest]
     #[case(None::<&str>, "", "no content-type header")]
-    #[case(Some("bad-header"), "", "unknown variant `bad-header`")]
+    #[case(Some("bad-header"), "", "Unknown content type \"bad-header\"")]
     #[case(Some(b"\xc3\x28".as_slice()), "", "not valid utf-8")]
     #[case(Some("application/json"), "not json!", "expected ident")]
     fn test_parse_body_error<

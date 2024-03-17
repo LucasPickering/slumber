@@ -239,7 +239,8 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     let response =
                         self.get_response(context, recipe_id).await?;
                     // Guess content type based on HTTP header
-                    let content_type = ContentType::from_header(&response).ok();
+                    let content_type =
+                        ContentType::from_response(&response).ok();
                     (response.body.into_text(), content_type)
                 }
                 ChainSource::File(path) => {
@@ -272,7 +273,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     content_type.ok_or(ChainError::UnknownContentType)?;
                 // Parse according to detected content type
                 let value = content_type
-                    .parse(&value)
+                    .parse_content(&value)
                     .map_err(|err| ChainError::ParseResponse { error: err })?;
                 selector.query_to_string(&*value)?
             } else {

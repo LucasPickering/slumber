@@ -46,6 +46,7 @@ use crate::{
     template::TemplateContext, util::ResultExt,
 };
 use anyhow::Context;
+use bytes::Bytes;
 use chrono::Utc;
 use futures::future;
 use indexmap::IndexMap;
@@ -56,6 +57,7 @@ use reqwest::{
 use std::collections::HashSet;
 use tokio::try_join;
 use tracing::{debug, info, info_span};
+use url::Url;
 
 const USER_AGENT: &str =
     concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -201,8 +203,7 @@ impl HttpEngine {
         // Convert to reqwest's request format
         let mut request_builder = self
             .client
-            .request(request.method.clone(), &request.url)
-            .query(&request.query)
+            .request(request.method.clone(), request.url.clone())
             .headers(request.headers.clone());
 
         // Add body
@@ -226,7 +227,7 @@ impl HttpEngine {
         let headers = response.headers().clone();
 
         // Pre-resolve the content, so we get all the async work done
-        let body = response.text().await?.into();
+        let body = response.bytes().await?.into();
 
         Ok(Response {
             status,
@@ -308,12 +309,17 @@ impl RequestBuilder {
         let method = self.recipe.method.parse()?;
 
         // Render everything in parallel
-        let (url, headers, query, body) = try_join!(
+        let (mut url, headers, query, body) = try_join!(
             self.render_url(),
             self.render_headers(),
             self.render_query(),
             self.render_body(),
         )?;
+
+        // Join query into URL. if check prevents bare ? for empty query
+        if !query.is_empty() {
+            url.query_pairs_mut().extend_pairs(&query);
+        }
 
         info!(
             recipe_id = %self.recipe.id,
@@ -329,18 +335,19 @@ impl RequestBuilder {
             recipe_id: self.recipe.id,
             method,
             url,
-            query,
             body,
             headers,
         })
     }
 
-    async fn render_url(&self) -> anyhow::Result<String> {
-        self.recipe
-            .url
-            .render(&self.template_context)
-            .await
-            .context("Error rendering URL")
+    async fn render_url(&self) -> anyhow::Result<Url> {
+        // Shitty try block
+        async {
+            let url = self.recipe.url.render(&self.template_context).await?;
+            url.parse().map_err(anyhow::Error::from)
+        }
+        .await
+        .context("Error rendering URL")
     }
 
     async fn render_headers(&self) -> anyhow::Result<HeaderMap> {
@@ -404,13 +411,16 @@ impl RequestBuilder {
             .collect::<IndexMap<String, String>>())
     }
 
-    async fn render_body(&self) -> anyhow::Result<Option<String>> {
+    async fn render_body(&self) -> anyhow::Result<Option<Bytes>> {
         match &self.recipe.body {
-            Some(body) => Ok(Some(
-                body.render(&self.template_context)
+            Some(body) => {
+                let body = body
+                    .render(&self.template_context)
                     .await
-                    .context("Error rendering body")?,
-            )),
+                    .context("Error rendering body")?
+                    .into();
+                Ok(Some(body))
+            }
             None => Ok(None),
         }
     }

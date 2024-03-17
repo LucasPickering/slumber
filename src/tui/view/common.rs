@@ -17,6 +17,7 @@ use crate::{
         context::TuiContext,
         view::{draw::Generate, state::Notification},
     },
+    util::MaybeStr,
 };
 use chrono::{DateTime, Duration, Local, Utc};
 use itertools::Itertools;
@@ -185,10 +186,7 @@ impl Generate for &HeaderValue {
     where
         Self: 'this,
     {
-        match self.to_str() {
-            Ok(s) => s.into(),
-            Err(_) => "<invalid utf-8>".into(),
-        }
+        MaybeStr(self.as_bytes()).to_str().into()
     }
 }
 

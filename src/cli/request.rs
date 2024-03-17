@@ -5,7 +5,7 @@ use crate::{
     db::Database,
     http::{HttpEngine, RecipeOptions, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
-    util::ResultExt,
+    util::{MaybeStr, ResultExt},
     GlobalArgs,
 };
 use anyhow::{anyhow, Context};
@@ -137,7 +137,7 @@ impl Subcommand for RequestCommand {
                 println!("{}", HeaderDisplay(&record.response.headers));
             }
             if !self.no_body {
-                print!("{}", record.response.body.text());
+                print!("{}", MaybeStr(record.response.body.bytes()));
             }
 
             if self.exit_status && status.as_u16() >= 400 {
@@ -200,7 +200,7 @@ impl<'a> Display for HeaderDisplay<'a> {
                 f,
                 "{}: {}",
                 key_style.apply_to(key),
-                value.to_str().unwrap_or("<invalid utf-8>")
+                MaybeStr(value.as_bytes()),
             )?;
         }
         Ok(())

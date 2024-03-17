@@ -13,6 +13,7 @@ rust-version = "1.74.0"
 [dependencies]
 anyhow = {version = "^1.0.75", features = ["backtrace"]}
 async-trait = "^0.1.73"
+bytes = { version = "1.5.0", features = ["serde"] }
 chrono = {version = "^0.4.31", default-features = false, features = ["clock", "serde", "std"]}
 clap = {version = "^4.4.2", features = ["derive"]}
 cli-clipboard = "0.4.0"
@@ -43,7 +44,7 @@ thiserror = "^1.0.48"
 tokio = {version = "^1.32.0", default-features = false, features = ["full"]}
 tracing = "^0.1.37"
 tracing-subscriber = {version = "^0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}
-url = "^2.5.0"
+url = { version = "^2.5.0", features = ["serde"] }
 uuid = {version = "^1.4.1", default-features = false, features = ["serde", "v4"]}
 
 [dev-dependencies]

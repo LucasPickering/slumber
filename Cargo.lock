@@ -195,6 +195,9 @@ name = "bytes"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2bd12c1caf447e69cd4528f47f94d203fd2582878ecb9e9465484c4148a8223"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "cassowary"
@@ -1802,6 +1805,7 @@ version = "0.13.1"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bytes",
  "chrono",
  "clap",
  "cli-clipboard",
@@ -2219,6 +2223,7 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]

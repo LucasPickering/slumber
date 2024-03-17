@@ -6,6 +6,7 @@ use crate::{
     util::ResultExt,
 };
 use anyhow::Context;
+use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::{Display, From};
 use indexmap::IndexMap;
@@ -16,6 +17,7 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use thiserror::Error;
+use url::Url;
 use uuid::Uuid;
 
 /// An error that can occur while *building* a request
@@ -100,13 +102,11 @@ pub struct Request {
 
     #[serde(with = "serde_method")]
     pub method: Method,
-    pub url: String,
+    pub url: Url,
     #[serde(with = "serde_header_map")]
     pub headers: HeaderMap,
-    pub query: IndexMap<String, String>,
-    /// Text body content. At some point we'll support other formats (binary,
-    /// streaming from file, etc.)
-    pub body: Option<String>,
+    /// Body content as bytes. This should be decoded as needed
+    pub body: Option<Bytes>,
 }
 
 /// A resolved HTTP response, with all content loaded and ready to be displayed
@@ -145,22 +145,38 @@ impl Response {
     }
 }
 
-/// HTTP response body. Right now we store as text only, but at some point
-/// should add support for binary responses
+/// HTTP response body. Content is stored as bytes to support non-text content.
+/// Should be converted to text only as needed
 #[derive(Default, From, Serialize, Deserialize)]
-pub struct Body(String);
+pub struct Body(Bytes);
 
 impl Body {
-    pub fn new(text: String) -> Self {
-        Self(text)
+    pub fn new(bytes: Bytes) -> Self {
+        Self(bytes)
     }
 
-    pub fn text(&self) -> &str {
+    /// Raw content bytes
+    pub fn bytes(&self) -> &[u8] {
         &self.0
     }
 
-    pub fn into_text(self) -> String {
-        self.0
+    /// Owned raw content bytes
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.0.into()
+    }
+}
+
+#[cfg(test)]
+impl From<String> for Body {
+    fn from(value: String) -> Self {
+        Self(value.into())
+    }
+}
+
+#[cfg(test)]
+impl From<&str> for Body {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
     }
 }
 
@@ -170,12 +186,6 @@ impl Debug for Body {
         f.debug_tuple("Body")
             .field(&format!("<{} bytes>", self.0.len()))
             .finish()
-    }
-}
-
-impl From<&str> for Body {
-    fn from(value: &str) -> Self {
-        Body::new(value.into())
     }
 }
 

@@ -49,12 +49,13 @@ use crate::{
     util::ResultExt,
 };
 use anyhow::Context;
+use base64::{prelude::BASE64_STANDARD_NO_PAD, Engine};
 use bytes::Bytes;
 use chrono::Utc;
 use futures::future;
 use indexmap::IndexMap;
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
+    header::{self, HeaderMap, HeaderName, HeaderValue},
     Client,
 };
 use std::collections::HashSet;
@@ -209,17 +210,6 @@ impl HttpEngine {
             .request(request.method.clone(), request.url.clone())
             .headers(request.headers.clone());
 
-        // Add auth
-        request_builder = match &request.authentication {
-            Some(Authentication::Basic { username, password }) => {
-                request_builder.basic_auth(username, password.as_ref())
-            }
-            Some(Authentication::Bearer(token)) => {
-                request_builder.bearer_auth(token)
-            }
-            None => request_builder,
-        };
-
         // Add body
         if let Some(body) = &request.body {
             request_builder = request_builder.body(body.clone());
@@ -323,18 +313,11 @@ impl RequestBuilder {
         let method = self.recipe.method.parse()?;
 
         // Render everything in parallel
-        let (mut url, query, headers, authentication, body) = try_join!(
+        let (url, headers, body) = try_join!(
             self.render_url(),
-            self.render_query(),
             self.render_headers(),
-            self.render_authentication(),
             self.render_body(),
         )?;
-
-        // Join query into URL. if check prevents bare ? for empty query
-        if !query.is_empty() {
-            url.query_pairs_mut().extend_pairs(&query);
-        }
 
         info!(
             recipe_id = %self.recipe.id,
@@ -351,20 +334,32 @@ impl RequestBuilder {
             method,
             url,
             headers,
-            authentication,
             body,
         })
     }
 
-    /// Render a base URL, *without* query params
+    /// Render URL, including query params
     async fn render_url(&self) -> anyhow::Result<Url> {
         // Shitty try block
-        async {
-            let url = self.recipe.url.render(&self.template_context).await?;
-            url.parse().map_err(anyhow::Error::from)
+        let (mut url, query) = try_join!(
+            async {
+                let url = self
+                    .recipe
+                    .url
+                    .render(&self.template_context)
+                    .await
+                    .context("Error rendering URL")?;
+                url.parse::<Url>().context("Invalid URL")
+            },
+            self.render_query()
+        )?;
+
+        // Join query into URL. if check prevents bare ? for empty query
+        if !query.is_empty() {
+            url.query_pairs_mut().extend_pairs(&query);
         }
-        .await
-        .context("Error rendering URL")
+
+        Ok(url)
     }
 
     /// Render query key=value params
@@ -392,8 +387,10 @@ impl RequestBuilder {
             .collect::<IndexMap<String, String>>())
     }
 
+    /// Render all headers. This will also render authentication and merge it
+    /// into the headers
     async fn render_headers(&self) -> anyhow::Result<HeaderMap> {
-        let template_context = &self.template_context;
+        // Render base headers
         let iter = self
             .recipe
             .headers
@@ -402,61 +399,83 @@ impl RequestBuilder {
             .filter(|(header, _)| {
                 !self.options.disabled_headers.contains(*header)
             })
-            .map(|(header, value_template)| async move {
-                let value = value_template
-                    .render(template_context)
-                    .await
-                    .context(format!("Error rendering header `{header}`"))?;
-                // Strip leading/trailing line breaks because they're going to
-                // trigger a validation error and are probably a mistake. This
-                // is a balance between convenience and
-                // explicitness
-                let value = value.trim_matches(|c| c == '\n' || c == '\r');
-                // String -> header conversions are fallible, if headers
-                // are invalid
-                Ok::<(HeaderName, HeaderValue), anyhow::Error>((
-                    header.try_into().context(format!(
-                        "Error parsing header name `{header}`"
-                    ))?,
-                    value.try_into().context(format!(
-                        "Error parsing value for header `{header}`"
-                    ))?,
-                ))
+            .map(move |(header, value_template)| {
+                self.render_header(header, value_template)
             });
-        Ok(future::try_join_all(iter)
+        let mut headers = future::try_join_all(iter)
             .await?
             .into_iter()
-            .collect::<HeaderMap>())
+            .collect::<HeaderMap>();
+
+        // Render auth method and modify headers accordingly
+        let context = &self.template_context;
+        match &self.recipe.authentication {
+            Some(collection::Authentication::Basic { username, password }) => {
+                // Encode as `username:password | base64`
+                // https://swagger.io/docs/specification/authentication/basic-authentication/
+                let username = username
+                    .render(context)
+                    .await
+                    .context("Error rendering username")?;
+                let password = Template::render_opt(password, context)
+                    .await
+                    .context("Error rendering password")?
+                    .unwrap_or_default();
+                let credentials = BASE64_STANDARD_NO_PAD
+                    .encode(format!("{username}:{password}"));
+                headers.insert(
+                    header::AUTHORIZATION,
+                    // Error should be impossible since we know it's base64
+                    credentials.try_into().context(
+                        "Error encoding basic authentication credentials",
+                    )?,
+                );
+            }
+
+            Some(collection::Authentication::Bearer(token)) => {
+                let token = token
+                    .render(context)
+                    .await
+                    .context("Error rendering bearer token")?;
+                headers.insert(
+                    header::AUTHORIZATION,
+                    format!("Bearer {token}")
+                        .try_into()
+                        .context("Error encoding bearer token")?,
+                );
+            }
+
+            None => {}
+        }
+
+        Ok(headers)
     }
 
-    async fn render_authentication(
+    /// Render a single key/value header
+    async fn render_header(
         &self,
-    ) -> anyhow::Result<Option<record::Authentication>> {
-        let context = &self.template_context;
-        if let Some(authentication) = &self.recipe.authentication {
-            let output = match authentication {
-                collection::Authentication::Basic { username, password } => {
-                    let username = username
-                        .render(context)
-                        .await
-                        .context("Error rendering username")?;
-                    let password = Template::render_opt(password, context)
-                        .await
-                        .context("Error rendering password")?;
-                    record::Authentication::Basic { username, password }
-                }
-                collection::Authentication::Bearer(token) => {
-                    let token = token
-                        .render(context)
-                        .await
-                        .context("Error rendering bearer token")?;
-                    record::Authentication::Bearer(token)
-                }
-            };
-            Ok(Some(output))
-        } else {
-            Ok(None)
-        }
+        header: &str,
+        value_template: &Template,
+    ) -> anyhow::Result<(HeaderName, HeaderValue)> {
+        let value = value_template
+            .render(&self.template_context)
+            .await
+            .context(format!("Error rendering header `{header}`"))?;
+        // Strip leading/trailing line breaks because they're going to
+        // trigger a validation error and are probably a mistake. This
+        // is a balance between convenience and
+        // explicitness
+        let value = value.trim_matches(|c| c == '\n' || c == '\r');
+        // String -> header conversions are fallible, if headers
+        // are invalid
+        Ok::<(HeaderName, HeaderValue), anyhow::Error>((
+            header
+                .try_into()
+                .context(format!("Error encoding header name `{header}`"))?,
+            value.try_into().context(format!(
+                "Error encoding value for header `{header}`"
+            ))?,
+        ))
     }
 
     async fn render_body(&self) -> anyhow::Result<Option<Bytes>> {

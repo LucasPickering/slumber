@@ -42,14 +42,14 @@ pub use query::*;
 pub use record::*;
 
 use crate::{
-    collection::{self, Recipe},
+    collection::{self, Authentication, Recipe},
     config::Config,
     db::CollectionDatabase,
     template::{Template, TemplateContext},
     util::ResultExt,
 };
 use anyhow::Context;
-use base64::{prelude::BASE64_STANDARD_NO_PAD, Engine};
+use base64::{prelude::BASE64_STANDARD, write::EncoderWriter};
 use bytes::Bytes;
 use chrono::Utc;
 use futures::future;
@@ -58,7 +58,7 @@ use reqwest::{
     header::{self, HeaderMap, HeaderName, HeaderValue},
     Client,
 };
-use std::collections::HashSet;
+use std::{collections::HashSet, io::Write};
 use tokio::try_join;
 use tracing::{debug, info, info_span};
 use url::Url;
@@ -408,47 +408,65 @@ impl RequestBuilder {
             .collect::<HeaderMap>();
 
         // Render auth method and modify headers accordingly
+        if let Some(authentication) = &self.recipe.authentication {
+            headers.insert(
+                header::AUTHORIZATION,
+                self.render_authentication(authentication).await?,
+            );
+        }
+
+        Ok(headers)
+    }
+
+    /// Render authentication and return a value for the Authorization header
+    async fn render_authentication(
+        &self,
+        authentication: &Authentication,
+    ) -> anyhow::Result<HeaderValue> {
         let context = &self.template_context;
-        match &self.recipe.authentication {
-            Some(collection::Authentication::Basic { username, password }) => {
+        let mut header_value = match authentication {
+            collection::Authentication::Basic { username, password } => {
                 // Encode as `username:password | base64`
                 // https://swagger.io/docs/specification/authentication/basic-authentication/
-                let username = username
-                    .render(context)
-                    .await
-                    .context("Error rendering username")?;
-                let password = Template::render_opt(password, context)
-                    .await
-                    .context("Error rendering password")?
-                    .unwrap_or_default();
-                let credentials = BASE64_STANDARD_NO_PAD
-                    .encode(format!("{username}:{password}"));
-                headers.insert(
-                    header::AUTHORIZATION,
-                    // Error should be impossible since we know it's base64
-                    credentials.try_into().context(
-                        "Error encoding basic authentication credentials",
-                    )?,
-                );
+                let (username, password) = try_join!(
+                    async {
+                        username
+                            .render(context)
+                            .await
+                            .context("Error rendering username")
+                    },
+                    async {
+                        Template::render_opt(password, context)
+                            .await
+                            .context("Error rendering password")
+                    },
+                )?;
+
+                let mut buf = b"Basic ".to_vec();
+                {
+                    let mut encoder =
+                        EncoderWriter::new(&mut buf, &BASE64_STANDARD);
+                    let _ = write!(encoder, "{username}:");
+                    if let Some(password) = password {
+                        let _ = write!(encoder, "{password}");
+                    }
+                }
+                HeaderValue::from_bytes(&buf)
+                    .context("Error encoding basic authentication credentials")
             }
 
-            Some(collection::Authentication::Bearer(token)) => {
+            collection::Authentication::Bearer(token) => {
                 let token = token
                     .render(context)
                     .await
                     .context("Error rendering bearer token")?;
-                headers.insert(
-                    header::AUTHORIZATION,
-                    format!("Bearer {token}")
-                        .try_into()
-                        .context("Error encoding bearer token")?,
-                );
+                format!("Bearer {token}")
+                    .try_into()
+                    .context("Error encoding bearer token")
             }
-
-            None => {}
-        }
-
-        Ok(headers)
+        }?;
+        header_value.set_sensitive(true);
+        Ok(header_value)
     }
 
     /// Render a single key/value header
@@ -484,5 +502,175 @@ impl RequestBuilder {
                 .await
                 .context("Error rendering body")?;
         Ok(body.map(Bytes::from))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{collection::Authentication, factory::*};
+    use factori::create;
+    use indexmap::indexmap;
+    use pretty_assertions::assert_eq;
+    use reqwest::Method;
+    use rstest::rstest;
+    use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn test_build_request() {
+        let profile_data = indexmap! {
+            "host".into() => "http://localhost".into(),
+            "mode".into() => "sudo".into(),
+            "user_id".into() => "1".into(),
+            "group_id".into() => "3".into(),
+            "token".into() => "hunter2".into(),
+        };
+        let profile = create!(Profile, data: profile_data);
+        let profile_id = profile.id.clone();
+        let context = create!(TemplateContext, profile: Some(profile));
+        let recipe = create!(
+            Recipe,
+            method: "POST".into(),
+            url: "{{host}}/users/{{user_id}}".into(),
+            query: indexmap! {
+                "mode".into() => "{{mode}}".into(),
+                "fast".into() => "true".into(),
+            },
+            headers: indexmap! {
+                "Accept".into() => "application/json".into(),
+                "Content-Type".into() => "application/json".into(),
+            },
+            body: Some("{\"group_id\":\"{{group_id}}\"}".into()),
+        );
+        let recipe_id = recipe.id.clone();
+
+        let builder =
+            RequestBuilder::new(recipe, RecipeOptions::default(), context);
+        let request = builder.build().await.unwrap();
+
+        let expected_headers: HashMap<String, String> = [
+            ("content-type", "application/json"),
+            ("accept", "application/json"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+
+        assert_eq!(
+            request,
+            Request {
+                id: request.id,
+                profile_id: Some(profile_id),
+                recipe_id,
+                method: Method::POST,
+                url: "http://localhost/users/1?mode=sudo&fast=true"
+                    .parse()
+                    .unwrap(),
+                body: Some(Vec::from(b"{\"group_id\":\"3\"}").into()),
+                headers: (&expected_headers).try_into().unwrap(),
+            }
+        );
+    }
+
+    #[rstest]
+    #[case(
+        Authentication::Basic {
+            username: "{{username}}".into(),
+            password: Some("{{password}}".into()),
+        },
+        "Basic dXNlcjpodW50ZXIy"
+    )]
+    #[case(
+        Authentication::Basic {
+            username: "{{username}}".into(),
+            password: None,
+        },
+        "Basic dXNlcjo="
+    )]
+    #[case(Authentication::Bearer("{{token}}".into()), "Bearer token!")]
+    #[tokio::test]
+    async fn test_authentication(
+        #[case] authentication: Authentication,
+        #[case] expected_header: &str,
+    ) {
+        let profile_data = indexmap! {
+            "username".into() => "user".into(),
+            "password".into() => "hunter2".into(),
+            "token".into() => "token!".into(),
+        };
+        let profile = create!(Profile, data: profile_data);
+        let profile_id = profile.id.clone();
+        let context = create!(TemplateContext, profile: Some(profile));
+        let recipe = create!(Recipe, authentication: Some(authentication));
+        let recipe_id = recipe.id.clone();
+
+        let builder =
+            RequestBuilder::new(recipe, RecipeOptions::default(), context);
+        let request = builder.build().await.unwrap();
+
+        let expected_headers: HashMap<String, String> =
+            [("authorization", expected_header)]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+
+        assert_eq!(
+            request,
+            Request {
+                id: request.id,
+                profile_id: Some(profile_id),
+                recipe_id,
+                method: Method::GET,
+                url: "http://localhost".parse().unwrap(),
+                headers: (&expected_headers).try_into().unwrap(),
+                body: None,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_disable_headers_and_query_params() {
+        let context = create!(TemplateContext);
+        let recipe = create!(
+            Recipe,
+            query: indexmap! {
+                "mode".into() => "sudo".into(),
+                "fast".into() => "true".into(),
+            },
+            headers: indexmap! {
+                "Accept".into() => "application/json".into(),
+                "Content-Type".into() => "application/json".into(),
+            },
+        );
+        let recipe_id = recipe.id.clone();
+
+        let builder = RequestBuilder::new(
+            recipe,
+            RecipeOptions {
+                disabled_headers: ["Content-Type".to_owned()].into(),
+                disabled_query_parameters: ["fast".to_owned()].into(),
+            },
+            context,
+        );
+        let request = builder.build().await.unwrap();
+
+        let expected_headers: HashMap<String, String> =
+            [("accept", "application/json")]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+
+        assert_eq!(
+            request,
+            Request {
+                id: request.id,
+                profile_id: None,
+                recipe_id,
+                method: Method::GET,
+                url: "http://localhost?mode=sudo".parse().unwrap(),
+                headers: (&expected_headers).try_into().unwrap(),
+                body: None,
+            }
+        );
     }
 }

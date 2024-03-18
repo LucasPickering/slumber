@@ -1,5 +1,5 @@
 use crate::{
-    collection::{Chain, ChainSource, Profile, ProfileId, RecipeId},
+    collection::{Chain, ChainSource, Profile, ProfileId, Recipe, RecipeId},
     db::CollectionDatabase,
     http::{Body, Request, RequestId, RequestRecord, Response},
     template::{Prompt, Prompter, Template, TemplateContext},
@@ -13,6 +13,19 @@ factori!(Profile, {
         id = "profile1".into(),
         name = None,
         data = Default::default(),
+    }
+});
+
+factori!(Recipe, {
+    default {
+        id = "recipe1".into(),
+        name = None,
+        method = "GET".into(),
+        url = "http://localhost".into(),
+        body = None,
+        authentication = None,
+        query = Default::default(),
+        headers = Default::default(),
     }
 });
 

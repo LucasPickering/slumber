@@ -92,6 +92,7 @@ impl RequestRecord {
 /// [reqwest::Request] that suits our needs better. This intentionally does
 /// *not* implement `Clone`, because each request is unique.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Request {
     /// Unique ID for this request. Private to prevent mutation
     pub id: RequestId,

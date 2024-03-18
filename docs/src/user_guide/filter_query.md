@@ -63,4 +63,12 @@ requests:
 
 While this example simple extracts inner fields, JSONPath can be used for much more powerful transformations. See the [JSONPath docs](https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html) or [this JSONPath editor](https://jsonpath.com/) for more examples.
 
-<!-- TODO add screenshot of in-TUI querying -->
+## Querying Response in TUI
+
+You can visually query a response body using the filter box at the bottom. Here is a full response, with no query applied:
+
+![Unfiltered response](../images/filter_full.png)
+
+And here it is with the query `$.data` applied:
+
+![Filtered response](../images/filter_small.png)

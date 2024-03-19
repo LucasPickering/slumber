@@ -25,8 +25,11 @@ use std::{cell::Cell, cmp, fmt::Debug};
 pub struct TextWindow<T> {
     #[debug(skip)]
     text: T,
+    offset_x: u16,
     offset_y: u16,
+    text_width: Cell<u16>,
     text_height: Cell<u16>,
+    window_width: Cell<u16>,
     window_height: Cell<u16>,
 }
 
@@ -34,8 +37,11 @@ impl<T> TextWindow<T> {
     pub fn new(text: T) -> Self {
         Self {
             text,
+            offset_x: 0,
             offset_y: 0,
+            text_width: Cell::default(),
             text_height: Cell::default(),
+            window_width: Cell::default(),
             window_height: Cell::default(),
         }
     }
@@ -52,6 +58,14 @@ impl<T> TextWindow<T> {
             .saturating_sub(self.window_height.get())
     }
 
+    /// Get the final column that we can't scroll (horizontally) past. This will
+    /// be the left edge of the rightmost "page" of text
+    fn max_scroll_column(&self) -> u16 {
+        self.text_width
+            .get()
+            .saturating_sub(self.window_width.get())
+    }
+
     fn scroll_up(&mut self, lines: u16) {
         self.offset_y = self.offset_y.saturating_sub(lines);
     }
@@ -65,6 +79,15 @@ impl<T> TextWindow<T> {
     fn scroll_to(&mut self, line: u16) {
         self.offset_y = cmp::min(line, self.max_scroll_line());
     }
+
+    fn scroll_left(&mut self, columns: u16) {
+        self.offset_x = self.offset_x.saturating_sub(columns);
+    }
+
+    fn scroll_right(&mut self, columns: u16) {
+        self.offset_x =
+            cmp::min(self.offset_x + columns, self.max_scroll_column());
+    }
 }
 
 impl<T: Debug> EventHandler for TextWindow<T> {
@@ -76,6 +99,8 @@ impl<T: Debug> EventHandler for TextWindow<T> {
             } => match action {
                 Action::Up | Action::ScrollUp => self.scroll_up(1),
                 Action::Down | Action::ScrollDown => self.scroll_down(1),
+                Action::ScrollLeft => self.scroll_left(1),
+                Action::ScrollRight => self.scroll_right(1),
                 Action::PageUp => self.scroll_up(self.window_height.get()),
                 Action::PageDown => self.scroll_down(self.window_height.get()),
                 Action::Home => self.scroll_to(0),
@@ -95,10 +120,9 @@ where
 {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         let theme = &TuiContext::get().theme;
-        let text = self.text.generate();
-        let text_height = text.lines.len() as u16;
-        self.text_height.set(text_height);
-        self.window_height.set(area.height);
+        let text = Paragraph::new(self.text.generate());
+        // Assume no line wrapping when calculating line count
+        let text_height = text.line_count(u16::MAX) as u16;
 
         let [gutter_area, _, text_area] = layout(
             area,
@@ -113,9 +137,15 @@ where
             ],
         );
 
+        // Store text and window sizes for calculations in the update code
+        self.text_width.set(text.line_width() as u16);
+        self.text_height.set(text_height);
+        self.window_width.set(text_area.width);
+        self.window_height.set(text_area.height);
+
         // Draw line numbers in the gutter
         let first_line = self.offset_y + 1;
-        let last_line = cmp::min(first_line + area.height, text_height);
+        let last_line = cmp::min(first_line + text_area.height, text_height);
         frame.render_widget(
             Paragraph::new(
                 (first_line..=last_line)
@@ -129,7 +159,7 @@ where
 
         // Darw the text content
         frame.render_widget(
-            Paragraph::new(text).scroll((self.offset_y, 0)),
+            text.scroll((self.offset_y, self.offset_x)),
             text_area,
         );
     }

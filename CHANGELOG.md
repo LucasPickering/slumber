@@ -2,6 +2,12 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add horizontal scrolling to response body ([#111](https://github.com/LucasPickering/slumber/issues/111))
+  - Use shift+left and shift+right
+- Add app version to help modal
+
 ### Changed
 
 - Run prompts while rendering request URL/body to be copied

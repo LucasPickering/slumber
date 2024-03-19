@@ -35,6 +35,20 @@ impl InputEngine {
                     Action::ForceQuit,
                 )
                 .hide(),
+                InputBinding::new(
+                    KeyCombination {
+                        key_code: KeyCode::Left,
+                        modifiers: KeyModifiers::SHIFT,
+                    },
+                    Action::ScrollLeft,
+                ),
+                InputBinding::new(
+                    KeyCombination {
+                        key_code: KeyCode::Right,
+                        modifiers: KeyModifiers::SHIFT,
+                    },
+                    Action::ScrollRight,
+                ),
                 InputBinding::new(KeyCode::Char('x'), Action::OpenActions),
                 InputBinding::new(KeyCode::Char('?'), Action::OpenHelp),
                 InputBinding::new(KeyCode::Char('f'), Action::Fullscreen),
@@ -85,6 +99,8 @@ impl InputEngine {
                 MouseEventKind::Up(MouseButton::Middle) => None,
                 MouseEventKind::ScrollDown => Some(Action::ScrollDown),
                 MouseEventKind::ScrollUp => Some(Action::ScrollUp),
+                MouseEventKind::ScrollLeft => Some(Action::ScrollLeft),
+                MouseEventKind::ScrollRight => Some(Action::ScrollRight),
                 _ => None,
             },
 
@@ -129,16 +145,18 @@ impl Default for InputEngine {
 /// modal (but doesn't affect behavior).
 #[derive(Copy, Clone, Debug, Display, Eq, Hash, PartialEq)]
 pub enum Action {
-    /// This is mapped to mouse events, so it's a bit unique. Use the
-    /// associated event for button/position info
-    // #[display("Click")]
-    // Click(MouseEvent),
     // Mouse actions do *not* get mapped, they're hard-coded. Use the
     // associated raw event for button/position info if needed
     LeftClick,
     RightClick,
     ScrollUp,
     ScrollDown,
+    /// This can be triggered by mouse event OR key event
+    #[display("Scroll Left")]
+    ScrollLeft,
+    /// This can be triggered by mouse event OR key event
+    #[display("Scroll Right")]
+    ScrollRight,
 
     /// Exit the app
     Quit,
@@ -253,6 +271,12 @@ impl KeyCombination {
 
 impl Display for KeyCombination {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Write modifiers first
+        for (name, _) in self.modifiers.iter_names() {
+            write!(f, "{}+", name.to_lowercase())?;
+        }
+
+        // Write base code
         match self.key_code {
             KeyCode::BackTab => write!(f, "<shift+tab>"),
             KeyCode::Tab => write!(f, "<tab>"),

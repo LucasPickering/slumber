@@ -16,6 +16,8 @@ use ratatui::{
     Frame,
 };
 
+const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// A mini helper in the footer for showing a few important key bindings
 #[derive(Debug)]
 pub struct HelpFooter;
@@ -53,6 +55,9 @@ impl Draw for HelpFooter {
 pub struct HelpModal;
 
 impl HelpModal {
+    /// Number of lines in the general section (not including header)
+    const GENERAL_LENGTH: u16 = 3;
+
     /// Get the list of bindings that will be shown in the modal
     fn bindings() -> impl Iterator<Item = InputBinding> {
         TuiContext::get()
@@ -73,7 +78,7 @@ impl Modal for HelpModal {
         let num_bindings = Self::bindings().count() as u16;
         (
             Constraint::Percentage(60),
-            Constraint::Length(5 + num_bindings),
+            Constraint::Length(Self::GENERAL_LENGTH + 3 + num_bindings),
         )
     }
 }
@@ -89,7 +94,7 @@ impl Draw for HelpModal {
             area,
             Direction::Vertical,
             [
-                Constraint::Length(3),
+                Constraint::Length(Self::GENERAL_LENGTH + 1),
                 Constraint::Length(1),
                 Constraint::Min(0),
             ],
@@ -98,24 +103,28 @@ impl Draw for HelpModal {
         // Collection metadata
         let collection_metadata = Table {
             title: Some("General"),
-            rows: vec![
-                [
-                    Line::from("Configuration"),
-                    Line::from(tui_context.config.path().display().to_string())
-                        .alignment(Alignment::Right),
-                ],
-                [
-                    Line::from("Collection"),
+            rows: [
+                ("Slumber Version", Line::from(CRATE_VERSION)),
+                (
+                    "Configuration",
+                    Line::from(tui_context.config.path().display().to_string()),
+                ),
+                (
+                    "Collection",
                     Line::from(
                         tui_context
                             .database
                             .collection_path()
                             .map(|path| path.display().to_string())
                             .unwrap_or_default(),
-                    )
-                    .alignment(Alignment::Right),
-                ],
-            ],
+                    ),
+                ),
+            ]
+            .into_iter()
+            .map(|(label, value)| {
+                [Line::from(label), value.alignment(Alignment::Right)]
+            })
+            .collect(),
             column_widths: &[Constraint::Length(13), Constraint::Max(1000)],
             ..Default::default()
         };

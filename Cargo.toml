@@ -14,7 +14,7 @@ rust-version = "1.74.0"
 anyhow = {version = "^1.0.75", features = ["backtrace"]}
 async-trait = "^0.1.73"
 base64 = "0.22.0"
-bytes = { version = "1.5.0", features = ["serde"] }
+bytes = {version = "1.5.0", features = ["serde"]}
 chrono = {version = "^0.4.31", default-features = false, features = ["clock", "serde", "std"]}
 clap = {version = "^4.4.2", features = ["derive"]}
 cli-clipboard = "0.4.0"
@@ -30,8 +30,8 @@ nom = "7.1.3"
 notify = {version = "^6.1.1", default-features = false, features = ["macos_fsevent"]}
 open = "5.1.1"
 pretty_assertions = "1.4.0"
-ratatui = "^0.26.0"
-regex = { version = "1.10.3", default-features = false, features = ["perf"] }
+ratatui = {version = "^0.26.0", features = ["unstable-rendered-line-info"]}
+regex = {version = "1.10.3", default-features = false, features = ["perf"]}
 reqwest = {version = "^0.11.20", default-features = false, features = ["rustls-tls"]}
 rmp-serde = "^1.1.2"
 rusqlite = {version = "^0.30.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
@@ -46,7 +46,7 @@ thiserror = "^1.0.48"
 tokio = {version = "^1.32.0", default-features = false, features = ["full"]}
 tracing = "^0.1.37"
 tracing-subscriber = {version = "^0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}
-url = { version = "^2.5.0", features = ["serde"] }
+url = {version = "^2.5.0", features = ["serde"]}
 uuid = {version = "^1.4.1", default-features = false, features = ["serde", "v4"]}
 
 [dev-dependencies]

@@ -209,6 +209,9 @@ impl Tui {
             Message::CopyRequestBody(request_config) => {
                 self.copy_request_body(request_config)?;
             }
+            Message::CopyRequestCurl(request_config) => {
+                self.copy_request_curl(request_config)?;
+            }
             Message::CopyText(text) => self.view.copy_text(text),
 
             Message::Error { error } => {
@@ -350,8 +353,25 @@ impl Tui {
                 .await?
                 .ok_or(anyhow!("Request has no body"))?;
             let body = String::from_utf8(body.into())
-                .context("Cannot copy request bodyj")?;
+                .context("Cannot copy request body")?;
             messages_tx.send(Message::CopyText(body));
+            Ok(())
+        });
+        Ok(())
+    }
+
+    /// Render a request, then copy the equivalent curl command to the clipboard
+    fn copy_request_curl(
+        &self,
+        request_config: RequestConfig,
+    ) -> anyhow::Result<()> {
+        let builder = self.get_request_builder(request_config)?;
+        let messages_tx = self.messages_tx.clone();
+        // Spawn a task to do the render+copy
+        self.spawn(async move {
+            let request = builder.build().await?;
+            let command = request.to_curl()?;
+            messages_tx.send(Message::CopyText(command));
             Ok(())
         });
         Ok(())

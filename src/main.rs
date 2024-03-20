@@ -5,10 +5,10 @@ mod cli;
 mod collection;
 mod config;
 mod db;
-#[cfg(test)]
-mod factory;
 mod http;
 mod template;
+#[cfg(test)]
+mod test_util;
 mod tui;
 mod util;
 

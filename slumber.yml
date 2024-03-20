@@ -37,6 +37,9 @@ requests:
     url: "{{host}}/anything/login"
     query:
       sudo: yes_please
+    headers:
+      Accept: application/json
+      Content-Type: application/json
     body: |
       {
         "username": "{{username}}",

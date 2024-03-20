@@ -2,8 +2,8 @@ use crate::{
     cli::Subcommand,
     collection::{CollectionFile, ProfileId, RecipeId},
     config::Config,
-    db::Database,
-    http::{HttpEngine, RecipeOptions, RequestBuilder},
+    db::{CollectionDatabase, Database},
+    http::{HttpEngine, RecipeOptions, Request, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext},
     util::{MaybeStr, ResultExt},
     GlobalArgs,
@@ -30,12 +30,8 @@ const HTTP_ERROR_EXIT_CODE: u8 = 2;
 #[derive(Clone, Debug, Parser)]
 #[clap(aliases=&["req", "rq"])]
 pub struct RequestCommand {
-    /// ID of the request recipe to execute
-    request_id: RecipeId,
-
-    /// ID of the profile to pull template values from
-    #[clap(long = "profile", short)]
-    profile: Option<ProfileId>,
+    #[clap(flatten)]
+    build_request: BuildRequestCommand,
 
     /// Print HTTP response status
     #[clap(long)]
@@ -54,6 +50,22 @@ pub struct RequestCommand {
     #[clap(long)]
     exit_status: bool,
 
+    /// Just print the generated request, instead of sending it
+    #[clap(long)]
+    dry_run: bool,
+}
+
+/// A helper for any subcommand that needs to build requests. This handles
+/// common args, as well as setting up context for rendering requests
+#[derive(Clone, Debug, Parser)]
+pub struct BuildRequestCommand {
+    /// ID of the recipe to render into a request
+    recipe_id: RecipeId,
+
+    /// ID of the profile to pull template values from
+    #[clap(long = "profile", short)]
+    profile: Option<ProfileId>,
+
     /// List of key=value template field overrides
     #[clap(
         long = "override",
@@ -61,60 +73,13 @@ pub struct RequestCommand {
         value_parser = parse_key_val::<String, String>,
     )]
     overrides: Vec<(String, String)>,
-
-    /// Just print the generated request, instead of sending it
-    #[clap(long)]
-    dry_run: bool,
 }
 
 #[async_trait]
 impl Subcommand for RequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let collection_path = CollectionFile::try_path(global.collection)?;
-        let config = Config::load()?;
-        let database = Database::load()?.into_collection(&collection_path)?;
-        let mut collection_file = CollectionFile::load(collection_path).await?;
-        let collection = &mut collection_file.collection;
-
-        // Find profile and recipe by ID
-        let profile = self
-            .profile
-            .map(|profile_id| {
-                collection.profiles.swap_remove(&profile_id).ok_or_else(|| {
-                    anyhow!(
-                        "No profile with ID `{profile_id}`; options are: {}",
-                        collection.profiles.keys().join(", ")
-                    )
-                })
-            })
-            .transpose()?;
-
-        let recipe = collection
-            .recipes
-            .swap_remove(&self.request_id)
-            .ok_or_else(|| {
-                anyhow!(
-                    "No request with ID `{}`; options are: {}",
-                    self.request_id,
-                    collection.recipes.keys().join(", ")
-                )
-            })?;
-
-        // Build the request
-        let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
-        let request = RequestBuilder::new(
-            recipe,
-            RecipeOptions::default(),
-            TemplateContext {
-                profile,
-                chains: collection.chains.clone(),
-                database: database.clone(),
-                overrides,
-                prompter: Box::new(CliPrompter),
-            },
-        )
-        .build()
-        .await?;
+        let (database, request) =
+            self.build_request.build_request(global).await?;
 
         if self.dry_run {
             println!("{:#?}", request);
@@ -125,6 +90,7 @@ impl Subcommand for RequestCommand {
             }
 
             // Run the request
+            let config = Config::load()?;
             let http_engine = HttpEngine::new(&config, database);
             let record = http_engine.send(request).await?;
             let status = record.response.status;
@@ -146,6 +112,61 @@ impl Subcommand for RequestCommand {
                 Ok(ExitCode::SUCCESS)
             }
         }
+    }
+}
+
+impl BuildRequestCommand {
+    /// Render the request specified by the user. This returns the DB
+    /// connection too so it can be re-used if necessary.
+    pub async fn build_request(
+        self,
+        global: GlobalArgs,
+    ) -> anyhow::Result<(CollectionDatabase, Request)> {
+        let collection_path = CollectionFile::try_path(global.collection)?;
+        let database = Database::load()?.into_collection(&collection_path)?;
+        let mut collection_file = CollectionFile::load(collection_path).await?;
+        let collection = &mut collection_file.collection;
+
+        // Find profile and recipe by ID
+        let profile = self
+            .profile
+            .map(|profile_id| {
+                collection.profiles.swap_remove(&profile_id).ok_or_else(|| {
+                    anyhow!(
+                        "No profile with ID `{profile_id}`; options are: {}",
+                        collection.profiles.keys().join(", ")
+                    )
+                })
+            })
+            .transpose()?;
+
+        let recipe = collection
+            .recipes
+            .swap_remove(&self.recipe_id)
+            .ok_or_else(|| {
+                anyhow!(
+                    "No request with ID `{}`; options are: {}",
+                    self.recipe_id,
+                    collection.recipes.keys().join(", ")
+                )
+            })?;
+
+        // Build the request
+        let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
+        let request = RequestBuilder::new(
+            recipe,
+            RecipeOptions::default(),
+            TemplateContext {
+                profile,
+                chains: collection.chains.clone(),
+                database: database.clone(),
+                overrides,
+                prompter: Box::new(CliPrompter),
+            },
+        )
+        .build()
+        .await?;
+        Ok((database, request))
     }
 }
 

@@ -6,7 +6,10 @@ use crate::{
 };
 use chrono::Utc;
 use factori::{create, factori};
-use reqwest::{header::HeaderMap, Method, StatusCode};
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    Method, StatusCode,
+};
 
 factori!(Profile, {
     default {
@@ -128,4 +131,19 @@ impl From<&str> for Template {
     fn from(value: &str) -> Self {
         value.to_owned().try_into().unwrap()
     }
+}
+
+/// Helper for creating a header map
+pub fn header_map<'a>(
+    headers: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> HeaderMap {
+    headers
+        .into_iter()
+        .map(|(header, value)| {
+            (
+                HeaderName::try_from(header).unwrap(),
+                HeaderValue::try_from(value).unwrap(),
+            )
+        })
+        .collect()
 }

@@ -155,8 +155,8 @@ mod tests {
     use super::*;
     use crate::{
         collection::{ChainSource, ProfileValue, RecipeId},
-        factory::*,
         http::{ContentType, Request, Response},
+        test_util::*,
         util::assert_err,
     };
     use factori::create;

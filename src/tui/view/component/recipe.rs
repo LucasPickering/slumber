@@ -105,12 +105,15 @@ struct RowState {
 
 /// Items in the actions popup menu
 #[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
+#[allow(clippy::enum_variant_names)]
 enum MenuAction {
     #[display("Copy URL")]
     CopyUrl,
     // TODO disable this if request doesn't have body
     #[display("Copy Body")]
     CopyBody,
+    #[display("Copy as cURL")]
+    CopyCurl,
 }
 
 impl ToStringGenerate for MenuAction {}
@@ -143,31 +146,22 @@ impl RecipePane {
     }
 
     fn handle_menu_action(&mut self, action: MenuAction) {
-        match action {
-            // This branch is exhaustive so it's redundant to match, but we made
-            // add disjoint branches in the future
-            MenuAction::CopyUrl | MenuAction::CopyBody => {
-                // Should always be initialized after first render
-                let key = self
-                    .recipe_state
-                    .key()
-                    .expect("Request state not initialized");
-                let request_config = RequestConfig {
-                    profile_id: key.selected_profile_id.clone(),
-                    recipe_id: key.recipe_id.clone(),
-                    options: self.recipe_options(),
-                };
-                let message = match action {
-                    MenuAction::CopyUrl => {
-                        Message::CopyRequestUrl(request_config)
-                    }
-                    MenuAction::CopyBody => {
-                        Message::CopyRequestBody(request_config)
-                    }
-                };
-                TuiContext::send_message(message);
-            }
-        }
+        // Should always be initialized after first render
+        let key = self
+            .recipe_state
+            .key()
+            .expect("Request state not initialized");
+        let request_config = RequestConfig {
+            profile_id: key.selected_profile_id.clone(),
+            recipe_id: key.recipe_id.clone(),
+            options: self.recipe_options(),
+        };
+        let message = match action {
+            MenuAction::CopyUrl => Message::CopyRequestUrl(request_config),
+            MenuAction::CopyBody => Message::CopyRequestBody(request_config),
+            MenuAction::CopyCurl => Message::CopyRequestCurl(request_config),
+        };
+        TuiContext::send_message(message);
     }
 }
 

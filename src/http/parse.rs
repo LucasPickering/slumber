@@ -166,7 +166,7 @@ impl ContentType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{factory::_Factori_Builder_Response, util::assert_err};
+    use crate::{test_util::_Factori_Builder_Response, util::assert_err};
     use factori::create;
     use reqwest::header::{
         HeaderMap, HeaderValue, InvalidHeaderValue, CONTENT_TYPE,

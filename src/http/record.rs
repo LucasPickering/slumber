@@ -15,7 +15,7 @@ use reqwest::{
     Method, StatusCode,
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
+use std::fmt::{Debug, Write};
 use thiserror::Error;
 use url::Url;
 use uuid::Uuid;
@@ -113,6 +113,46 @@ pub struct Request {
     pub headers: HeaderMap,
     /// Body content as bytes. This should be decoded as needed
     pub body: Option<Bytes>,
+}
+
+impl Request {
+    /// Generate a cURL command equivalent to this request
+    ///
+    /// This only fails if one of the headers or body is binary and can't be
+    /// converted to UTF-8.
+    pub fn to_curl(&self) -> anyhow::Result<String> {
+        let mut buf = String::new();
+
+        // These writes are all infallible because we're writing to a string,
+        // but use ? because it's shorter than unwrap().
+        let method = &self.method;
+        let url = &self.url;
+        write!(&mut buf, "curl -X{method} --url '{url}'")?;
+
+        for (header, value) in &self.headers {
+            let value =
+                value.to_str().context("Error decoding header value")?;
+            write!(&mut buf, " --header '{header}: {value}'")?;
+        }
+
+        if let Some(body) = &self.body_str()? {
+            write!(&mut buf, " --data '{body}'")?;
+        }
+
+        Ok(buf)
+    }
+
+    /// Get the body of the request, decoded as UTF-8. Returns an error if the
+    /// body isn't valid UTF-8.
+    pub fn body_str(&self) -> anyhow::Result<Option<&str>> {
+        if let Some(body) = &self.body {
+            Ok(Some(
+                std::str::from_utf8(body).context("Error decoding body")?,
+            ))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 /// A resolved HTTP response, with all content loaded and ready to be displayed
@@ -281,5 +321,37 @@ mod serde_status_code {
     {
         StatusCode::from_u16(u16::deserialize(deserializer)?)
             .map_err(de::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::*;
+    use factori::create;
+    use indexmap::indexmap;
+    use serde_json::json;
+
+    #[test]
+    fn test_to_curl() {
+        let headers = indexmap! {
+            "accept" => "application/json",
+            "content-type" => "application/json",
+        };
+        let body = json!({"data": "value"});
+        let request = create!(
+            Request,
+            method: Method::DELETE,
+            headers: header_map(headers),
+            body: Some(serde_json::to_vec(&body).unwrap().into()),
+        );
+
+        assert_eq!(
+            request.to_curl().unwrap(),
+            "curl -XDELETE --url 'http://localhost/url' \
+            --header 'accept: application/json' \
+            --header 'content-type: application/json' \
+            --data '{\"data\":\"value\"}'"
+        );
     }
 }

@@ -191,7 +191,7 @@ impl<'a> TextStitcher<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{factory::*, tui::context::tui_context};
+    use crate::{test_util::*, tui::context::tui_context};
     use factori::create;
     use indexmap::indexmap;
     use rstest::rstest;

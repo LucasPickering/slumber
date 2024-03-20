@@ -59,12 +59,12 @@ pub enum Message {
     /// Open the collection in the user's editor
     CollectionEdit,
 
-    /// Render request URL, then copy rendered URL. This needs to be deferred
-    /// to the main loop because the render is async.
+    /// Render request URL, then copy rendered URL
     CopyRequestUrl(RequestConfig),
-    /// Render request body, then copy rendered text. This needs to be deferred
-    /// to the main loop because the render is async.
+    /// Render request body, then copy rendered text
     CopyRequestBody(RequestConfig),
+    /// Render request, then generate an equivalent cURL command and copy it
+    CopyRequestCurl(RequestConfig),
     /// Copy some text to the clipboard
     CopyText(String),
 

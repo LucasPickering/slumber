@@ -525,7 +525,7 @@ impl RequestBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{collection::Authentication, factory::*};
+    use crate::{collection::Authentication, test_util::*};
     use factori::create;
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
@@ -565,13 +565,10 @@ mod tests {
             RequestBuilder::new(recipe, RecipeOptions::default(), context);
         let request = builder.build().await.unwrap();
 
-        let expected_headers: HashMap<String, String> = [
-            ("content-type", "application/json"),
-            ("accept", "application/json"),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
+        let expected_headers = indexmap! {
+            "content-type" => "application/json",
+            "accept" => "application/json",
+        };
 
         assert_eq!(
             request,
@@ -584,7 +581,7 @@ mod tests {
                     .parse()
                     .unwrap(),
                 body: Some(Vec::from(b"{\"group_id\":\"3\"}").into()),
-                headers: (&expected_headers).try_into().unwrap(),
+                headers: header_map(expected_headers),
             }
         );
     }

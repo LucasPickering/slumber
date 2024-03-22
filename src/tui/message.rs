@@ -4,8 +4,7 @@
 use crate::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
-        RecipeOptions, RequestBuildError, RequestError, RequestId,
-        RequestRecord,
+        RecipeOptions, Request, RequestBuildError, RequestError, RequestRecord,
     },
     template::{Prompt, Prompter, Template, TemplateChunk},
     util::ResultExt,
@@ -59,9 +58,9 @@ pub enum Message {
     /// Open the collection in the user's editor
     CollectionEdit,
 
-    /// Render request URL, then copy rendered URL
+    /// Render request URL from a recipe, then copy rendered URL
     CopyRequestUrl(RequestConfig),
-    /// Render request body, then copy rendered text
+    /// Render request body from a recipe, then copy rendered text
     CopyRequestBody(RequestConfig),
     /// Render request, then generate an equivalent cURL command and copy it
     CopyRequestCurl(RequestConfig),
@@ -83,7 +82,7 @@ pub enum Message {
     HttpLoading {
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
-        request_id: RequestId,
+        request: Arc<Request>,
     },
     /// The HTTP request either succeeded or failed. We don't need to store the
     /// recipe ID here because it's in the inner container already. Combining

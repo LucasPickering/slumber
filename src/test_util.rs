@@ -64,7 +64,7 @@ fn response() -> Response {
 factori!(RequestRecord, {
     default {
         id = RequestId::new(),
-        request = request(),
+        request = request().into(),
         response = response(),
         start_time = Utc::now(),
         end_time = Utc::now(),

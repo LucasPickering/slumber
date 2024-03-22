@@ -4,11 +4,15 @@ pub mod persistence;
 pub mod select;
 
 use crate::http::{
-    RequestBuildError, RequestError, RequestId, RequestRecord, ResponseContent,
+    Request, RequestBuildError, RequestError, RequestId, RequestRecord,
+    ResponseContent,
 };
 use chrono::{DateTime, Duration, Utc};
 use derive_more::Deref;
-use std::cell::{Ref, RefCell};
+use std::{
+    cell::{Ref, RefCell},
+    sync::Arc,
+};
 
 /// An internally mutable cell for UI state. Certain state needs to be updated
 /// during the draw phase, typically because it's derived from parent data
@@ -102,7 +106,9 @@ pub enum RequestState {
     /// initiate a request that doesn't immediately launch it, so Loading is
     /// the initial state.
     Loading {
-        id: RequestId,
+        /// This needs an Arc so the success/failure state can maintain a
+        /// pointer to the request as well
+        request: Arc<Request>,
         start_time: DateTime<Utc>,
     },
 
@@ -134,8 +140,9 @@ impl RequestState {
     /// cycle
     pub fn id(&self) -> RequestId {
         match self {
-            Self::Building { id } | Self::Loading { id, .. } => *id,
+            Self::Building { id } => *id,
             Self::BuildError { error } => error.id,
+            Self::Loading { request, .. } => request.id,
             Self::RequestError { error } => error.request.id,
             Self::Response { record, .. } => record.id,
         }
@@ -175,9 +182,9 @@ impl RequestState {
     /// be slightly off from when the request was actually launched, but it
     /// shouldn't matter. See [HttpEngine::send] for why it can't report a start
     /// time back to us.
-    pub fn loading(id: RequestId) -> Self {
+    pub fn loading(request: Arc<Request>) -> Self {
         Self::Loading {
-            id,
+            request,
             start_time: Utc::now(),
         }
     }

@@ -15,7 +15,10 @@ use reqwest::{
     Method, StatusCode,
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Write};
+use std::{
+    fmt::{Debug, Write},
+    sync::Arc,
+};
 use thiserror::Error;
 use url::Url;
 use uuid::Uuid;
@@ -40,7 +43,7 @@ pub struct RequestError {
     #[source]
     pub error: reqwest::Error,
     /// The request that caused all this ruckus
-    pub request: Request,
+    pub request: Arc<Request>,
     /// When was the request launched?
     pub start_time: DateTime<Utc>,
     /// When did the error occur?
@@ -71,8 +74,9 @@ impl Default for RequestId {
 pub struct RequestRecord {
     /// ID to uniquely refer to this record. Useful for historical records.
     pub id: RequestId,
-    /// What we said
-    pub request: Request,
+    /// What we said. This has Arc to prevent cloning when the creator needs to
+    /// hang onto it.
+    pub request: Arc<Request>,
     // What we heard
     pub response: Response,
     /// When was the request sent to the server?

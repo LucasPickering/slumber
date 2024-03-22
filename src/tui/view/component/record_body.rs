@@ -1,7 +1,7 @@
-//! Response body display component
+//! Request/response body display component
 
 use crate::{
-    http::{Query, RequestId, RequestRecord, ResponseContent},
+    http::{Query, RequestId, ResponseContent},
     tui::{
         input::Action,
         view::{
@@ -23,14 +23,18 @@ use ratatui::{
     Frame,
 };
 use serde_json_path::JsonPath;
+use std::cell::Cell;
 
-/// Display text body of a successful response
+/// Display text body of a request/response
 #[derive(Debug)]
-pub struct ResponseContentBody {
-    /// Response body text content. State cell allows us to reset this whenever
-    /// the request changes
+pub struct RecordBody {
+    /// Body text content. State cell allows us to reset this whenever the
+    /// request changes
     #[debug(skip)]
     text_window: StateCell<StateKey, Component<TextWindow<String>>>,
+    /// Store whether the body can be queried. True only if it's a recognized
+    /// and parsed format
+    query_available: Cell<bool>,
     /// Expression used to filter the content of the body down
     query: Option<Query>,
     /// Where the user enters their body query
@@ -38,8 +42,9 @@ pub struct ResponseContentBody {
     query_text_box: Component<TextBox>,
 }
 
-pub struct ResponseContentBodyProps<'a> {
-    pub record: &'a RequestRecord,
+pub struct RecordBodyProps<'a> {
+    pub request_id: RequestId,
+    pub raw_body: &'a [u8],
     pub parsed_body: Option<&'a dyn ResponseContent>,
 }
 
@@ -52,7 +57,7 @@ struct StateKey {
 /// Callback event from the query text box when user hits Enter
 struct QuerySubmit(String);
 
-impl ResponseContentBody {
+impl RecordBody {
     /// Get visible body text
     pub fn text(&self) -> Option<String> {
         self.text_window
@@ -61,10 +66,11 @@ impl ResponseContentBody {
     }
 }
 
-impl Default for ResponseContentBody {
+impl Default for RecordBody {
     fn default() -> Self {
         Self {
             text_window: Default::default(),
+            query_available: Cell::new(false),
             query: Default::default(),
             query_text_box: TextBox::default()
                 .with_focus(false)
@@ -81,13 +87,13 @@ impl Default for ResponseContentBody {
     }
 }
 
-impl EventHandler for ResponseContentBody {
+impl EventHandler for RecordBody {
     fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::Search),
                 ..
-            } => self.query_text_box.focus(),
+            } if self.query_available.get() => self.query_text_box.focus(),
             Event::Other(ref other) => {
                 match other.downcast_ref::<QuerySubmit>() {
                     Some(QuerySubmit(text)) => {
@@ -119,13 +125,11 @@ impl EventHandler for ResponseContentBody {
     }
 }
 
-impl<'a> Draw<ResponseContentBodyProps<'a>> for ResponseContentBody {
-    fn draw(
-        &self,
-        frame: &mut Frame,
-        props: ResponseContentBodyProps,
-        area: Rect,
-    ) {
+impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
+    fn draw(&self, frame: &mut Frame, props: RecordBodyProps, area: Rect) {
+        // Body can only be queried if it's been parsed
+        self.query_available.set(props.parsed_body.is_some());
+
         let [body_area, query_area] = layout(
             area,
             Direction::Vertical,
@@ -134,24 +138,26 @@ impl<'a> Draw<ResponseContentBodyProps<'a>> for ResponseContentBody {
 
         // Draw the body
         let state_key = StateKey {
-            request_id: props.record.id,
+            request_id: props.request_id,
             query: self.query.clone(),
         };
         let text = self.text_window.get_or_update(state_key, || {
             init_text_window(
-                props.record,
+                props.raw_body,
                 props.parsed_body,
                 self.query.as_ref(),
             )
         });
         text.draw(frame, (), body_area);
 
-        self.query_text_box.draw(frame, (), query_area);
+        if self.query_available.get() {
+            self.query_text_box.draw(frame, (), query_area);
+        }
     }
 }
 
 fn init_text_window(
-    record: &RequestRecord,
+    raw_body: &[u8],
     parsed_body: Option<&dyn ResponseContent>,
     query: Option<&Query>,
 ) -> Component<TextWindow<String>> {
@@ -168,7 +174,7 @@ fn init_text_window(
         })
         // Content couldn't be parsed, fall back to the raw text
         // If the text isn't UTF-8, we'll show a placeholder instead
-        .unwrap_or_else(|| MaybeStr(record.response.body.bytes()).to_string());
+        .unwrap_or_else(|| MaybeStr(raw_body).to_string());
 
     TextWindow::new(body).into()
 }

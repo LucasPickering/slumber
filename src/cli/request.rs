@@ -92,7 +92,7 @@ impl Subcommand for RequestCommand {
             // Run the request
             let config = Config::load()?;
             let http_engine = HttpEngine::new(&config, database);
-            let record = http_engine.send(request).await?;
+            let record = http_engine.send(request.into()).await?;
             let status = record.response.status;
 
             // Print stuff!

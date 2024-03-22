@@ -285,9 +285,11 @@ mod tests {
         let response =
             create!(Response, body: response_body.to_string().into());
         database
-            .insert_request(
-                &create!(RequestRecord, request: request, response: response),
-            )
+            .insert_request(&create!(
+                RequestRecord,
+                request: request.into(),
+                response: response,
+            ))
             .unwrap();
         let selector = selector.map(|s| s.parse().unwrap());
         let chains = indexmap! {"chain1".into() => create!(
@@ -370,7 +372,7 @@ mod tests {
             database
                 .insert_request(&create!(
                     RequestRecord,
-                    request: request,
+                    request: request.into(),
                     response: response,
                 ))
                 .unwrap();

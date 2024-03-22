@@ -75,7 +75,9 @@ impl InputEngine {
                 .hide(),
                 InputBinding::new(KeyCode::Char('l'), Action::SelectRecipeList)
                     .hide(),
-                InputBinding::new(KeyCode::Char('r'), Action::SelectRecipe)
+                InputBinding::new(KeyCode::Char('c'), Action::SelectRecipe)
+                    .hide(),
+                InputBinding::new(KeyCode::Char('r'), Action::SelectRequest)
                     .hide(),
                 InputBinding::new(KeyCode::Char('s'), Action::SelectResponse)
                     .hide(),
@@ -232,6 +234,8 @@ pub enum Action {
     SelectRecipeList,
     /// Select recipe pane
     SelectRecipe,
+    /// Select request pane
+    SelectRequest,
     /// Select response pane
     SelectResponse,
 }

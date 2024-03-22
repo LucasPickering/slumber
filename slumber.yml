@@ -37,6 +37,7 @@ requests:
     url: "{{host}}/anything/login"
     query:
       sudo: yes_please
+      fast: no_thanks
     headers:
       Accept: application/json
       Content-Type: application/json
@@ -69,3 +70,16 @@ requests:
       {
         "username": "new username"
       }
+
+  get_image:
+    headers:
+      Accept: image/png
+    name: Get Image
+    method: GET
+    url: "{{host}}/image"
+
+  delay:
+    <<: *base
+    name: Delay
+    method: GET
+    url: "{{host}}/delay/1"

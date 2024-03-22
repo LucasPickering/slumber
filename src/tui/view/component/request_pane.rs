@@ -1,43 +1,41 @@
-mod body;
-
 use crate::{
-    http::{RequestRecord, ResponseContent},
+    http::{Request, RequestId, ResponseContent},
     tui::{
         context::TuiContext,
         input::Action,
         message::Message,
         view::{
-            common::{actions::ActionsModal, table::Table, tabs::Tabs, Pane},
-            component::response::body::{
-                ResponseContentBody, ResponseContentBodyProps,
+            common::{
+                actions::ActionsModal, header_table::HeaderTable, tabs::Tabs,
+                Pane,
             },
+            component::record_body::{RecordBody, RecordBodyProps},
             draw::{Draw, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update, UpdateContext},
-            state::{persistence::PersistentKey, RequestState},
+            state::{persistence::PersistentKey, RequestState, StateCell},
             util::layout,
             Component,
         },
     },
 };
 use derive_more::{Debug, Display};
-use itertools::Itertools;
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
-    text::{Line, Text},
     widgets::{Paragraph, Wrap},
     Frame,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
-/// Display HTTP response state, which could be in progress, complete, or
+/// Display HTTP request state, which could be in progress, complete, or
 /// failed. This can be used in both a paned and fullscreen view.
 #[derive(Debug, Default)]
-pub struct ResponsePane {
-    content: Component<CompleteResponseContent>,
+pub struct RequestPane {
+    content: Component<RenderedRequest>,
 }
 
-pub struct ResponsePaneProps<'a> {
+pub struct RequestPaneProps<'a> {
     pub is_selected: bool,
     pub active_request: Option<&'a RequestState>,
 }
@@ -45,29 +43,26 @@ pub struct ResponsePaneProps<'a> {
 /// Items in the actions popup menu
 #[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
 enum MenuAction {
+    #[display("Copy URL")]
+    CopyUrl,
     #[display("Copy Body")]
     CopyBody,
 }
 
 impl ToStringGenerate for MenuAction {}
 
-impl EventHandler for ResponsePane {
+impl EventHandler for RequestPane {
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         vec![self.content.as_child()]
     }
 }
 
-impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
-    fn draw(
-        &self,
-        frame: &mut Frame,
-        props: ResponsePaneProps<'a>,
-        area: Rect,
-    ) {
+impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
+    fn draw(&self, frame: &mut Frame, props: RequestPaneProps<'a>, area: Rect) {
         // Render outermost block
         let title = TuiContext::get()
             .input_engine
-            .add_hint("Response", Action::SelectResponse);
+            .add_hint("Request", Action::SelectRequest);
         let block = Pane {
             title: &title,
             is_focused: props.is_selected,
@@ -75,112 +70,91 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
         let block = block.generate();
         let inner_area = block.inner(area);
         frame.render_widget(block, area);
+        let area = inner_area; // Shadow to make sure we use the right area
 
         // Don't render anything else unless we have a request state
         if let Some(request_state) = props.active_request {
-            let [header_area, content_area] = layout(
+            // Time goes in the top-right,
+            let [time_area, _] = layout(
                 inner_area,
                 Direction::Vertical,
                 [Constraint::Length(1), Constraint::Min(0)],
             );
-            let [status_area, time_area] = layout(
-                header_area,
-                Direction::Horizontal,
-                // The longest canonical status reason in reqwest is 31 chars
-                [Constraint::Length(3 + 1 + 31), Constraint::Min(0)],
-            );
 
-            // Request/response metadata
+            // Request metadata
             if let Some(metadata) = request_state.metadata() {
                 frame.render_widget(
-                    Paragraph::new(Line::from(vec![
-                        metadata.start_time.generate(),
-                        " / ".into(),
-                        metadata.duration.generate(),
-                    ]))
-                    .alignment(Alignment::Right),
+                    Paragraph::new(metadata.start_time.generate())
+                        .alignment(Alignment::Right),
                     time_area,
                 );
             }
 
-            match &request_state {
+            // 3/5 branches render the request, so we want to de-dupe that code
+            // a bit while rendering something else for the other states
+            let request: Option<&Arc<Request>> = match &request_state {
                 RequestState::Building { .. } => {
                     frame.render_widget(
                         Paragraph::new("Initializing request..."),
-                        status_area,
+                        area,
                     );
+                    None
                 }
 
                 // :(
                 RequestState::BuildError { error } => {
                     frame.render_widget(
                         Paragraph::new(error.generate()).wrap(Wrap::default()),
-                        content_area,
+                        area,
                     );
+                    None
                 }
+                RequestState::Loading { request, .. } => Some(request),
+                RequestState::Response { record, .. } => Some(&record.request),
+                RequestState::RequestError { error } => Some(&error.request),
+            };
 
-                RequestState::Loading { .. } => {
-                    frame.render_widget(
-                        Paragraph::new("Loading..."),
-                        status_area,
-                    );
-                }
-
-                RequestState::Response {
-                    record,
-                    parsed_body,
-                } => {
-                    let response = &record.response;
-                    // Status code
-                    frame.render_widget(
-                        Paragraph::new(response.status.to_string()),
-                        status_area,
-                    );
-
-                    self.content.draw(
-                        frame,
-                        ResponseContentProps {
-                            record,
-                            parsed_body: parsed_body.as_deref(),
-                        },
-                        content_area,
-                    );
-                }
-
-                // Sadge
-                RequestState::RequestError { error } => {
-                    frame.render_widget(
-                        Paragraph::new(error.generate()).wrap(Wrap::default()),
-                        content_area,
-                    );
-                }
+            if let Some(request) = request {
+                self.content.draw(
+                    frame,
+                    RenderedRequestProps {
+                        request: Arc::clone(request),
+                        // For simplicity, don't format body or make it
+                        // queryable
+                        parsed_body: None,
+                    },
+                    area,
+                )
             }
         }
     }
 }
 
-/// Display response success state (tab container)
+/// Content once a request has successfully been rendered/sent
 #[derive(Debug)]
-struct CompleteResponseContent {
+struct RenderedRequest {
     #[debug(skip)]
     tabs: Component<Tabs<Tab>>,
-    /// Persist the response body to track view state. Update whenever the
+    /// Store pointer to the request, so we can access it in the update step
+    request: StateCell<RequestId, Arc<Request>>,
+    /// Persist the request body to track view state. Update whenever the
     /// loaded request changes
     #[debug(skip)]
-    body: Component<ResponseContentBody>,
+    body: Component<RecordBody>,
 }
 
-impl Default for CompleteResponseContent {
+impl Default for RenderedRequest {
     fn default() -> Self {
         Self {
-            tabs: Tabs::new(PersistentKey::ResponseTab).into(),
+            tabs: Tabs::new(PersistentKey::RequestTab).into(),
+            request: Default::default(),
             body: Default::default(),
         }
     }
 }
 
-struct ResponseContentProps<'a> {
-    record: &'a RequestRecord,
+struct RenderedRequestProps<'a> {
+    request: Arc<Request>,
     parsed_body: Option<&'a dyn ResponseContent>,
 }
 
@@ -196,11 +170,13 @@ struct ResponseContentProps<'a> {
     Deserialize,
 )]
 enum Tab {
+    #[display("URL")]
+    Url,
     Body,
     Headers,
 }
 
-impl EventHandler for CompleteResponseContent {
+impl EventHandler for RenderedRequest {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Input {
@@ -210,7 +186,16 @@ impl EventHandler for CompleteResponseContent {
             Event::Other(ref other) => {
                 // Check for an action menu event
                 match other.downcast_ref::<MenuAction>() {
+                    Some(MenuAction::CopyUrl) => {
+                        if let Some(request) = self.request.get() {
+                            TuiContext::send_message(Message::CopyText(
+                                request.url.to_string(),
+                            ))
+                        }
+                    }
                     Some(MenuAction::CopyBody) => {
+                        // We need to generate the copy text here because it can
+                        // be formatted/queried
                         if let Some(body) = self.body.text() {
                             TuiContext::send_message(Message::CopyText(body));
                         }
@@ -227,10 +212,10 @@ impl EventHandler for CompleteResponseContent {
         let selected_tab = *self.tabs.selected();
         let mut children = vec![];
         match selected_tab {
+            Tab::Url | Tab::Headers => {}
             Tab::Body => {
                 children.push(self.body.as_child());
             }
-            Tab::Headers => {}
         }
         // Tabs goes last, because pane content gets priority
         children.push(self.tabs.as_child());
@@ -238,14 +223,16 @@ impl EventHandler for CompleteResponseContent {
     }
 }
 
-impl<'a> Draw<ResponseContentProps<'a>> for CompleteResponseContent {
+impl<'a> Draw<RenderedRequestProps<'a>> for RenderedRequest {
     fn draw(
         &self,
         frame: &mut Frame,
-        props: ResponseContentProps<'a>,
+        props: RenderedRequestProps<'a>,
         area: Rect,
     ) {
-        let response = &props.record.response;
+        let request = self
+            .request
+            .get_or_update(props.request.id, || Arc::clone(&props.request));
 
         // Split the main area again to allow tabs
         let [tabs_area, content_area] = layout(
@@ -259,28 +246,29 @@ impl<'a> Draw<ResponseContentProps<'a>> for CompleteResponseContent {
 
         // Main content for the response
         match self.tabs.selected() {
-            Tab::Body => {
-                self.body.draw(
-                    frame,
-                    ResponseContentBodyProps {
-                        record: props.record,
-                        parsed_body: props.parsed_body,
-                    },
+            Tab::Url => {
+                frame.render_widget(
+                    Paragraph::new(request.url.to_string())
+                        .wrap(Wrap::default()),
                     content_area,
                 );
             }
+            Tab::Body => {
+                if let Some(body) = &request.body {
+                    self.body.draw(
+                        frame,
+                        RecordBodyProps {
+                            request_id: request.id,
+                            raw_body: body,
+                            parsed_body: props.parsed_body,
+                        },
+                        content_area,
+                    );
+                }
+            }
             Tab::Headers => frame.render_widget(
-                Table {
-                    rows: response
-                        .headers
-                        .iter()
-                        .map(|(k, v)| {
-                            [Text::from(k.as_str()), v.generate().into()]
-                        })
-                        .collect_vec(),
-                    header: Some(["Header", "Value"]),
-                    alternate_row_style: true,
-                    ..Default::default()
+                HeaderTable {
+                    headers: &props.request.headers,
                 }
                 .generate(),
                 content_area,

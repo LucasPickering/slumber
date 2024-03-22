@@ -354,7 +354,7 @@ impl CollectionDatabase {
                     ":recipe_id": &record.request.recipe_id,
                     ":start_time": &record.start_time,
                     ":end_time": &record.end_time,
-                    ":request": &Bytes(&record.request),
+                    ":request": &Bytes(&*record.request),
                     ":response": &Bytes(&record.response),
                     ":status_code": record.response.status.as_u16(),
                 },
@@ -557,7 +557,7 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
             start_time: row.get("start_time")?,
             end_time: row.get("end_time")?,
             // Deserialize from bytes
-            request: row.get::<_, Bytes<_>>("request")?.0,
+            request: Arc::new(row.get::<_, Bytes<_>>("request")?.0),
             response: row.get::<_, Bytes<_>>("response")?.0,
         })
     }
@@ -676,7 +676,8 @@ mod tests {
                         profile_id: profile_id.clone(),
                         recipe_id: recipe_id.clone(),
                     );
-                    let record = create!(RequestRecord, request: request);
+                    let record =
+                        create!(RequestRecord, request: request.into());
                     collection.insert_request(&record).unwrap();
                     request_ids.insert(
                         (collection.collection_id(), profile_id, recipe_id),

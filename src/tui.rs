@@ -7,7 +7,7 @@ use crate::{
     collection::{Collection, CollectionFile, ProfileId, RecipeId},
     config::Config,
     db::{CollectionDatabase, Database},
-    http::{HttpEngine, RequestBuilder},
+    http::{HttpEngine, Request, RequestBuilder},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
         context::TuiContext,
@@ -236,12 +236,12 @@ impl Tui {
             Message::HttpLoading {
                 profile_id,
                 recipe_id,
-                request_id,
+                request,
             } => {
                 self.view.set_request_state(
                     profile_id,
                     recipe_id,
-                    RequestState::loading(request_id),
+                    RequestState::loading(request),
                 );
             }
             Message::HttpComplete(result) => {
@@ -407,20 +407,24 @@ impl Tui {
         // differently from all other error types
         tokio::spawn(async move {
             // Build the request
-            let request = builder.build().await.map_err(|error| {
-                // Report the error, but don't actually return anything
-                messages_tx.send(Message::HttpBuildError {
-                    profile_id: profile_id.clone(),
-                    recipe_id: recipe_id.clone(),
-                    error,
-                });
-            })?;
+            let request: Arc<Request> = builder
+                .build()
+                .await
+                .map_err(|error| {
+                    // Report the error, but don't actually return anything
+                    messages_tx.send(Message::HttpBuildError {
+                        profile_id: profile_id.clone(),
+                        recipe_id: recipe_id.clone(),
+                        error,
+                    });
+                })?
+                .into();
 
             // Report liftoff
             messages_tx.send(Message::HttpLoading {
                 profile_id,
                 recipe_id,
-                request_id,
+                request: Arc::clone(&request),
             });
 
             // Send the request and report the result to the main thread

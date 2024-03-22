@@ -5,9 +5,11 @@ mod misc;
 mod primary;
 mod profile;
 mod profile_list;
-mod recipe;
 mod recipe_list;
-mod response;
+mod recipe_pane;
+mod record_body;
+mod request_pane;
+mod response_pane;
 mod root;
 
 pub use root::Root;

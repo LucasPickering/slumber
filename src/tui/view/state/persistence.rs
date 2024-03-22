@@ -86,6 +86,9 @@ pub enum PersistentKey {
         recipe: RecipeId,
         header: String,
     },
+    /// Selected tab in Request pane
+    RequestTab,
+    /// Selected tab in Response pane
     ResponseTab,
 }
 

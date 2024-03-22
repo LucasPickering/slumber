@@ -104,7 +104,7 @@ impl Draw for HelpModal {
         let collection_metadata = Table {
             title: Some("General"),
             rows: [
-                ("Slumber Version", Line::from(CRATE_VERSION)),
+                ("Version", Line::from(CRATE_VERSION)),
                 (
                     "Configuration",
                     Line::from(tui_context.config.path().display().to_string()),

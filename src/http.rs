@@ -58,7 +58,7 @@ use reqwest::{
     header::{self, HeaderMap, HeaderName, HeaderValue},
     Client,
 };
-use std::{collections::HashSet, future::Future, io::Write};
+use std::{collections::HashSet, future::Future, io::Write, sync::Arc};
 use tokio::try_join;
 use tracing::{debug, info, info_span};
 use url::Url;
@@ -120,7 +120,7 @@ impl HttpEngine {
     /// sending the request.
     pub async fn send(
         self,
-        request: Request,
+        request: Arc<Request>,
     ) -> Result<RequestRecord, RequestError> {
         let id = request.id;
 

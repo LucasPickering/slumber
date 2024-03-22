@@ -2,7 +2,6 @@ use crate::{
     collection::{Profile, ProfileId},
     tui::view::{
         common::{list::List, Pane},
-        component::primary::PrimaryPane,
         draw::{Draw, Generate},
         event::{Event, EventHandler, UpdateContext},
         state::{
@@ -12,7 +11,12 @@ use crate::{
         Component,
     },
 };
-use ratatui::{prelude::Rect, Frame};
+use ratatui::{
+    prelude::Rect,
+    style::{Modifier, Style},
+    widgets::Paragraph,
+    Frame,
+};
 
 #[derive(Debug)]
 pub struct ProfileListPane {
@@ -53,19 +57,38 @@ impl EventHandler for ProfileListPane {
 impl Draw<ProfileListPaneProps> for ProfileListPane {
     fn draw(&self, frame: &mut Frame, props: ProfileListPaneProps, area: Rect) {
         self.profiles.set_area(area); // Needed for tracking cursor events
-        let title = PrimaryPane::ProfileList.to_string();
-        let list = List {
-            block: Some(Pane {
-                title: &title,
-                is_focused: props.is_selected,
-            }),
-            list: &self.profiles,
-        };
-        frame.render_stateful_widget(
-            list.generate(),
-            area,
-            &mut self.profiles.state_mut(),
-        )
+        let block = Pane {
+            title: "Profiles",
+            is_focused: props.is_selected,
+        }
+        .generate();
+        let inner_area = block.inner(area);
+        frame.render_widget(block, area);
+
+        if props.is_selected {
+            // Only show the full list if selected
+            let list = List {
+                block: None,
+                list: &self.profiles,
+            };
+            frame.render_stateful_widget(
+                list.generate(),
+                inner_area,
+                &mut self.profiles.state_mut(),
+            );
+        } else {
+            // Pane is not selected - just show the selected profile
+            let profile = self
+                .profiles()
+                .selected()
+                .map(|profile| profile.name())
+                .unwrap_or("<none>");
+            frame.render_widget(
+                Paragraph::new(profile)
+                    .style(Style::new().add_modifier(Modifier::BOLD)),
+                inner_area,
+            )
+        }
     }
 }
 

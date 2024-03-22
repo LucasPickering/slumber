@@ -12,6 +12,7 @@
 ### Changed
 
 - Run prompts while rendering request URL/body to be copied
+- Improve UI design of profile pane
 
 ## [0.14.0] - 2024-03-18
 

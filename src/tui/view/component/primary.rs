@@ -141,6 +141,97 @@ impl PrimaryView {
             Some(mode)
         };
     }
+
+    /// Draw the "normal" view, when nothing is full
+    fn draw_all_panes(
+        &self,
+        frame: &mut Frame,
+        props: PrimaryViewProps,
+        area: Rect,
+    ) {
+        // Split the main pane horizontally
+        let [left_area, right_area] = layout(
+            area,
+            Direction::Horizontal,
+            [Constraint::Max(40), Constraint::Min(40)],
+        );
+
+        // Split left column vertically
+        let [profiles_area, recipes_area] = layout(
+            left_area,
+            Direction::Vertical,
+            [
+                // Minimize pane if not selected
+                if self.selected_pane.is_selected(&PrimaryPane::ProfileList) {
+                    // Make profile list as small as possible
+                    Constraint::Max(
+                        // +2 to account for top/bottom border
+                        self.profile_list_pane.profiles().len() as u16 + 2,
+                    )
+                } else {
+                    Constraint::Max(3)
+                },
+                Constraint::Min(0),
+            ],
+        );
+
+        // Split right column vertically
+        let [request_area, response_area] = layout(
+            right_area,
+            Direction::Vertical,
+            [Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)],
+        );
+
+        // Primary panes
+        let panes = &self.selected_pane;
+        self.profile_list_pane.draw(
+            frame,
+            ProfileListPaneProps {
+                is_selected: panes.is_selected(&PrimaryPane::ProfileList),
+            },
+            profiles_area,
+        );
+        self.recipe_list_pane.draw(
+            frame,
+            RecipeListPaneProps {
+                is_selected: panes.is_selected(&PrimaryPane::RecipeList),
+            },
+            recipes_area,
+        );
+
+        // If profile list is selected, show the profile contents.
+        // Otherwise show the recipe pane
+        if let (PrimaryPane::ProfileList, Some(profile)) =
+            (self.selected_pane.selected(), self.selected_profile())
+        {
+            self.profile_pane.draw(
+                frame,
+                ProfilePaneProps { profile },
+                request_area,
+            )
+        } else {
+            self.request_pane.draw(
+                frame,
+                RequestPaneProps {
+                    is_selected: panes.is_selected(&PrimaryPane::Request),
+                    selected_recipe: self.selected_recipe(),
+                    selected_profile_id: self
+                        .selected_profile()
+                        .map(|profile| &profile.id),
+                },
+                request_area,
+            );
+        }
+
+        self.response_pane.draw(
+            frame,
+            ResponsePaneProps {
+                is_selected: panes.is_selected(&PrimaryPane::Response),
+                active_request: props.active_request,
+            },
+            response_area,
+        );
+    }
 }
 
 impl EventHandler for PrimaryView {
@@ -269,91 +360,7 @@ impl EventHandler for PrimaryView {
 impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
     fn draw(&self, frame: &mut Frame, props: PrimaryViewProps<'a>, area: Rect) {
         match *self.fullscreen_mode {
-            // Show all panes
-            None => {
-                // Split the main pane horizontally
-                let [left_area, right_area] = layout(
-                    area,
-                    Direction::Horizontal,
-                    [Constraint::Max(40), Constraint::Min(40)],
-                );
-
-                // Split left column vertically
-                let [profiles_area, recipes_area] = layout(
-                    left_area,
-                    Direction::Vertical,
-                    [
-                        // Make profile list as small as possible, with a max
-                        // size
-                        Constraint::Max(
-                            self.profile_list_pane.profiles().len().clamp(1, 16)
-                                as u16
-                                + 2, // Account for top/bottom border
-                        ),
-                        Constraint::Min(0),
-                    ],
-                );
-
-                // Split right column vertically
-                let [request_area, response_area] = layout(
-                    right_area,
-                    Direction::Vertical,
-                    [Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)],
-                );
-
-                // Primary panes
-                let panes = &self.selected_pane;
-                self.profile_list_pane.draw(
-                    frame,
-                    ProfileListPaneProps {
-                        is_selected: panes
-                            .is_selected(&PrimaryPane::ProfileList),
-                    },
-                    profiles_area,
-                );
-                self.recipe_list_pane.draw(
-                    frame,
-                    RecipeListPaneProps {
-                        is_selected: panes
-                            .is_selected(&PrimaryPane::RecipeList),
-                    },
-                    recipes_area,
-                );
-
-                // If profile list is selected, show the profile contents.
-                // Otherwise show the recipe pane
-                if let (PrimaryPane::ProfileList, Some(profile)) =
-                    (self.selected_pane.selected(), self.selected_profile())
-                {
-                    self.profile_pane.draw(
-                        frame,
-                        ProfilePaneProps { profile },
-                        request_area,
-                    )
-                } else {
-                    self.request_pane.draw(
-                        frame,
-                        RequestPaneProps {
-                            is_selected: panes
-                                .is_selected(&PrimaryPane::Request),
-                            selected_recipe: self.selected_recipe(),
-                            selected_profile_id: self
-                                .selected_profile()
-                                .map(|profile| &profile.id),
-                        },
-                        request_area,
-                    );
-                }
-
-                self.response_pane.draw(
-                    frame,
-                    ResponsePaneProps {
-                        is_selected: panes.is_selected(&PrimaryPane::Response),
-                        active_request: props.active_request,
-                    },
-                    response_area,
-                );
-            }
+            None => self.draw_all_panes(frame, props, area),
             Some(FullscreenMode::Request) => {
                 self.request_pane.draw(
                     frame,

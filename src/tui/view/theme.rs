@@ -1,10 +1,5 @@
 use ratatui::style::{Color, Modifier, Style};
 
-// Ideally these should be part of the theme, but that requires some sort of
-// two-stage themeing
-pub const PRIMARY_COLOR: Color = Color::LightGreen;
-pub const ERROR_COLOR: Color = Color::Red;
-
 /// Configurable visual settings for the UI. Styles are grouped into sub-structs
 /// generally by component.
 #[derive(Debug)]
@@ -17,6 +12,13 @@ pub struct Theme {
     pub text: ThemeText,
     pub text_box: ThemeTextBox,
     pub text_window: ThemeTextWindow,
+}
+
+impl Theme {
+    // Ideally these should be part of the theme, but that requires some sort of
+    // two-stage themeing
+    pub const PRIMARY_COLOR: Color = Color::LightGreen;
+    pub const ERROR_COLOR: Color = Color::Red;
 }
 
 #[derive(Debug)]
@@ -83,18 +85,18 @@ impl Default for Theme {
             pane: ThemePane {
                 border: Style::default(),
                 border_selected: Style::default()
-                    .fg(PRIMARY_COLOR)
+                    .fg(Self::PRIMARY_COLOR)
                     .add_modifier(Modifier::BOLD),
             },
             list: ThemeList {
                 highlight: Style::default()
-                    .bg(PRIMARY_COLOR)
+                    .bg(Self::PRIMARY_COLOR)
                     .fg(Color::Black)
                     .add_modifier(Modifier::BOLD),
             },
             tab: ThemeTab {
                 highlight: Style::default()
-                    .fg(PRIMARY_COLOR)
+                    .fg(Self::PRIMARY_COLOR)
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
             },
@@ -106,7 +108,7 @@ impl Default for Theme {
                 alt: Style::default().bg(Color::DarkGray),
                 disabled: Style::default().add_modifier(Modifier::DIM),
                 highlight: Style::default()
-                    .bg(PRIMARY_COLOR)
+                    .bg(Self::PRIMARY_COLOR)
                     .fg(Color::Black)
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
@@ -114,10 +116,12 @@ impl Default for Theme {
             },
             template_preview: ThemeTemplatePreview {
                 text: Style::default().fg(Color::Blue),
-                error: Style::default().bg(ERROR_COLOR),
+                error: Style::default().bg(Self::ERROR_COLOR),
             },
             text: ThemeText {
-                highlight: Style::default().fg(Color::Black).bg(PRIMARY_COLOR),
+                highlight: Style::default()
+                    .fg(Color::Black)
+                    .bg(Self::PRIMARY_COLOR),
             },
             text_box: ThemeTextBox {
                 text: Style::default().bg(Color::DarkGray),

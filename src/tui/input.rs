@@ -52,8 +52,8 @@ impl InputEngine {
                 InputBinding::new(KeyCode::Char('x'), Action::OpenActions),
                 InputBinding::new(KeyCode::Char('?'), Action::OpenHelp),
                 InputBinding::new(KeyCode::Char('f'), Action::Fullscreen),
-                InputBinding::new(KeyCode::Char('r'), Action::ReloadCollection),
                 InputBinding::new(KeyCode::F(2), Action::SendRequest),
+                InputBinding::new(KeyCode::F(5), Action::ReloadCollection),
                 InputBinding::new(KeyCode::Char('/'), Action::Search),
                 InputBinding::new(KeyCode::BackTab, Action::PreviousPane),
                 InputBinding::new(KeyCode::Tab, Action::NextPane),
@@ -67,6 +67,18 @@ impl InputEngine {
                 InputBinding::new(KeyCode::End, Action::End).hide(),
                 InputBinding::new(KeyCode::Enter, Action::Submit),
                 InputBinding::new(KeyCode::Esc, Action::Cancel),
+                // Hide these because they have inline hints
+                InputBinding::new(
+                    KeyCode::Char('p'),
+                    Action::SelectProfileList,
+                )
+                .hide(),
+                InputBinding::new(KeyCode::Char('l'), Action::SelectRecipeList)
+                    .hide(),
+                InputBinding::new(KeyCode::Char('r'), Action::SelectRecipe)
+                    .hide(),
+                InputBinding::new(KeyCode::Char('s'), Action::SelectResponse)
+                    .hide(),
             ]
             .into_iter()
             .map(|binding| (binding.action, binding))
@@ -83,6 +95,17 @@ impl InputEngine {
     /// input in reverse, when showing available bindings to the user.
     pub fn binding(&self, action: Action) -> Option<InputBinding> {
         self.bindings.get(&action).copied()
+    }
+
+    /// Append a hotkey hint to a label. If the given action is bound, adding
+    /// a hint to the end of the given label. If unbound, return the label
+    /// alone.
+    pub fn add_hint(&self, label: impl Display, action: Action) -> String {
+        if let Some(binding) = self.binding(action) {
+            format!("{} ({})", label, binding.input())
+        } else {
+            label.to_string()
+        }
     }
 
     /// Convert an input event into its bound action, if any
@@ -184,6 +207,8 @@ pub enum Action {
 
     /// Do a thing. E.g. select an item in a list
     Submit,
+    /// Close the current modal/dialog/etc.
+    Cancel,
     /// Send the active request from *any* context
     #[display("Send Request")]
     SendRequest,
@@ -191,7 +216,7 @@ pub enum Action {
     #[display("Search/Filter")]
     Search,
     /// Force a collection reload (typically it's automatic)
-    #[display("Reload")]
+    #[display("Reload Collection")]
     ReloadCollection,
     /// Embiggen a pane
     Fullscreen,
@@ -201,8 +226,14 @@ pub enum Action {
     #[display("Help")]
     /// Open the help modal
     OpenHelp,
-    /// Close the current modal/dialog/etc.
-    Cancel,
+    /// Select profile list pane
+    SelectProfileList,
+    /// Select recipe list pane
+    SelectRecipeList,
+    /// Select recipe pane
+    SelectRecipe,
+    /// Select response pane
+    SelectResponse,
 }
 
 /// A mapping from a key input sequence to an action. This can optionally have

@@ -15,7 +15,6 @@ use crate::{
                 text_window::TextWindow,
                 Pane,
             },
-            component::primary::PrimaryPane,
             draw::{Draw, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update, UpdateContext},
             state::{
@@ -57,7 +56,7 @@ impl Default for RecipePane {
     }
 }
 
-pub struct RequestPaneProps<'a> {
+pub struct RecipePaneProps<'a> {
     pub is_selected: bool,
     pub selected_recipe: Option<&'a Recipe>,
     pub selected_profile_id: Option<&'a ProfileId>,
@@ -206,12 +205,14 @@ impl EventHandler for RecipePane {
     }
 }
 
-impl<'a> Draw<RequestPaneProps<'a>> for RecipePane {
-    fn draw(&self, frame: &mut Frame, props: RequestPaneProps<'a>, area: Rect) {
+impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
+    fn draw(&self, frame: &mut Frame, props: RecipePaneProps<'a>, area: Rect) {
         // Render outermost block
-        let pane_kind = PrimaryPane::Request;
+        let title = TuiContext::get()
+            .input_engine
+            .add_hint("Recipe", Action::SelectRecipe);
         let block = Pane {
-            title: &pane_kind.to_string(),
+            title: &title,
             is_focused: props.is_selected,
         };
         let block = block.generate();

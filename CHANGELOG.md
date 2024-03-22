@@ -8,6 +8,7 @@
   - Use shift+left and shift+right
 - Add app version to help modal
 - Add "Copy as cURL" action to recipe menu ([#123](https://github.com/LucasPickering/slumber/issues/123))
+- Add hotkeys to select different panes
 
 ### Changed
 

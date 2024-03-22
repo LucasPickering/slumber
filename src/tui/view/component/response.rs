@@ -8,11 +8,8 @@ use crate::{
         message::Message,
         view::{
             common::{actions::ActionsModal, table::Table, tabs::Tabs, Pane},
-            component::{
-                primary::PrimaryPane,
-                response::body::{
-                    ResponseContentBody, ResponseContentBodyProps,
-                },
+            component::response::body::{
+                ResponseContentBody, ResponseContentBodyProps,
             },
             draw::{Draw, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update, UpdateContext},
@@ -68,9 +65,11 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
         area: Rect,
     ) {
         // Render outermost block
-        let pane_kind = PrimaryPane::Response;
+        let title = TuiContext::get()
+            .input_engine
+            .add_hint("Response", Action::SelectResponse);
         let block = Pane {
-            title: &pane_kind.to_string(),
+            title: &title,
             is_focused: props.is_selected,
         };
         let block = block.generate();

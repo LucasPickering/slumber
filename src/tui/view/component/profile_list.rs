@@ -1,14 +1,18 @@
 use crate::{
     collection::{Profile, ProfileId},
-    tui::view::{
-        common::{list::List, Pane},
-        draw::{Draw, Generate},
-        event::{Event, EventHandler, UpdateContext},
-        state::{
-            persistence::{Persistable, Persistent, PersistentKey},
-            select::{Dynamic, SelectState},
+    tui::{
+        context::TuiContext,
+        input::Action,
+        view::{
+            common::{list::List, Pane},
+            draw::{Draw, Generate},
+            event::{Event, EventHandler, UpdateContext},
+            state::{
+                persistence::{Persistable, Persistent, PersistentKey},
+                select::{Dynamic, SelectState},
+            },
+            Component,
         },
-        Component,
     },
 };
 use ratatui::{
@@ -57,8 +61,11 @@ impl EventHandler for ProfileListPane {
 impl Draw<ProfileListPaneProps> for ProfileListPane {
     fn draw(&self, frame: &mut Frame, props: ProfileListPaneProps, area: Rect) {
         self.profiles.set_area(area); // Needed for tracking cursor events
+        let title = TuiContext::get()
+            .input_engine
+            .add_hint("Profiles", Action::SelectProfileList);
         let block = Pane {
-            title: "Profiles",
+            title: &title,
             is_focused: props.is_selected,
         }
         .generate();

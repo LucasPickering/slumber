@@ -2,16 +2,19 @@
 
 use crate::{
     collection::{Recipe, RecipeId},
-    tui::view::{
-        common::{list::List, Pane},
-        component::primary::PrimaryPane,
-        draw::{Draw, Generate},
-        event::{Event, EventHandler, UpdateContext},
-        state::{
-            persistence::{Persistable, Persistent, PersistentKey},
-            select::{Dynamic, SelectState},
+    tui::{
+        context::TuiContext,
+        input::Action,
+        view::{
+            common::{list::List, Pane},
+            draw::{Draw, Generate},
+            event::{Event, EventHandler, UpdateContext},
+            state::{
+                persistence::{Persistable, Persistent, PersistentKey},
+                select::{Dynamic, SelectState},
+            },
+            Component,
         },
-        Component,
     },
 };
 use ratatui::{prelude::Rect, Frame};
@@ -64,7 +67,9 @@ impl EventHandler for RecipeListPane {
 impl Draw<RecipeListPaneProps> for RecipeListPane {
     fn draw(&self, frame: &mut Frame, props: RecipeListPaneProps, area: Rect) {
         self.recipes.set_area(area); // Needed for tracking cursor events
-        let title = PrimaryPane::RecipeList.to_string();
+        let title = TuiContext::get()
+            .input_engine
+            .add_hint("Recipes", Action::SelectRecipeList);
         let list = List {
             block: Some(Pane {
                 title: &title,

@@ -12,7 +12,7 @@ use crate::{
                 help::HelpModal,
                 profile::{ProfilePane, ProfilePaneProps},
                 profile_list::{ProfileListPane, ProfileListPaneProps},
-                recipe::{RecipePane, RequestPaneProps},
+                recipe::{RecipePane, RecipePaneProps},
                 recipe_list::{RecipeListPane, RecipeListPaneProps},
                 response::{ResponsePane, ResponsePaneProps},
             },
@@ -74,11 +74,9 @@ pub struct PrimaryViewProps<'a> {
     Deserialize,
 )]
 pub enum PrimaryPane {
-    #[display("Profiles")]
     ProfileList,
-    #[display("Recipes")]
     RecipeList,
-    Request,
+    Recipe,
     Response,
 }
 
@@ -212,8 +210,8 @@ impl PrimaryView {
         } else {
             self.request_pane.draw(
                 frame,
-                RequestPaneProps {
-                    is_selected: panes.is_selected(&PrimaryPane::Request),
+                RecipePaneProps {
+                    is_selected: panes.is_selected(&PrimaryPane::Recipe),
                     selected_recipe: self.selected_recipe(),
                     selected_profile_id: self
                         .selected_profile()
@@ -247,7 +245,6 @@ impl EventHandler for PrimaryView {
                         recipe_id: recipe.id.clone(),
                     });
                 }
-                Update::Consumed
             }
             // Send HTTP request
             Event::HttpSendRequest => {
@@ -263,7 +260,6 @@ impl EventHandler for PrimaryView {
                         },
                     ));
                 }
-                Update::Consumed
             }
 
             // Input messages
@@ -285,33 +281,39 @@ impl EventHandler for PrimaryView {
                             .select(context, &PrimaryPane::RecipeList);
                     } else if self.request_pane.intersects(mouse) {
                         self.selected_pane
-                            .select(context, &PrimaryPane::Request);
+                            .select(context, &PrimaryPane::Recipe);
                     } else if self.response_pane.intersects(mouse) {
                         self.selected_pane
                             .select(context, &PrimaryPane::Response);
                     }
-                    Update::Consumed
                 }
                 Action::PreviousPane if self.fullscreen_mode.is_none() => {
                     self.selected_pane.previous(context);
-                    Update::Consumed
                 }
                 Action::NextPane if self.fullscreen_mode.is_none() => {
                     self.selected_pane.next(context);
-                    Update::Consumed
                 }
                 Action::SendRequest => {
                     // Send a request from anywhere
                     context.queue_event(Event::HttpSendRequest);
-                    Update::Consumed
                 }
                 Action::OpenActions => {
                     context.open_modal_default::<ActionsModal>();
-                    Update::Consumed
                 }
                 Action::OpenHelp => {
                     context.open_modal_default::<HelpModal>();
-                    Update::Consumed
+                }
+                Action::SelectProfileList => self
+                    .selected_pane
+                    .select(context, &PrimaryPane::ProfileList),
+                Action::SelectRecipeList => {
+                    self.selected_pane.select(context, &PrimaryPane::RecipeList)
+                }
+                Action::SelectRecipe => {
+                    self.selected_pane.select(context, &PrimaryPane::Recipe)
+                }
+                Action::SelectResponse => {
+                    self.selected_pane.select(context, &PrimaryPane::Response)
                 }
 
                 // Toggle fullscreen
@@ -320,32 +322,31 @@ impl EventHandler for PrimaryView {
                         // These aren't fullscreenable. Still consume the event
                         // though, no one else will need it anyway
                         PrimaryPane::ProfileList | PrimaryPane::RecipeList => {}
-                        PrimaryPane::Request => {
+                        PrimaryPane::Recipe => {
                             self.toggle_fullscreen(FullscreenMode::Request)
                         }
                         PrimaryPane::Response => {
                             self.toggle_fullscreen(FullscreenMode::Response)
                         }
                     }
-                    Update::Consumed
                 }
                 // Exit fullscreen
                 Action::Cancel if self.fullscreen_mode.is_some() => {
                     *self.fullscreen_mode = None;
-                    Update::Consumed
                 }
-                _ => Update::Propagate(event),
+                _ => return Update::Propagate(event),
             },
 
-            _ => Update::Propagate(event),
+            _ => return Update::Propagate(event),
         }
+        Update::Consumed
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         let child = match (*self.fullscreen_mode, self.selected_pane.selected())
         {
             (Some(FullscreenMode::Request), _)
-            | (None, PrimaryPane::Request) => self.request_pane.as_child(),
+            | (None, PrimaryPane::Recipe) => self.request_pane.as_child(),
             (Some(FullscreenMode::Response), _)
             | (None, PrimaryPane::Response) => self.response_pane.as_child(),
             (None, PrimaryPane::ProfileList) => {
@@ -364,7 +365,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
             Some(FullscreenMode::Request) => {
                 self.request_pane.draw(
                     frame,
-                    RequestPaneProps {
+                    RecipePaneProps {
                         is_selected: true,
                         selected_recipe: self.selected_recipe(),
                         selected_profile_id: self

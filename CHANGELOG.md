@@ -9,11 +9,13 @@
 - Add app version to help modal
 - Add "Copy as cURL" action to recipe menu ([#123](https://github.com/LucasPickering/slumber/issues/123))
 - Add hotkeys to select different panes
+- Add pane for rendered request
 
 ### Changed
 
 - Run prompts while rendering request URL/body to be copied
 - Improve UI design of profile pane
+- Show raw bytes for binary responses
 
 ## [0.14.0] - 2024-03-18
 

@@ -214,6 +214,11 @@ impl Body {
     pub fn into_bytes(self) -> Vec<u8> {
         self.0.into()
     }
+
+    /// Get bytes as text, if valid UTF-8
+    pub fn text(&self) -> Option<&str> {
+        std::str::from_utf8(&self.0).ok()
+    }
 }
 
 #[cfg(test)]

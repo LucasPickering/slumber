@@ -128,12 +128,16 @@ impl EventHandler for RecordBody {
 impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
     fn draw(&self, frame: &mut Frame, props: RecordBodyProps, area: Rect) {
         // Body can only be queried if it's been parsed
-        self.query_available.set(props.parsed_body.is_some());
+        let query_available = props.parsed_body.is_some();
+        self.query_available.set(query_available);
 
         let [body_area, query_area] = layout(
             area,
             Direction::Vertical,
-            [Constraint::Min(0), Constraint::Length(1)],
+            [
+                Constraint::Min(0),
+                Constraint::Length(if query_available { 1 } else { 0 }),
+            ],
         );
 
         // Draw the body
@@ -150,7 +154,7 @@ impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
         });
         text.draw(frame, (), body_area);
 
-        if self.query_available.get() {
+        if query_available {
             self.query_text_box.draw(frame, (), query_area);
         }
     }
@@ -174,7 +178,7 @@ fn init_text_window(
         })
         // Content couldn't be parsed, fall back to the raw text
         // If the text isn't UTF-8, we'll show a placeholder instead
-        .unwrap_or_else(|| MaybeStr(raw_body).to_string());
+        .unwrap_or_else(|| format!("{:#}", MaybeStr(raw_body)));
 
     TextWindow::new(body).into()
 }

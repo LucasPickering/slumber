@@ -187,7 +187,7 @@ impl Generate for &HeaderValue {
     where
         Self: 'this,
     {
-        MaybeStr(self.as_bytes()).to_str().into()
+        MaybeStr(self.as_bytes()).to_string().into()
     }
 }
 

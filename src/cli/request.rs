@@ -18,6 +18,7 @@ use reqwest::header::HeaderMap;
 use std::{
     error::Error,
     fmt::{self, Display, Formatter},
+    io::{self, Write},
     process::ExitCode,
     str::FromStr,
 };
@@ -85,6 +86,8 @@ impl Subcommand for RequestCommand {
             println!("{:#?}", request);
             Ok(ExitCode::SUCCESS)
         } else {
+            // Everything other than the body prints to stderr, to make it easy
+            // to pipe the body to a file
             if self.headers {
                 eprintln!("{}", HeaderDisplay(&request.headers));
             }
@@ -97,13 +100,22 @@ impl Subcommand for RequestCommand {
 
             // Print stuff!
             if self.status {
-                println!("{}", status.as_u16());
+                eprintln!("{}", status.as_u16());
             }
             if self.headers {
-                println!("{}", HeaderDisplay(&record.response.headers));
+                eprintln!("{}", HeaderDisplay(&record.response.headers));
             }
             if !self.no_body {
-                print!("{}", MaybeStr(record.response.body.bytes()));
+                // If body is not UTF-8, write the raw bytes instead (e.g if
+                // downloading an image)
+                let body = &record.response.body;
+                if let Some(text) = body.text() {
+                    print!("{}", text);
+                } else {
+                    io::stdout()
+                        .write(body.bytes())
+                        .context("Error writing to stdout")?;
+                }
             }
 
             if self.exit_status && status.as_u16() >= 400 {

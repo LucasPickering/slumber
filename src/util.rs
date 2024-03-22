@@ -143,15 +143,28 @@ impl<T> ResultExt<T, RequestError> for Result<T, RequestError> {
 /// them being invalid will be printed instead.
 pub struct MaybeStr<'a>(pub &'a [u8]);
 
-impl<'a> MaybeStr<'a> {
-    pub fn to_str(&self) -> &'a str {
-        std::str::from_utf8(self.0).unwrap_or("<invalid utf-8>")
-    }
-}
-
 impl<'a> Display for MaybeStr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_str())
+        if let Ok(s) = std::str::from_utf8(self.0) {
+            write!(f, "{s}")
+        } else {
+            let bytes_per_line = 12;
+            // Format raw bytes in pairs of bytes
+            for (i, byte) in self.0.iter().enumerate() {
+                if i > 0 {
+                    // Add whitespace before this group. Only use line breaks
+                    // in alternate mode
+                    if f.alternate() && i % bytes_per_line == 0 {
+                        writeln!(f)?;
+                    } else {
+                        write!(f, " ")?;
+                    }
+                }
+
+                write!(f, "{byte:02x}")?;
+            }
+            Ok(())
+        }
     }
 }
 

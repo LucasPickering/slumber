@@ -258,7 +258,6 @@ impl<'a> Draw<RenderedRequestProps<'a>> for RenderedRequest {
                     self.body.draw(
                         frame,
                         RecordBodyProps {
-                            request_id: request.id,
                             raw_body: body,
                             parsed_body: props.parsed_body,
                         },

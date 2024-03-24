@@ -1,7 +1,7 @@
 //! Request/response body display component
 
 use crate::{
-    http::{Query, RequestId, ResponseContent},
+    http::{Query, ResponseContent},
     tui::{
         input::Action,
         view::{
@@ -31,7 +31,7 @@ pub struct RecordBody {
     /// Body text content. State cell allows us to reset this whenever the
     /// request changes
     #[debug(skip)]
-    text_window: StateCell<StateKey, Component<TextWindow<String>>>,
+    text_window: StateCell<Option<Query>, Component<TextWindow<String>>>,
     /// Store whether the body can be queried. True only if it's a recognized
     /// and parsed format
     query_available: Cell<bool>,
@@ -43,15 +43,8 @@ pub struct RecordBody {
 }
 
 pub struct RecordBodyProps<'a> {
-    pub request_id: RequestId,
     pub raw_body: &'a [u8],
     pub parsed_body: Option<&'a dyn ResponseContent>,
-}
-
-#[derive(Debug, PartialEq)]
-struct StateKey {
-    request_id: RequestId,
-    query: Option<Query>,
 }
 
 /// Callback event from the query text box when user hits Enter
@@ -141,11 +134,7 @@ impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
         );
 
         // Draw the body
-        let state_key = StateKey {
-            request_id: props.request_id,
-            query: self.query.clone(),
-        };
-        let text = self.text_window.get_or_update(state_key, || {
+        let text = self.text_window.get_or_update(self.query.clone(), || {
             init_text_window(
                 props.raw_body,
                 props.parsed_body,

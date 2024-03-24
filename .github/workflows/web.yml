@@ -17,23 +17,6 @@ on:
   # completely broke oranda/mdbook. Sadly we don't provide previews (yet)!
   pull_request:
 
-  # Whenever something gets pushed to master, update the docs!
-  # This is great for getting docs changes live without cutting a full release.
-  #
-  # Note that if you're using cargo-dist, this will "race" the Release workflow
-  # that actually builds the Github Release that oranda tries to read (and
-  # this will almost certainly complete first). As a result you will publish
-  # docs for the latest commit but the oranda landing page won't know about
-  # the latest release. The workflow_run trigger below will properly wait for
-  # cargo-dist, and so this half-published state will only last for ~10 minutes.
-  #
-  # If you only want docs to update with releases, disable this, or change it to
-  # a "release" branch. You can, of course, also manually trigger a workflow run
-  # when you want the docs to update.
-  push:
-    branches:
-      - master
-
   # Whenever a workflow called "Release" completes, update the docs!
   #
   # If you're using cargo-dist, this is recommended, as it will ensure that
@@ -46,6 +29,9 @@ on:
     workflows: ["Release"]
     types:
       - completed
+
+  # Run manually
+  workflow_dispatch:
 
 # Alright, let's do it!
 jobs:
@@ -85,8 +71,8 @@ jobs:
       # the other defaults work fine.
       - name: Deploy to Github Pages
         uses: JamesIves/github-pages-deploy-action@v4.4.1
-        # Only publish site for releases
-        if: startsWith(github.ref, 'refs/tags/v')
+        # ONLY if we're on master (so no PRs or feature branches allowed!)
+        if: ${{ github.ref == 'refs/heads/master' }}
         with:
           branch: gh-pages
           # Gotta tell the action where to find oranda's output

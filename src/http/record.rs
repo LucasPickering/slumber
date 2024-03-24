@@ -7,6 +7,7 @@ use crate::{
 };
 use anyhow::Context;
 use bytes::Bytes;
+use bytesize::ByteSize;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::{Display, From};
 use indexmap::IndexMap;
@@ -218,6 +219,11 @@ impl Body {
     /// Get bytes as text, if valid UTF-8
     pub fn text(&self) -> Option<&str> {
         std::str::from_utf8(&self.0).ok()
+    }
+
+    /// Get body size, in bytes
+    pub fn size(&self) -> ByteSize {
+        ByteSize(self.bytes().len() as u64)
     }
 }
 

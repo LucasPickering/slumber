@@ -190,7 +190,7 @@ impl From<&ChainId<&str>> for ChainId {
     }
 }
 
-/// Allow looking up by ChainId<&tr> in a map
+/// Allow looking up by ChainId<&str> in a map
 impl Equivalent<ChainId> for ChainId<&str> {
     fn equivalent(&self, key: &ChainId) -> bool {
         self.0 == key.0

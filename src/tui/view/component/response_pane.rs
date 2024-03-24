@@ -22,6 +22,7 @@ use chrono::Utc;
 use derive_more::{Debug, Display};
 use ratatui::{
     prelude::{Alignment, Constraint, Direction, Rect},
+    text::Line,
     widgets::{Paragraph, Wrap},
     Frame,
 };
@@ -217,8 +218,12 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
             header_area,
         );
         frame.render_widget(
-            Paragraph::new(props.record.duration().generate())
-                .alignment(Alignment::Right),
+            Paragraph::new(Line::from(vec![
+                props.record.response.body.size().to_string_as(false).into(),
+                " / ".into(),
+                props.record.duration().generate(),
+            ]))
+            .alignment(Alignment::Right),
             header_area,
         );
 

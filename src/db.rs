@@ -386,7 +386,7 @@ impl CollectionDatabase {
                 },
             )
             .optional()
-            .context("Error fetching UI state from database")
+            .context(format!("Error fetching UI state for {key:?}"))
             .traced()?;
         debug!(?key, ?value, "Fetched UI state");
         Ok(value)

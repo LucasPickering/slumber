@@ -10,6 +10,7 @@
 - Add "Copy as cURL" action to recipe menu ([#123](https://github.com/LucasPickering/slumber/issues/123))
 - Add hotkeys to select different panes
 - Add pane for rendered request
+- Show response size in Response pane ([#129](https://github.com/LucasPickering/slumber/issues/129))
 
 ### Changed
 

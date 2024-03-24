@@ -171,7 +171,7 @@ impl From<Request> for Recipe {
         for header in request.headers {
             headers.insert(header.name.to_lowercase(), header.value);
         }
-        headers.remove(header::USER_AGENT.as_str());
+        headers.shift_remove(header::USER_AGENT.as_str());
 
         // Load authentication scheme
         let authentication = match request.authentication {

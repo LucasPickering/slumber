@@ -1,0 +1,830 @@
+<!DOCTYPE HTML>
+<html lang="en" class="sidebar-visible no-js oranda-dark">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Slumber</title>
+        <meta name="robots" content="noindex" />
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="Terminal-based HTTP client">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff" />
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+        <link rel="stylesheet" href="oranda-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "oranda-dark" : "oranda-dark";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('orandamdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('orandamdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('orandamdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('no-js')
+            html.classList.remove('oranda-dark')
+            html.classList.add(theme);
+            html.classList.add('js');
+        </script>
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var html = document.querySelector('html');
+            var sidebar = 'hidden';
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            }
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded "><a href="introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="install.html"><strong aria-hidden="true">2.</strong> Install</a></li><li class="chapter-item expanded "><a href="getting_started.html"><strong aria-hidden="true">3.</strong> Getting Started</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="user_guide/key_concepts.html"><strong aria-hidden="true">4.</strong> Key Concepts</a></li><li class="chapter-item expanded "><a href="user_guide/tui.html"><strong aria-hidden="true">5.</strong> Terminal User Interface (TUI)</a></li><li class="chapter-item expanded "><a href="user_guide/cli.html"><strong aria-hidden="true">6.</strong> Command Line Interface (CLI)</a></li><li class="chapter-item expanded "><a href="user_guide/templates.html"><strong aria-hidden="true">7.</strong> Templates</a></li><li class="chapter-item expanded "><a href="user_guide/inheritance.html"><strong aria-hidden="true">8.</strong> Collection Reuse & Inheritance</a></li><li class="chapter-item expanded "><a href="user_guide/filter_query.html"><strong aria-hidden="true">9.</strong> Data Filtering & Querying</a></li><li class="chapter-item expanded affix "><li class="part-title">API Reference</li><li class="chapter-item expanded "><a href="api/configuration.html"><strong aria-hidden="true">10.</strong> Configuration</a></li><li class="chapter-item expanded "><a href="api/request_collection.html"><strong aria-hidden="true">11.</strong> Request Collection</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="api/profile.html"><strong aria-hidden="true">11.1.</strong> Profile</a></li><li class="chapter-item expanded "><a href="api/profile_value.html"><strong aria-hidden="true">11.2.</strong> Profile Value</a></li><li class="chapter-item expanded "><a href="api/request_recipe.html"><strong aria-hidden="true">11.3.</strong> Request Recipe</a></li><li class="chapter-item expanded "><a href="api/authentication.html"><strong aria-hidden="true">11.4.</strong> Authentication</a></li><li class="chapter-item expanded "><a href="api/chain.html"><strong aria-hidden="true">11.5.</strong> Chain</a></li><li class="chapter-item expanded "><a href="api/chain_source.html"><strong aria-hidden="true">11.6.</strong> Chain Source</a></li><li class="chapter-item expanded "><a href="api/template.html"><strong aria-hidden="true">11.7.</strong> Template</a></li><li class="chapter-item expanded "><a href="api/content_type.html"><strong aria-hidden="true">11.8.</strong> Content Type</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Troubleshooting</li><li class="chapter-item expanded "><a href="troubleshooting/tls.html"><strong aria-hidden="true">12.</strong> TLS Certificate Errors</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky bordered">
+                    <div class="left-buttons">
+                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="oranda-dark">Oranda Dark</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="oranda-light">Oranda Light</button></li>
+
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Slumber</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/LucasPickering/slumber" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>Slumber is a terminal-based HTTP client, built for interacting with REST and other HTTP clients. It has two usage modes: Terminal User Interface (TUI) and Command Line Interface (CLI). The TUI is the most useful, and allows for interactively sending requests and viewing responses. The CLI is useful for sending quick requests and scripting.</p>
+<p>The goal of Slumber is to be <strong>easy to use, configurable, and sharable</strong>. To that end, configuration is defined in a YAML file called the <strong>request collection</strong>. Both usage modes share the same basic configuration, which is called the <a href="./api/request_collection.html">request collection</a>.</p>
+<p>Check out the <a href="./getting_started.html">Getting Started guide</a> to try it out, or move onto <a href="./user_guide/key_concepts.html">Key Concepts</a> to start learning in depth about Slumber.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="install"><a class="header" href="#install">Install</a></h1>
+<p>See <a href="/artifacts">installation instructions</a></p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<p>Once you've <a href="/artifacts">installed Slumber</a>, setup is easy.</p>
+<h3 id="1-create-a-slumber-collection-file"><a class="header" href="#1-create-a-slumber-collection-file">1. Create a Slumber collection file</a></h3>
+<p>Create a file called <code>slumber.yml</code> and add the following contents:</p>
+<pre><code class="language-yaml">requests:
+  get:
+    method: GET
+    url: https://httpbin.org/get
+</code></pre>
+<h3 id="2-run-slumber"><a class="header" href="#2-run-slumber">2. Run Slumber</a></h3>
+<pre><code class="language-sh">slumber
+</code></pre>
+<h2 id="going-further"><a class="header" href="#going-further">Going Further</a></h2>
+<p>Here's a more complete example:</p>
+<pre><code class="language-yaml"># slumber.yml
+profiles:
+  local:
+    data:
+      host: http://localhost:5000
+  production:
+    data:
+      host: https://myfishes.fish
+
+requests:
+  create_fish:
+    method: POST
+    url: &quot;{{host}}/fishes&quot;
+    body: &gt;
+      {&quot;kind&quot;: &quot;barracuda&quot;, &quot;name&quot;: &quot;Jimmy&quot;}
+
+  list_fish:
+    method: GET
+    url: &quot;{{host}}/fishes&quot;
+</code></pre>
+<p>This request collection uses <a href="./user_guide//templates.html">templates</a> and <a href="./api/profile.html">profiles</a> allow you to dynamically change the target host.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="key-concepts"><a class="header" href="#key-concepts">Key Concepts</a></h1>
+<p>There are a handful of key concepts you need to understand how to effectively configure and use Slumber. You can read about each one in detail on its linked API reference page.</p>
+<h2 id="request-collection"><a class="header" href="#request-collection"><a href="user_guide/../api/request_collection.html">Request Collection</a></a></h2>
+<p>The collection is the main form of configuration. It defines a set of request recipes, which enable Slumber to make requests to your API.</p>
+<h2 id="request-recipe"><a class="header" href="#request-recipe"><a href="user_guide/../api/request_recipe.html">Request Recipe</a></a></h2>
+<p>A recipe defines which HTTP requests Slumber can make. A recipe generally correponds to one endpoint on an API, although you can create as many recipes per endpoint as you'd like.</p>
+<h2 id="template"><a class="header" href="#template"><a href="user_guide/./templates.html">Template</a></a></h2>
+<p>Templates are Slumber's most powerful feature. They allow you to dynamically build URLs, query parameters, request bodies, etc. using predefined <em>or</em> dynamic values.</p>
+<h2 id="profile"><a class="header" href="#profile"><a href="user_guide/../api/profile.html">Profile</a></a></h2>
+<p>A profile is a set of static template values. A collection can contain a list of profiles, allowing you to quickly switch between different sets of values. This is useful for using different deployment environments, different sets of IDs, etc.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="terminal-user-interface"><a class="header" href="#terminal-user-interface">Terminal User Interface</a></h1>
+<p>The Terminal User Interface (TUI) is the primary use case for Slumber. It provides a long-lived, interactive interface for sending HTTP requests, akin to Insomnia or Postman. The difference of course is Slumber runs entirely in the terminal.</p>
+<p>To start the TUI, simply run:</p>
+<pre><code class="language-sh">slumber
+</code></pre>
+<p>This will detect your request collection file <a href="user_guide/../api/request_collection.html#format--loading">according to the protocol</a>. If you want to load a different file, you can use the <code>--collection</code> parameter:</p>
+<pre><code class="language-sh">slumber --collection my-slumber.yml
+</code></pre>
+<h2 id="auto-reload"><a class="header" href="#auto-reload">Auto-Reload</a></h2>
+<p>Once you start your Slumber, that session is tied to a single collection file. Whenever that file is modified, Slumber will automatically reload it and changes will immediately be reflected in the TUI. If auto-reload isn't working for some reason, you can manually reload the file with the <code>r</code> key.</p>
+<h2 id="multiple-sessions"><a class="header" href="#multiple-sessions">Multiple Sessions</a></h2>
+<p>Slumber supports running multiple sessions at once, even on the same collection. Request history is stored in a thread-safe <a href="https://www.sqlite.org/index.html">SQLite</a>, so multiple sessions can safely interact simultaneously.</p>
+<p>If you frequently run multiple sessions together and want to quickly switch between them, consider a configurable terminal manager like <a href="https://github.com/tmux/tmux/wiki">tmux</a> or <a href="https://zellij.dev/">Zellij</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="command-line-interface"><a class="header" href="#command-line-interface">Command Line Interface</a></h1>
+<p>While Slumber is primary intended as a TUI, it also provides a Command Line Interface (CLI). The CLI can be used to send requests, just like the TUI. It also provides some utility commands for functionality not available in the TUI. For a full list of available commands, run:</p>
+<pre><code class="language-sh">slumber help
+</code></pre>
+<h2 id="sending-requests"><a class="header" href="#sending-requests">Sending Requests</a></h2>
+<p>There are many use cases to which the CLI is better suited than the TUI, including:</p>
+<ul>
+<li>Sending a single one-off request</li>
+<li>Sending many requests in parallel</li>
+<li>Automating requests in a script</li>
+</ul>
+<p>Given this request collection:</p>
+<pre><code class="language-yaml">profiles:
+  production:
+    data:
+      host: https://myfishes.fish
+
+requests:
+  list_fish:
+    method: GET
+    url: &quot;{{host}}/fishes&quot;
+</code></pre>
+<p>You can use the <code>request</code> subcommand:</p>
+<pre><code class="language-sh">slumber request --profile production list_fishes
+slumber rq -p production list_fishes # This is equivalent, just shorter
+</code></pre>
+<h3 id="exit-code"><a class="header" href="#exit-code">Exit Code</a></h3>
+<p>By default, the CLI returns exit code 1 if there is a fatal error, e.g. the request failed to build or a network error occurred. If an HTTP response was received and parsed, the process will exit with code 0, regardless of HTTP status.</p>
+<p>If you want to set the exit code based on the HTTP response status, use the flag <code>--exit-code</code>.</p>
+<div class="table-wrapper"><table><thead><tr><th>Code</th><th>Reason</th></tr></thead><tbody>
+<tr><td>0</td><td>HTTP response received</td></tr>
+<tr><td>1</td><td>Fatal error</td></tr>
+<tr><td>2</td><td>HTTP response had status &gt;=400 (with <code>--exit-code</code>)</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="templates"><a class="header" href="#templates">Templates</a></h1>
+<p>Templates enable dynamic string construction. Slumber's template language is relatively simple, compared to complex HTML templating languages like Handlebars or Jinja. The goal is to be intuitive and unsurprising. It doesn't support complex features like loops, conditionals, etc.</p>
+<p>Most string <em>values</em> (i.e. <em>not</em> keys) in a request collection are templates, meaning they support templating. The syntax for templating a value into a string is double curly braces <code>{{...}}</code>. The contents inside the braces tell Slumber how to retrieve the dynamic value.</p>
+<p>This guide serves as a functional example of how to use templates. For detailed information on options available, see <a href="user_guide/../api/template.html">the API reference</a>.</p>
+<h2 id="a-basic-example"><a class="header" href="#a-basic-example">A Basic Example</a></h2>
+<p>Let's start with a simple example. Let's say you're working on a fish-themed website, and you want to make requests both to your local stack and the deployed site. Templates, combined with profiles, allow you to easily switch between hosts:</p>
+<blockquote>
+<p>Note: for the purposes of these examples, I've made up some theoretical endpoints and responses, following standard REST practice. This isn't a real API but it should get the point across.</p>
+<p>Additionally, these examples will use the CLI because it's easy to demonstrate in text. All these concepts apply equally to the TUI.</p>
+</blockquote>
+<pre><code class="language-yaml">profiles:
+  local:
+    data:
+      host: http://localhost:5000
+  production:
+    data:
+      host: https://myfishes.fish
+
+requests:
+  list_fish:
+    method: GET
+    url: &quot;{{host}}/fishes&quot;
+</code></pre>
+<p>Now you can easily select which host to hit. In the TUI, this is done via the Profile list. In the CLI, use the <code>--profile</code> option:</p>
+<pre><code class="language-sh">&gt; slumber request --profile local list_fish
+# http://localhost:5000/fishes
+# Only one fish :(
+[{&quot;id&quot;: 1, &quot;kind&quot;: &quot;tuna&quot;, &quot;name&quot;: &quot;Bart&quot;}]
+&gt; slumber request --profile production list_fish
+# https://myfishes.fish/fishes
+# More fish!
+[
+  {&quot;id&quot;: 1, &quot;kind&quot;: &quot;marlin&quot;, &quot;name&quot;: &quot;Kim&quot;},
+  {&quot;id&quot;: 2, &quot;kind&quot;: &quot;salmon&quot;, &quot;name&quot;: &quot;Francis&quot;}
+]
+</code></pre>
+<h2 id="chaining-requests"><a class="header" href="#chaining-requests">Chaining Requests</a></h2>
+<p>Profile values are helpful when you want to switch between statically known values, but what if you need a value from a different response? Let's say you want to create a fish, then use its ID in a subsequent request. Then you want <a href="user_guide/../api/chain.html"><strong>chains</strong></a>.</p>
+<pre><code class="language-yaml">profiles:
+  local:
+    data:
+      host: http://localhost:5000
+
+chains:
+  fish_id:
+    source: !request create_fish
+    # This uses JSONPath to get a single value from the response body
+    # https://jsonpath.com/
+    selector: $.id
+
+requests:
+  create_fish:
+    method: POST
+    url: &quot;{{host}}/fishes&quot;
+    body: &gt;
+      {&quot;kind&quot;: &quot;barracuda&quot;, &quot;name&quot;: &quot;Jimmy&quot;}
+
+  get_fish:
+    method: GET
+    url: &quot;{{host}}/fishes/{{chains.fish_id}}&quot;
+</code></pre>
+<p>Now we can make our requests back-to-back:</p>
+<pre><code class="language-sh">&gt; slumber request -p local create_fish
+# http://localhost:5000/fishes
+{&quot;id&quot;: 2, &quot;kind&quot;: &quot;barracuda&quot;, &quot;name&quot;: &quot;Jimmy&quot;}
+# http://localhost:5000/fishes/2
+&gt; slumber request -p local get_fish
+{&quot;id&quot;: 2, &quot;kind&quot;: &quot;barracuda&quot;, &quot;name&quot;: &quot;Jimmy&quot;}
+</code></pre>
+<p>This demonstrates how to use chains to link responses to requests. Chains can link to other value sources though, including user-provided values (via a prompt) and shell commands. For a full list of chain types, see <a href="user_guide/../api/chain.html">the Chain API reference</a>.</p>
+<h2 id="recursive-templates"><a class="header" href="#recursive-templates">Recursive Templates</a></h2>
+<p>What if you need a more complex chained value? Let's say the endpoint to get a fish requires the fish ID to be in the format <code>fish_{id}</code>. Why? Don't worry about it. Fish are particular. <a href="user_guide/../api/profile_value.html">Profile values</a> support recursively templating via the <code>!template</code> tag. You can use this to compose template values into more complex strings.</p>
+<pre><code class="language-yaml">profiles:
+  local:
+    data:
+      host: http://localhost:5000
+      fish_id: !template &quot;fish_{{chains.fish_id}}&quot;
+
+chains:
+  fish_id:
+    source: !request create_fish
+    selector: $.id
+
+requests:
+  create_fish:
+    method: POST
+    url: &quot;{{host}}/fishes&quot;
+    body: &gt;
+      {&quot;kind&quot;: &quot;barracuda&quot;, &quot;name&quot;: &quot;Jimmy&quot;}
+
+  get_fish:
+    method: GET
+    url: &quot;{{host}}/fishes/{{fish_id}}&quot;
+</code></pre>
+<p>And let's see it in action:</p>
+<pre><code class="language-sh">&gt; slumber request -p local create_fish
+# http://localhost:5000/fishes
+{&quot;id&quot;: 2, &quot;kind&quot;: &quot;barracuda&quot;, &quot;name&quot;: &quot;Jimmy&quot;}
+&gt; slumber request -p local get_fish
+# http://localhost:5000/fishes/fish_2
+{&quot;id&quot;: &quot;fish_2&quot;, &quot;kind&quot;: &quot;barracuda&quot;, &quot;name&quot;: &quot;Jimmy&quot;}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="collection-reuse--inheritance"><a class="header" href="#collection-reuse--inheritance">Collection Reuse &amp; Inheritance</a></h1>
+<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
+<p>Let's start with an example of something that sucks. Let's say you're making requests to a fish-themed JSON API, and it requires authentication. Gotta protect your fish! Your request collection might look like so:</p>
+<pre><code class="language-yaml">profiles:
+  production:
+    data:
+      host: https://myfishes.fish
+      fish_id: 6
+
+chains:
+  token:
+    source: !file ./api_token.txt
+
+requests:
+  list_fish:
+    method: GET
+    url: &quot;{{host}}/fishes&quot;
+    headers:
+      Accept: application/json
+    authentication: !bearer &quot;{{chains.token}}&quot;
+
+  get_fish:
+    method: GET
+    url: &quot;{{host}}/fishes/{{fish_id}}&quot;
+    headers:
+      Accept: application/json
+    authentication: !bearer &quot;{{chains.token}}&quot;
+</code></pre>
+<h2 id="the-solution"><a class="header" href="#the-solution">The Solution</a></h2>
+<p>You've heard of <a href="https://en.wikipedia.org/wiki/Don%27t_repeat_yourself">DRY</a>, so you know this is bad. Every new request recipe requires re-specifying the headers, and if anything about the authorization changes, you have to change it in multiple places.</p>
+<p>You can easily re-use components of your collection using <a href="https://yaml.org/type/merge.html">YAML's merge feature</a>.</p>
+<pre><code class="language-yaml">profiles:
+  production:
+    data:
+      host: https://myfishes.fish
+
+chains:
+  token:
+    source: !file ./api_token.txt
+
+# The name here is arbitrary, pick any name you like
+request_base: &amp;request_base
+  headers:
+    Accept: application/json
+  authentication: !bearer &quot;{{chains.token}}&quot;
+
+requests:
+  list_fish:
+    &lt;&lt;: *request_base
+    method: GET
+    url: &quot;{{host}}/fishes&quot;
+
+  get_fish:
+    &lt;&lt;: *request_base
+    method: GET
+    url: &quot;{{host}}/fishes/{{chains.fish_id}}&quot;
+</code></pre>
+<p>Great! That's so much cleaner. Now each recipe can inherit whatever base properties you want just by including <code>&lt;&lt;: *request_base</code>. This is still a bit repetitive, but it has the advantage of being explicit. You may have some requests that <em>don't</em> want to include those values.</p>
+<h2 id="recursive-inheritance"><a class="header" href="#recursive-inheritance">Recursive Inheritance</a></h2>
+<p>But wait! What if you have a new request that needs an additional header? Unfortunately, YAML's merge feature does not support recursive merging. If you need to extend the <code>headers</code> map from the base request, you'll need to pull that map in manually:</p>
+<pre><code class="language-yaml">profiles:
+  production:
+    data:
+      host: https://myfishes.fish
+
+chains:
+  token:
+    source: !file ./api_token.txt
+
+# The name here is arbitrary, pick any name you like
+request_base: &amp;request_base
+  headers: &amp;headers_base # This will let us pull in the header map to extend it
+    Accept: application/json
+  authentication: !bearer &quot;{{chains.token}}&quot;
+
+requests:
+  list_fish:
+    &lt;&lt;: *request_base
+    method: GET
+    url: &quot;{{host}}/fishes&quot;
+
+  get_fish:
+    &lt;&lt;: *request_base
+    method: GET
+    url: &quot;{{host}}/fishes/{{chains.fish_id}}&quot;
+
+  create_fish:
+    &lt;&lt;: *request_base
+    method: POST
+    url: &quot;{{host}}/fishes&quot;
+    headers:
+      &lt;&lt;: *headers_base
+      Content-Type: application/json
+    body: &gt;
+      {&quot;kind&quot;: &quot;barracuda&quot;, &quot;name&quot;: &quot;Jimmy&quot;}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="data-filtering--querying"><a class="header" href="#data-filtering--querying">Data Filtering &amp; Querying</a></h1>
+<p>Slumber supports querying data structures to transform or reduce response data.</p>
+<p>There are two main use cases for querying:</p>
+<ul>
+<li>In <a href="user_guide/../api/chain.html">chained template values</a>, to extract data
+<ul>
+<li>Provided via chain's <code>selector</code> argument</li>
+</ul>
+</li>
+<li>In the TUI response body browser, to limit the response data shown</li>
+</ul>
+<p><strong>Regardless of data format, querying is done via <a href="https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html">JSONPath</a>.</strong> For non-JSON formats, the data will be converted to JSON, queried, and converted back. This keeps querying simple and uniform across data types.</p>
+<h2 id="querying-chained-values"><a class="header" href="#querying-chained-values">Querying Chained Values</a></h2>
+<p>Here's some examples of using queries to extract data from a chained value. Let's say you have two chained value sources. The first is a JSON file, called <code>creds.json</code>. It has the following contents:</p>
+<pre><code class="language-json">{ &quot;user&quot;: &quot;fishman&quot;, &quot;pw&quot;: &quot;hunter2&quot; }
+</code></pre>
+<p>We'll use these credentials to log in and get an API token, so the second data source is the login response, which looks like so:</p>
+<pre><code class="language-json">{ &quot;token&quot;: &quot;abcdef123&quot; }
+</code></pre>
+<pre><code class="language-yaml">chains:
+  username:
+    source: !file ./creds.json
+    selector: $.user
+  password:
+    source: !file ./creds.json
+    selector: $.pw
+  auth_token:
+    source: !request login
+    selector: $.token
+
+# Use YAML anchors for de-duplication
+base: &amp;base
+  headers:
+    Accept: application/json
+    Content-Type: application/json
+
+requests:
+  login:
+    &lt;&lt;: *base
+    method: POST
+    url: &quot;https://myfishes.fish/anything/login&quot;
+    body: |
+      {
+        &quot;username&quot;: &quot;{{chains.username}}&quot;,
+        &quot;password&quot;: &quot;{{chains.password}}&quot;
+      }
+
+  get_user:
+    &lt;&lt;: *base
+    method: GET
+    url: &quot;https://myfishes.fish/anything/current-user&quot;
+    query:
+      auth: &quot;{{chains.auth_token}}&quot;
+</code></pre>
+<p>While this example simple extracts inner fields, JSONPath can be used for much more powerful transformations. See the <a href="https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html">JSONPath docs</a> or <a href="https://jsonpath.com/">this JSONPath editor</a> for more examples.</p>
+<h2 id="querying-response-in-tui"><a class="header" href="#querying-response-in-tui">Querying Response in TUI</a></h2>
+<p>You can visually query a response body using the filter box at the bottom. Here is a full response, with no query applied:</p>
+<p><img src="user_guide/../images/filter_full.png" alt="Unfiltered response" /></p>
+<p>And here it is with the query <code>$.data</code> applied:</p>
+<p><img src="user_guide/../images/filter_small.png" alt="Filtered response" /></p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<p>Configuration provides <em>application</em>-level settings, as opposed to collection-level settings.</p>
+<h2 id="location--creation"><a class="header" href="#location--creation">Location &amp; Creation</a></h2>
+<p>Configuration is stored in the Slumber root directory, under the file <code>config.yml</code>. To find the root directory, you can run:</p>
+<pre><code class="language-sh">slumber show dir
+</code></pre>
+<p>To quickly create and edit the file:</p>
+<pre><code class="language-sh"># Replace vim with your favorite text editor
+vim $(slumber show dir)/config.yml
+</code></pre>
+<p>If the root directory doesn't exist yet, you can create it yourself or have Slumber create it by simply starting the TUI.</p>
+<h2 id="fields"><a class="header" href="#fields">Fields</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th><th>Default</th></tr></thead><tbody>
+<tr><td><code>preview_templates</code></td><td><code>boolean</code></td><td>Render template values in the TUI? If false, the raw template will be shown.</td><td><code>true</code></td></tr>
+<tr><td><code>ignore_certificate_hosts</code></td><td><code>string[]</code></td><td>Hostnames whose TLS certificate errors will be ignored. <a href="api/../troubleshooting/tls.html">More info</a>.</td><td><code>[]</code></td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="request-collection-1"><a class="header" href="#request-collection-1">Request Collection</a></h1>
+<p>The request collection is the primary configuration for Slumber. It defines which requests can be made, and how to make them. When running a <code>slumber</code> instance, a single collection file is loaded. If you want to work with multiple collections at once, you'll have to run multiple instances of Slumber.</p>
+<p>Collection files are designed to be sharable, meaning you can commit them to your Git repo. The most common pattern is to create one collection per API repo, and check it into the repo so other developers of the API can use the same collection. This makes it easy for any new developer or user to learn how to use an API.</p>
+<h2 id="format--loading"><a class="header" href="#format--loading">Format &amp; Loading</a></h2>
+<p>A collection is defined as a <a href="https://yaml.org/">YAML</a> file. When you run <code>slumber</code>, it will search the current directory for the following default collection files, in order:</p>
+<ul>
+<li><code>slumber.yml</code></li>
+<li><code>slumber.yaml</code></li>
+<li><code>.slumber.yml</code></li>
+<li><code>.slumber.yaml</code></li>
+</ul>
+<p>Whichever of those files is found <em>first</em> will be used. If you want to use a different file for your collection (e.g. if you want to store multiple collections in the same directory), you can override the auto-search with the <code>--collection</code> (or <code>-c</code>) command line argument. E.g.:</p>
+<pre><code class="language-sh">slumber -c my-collection.yml
+</code></pre>
+<h2 id="collection-history--migration"><a class="header" href="#collection-history--migration">Collection History &amp; Migration</a></h2>
+<p>Each collection needs a unique ID generated when the collection is first loaded by Slumber. This ID is used to persist request history and other data related to the collection. If you move a collection file, a new ID will be generated and it will be unlinked from its previous history. If you want to retain that history, you can migrate data from the old ID to the new one like so:</p>
+<pre><code class="language-sh">slumber collections migrate /slumber/old.yml /slumber/new.yml
+</code></pre>
+<p>If you don't remember the path of the old file, you can list all known collections with:</p>
+<pre><code class="language-sh">slumber collections list
+</code></pre>
+<h2 id="fields-1"><a class="header" href="#fields-1">Fields</a></h2>
+<p>A request collection supports the following top-level fields:</p>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th><th>Default</th></tr></thead><tbody>
+<tr><td><code>profiles</code></td><td><a href="api/./profile.html"><code>mapping[string, Profile]</code></a></td><td>Static template values</td><td>[]</td></tr>
+<tr><td><code>requests</code></td><td><a href="api/./request_recipe.html"><code>mapping[string, RequestRecipe]</code></a></td><td>Requests Slumber can send</td><td>[]</td></tr>
+<tr><td><code>chains</code></td><td><a href="api/./chain.html"><code>mapping[string, Chain]</code></a></td><td>Complex template values</td><td>[]</td></tr>
+</tbody></table>
+</div>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<pre><code class="language-yaml">profiles:
+  local:
+    name: Local
+    data:
+      host: http://localhost:5000
+      user_guid: abc123
+  prd:
+    name: Production
+    data:
+      host: https://httpbin.org
+      user_guid: abc123
+
+chains:
+  username:
+    source: !file ./username.txt
+  password:
+    source: !prompt Password
+    sensitive: true
+  auth_token:
+    source: !request login
+    selector: $.token
+
+# Use YAML anchors for de-duplication
+base: &amp;base
+  headers:
+    Accept: application/json
+    Content-Type: application/json
+
+requests:
+  login:
+    &lt;&lt;: *base
+    method: POST
+    url: &quot;{{host}}/anything/login&quot;
+    body: |
+      {
+        &quot;username&quot;: &quot;{{chains.username}}&quot;,
+        &quot;password&quot;: &quot;{{chains.password}}&quot;
+      }
+
+  get_user:
+    &lt;&lt;: *base
+    method: GET
+    url: &quot;{{host}}/anything/current-user&quot;
+    query:
+      auth: &quot;{{chains.auth_token}}&quot;
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="profile-1"><a class="header" href="#profile-1">Profile</a></h1>
+<p>A profile is a collection of static template values. It's useful for configuring and switching between multiple different environments/settings/etc.</p>
+<p>Profiles also support nested templates, via the <code>!template</code> tag.</p>
+<h2 id="fields-2"><a class="header" href="#fields-2">Fields</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th><th>Default</th></tr></thead><tbody>
+<tr><td><code>name</code></td><td><code>string</code></td><td>Descriptive name to use in the UI</td><td>Value of key in parent</td></tr>
+<tr><td><code>data</code></td><td><a href="api/./profile_value.html"><code>mapping[string, ProfileValue]</code></a></td><td>Fields, mapped to their values</td><td><code>{}</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="examples-1"><a class="header" href="#examples-1">Examples</a></h2>
+<pre><code class="language-yaml">local:
+  name: Local
+  data:
+    host: localhost:5000
+    url: !template &quot;https://{{host}}&quot;
+    user_guid: abc123
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="profile-value"><a class="header" href="#profile-value">Profile Value</a></h1>
+<p>A profile value is the value associated with a particular key in a profile. Typically profile values are just simple strings, but they can also be other variants.</p>
+<p>In the case of a nested template, the inner template will be rendered into its own value, then injected into the outer string.</p>
+<h2 id="variants"><a class="header" href="#variants">Variants</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Variant</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>raw</code></td><td><code>string</code></td><td>Static string (key can optionally be omitted)</td></tr>
+<tr><td><code>template</code></td><td><a href="api/./template.html"><code>Template</code></a></td><td>Nested template, to be rendered inline</td></tr>
+</tbody></table>
+</div>
+<h2 id="examples-2"><a class="header" href="#examples-2">Examples</a></h2>
+<pre><code class="language-yaml"># The !raw key is the default, and can be omitted
+http://localhost:5000
+---
+!raw http://localhost:5000
+---
+!template http://{{hostname}}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="request-recipe-1"><a class="header" href="#request-recipe-1">Request Recipe</a></h1>
+<p>A request recipe defines how to make a particular request. For a REST API, you'll typically create one request recipe per endpoint.</p>
+<h2 id="fields-3"><a class="header" href="#fields-3">Fields</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th><th>Default</th></tr></thead><tbody>
+<tr><td><code>name</code></td><td><code>string</code></td><td>Descriptive name to use in the UI</td><td>Value of key in parent</td></tr>
+<tr><td><code>method</code></td><td><code>string</code></td><td>HTTP request method</td><td>Required</td></tr>
+<tr><td><code>url</code></td><td><a href="api/./template.html"><code>Template</code></a></td><td>HTTP request URL</td><td>Required</td></tr>
+<tr><td><code>query</code></td><td><a href="api/./template.html"><code>mapping[string, Template]</code></a></td><td>HTTP request query parameters</td><td><code>{}</code></td></tr>
+<tr><td><code>headers</code></td><td><a href="api/./template.html"><code>mapping[string, Template]</code></a></td><td>HTTP request headers</td><td><code>{}</code></td></tr>
+<tr><td><code>authentication</code></td><td><a href="api/./authentication.html"><code>Authentication</code></a></td><td>Authentication scheme</td><td><code>null</code></td></tr>
+<tr><td><code>body</code></td><td><a href="api/./template.html"><code>Template</code></a></td><td>HTTP request body</td><td><code>null</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="examples-3"><a class="header" href="#examples-3">Examples</a></h2>
+<pre><code class="language-yaml">login:
+  name: Login
+  method: POST
+  url: &quot;{{host}}/anything/login&quot;
+  headers:
+    accept: application/json
+    content-type: application/json
+  query:
+    root_access: yes_please
+  body: |
+    {
+      &quot;username&quot;: &quot;{{chains.username}}&quot;,
+      &quot;password&quot;: &quot;{{chains.password}}&quot;
+    }
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="authentication"><a class="header" href="#authentication">Authentication</a></h1>
+<p>Authentication provides shortcuts for common HTTP authentication schemes. It populates the <code>authentication</code> field of a recipe. There are multiple source types, and the type is specified using <a href="https://yaml.org/spec/1.2.2/#24-tags">YAML's tag syntax</a>.</p>
+<h2 id="variants-1"><a class="header" href="#variants-1">Variants</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Variant</th><th>Type</th><th>Value</th></tr></thead><tbody>
+<tr><td><code>basic</code></td><td><a href="api/authentication.html#basic-authentication"><code>Basic Authentication</code></a></td><td><a href="https://swagger.io/docs/specification/authentication/basic-authentication/">Basic authentication</a> credentials</td></tr>
+<tr><td><code>bearer</code></td><td><code>string</code></td><td><a href="https://swagger.io/docs/specification/authentication/bearer-authentication/">Bearer token</a></td></tr>
+</tbody></table>
+</div>
+<h3 id="basic-authentication"><a class="header" href="#basic-authentication">Basic Authentication</a></h3>
+<p>Basic authentication contains a username and optional password.</p>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th><th>Default</th></tr></thead><tbody>
+<tr><td><code>username</code></td><td><code>string</code></td><td>Username</td><td>Required</td></tr>
+<tr><td><code>password</code></td><td><code>string</code></td><td>Password</td><td><code>&quot;&quot;</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="examples-4"><a class="header" href="#examples-4">Examples</a></h2>
+<pre><code class="language-yaml">!basic
+username: user
+password: pass
+---
+!bearer 4J2e0TYqKA3gFllfTu17OF7n8g1CeAxZyi/MK5g40/o=
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="chain"><a class="header" href="#chain">Chain</a></h1>
+<p>A chain is a intermediate data type to enable complex template values. Chains also provide additional customization, such as marking values as sensitive.</p>
+<p>To use a chain in a template, reference it as <code>{{chains.&lt;id&gt;}}</code>.</p>
+<h2 id="fields-4"><a class="header" href="#fields-4">Fields</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th><th>Default</th></tr></thead><tbody>
+<tr><td><code>source</code></td><td><a href="api/./chain_source.html"><code>ChainSource</code></a></td><td>Source of the chained value</td><td>Required</td></tr>
+<tr><td><code>sensitive</code></td><td><code>boolean</code></td><td>Should the value be hidden in the UI?</td><td><code>false</code></td></tr>
+<tr><td><code>selector</code></td><td><a href="https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html"><code>JSONPath</code></a></td><td>Selector to transform/narrow down results in a chained value. See <a href="api/../user_guide/filter_query.html">Filtering &amp; Querying</a></td><td><code>null</code></td></tr>
+<tr><td><code>content_type</code></td><td><a href="api/./content_type.html"><code>ContentType</code></a></td><td>Force content type. Not required for <code>request</code> and <code>file</code> chains, as long as the <code>Content-Type</code> header/file extension matches the data</td><td></td></tr>
+</tbody></table>
+</div>
+<p>See the <a href="api/./chain_source.html"><code>ChainSource</code></a> docs for more detail.</p>
+<h2 id="examples-5"><a class="header" href="#examples-5">Examples</a></h2>
+<pre><code class="language-yaml"># Load chained value from a file
+username:
+  source: !file ./username.txt
+---
+# Prompt the user for a value whenever the request is made
+password:
+  source: !prompt Enter Password
+  sensitive: true
+---
+# Use a value from another response
+# Assume the request recipe with ID `login` returns a body like `{&quot;token&quot;: &quot;foo&quot;}`
+auth_token:
+  source: !request login
+  selector: $.token
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="chain-source"><a class="header" href="#chain-source">Chain Source</a></h1>
+<p>A chain source defines how a <a href="api/./chain.html">Chain</a> gets its value. It populates the <code>source</code> field of a chain. There are multiple source types, and the type is specified using <a href="https://yaml.org/spec/1.2.2/#24-tags">YAML's tag syntax</a>.</p>
+<h2 id="variants-2"><a class="header" href="#variants-2">Variants</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Variant</th><th>Type</th><th>Value</th><th>Chained Value</th></tr></thead><tbody>
+<tr><td><code>request</code></td><td><code>string</code></td><td>Request Recipe ID</td><td>Body of the most recent response for a specific request recipe.</td></tr>
+<tr><td><code>command</code></td><td><code>string[]</code></td><td><code>[program, ...arguments]</code></td><td>Stdout of the executed command</td></tr>
+<tr><td><code>file</code></td><td><code>string</code></td><td>Path (relative to current directory)</td><td>Contents of the file</td></tr>
+<tr><td><code>prompt</code></td><td><code>string</code></td><td>Descriptive prompt for the user</td><td>Value entered by the user</td></tr>
+</tbody></table>
+</div>
+<h2 id="examples-6"><a class="header" href="#examples-6">Examples</a></h2>
+<p>See the <a href="api/./chain.html"><code>Chain</code></a> docs for more holistic examples.</p>
+<pre><code class="language-yaml">!request login
+---
+!command [&quot;echo&quot;, &quot;-n&quot;, &quot;hello&quot;]
+---
+!file ./username.txt
+---
+!prompt Enter Password
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="template-1"><a class="header" href="#template-1">Template</a></h1>
+<p>A template is represented in YAML as a normal string, and thus supports <a href="https://www.educative.io/answers/how-to-represent-strings-in-yaml">all of YAML's string syntaxes</a>. Templates receive post-processing that injects dynamic values into the string. A templated value is represented with <code>{{...}}</code>.</p>
+<p>Templates can generally be used in any <em>value</em> in a request recipe (<em>not</em> in keys). They <em>cannot</em> be used in profiles or chains, to avoid the potential for recursive templating. If this feature would be useful to you, <a href="https://github.com/LucasPickering/slumber/issues/15">le tme know</a>.</p>
+<h2 id="template-sources"><a class="header" href="#template-sources">Template Sources</a></h2>
+<p>There are several ways of sourcing templating values:</p>
+<div class="table-wrapper"><table><thead><tr><th>Source</th><th>Syntax</th><th>Description</th></tr></thead><tbody>
+<tr><td><a href="api/./profile.html">Profile</a> Field</td><td><code>{{field_name}}</code></td><td>Static value from a profile</td></tr>
+<tr><td>Environment Variable</td><td><code>{{env.VARIABLE}}</code></td><td>Environment variable from parent shell/process</td></tr>
+<tr><td><a href="api/./chain.html">Chain</a></td><td><code>{{chains.chain_id}}</code></td><td>Complex chained value</td></tr>
+</tbody></table>
+</div>
+<h2 id="examples-7"><a class="header" href="#examples-7">Examples</a></h2>
+<pre><code class="language-yaml"># Profile value
+&quot;hello, {{location}}&quot;
+---
+# Multiple dynamic values
+&quot;{{greeting}}, {{location}}&quot;
+---
+# Environment variable
+&quot;hello, {{env.LOCATION}}&quot;
+---
+# Chained value
+&quot;hello, {{chains.where_am_i}}&quot;
+---
+# No dynamic values
+&quot;hello, world!&quot;
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="content-type"><a class="header" href="#content-type">Content Type</a></h1>
+<p>Content type defines the various data formats that Slumber recognizes and can manipulate. Slumber is capable of displaying any text-based data format, but only specific formats support additional features such as <a href="api/../user_guide/filter_query.html">querying</a> and formatting.</p>
+<p>For chained requests, Slumber uses the <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type">HTTP <code>Content-Type</code> header</a> to detect the content type. For chained files, it uses the file extension. For other <a href="api/./chain_source.html">chain sources</a>, or if the <code>Content-Type</code> header/file extension is missing or incorrect, you'll have to manually provide the content type via the <a href="api/./chain.html">chain</a> <code>content_type</code> field.</p>
+<h2 id="supported-content-types"><a class="header" href="#supported-content-types">Supported Content Types</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Content Type</th><th>HTTP Header</th><th>File Extension(s)</th></tr></thead><tbody>
+<tr><td>JSON</td><td><code>application/json</code></td><td><code>json</code></td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="tls-certificate-errors"><a class="header" href="#tls-certificate-errors">TLS Certificate Errors</a></h1>
+<p>If you're receiving certificate errors such as this one:</p>
+<pre><code>invalid peer certificate: UnknownIssuer
+</code></pre>
+<p>This is probably because the TLS certificate of the server you're hitting is expired, invalid, or self-signed. The best solution is to fix the error on the server, either by renewing the certificate or creating a signed one. In most cases this is the best solution. If not possible, you should just disable TLS on your server because it's not doing anything for you anyway.</p>
+<p>If you can't or don't want to fix the certificate, and you need to keep TLS enabled for some reason, it's possible to configure Slumber to ignore TLS certificate errors on certain hosts.</p>
+<blockquote>
+<p><strong>WARNING:</strong> This is dangerous. You will be susceptible to MITM attacks on these hosts. Only do this if you control the server you're hitting, and are confident your network is not compromised.</p>
+</blockquote>
+<ul>
+<li>Open your <a href="troubleshooting/../api/configuration.html">Slumber configuration</a></li>
+<li>Add the field <code>ignore_certificate_hosts: [&quot;&lt;hostname&gt;&quot;]</code>
+<ul>
+<li><code>&lt;hostname&gt;</code> is the domain or IP of the server you're requesting from</li>
+</ul>
+</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+    </div>
+    </body>
+</html>

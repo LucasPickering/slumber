@@ -1,5 +1,5 @@
 use crate::{
-    http::{RequestRecord, ResponseContent},
+    http::{RequestId, RequestRecord, ResponseContent},
     tui::{
         context::TuiContext,
         input::Action,
@@ -12,7 +12,7 @@ use crate::{
             component::record_body::{RecordBody, RecordBodyProps},
             draw::{Draw, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update, UpdateContext},
-            state::{persistence::PersistentKey, RequestState},
+            state::{persistence::PersistentKey, RequestState, StateCell},
             util::layout,
             Component,
         },
@@ -119,7 +119,7 @@ struct CompleteResponseContent {
     /// Persist the response body to track view state. Update whenever the
     /// loaded request changes
     #[debug(skip)]
-    body: Component<RecordBody>,
+    body: StateCell<RequestId, Component<RecordBody>>,
 }
 
 impl Default for CompleteResponseContent {
@@ -165,7 +165,9 @@ impl EventHandler for CompleteResponseContent {
                     Some(MenuAction::CopyBody) => {
                         // We need to generate the copy text here because it can
                         // be formatted/queried
-                        if let Some(body) = self.body.text() {
+                        if let Some(body) =
+                            self.body.get().and_then(|body| body.text())
+                        {
                             TuiContext::send_message(Message::CopyText(body));
                         }
                     }
@@ -182,7 +184,9 @@ impl EventHandler for CompleteResponseContent {
         let mut children = vec![];
         match selected_tab {
             Tab::Body => {
-                children.push(self.body.as_child());
+                if let Some(body) = self.body.get_mut() {
+                    children.push(body.as_child());
+                }
             }
             Tab::Headers => {}
         }
@@ -233,10 +237,11 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
         // Main content for the response
         match self.tabs.selected() {
             Tab::Body => {
-                self.body.draw(
+                let body =
+                    self.body.get_or_update(props.record.id, Default::default);
+                body.draw(
                     frame,
                     RecordBodyProps {
-                        request_id: props.record.id,
                         raw_body: response.body.bytes(),
                         parsed_body: props.parsed_body,
                     },

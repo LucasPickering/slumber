@@ -18,6 +18,10 @@
 - Improve UI design of profile pane
 - Show raw bytes for binary responses
 
+### Fixed
+
+- Reset response body query when changing recipes ([#133](https://github.com/LucasPickering/slumber/issues/133))
+
 ## [0.14.0] - 2024-03-18
 
 ### Added

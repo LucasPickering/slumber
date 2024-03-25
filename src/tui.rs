@@ -37,7 +37,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc::{self, UnboundedReceiver};
-use tracing::{debug, error};
+use tracing::{debug, error, info, trace};
 
 /// Main controller struct for the TUI. The app uses a React-like architecture
 /// for the view, with a wrapping controller (this struct). The main loop goes
@@ -161,6 +161,7 @@ impl Tui {
 
             // ===== Message Phase =====
             while let Ok(message) = self.messages_rx.try_recv() {
+                trace!(?message, "Handling message");
                 // If an error occurs, store it so we can show the user
                 if let Err(error) = self.handle_message(message) {
                     self.view.open_modal(error, ModalPriority::High);
@@ -181,6 +182,7 @@ impl Tui {
 
     /// GOODBYE
     fn quit(&mut self) {
+        info!("Initiating graceful shutdown");
         self.should_run = false;
     }
 
@@ -305,6 +307,10 @@ impl Tui {
             })?;
         watcher
             .watch(self.collection_file.path(), RecursiveMode::NonRecursive)?;
+        info!(
+            path = ?self.collection_file.path(), ?watcher,
+            "Watching collection file for changes"
+        );
         Ok(watcher)
     }
 

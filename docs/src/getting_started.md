@@ -47,4 +47,4 @@ requests:
     url: "{{host}}/fishes"
 ```
 
-This request collection uses [templates](./user_guide//templates.md) and [profiles](./api/profile.md) allow you to dynamically change the target host.
+This request collection uses [templates](./user_guide//templates.md) and [profiles](./api/request_collection/profile.md) allow you to dynamically change the target host.

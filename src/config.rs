@@ -1,5 +1,9 @@
-use crate::util::{parse_yaml, Directory, ResultExt};
+use crate::{
+    tui::input::{Action, InputBinding},
+    util::{parse_yaml, Directory, ResultExt},
+};
 use anyhow::Context;
+use indexmap::IndexMap;
 use serde::Deserialize;
 use std::{
     fs,
@@ -25,6 +29,9 @@ pub struct Config {
     /// Should templates be rendered inline in the UI, or should we show the
     /// raw text?
     pub preview_templates: bool,
+
+    /// Overrides for default key bindings
+    pub input_bindings: IndexMap<Action, InputBinding>,
 }
 
 impl Config {
@@ -70,6 +77,7 @@ impl Default for Config {
             path: PathBuf::default(),
             ignore_certificate_hosts: Vec::new(),
             preview_templates: true,
+            input_bindings: IndexMap::default(),
         }
     }
 }

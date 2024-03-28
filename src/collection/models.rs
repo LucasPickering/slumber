@@ -151,7 +151,7 @@ pub struct Chain {
     pub sensitive: bool,
     /// Selector to extract a value from the response. This uses JSONPath
     /// regardless of the content type. Non-JSON values will be converted to
-    /// JSON, then converted back. See [ResponseContent::select].
+    /// JSON, then converted back.
     pub selector: Option<Query>,
     /// Hard-code the content type of the response. Only needed if a selector
     /// is given and the content type can't be dynamically determined

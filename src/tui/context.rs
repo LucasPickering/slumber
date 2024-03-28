@@ -49,11 +49,12 @@ impl TuiContext {
         messages_tx: MessageSender,
         database: CollectionDatabase,
     ) {
+        let input_engine = InputEngine::new(config.input_bindings.clone());
         CONTEXT
             .set(Self {
                 config,
                 theme: Theme::default(),
-                input_engine: InputEngine::default(),
+                input_engine,
                 messages_tx,
                 database,
             })

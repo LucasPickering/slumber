@@ -30,8 +30,8 @@ where
     State: SelectStateData,
 {
     /// Use interior mutability because this needs to be modified during the
-    /// draw phase, by [Frame::render_stateful_widget]. This allows rendering
-    /// without a mutable reference.
+    /// draw phase, by [ratatui::Frame::render_stateful_widget]. This allows
+    /// rendering without a mutable reference.
     state: RefCell<State>,
     #[debug(skip)]
     items: Vec<Item>,

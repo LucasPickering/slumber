@@ -10,7 +10,7 @@ To use a chain in a template, reference it as `{{chains.<id>}}`.
 | -------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | `source`       | [`ChainSource`](./chain_source.md)                                                     | Source of the chained value                                                                                                            | Required |
 | `sensitive`    | `boolean`                                                                              | Should the value be hidden in the UI?                                                                                                  | `false`  |
-| `selector`     | [`JSONPath`](https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html) | Selector to transform/narrow down results in a chained value. See [Filtering & Querying](../user_guide/filter_query.md)                | `null`   |
+| `selector`     | [`JSONPath`](https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html) | Selector to transform/narrow down results in a chained value. See [Filtering & Querying](../../user_guide/filter_query.md)             | `null`   |
 | `content_type` | [`ContentType`](./content_type.md)                                                     | Force content type. Not required for `request` and `file` chains, as long as the `Content-Type` header/file extension matches the data |          |
 
 See the [`ChainSource`](./chain_source.md) docs for more detail.

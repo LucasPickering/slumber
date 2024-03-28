@@ -1,12 +1,17 @@
 //! Logic related to input handling. This is considered part of the controller.
 
+use anyhow::bail;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
 };
 use derive_more::Display;
-use indexmap::IndexMap;
-use std::fmt::Debug;
+use indexmap::{indexmap, IndexMap};
+use serde::Deserialize;
+use std::{
+    fmt::{self, Debug},
+    str::FromStr,
+};
 use tracing::trace;
 
 /// Top-level input manager. This handles things like bindings and mapping
@@ -23,69 +28,11 @@ pub struct InputEngine {
 }
 
 impl InputEngine {
-    pub fn new() -> Self {
-        Self {
-            bindings: [
-                InputBinding::new(KeyCode::Char('q'), Action::Quit),
-                InputBinding::new(
-                    KeyCombination {
-                        key_code: KeyCode::Char('c'),
-                        modifiers: KeyModifiers::CONTROL,
-                    },
-                    Action::ForceQuit,
-                )
-                .hide(),
-                InputBinding::new(
-                    KeyCombination {
-                        key_code: KeyCode::Left,
-                        modifiers: KeyModifiers::SHIFT,
-                    },
-                    Action::ScrollLeft,
-                ),
-                InputBinding::new(
-                    KeyCombination {
-                        key_code: KeyCode::Right,
-                        modifiers: KeyModifiers::SHIFT,
-                    },
-                    Action::ScrollRight,
-                ),
-                InputBinding::new(KeyCode::Char('x'), Action::OpenActions),
-                InputBinding::new(KeyCode::Char('?'), Action::OpenHelp),
-                InputBinding::new(KeyCode::Char('f'), Action::Fullscreen),
-                InputBinding::new(KeyCode::F(2), Action::SendRequest),
-                InputBinding::new(KeyCode::F(5), Action::ReloadCollection),
-                InputBinding::new(KeyCode::Char('/'), Action::Search),
-                InputBinding::new(KeyCode::BackTab, Action::PreviousPane),
-                InputBinding::new(KeyCode::Tab, Action::NextPane),
-                InputBinding::new(KeyCode::Up, Action::Up).hide(),
-                InputBinding::new(KeyCode::Down, Action::Down).hide(),
-                InputBinding::new(KeyCode::Left, Action::Left).hide(),
-                InputBinding::new(KeyCode::Right, Action::Right).hide(),
-                InputBinding::new(KeyCode::PageUp, Action::PageUp).hide(),
-                InputBinding::new(KeyCode::PageDown, Action::PageDown).hide(),
-                InputBinding::new(KeyCode::Home, Action::Home).hide(),
-                InputBinding::new(KeyCode::End, Action::End).hide(),
-                InputBinding::new(KeyCode::Enter, Action::Submit),
-                InputBinding::new(KeyCode::Esc, Action::Cancel),
-                // Hide these because they have inline hints
-                InputBinding::new(
-                    KeyCode::Char('p'),
-                    Action::SelectProfileList,
-                )
-                .hide(),
-                InputBinding::new(KeyCode::Char('l'), Action::SelectRecipeList)
-                    .hide(),
-                InputBinding::new(KeyCode::Char('c'), Action::SelectRecipe)
-                    .hide(),
-                InputBinding::new(KeyCode::Char('r'), Action::SelectRequest)
-                    .hide(),
-                InputBinding::new(KeyCode::Char('s'), Action::SelectResponse)
-                    .hide(),
-            ]
-            .into_iter()
-            .map(|binding| (binding.action, binding))
-            .collect(),
-        }
+    pub fn new(user_bindings: IndexMap<Action, InputBinding>) -> Self {
+        let mut new = Self::default();
+        // User bindings should overwrite any default ones
+        new.bindings.extend(user_bindings);
+        new
     }
 
     /// Get a map of all available bindings
@@ -95,8 +42,8 @@ impl InputEngine {
 
     /// Get the binding associated with a particular action. Useful for mapping
     /// input in reverse, when showing available bindings to the user.
-    pub fn binding(&self, action: Action) -> Option<InputBinding> {
-        self.bindings.get(&action).copied()
+    pub fn binding(&self, action: Action) -> Option<&InputBinding> {
+        self.bindings.get(&action)
     }
 
     /// Append a hotkey hint to a label. If the given action is bound, adding
@@ -104,7 +51,7 @@ impl InputEngine {
     /// alone.
     pub fn add_hint(&self, label: impl Display, action: Action) -> String {
         if let Some(binding) = self.binding(action) {
-            format!("{} ({})", label, binding.input())
+            format!("{} ({})", label, binding)
         } else {
             label.to_string()
         }
@@ -136,13 +83,10 @@ impl InputEngine {
                 },
             ) => {
                 // Scan all bindings for a match
-                let action = self
-                    .bindings
-                    .values()
-                    .find(|binding| binding.matches(key))
-                    .map(|binding| binding.action);
-
-                action
+                self.bindings
+                    .iter()
+                    .find(|(_, binding)| binding.matches(key))
+                    .map(|(action, _)| *action)
             }
             _ => None,
         };
@@ -157,7 +101,48 @@ impl InputEngine {
 
 impl Default for InputEngine {
     fn default() -> Self {
-        Self::new()
+        Self {
+            bindings: indexmap! {
+                // vvvvv If making changes, make sure to update the docs vvvvv
+                Action::Quit => KeyCode::Char('q').into(),
+                Action::ForceQuit => KeyCombination {
+                    code: KeyCode::Char('c'),
+                    modifiers: KeyModifiers::CONTROL,
+                }.into(),
+                Action::ScrollLeft => KeyCombination {
+                    code: KeyCode::Left,
+                    modifiers: KeyModifiers::SHIFT,
+                }.into(),
+                Action::ScrollRight => KeyCombination {
+                    code: KeyCode::Right,
+                    modifiers: KeyModifiers::SHIFT,
+                }.into(),
+                Action::OpenActions => KeyCode::Char('x').into(),
+                Action::OpenHelp => KeyCode::Char('?').into(),
+                Action::Fullscreen => KeyCode::Char('f').into(),
+                Action::SendRequest => KeyCode::F(2).into(),
+                Action::ReloadCollection => KeyCode::F(5).into(),
+                Action::Search => KeyCode::Char('/').into(),
+                Action::PreviousPane => KeyCode::BackTab.into(),
+                Action::NextPane => KeyCode::Tab.into(),
+                Action::Up => KeyCode::Up.into(),
+                Action::Down => KeyCode::Down.into(),
+                Action::Left => KeyCode::Left.into(),
+                Action::Right => KeyCode::Right.into(),
+                Action::PageUp => KeyCode::PageUp.into(),
+                Action::PageDown => KeyCode::PageDown.into(),
+                Action::Home => KeyCode::Home.into(),
+                Action::End => KeyCode::End.into(),
+                Action::Submit => KeyCode::Enter.into(),
+                Action::Cancel => KeyCode::Esc.into(),
+                Action::SelectProfileList => KeyCode::Char('p').into(),
+                Action::SelectRecipeList => KeyCode::Char('l').into(),
+                Action::SelectRecipe => KeyCode::Char('c').into(),
+                Action::SelectRequest => KeyCode::Char('r').into(),
+                Action::SelectResponse => KeyCode::Char('s').into(),
+                // ^^^^^ If making changes, make sure to update the docs ^^^^^
+            },
+        }
     }
 }
 
@@ -168,8 +153,11 @@ impl Default for InputEngine {
 ///
 /// The order of the variants matters! It defines the ordering used in the help
 /// modal (but doesn't affect behavior).
-#[derive(Copy, Clone, Debug, Display, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Debug, Display, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Action {
+    // vvvvv If adding a variant, make sure to update the docs vvvvv
+    //
     // Mouse actions do *not* get mapped, they're hard-coded. Use the
     // associated raw event for button/position info if needed
     LeftClick,
@@ -238,69 +226,87 @@ pub enum Action {
     SelectRequest,
     /// Select response pane
     SelectResponse,
+    //
+    // ^^^^^ If making changes, make sure to update the docs ^^^^^
 }
 
-/// A mapping from a key input sequence to an action. This can optionally have
-/// a secondary binding.
-#[derive(Copy, Clone, Debug)]
-pub struct InputBinding {
-    action: Action,
-    input: KeyCombination,
-    hidden: bool,
-}
-
-impl InputBinding {
-    fn new(input: impl Into<KeyCombination>, action: Action) -> Self {
-        Self {
-            action,
-            input: input.into(),
-            hidden: false,
+impl Action {
+    /// Should this code be shown in the help dialog?
+    pub fn visible(self) -> bool {
+        match self {
+            // These actions are either obvious or have inline hints
+            Action::ForceQuit
+            | Action::Up
+            | Action::Down
+            | Action::Left
+            | Action::Right
+            | Action::PageUp
+            | Action::PageDown
+            | Action::Home
+            | Action::End
+            | Action::SelectProfileList
+            | Action::SelectRecipeList
+            | Action::SelectRecipe
+            | Action::SelectRequest
+            | Action::SelectResponse => false,
+            // Most actions should not be hidden
+            _ => true,
         }
     }
+}
 
-    /// Don't show this binding in help dialogs
-    fn hide(mut self) -> Self {
-        self.hidden = true;
-        self
-    }
+/// One or more key combinations, which should correspond to a single action
+#[derive(Clone, Debug, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(transparent)]
+pub struct InputBinding(Vec<KeyCombination>);
 
+impl InputBinding {
+    /// Does a key event contain this key combo?
     fn matches(&self, event: &KeyEvent) -> bool {
-        self.input.matches(event)
-    }
-
-    /// Should this be visible in help dialogs?
-    pub fn visible(&self) -> bool {
-        !self.hidden
-    }
-
-    /// Get the action associated with this binding
-    pub fn action(&self) -> Action {
-        self.action
-    }
-
-    /// Get the key combination associated with this binding
-    pub fn input(&self) -> KeyCombination {
-        self.input
+        self.0.iter().any(|combo| combo.matches(event))
     }
 }
 
 impl Display for InputBinding {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Don't display secondary binding in help text
-        write!(f, "{} {}", self.input, self.action)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, combo) in self.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", combo)?;
+        }
+        Ok(())
+    }
+}
+
+impl From<KeyCombination> for InputBinding {
+    fn from(combo: KeyCombination) -> Self {
+        Self(vec![combo])
+    }
+}
+
+impl From<KeyCode> for InputBinding {
+    fn from(key_code: KeyCode) -> Self {
+        KeyCombination::from(key_code).into()
     }
 }
 
 /// Key input sequence, which can trigger an action
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(try_from = "String")]
 pub struct KeyCombination {
-    key_code: KeyCode,
+    code: KeyCode,
     modifiers: KeyModifiers,
 }
 
 impl KeyCombination {
+    /// Char between modifiers and key codes
+    const SEPARATOR: char = ' ';
+
     fn matches(self, event: &KeyEvent) -> bool {
-        event.code == self.key_code && event.modifiers.contains(self.modifiers)
+        event.code == self.code && event.modifiers.contains(self.modifiers)
     }
 }
 
@@ -308,12 +314,12 @@ impl Display for KeyCombination {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Write modifiers first
         for (name, _) in self.modifiers.iter_names() {
-            write!(f, "{}+", name.to_lowercase())?;
+            write!(f, "{}{}", name.to_lowercase(), Self::SEPARATOR)?;
         }
 
         // Write base code
-        match self.key_code {
-            KeyCode::BackTab => write!(f, "<shift+tab>"),
+        match self.code {
+            KeyCode::BackTab => write!(f, "<shift{}tab>", Self::SEPARATOR),
             KeyCode::Tab => write!(f, "<tab>"),
             KeyCode::Up => write!(f, "↑"),
             KeyCode::Down => write!(f, "↓"),
@@ -333,8 +339,208 @@ impl Display for KeyCombination {
 impl From<KeyCode> for KeyCombination {
     fn from(key_code: KeyCode) -> Self {
         Self {
-            key_code,
+            code: key_code,
             modifiers: KeyModifiers::NONE,
         }
+    }
+}
+
+impl FromStr for KeyCombination {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Last char should be the primary one, everything before should be
+        // modifiers. Extra whitespace is probably a mistake, ignore it.
+        let mut tokens = s.trim().split(Self::SEPARATOR);
+        let code = tokens.next_back().expect("split always returns 1+ items");
+        let mut code: KeyCode = parse_key_code(code)?;
+
+        // Parse modifiers, left-to-right
+        let mut modifiers = KeyModifiers::NONE;
+        for modifier in tokens {
+            let modifier = parse_modifier(modifier)?;
+            // Prevent duplicate
+            if modifiers.contains(modifier) {
+                bail!("Duplicate modifier {modifier:?}");
+            }
+            modifiers |= modifier;
+        }
+
+        // Special case - crossterm treats shift+tab as backtab, translate it
+        // automatically for the user
+        if code == KeyCode::Tab && modifiers.contains(KeyModifiers::SHIFT) {
+            code = KeyCode::BackTab;
+            modifiers -= KeyModifiers::SHIFT;
+        }
+
+        Ok(Self { code, modifiers })
+    }
+}
+
+impl TryFrom<String> for KeyCombination {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
+/// Parse a plain key code
+fn parse_key_code(s: &str) -> anyhow::Result<KeyCode> {
+    // Check for plain char code
+    if let Ok(c) = s.parse::<char>() {
+        return Ok(KeyCode::Char(c));
+    }
+    let code = match s {
+        // vvvvv If making changes, make sure to update the docs vvvvv
+        "escape" | "esc" => KeyCode::Esc,
+        "enter" => KeyCode::Enter,
+        "left" => KeyCode::Left,
+        "right" => KeyCode::Right,
+        "up" => KeyCode::Up,
+        "down" => KeyCode::Down,
+        "home" => KeyCode::Home,
+        "end" => KeyCode::End,
+        "pageup" | "pgup" => KeyCode::PageUp,
+        "pagedown" | "pgdn" => KeyCode::PageDown,
+        "capslock" | "caps" => KeyCode::CapsLock,
+        "tab" => KeyCode::Tab,
+        "backtab" => KeyCode::BackTab,
+        "backspace" => KeyCode::Backspace,
+        "delete" | "del" => KeyCode::Delete,
+        "insert" | "ins" => KeyCode::Insert,
+        "f1" => KeyCode::F(1),
+        "f2" => KeyCode::F(2),
+        "f3" => KeyCode::F(3),
+        "f4" => KeyCode::F(4),
+        "f5" => KeyCode::F(5),
+        "f6" => KeyCode::F(6),
+        "f7" => KeyCode::F(7),
+        "f8" => KeyCode::F(8),
+        "f9" => KeyCode::F(9),
+        "f10" => KeyCode::F(10),
+        "f11" => KeyCode::F(11),
+        "f12" => KeyCode::F(12),
+        "space" => KeyCode::Char(' '),
+        _ => bail!("Invalid key code {s:?}"),
+        // ^^^^^ If making changes, make sure to update the docs ^^^^^
+    };
+    Ok(code)
+}
+
+/// Parse a key modifier
+fn parse_modifier(s: &str) -> anyhow::Result<KeyModifiers> {
+    let modifier = match s {
+        "shift" => KeyModifiers::SHIFT,
+        "alt" => KeyModifiers::ALT,
+        "ctrl" => KeyModifiers::CONTROL,
+        "super" => KeyModifiers::SUPER,
+        "hyper" => KeyModifiers::HYPER,
+        "meta" => KeyModifiers::META,
+        _ => bail!("Invalid key modifier {s:?}"),
+    };
+    Ok(modifier)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::util::assert_err;
+    use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
+
+    #[test]
+    fn test_parse_key_combination() {
+        fn parse(s: &str) -> anyhow::Result<KeyCombination> {
+            s.parse::<KeyCombination>()
+        }
+
+        fn parse_ok(s: &str) -> KeyCombination {
+            parse(s).unwrap()
+        }
+
+        assert_eq!(parse_ok(" w "), KeyCode::Char('w').into());
+        assert_eq!(parse_ok("f2"), KeyCode::F(2).into());
+        assert_eq!(parse_ok("tab"), KeyCode::Tab.into());
+        assert_eq!(parse_ok("backtab"), KeyCode::BackTab.into());
+        // crossterm treats shift+tab as a special case, we translate for
+        // convenience
+        assert_eq!(parse_ok("shift tab"), KeyCode::BackTab.into());
+        assert_eq!(
+            parse_ok("alt shift tab"),
+            KeyCombination {
+                code: KeyCode::BackTab,
+                modifiers: KeyModifiers::ALT
+            }
+        );
+        assert_eq!(parse_ok("pgup"), KeyCode::PageUp.into());
+        assert_eq!(parse_ok("pgdn"), KeyCode::PageDown.into());
+        assert_eq!(parse_ok("capslock"), KeyCode::CapsLock.into());
+        assert_eq!(
+            parse_ok("shift f2"),
+            KeyCombination {
+                code: KeyCode::F(2),
+                modifiers: KeyModifiers::SHIFT,
+            }
+        );
+        assert_eq!(
+            parse_ok("super hyper meta alt ctrl shift f2"),
+            KeyCombination {
+                code: KeyCode::F(2),
+                modifiers: KeyModifiers::all(),
+            }
+        );
+
+        assert_err!(parse(""), "Invalid key code");
+        assert_err!(parse("  "), "Invalid key code");
+        assert_err!(parse("shift+w"), "Invalid key code");
+        assert_err!(parse("w shift"), "Invalid key code");
+        assert_err!(parse("shart w"), "Invalid key modifier \"shart\"");
+        assert_err!(parse("shift"), "Invalid key code \"shift\"");
+        assert_err!(parse("alt alt w"), "Duplicate modifier");
+    }
+
+    /// Test that errors are forward correctly through deserialization, and
+    /// that string/lists are both supported
+    #[test]
+    fn test_deserialize_input_binding() {
+        assert_de_tokens(
+            &InputBinding(vec![KeyCode::F(2).into(), KeyCode::F(3).into()]),
+            &[
+                Token::Seq { len: Some(2) },
+                Token::Str("f2"),
+                Token::Str("f3"),
+                Token::SeqEnd,
+            ],
+        );
+
+        assert_de_tokens_error::<InputBinding>(
+            &[Token::Seq { len: Some(1) }, Token::Str("no"), Token::SeqEnd],
+            "Invalid key code \"no\"",
+        );
+        assert_de_tokens_error::<InputBinding>(
+            &[
+                Token::Seq { len: Some(1) },
+                Token::Str("shart f2"),
+                Token::SeqEnd,
+            ],
+            "Invalid key modifier \"shart\"",
+        );
+        assert_de_tokens_error::<InputBinding>(
+            &[
+                Token::Seq { len: Some(2) },
+                Token::Str("f2"),
+                Token::Str("cortl f3"),
+                Token::SeqEnd,
+            ],
+            "Invalid key modifier \"cortl\"",
+        );
+        assert_de_tokens_error::<InputBinding>(
+            &[Token::Str("f3")],
+            "invalid type: string \"f3\", expected a sequence",
+        );
+        assert_de_tokens_error::<InputBinding>(
+            &[Token::I64(3)],
+            "invalid type: integer `3`, expected a sequence",
+        );
     }
 }

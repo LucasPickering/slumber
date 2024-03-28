@@ -1,5 +1,5 @@
 mod context;
-mod input;
+pub mod input;
 mod message;
 mod view;
 

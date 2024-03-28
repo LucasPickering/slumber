@@ -78,9 +78,9 @@ impl<'a> UpdateContext<'a> {
 /// to propagate state changes, as well as side-effect messages to trigger
 /// app-wide changes (e.g. launch a request).
 ///
-/// This is conceptually different from [Message] in that view messages never
-/// queued, they are handled immediately. Maybe "message" is a misnomer here and
-/// we should rename this?
+/// This is conceptually different from [crate::tui::Message] in that view
+/// messages never queued, they are handled immediately. Maybe "message" is a
+/// misnomer here and we should rename this?
 #[derive(derive_more::Debug)]
 pub enum Event {
     /// Sent when the view is first opened. If a component is created after the
@@ -123,8 +123,8 @@ pub enum Event {
 
     /// A dynamically dispatched variant, which can hold any type. This is
     /// useful for passing component-specific action types, e.g. when bubbling
-    /// up a callback. Use [Any::downcast_ref] to convert into the expected
-    /// type.
+    /// up a callback. Use [std::any::Any::downcast_ref] to convert into the
+    /// expected type.
     Other(Box<dyn Any>),
 }
 

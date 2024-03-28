@@ -4,7 +4,7 @@ Templates enable dynamic string construction. Slumber's template language is rel
 
 Most string _values_ (i.e. _not_ keys) in a request collection are templates, meaning they support templating. The syntax for templating a value into a string is double curly braces `{{...}}`. The contents inside the braces tell Slumber how to retrieve the dynamic value.
 
-This guide serves as a functional example of how to use templates. For detailed information on options available, see [the API reference](../api/template.md).
+This guide serves as a functional example of how to use templates. For detailed information on options available, see [the API reference](../api/request_collection/template.md).
 
 ## A Basic Example
 
@@ -47,7 +47,7 @@ Now you can easily select which host to hit. In the TUI, this is done via the Pr
 
 ## Chaining Requests
 
-Profile values are helpful when you want to switch between statically known values, but what if you need a value from a different response? Let's say you want to create a fish, then use its ID in a subsequent request. Then you want [**chains**](../api/chain.md).
+Profile values are helpful when you want to switch between statically known values, but what if you need a value from a different response? Let's say you want to create a fish, then use its ID in a subsequent request. Then you want [**chains**](../api/request_collection/chain.md).
 
 ```yaml
 profiles:
@@ -85,11 +85,11 @@ Now we can make our requests back-to-back:
 {"id": 2, "kind": "barracuda", "name": "Jimmy"}
 ```
 
-This demonstrates how to use chains to link responses to requests. Chains can link to other value sources though, including user-provided values (via a prompt) and shell commands. For a full list of chain types, see [the Chain API reference](../api/chain.md).
+This demonstrates how to use chains to link responses to requests. Chains can link to other value sources though, including user-provided values (via a prompt) and shell commands. For a full list of chain types, see [the Chain API reference](../api/request_collection/chain.md).
 
 ## Recursive Templates
 
-What if you need a more complex chained value? Let's say the endpoint to get a fish requires the fish ID to be in the format `fish_{id}`. Why? Don't worry about it. Fish are particular. [Profile values](../api/profile_value.md) support recursively templating via the `!template` tag. You can use this to compose template values into more complex strings.
+What if you need a more complex chained value? Let's say the endpoint to get a fish requires the fish ID to be in the format `fish_{id}`. Why? Don't worry about it. Fish are particular. [Profile values](../api/request_collection/profile_value.md) support recursively templating via the `!template` tag. You can use this to compose template values into more complex strings.
 
 ```yaml
 profiles:

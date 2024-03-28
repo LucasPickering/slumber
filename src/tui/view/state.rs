@@ -180,8 +180,8 @@ impl RequestState {
 
     /// Create a loading state with the current timestamp. This will generally
     /// be slightly off from when the request was actually launched, but it
-    /// shouldn't matter. See [HttpEngine::send] for why it can't report a start
-    /// time back to us.
+    /// shouldn't matter. See [crate::http::HttpEngine::send] for why it can't
+    /// report a start time back to us.
     pub fn loading(request: Arc<Request>) -> Self {
         Self::Loading {
             request,

@@ -16,7 +16,7 @@ use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path, sync::OnceLock};
 /// implementation of [ResponseContent].
 ///
 /// Serialization/deserialization of this only uses the short name. To parse
-/// a MIME type (from an HTTP header), use [Self::try_from_mime]. This is to
+/// a MIME type (from an HTTP header), use [Self::from_response]. This is to
 /// prevent accidentally supporting invalid MIME types.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]

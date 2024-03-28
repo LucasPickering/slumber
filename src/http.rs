@@ -22,9 +22,9 @@
 //!    send
 //!      |
 //!      v
-//! +----------+          +--------------+
-//! | <future> | -error-> | RequestError |
-//! +----------+          +--------------+
+//! +--------+          +--------------+
+//! | future | -error-> | RequestError |
+//! +--------+          +--------------+
 //!      |
 //!   success
 //!      |
@@ -71,8 +71,7 @@ const USER_AGENT: &str =
 /// lifting will be pushed to background tasks.
 ///
 /// This is safe and cheap to clone because reqwest's `Client` type uses `Arc`
-/// internally.
-/// https://docs.rs/reqwest/0.11.20/reqwest/struct.Client.html
+/// internally. [reqwest::Client]
 #[derive(Clone, Debug)]
 pub struct HttpEngine {
     client: Client,

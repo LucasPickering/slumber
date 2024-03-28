@@ -31,7 +31,7 @@ type TemplateResult = Result<RenderedChunk, TemplateError>;
 impl Template {
     /// Render the template string using values from the given context. If an
     /// error occurs, it is returned as general `anyhow` error. If you need a
-    /// more specific error, use [Self::render_borrow].
+    /// more specific error, use [Self::render_stitched].
     pub async fn render(
         &self,
         context: &TemplateContext,

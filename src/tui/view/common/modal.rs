@@ -39,7 +39,7 @@ pub trait Modal: Draw<()> + EventHandler {
 /// of [Modal] will be esoteric types that external consumers who want to open
 /// a modal aren't concerned about. This trait provides an adapater layer
 /// between the type a user might have (e.g. [anyhow::Error]) and the inner
-/// modal type (e.g. [ErrorModal]). Inspired by `Iterator` and `IntoIterator`.
+/// modal type (e.g. `ErrorModal`). Inspired by `Iterator` and `IntoIterator`.
 pub trait IntoModal {
     type Target: Modal;
 

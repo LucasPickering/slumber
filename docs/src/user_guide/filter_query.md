@@ -4,7 +4,7 @@ Slumber supports querying data structures to transform or reduce response data.
 
 There are two main use cases for querying:
 
-- In [chained template values](../api/chain.md), to extract data
+- In [chained template values](../api/request_collection/chain.md), to extract data
   - Provided via chain's `selector` argument
 - In the TUI response body browser, to limit the response data shown
 

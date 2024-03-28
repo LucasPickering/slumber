@@ -30,14 +30,9 @@ impl Draw for HelpFooter {
 
         let text = actions
             .into_iter()
-            .map(|action| {
-                tui_context
-                    .input_engine
-                    .binding(action)
-                    .as_ref()
-                    .map(ToString::to_string)
-                    // This *shouldn't* happen, all actions get a binding
-                    .unwrap_or_else(|| "???".into())
+            .filter_map(|action| {
+                let binding = tui_context.input_engine.binding(action)?;
+                Some(format!("{binding} {action}"))
             })
             .join(" / ");
 
@@ -59,13 +54,13 @@ impl HelpModal {
     const GENERAL_LENGTH: u16 = 3;
 
     /// Get the list of bindings that will be shown in the modal
-    fn bindings() -> impl Iterator<Item = InputBinding> {
+    fn bindings() -> impl Iterator<Item = (Action, &'static InputBinding)> {
         TuiContext::get()
             .input_engine
             .bindings()
-            .values()
-            .copied()
-            .filter(InputBinding::visible)
+            .iter()
+            .filter(|(action, _)| action.visible())
+            .map(|(action, binding)| (*action, binding))
     }
 }
 
@@ -134,9 +129,9 @@ impl Draw for HelpModal {
         let keybindings = Table {
             title: Some("Keybindings"),
             rows: Self::bindings()
-                .map(|binding| {
-                    let action: Line = binding.action().to_string().into();
-                    let input: Line = binding.input().to_string().into();
+                .map(|(action, binding)| {
+                    let action: Line = action.to_string().into();
+                    let input: Line = binding.to_string().into();
                     [action, input.alignment(Alignment::Right)]
                 })
                 .collect_vec(),

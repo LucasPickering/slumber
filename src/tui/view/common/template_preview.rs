@@ -94,7 +94,7 @@ impl Widget for &TemplatePreview {
 /// very manually construct the text to make sure the structure reflects the
 /// line breaks in the input.
 ///
-/// See ratatui docs: https://docs.rs/ratatui/latest/ratatui/text/index.html
+/// See ratatui docs: <https://docs.rs/ratatui/latest/ratatui/text/index.html>
 #[derive(Debug, Default)]
 struct TextStitcher<'a> {
     completed_lines: Vec<Line<'a>>,

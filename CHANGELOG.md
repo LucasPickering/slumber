@@ -2,6 +2,10 @@
 
 # [Unreleased] - ReleaseDate
 
+### Added
+
+- Add support for custom keybindings ([#137](https://github.com/LucasPickering/slumber/issues/137))
+
 ### Fixed
 
 - Fix request body not updating in UI when changing recipe

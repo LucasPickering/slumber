@@ -49,7 +49,7 @@ impl CollectionFile {
     }
 
     /// Load config from the given file. The caller is responsible for using
-    /// [Self::detect_path] to find the file themself. This pattern enables the
+    /// [Self::try_path] to find the file themself. This pattern enables the
     /// TUI to start up and watch the collection file, even if it's invalid.
     pub async fn load(path: PathBuf) -> anyhow::Result<Self> {
         let collection = load_collection(path.clone()).await?;

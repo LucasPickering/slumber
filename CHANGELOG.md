@@ -1,5 +1,11 @@
 # Changelog
 
+# [Unreleased] - ReleaseDate
+
+### Fixed
+
+- Fix request body not updating in UI when changing recipe
+
 ## [0.15.0] - 2024-03-24
 
 ### Added

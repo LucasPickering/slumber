@@ -135,11 +135,16 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
 struct RenderedRequest {
     #[debug(skip)]
     tabs: Component<Tabs<Tab>>,
+    #[debug(skip)]
+    state: StateCell<RequestId, State>,
+}
+
+/// Inner state, which should be reset when request changes
+struct State {
     /// Store pointer to the request, so we can access it in the update step
-    request: StateCell<RequestId, Arc<Request>>,
+    request: Arc<Request>,
     /// Persist the request body to track view state. Update whenever the
     /// loaded request changes
-    #[debug(skip)]
     body: Component<RecordBody>,
 }
 
@@ -147,8 +152,7 @@ impl Default for RenderedRequest {
     fn default() -> Self {
         Self {
             tabs: Tabs::new(PersistentKey::RequestTab).into(),
-            request: Default::default(),
-            body: Default::default(),
+            state: Default::default(),
         }
     }
 }
@@ -187,16 +191,18 @@ impl EventHandler for RenderedRequest {
                 // Check for an action menu event
                 match other.downcast_ref::<MenuAction>() {
                     Some(MenuAction::CopyUrl) => {
-                        if let Some(request) = self.request.get() {
+                        if let Some(state) = self.state.get() {
                             TuiContext::send_message(Message::CopyText(
-                                request.url.to_string(),
+                                state.request.url.to_string(),
                             ))
                         }
                     }
                     Some(MenuAction::CopyBody) => {
                         // We need to generate the copy text here because it can
                         // be formatted/queried
-                        if let Some(body) = self.body.text() {
+                        if let Some(body) =
+                            self.state.get().and_then(|state| state.body.text())
+                        {
                             TuiContext::send_message(Message::CopyText(body));
                         }
                     }
@@ -214,7 +220,9 @@ impl EventHandler for RenderedRequest {
         match selected_tab {
             Tab::Url | Tab::Headers => {}
             Tab::Body => {
-                children.push(self.body.as_child());
+                if let Some(state) = self.state.get_mut() {
+                    children.push(state.body.as_child());
+                }
             }
         }
         // Tabs goes last, because pane content gets priority
@@ -230,9 +238,10 @@ impl<'a> Draw<RenderedRequestProps<'a>> for RenderedRequest {
         props: RenderedRequestProps<'a>,
         area: Rect,
     ) {
-        let request = self
-            .request
-            .get_or_update(props.request.id, || Arc::clone(&props.request));
+        let state = self.state.get_or_update(props.request.id, || State {
+            request: Arc::clone(&props.request),
+            body: Default::default(),
+        });
 
         // Split the main area again to allow tabs
         let [tabs_area, content_area] = layout(
@@ -248,14 +257,14 @@ impl<'a> Draw<RenderedRequestProps<'a>> for RenderedRequest {
         match self.tabs.selected() {
             Tab::Url => {
                 frame.render_widget(
-                    Paragraph::new(request.url.to_string())
+                    Paragraph::new(state.request.url.to_string())
                         .wrap(Wrap::default()),
                     content_area,
                 );
             }
             Tab::Body => {
-                if let Some(body) = &request.body {
-                    self.body.draw(
+                if let Some(body) = &state.request.body {
+                    state.body.draw(
                         frame,
                         RecordBodyProps {
                             raw_body: body,

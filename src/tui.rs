@@ -329,11 +329,13 @@ impl Tui {
         &self,
         request_config: RequestConfig,
     ) -> anyhow::Result<()> {
-        let builder = self.get_request_builder(request_config)?;
+        let builder = self.get_request_builder(request_config.clone())?;
         let messages_tx = self.messages_tx.clone();
         // Spawn a task to do the render+copy
+        let template_context =
+            self.template_context(request_config.profile_id.as_ref(), true)?;
         self.spawn(async move {
-            let url = builder.build_url().await?;
+            let url = builder.build_url(&template_context).await?;
             messages_tx.send(Message::CopyText(url.to_string()));
             Ok(())
         });
@@ -345,12 +347,14 @@ impl Tui {
         &self,
         request_config: RequestConfig,
     ) -> anyhow::Result<()> {
-        let builder = self.get_request_builder(request_config)?;
+        let builder = self.get_request_builder(request_config.clone())?;
         let messages_tx = self.messages_tx.clone();
         // Spawn a task to do the render+copy
+        let template_context =
+            self.template_context(request_config.profile_id.as_ref(), true)?;
         self.spawn(async move {
             let body = builder
-                .build_body()
+                .build_body(&template_context)
                 .await?
                 .ok_or(anyhow!("Request has no body"))?;
             let body = String::from_utf8(body.into())
@@ -366,11 +370,13 @@ impl Tui {
         &self,
         request_config: RequestConfig,
     ) -> anyhow::Result<()> {
-        let builder = self.get_request_builder(request_config)?;
+        let builder = self.get_request_builder(request_config.clone())?;
         let messages_tx = self.messages_tx.clone();
         // Spawn a task to do the render+copy
+        let template_context =
+            self.template_context(request_config.profile_id.as_ref(), true)?;
         self.spawn(async move {
-            let request = builder.build().await?;
+            let request = builder.build(&template_context).await?;
             let command = request.to_curl()?;
             messages_tx.send(Message::CopyText(command));
             Ok(())
@@ -390,6 +396,8 @@ impl Tui {
         let builder = self.get_request_builder(request_config.clone())?;
         let messages_tx = self.messages_tx.clone();
 
+        let template_context =
+            self.template_context(request_config.profile_id.as_ref(), true)?;
         let RequestConfig {
             profile_id,
             recipe_id,
@@ -409,7 +417,7 @@ impl Tui {
         tokio::spawn(async move {
             // Build the request
             let request: Arc<Request> = builder
-                .build()
+                .build(&template_context)
                 .await
                 .map_err(|error| {
                     // Report the error, but don't actually return anything
@@ -462,10 +470,9 @@ impl Tui {
     /// Helper to create a [RequestBuilder] based on request parameters
     fn get_request_builder(
         &self,
+
         RequestConfig {
-            profile_id,
-            recipe_id,
-            options,
+            recipe_id, options, ..
         }: RequestConfig,
     ) -> anyhow::Result<RequestBuilder> {
         let recipe = self
@@ -475,9 +482,7 @@ impl Tui {
             .get(&recipe_id)
             .ok_or_else(|| anyhow!("No recipe with ID `{recipe_id}`"))?
             .clone();
-        let template_context = self
-            .template_context(profile_id.as_ref(), self.messages_tx.clone())?;
-        Ok(RequestBuilder::new(recipe, options, template_context))
+        Ok(RequestBuilder::new(recipe, options))
     }
 
     /// Spawn a task to render a template, storing the result in a pre-defined
@@ -489,7 +494,7 @@ impl Tui {
         profile_id: Option<&ProfileId>,
         destination: Arc<OnceLock<Vec<TemplateChunk>>>,
     ) -> anyhow::Result<()> {
-        let context = self.template_context(profile_id, PreviewPrompter)?;
+        let context = self.template_context(profile_id, false)?;
         self.spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render_chunks(&context).await;
@@ -522,8 +527,13 @@ impl Tui {
     fn template_context(
         &self,
         profile_id: Option<&ProfileId>,
-        prompter: impl 'static + Prompter,
+        real_prompt: bool,
     ) -> anyhow::Result<TemplateContext> {
+        let prompter: Box<dyn Prompter> = if real_prompt {
+            Box::new(self.messages_tx.clone())
+        } else {
+            Box::new(PreviewPrompter)
+        };
         let collection = &self.collection_file.collection;
 
         // Find profile by ID
@@ -546,7 +556,7 @@ impl Tui {
             chains: collection.chains.clone(),
             database: self.database.clone(),
             overrides: Default::default(),
-            prompter: Box::new(prompter),
+            prompter,
         })
     }
 }

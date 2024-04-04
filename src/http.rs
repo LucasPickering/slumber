@@ -249,7 +249,6 @@ pub struct RequestBuilder {
     // We need this during the build
     recipe: Recipe,
     options: RecipeOptions,
-    template_context: TemplateContext,
 }
 
 /// OPtions for modifying a recipe during a build. This is helpful for applying
@@ -273,11 +272,7 @@ impl RequestBuilder {
     ///
     /// This needs an owned recipe and context so they can be moved into a
     /// subtask for the build.
-    pub fn new(
-        recipe: Recipe,
-        options: RecipeOptions,
-        template_context: TemplateContext,
-    ) -> Self {
+    pub fn new(recipe: Recipe, options: RecipeOptions) -> Self {
         debug!(recipe_id = %recipe.id, "Building request from recipe");
         let request_id = RequestId::new();
 
@@ -285,7 +280,6 @@ impl RequestBuilder {
             id: request_id,
             recipe,
             options,
-            template_context,
         }
     }
 
@@ -297,18 +291,28 @@ impl RequestBuilder {
 
     /// Build the request. This is async because templated values may require IO
     /// or other async actions.
-    pub async fn build(self) -> Result<Request, RequestBuildError> {
-        self.apply_error(self.render_request()).await
+    pub async fn build(
+        self,
+        template_context: &TemplateContext,
+    ) -> Result<Request, RequestBuildError> {
+        self.apply_error(self.render_request(template_context))
+            .await
     }
 
     /// Build just a request's URL
-    pub async fn build_url(self) -> Result<Url, RequestBuildError> {
-        self.apply_error(self.render_url()).await
+    pub async fn build_url(
+        self,
+        template_context: &TemplateContext,
+    ) -> Result<Url, RequestBuildError> {
+        self.apply_error(self.render_url(template_context)).await
     }
 
     /// Build just a request's body
-    pub async fn build_body(self) -> Result<Option<Bytes>, RequestBuildError> {
-        self.apply_error(self.render_body()).await
+    pub async fn build_body(
+        self,
+        template_context: &TemplateContext,
+    ) -> Result<Option<Bytes>, RequestBuildError> {
+        self.apply_error(self.render_body(template_context)).await
     }
 
     /// Wrapper to apply a helpful error around some request build step
@@ -323,16 +327,17 @@ impl RequestBuilder {
     }
 
     /// Render the entire request
-    async fn render_request(&self) -> anyhow::Result<Request> {
-        // let recipe = self.recipe;
-        let template_context = &self.template_context;
+    async fn render_request(
+        &self,
+        template_context: &TemplateContext,
+    ) -> anyhow::Result<Request> {
         let method = self.recipe.method.parse()?;
 
         // Render everything in parallel
         let (url, headers, body) = try_join!(
-            self.render_url(),
-            self.render_headers(),
-            self.render_body(),
+            self.render_url(template_context),
+            self.render_headers(template_context),
+            self.render_body(template_context),
         )?;
 
         info!(
@@ -355,19 +360,22 @@ impl RequestBuilder {
     }
 
     /// Render URL, including query params
-    async fn render_url(&self) -> anyhow::Result<Url> {
+    async fn render_url(
+        &self,
+        template_context: &TemplateContext,
+    ) -> anyhow::Result<Url> {
         // Shitty try block
         let (mut url, query) = try_join!(
             async {
                 let url = self
                     .recipe
                     .url
-                    .render(&self.template_context)
+                    .render(template_context)
                     .await
                     .context("Error rendering URL")?;
                 url.parse::<Url>().context("Invalid URL")
             },
-            self.render_query()
+            self.render_query(template_context)
         )?;
 
         // Join query into URL. if check prevents bare ? for empty query
@@ -379,8 +387,10 @@ impl RequestBuilder {
     }
 
     /// Render query key=value params
-    async fn render_query(&self) -> anyhow::Result<IndexMap<String, String>> {
-        let template_context = &self.template_context;
+    async fn render_query(
+        &self,
+        template_context: &TemplateContext,
+    ) -> anyhow::Result<IndexMap<String, String>> {
         let iter = self
             .recipe
             .query
@@ -405,7 +415,10 @@ impl RequestBuilder {
 
     /// Render all headers. This will also render authentication and merge it
     /// into the headers
-    async fn render_headers(&self) -> anyhow::Result<HeaderMap> {
+    async fn render_headers(
+        &self,
+        template_context: &TemplateContext,
+    ) -> anyhow::Result<HeaderMap> {
         // Render base headers
         let iter = self
             .recipe
@@ -416,7 +429,7 @@ impl RequestBuilder {
                 !self.options.disabled_headers.contains(*header)
             })
             .map(move |(header, value_template)| {
-                self.render_header(header, value_template)
+                self.render_header(template_context, header, value_template)
             });
         let mut headers = future::try_join_all(iter)
             .await?
@@ -427,7 +440,8 @@ impl RequestBuilder {
         if let Some(authentication) = &self.recipe.authentication {
             headers.insert(
                 header::AUTHORIZATION,
-                self.render_authentication(authentication).await?,
+                self.render_authentication(template_context, authentication)
+                    .await?,
             );
         }
 
@@ -437,9 +451,9 @@ impl RequestBuilder {
     /// Render authentication and return a value for the Authorization header
     async fn render_authentication(
         &self,
+        template_context: &TemplateContext,
         authentication: &Authentication,
     ) -> anyhow::Result<HeaderValue> {
-        let context = &self.template_context;
         let mut header_value = match authentication {
             collection::Authentication::Basic { username, password } => {
                 // Encode as `username:password | base64`
@@ -447,12 +461,12 @@ impl RequestBuilder {
                 let (username, password) = try_join!(
                     async {
                         username
-                            .render(context)
+                            .render(template_context)
                             .await
                             .context("Error rendering username")
                     },
                     async {
-                        Template::render_opt(password, context)
+                        Template::render_opt(password, template_context)
                             .await
                             .context("Error rendering password")
                     },
@@ -473,7 +487,7 @@ impl RequestBuilder {
 
             collection::Authentication::Bearer(token) => {
                 let token = token
-                    .render(context)
+                    .render(template_context)
                     .await
                     .context("Error rendering bearer token")?;
                 format!("Bearer {token}")
@@ -488,11 +502,12 @@ impl RequestBuilder {
     /// Render a single key/value header
     async fn render_header(
         &self,
+        template_context: &TemplateContext,
         header: &str,
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
         let value = value_template
-            .render(&self.template_context)
+            .render(template_context)
             .await
             .context(format!("Error rendering header `{header}`"))?;
         // Strip leading/trailing line breaks because they're going to
@@ -512,11 +527,13 @@ impl RequestBuilder {
         ))
     }
 
-    async fn render_body(&self) -> anyhow::Result<Option<Bytes>> {
-        let body =
-            Template::render_opt(&self.recipe.body, &self.template_context)
-                .await
-                .context("Error rendering body")?;
+    async fn render_body(
+        &self,
+        template_context: &TemplateContext,
+    ) -> anyhow::Result<Option<Bytes>> {
+        let body = Template::render_opt(&self.recipe.body, template_context)
+            .await
+            .context("Error rendering body")?;
         Ok(body.map(Bytes::from))
     }
 }
@@ -560,9 +577,8 @@ mod tests {
         );
         let recipe_id = recipe.id.clone();
 
-        let builder =
-            RequestBuilder::new(recipe, RecipeOptions::default(), context);
-        let request = builder.build().await.unwrap();
+        let builder = RequestBuilder::new(recipe, RecipeOptions::default());
+        let request = builder.build(&context).await.unwrap();
 
         let expected_headers = indexmap! {
             "content-type" => "application/json",
@@ -613,13 +629,12 @@ mod tests {
         };
         let profile = create!(Profile, data: profile_data);
         let profile_id = profile.id.clone();
-        let context = create!(TemplateContext, profile: Some(profile));
+        let context = create!(TemplateContext, profile: Some(profile.clone()));
         let recipe = create!(Recipe, authentication: Some(authentication));
         let recipe_id = recipe.id.clone();
 
-        let builder =
-            RequestBuilder::new(recipe, RecipeOptions::default(), context);
-        let request = builder.build().await.unwrap();
+        let builder = RequestBuilder::new(recipe, RecipeOptions::default());
+        let request = builder.build(&context).await.unwrap();
 
         let expected_headers: HashMap<String, String> =
             [("authorization", expected_header)]
@@ -663,9 +678,8 @@ mod tests {
                 disabled_headers: ["Content-Type".to_owned()].into(),
                 disabled_query_parameters: ["fast".to_owned()].into(),
             },
-            context,
         );
-        let request = builder.build().await.unwrap();
+        let request = builder.build(&context).await.unwrap();
 
         let expected_headers: HashMap<String, String> =
             [("accept", "application/json")]

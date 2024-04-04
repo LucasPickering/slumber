@@ -165,19 +165,16 @@ impl BuildRequestCommand {
 
         // Build the request
         let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
-        let request = RequestBuilder::new(
-            recipe,
-            RecipeOptions::default(),
-            TemplateContext {
-                profile,
-                chains: collection.chains.clone(),
-                database: database.clone(),
-                overrides,
-                prompter: Box::new(CliPrompter),
-            },
-        )
-        .build()
-        .await?;
+        let template_context = TemplateContext {
+            profile,
+            chains: collection.chains.clone(),
+            database: database.clone(),
+            overrides,
+            prompter: Box::new(CliPrompter),
+        };
+        let request = RequestBuilder::new(recipe, RecipeOptions::default())
+            .build(&template_context)
+            .await?;
         Ok((database, request))
     }
 }

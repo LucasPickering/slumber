@@ -1,5 +1,7 @@
 use crate::{
-    collection::{Chain, ChainSource, Profile, ProfileId, Recipe, RecipeId},
+    collection::{
+        Chain, ChainSource, Collection, Profile, ProfileId, Recipe, RecipeId,
+    },
     db::CollectionDatabase,
     http::{Body, Request, RequestId, RequestRecord, Response},
     template::{Prompt, Prompter, Template, TemplateContext},
@@ -10,6 +12,14 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Method, StatusCode,
 };
+
+factori!(Collection, {
+    default {
+        profiles = Default::default(),
+        chains = Default::default(),
+        recipes = Default::default(),
+    }
+});
 
 factori!(Profile, {
     default {
@@ -74,7 +84,10 @@ factori!(RequestRecord, {
 factori!(Chain, {
     default {
         id = "chain1".into(),
-        source = ChainSource::Request(RecipeId::default()),
+        source = ChainSource::Request {
+            recipe: RecipeId::default(),
+            trigger: Default::default(),
+        },
         sensitive = false,
         selector = None,
         content_type = None,
@@ -83,11 +96,12 @@ factori!(Chain, {
 
 factori!(TemplateContext, {
     default {
-        profile = None
-        chains = Default::default()
+        selected_profile = None,
+        collection = Default::default(),
         prompter = Box::<TestPrompter>::default(),
-        database = CollectionDatabase::testing()
-        overrides = Default::default()
+        http_engine = None,
+        database = CollectionDatabase::testing(),
+        overrides = Default::default(),
     }
 });
 
@@ -132,6 +146,7 @@ impl From<&str> for Template {
         value.to_owned().try_into().unwrap()
     }
 }
+// Can't implement this for From<String> because it conflicts with TryFrom
 
 /// Helper for creating a header map
 pub fn header_map<'a>(

@@ -20,16 +20,19 @@ See the [`ChainSource`](./chain_source.md) docs for more detail.
 ```yaml
 # Load chained value from a file
 username:
-  source: !file ./username.txt
+  source: !file
+    path: ./username.txt
 ---
 # Prompt the user for a value whenever the request is made
 password:
-  source: !prompt Enter Password
+  source: !prompt
+    message: Enter Password
   sensitive: true
 ---
 # Use a value from another response
 # Assume the request recipe with ID `login` returns a body like `{"token": "foo"}`
 auth_token:
-  source: !request login
+  source: !request
+    recipe: login
   selector: $.token
 ```

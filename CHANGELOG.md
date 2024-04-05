@@ -2,6 +2,46 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Breaking
+
+- All variants of the `Chain.source` field are now maps
+  - This is to support the next request auto-execution feature, as well as future proofing for additional chain configuration
+
+Follow this mapping to update:
+
+```yaml
+# Before
+chains:
+  auth_token:
+    source: !request login
+  username:
+    source: !command ["echo", "-n", "hello"]
+  username:
+    source: !file ./username.txt
+  password:
+    source: !prompt Enter Password
+---
+# After
+chains:
+  auth_token:
+    source: !request
+      recipe: login
+  username:
+    source: !command
+      command: ["echo", "-n", "hello"]
+  username:
+    source: !file
+      path: ./username.txt
+  password:
+    source: !prompt
+      message: Enter Password
+```
+
+### Added
+
+- Chained requests can now be auto-executed according to various criteria ([#140](https://github.com/LucasPickering/slumber/issues/140))
+  - See [the docs](https://slumber.lucaspickering.me/book/user_guide/chaining_requests.html) for more
+
 ### Changed
 
 - Don't print full stack trace for failed CLI commands

@@ -10,6 +10,7 @@
 - [Terminal User Interface (TUI)](./user_guide/tui.md)
 - [Command Line Interface (CLI)](./user_guide/cli.md)
 - [Templates](./user_guide/templates.md)
+- [Chaining Requests](./user_guide/chaining_requests.md)
 - [Collection Reuse & Inheritance](./user_guide/inheritance.md)
 - [Data Filtering & Querying](./user_guide/filter_query.md)
 

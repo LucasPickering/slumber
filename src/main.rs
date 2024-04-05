@@ -62,9 +62,13 @@ async fn main() -> anyhow::Result<ExitCode> {
             .execute(args.global)
             .await
             // Do *not* return the error, because that prints a stack trace
-            // which is way too verbose. Just print the error instead
+            // which is way too verbose. Just print the error messages instead
             .unwrap_or_else(|error| {
                 eprintln!("{error}");
+                error
+                    .chain()
+                    .skip(1)
+                    .for_each(|cause| eprintln!("  {cause}"));
                 ExitCode::FAILURE
             })),
     }

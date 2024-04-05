@@ -52,6 +52,7 @@ uuid = {version = "^1.4.1", default-features = false, features = ["serde", "v4"]
 
 [dev-dependencies]
 factori = "1.1.0"
+httpmock = { version = "0.7.0", default-features = false }
 rstest = {version = "0.18.2", default-features = false}
 serde_test = "1.0.176"
 

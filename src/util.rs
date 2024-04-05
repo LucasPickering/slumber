@@ -290,7 +290,6 @@ macro_rules! assert_err {
         )
     }};
 }
-
 #[cfg(test)]
 pub(crate) use assert_err;
 

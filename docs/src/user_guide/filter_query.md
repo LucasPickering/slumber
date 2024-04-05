@@ -27,13 +27,16 @@ We'll use these credentials to log in and get an API token, so the second data s
 ```yaml
 chains:
   username:
-    source: !file ./creds.json
+    source: !file
+      path: ./creds.json
     selector: $.user
   password:
-    source: !file ./creds.json
+    source: !file
+      path: ./creds.json
     selector: $.pw
   auth_token:
-    source: !request login
+    source: !request
+      recipe: login
     selector: $.token
 
 # Use YAML anchors for de-duplication

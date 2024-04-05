@@ -9,11 +9,11 @@ use derive_more::{Deref, Display, From};
 use equivalent::Equivalent;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
@@ -203,13 +203,38 @@ impl Equivalent<ChainId> for ChainId<&str> {
 #[serde(rename_all = "snake_case")]
 pub enum ChainSource {
     /// Load data from the most recent response of a particular request recipe
-    Request(RecipeId),
+    Request {
+        recipe: RecipeId,
+        /// When should this request be automatically re-executed?
+        #[serde(default)]
+        trigger: ChainRequestTrigger,
+    },
     /// Run an external command to get a result
-    Command(Vec<String>),
+    Command { command: Vec<String> },
     /// Load data from a file
-    File(PathBuf),
+    File { path: PathBuf },
     /// Prompt the user for a value, with an optional label
-    Prompt(Option<String>),
+    Prompt { message: Option<String> },
+}
+
+/// Define when a recipe with a chained request should auto-execute the
+/// dependency request.
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(rename_all = "snake_case")]
+pub enum ChainRequestTrigger {
+    /// Never trigger the request. This is the default because upstream
+    /// requests could be mutating, so we want the user to explicitly opt into
+    /// automatic execution.
+    #[default]
+    Never,
+    /// Trigger the request if there is none in history
+    NoHistory,
+    /// Trigger the request if the last response is older than some
+    /// duration (or there is none in history)
+    Expire(#[serde(with = "cereal::serde_duration")] Duration),
+    /// Trigger the request every time the dependent request is rendered
+    Always,
 }
 
 impl Profile {

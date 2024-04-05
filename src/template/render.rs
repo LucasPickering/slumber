@@ -1,20 +1,21 @@
 //! Template rendering implementation
 
 use crate::{
-    collection::{ChainId, ChainSource, ProfileValue, RecipeId},
-    http::{ContentType, Response},
+    collection::{
+        ChainId, ChainRequestTrigger, ChainSource, ProfileValue, RecipeId,
+    },
+    http::{ContentType, RequestBuilder, RequestRecord, Response},
     template::{
-        parse::TemplateInputChunk, ChainError, Prompt, Template, TemplateChunk,
-        TemplateContext, TemplateError, TemplateKey,
+        error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
+        Prompt, Template, TemplateChunk, TemplateContext, TemplateError,
+        TemplateKey,
     },
     util::ResultExt,
 };
 use async_trait::async_trait;
+use chrono::Utc;
 use futures::future::join_all;
-use std::{
-    env::{self},
-    path::Path,
-};
+use std::{env, path::Path, sync::Arc};
 use tokio::{fs, process::Command, sync::oneshot};
 use tracing::{info, instrument, trace};
 
@@ -196,13 +197,23 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
         let field = self.field;
 
         // Get the value from the profile
-        let value = context
-            .profile
+        let profile_id = context
+            .selected_profile
             .as_ref()
-            .and_then(|profile| profile.data.get(field))
-            .ok_or_else(|| TemplateError::FieldUnknown {
-                field: field.to_owned(),
+            .ok_or_else(|| TemplateError::NoProfileSelected)?;
+        // Typically the caller should validate the ID is valid, this is just
+        // a backup check
+        let profile =
+            context.collection.profiles.get(profile_id).ok_or_else(|| {
+                TemplateError::ProfileUnknown {
+                    profile_id: profile_id.clone(),
+                }
             })?;
+        let value = profile.data.get(field).ok_or_else(|| {
+            TemplateError::FieldUnknown {
+                field: field.to_owned(),
+            }
+        })?;
 
         let rendered = match value {
             ProfileValue::Raw(value) => value.clone(),
@@ -235,10 +246,10 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
         // Any error in here is the chain error subtype
         let result: Result<_, ChainError> = async {
             // Resolve chained value
-            let chain = context
-                .chains
-                .get(&self.chain_id)
-                .ok_or(ChainError::Unknown)?;
+            let chain =
+                context.collection.chains.get(&self.chain_id).ok_or_else(
+                    || ChainError::ChainUnknown((&self.chain_id).into()),
+                )?;
 
             // Resolve the value based on the source type. Also resolve its
             // content type. For responses this will come from its header. For
@@ -248,27 +259,27 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
             // We intentionally throw the content detection error away here,
             // because it isn't that intuitive for users and is hard to plumb
             let (value, content_type) = match &chain.source {
-                ChainSource::Request(recipe_id) => {
+                ChainSource::Request { recipe, trigger } => {
                     let response =
-                        self.get_response(context, recipe_id).await?;
+                        self.get_response(context, recipe, *trigger).await?;
                     // Guess content type based on HTTP header
                     let content_type =
                         ContentType::from_response(&response).ok();
                     (response.body.into_bytes(), content_type)
                 }
-                ChainSource::File(path) => {
+                ChainSource::File { path } => {
                     // Guess content type based on file extension
                     let content_type = ContentType::from_extension(path).ok();
                     (self.render_file(path).await?, content_type)
                 }
-                ChainSource::Command(command) => {
+                ChainSource::Command { command } => {
                     // No way to guess content type on this
                     (self.render_command(command).await?, None)
                 }
-                ChainSource::Prompt(label) => (
+                ChainSource::Prompt { message } => (
                     self.render_prompt(
                         context,
-                        label.as_deref(),
+                        message.as_deref(),
                         chain.sensitive,
                     )
                     .await?
@@ -312,20 +323,95 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
 }
 
 impl<'a> ChainTemplateSource<'a> {
-    /// Get the most recent request for a recipe
+    /// Get an HTTP response for a recipe. This will either get the most recent
+    /// response from history or re-execute the request, depending on trigger
+    /// behavior.
     async fn get_response(
         &self,
         context: &'a TemplateContext,
         recipe_id: &RecipeId,
+        trigger: ChainRequestTrigger,
     ) -> Result<Response, ChainError> {
-        let record = context
-            .database
-            .get_last_request(
-                context.profile.as_ref().map(|profile| &profile.id),
-                recipe_id,
-            )
-            .map_err(ChainError::Database)?
-            .ok_or(ChainError::NoResponse)?;
+        // Get the referenced recipe. We actually only need the whole recipe if
+        // we're executing the request, but we want this to error out if the
+        // recipe doesn't exist regardless. It's possible the recipe isn't in
+        // the collection but still exists in history (if it was deleted).
+        // Eagerly checking for it makes that case error out, which is more
+        // intuitive than using history for a deleted recipe.
+        let recipe = context
+            .collection
+            .recipes
+            .get(recipe_id)
+            .ok_or_else(|| ChainError::RecipeUnknown(recipe_id.clone()))?;
+
+        // Defer loading the most recent record until we know we'll need it
+        let get_most_recent =
+            || -> Result<Option<RequestRecord>, ChainError> {
+                context
+                    .database
+                    .get_last_request(
+                        context.selected_profile.as_ref(),
+                        recipe_id,
+                    )
+                    .map_err(ChainError::Database)
+            };
+        // Helper to execute the request, if triggered
+        let send_request = || async {
+            // There are 3 different ways we can generate the request config:
+            // 1. Default (enable all query params/headers)
+            // 2. Load from UI state for both TUI and CLI
+            // 3. Load from UI state for TUI, enable all for CLI
+            // These all have their own issues:
+            // 1. Triggered request doesn't necessarily match behavior if user
+            //  were to execute the request themself
+            // 2. CLI behavior is silently controlled by UI state
+            // 3. TUI and CLI behavior may not match
+            // All 3 options are unintuitive in some way, but 1 is the easiest
+            // to implement so I'm going with that for now.
+            let recipe_options = Default::default();
+
+            let builder = RequestBuilder::new(recipe.clone(), recipe_options);
+            // Shitty try block
+            let result = async {
+                let request = builder
+                    .build(context)
+                    .await
+                    .map_err(TriggeredRequestError::Build)?;
+                context
+                    .http_engine
+                    .clone()
+                    .ok_or(TriggeredRequestError::NotAllowed)?
+                    .send(Arc::new(request))
+                    .await
+                    .map_err(TriggeredRequestError::Send)
+            };
+            result.await.map_err(|error| ChainError::Trigger {
+                recipe_id: recipe.id.clone(),
+                error,
+            })
+        };
+
+        // Grab the most recent request in history, or send a new request
+        let record = match trigger {
+            ChainRequestTrigger::Never => {
+                get_most_recent()?.ok_or(ChainError::NoResponse)?
+            }
+            ChainRequestTrigger::NoHistory => {
+                // If a record is present in history, use that. If not, fetch
+                if let Some(record) = get_most_recent()? {
+                    record
+                } else {
+                    send_request().await?
+                }
+            }
+            ChainRequestTrigger::Expire(duration) => match get_most_recent()? {
+                Some(record) if record.end_time + duration >= Utc::now() => {
+                    record
+                }
+                _ => send_request().await?,
+            },
+            ChainRequestTrigger::Always => send_request().await?,
+        };
 
         Ok(record.response)
     }

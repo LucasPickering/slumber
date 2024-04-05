@@ -13,7 +13,8 @@ profiles:
 
 chains:
   token:
-    source: !file ./api_token.txt
+    source: !file
+      path: ./api_token.txt
 
 requests:
   list_fish:
@@ -47,7 +48,8 @@ profiles:
 
 chains:
   token:
-    source: !file ./api_token.txt
+    source: !file
+      path: ./api_token.txt
 
 # The name here is arbitrary, pick any name you like
 request_base: &request_base
@@ -83,7 +85,8 @@ profiles:
 
 chains:
   token:
-    source: !file ./api_token.txt
+    source: !file
+      path: ./api_token.txt
 
 # The name here is arbitrary, pick any name you like
 request_base: &request_base

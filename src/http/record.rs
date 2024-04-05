@@ -39,7 +39,7 @@ pub struct RequestBuildError {
 /// An error that can occur during a request. This does *not* including building
 /// errors.
 #[derive(Debug, Error)]
-#[error("Error executing request {}", "request.id")]
+#[error("Error executing request {}", .request.id)]
 pub struct RequestError {
     #[source]
     pub error: reqwest::Error,

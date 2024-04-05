@@ -3,13 +3,14 @@ mod parse;
 mod prompt;
 mod render;
 
-pub use error::{ChainError, TemplateError};
+pub use error::{ChainError, TemplateError, TriggeredRequestError};
 pub use parse::Span;
 pub use prompt::{Prompt, Prompter};
 
 use crate::{
-    collection::{Chain, ChainId, Profile},
+    collection::{Collection, ProfileId},
     db::CollectionDatabase,
+    http::HttpEngine,
     template::{
         error::TemplateParseError,
         parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
@@ -26,11 +27,17 @@ use std::fmt::Debug;
 /// becomes a bottleneck, we can `Arc` some stuff.
 #[derive(Debug)]
 pub struct TemplateContext {
-    /// Associated data to be injected while rendering. The profile ID is also
-    /// used to filter chained requests.
-    pub profile: Option<Profile>,
-    /// Chained values from dynamic sources
-    pub chains: IndexMap<ChainId, Chain>,
+    /// Entire request collection
+    pub collection: Collection,
+    /// ID of the profile whose data should be used for rendering. Generally
+    /// the caller should check the ID is valid before passing it, to
+    /// provide a better error to the user if not.
+    pub selected_profile: Option<ProfileId>,
+    /// HTTP engine used to executed triggered sub-requests. This should only
+    /// be populated if you actually want to trigger requests! In some cases
+    /// you want renders to be idempotent, in which case you should pass
+    /// `None`.
+    pub http_engine: Option<HttpEngine>,
     /// Needed for accessing response bodies for chaining
     pub database: CollectionDatabase,
     /// Additional key=value overrides passed directly from the user
@@ -154,42 +161,51 @@ impl<T> TemplateKey<T> {
 mod tests {
     use super::*;
     use crate::{
-        collection::{ChainSource, ProfileValue, RecipeId},
-        http::{ContentType, Request, Response},
+        collection::{
+            Chain, ChainRequestTrigger, ChainSource, ProfileValue, RecipeId,
+        },
+        config::Config,
+        http::{ContentType, RequestRecord},
         test_util::*,
         util::assert_err,
     };
+    use chrono::Utc;
     use factori::create;
+    use httpmock::MockServer;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
-    use std::env;
+    use std::{env, time::Duration};
     use tokio::fs;
 
     /// Test overriding all key types, as well as missing keys
     #[tokio::test]
     async fn test_override() {
         let profile_data = indexmap! {"field1".into() => "field".into()};
-        let profile = create!(Profile, data: profile_data);
-        let source = ChainSource::Command(
-            ["echo", "chain"]
+        let source = ChainSource::Command {
+            command: ["echo", "chain"]
                 .iter()
                 .cloned()
                 .map(String::from)
                 .collect(),
-        );
+        };
         let overrides = indexmap! {
             "field1".into() => "override".into(),
             "chains.chain1".into() => "override".into(),
             "env.ENV1".into() => "override".into(),
             "override1".into() => "override".into(),
         };
-        let chains =
-            indexmap! {"chain1".into() => create!(Chain, source: source)};
+        let profile = create!(Profile, data: profile_data);
+        let profile_id = profile.id.clone();
+        let chain = create!(Chain, source: source);
         let context = create!(
             TemplateContext,
-            profile: Some(profile),
-            chains: chains,
+            collection: create!(
+                Collection,
+                profiles: indexmap!{profile_id.clone() => profile},
+                chains: indexmap! {chain.id.clone() => chain},
+            ),
+            selected_profile: Some(profile_id),
             overrides: overrides,
         );
 
@@ -222,7 +238,15 @@ mod tests {
             "recursive".into() => ProfileValue::Template(nested_template),
         };
         let profile = create!(Profile, data: profile_data);
-        let context = create!(TemplateContext, profile: Some(profile));
+        let profile_id = profile.id.clone();
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                profiles: indexmap!{profile_id.clone() => profile},
+            ),
+            selected_profile: Some(profile_id),
+        );
 
         assert_eq!(&render!("", context).unwrap(), "");
         assert_eq!(&render!("plain", context).unwrap(), "plain");
@@ -244,7 +268,15 @@ mod tests {
             "recursive".into() => ProfileValue::Template(nested_template),
         };
         let profile = create!(Profile, data: profile_data);
-        let context = create!(TemplateContext, profile: Some(profile));
+        let profile_id = profile.id.clone();
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                profiles: indexmap!{profile_id.clone() => profile},
+            ),
+            selected_profile: Some(profile_id),
+        );
 
         assert_err!(
             render!("{{onion_id}}", context),
@@ -292,14 +324,24 @@ mod tests {
             ))
             .unwrap();
         let selector = selector.map(|s| s.parse().unwrap());
-        let chains = indexmap! {"chain1".into() => create!(
+        let recipe = create!(Recipe, id: recipe_id.clone());
+        let chain = create!(
             Chain,
-            source: ChainSource::Request(recipe_id),
+            source: ChainSource::Request {
+                recipe: recipe_id.clone(),
+                trigger: Default::default(),
+            },
             selector: selector,
             content_type: Some(ContentType::Json),
-        )};
+        );
         let context = create!(
-            TemplateContext, database: database, chains: chains,
+            TemplateContext,
+            collection: create!(
+                Collection,
+                recipes: indexmap! {recipe.id.clone() => recipe},
+                chains: indexmap! {chain.id.clone() => chain},
+            ),
+            database: database,
         );
 
         assert_eq!(
@@ -311,89 +353,209 @@ mod tests {
     /// Test all possible error cases for chained requests. This covers all
     /// chain-specific error variants
     #[rstest]
-    #[case("unknown", create!(Chain), None, "Unknown chain")]
+    // Referenced a chain that doesn't exist
+    #[case("unknown", create!(Chain), None, None, "Unknown chain")]
+    // Chain references a recipe that's not in the collection
     #[case(
         "chain1",
-        create!(Chain, source: ChainSource::Request("unknown".into())),
+        create!(
+            Chain,
+            source: ChainSource::Request {
+                recipe: "unknown".into(),
+                trigger: Default::default(),
+            }
+        ),
+        None,
+        None,
+        "Unknown request recipe",
+    )]
+    // Recipe exists but has no history in the DB
+    #[case(
+        "chain1",
+        create!(
+            Chain,
+            source: ChainSource::Request {
+                recipe: "recipe1".into(),
+                trigger: Default::default(),
+            }
+        ),
+        Some("recipe1"),
         None,
         "No response available",
     )]
+    // Subrequest can't be executed because triggers are disabled
     #[case(
         "chain1",
         create!(
             Chain,
-            source: ChainSource::Request("recipe1".into()),
+            source: ChainSource::Request {
+                recipe: "recipe1".into(),
+                trigger: ChainRequestTrigger::Always,
+            }
+        ),
+        Some("recipe1"),
+        None,
+        "Triggered request execution not allowed in this context",
+    )]
+    // Response doesn't include a hint to its content type
+    #[case(
+        "chain1",
+        create!(
+            Chain,
+            source: ChainSource::Request {
+                recipe: "recipe1".into(),
+                trigger: Default::default(),
+            },
             selector: Some("$.message".parse().unwrap()),
         ),
-        Some((
-            create!(Request, recipe_id: "recipe1".into()),
-            create!(Response, body: "not json!".into()),
+        Some("recipe1"),
+        Some(create!(
+            RequestRecord,
+            response: create!(Response, body: "not json!".into()),
         )),
         "content type not provided",
     )]
+    // Response can't be parsed according to the content type we gave
     #[case(
         "chain1",
         create!(
             Chain,
-            source: ChainSource::Request("recipe1".into()),
+            source: ChainSource::Request {
+                recipe: "recipe1".into(),
+                trigger: Default::default(),
+            },
             selector: Some("$.message".parse().unwrap()),
             content_type: Some(ContentType::Json),
         ),
-        Some((
-            create!(Request, recipe_id: "recipe1".into()),
-            create!(Response, body: "not json!".into()),
+        Some("recipe1"),
+        Some(create!(
+            RequestRecord,
+            response: create!(Response, body: "not json!".into()),
         )),
         "Error parsing response",
     )]
+    // Query returned multiple results
     #[case(
         "chain1",
         create!(
             Chain,
-            source: ChainSource::Request("recipe1".into()),
+            source: ChainSource::Request {
+                recipe: "recipe1".into(),
+                trigger: Default::default(),
+            },
             selector: Some("$.*".parse().unwrap()),
             content_type: Some(ContentType::Json),
         ),
-        Some((
-            create!(Request, recipe_id: "recipe1".into()),
-            create!(Response, body: "[1, 2]".into()),
+        Some("recipe1"),
+        Some(create!(
+            RequestRecord,
+            response: create!(Response, body: "[1, 2]".into()),
         )),
         "Expected exactly one result",
     )]
     #[tokio::test]
     async fn test_chain_request_error(
-        #[case] chain_id: impl Into<ChainId>,
+        #[case] chain_id: &str,
         #[case] chain: Chain,
-        // Optional request data to store in the database
-        #[case] request_response: Option<(Request, Response)>,
+        // ID of a recipe to add to the collection
+        #[case] recipe_id: Option<&str>,
+        // Optional request/response data to store in the database
+        #[case] record: Option<RequestRecord>,
         #[case] expected_error: &str,
     ) {
         let database = CollectionDatabase::testing();
-        if let Some((request, response)) = request_response {
-            database
-                .insert_request(&create!(
-                    RequestRecord,
-                    request: request.into(),
-                    response: response,
-                ))
-                .unwrap();
+
+        let mut recipes = IndexMap::new();
+        if let Some(recipe_id) = recipe_id {
+            let recipe_id: RecipeId = recipe_id.into();
+            recipes.insert(recipe_id.clone(), create!(Recipe, id: recipe_id));
         }
+
+        // Insert record into DB
+        if let Some(record) = record {
+            database.insert_request(&record).unwrap();
+        }
+
         let chains = indexmap! {chain_id.into() => chain};
         let context = create!(
-            TemplateContext, database: database, chains: chains,
+            TemplateContext,
+            collection: create!(Collection, recipes: recipes, chains: chains),
+            database: database,
         );
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
+    }
+
+    /// Test triggered sub-requests. We expect all of these *to trigger*
+    #[rstest]
+    #[case(ChainRequestTrigger::NoHistory, None)]
+    #[case(ChainRequestTrigger::Expire(Duration::from_secs(0)), None)]
+    #[case(
+        ChainRequestTrigger::Expire(Duration::from_secs(60)),
+        Some(create!(
+            RequestRecord,
+            end_time: Utc::now() - Duration::from_secs(100)
+        ))
+    )]
+    #[case(ChainRequestTrigger::Always, None)]
+    #[case(ChainRequestTrigger::Always, Some(create!(RequestRecord)))]
+    #[tokio::test]
+    async fn test_triggered_request(
+        #[case] trigger: ChainRequestTrigger,
+        // Optional request data to store in the database
+        #[case] record: Option<RequestRecord>,
+    ) {
+        let database = CollectionDatabase::testing();
+
+        // Set up DB
+        if let Some(record) = record {
+            database.insert_request(&record).unwrap();
+        }
+
+        // Mock HTTP response
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/get");
+            then.status(200).body("hello!");
+        });
+
+        let recipe = create!(Recipe, url: server.url("/get").as_str().into());
+        let chain = create!(
+            Chain,
+            source: ChainSource::Request {
+                recipe: recipe.id.clone(),
+                trigger,
+            },
+        );
+        let http_engine = HttpEngine::new(&Config::default(), database.clone());
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                recipes: indexmap! {recipe.id.clone() => recipe},
+                chains: indexmap! {chain.id.clone() => chain},
+            ),
+            http_engine: Some(http_engine),
+            database: database,
+        );
+
+        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
+
+        mock.assert();
     }
 
     /// Test success with chained command
     #[tokio::test]
     async fn test_chain_command() {
         let command = vec!["echo".into(), "-n".into(), "hello!".into()];
-        let chains = indexmap! {"chain1".into() => create!(
-            Chain,
-            source: ChainSource::Command(command),
-        )};
-        let context = create!(TemplateContext, chains: chains);
+        let chain = create!(Chain, source: ChainSource::Command{command});
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                chains: indexmap! {chain.id.clone() => chain},
+            ),
+        );
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
     }
@@ -408,12 +570,17 @@ mod tests {
         #[case] command: &[&str],
         #[case] expected_error: &str,
     ) {
-        let source = ChainSource::Command(
-            command.iter().cloned().map(String::from).collect(),
+        let source = ChainSource::Command {
+            command: command.iter().cloned().map(String::from).collect(),
+        };
+        let chain = create!(Chain, source: source);
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                chains: indexmap! {chain.id.clone() => chain},
+            ),
         );
-        let chains =
-            indexmap! {"chain1".into() => create!(Chain, source: source)};
-        let context = create!(TemplateContext, chains: chains);
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
     }
@@ -426,11 +593,15 @@ mod tests {
         let file_path = temp_dir.join("stuff.txt");
         fs::write(&file_path, "hello!").await.unwrap();
 
-        let chains = indexmap! {"chain1".into() => create!(
-            Chain,
-            source: ChainSource::File(file_path),
-        )};
-        let context = create!(TemplateContext, chains: chains);
+        let chain =
+            create!(Chain, source: ChainSource::File { path: file_path });
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                chains: indexmap! {chain.id.clone() => chain},
+            ),
+        );
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
     }
@@ -438,11 +609,14 @@ mod tests {
     /// Test failure with chained file
     #[tokio::test]
     async fn test_chain_file_error() {
-        let chains = indexmap! {"chain1".into() => create!(
-            Chain,
-            source: ChainSource::File("not-a-real-file".into()),
-        )};
-        let context = create!(TemplateContext, chains: chains);
+        let chain = create!(Chain, source: ChainSource::File { path: "not-a-real-file".into() });
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                chains: indexmap! {chain.id.clone() => chain},
+            ),
+        );
 
         assert_err!(
             render!("{{chains.chain1}}", context),
@@ -452,13 +626,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_chain_prompt() {
-        let chains = indexmap! {"chain1".into() => create!(
+        let chain = create!(
             Chain,
-            source: ChainSource::Prompt(Some("password".into())),
-        )};
+            source: ChainSource::Prompt { message: Some("password".into()) },
+        );
         let context = create!(
             TemplateContext,
-            chains: chains,
+            collection: create!(
+                Collection,
+                chains: indexmap! {chain.id.clone() => chain},
+            )
             prompter: Box::new(TestPrompter::new(Some("hello!"))),
         );
 
@@ -468,13 +645,16 @@ mod tests {
     /// Prompting gone wrong
     #[tokio::test]
     async fn test_chain_prompt_error() {
-        let chains = indexmap! {"chain1".into() => create!(
+        let chain = create!(
             Chain,
-            source: ChainSource::Prompt(Some("password".into())),
-        )};
+            source: ChainSource::Prompt { message: Some("password".into()) },
+        );
         let context = create!(
             TemplateContext,
-            chains: chains,
+            collection: create!(
+                Collection,
+                chains: indexmap! {chain.id.clone() => chain},
+            ),
             // Prompter gives no response
             prompter: Box::new(TestPrompter::new::<String>(None)),
         );
@@ -488,14 +668,17 @@ mod tests {
     /// Values marked sensitive should have that flag set in the rendered output
     #[tokio::test]
     async fn test_chain_sensitive() {
-        let chains = indexmap! {"chain1".into() => create!(
+        let chain = create!(
             Chain,
-            source: ChainSource::Prompt(Some("password".into())),
+            source: ChainSource::Prompt { message: Some("password".into()) },
             sensitive: true,
-        )};
+        );
         let context = create!(
             TemplateContext,
-            chains: chains,
+            collection: create!(
+                Collection,
+                chains: indexmap! {chain.id.clone() => chain},
+            ),
             // Prompter gives no response
             prompter: Box::new(TestPrompter::new(Some("hello!"))),
         );
@@ -531,7 +714,15 @@ mod tests {
     async fn test_render_chunks() {
         let profile_data = indexmap! { "user_id".into() => "🧡💛".into() };
         let profile = create!(Profile, data: profile_data);
-        let context = create!(TemplateContext, profile: Some(profile));
+        let profile_id = profile.id.clone();
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                profiles: indexmap!{profile_id.clone() => profile},
+            ),
+            selected_profile: Some(profile_id),
+        );
 
         let chunks =
             Template::from("intro {{user_id}} 💚💙💜 {{unknown}} outro")

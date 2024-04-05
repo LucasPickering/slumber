@@ -17,12 +17,16 @@ profiles:
 
 chains:
   username:
-    source: !command ["sh", "-c", "whoami | tr -d '\n'"]
+    source: !command
+      command: ["sh", "-c", "whoami | tr -d '\n'"]
   password:
-    source: !prompt Password
+    source: !prompt
+      message: Password
     sensitive: true
   auth_token:
-    source: !request login
+    source: !request
+      recipe: login
+      trigger: !expire 12h
     selector: $.headers["X-Amzn-Trace-Id"]
 
 base: &base

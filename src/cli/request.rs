@@ -2,9 +2,9 @@ use crate::{
     cli::Subcommand,
     collection::{CollectionFile, ProfileId, RecipeId},
     config::Config,
-    db::{CollectionDatabase, Database},
+    db::Database,
     http::{HttpEngine, RecipeOptions, Request, RequestBuilder},
-    template::{Prompt, Prompter, TemplateContext},
+    template::{Prompt, Prompter, TemplateContext, TemplateError},
     util::{MaybeStr, ResultExt},
     GlobalArgs,
 };
@@ -51,7 +51,8 @@ pub struct RequestCommand {
     #[clap(long)]
     exit_status: bool,
 
-    /// Just print the generated request, instead of sending it
+    /// Just print the generated request, instead of sending it. Triggered
+    /// sub-requests will also not be executed.
     #[clap(long)]
     dry_run: bool,
 }
@@ -79,13 +80,25 @@ pub struct BuildRequestCommand {
 #[async_trait]
 impl Subcommand for RequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let (database, request) =
-            self.build_request.build_request(global).await?;
+        let (http_engine, request) = self
+            .build_request
+            // Don't execute sub-requests in a dry run
+            .build_request(global, !self.dry_run)
+            .await
+            .map_err(|error| {
+                // If the build failed because triggered requests are disabled,
+                // replace it with a custom error message
+                if TemplateError::has_trigger_disabled_error(&error) {
+                    error.context(
+                        "Triggered requests are disabled with `--dry-run`",
+                    )
+                } else {
+                    error
+                }
+            })?;
 
-        if self.dry_run {
-            println!("{:#?}", request);
-            Ok(ExitCode::SUCCESS)
-        } else {
+        // HTTP engine will be defined iff dry_run was not enabled
+        if let Some(http_engine) = http_engine {
             // Everything other than the body prints to stderr, to make it easy
             // to pipe the body to a file
             if self.headers {
@@ -93,8 +106,6 @@ impl Subcommand for RequestCommand {
             }
 
             // Run the request
-            let config = Config::load()?;
-            let http_engine = HttpEngine::new(&config, database);
             let record = http_engine.send(request.into()).await?;
             let status = record.response.status;
 
@@ -123,35 +134,49 @@ impl Subcommand for RequestCommand {
             } else {
                 Ok(ExitCode::SUCCESS)
             }
+        } else {
+            println!("{:#?}", request);
+            Ok(ExitCode::SUCCESS)
         }
     }
 }
 
 impl BuildRequestCommand {
-    /// Render the request specified by the user. This returns the DB
-    /// connection too so it can be re-used if necessary.
+    /// Render the request specified by the user. This returns the HTTP engine
+    /// too so it can be re-used if necessary (iff `trigger_dependencies` is
+    /// enabled).
+    ///
+    /// `trigger_dependencies` controls whether chained requests can be executed
+    /// if their triggers apply.
     pub async fn build_request(
         self,
         global: GlobalArgs,
-    ) -> anyhow::Result<(CollectionDatabase, Request)> {
+        trigger_dependencies: bool,
+    ) -> anyhow::Result<(Option<HttpEngine>, Request)> {
         let collection_path = CollectionFile::try_path(global.collection)?;
         let database = Database::load()?.into_collection(&collection_path)?;
-        let mut collection_file = CollectionFile::load(collection_path).await?;
-        let collection = &mut collection_file.collection;
+        let collection_file = CollectionFile::load(collection_path).await?;
+        let mut collection = collection_file.collection;
+        // Passing the HTTP engine is how we tell the template renderer that
+        // it's ok to execute subrequests during render
+        let http_engine = if trigger_dependencies {
+            let config = Config::load()?;
+            Some(HttpEngine::new(&config, database.clone()))
+        } else {
+            None
+        };
 
-        // Find profile and recipe by ID
-        let profile = self
-            .profile
-            .map(|profile_id| {
-                collection.profiles.swap_remove(&profile_id).ok_or_else(|| {
-                    anyhow!(
-                        "No profile with ID `{profile_id}`; options are: {}",
-                        collection.profiles.keys().join(", ")
-                    )
-                })
-            })
-            .transpose()?;
+        // Validate profile ID, so we can provide a good error if it's invalid
+        if let Some(profile_id) = &self.profile {
+            collection.profiles.get(profile_id).ok_or_else(|| {
+                anyhow!(
+                    "No profile with ID `{profile_id}`; options are: {}",
+                    collection.profiles.keys().join(", ")
+                )
+            })?;
+        }
 
+        // Find recipe by ID
         let recipe = collection
             .recipes
             .swap_remove(&self.recipe_id)
@@ -166,16 +191,17 @@ impl BuildRequestCommand {
         // Build the request
         let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
         let template_context = TemplateContext {
-            profile,
-            chains: collection.chains.clone(),
-            database: database.clone(),
+            selected_profile: self.profile,
+            collection,
+            http_engine: http_engine.clone(),
+            database,
             overrides,
             prompter: Box::new(CliPrompter),
         };
         let request = RequestBuilder::new(recipe, RecipeOptions::default())
             .build(&template_context)
             .await?;
-        Ok((database, request))
+        Ok((http_engine, request))
     }
 }
 

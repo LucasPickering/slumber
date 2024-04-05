@@ -59,7 +59,8 @@ profiles:
 
 chains:
   fish_id:
-    source: !request create_fish
+    source: !request
+      recipe: create_fish
     # This uses JSONPath to get a single value from the response body
     # https://jsonpath.com/
     selector: $.id
@@ -102,7 +103,8 @@ profiles:
 
 chains:
   fish_id:
-    source: !request create_fish
+    source: !request
+      recipe: create_fish
     selector: $.id
 
 requests:

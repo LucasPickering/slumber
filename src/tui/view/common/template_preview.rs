@@ -216,7 +216,16 @@ mod tests {
         .unwrap();
         let profile_data = indexmap! { "user_id".into() => "🧡\n💛".into() };
         let profile = create!(Profile, data: profile_data);
-        let context = create!(TemplateContext, profile: Some(profile));
+        let profile_id = profile.id.clone();
+        let collection = create!(
+            Collection,
+            profiles: indexmap!{profile_id.clone() => profile},
+        );
+        let context = create!(
+            TemplateContext,
+            collection: collection,
+            selected_profile: Some(profile_id),
+        );
         let chunks = template.render_chunks(&context).await;
         let theme = &TuiContext::get().theme;
 

@@ -281,7 +281,7 @@ impl Tui {
             } => {
                 self.render_template_preview(
                     template,
-                    profile_id.as_ref(),
+                    profile_id,
                     destination,
                 )?;
             }
@@ -333,7 +333,7 @@ impl Tui {
         let messages_tx = self.messages_tx.clone();
         // Spawn a task to do the render+copy
         let template_context =
-            self.template_context(request_config.profile_id.as_ref(), true)?;
+            self.template_context(request_config.profile_id, true)?;
         self.spawn(async move {
             let url = builder.build_url(&template_context).await?;
             messages_tx.send(Message::CopyText(url.to_string()));
@@ -351,7 +351,7 @@ impl Tui {
         let messages_tx = self.messages_tx.clone();
         // Spawn a task to do the render+copy
         let template_context =
-            self.template_context(request_config.profile_id.as_ref(), true)?;
+            self.template_context(request_config.profile_id, true)?;
         self.spawn(async move {
             let body = builder
                 .build_body(&template_context)
@@ -374,7 +374,7 @@ impl Tui {
         let messages_tx = self.messages_tx.clone();
         // Spawn a task to do the render+copy
         let template_context =
-            self.template_context(request_config.profile_id.as_ref(), true)?;
+            self.template_context(request_config.profile_id, true)?;
         self.spawn(async move {
             let request = builder.build(&template_context).await?;
             let command = request.to_curl()?;
@@ -397,7 +397,7 @@ impl Tui {
         let messages_tx = self.messages_tx.clone();
 
         let template_context =
-            self.template_context(request_config.profile_id.as_ref(), true)?;
+            self.template_context(request_config.profile_id.clone(), true)?;
         let RequestConfig {
             profile_id,
             recipe_id,
@@ -491,7 +491,7 @@ impl Tui {
     fn render_template_preview(
         &self,
         template: Template,
-        profile_id: Option<&ProfileId>,
+        profile_id: Option<ProfileId>,
         destination: Arc<OnceLock<Vec<TemplateChunk>>>,
     ) -> anyhow::Result<()> {
         let context = self.template_context(profile_id, false)?;
@@ -526,7 +526,7 @@ impl Tui {
     /// it should be small data.
     fn template_context(
         &self,
-        profile_id: Option<&ProfileId>,
+        profile_id: Option<ProfileId>,
         real_prompt: bool,
     ) -> anyhow::Result<TemplateContext> {
         let prompter: Box<dyn Prompter> = if real_prompt {
@@ -536,24 +536,10 @@ impl Tui {
         };
         let collection = &self.collection_file.collection;
 
-        // Find profile by ID
-        let profile = profile_id
-            .map(|profile_id| {
-                Ok::<_, anyhow::Error>(
-                    collection
-                        .profiles
-                        .get(profile_id)
-                        .ok_or_else(|| {
-                            anyhow!("No profile with ID `{profile_id}`")
-                        })?
-                        .clone(),
-                )
-            })
-            .transpose()?;
-
         Ok(TemplateContext {
-            profile,
-            chains: collection.chains.clone(),
+            selected_profile: profile_id,
+            collection: collection.clone(),
+            http_engine: Some(self.http_engine.clone()),
             database: self.database.clone(),
             overrides: Default::default(),
             prompter,

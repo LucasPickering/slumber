@@ -347,10 +347,7 @@ impl RequestBuilder {
 
         Ok(Request {
             id: self.id,
-            profile_id: template_context
-                .profile
-                .as_ref()
-                .map(|profile| profile.id.clone()),
+            profile_id: template_context.selected_profile.clone(),
             recipe_id: self.recipe.id.clone(),
             method,
             url,
@@ -560,7 +557,14 @@ mod tests {
         };
         let profile = create!(Profile, data: profile_data);
         let profile_id = profile.id.clone();
-        let context = create!(TemplateContext, profile: Some(profile));
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                profiles: indexmap!{profile_id.clone() => profile},
+            ),
+            selected_profile: Some(profile_id.clone()),
+        );
         let recipe = create!(
             Recipe,
             method: "POST".into(),
@@ -629,7 +633,14 @@ mod tests {
         };
         let profile = create!(Profile, data: profile_data);
         let profile_id = profile.id.clone();
-        let context = create!(TemplateContext, profile: Some(profile.clone()));
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                profiles: indexmap!{profile_id.clone() => profile},
+            ),
+            selected_profile: Some(profile_id.clone()),
+        );
         let recipe = create!(Recipe, authentication: Some(authentication));
         let recipe_id = recipe.id.clone();
 

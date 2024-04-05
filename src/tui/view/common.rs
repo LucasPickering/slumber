@@ -141,7 +141,7 @@ impl Generate for DateTime<Utc> {
         Self: 'this,
     {
         self.with_timezone(&Local)
-            .format("%b %e %H:%M:%S")
+            .format("%b %-d %H:%M:%S")
             .to_string()
             .into()
     }

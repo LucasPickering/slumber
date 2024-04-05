@@ -60,12 +60,15 @@ profiles:
 
 chains:
   username:
-    source: !file ./username.txt
+    source: !file
+      path: ./username.txt
   password:
-    source: !prompt Password
+    source: !prompt
+      message: Password
     sensitive: true
   auth_token:
-    source: !request login
+    source: !request
+      recipe: login
     selector: $.token
 
 # Use YAML anchors for de-duplication

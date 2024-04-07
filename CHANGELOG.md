@@ -2,6 +2,10 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- Don't print full stack trace for failed CLI commands
+
 ## [0.16.0] - 2024-04-01
 
 ### Added

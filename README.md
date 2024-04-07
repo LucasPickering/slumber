@@ -10,7 +10,7 @@
 - [Docs](https://slumber.lucaspickering.me/book/)
 - [Changelog](https://slumber.lucaspickering.me/changelog/)
 
-![Slumber example](./static/banner.png)
+![Slumber example](./static/demo.gif)
 
 Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and share configurable HTTP requests. Slumber is built on some basic principles:
 

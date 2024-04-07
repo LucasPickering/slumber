@@ -41,6 +41,7 @@ chains:
 
 - Chained requests can now be auto-executed according to various criteria ([#140](https://github.com/LucasPickering/slumber/issues/140))
   - See [the docs](https://slumber.lucaspickering.me/book/user_guide/chaining_requests.html) for more
+- Add Authentication tab to recipe pane ([#144](https://github.com/LucasPickering/slumber/issues/144))
 
 ### Changed
 

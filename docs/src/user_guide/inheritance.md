@@ -19,6 +19,8 @@ requests:
   list_fish:
     method: GET
     url: "{{host}}/fishes"
+    query:
+      big: "true"
     headers:
       Accept: application/json
     authentication: !bearer "{{chains.token}}"
@@ -58,6 +60,8 @@ requests:
     <<: *request_base
     method: GET
     url: "{{host}}/fishes"
+    query:
+      big: "true"
 
   get_fish:
     <<: *request_base
@@ -92,6 +96,8 @@ requests:
     <<: *request_base
     method: GET
     url: "{{host}}/fishes"
+    query:
+      big: "true"
 
   get_fish:
     <<: *request_base

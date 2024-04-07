@@ -45,6 +45,8 @@ requests:
   list_fish:
     method: GET
     url: "{{host}}/fishes"
+    query:
+      big: "true"
 ```
 
 This request collection uses [templates](./user_guide//templates.md) and [profiles](./api/request_collection/profile.md) allow you to dynamically change the target host.

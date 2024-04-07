@@ -26,6 +26,8 @@ requests:
   list_fish:
     method: GET
     url: "{{host}}/fishes"
+    query:
+      big: "true"
 ```
 
 You can use the `request` subcommand:

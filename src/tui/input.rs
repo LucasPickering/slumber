@@ -120,7 +120,6 @@ impl Default for InputEngine {
                 Action::OpenActions => KeyCode::Char('x').into(),
                 Action::OpenHelp => KeyCode::Char('?').into(),
                 Action::Fullscreen => KeyCode::Char('f').into(),
-                Action::SendRequest => KeyCode::F(2).into(),
                 Action::ReloadCollection => KeyCode::F(5).into(),
                 Action::Search => KeyCode::Char('/').into(),
                 Action::PreviousPane => KeyCode::BackTab.into(),
@@ -195,13 +194,11 @@ pub enum Action {
     Home,
     End,
 
-    /// Do a thing. E.g. select an item in a list
+    /// Do a thing, e.g. submit a modal. Alternatively, send a request
+    #[display("Send Request/Submit")]
     Submit,
     /// Close the current modal/dialog/etc.
     Cancel,
-    /// Send the active request from *any* context
-    #[display("Send Request")]
-    SendRequest,
     /// Start a search/filter operation
     #[display("Search/Filter")]
     Search,

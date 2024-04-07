@@ -35,19 +35,10 @@ impl RecipeListPane {
             context.queue_event(Event::HttpLoadRequest);
         }
 
-        // Trigger a request on submit
-        fn on_submit(context: &mut UpdateContext, _: &mut Recipe) {
-            // Parent has to be responsible for actually sending the request
-            // because it also needs access to the profile list state
-            context.queue_event(Event::HttpSendRequest);
-        }
-
         Self {
             recipes: Persistent::new(
                 PersistentKey::RecipeId,
-                SelectState::new(recipes)
-                    .on_select(on_select)
-                    .on_submit(on_submit),
+                SelectState::new(recipes).on_select(on_select),
             )
             .into(),
         }

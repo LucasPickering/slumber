@@ -6,6 +6,9 @@
 
 - All variants of the `Chain.source` field are now maps
   - This is to support the next request auto-execution feature, as well as future proofing for additional chain configuration
+- Remove `send_request` keybinding
+  - The `submit` keybinding is now used to send requests from all panes (except the profile pane)
+  - This is only a breaking change if you have `send_request` remapped in your config file
 
 Follow this mapping to update:
 

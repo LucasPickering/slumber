@@ -12,9 +12,7 @@ mod test_util;
 mod tui;
 mod util;
 
-use crate::{
-    cli::CliCommand, collection::CollectionFile, tui::Tui, util::Directory,
-};
+use crate::{cli::CliCommand, tui::Tui, util::Directory};
 use clap::Parser;
 use std::{fs::File, path::PathBuf, process::ExitCode};
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
@@ -54,14 +52,21 @@ async fn main() -> anyhow::Result<ExitCode> {
     match args.subcommand {
         // Run the TUI
         None => {
-            let collection_path =
-                CollectionFile::try_path(args.global.collection)?;
-            Tui::start(collection_path).await?;
+            // This should return the error so we get a full stack trac
+            Tui::start(args.global.collection).await?;
             Ok(ExitCode::SUCCESS)
         }
 
         // Execute one request without a TUI
-        Some(subcommand) => subcommand.execute(args.global).await,
+        Some(subcommand) => Ok(subcommand
+            .execute(args.global)
+            .await
+            // Do *not* return the error, because that prints a stack trace
+            // which is way too verbose. Just print the error instead
+            .unwrap_or_else(|error| {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            })),
     }
 }
 

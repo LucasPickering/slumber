@@ -73,8 +73,9 @@ impl Tui {
 
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
-    pub async fn start(collection_path: PathBuf) -> anyhow::Result<()> {
+    pub async fn start(collection_path: Option<PathBuf>) -> anyhow::Result<()> {
         initialize_panic_handler();
+        let collection_path = CollectionFile::try_path(collection_path)?;
 
         // ===== Initialize global state =====
         // This stuff only needs to be set up *once per session*

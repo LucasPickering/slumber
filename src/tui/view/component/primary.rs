@@ -333,7 +333,7 @@ impl EventHandler for PrimaryView {
                 Action::NextPane if self.fullscreen_mode.is_none() => {
                     self.selected_pane.next(context);
                 }
-                Action::SendRequest => {
+                Action::Submit => {
                     // Send a request from anywhere
                     context.queue_event(Event::HttpSendRequest);
                 }

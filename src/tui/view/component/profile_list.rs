@@ -6,7 +6,7 @@ use crate::{
         view::{
             common::{list::List, Pane},
             draw::{Draw, Generate},
-            event::{Event, EventHandler, UpdateContext},
+            event::{Event, EventHandler, Update, UpdateContext},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
                 select::{Dynamic, SelectState},
@@ -53,6 +53,19 @@ impl ProfileListPane {
 }
 
 impl EventHandler for ProfileListPane {
+    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
+        match event {
+            // Sending requests from the profile pane is unintuitive, so eat
+            // submission events here
+            Event::Input {
+                action: Some(Action::Submit),
+                ..
+            } => Update::Consumed,
+
+            _ => Update::Propagate(event),
+        }
+    }
+
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         vec![self.profiles.as_child()]
     }

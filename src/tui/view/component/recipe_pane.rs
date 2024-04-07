@@ -1,5 +1,5 @@
 use crate::{
-    collection::{ProfileId, Recipe, RecipeId},
+    collection::{Authentication, ProfileId, Recipe, RecipeId},
     http::RecipeOptions,
     template::Template,
     tui::{
@@ -75,6 +75,7 @@ struct RecipeState {
     query: Component<Persistent<SelectState<Dynamic, RowState, TableState>>>,
     headers: Component<Persistent<SelectState<Dynamic, RowState, TableState>>>,
     body: Option<Component<TextWindow<TemplatePreview>>>,
+    authentication: Option<Component<AuthenticationDisplay>>,
 }
 
 #[derive(
@@ -92,6 +93,7 @@ enum Tab {
     Body,
     Query,
     Headers,
+    Authentication,
 }
 
 /// One row in the query/header table
@@ -198,6 +200,7 @@ impl EventHandler for RecipePane {
                 }
                 Tab::Query => children.push(state.query.as_child()),
                 Tab::Headers => children.push(state.headers.as_child()),
+                Tab::Authentication => {}
             }
         }
 
@@ -283,6 +286,11 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                     content_area,
                     &mut recipe_state.headers.state_mut(),
                 ),
+                Tab::Authentication => {
+                    if let Some(authentication) = &recipe_state.authentication {
+                        authentication.draw(frame, (), content_area)
+                    }
+                }
             }
         }
     }
@@ -345,6 +353,81 @@ impl RecipeState {
                 ))
                 .into()
             }),
+            // Map authentication type
+            authentication: recipe.authentication.as_ref().map(
+                |authentication| {
+                    match authentication {
+                        Authentication::Basic { username, password } => {
+                            AuthenticationDisplay::Basic {
+                                username: TemplatePreview::new(
+                                    username.clone(),
+                                    selected_profile_id.cloned(),
+                                ),
+                                password: password.clone().map(|password| {
+                                    TemplatePreview::new(
+                                        password,
+                                        selected_profile_id.cloned(),
+                                    )
+                                }),
+                            }
+                        }
+                        Authentication::Bearer(token) => {
+                            AuthenticationDisplay::Bearer(TemplatePreview::new(
+                                token.clone(),
+                                selected_profile_id.cloned(),
+                            ))
+                        }
+                    }
+                    .into() // Convert to Component
+                },
+            ),
+        }
+    }
+}
+
+/// Display authentication settings. This is basically the underlying
+/// [Authentication] type, but the templates have been rendered
+#[derive(Debug)]
+enum AuthenticationDisplay {
+    Basic {
+        username: TemplatePreview,
+        password: Option<TemplatePreview>,
+    },
+    Bearer(TemplatePreview),
+}
+
+impl Draw for AuthenticationDisplay {
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+        match self {
+            AuthenticationDisplay::Basic { username, password } => {
+                let table = Table {
+                    rows: vec![
+                        ["Type".into(), "Bearer".into()],
+                        ["Username".into(), username.generate()],
+                        [
+                            "Password".into(),
+                            password
+                                .as_ref()
+                                .map(Generate::generate)
+                                .unwrap_or_default(),
+                        ],
+                    ],
+                    column_widths: &[Constraint::Length(8), Constraint::Min(0)],
+                    ..Default::default()
+                };
+                frame.render_widget(table.generate(), area)
+            }
+            AuthenticationDisplay::Bearer(token) => {
+                let table = Table {
+                    rows: vec![
+                        ["Type".into(), "Bearer".into()],
+                        ["Token".into(), token.generate()],
+                    ],
+                    column_widths: &[Constraint::Length(5), Constraint::Min(0)],
+                    ..Default::default()
+                };
+                frame.render_widget(table.generate(), area)
+            }
         }
     }
 }

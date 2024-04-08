@@ -6,14 +6,18 @@ use crate::{
     template::{
         error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
         Prompt, Template, TemplateChunk, TemplateContext, TemplateError,
-        TemplateKey,
+        TemplateKey, RECURSION_LIMIT,
     },
     util::ResultExt,
 };
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::future::join_all;
-use std::{env, path::Path, sync::Arc};
+use std::{
+    env,
+    path::Path,
+    sync::{atomic::Ordering, Arc},
+};
 use tokio::{fs, process::Command, sync::oneshot};
 use tracing::{info, instrument, trace};
 
@@ -122,6 +126,10 @@ impl Template {
         &self,
         context: &TemplateContext,
     ) -> Result<String, TemplateError> {
+        if context.recursion_count.load(Ordering::Relaxed) >= RECURSION_LIMIT {
+            return Err(TemplateError::RecursionLimit);
+        }
+
         // Render each individual template chunk in the string
         let chunks = self.render_chunks(context).await;
 
@@ -214,8 +222,8 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
         })?;
 
         // recursion!
-        // TODO limit recursion
         trace!(%field, %template, "Rendering recursive template");
+        context.recursion_count.fetch_add(1, Ordering::Relaxed);
         let rendered =
             template.render_stitched(context).await.map_err(|error| {
                 TemplateError::Nested {

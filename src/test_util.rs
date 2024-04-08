@@ -102,6 +102,7 @@ factori!(TemplateContext, {
         http_engine = None,
         database = CollectionDatabase::testing(),
         overrides = Default::default(),
+        recursion_count = Default::default(),
     }
 });
 

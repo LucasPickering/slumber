@@ -197,6 +197,7 @@ impl BuildRequestCommand {
             database,
             overrides,
             prompter: Box::new(CliPrompter),
+            recursion_count: Default::default(),
         };
         let request = RequestBuilder::new(recipe, RecipeOptions::default())
             .build(&template_context)

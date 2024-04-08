@@ -543,6 +543,7 @@ impl Tui {
             database: self.database.clone(),
             overrides: Default::default(),
             prompter,
+            recursion_count: Default::default(),
         })
     }
 }

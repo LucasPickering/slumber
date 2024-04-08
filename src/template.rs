@@ -19,7 +19,10 @@ use crate::{
 use derive_more::{Deref, Display};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::atomic::AtomicU8};
+
+/// Maximum number of layers of nested templates
+const RECURSION_LIMIT: u8 = 10;
 
 /// A little container struct for all the data that the user can access via
 /// templating. Unfortunately this has to own all data so templating can be
@@ -44,6 +47,15 @@ pub struct TemplateContext {
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
+    /// A count of how many templates have *already* been rendered with this
+    /// context. This is used to prevent infinite recursion in templates. For
+    /// all external calls, you can start this at 0.
+    ///
+    /// This tracks the *total* number of recursive calls in a render tree, not
+    /// the number of *layers*. That means one template that renders 5 child
+    /// templates is the same as a template that renders a single child 5
+    /// times.
+    pub recursion_count: AtomicU8,
 }
 
 /// A immutable string that can contain templated content. The string is parsed
@@ -259,11 +271,18 @@ mod tests {
     }
 
     /// Potential error cases for a profile field
+    #[rstest]
+    #[case("{{onion_id}}", "Unknown field `onion_id`")]
+    #[case(
+        "{{nested}}",
+        "Error in nested template `{{onion_id}}`: Unknown field `onion_id`"
+    )]
+    #[case("{{recursive}}", "Template recursion limit reached")]
     #[tokio::test]
-    async fn test_field_error() {
-        let nested_template = Template::parse("{{onion_id}}".into()).unwrap();
+    async fn test_field_error(#[case] template: &str, #[case] expected: &str) {
         let profile_data = indexmap! {
-            "recursive".into() => nested_template,
+            "nested".into() => Template::parse("{{onion_id}}".into()).unwrap(),
+            "recursive".into() => Template::parse("{{recursive}}".into()).unwrap(),
         };
         let profile = create!(Profile, data: profile_data);
         let profile_id = profile.id.clone();
@@ -275,15 +294,7 @@ mod tests {
             ),
             selected_profile: Some(profile_id),
         );
-
-        assert_err!(
-            render!("{{onion_id}}", context),
-            "Unknown field `onion_id`"
-        );
-        assert_err!(
-            render!("{{recursive}}", context),
-            "Error in nested template `{{onion_id}}`: Unknown field `onion_id`"
-        );
+        assert_err!(render!(template, context), expected);
     }
 
     /// Test success cases with chained responses

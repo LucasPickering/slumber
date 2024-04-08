@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - ReleaseDate
+## [0.17.0] - 2024-04-08
 
 ### Breaking
 

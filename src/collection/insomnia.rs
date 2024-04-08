@@ -150,7 +150,7 @@ impl From<Environment> for Profile {
             data: environment
                 .data
                 .into_iter()
-                .map(|(k, v)| (k, v.into()))
+                .map(|(k, v)| (k, Template::dangerous(v)))
                 .collect(),
         }
     }

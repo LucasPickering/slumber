@@ -4,6 +4,8 @@ A template is represented in YAML as a normal string, and thus supports [all of 
 
 Templates can generally be used in any _value_ in a request recipe (_not_ in keys). They _cannot_ be used in profiles or chains, to avoid the potential for recursive templating. If this feature would be useful to you, [le tme know](https://github.com/LucasPickering/slumber/issues/15).
 
+For more detail on usage and examples, see the [user guide page on templates](../../user_guide/templates.md).
+
 ## Template Sources
 
 There are several ways of sourcing templating values:

@@ -161,9 +161,7 @@ impl<T> TemplateKey<T> {
 mod tests {
     use super::*;
     use crate::{
-        collection::{
-            Chain, ChainRequestTrigger, ChainSource, ProfileValue, RecipeId,
-        },
+        collection::{Chain, ChainRequestTrigger, ChainSource, RecipeId},
         config::Config,
         http::{ContentType, RequestRecord},
         test_util::*,
@@ -235,7 +233,7 @@ mod tests {
         let profile_data = indexmap! {
             "user_id".into() => "1".into(),
             "group_id".into() => "3".into(),
-            "recursive".into() => ProfileValue::Template(nested_template),
+            "recursive".into() => nested_template,
         };
         let profile = create!(Profile, data: profile_data);
         let profile_id = profile.id.clone();
@@ -265,7 +263,7 @@ mod tests {
     async fn test_field_error() {
         let nested_template = Template::parse("{{onion_id}}".into()).unwrap();
         let profile_data = indexmap! {
-            "recursive".into() => ProfileValue::Template(nested_template),
+            "recursive".into() => nested_template,
         };
         let profile = create!(Profile, data: profile_data);
         let profile_id = profile.id.clone();

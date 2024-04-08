@@ -1,7 +1,7 @@
 use crate::{
     collection::{ChainId, ProfileId, RecipeId},
     http::{QueryError, RequestBuildError, RequestError},
-    template::Template,
+    template::{Template, RECURSION_LIMIT},
     util::doc_link,
 };
 use nom::error::VerboseError;
@@ -50,6 +50,13 @@ pub enum TemplateError {
         #[source]
         error: Box<Self>,
     },
+
+    /// Too many templates!
+    #[error(
+        "Template recursion limit reached; cannot render more than \
+        {RECURSION_LIMIT} nested templates"
+    )]
+    RecursionLimit,
 
     #[error("Error resolving chain `{chain_id}`")]
     Chain {

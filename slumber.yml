@@ -35,8 +35,8 @@ base: &base
     Accept: application/json
     Content-Type: application/json
 
-requests:
-  login:
+recipes:
+  login: !recipe
     method: POST
     url: "{{host}}/anything/login"
     query:
@@ -51,38 +51,41 @@ requests:
         "password": "{{chains.password}}"
       }
 
-  get_users:
-    <<: *base
-    name: Get Users
-    method: GET
-    url: "{{host}}/get"
-    query:
-      foo: bar
+  users: !folder
+    name: Users
+    children:
+      get_users: !recipe
+        <<: *base
+        name: Get Users
+        method: GET
+        url: "{{host}}/get"
+        query:
+          foo: bar
 
-  get_user:
-    <<: *base
-    name: Get User
-    method: GET
-    url: "{{host}}/anything/{{user_guid}}"
+      get_user: !recipe
+        <<: *base
+        name: Get User
+        method: GET
+        url: "{{host}}/anything/{{user_guid}}"
 
-  modify_user:
-    <<: *base
-    name: Modify User
-    method: PUT
-    url: "{{host}}/anything/{{user_guid}}"
-    body: |
-      {
-        "username": "new username"
-      }
+      modify_user: !recipe
+        <<: *base
+        name: Modify User
+        method: PUT
+        url: "{{host}}/anything/{{user_guid}}"
+        body: |
+          {
+            "username": "new username"
+          }
 
-  get_image:
+  get_image: !recipe
     headers:
       Accept: image/png
     name: Get Image
     method: GET
     url: "{{host}}/image"
 
-  delay:
+  delay: !recipe
     <<: *base
     name: Delay
     method: GET

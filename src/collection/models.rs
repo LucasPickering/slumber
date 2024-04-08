@@ -1,7 +1,10 @@
 //! The plain data types that make up a request collection
 
 use crate::{
-    collection::cereal,
+    collection::{
+        cereal,
+        recipe_tree::{RecipeNode, RecipeTree},
+    },
     http::{ContentType, Query},
     template::Template,
 };
@@ -20,14 +23,8 @@ pub struct Collection {
     pub profiles: IndexMap<ProfileId, Profile>,
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
     pub chains: IndexMap<ChainId, Chain>,
-    /// Internally we call these recipes, but to a user `requests` is more
-    /// intuitive
-    #[serde(
-        default,
-        rename = "requests",
-        deserialize_with = "cereal::deserialize_id_map"
-    )]
-    pub recipes: IndexMap<RecipeId, Recipe>,
+    #[serde(default)]
+    pub recipes: RecipeTree,
 }
 
 /// Mutually exclusive hot-swappable config group
@@ -55,11 +52,16 @@ pub struct Profile {
 )]
 pub struct ProfileId(String);
 
-/// Needed for persistence loading
-impl PartialEq<Profile> for ProfileId {
-    fn eq(&self, other: &Profile) -> bool {
-        self == &other.id
-    }
+/// A gathering of like-minded recipes and/or folders
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct Folder {
+    #[serde(skip)] // This will be auto-populated from the map key
+    pub id: RecipeId,
+    pub name: Option<String>,
+    /// RECURSION
+    #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
+    pub children: IndexMap<RecipeId, RecipeNode>,
 }
 
 /// A definition of how to make a request. This is *not* called `Request` in
@@ -98,13 +100,6 @@ pub struct Recipe {
     Deserialize,
 )]
 pub struct RecipeId(String);
-
-/// Needed for persistence loading
-impl PartialEq<Recipe> for RecipeId {
-    fn eq(&self, other: &Recipe) -> bool {
-        self == &other.id
-    }
-}
 
 /// Shortcut for defining authentication method. If this is defined in addition
 /// to the `Authorization` header, that header will end up being included in the
@@ -224,6 +219,13 @@ pub enum ChainRequestTrigger {
 
 impl Profile {
     /// Get a presentable name for this profile
+    pub fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.id)
+    }
+}
+
+impl Folder {
+    /// Get a presentable name for this folder
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
     }

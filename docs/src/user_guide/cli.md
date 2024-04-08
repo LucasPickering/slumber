@@ -22,8 +22,8 @@ profiles:
     data:
       host: https://myfishes.fish
 
-requests:
-  list_fish:
+recipes:
+  list_fish: !recipe
     method: GET
     url: "{{host}}/fishes"
     query:

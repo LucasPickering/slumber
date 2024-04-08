@@ -2,14 +2,17 @@
 //! format
 
 use crate::{
-    collection::{self, Collection, Profile, Recipe},
+    collection::{
+        self, Collection, Folder, Profile, Recipe, RecipeId, RecipeNode,
+        RecipeTree,
+    },
     template::Template,
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use reqwest::header;
 use serde::Deserialize;
-use std::{fs::File, path::Path};
+use std::{collections::HashMap, fs::File, path::Path};
 use tracing::info;
 
 impl Collection {
@@ -34,26 +37,25 @@ impl Collection {
             "Error opening Insomnia collection file {insomnia_file:?}"
         ))?;
         // The format can be YAML or JSON, so we can just treat it all as YAML
-        let insomnia: Insomnia =
+        let mut insomnia: Insomnia =
             serde_yaml::from_reader(file).context(format!(
                 "Error deserializing Insomnia collection file {insomnia_file:?}"
             ))?;
 
-        // Convert everything
+        // Match Insomnia's visual order. This isn't entirely accurate because
+        // Insomnia reorders folders/requests according to the tree structure,
+        // but it should get us the right order within each layer
+        insomnia.resources.sort_by_key(Resource::sort_key);
+
+        // This will remove all the folders/requests from the list
+        let recipes = build_recipe_tree(&mut insomnia.resources)?;
+
+        // Convert everything left behind
         let mut profiles = IndexMap::new();
-        let mut recipes = IndexMap::new();
         for resource in insomnia.resources {
-            match resource {
-                Resource::Request(request) => {
-                    let request: super::Recipe = request.into();
-                    recipes.insert(request.id.clone(), request);
-                }
-                Resource::Environment(environment) => {
-                    let profile: super::Profile = environment.into();
-                    profiles.insert(profile.id.clone(), profile);
-                }
-                // Everything else is TRASH
-                _ => {}
+            if let Resource::Environment(environment) = resource {
+                let profile: Profile = environment.into();
+                profiles.insert(profile.id.clone(), profile);
             }
         }
 
@@ -73,13 +75,16 @@ struct Insomnia {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "_type", rename_all = "snake_case")]
 enum Resource {
+    /// Maps to a folder
+    RequestGroup(RequestGroup),
     /// Maps to a recipe
     Request(Request),
     /// Maps to a profile
     Environment(Environment),
-    // We don't use these
-    RequestGroup,
-    Workspace,
+    Workspace {
+        #[serde(rename = "_id")]
+        id: String,
+    },
     CookieJar,
     ApiSpec,
 }
@@ -94,18 +99,32 @@ enum Opshit<T> {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Environment {
     #[serde(rename = "_id")]
     id: String,
     name: String,
     data: IndexMap<String, String>,
+    meta_sort_key: i64,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
+struct RequestGroup {
+    #[serde(rename = "_id")]
+    id: String,
+    parent_id: String,
+    name: String,
+    meta_sort_key: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Request {
     #[serde(rename = "_id")]
     id: String,
+    parent_id: String,
+    meta_sort_key: i64,
     name: String,
     url: Template,
     method: String,
@@ -142,6 +161,21 @@ struct Body {
     text: Template,
 }
 
+impl Resource {
+    /// Rather than order things how they should be, Insomnia attaches a sort
+    /// key to each item
+    fn sort_key(&self) -> i64 {
+        match self {
+            Resource::RequestGroup(folder) => folder.meta_sort_key,
+            Resource::Request(request) => request.meta_sort_key,
+            Resource::Environment(environment) => environment.meta_sort_key,
+            Resource::Workspace { .. } => 0,
+            Resource::CookieJar => 0,
+            Resource::ApiSpec => 0,
+        }
+    }
+}
+
 impl From<Environment> for Profile {
     fn from(environment: Environment) -> Self {
         Profile {
@@ -156,7 +190,18 @@ impl From<Environment> for Profile {
     }
 }
 
-impl From<Request> for Recipe {
+impl From<RequestGroup> for RecipeNode {
+    fn from(folder: RequestGroup) -> Self {
+        RecipeNode::Folder(Folder {
+            id: folder.id.into(),
+            name: Some(folder.name),
+            // This will be populated later
+            children: IndexMap::new(),
+        })
+    }
+}
+
+impl From<Request> for RecipeNode {
     fn from(request: Request) -> Self {
         let mut headers: IndexMap<String, Template> = IndexMap::new();
 
@@ -187,7 +232,7 @@ impl From<Request> for Recipe {
             ),
         };
 
-        Recipe {
+        RecipeNode::Recipe(Recipe {
             id: request.id.into(),
             name: Some(request.name),
             method: request.method,
@@ -203,8 +248,82 @@ impl From<Request> for Recipe {
                 .collect(),
             headers,
             authentication,
-        }
+        })
     }
+}
+
+/// Expand the flat list of Insomnia resources into a recipe tree. This will
+/// remove all folders and requests (AKA recipes) from the given vec, but leave
+/// all other resources in place.
+fn build_recipe_tree(
+    resources: &mut Vec<Resource>,
+) -> anyhow::Result<RecipeTree> {
+    // First, we want to match each parent with its children
+    let mut workspace_id: Option<String> = None;
+    let mut children_map: HashMap<String, Vec<RecipeNode>> = HashMap::new();
+
+    // We're going to drain the list of resources, then put the ones we don't
+    // care about in a new list and leave that behind for our caller to handle
+    let mut remaining: Vec<Resource> = Vec::new();
+    for resource in resources.drain(..) {
+        // We need to save the workspace ID because it's the root node
+        if let Resource::Workspace { id } = &resource {
+            workspace_id = Some(id.clone());
+        }
+
+        let (parent_id, node) = match resource {
+            // Do conversion to Slumber types here, so we can enforce the
+            // invariant that everything left is a folder or recipe
+            Resource::RequestGroup(folder) => {
+                (folder.parent_id.clone(), folder.into())
+            }
+            Resource::Request(request) => {
+                (request.parent_id.clone(), request.into())
+            }
+            // Everything else is TRASH
+            _ => {
+                remaining.push(resource);
+                continue;
+            }
+        };
+        children_map.entry(parent_id).or_default().push(node);
+    }
+    *resources = remaining;
+
+    // The workspace is the root node, so if we didn't find it we're hosed
+    let workspace_id =
+        workspace_id.ok_or_else(|| anyhow!("Workspace resource not found"))?;
+
+    /// Recursively build the recipe tree by removing children from the given
+    /// map, starting with a particular parent node
+    fn build_tree(
+        children_map: &mut HashMap<String, Vec<RecipeNode>>,
+        parent_id: &str,
+    ) -> anyhow::Result<IndexMap<RecipeId, RecipeNode>> {
+        // Pull in all the kids
+        let children = children_map.remove(parent_id).ok_or_else(|| {
+            anyhow!("No children found for parent `{parent_id}`")
+        })?;
+        let mut tree: IndexMap<RecipeId, RecipeNode> = children
+            .into_iter()
+            .map(|child| (child.id().clone(), child))
+            .collect();
+
+        // Recursively build out our family
+        for child in tree.values_mut() {
+            if let RecipeNode::Folder(folder) = child {
+                folder.children = build_tree(children_map, folder.id.as_str())?;
+            }
+        }
+
+        Ok(tree)
+    }
+
+    let tree = build_tree(&mut children_map, &workspace_id)?;
+
+    RecipeTree::new(tree).map_err(|duplicate_id| {
+        anyhow!("Duplicate folder/recipe ID `{duplicate_id}`")
+    })
 }
 
 #[cfg(test)]

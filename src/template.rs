@@ -347,7 +347,7 @@ mod tests {
             TemplateContext,
             collection: create!(
                 Collection,
-                recipes: indexmap! {recipe.id.clone() => recipe},
+                recipes: indexmap! {recipe.id.clone() => recipe}.into(),
                 chains: indexmap! {chain.id.clone() => chain},
             ),
             database: database,
@@ -488,7 +488,9 @@ mod tests {
         let chains = indexmap! {chain_id.into() => chain};
         let context = create!(
             TemplateContext,
-            collection: create!(Collection, recipes: recipes, chains: chains),
+            collection: create!(
+                Collection, recipes: recipes.into(), chains: chains
+            ),
             database: database,
         );
 
@@ -541,7 +543,7 @@ mod tests {
             TemplateContext,
             collection: create!(
                 Collection,
-                recipes: indexmap! {recipe.id.clone() => recipe},
+                recipes: indexmap! {recipe.id.clone() => recipe}.into(),
                 chains: indexmap! {chain.id.clone() => chain},
             ),
             http_engine: Some(http_engine),

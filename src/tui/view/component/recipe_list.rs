@@ -1,7 +1,7 @@
 //! Recipe list
 
 use crate::{
-    collection::{Recipe, RecipeId},
+    collection::{Recipe, RecipeId, RecipeNode, RecipeTree},
     tui::{
         context::TuiContext,
         input::Action,
@@ -17,23 +17,41 @@ use crate::{
         },
     },
 };
-use ratatui::{prelude::Rect, Frame};
+use itertools::Itertools;
+use ratatui::{prelude::Rect, text::Span, Frame};
 
 #[derive(Debug)]
 pub struct RecipeListPane {
-    recipes: Component<Persistent<SelectState<Dynamic, Recipe>>>,
+    recipes: Component<Persistent<SelectState<Dynamic, RecipeListItem>>>,
 }
 
 pub struct RecipeListPaneProps {
     pub is_selected: bool,
 }
 
+/// Each folder/recipe in the list, plus metadata
+#[derive(Debug)]
+struct RecipeListItem {
+    node: RecipeNode,
+    depth: usize,
+}
+
 impl RecipeListPane {
-    pub fn new(recipes: Vec<Recipe>) -> Self {
+    pub fn new(recipes: &RecipeTree) -> Self {
         // When highlighting a new recipe, load it from the repo
-        fn on_select(context: &mut UpdateContext, _: &mut Recipe) {
+        fn on_select(context: &mut UpdateContext, _: &mut RecipeListItem) {
+            // If a recipe isn't selected, this will do nothing
             context.queue_event(Event::HttpLoadRequest);
         }
+
+        // Flatten the tree into a list
+        let recipes = recipes
+            .iter()
+            .map(|(lookup_key, node)| RecipeListItem {
+                node: node.clone(),
+                depth: lookup_key.len(),
+            })
+            .collect_vec();
 
         Self {
             recipes: Persistent::new(
@@ -44,8 +62,12 @@ impl RecipeListPane {
         }
     }
 
-    pub fn recipes(&self) -> &SelectState<Dynamic, Recipe> {
-        &self.recipes
+    /// Which recipe in the recipe list is selected? `None` iff the list is
+    /// empty OR a folder is selected.
+    pub fn selected_recipe(&self) -> Option<&Recipe> {
+        self.recipes
+            .selected()
+            .and_then(|list_item| list_item.node.recipe())
     }
 }
 
@@ -77,10 +99,29 @@ impl Draw<RecipeListPaneProps> for RecipeListPane {
 }
 
 /// Persist recipe by ID
-impl Persistable for Recipe {
+impl Persistable for RecipeListItem {
     type Persisted = RecipeId;
 
     fn get_persistent(&self) -> &Self::Persisted {
-        &self.id
+        self.node.id()
+    }
+}
+
+/// Needed for persistence loading
+impl PartialEq<RecipeListItem> for RecipeId {
+    fn eq(&self, other: &RecipeListItem) -> bool {
+        self == other.node.id()
+    }
+}
+
+impl Generate for &RecipeListItem {
+    type Output<'this> = Span<'this> where Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        // Apply indentation
+        format!("{:width$}{}", ' ', self.node.name(), width = self.depth).into()
     }
 }

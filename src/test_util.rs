@@ -1,6 +1,7 @@
 use crate::{
     collection::{
-        Chain, ChainSource, Collection, Profile, ProfileId, Recipe, RecipeId,
+        Chain, ChainSource, Collection, Folder, Profile, ProfileId, Recipe,
+        RecipeId, RecipeNode, RecipeTree,
     },
     db::CollectionDatabase,
     http::{Body, Request, RequestId, RequestRecord, Response},
@@ -8,6 +9,7 @@ use crate::{
 };
 use chrono::Utc;
 use factori::{create, factori};
+use indexmap::IndexMap;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Method, StatusCode,
@@ -26,6 +28,14 @@ factori!(Profile, {
         id = "profile1".into(),
         name = None,
         data = Default::default(),
+    }
+});
+
+factori!(Folder, {
+    default {
+        id = "folder1".into(),
+        name = None,
+        children = Default::default(),
     }
 });
 
@@ -133,6 +143,16 @@ impl Prompter for TestPrompter {
 impl From<&str> for ProfileId {
     fn from(value: &str) -> Self {
         value.to_owned().into()
+    }
+}
+
+impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
+    fn from(value: IndexMap<RecipeId, Recipe>) -> Self {
+        let tree = value
+            .into_iter()
+            .map(|(id, recipe)| (id, RecipeNode::Recipe(recipe)))
+            .collect();
+        Self::new(tree).expect("Duplicate recipe ID")
     }
 }
 

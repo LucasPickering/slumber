@@ -14,8 +14,8 @@ base: &base
     Accept: application/json
     Content-Type: application/json
 
-requests:
-  login:
+recipes:
+  login: !recipe
     <<: *base
     method: POST
     url: "https://myfishes.fish/login"
@@ -25,7 +25,7 @@ requests:
         "password": "password"
       }
 
-  get_user:
+  get_user: !recipe
     <<: *base
     method: GET
     url: "https://myfishes.fish/current-user"

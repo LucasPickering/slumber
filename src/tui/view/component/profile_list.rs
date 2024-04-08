@@ -120,3 +120,10 @@ impl Persistable for Profile {
         &self.id
     }
 }
+
+/// Needed for persistence loading
+impl PartialEq<Profile> for ProfileId {
+    fn eq(&self, other: &Profile) -> bool {
+        self == &other.id
+    }
+}

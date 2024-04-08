@@ -479,7 +479,7 @@ impl Tui {
             .collection_file
             .collection
             .recipes
-            .get(&recipe_id)
+            .get_recipe(&recipe_id)
             .ok_or_else(|| anyhow!("No recipe with ID `{recipe_id}`"))?
             .clone();
         Ok(RequestBuilder::new(recipe, options))

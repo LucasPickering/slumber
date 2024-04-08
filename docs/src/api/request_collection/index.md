@@ -39,9 +39,9 @@ A request collection supports the following top-level fields:
 
 | Field      | Type                                                    | Description               | Default |
 | ---------- | ------------------------------------------------------- | ------------------------- | ------- |
-| `profiles` | [`mapping[string, Profile]`](./profile.md)              | Static template values    | []      |
-| `requests` | [`mapping[string, RequestRecipe]`](./request_recipe.md) | Requests Slumber can send | []      |
-| `chains`   | [`mapping[string, Chain]`](./chain.md)                  | Complex template values   | []      |
+| `profiles` | [`mapping[string, Profile]`](./profile.md)              | Static template values    | `{}`    |
+| `requests` | [`mapping[string, RequestRecipe]`](./request_recipe.md) | Requests Slumber can send | `{}`    |
+| `chains`   | [`mapping[string, Chain]`](./chain.md)                  | Complex template values   | `{}`    |
 
 ## Examples
 
@@ -77,8 +77,8 @@ base: &base
     Accept: application/json
     Content-Type: application/json
 
-requests:
-  login:
+recipes:
+  login: !recipe
     <<: *base
     method: POST
     url: "{{host}}/anything/login"
@@ -88,10 +88,22 @@ requests:
         "password": "{{chains.password}}"
       }
 
-  get_user:
-    <<: *base
-    method: GET
-    url: "{{host}}/anything/current-user"
-    query:
-      auth: "{{chains.auth_token}}"
+  # Folders can be used to keep your recipes organized
+  users: !folder
+    children:
+      get_user: !recipe
+        <<: *base
+        name: Get User
+        method: GET
+        url: "{{host}}/anything/current-user"
+        authentication: !bearer "{{chains.auth_token}}"
+
+      update_user: !recipe
+        <<: *base
+        name: Update User
+        method: PUT
+        url: "{{host}}/anything/current-user"
+        authentication: !bearer "{{chains.auth_token}}"
+        body: >
+          {"username": "Kenny"}
 ```

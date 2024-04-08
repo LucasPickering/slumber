@@ -18,7 +18,6 @@
 
 - [Request Collection](./api/request_collection/index.md)
   - [Profile](./api/request_collection/profile.md)
-  - [Profile Value](./api/request_collection/profile_value.md)
   - [Request Recipe](./api/request_collection/request_recipe.md)
   - [Authentication](./api/request_collection/authentication.md)
   - [Chain](./api/request_collection/chain.md)

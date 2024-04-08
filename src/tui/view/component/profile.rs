@@ -1,5 +1,5 @@
 use crate::{
-    collection::{Profile, ProfileId, ProfileValue},
+    collection::{Profile, ProfileId},
     tui::view::{
         common::{table::Table, template_preview::TemplatePreview, Pane},
         draw::{Draw, Generate},
@@ -12,17 +12,11 @@ use ratatui::{layout::Rect, Frame};
 /// Display the contents of a profile
 #[derive(Debug, Default)]
 pub struct ProfilePane {
-    fields: StateCell<ProfileId, Vec<(String, FieldValue)>>,
+    fields: StateCell<ProfileId, Vec<(String, TemplatePreview)>>,
 }
 
 pub struct ProfilePaneProps<'a> {
     pub profile: &'a Profile,
-}
-
-#[derive(Debug)]
-enum FieldValue {
-    Raw(String),
-    Template(TemplatePreview),
 }
 
 impl<'a> Draw<ProfilePaneProps<'a>> for ProfilePane {
@@ -35,19 +29,14 @@ impl<'a> Draw<ProfilePaneProps<'a>> for ProfilePane {
                     .profile
                     .data
                     .iter()
-                    .map(|(key, value)| {
-                        let value = match value {
-                            ProfileValue::Raw(value) => {
-                                FieldValue::Raw(value.clone())
-                            }
-                            ProfileValue::Template(template) => {
-                                FieldValue::Template(TemplatePreview::new(
-                                    template.clone(),
-                                    Some(props.profile.id.clone()),
-                                ))
-                            }
-                        };
-                        (key.clone(), value)
+                    .map(|(key, template)| {
+                        (
+                            key.clone(),
+                            TemplatePreview::new(
+                                template.clone(),
+                                Some(props.profile.id.clone()),
+                            ),
+                        )
                     })
                     .collect_vec()
             });
@@ -60,13 +49,7 @@ impl<'a> Draw<ProfilePaneProps<'a>> for ProfilePane {
             header: Some(["Field", "Value"]),
             rows: fields
                 .iter()
-                .map(|(key, value)| {
-                    let value = match value {
-                        FieldValue::Raw(value) => value.as_str().into(),
-                        FieldValue::Template(preview) => preview.generate(),
-                    };
-                    [key.as_str().into(), value]
-                })
+                .map(|(key, value)| [key.as_str().into(), value.generate()])
                 .collect_vec(),
             alternate_row_style: true,
             ..Default::default()

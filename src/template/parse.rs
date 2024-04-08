@@ -159,6 +159,7 @@ mod tests {
     #[rstest]
     #[case("", vec![])]
     #[case("raw", vec![TemplateInputChunk::Raw("raw")])]
+    #[case("unopened}}", vec![TemplateInputChunk::Raw("unopened}}")])]
     #[case(
         "{{field1}}",
         vec![TemplateInputChunk::Key(TemplateKey::Field("field1"))]
@@ -207,6 +208,7 @@ mod tests {
     #[case("{{bogus.one}}")]
     #[case("{{chains.one.two}}")]
     #[case("{{env.one.two}}")]
+    #[case("{{ field }}")] // Invalid whitespace
     fn test_parse_error(#[case] template: &str) {
         assert_err!(Template::parse(template.into()), "at line 1");
     }

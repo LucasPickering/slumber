@@ -92,14 +92,14 @@ This demonstrates how to use chains to link responses to requests. Chains can li
 
 ## Recursive Templates
 
-What if you need a more complex chained value? Let's say the endpoint to get a fish requires the fish ID to be in the format `fish_{id}`. Why? Don't worry about it. Fish are particular. [Profile values](../api/request_collection/profile_value.md) support recursively templating via the `!template` tag. You can use this to compose template values into more complex strings.
+What if you need a more complex chained value? Let's say the endpoint to get a fish requires the fish ID to be in the format `fish_{id}`. Why? Don't worry about it. Fish are particular. Templates support recursion implicitly. You can use this to compose template values into more complex strings. Just be careful not to trigger infinite recursion!
 
 ```yaml
 profiles:
   local:
     data:
       host: http://localhost:5000
-      fish_id: !template "fish_{{chains.fish_id}}"
+      fish_id: "fish_{{chains.fish_id}}"
 
 chains:
   fish_id:

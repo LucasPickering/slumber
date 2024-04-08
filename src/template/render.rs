@@ -1,9 +1,7 @@
 //! Template rendering implementation
 
 use crate::{
-    collection::{
-        ChainId, ChainRequestTrigger, ChainSource, ProfileValue, RecipeId,
-    },
+    collection::{ChainId, ChainRequestTrigger, ChainSource, RecipeId},
     http::{ContentType, RequestBuilder, RequestRecord, Response},
     template::{
         error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
@@ -209,25 +207,22 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
                     profile_id: profile_id.clone(),
                 }
             })?;
-        let value = profile.data.get(field).ok_or_else(|| {
+        let template = profile.data.get(field).ok_or_else(|| {
             TemplateError::FieldUnknown {
                 field: field.to_owned(),
             }
         })?;
 
-        let rendered = match value {
-            ProfileValue::Raw(value) => value.clone(),
-            // recursion!
-            ProfileValue::Template(template) => {
-                trace!(%field, %template, "Rendering recursive template");
-                template.render_stitched(context).await.map_err(|error| {
-                    TemplateError::Nested {
-                        template: template.clone(),
-                        error: Box::new(error),
-                    }
-                })?
-            }
-        };
+        // recursion!
+        // TODO limit recursion
+        trace!(%field, %template, "Rendering recursive template");
+        let rendered =
+            template.render_stitched(context).await.map_err(|error| {
+                TemplateError::Nested {
+                    template: template.clone(),
+                    error: Box::new(error),
+                }
+            })?;
         Ok(RenderedChunk {
             value: rendered,
             sensitive: false,

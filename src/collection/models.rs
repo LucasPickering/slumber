@@ -37,7 +37,7 @@ pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
     pub name: Option<String>,
-    pub data: IndexMap<String, ProfileValue>,
+    pub data: IndexMap<String, Template>,
 }
 
 #[derive(
@@ -60,21 +60,6 @@ impl PartialEq<Profile> for ProfileId {
     fn eq(&self, other: &Profile) -> bool {
         self == &other.id
     }
-}
-
-/// The value type of a profile's data mapping
-#[derive(Clone, Debug, Serialize)]
-#[cfg_attr(test, derive(PartialEq))]
-#[serde(rename_all = "snake_case")]
-pub enum ProfileValue {
-    /// A raw text string
-    Raw(String),
-    /// A nested template, which allows for recursion. By requiring the user to
-    /// declare this up front, we can parse the template during collection
-    /// deserialization. It also keeps a cap on the complexity of nested
-    /// templates, which is a balance between usability and simplicity (both
-    /// for the user and the code).
-    Template(Template),
 }
 
 /// A definition of how to make a request. This is *not* called `Request` in
@@ -241,18 +226,6 @@ impl Profile {
     /// Get a presentable name for this profile
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
-    }
-}
-
-impl From<String> for ProfileValue {
-    fn from(value: String) -> Self {
-        Self::Raw(value)
-    }
-}
-
-impl From<&str> for ProfileValue {
-    fn from(value: &str) -> Self {
-        Self::Raw(value.into())
     }
 }
 

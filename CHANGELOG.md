@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Breaking
+
+- Profile values are always treated as templates now
+  - Any profile values that were previously the "raw" variant (the default) that contain template syntax (e.g. `{{user_id}}`) will now be rendered as templates. In reality this is very unlikely, so this probably isn't going to break your setup
+  - If you have an existing profile value tagged with `!template` it **won't** break, but it will no longer do anything
+
 ## [0.17.0] - 2024-04-08
 
 ### Breaking

@@ -103,10 +103,7 @@ impl PrimaryView {
             collection.profiles.values().cloned().collect_vec(),
         )
         .into();
-        let recipe_list_pane = RecipeListPane::new(
-            collection.recipes.values().cloned().collect_vec(),
-        )
-        .into();
+        let recipe_list_pane = RecipeListPane::new(&collection.recipes).into();
         Self {
             selected_pane: Persistent::new(
                 PersistentKey::PrimaryPane,
@@ -127,9 +124,9 @@ impl PrimaryView {
     }
 
     /// Which recipe in the recipe list is selected? `None` iff the list is
-    /// empty.
+    /// empty OR a folder is selected.
     pub fn selected_recipe(&self) -> Option<&Recipe> {
-        self.recipe_list_pane.recipes().selected()
+        self.recipe_list_pane.selected_recipe()
     }
 
     /// Which profile in the list is selected? `None` iff the list is empty.

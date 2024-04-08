@@ -23,8 +23,8 @@ profiles:
     data:
       host: https://myfishes.fish
 
-requests:
-  list_fish:
+recipes:
+  list_fish: !recipe
     method: GET
     url: "{{host}}/fishes"
     query:
@@ -65,14 +65,14 @@ chains:
     # https://jsonpath.com/
     selector: $.id
 
-requests:
-  create_fish:
+recipes:
+  create_fish: !recipe
     method: POST
     url: "{{host}}/fishes"
     body: >
       {"kind": "barracuda", "name": "Jimmy"}
 
-  get_fish:
+  get_fish: !recipe
     method: GET
     url: "{{host}}/fishes/{{chains.fish_id}}"
 ```
@@ -107,14 +107,14 @@ chains:
       recipe: create_fish
     selector: $.id
 
-requests:
-  create_fish:
+recipes:
+  create_fish: !recipe
     method: POST
     url: "{{host}}/fishes"
     body: >
       {"kind": "barracuda", "name": "Jimmy"}
 
-  get_fish:
+  get_fish: !recipe
     method: GET
     url: "{{host}}/fishes/{{fish_id}}"
 ```

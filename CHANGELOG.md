@@ -4,9 +4,17 @@
 
 ### Breaking
 
+- Rename top-level collection field `requests` to `recipes`
+- All existing recipes must be tagged with `!recipe` in the collection file
+  - This is necessary to differentiate from the new `!folder` type
 - Profile values are always treated as templates now
   - Any profile values that were previously the "raw" variant (the default) that contain template syntax (e.g. `{{user_id}}`) will now be rendered as templates. In reality this is very unlikely, so this probably isn't going to break your setup
   - If you have an existing profile value tagged with `!template` it **won't** break, but it will no longer do anything
+
+### Added
+
+- Request recipes can now be organized into folders ([#60](https://github.com/LucasPickering/slumber/issues/60))
+  - See [the docs](https://slumber.lucaspickering.me/book/api/request_collection/request_recipe.html#folder-fields) for usage examples
 
 ### Changed
 

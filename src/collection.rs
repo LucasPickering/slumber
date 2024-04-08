@@ -4,8 +4,10 @@
 mod cereal;
 mod insomnia;
 mod models;
+mod recipe_tree;
 
 pub use models::*;
+pub use recipe_tree::*;
 
 use crate::util::{parse_yaml, ResultExt};
 use anyhow::{anyhow, Context};

@@ -6,45 +6,63 @@ profiles:
   env_b54010f85b024f5d89724bd918f983ec:
     name: Local
     data:
-      host: !raw http://localhost:3000
+      host: http://localhost:3000
   env_6203e0435e4f44e19406bde63f7bfa62:
     name: Remote
     data:
-      host: !raw https://httpbin.org
+      host: https://httpbin.org
 chains: {}
-requests:
-  req_467d7ec5ceee4893aa443b09e25c6e53:
-    name: No Auth
-    method: GET
-    url: https://httpbin.org/get
-    body: null
-    authentication: null
-    query: {}
-    headers: {}
-  req_30f68ae3069b4ec59707bf793a4b74cb:
-    name: Bearer Auth
-    method: GET
-    url: https://httpbin.org/get
-    body: null
-    authentication: !bearer asdfasdf
-    query: {}
-    headers: {}
-  req_b537f7f12d2f4dffbda12fdff2ff3704:
-    name: Basic Auth
-    method: GET
-    url: https://httpbin.org/get
-    body: null
-    authentication: !basic
-      username: user
-      password: pass
-    query: {}
-    headers: {}
-  req_bff9461c4e81463b890856a283d5e2f3:
-    name: With Body
+recipes:
+  req_3bc2de939f1a4d1ebc00835cbefd6b5d: !recipe
+    name: Login
     method: POST
-    url: https://httpbin.org/post
-    body: "{\n\t\"message\": \"hello!\"\n}"
+    url: https://httpbin.org/anything/login
+    body: null
     authentication: null
     query: {}
-    headers:
-      content-type: application/json
+    headers: {}
+
+  fld_2fa209e604774c8db800304ad38e68d0: !folder
+    name: My Folder
+    children:
+      req_bff9461c4e81463b890856a283d5e2f3: !recipe
+        name: With Body
+        method: POST
+        url: https://httpbin.org/post
+        body: "{\n\t\"message\": \"hello!\"\n}"
+        authentication: null
+        query: {}
+        headers:
+          content-type: application/json
+
+      fld_2b83df7de20d446f91d94dcb0b66c06f: !folder
+        name: Inner Folder
+        children:
+          req_467d7ec5ceee4893aa443b09e25c6e53: !recipe
+            name: No Auth
+            method: GET
+            url: https://httpbin.org/get
+            body: null
+            authentication: null
+            query: {}
+            headers: {}
+
+          req_30f68ae3069b4ec59707bf793a4b74cb: !recipe
+            name: Bearer Auth
+            method: GET
+            url: https://httpbin.org/get
+            body: null
+            authentication: !bearer " {% response 'body', 'req_3bc2de939f1a4d1ebc00835cbefd6b5d', 'b64::JC5oZWFkZXJzLkhvc3Q=::46b', 'when-expired', 60 %}"
+            query: {}
+            headers: {}
+
+          req_b537f7f12d2f4dffbda12fdff2ff3704: !recipe
+            name: Basic Auth
+            method: GET
+            url: https://httpbin.org/get
+            body: null
+            authentication: !basic
+              username: user
+              password: pass
+            query: {}
+            headers: {}

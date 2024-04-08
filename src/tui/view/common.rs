@@ -12,7 +12,7 @@ pub mod text_box;
 pub mod text_window;
 
 use crate::{
-    collection::{Profile, Recipe},
+    collection::Profile,
     http::{RequestBuildError, RequestError},
     tui::{
         context::TuiContext,
@@ -102,17 +102,6 @@ impl Generate for &Profile {
         Self: 'this,
     {
         self.name().to_owned().into()
-    }
-}
-
-impl Generate for &Recipe {
-    type Output<'this> = Span<'this> where Self: 'this;
-
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
-        format!("[{}] {}", self.method, self.name()).into()
     }
 }
 

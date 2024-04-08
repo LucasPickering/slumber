@@ -16,8 +16,8 @@ chains:
     source: !file
       path: ./api_token.txt
 
-requests:
-  list_fish:
+recipes:
+  list_fish: !recipe
     method: GET
     url: "{{host}}/fishes"
     query:
@@ -26,7 +26,7 @@ requests:
       Accept: application/json
     authentication: !bearer "{{chains.token}}"
 
-  get_fish:
+  get_fish: !recipe
     method: GET
     url: "{{host}}/fishes/{{fish_id}}"
     headers:
@@ -57,15 +57,15 @@ request_base: &request_base
     Accept: application/json
   authentication: !bearer "{{chains.token}}"
 
-requests:
-  list_fish:
+recipes:
+  list_fish: !recipe
     <<: *request_base
     method: GET
     url: "{{host}}/fishes"
     query:
       big: "true"
 
-  get_fish:
+  get_fish: !recipe
     <<: *request_base
     method: GET
     url: "{{host}}/fishes/{{chains.fish_id}}"
@@ -94,20 +94,20 @@ request_base: &request_base
     Accept: application/json
   authentication: !bearer "{{chains.token}}"
 
-requests:
-  list_fish:
+recipes:
+  list_fish: !recipe
     <<: *request_base
     method: GET
     url: "{{host}}/fishes"
     query:
       big: "true"
 
-  get_fish:
+  get_fish: !recipe
     <<: *request_base
     method: GET
     url: "{{host}}/fishes/{{chains.fish_id}}"
 
-  create_fish:
+  create_fish: !recipe
     <<: *request_base
     method: POST
     url: "{{host}}/fishes"

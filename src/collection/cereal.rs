@@ -1,6 +1,8 @@
-//! Serialization/deserialization helpers for collection types
+//! Serialization/deserialization helpers for various types
 
-use crate::collection::{Chain, ChainId, Profile, ProfileId, Recipe, RecipeId};
+use crate::collection::{
+    recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, RecipeId,
+};
 use serde::{Deserialize, Deserializer};
 use std::hash::Hash;
 
@@ -20,11 +22,14 @@ impl HasId for Profile {
     }
 }
 
-impl HasId for Recipe {
+impl HasId for RecipeNode {
     type Id = RecipeId;
 
     fn set_id(&mut self, id: Self::Id) {
-        self.id = id;
+        match self {
+            RecipeNode::Folder(folder) => folder.id = id,
+            RecipeNode::Recipe(recipe) => recipe.id = id,
+        }
     }
 }
 

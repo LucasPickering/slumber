@@ -156,7 +156,7 @@ impl BuildRequestCommand {
         let collection_path = CollectionFile::try_path(global.collection)?;
         let database = Database::load()?.into_collection(&collection_path)?;
         let collection_file = CollectionFile::load(collection_path).await?;
-        let mut collection = collection_file.collection;
+        let collection = collection_file.collection;
         // Passing the HTTP engine is how we tell the template renderer that
         // it's ok to execute subrequests during render
         let http_engine = if trigger_dependencies {
@@ -179,14 +179,15 @@ impl BuildRequestCommand {
         // Find recipe by ID
         let recipe = collection
             .recipes
-            .swap_remove(&self.recipe_id)
+            .get_recipe(&self.recipe_id)
             .ok_or_else(|| {
                 anyhow!(
-                    "No request with ID `{}`; options are: {}",
+                    "No recipe with ID `{}`; options are: {}",
                     self.recipe_id,
-                    collection.recipes.keys().join(", ")
+                    collection.recipes.recipe_ids().join(", ")
                 )
-            })?;
+            })?
+            .clone();
 
         // Build the request
         let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();

@@ -344,7 +344,7 @@ impl<'a> ChainTemplateSource<'a> {
         let recipe = context
             .collection
             .recipes
-            .get(recipe_id)
+            .get_recipe(recipe_id)
             .ok_or_else(|| ChainError::RecipeUnknown(recipe_id.clone()))?;
 
         // Defer loading the most recent record until we know we'll need it

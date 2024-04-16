@@ -6,6 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 pub struct Theme {
     pub pane: ThemePane,
     pub list: ThemeList,
+    pub recipe_list: ThemeRecipeList,
     pub tab: ThemeTab,
     pub table: ThemeTable,
     pub template_preview: ThemeTemplatePreview,
@@ -21,12 +22,22 @@ impl Theme {
     pub const ERROR_COLOR: Color = Color::Red;
 }
 
+/// Styles for List component
 #[derive(Debug)]
 pub struct ThemeList {
     /// Highlighted item in a list
     pub highlight: Style,
 }
 
+#[derive(Debug)]
+pub struct ThemeRecipeList {
+    /// Folders in recipe list
+    pub folder: Style,
+    /// Recipes in recipe list
+    pub recipe: Style,
+}
+
+/// Styles for Pane component
 #[derive(Debug)]
 pub struct ThemePane {
     /// Pane border when not selected/focused
@@ -35,12 +46,14 @@ pub struct ThemePane {
     pub border_selected: Style,
 }
 
+/// Styles for Tab component
 #[derive(Debug)]
 pub struct ThemeTab {
     /// Highlighted tab in a tab group
     pub highlight: Style,
 }
 
+/// Styles for Table component
 #[derive(Debug)]
 pub struct ThemeTable {
     /// Table column header text
@@ -52,6 +65,7 @@ pub struct ThemeTable {
     pub title: Style,
 }
 
+/// Styles for TemplatePreview component
 #[derive(Debug)]
 pub struct ThemeTemplatePreview {
     pub text: Style,
@@ -65,6 +79,7 @@ pub struct ThemeText {
     pub highlight: Style,
 }
 
+/// Styles for TextBox component
 #[derive(Debug)]
 pub struct ThemeTextBox {
     pub text: Style,
@@ -73,6 +88,7 @@ pub struct ThemeTextBox {
     pub invalid: Style,
 }
 
+/// Styles for TextWindow component
 #[derive(Debug)]
 pub struct ThemeTextWindow {
     /// Line numbers on large text areas
@@ -93,6 +109,10 @@ impl Default for Theme {
                     .bg(Self::PRIMARY_COLOR)
                     .fg(Color::Black)
                     .add_modifier(Modifier::BOLD),
+            },
+            recipe_list: ThemeRecipeList {
+                folder: Style::default().fg(Color::Blue),
+                recipe: Style::default().fg(Self::PRIMARY_COLOR),
             },
             tab: ThemeTab {
                 highlight: Style::default()

@@ -12,8 +12,8 @@ profiles:
     data:
       host: https://httpbin.org
 chains: {}
-recipes:
-  req_3bc2de939f1a4d1ebc00835cbefd6b5d: !recipe
+requests:
+  req_3bc2de939f1a4d1ebc00835cbefd6b5d: !request
     name: Login
     method: POST
     url: https://httpbin.org/anything/login
@@ -24,8 +24,8 @@ recipes:
 
   fld_2fa209e604774c8db800304ad38e68d0: !folder
     name: My Folder
-    children:
-      req_bff9461c4e81463b890856a283d5e2f3: !recipe
+    requests:
+      req_bff9461c4e81463b890856a283d5e2f3: !request
         name: With Body
         method: POST
         url: https://httpbin.org/post
@@ -37,8 +37,8 @@ recipes:
 
       fld_2b83df7de20d446f91d94dcb0b66c06f: !folder
         name: Inner Folder
-        children:
-          req_467d7ec5ceee4893aa443b09e25c6e53: !recipe
+        requests:
+          req_467d7ec5ceee4893aa443b09e25c6e53: !request
             name: No Auth
             method: GET
             url: https://httpbin.org/get
@@ -47,7 +47,7 @@ recipes:
             query: {}
             headers: {}
 
-          req_30f68ae3069b4ec59707bf793a4b74cb: !recipe
+          req_30f68ae3069b4ec59707bf793a4b74cb: !request
             name: Bearer Auth
             method: GET
             url: https://httpbin.org/get
@@ -56,7 +56,7 @@ recipes:
             query: {}
             headers: {}
 
-          req_b537f7f12d2f4dffbda12fdff2ff3704: !recipe
+          req_b537f7f12d2f4dffbda12fdff2ff3704: !request
             name: Basic Auth
             method: GET
             url: https://httpbin.org/get

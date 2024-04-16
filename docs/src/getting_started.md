@@ -9,13 +9,13 @@ Once you've [installed Slumber](/artifacts), setup is easy.
 Create a file called `slumber.yml` and add the following contents:
 
 ```yaml
-recipes:
-  get: !recipe
+requests:
+  get: !request
     method: GET
     url: https://httpbin.org/get
 ```
 
-> Note: the `!recipe` tag, which tells Slumber that this is a request recipe, not a folder. This is [YAML's tag syntax](https://yaml.org/spec/1.2.2/#24-tags), which is used commonly throughout Slumber to provide explicit configuration.
+> Note: the `!request` tag, which tells Slumber that this is a request recipe, not a folder. This is [YAML's tag syntax](https://yaml.org/spec/1.2.2/#24-tags), which is used commonly throughout Slumber to provide explicit configuration.
 
 ### 2. Run Slumber
 
@@ -37,14 +37,14 @@ profiles:
     data:
       host: https://myfishes.fish
 
-recipes:
-  create_fish: !recipe
+requests:
+  create_fish: !request
     method: POST
     url: "{{host}}/fishes"
     body: >
       {"kind": "barracuda", "name": "Jimmy"}
 
-  list_fish: !recipe
+  list_fish: !request
     method: GET
     url: "{{host}}/fishes"
     query:

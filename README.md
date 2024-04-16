@@ -24,8 +24,8 @@ Slumber is based around **collections**. A collection is a group of request **re
 
 ```yaml
 # slumber.yml
-recipes:
-  get: !recipe
+requests:
+  get: !request
     method: GET
     url: https://httpbin.org/get
 ```

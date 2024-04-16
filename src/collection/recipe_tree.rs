@@ -36,6 +36,9 @@ pub struct RecipeLookupKey(Vec<RecipeId>);
 #[allow(clippy::large_enum_variant)]
 pub enum RecipeNode {
     Folder(Folder),
+    /// Rename this variant to match the `requests` field in the root and
+    /// folders
+    #[serde(rename = "request")]
     Recipe(Recipe),
 }
 
@@ -301,7 +304,7 @@ mod tests {
             (
                 "dupe",
                 tagged_mapping(
-                    "!recipe",
+                    "!request",
                     [("method", "GET".into()), ("url", "url".into())],
                 ),
             ),
@@ -310,11 +313,11 @@ mod tests {
                 tagged_mapping(
                     "!folder",
                     [(
-                        "children",
+                        "requests",
                         mapping([(
                             "dupe",
                             tagged_mapping(
-                                "!recipe",
+                                "!request",
                                 [
                                     ("method", "GET".into()),
                                     ("url", "url".into()),
@@ -334,7 +337,7 @@ mod tests {
                 tagged_mapping(
                     "!folder",
                     [(
-                        "children",
+                        "requests",
                         mapping([("dupe", tagged_mapping("!folder", []))]),
                     )],
                 ),
@@ -350,9 +353,9 @@ mod tests {
                 tagged_mapping(
                     "!folder",
                     [(
-                        "children",
+                        "requests",
                         tagged_mapping(
-                            "!recipe",
+                            "!request",
                             [("dupe", tagged_mapping("!folder", []))],
                         ),
                     )],
@@ -361,7 +364,7 @@ mod tests {
             (
                 "dupe",
                 tagged_mapping(
-                    "!recipe",
+                    "!request",
                     [("method", "GET".into()), ("url", "url".into())],
                 ),
             ),
@@ -392,7 +395,7 @@ mod tests {
 
         // Create equivalent YAML
         let recipe_value: Value = tagged_mapping(
-            "!recipe",
+            "!request",
             [("method", "GET".into()), ("url", "http://localhost".into())],
         );
         let yaml = mapping([
@@ -402,14 +405,14 @@ mod tests {
                 tagged_mapping(
                     "!folder",
                     [(
-                        "children",
+                        "requests",
                         mapping([
                             (
                                 "f2",
                                 tagged_mapping(
                                     "!folder",
                                     [(
-                                        "children",
+                                        "requests",
                                         mapping([("r2", recipe_value.clone())]),
                                     )],
                                 ),

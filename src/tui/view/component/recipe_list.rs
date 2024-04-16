@@ -49,7 +49,7 @@ impl RecipeListPane {
             .iter()
             .map(|(lookup_key, node)| RecipeListItem {
                 node: node.clone(),
-                depth: lookup_key.len(),
+                depth: lookup_key.len() - 1,
             })
             .collect_vec();
 
@@ -121,7 +121,23 @@ impl Generate for &RecipeListItem {
     where
         Self: 'this,
     {
-        // Apply indentation
-        format!("{:width$}{}", ' ', self.node.name(), width = self.depth).into()
+        // Apply indentation based on folder depth
+        let content = format!(
+            "{indent:width$}{name}",
+            indent = "",
+            name = self.node.name(),
+            width = self.depth
+        );
+
+        let theme = &TuiContext::get().theme;
+        let style = match self.node {
+            RecipeNode::Folder(_) => theme.recipe_list.folder,
+            RecipeNode::Recipe(_) => theme.recipe_list.recipe,
+        };
+
+        Span {
+            content: content.into(),
+            style,
+        }
     }
 }

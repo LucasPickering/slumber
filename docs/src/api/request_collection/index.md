@@ -77,8 +77,8 @@ base: &base
     Accept: application/json
     Content-Type: application/json
 
-recipes:
-  login: !recipe
+requests:
+  login: !request
     <<: *base
     method: POST
     url: "{{host}}/anything/login"
@@ -90,15 +90,15 @@ recipes:
 
   # Folders can be used to keep your recipes organized
   users: !folder
-    children:
-      get_user: !recipe
+    requests:
+      get_user: !request
         <<: *base
         name: Get User
         method: GET
         url: "{{host}}/anything/current-user"
         authentication: !bearer "{{chains.auth_token}}"
 
-      update_user: !recipe
+      update_user: !request
         <<: *base
         name: Update User
         method: PUT

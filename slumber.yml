@@ -35,8 +35,8 @@ base: &base
     Accept: application/json
     Content-Type: application/json
 
-recipes:
-  login: !recipe
+requests:
+  login: !request
     method: POST
     url: "{{host}}/anything/login"
     query:
@@ -53,8 +53,8 @@ recipes:
 
   users: !folder
     name: Users
-    children:
-      get_users: !recipe
+    requests:
+      get_users: !request
         <<: *base
         name: Get Users
         method: GET
@@ -62,13 +62,13 @@ recipes:
         query:
           foo: bar
 
-      get_user: !recipe
+      get_user: !request
         <<: *base
         name: Get User
         method: GET
         url: "{{host}}/anything/{{user_guid}}"
 
-      modify_user: !recipe
+      modify_user: !request
         <<: *base
         name: Modify User
         method: PUT
@@ -78,14 +78,14 @@ recipes:
             "username": "new username"
           }
 
-  get_image: !recipe
+  get_image: !request
     headers:
       Accept: image/png
     name: Get Image
     method: GET
     url: "{{host}}/image"
 
-  delay: !recipe
+  delay: !request
     <<: *base
     name: Delay
     method: GET

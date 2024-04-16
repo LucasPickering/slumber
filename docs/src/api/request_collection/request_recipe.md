@@ -8,7 +8,7 @@ Recipes can be organized into folders. This means your set of recipes can form a
 
 ## Recipe Fields
 
-The tag for a recipe is `!recipe` (see examples).
+The tag for a recipe is `!request` (see examples).
 
 | Field            | Type                                         | Description                       | Default                |
 | ---------------- | -------------------------------------------- | --------------------------------- | ---------------------- |
@@ -32,7 +32,7 @@ The tag for a folder is `!folder` (see examples).
 ## Examples
 
 ```yaml
-login: !recipe
+login: !request
   name: Login
   method: POST
   url: "{{host}}/anything/login"
@@ -49,14 +49,14 @@ login: !recipe
 ---
 fish: !folder
   name: Users
-  children:
-    create_fish: !recipe
+  requests:
+    create_fish: !request
       method: POST
       url: "{{host}}/fishes"
       body: >
         {"kind": "barracuda", "name": "Jimmy"}
 
-    list_fish: !recipe
+    list_fish: !request
       method: GET
       url: "{{host}}/fishes"
       query:

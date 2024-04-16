@@ -4,8 +4,7 @@
 
 ### Breaking
 
-- Rename top-level collection field `requests` to `recipes`
-- All existing recipes must be tagged with `!recipe` in the collection file
+- All existing recipes must be tagged with `!request` in the collection file
   - This is necessary to differentiate from the new `!folder` type
 - Profile values are always treated as templates now
   - Any profile values that were previously the "raw" variant (the default) that contain template syntax (e.g. `{{user_id}}`) will now be rendered as templates. In reality this is very unlikely, so this probably isn't going to break your setup

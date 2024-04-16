@@ -23,7 +23,9 @@ pub struct Collection {
     pub profiles: IndexMap<ProfileId, Profile>,
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
     pub chains: IndexMap<ChainId, Chain>,
-    #[serde(default)]
+    /// Internally we call these recipes, but to a user `requests` is more
+    /// intuitive
+    #[serde(default, rename = "requests")]
     pub recipes: RecipeTree,
 }
 
@@ -59,8 +61,12 @@ pub struct Folder {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
     pub name: Option<String>,
-    /// RECURSION
-    #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
+    /// RECURSION. Use `requests` in serde to match the root field.
+    #[serde(
+        default,
+        deserialize_with = "cereal::deserialize_id_map",
+        rename = "requests"
+    )]
     pub children: IndexMap<RecipeId, RecipeNode>,
 }
 

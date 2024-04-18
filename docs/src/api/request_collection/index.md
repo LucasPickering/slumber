@@ -21,7 +21,7 @@ slumber -c my-collection.yml
 
 ## Collection History & Migration
 
-Each collection needs a unique ID generated when the collection is first loaded by Slumber. This ID is used to persist request history and other data related to the collection. If you move a collection file, a new ID will be generated and it will be unlinked from its previous history. If you want to retain that history, you can migrate data from the old ID to the new one like so:
+Each collection needs a unique ID, which generated when the collection is first loaded by Slumber and bound to the collection file's path. This ID is used to persist request history and other data related to the collection. If you move a collection file, a new ID will be generated and it will be unlinked from its previous history. If you want to retain that history, you can migrate data from the old ID to the new one like so:
 
 ```sh
 slumber collections migrate /slumber/old.yml /slumber/new.yml

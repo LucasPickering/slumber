@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use clap::Parser;
 use std::{path::PathBuf, process::ExitCode};
 
-/// View and modify request collection history
+/// View and modify request collection state and history
 #[derive(Clone, Debug, Parser)]
 pub struct CollectionsCommand {
     #[command(subcommand)]

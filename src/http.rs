@@ -370,7 +370,8 @@ impl RequestBuilder {
                     .render(template_context)
                     .await
                     .context("Error rendering URL")?;
-                url.parse::<Url>().context("Invalid URL")
+                url.parse::<Url>()
+                    .with_context(|| format!("Invalid URL: `{url}`"))
             },
             self.render_query(template_context)
         )?;

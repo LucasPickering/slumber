@@ -181,7 +181,6 @@ mod tests {
     };
     use chrono::Utc;
     use factori::create;
-    use httpmock::MockServer;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
@@ -524,13 +523,16 @@ mod tests {
         }
 
         // Mock HTTP response
-        let server = MockServer::start();
-        let mock = server.mock(|when, then| {
-            when.method(httpmock::Method::GET).path("/get");
-            then.status(200).body("hello!");
-        });
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let mock = server
+            .mock("GET", "/get")
+            .with_status(201)
+            .with_body("hello!")
+            .create_async()
+            .await;
 
-        let recipe = create!(Recipe, url: server.url("/get").as_str().into());
+        let recipe = create!(Recipe, url: format!("{url}/get").as_str().into());
         let chain = create!(
             Chain,
             source: ChainSource::Request {

@@ -44,7 +44,7 @@ serde_yaml = {version = "^0.9.25", default-features = false}
 signal-hook = "^0.3.17"
 strum = {version = "^0.25.0", default-features = false, features = ["derive"]}
 thiserror = "^1.0.48"
-tokio = {version = "^1.32.0", default-features = false, features = ["full"]}
+tokio = {version = "^1.32.0", default-features = false, features = ["fs", "macros", "process", "rt", "rt-multi-thread"]}
 tracing = "^0.1.37"
 tracing-subscriber = {version = "^0.3.17", default-features = false, features = ["env-filter", "fmt", "registry"]}
 url = {version = "^2.5.0", features = ["serde"]}
@@ -52,7 +52,7 @@ uuid = {version = "^1.4.1", default-features = false, features = ["serde", "v4"]
 
 [dev-dependencies]
 factori = "1.1.0"
-httpmock = { version = "0.7.0", default-features = false }
+httpmock = {version = "0.7.0", default-features = false}
 rstest = {version = "0.18.2", default-features = false}
 serde_test = "1.0.176"
 

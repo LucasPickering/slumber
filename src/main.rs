@@ -12,7 +12,7 @@ mod test_util;
 mod tui;
 mod util;
 
-use crate::{cli::CliCommand, tui::Tui, util::Directory};
+use crate::{cli::CliCommand, tui::Tui, util::paths::DataDirectory};
 use clap::Parser;
 use std::{fs::File, path::PathBuf, process::ExitCode};
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<ExitCode> {
 
 /// Set up tracing to log to a file
 fn initialize_tracing() -> anyhow::Result<()> {
-    let path = Directory::log().create()?.join("slumber.log");
+    let path = DataDirectory::log().create_parent()?;
     let log_file = File::create(path)?;
     let file_subscriber = tracing_subscriber::fmt::layer()
         .with_file(true)

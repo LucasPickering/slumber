@@ -1,15 +1,18 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
-    MouseEvent, MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MediaKeyCode,
+    MouseButton, MouseEvent, MouseEventKind,
 };
 use derive_more::Display;
 use indexmap::{indexmap, IndexMap};
-use serde::Deserialize;
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
     fmt::{self, Debug},
+    iter,
     str::FromStr,
 };
 use tracing::trace;
@@ -28,6 +31,75 @@ pub struct InputEngine {
 }
 
 impl InputEngine {
+    /// Key code to string mappings
+    /// unstable: include ASCII chars https://github.com/rust-lang/rust/issues/110998
+    const KEY_CODES: Mapping<'static, KeyCode> = Mapping(&[
+        // vvvvv If making changes, make sure to update the docs vvvvv
+        (KeyCode::Esc, &["escape", "esc"]),
+        (KeyCode::Enter, &["enter"]),
+        (KeyCode::Left, &["left"]),
+        (KeyCode::Right, &["right"]),
+        (KeyCode::Up, &["up"]),
+        (KeyCode::Down, &["down"]),
+        (KeyCode::Home, &["home"]),
+        (KeyCode::End, &["end"]),
+        (KeyCode::PageUp, &["pageup", "pgup"]),
+        (KeyCode::PageDown, &["pagedown", "pgdn"]),
+        (KeyCode::Tab, &["tab"]),
+        (KeyCode::BackTab, &["backtab"]),
+        (KeyCode::Backspace, &["backspace"]),
+        (KeyCode::Delete, &["delete", "del"]),
+        (KeyCode::Insert, &["insert", "ins"]),
+        (KeyCode::CapsLock, &["capslock", "caps"]),
+        (KeyCode::ScrollLock, &["scrolllock"]),
+        (KeyCode::NumLock, &["numlock"]),
+        (KeyCode::PrintScreen, &["printscreen"]),
+        (KeyCode::Pause, &["pausebreak"]),
+        (KeyCode::Menu, &["menu"]),
+        (KeyCode::KeypadBegin, &["keypadbegin"]),
+        (KeyCode::F(1), &["f1"]),
+        (KeyCode::F(2), &["f2"]),
+        (KeyCode::F(3), &["f3"]),
+        (KeyCode::F(4), &["f4"]),
+        (KeyCode::F(5), &["f5"]),
+        (KeyCode::F(6), &["f6"]),
+        (KeyCode::F(7), &["f7"]),
+        (KeyCode::F(8), &["f8"]),
+        (KeyCode::F(9), &["f9"]),
+        (KeyCode::F(10), &["f10"]),
+        (KeyCode::F(11), &["f11"]),
+        (KeyCode::F(12), &["f12"]),
+        (KeyCode::Char(' '), &["space"]),
+        (KeyCode::Media(MediaKeyCode::Play), &["play"]),
+        (KeyCode::Media(MediaKeyCode::Pause), &["pause"]),
+        (KeyCode::Media(MediaKeyCode::PlayPause), &["playpause"]),
+        (KeyCode::Media(MediaKeyCode::Reverse), &["reverse"]),
+        (KeyCode::Media(MediaKeyCode::Stop), &["stop"]),
+        (KeyCode::Media(MediaKeyCode::FastForward), &["fastforward"]),
+        (KeyCode::Media(MediaKeyCode::Rewind), &["rewind"]),
+        (KeyCode::Media(MediaKeyCode::TrackNext), &["tracknext"]),
+        (
+            KeyCode::Media(MediaKeyCode::TrackPrevious),
+            &["trackprevious"],
+        ),
+        (KeyCode::Media(MediaKeyCode::Record), &["record"]),
+        (KeyCode::Media(MediaKeyCode::LowerVolume), &["lowervolume"]),
+        (KeyCode::Media(MediaKeyCode::RaiseVolume), &["raisevolume"]),
+        (KeyCode::Media(MediaKeyCode::MuteVolume), &["mute"]),
+        // ^^^^^ If making changes, make sure to update the docs ^^^^^
+    ]);
+    /// Key modifier to string mappings
+    const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping(&[
+        // vvvvv If making changes, make sure to update the docs vvvvv
+        (KeyModifiers::SHIFT, &["shift"]),
+        (KeyModifiers::ALT, &["alt"]),
+        (KeyModifiers::CONTROL, &["ctrl"]),
+        (KeyModifiers::SUPER, &["super"]),
+        (KeyModifiers::HYPER, &["hyper"]),
+        (KeyModifiers::META, &["meta"]),
+        // ^^^^^ If making changes, make sure to update the docs ^^^^^
+    ]);
+
     pub fn new(user_bindings: IndexMap<Action, InputBinding>) -> Self {
         let mut new = Self::default();
         // User bindings should overwrite any default ones
@@ -152,7 +224,9 @@ impl Default for InputEngine {
 ///
 /// The order of the variants matters! It defines the ordering used in the help
 /// modal (but doesn't affect behavior).
-#[derive(Copy, Clone, Debug, Display, Eq, PartialEq, Hash, Deserialize)]
+#[derive(
+    Copy, Clone, Debug, Display, Eq, PartialEq, Hash, Serialize, Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     // vvvvv If adding a variant, make sure to update the docs vvvvv
@@ -253,7 +327,7 @@ impl Action {
 }
 
 /// One or more key combinations, which should correspond to a single action
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(transparent)]
 pub struct InputBinding(Vec<KeyCombination>);
@@ -290,9 +364,9 @@ impl From<KeyCode> for InputBinding {
 }
 
 /// Key input sequence, which can trigger an action
-#[derive(Copy, Clone, Debug, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[serde(try_from = "String")]
+#[serde(into = "String", try_from = "String")]
 pub struct KeyCombination {
     code: KeyCode,
     modifiers: KeyModifiers,
@@ -307,6 +381,8 @@ impl KeyCombination {
     }
 }
 
+/// User-friendly and compact display for a key combination. This is meant to
+/// just be used in the UI, *not* for serialization!
 impl Display for KeyCombination {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Write modifiers first
@@ -347,15 +423,19 @@ impl FromStr for KeyCombination {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Last char should be the primary one, everything before should be
-        // modifiers. Extra whitespace is probably a mistake, ignore it.
-        let mut tokens = s.trim().split(Self::SEPARATOR);
-        let code = tokens.next_back().expect("split always returns 1+ items");
+        // modifiers. Ignore extra whitespace on the ends *or* the middle.
+        // Filtering out empty elements is easier than building a regex to split
+        let mut tokens =
+            s.trim().split(Self::SEPARATOR).filter(|s| !s.is_empty());
+        let code = tokens
+            .next_back()
+            .ok_or_else(|| anyhow!("Empty key combination"))?;
         let mut code: KeyCode = parse_key_code(code)?;
 
         // Parse modifiers, left-to-right
         let mut modifiers = KeyModifiers::NONE;
         for modifier in tokens {
-            let modifier = parse_modifier(modifier)?;
+            let modifier = parse_key_modifier(modifier)?;
             // Prevent duplicate
             if modifiers.contains(modifier) {
                 bail!("Duplicate modifier {modifier:?}");
@@ -374,6 +454,19 @@ impl FromStr for KeyCombination {
     }
 }
 
+/// For serialization
+impl From<KeyCombination> for String {
+    fn from(key_combo: KeyCombination) -> Self {
+        key_combo
+            .modifiers
+            .iter()
+            .map(stringify_key_modifier)
+            .chain(iter::once(stringify_key_code(key_combo.code)))
+            .join(" ")
+    }
+}
+
+/// For deserialization
 impl TryFrom<String> for KeyCombination {
     type Error = anyhow::Error;
 
@@ -382,118 +475,222 @@ impl TryFrom<String> for KeyCombination {
     }
 }
 
+/// A static mapping between some type and strings. Used to both stringify and
+/// parse from/to the type.
+struct Mapping<'a, T: Copy>(&'a [(T, &'a [&'a str])]);
+
+impl<'a, T: Copy> Mapping<'a, T> {
+    /// Get a value by one of its associated strings
+    fn get(&self, string: &str) -> Option<T> {
+        for (value, strs) in self.0 {
+            for other_string in *strs {
+                if *other_string == string {
+                    return Some(*value);
+                }
+            }
+        }
+        None
+    }
+
+    /// Get the string mapped to a value. If it has multiple strings, use the
+    /// first. Panic if the value has no mapped strings
+    fn get_string(&self, value: T) -> &str
+    where
+        T: Debug + PartialEq,
+    {
+        let (_, strings) = self
+            .0
+            .iter()
+            .find(|(v, _)| v == &value)
+            .unwrap_or_else(|| panic!("Unknown value {value:?}"));
+        strings
+            .first()
+            .unwrap_or_else(|| panic!("No mapped strings for value {value:?}"))
+    }
+
+    /// Get all available mapped strings
+    fn all_strings(&self) -> impl Iterator<Item = &str> {
+        self.0
+            .iter()
+            .flat_map(|(_, strings)| strings.iter().copied())
+    }
+}
+
 /// Parse a plain key code
 fn parse_key_code(s: &str) -> anyhow::Result<KeyCode> {
     // Check for plain char code
     if let Ok(c) = s.parse::<char>() {
-        return Ok(KeyCode::Char(c));
+        Ok(KeyCode::Char(c))
+    } else {
+        // Don't include the full list of options in the error message, too long
+        InputEngine::KEY_CODES.get(s).ok_or_else(|| {
+            anyhow!(
+                "Invalid key code {s:?}; key combinations should be space-separated"
+            )
+        })
     }
-    let code = match s {
-        // vvvvv If making changes, make sure to update the docs vvvvv
-        "escape" | "esc" => KeyCode::Esc,
-        "enter" => KeyCode::Enter,
-        "left" => KeyCode::Left,
-        "right" => KeyCode::Right,
-        "up" => KeyCode::Up,
-        "down" => KeyCode::Down,
-        "home" => KeyCode::Home,
-        "end" => KeyCode::End,
-        "pageup" | "pgup" => KeyCode::PageUp,
-        "pagedown" | "pgdn" => KeyCode::PageDown,
-        "capslock" | "caps" => KeyCode::CapsLock,
-        "tab" => KeyCode::Tab,
-        "backtab" => KeyCode::BackTab,
-        "backspace" => KeyCode::Backspace,
-        "delete" | "del" => KeyCode::Delete,
-        "insert" | "ins" => KeyCode::Insert,
-        "f1" => KeyCode::F(1),
-        "f2" => KeyCode::F(2),
-        "f3" => KeyCode::F(3),
-        "f4" => KeyCode::F(4),
-        "f5" => KeyCode::F(5),
-        "f6" => KeyCode::F(6),
-        "f7" => KeyCode::F(7),
-        "f8" => KeyCode::F(8),
-        "f9" => KeyCode::F(9),
-        "f10" => KeyCode::F(10),
-        "f11" => KeyCode::F(11),
-        "f12" => KeyCode::F(12),
-        "space" => KeyCode::Char(' '),
-        _ => bail!("Invalid key code {s:?}"),
-        // ^^^^^ If making changes, make sure to update the docs ^^^^^
-    };
-    Ok(code)
+}
+
+/// Convert key code to string. Inverse of parsing
+fn stringify_key_code(code: KeyCode) -> Cow<'static, str> {
+    // ASCII chars aren't in the mapping, they're handled specially
+    if let KeyCode::Char(c) = code {
+        c.to_string().into()
+    } else {
+        InputEngine::KEY_CODES.get_string(code).into()
+    }
 }
 
 /// Parse a key modifier
-fn parse_modifier(s: &str) -> anyhow::Result<KeyModifiers> {
-    let modifier = match s {
-        "shift" => KeyModifiers::SHIFT,
-        "alt" => KeyModifiers::ALT,
-        "ctrl" => KeyModifiers::CONTROL,
-        "super" => KeyModifiers::SUPER,
-        "hyper" => KeyModifiers::HYPER,
-        "meta" => KeyModifiers::META,
-        _ => bail!("Invalid key modifier {s:?}"),
-    };
-    Ok(modifier)
+fn parse_key_modifier(s: &str) -> anyhow::Result<KeyModifiers> {
+    InputEngine::KEY_MODIFIERS.get(s).ok_or_else(|| {
+        anyhow!(
+            "Invalid key modifier {s:?}; must be one of {:?}",
+            InputEngine::KEY_MODIFIERS.all_strings().collect_vec()
+        )
+    })
+}
+
+/// Convert key modifier to string. Inverse of parsing
+fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
+    InputEngine::KEY_MODIFIERS.get_string(modifier).into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::util::assert_err;
+    use crossterm::event::MediaKeyCode;
+    use rstest::rstest;
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
 
+    #[rstest]
+    #[case(" w ", KeyCode::Char('w'))]
+    #[case("f2", KeyCode::F(2))]
+    #[case("tab", KeyCode::Tab)]
+    #[case("backtab", KeyCode::BackTab)]
+    // crossterm treats shift+tab as a special case, we translate for
+    // convenience
+    #[case("shift tab", KeyCode::BackTab)]
+    #[case("alt shift tab", KeyCombination {
+        code: KeyCode::BackTab,
+        modifiers: KeyModifiers::ALT
+    })]
+    #[case("pgup", KeyCode::PageUp)]
+    #[case("pgdn", KeyCode::PageDown)]
+    #[case("capslock", KeyCode::CapsLock)]
+    #[case("shift f2", KeyCombination {
+        code: KeyCode::F(2),
+        modifiers: KeyModifiers::SHIFT,
+    })]
+    // Bonus spaces!
+    #[case("shift  f2", KeyCombination {
+        code: KeyCode::F(2),
+        modifiers: KeyModifiers::SHIFT,
+    })]
+    #[case("shift   f2", KeyCombination {
+        code: KeyCode::F(2),
+        modifiers: KeyModifiers::SHIFT,
+    })]
+    #[case("super hyper meta alt ctrl shift f2", KeyCombination {
+        code: KeyCode::F(2),
+        modifiers: KeyModifiers::all(),
+    })]
+    fn test_parse_key_combination(
+        #[case] input: &str,
+        #[case] expected: impl Into<KeyCombination>,
+    ) {
+        assert_eq!(input.parse::<KeyCombination>().unwrap(), expected.into());
+    }
+
+    #[rstest]
+    #[case("", "Empty key combination")]
+    #[case("  ", "Empty key combination")]
+    #[case("shift+w", "Invalid key code")]
+    #[case("w shift", "Invalid key code")]
+    #[case("shart w", "Invalid key modifier \"shart\"")]
+    #[case("shift", "Invalid key code \"shift\"")]
+    #[case("alt alt w", "Duplicate modifier")]
+    fn test_parse_key_combination_error(
+        #[case] input: &str,
+        #[case] expected_error: &str,
+    ) {
+        assert_err!(input.parse::<KeyCombination>(), expected_error);
+    }
+
+    /// Test stringifying/parsing key codes
     #[test]
-    fn test_parse_key_combination() {
-        fn parse(s: &str) -> anyhow::Result<KeyCombination> {
-            s.parse::<KeyCombination>()
+    fn test_key_code() {
+        // Build an iter of all codes
+        let codes = [
+            KeyCode::Backspace,
+            KeyCode::Enter,
+            KeyCode::Left,
+            KeyCode::Right,
+            KeyCode::Up,
+            KeyCode::Down,
+            KeyCode::Home,
+            KeyCode::End,
+            KeyCode::PageUp,
+            KeyCode::PageDown,
+            KeyCode::Tab,
+            KeyCode::BackTab,
+            KeyCode::Delete,
+            KeyCode::Insert,
+            // Intentionally omitting Null (what is it??)
+            KeyCode::Esc,
+            KeyCode::CapsLock,
+            KeyCode::ScrollLock,
+            KeyCode::NumLock,
+            KeyCode::PrintScreen,
+            KeyCode::Pause,
+            KeyCode::Menu,
+            KeyCode::KeypadBegin,
+        ]
+        .into_iter()
+        // F keys
+        .chain((1..=12).map(KeyCode::F))
+        // Chars (ASCII only)
+        .chain((32..=126).map(|c| KeyCode::Char(char::from_u32(c).unwrap())))
+        // Media keys
+        .chain(
+            [
+                MediaKeyCode::Play,
+                MediaKeyCode::Pause,
+                MediaKeyCode::PlayPause,
+                MediaKeyCode::Reverse,
+                MediaKeyCode::Stop,
+                MediaKeyCode::FastForward,
+                MediaKeyCode::Rewind,
+                MediaKeyCode::TrackNext,
+                MediaKeyCode::TrackPrevious,
+                MediaKeyCode::Record,
+                MediaKeyCode::LowerVolume,
+                MediaKeyCode::RaiseVolume,
+                MediaKeyCode::MuteVolume,
+            ]
+            .into_iter()
+            .map(KeyCode::Media),
+        );
+        // Intentionally ignore modifier key codes, they're treated separately
+
+        // Round trip should get us in the same spot
+        for code in codes {
+            let s = stringify_key_code(code);
+            let parsed = parse_key_code(&s).unwrap();
+            assert_eq!(code, parsed, "code parse mismatch");
         }
+    }
 
-        fn parse_ok(s: &str) -> KeyCombination {
-            parse(s).unwrap()
+    /// Test stringifying/parsing each key modifier
+    #[test]
+    fn test_key_modifier() {
+        // Round trip should get us in the same spot
+        for modifier in KeyModifiers::all() {
+            let s = stringify_key_modifier(modifier);
+            let parsed = parse_key_modifier(&s).unwrap();
+            assert_eq!(modifier, parsed, "modifier parse mismatch");
         }
-
-        assert_eq!(parse_ok(" w "), KeyCode::Char('w').into());
-        assert_eq!(parse_ok("f2"), KeyCode::F(2).into());
-        assert_eq!(parse_ok("tab"), KeyCode::Tab.into());
-        assert_eq!(parse_ok("backtab"), KeyCode::BackTab.into());
-        // crossterm treats shift+tab as a special case, we translate for
-        // convenience
-        assert_eq!(parse_ok("shift tab"), KeyCode::BackTab.into());
-        assert_eq!(
-            parse_ok("alt shift tab"),
-            KeyCombination {
-                code: KeyCode::BackTab,
-                modifiers: KeyModifiers::ALT
-            }
-        );
-        assert_eq!(parse_ok("pgup"), KeyCode::PageUp.into());
-        assert_eq!(parse_ok("pgdn"), KeyCode::PageDown.into());
-        assert_eq!(parse_ok("capslock"), KeyCode::CapsLock.into());
-        assert_eq!(
-            parse_ok("shift f2"),
-            KeyCombination {
-                code: KeyCode::F(2),
-                modifiers: KeyModifiers::SHIFT,
-            }
-        );
-        assert_eq!(
-            parse_ok("super hyper meta alt ctrl shift f2"),
-            KeyCombination {
-                code: KeyCode::F(2),
-                modifiers: KeyModifiers::all(),
-            }
-        );
-
-        assert_err!(parse(""), "Invalid key code");
-        assert_err!(parse("  "), "Invalid key code");
-        assert_err!(parse("shift+w"), "Invalid key code");
-        assert_err!(parse("w shift"), "Invalid key code");
-        assert_err!(parse("shart w"), "Invalid key modifier \"shart\"");
-        assert_err!(parse("shift"), "Invalid key code \"shift\"");
-        assert_err!(parse("alt alt w"), "Duplicate modifier");
     }
 
     /// Test that errors are forward correctly through deserialization, and
@@ -512,7 +709,7 @@ mod tests {
 
         assert_de_tokens_error::<InputBinding>(
             &[Token::Seq { len: Some(1) }, Token::Str("no"), Token::SeqEnd],
-            "Invalid key code \"no\"",
+            "Invalid key code \"no\"; key combinations should be space-separated",
         );
         assert_de_tokens_error::<InputBinding>(
             &[
@@ -520,7 +717,8 @@ mod tests {
                 Token::Str("shart f2"),
                 Token::SeqEnd,
             ],
-            "Invalid key modifier \"shart\"",
+            "Invalid key modifier \"shart\"; must be one of \
+             [\"shift\", \"alt\", \"ctrl\", \"super\", \"hyper\", \"meta\"]",
         );
         assert_de_tokens_error::<InputBinding>(
             &[
@@ -529,7 +727,8 @@ mod tests {
                 Token::Str("cortl f3"),
                 Token::SeqEnd,
             ],
-            "Invalid key modifier \"cortl\"",
+            "Invalid key modifier \"cortl\"; must be one of \
+            [\"shift\", \"alt\", \"ctrl\", \"super\", \"hyper\", \"meta\"]",
         );
         assert_de_tokens_error::<InputBinding>(
             &[Token::Str("f3")],

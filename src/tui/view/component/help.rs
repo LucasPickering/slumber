@@ -1,11 +1,14 @@
-use crate::tui::{
-    context::TuiContext,
-    input::{Action, InputBinding},
-    view::{
-        common::{modal::Modal, table::Table},
-        draw::{Draw, Generate},
-        event::EventHandler,
-        util::layout,
+use crate::{
+    config::Config,
+    tui::{
+        context::TuiContext,
+        input::{Action, InputBinding},
+        view::{
+            common::{modal::Modal, table::Table},
+            draw::{Draw, Generate},
+            event::EventHandler,
+            util::layout,
+        },
     },
 };
 use itertools::Itertools;
@@ -100,10 +103,7 @@ impl Draw for HelpModal {
             title: Some("General"),
             rows: [
                 ("Version", Line::from(CRATE_VERSION)),
-                (
-                    "Configuration",
-                    Line::from(tui_context.config.path().display().to_string()),
-                ),
+                ("Configuration", Line::from(Config::path().to_string())),
                 (
                     "Collection",
                     Line::from(

@@ -89,12 +89,18 @@ All single-character keys (e.g. `w`, `/`, `=`, etc.) are not listed; the code is
 - `end`
 - `pageup`/`pgup`
 - `pagedown`/`pgdn`
-- `capslock`/`caps`
 - `tab`
 - `backtab`
 - `backspace`
 - `delete`/`del`
 - `insert`/`ins`
+- `capslock`/`caps`
+- `scrolllock`
+- `numlock`
+- `printscreen`
+- `pausebreak` (sometimes just called Pause; _not_ the same as the Pause media key)
+- `menu`
+- `keypadbegin`
 - `f1`
 - `f2`
 - `f3`
@@ -108,6 +114,19 @@ All single-character keys (e.g. `w`, `/`, `=`, etc.) are not listed; the code is
 - `f11`
 - `f12`
 - `space`
+- `play`
+- `pause` (the media key, _not_ Pause/Break)
+- `playpause`
+- `reverse`
+- `stop`
+- `fastforward`
+- `rewind`
+- `tracknext`
+- `trackprevious`
+- `record`
+- `lowervolume`
+- `raisevolume`
+- `mute`
 
 ### Key Modifiers
 

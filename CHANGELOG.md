@@ -12,16 +12,23 @@
 - Unknown fields in config/collection files will now be rejected ([#154](https://github.com/LucasPickering/slumber/issues/154))
   - In most cases this field is a mistake, so this is meant to make debugging easier
   - If you have an intentional unknown field, you can now nest it under `.ignore` to ignore it
+- Replace `slumber show dir` with `slumber show paths`
 
 ### Added
 
 - Request recipes can now be organized into folders ([#60](https://github.com/LucasPickering/slumber/issues/60))
   - See [the docs](https://slumber.lucaspickering.me/book/api/request_collection/request_recipe.html#folder-fields) for usage examples
+- Add `slumber show config` and `slumber show collection` subcommands
 
 ### Changed
 
 - Prevent infinite recursion in templates
   - It now triggers a helpful error instead of a panic
+- Support additional key codes for input mapping, including media keys
+
+### Fixed
+
+- Multiple spaces between modifiers/key codes in a key combination are now ignored
 
 ## [0.17.0] - 2024-04-08
 

@@ -1,13 +1,9 @@
+pub mod paths;
+
 use crate::http::RequestError;
-use anyhow::Context;
 use derive_more::{DerefMut, Display};
 use serde::de::DeserializeOwned;
-use std::{
-    fmt, fs,
-    iter::FusedIterator,
-    ops::Deref,
-    path::{Path, PathBuf},
-};
+use std::{fmt, iter::FusedIterator, ops::Deref};
 use strum::{EnumCount, IntoEnumIterator};
 use tracing::error;
 
@@ -73,45 +69,6 @@ impl<T> Deref for Replaceable<T> {
 impl<T> DerefMut for Replaceable<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.as_mut().expect("Replacement in progress or failed")
-    }
-}
-
-/// A wrapper around `PathBuf` that makes it impossible to access a directory
-/// path without creating the dir first. The idea is to prevent all the possible
-/// bugs that could occur when a directory doesn't exist.
-///
-/// If you just want to print the path without having to create it (e.g. for
-/// debug output), use the `Debug` or `Display` impls.
-#[derive(Debug, Display)]
-#[display("{}", _0.display())]
-pub struct Directory(PathBuf);
-
-impl Directory {
-    /// Root directory for all generated files. The value is contextual:
-    /// - In development, use a directory in the current directory
-    /// - In release, use a platform-specific directory in the user's home
-    pub fn root() -> Self {
-        if cfg!(debug_assertions) {
-            Self(Path::new("./data/").into())
-        } else {
-            // According to the docs, this dir will be present on all platforms
-            // https://docs.rs/dirs/latest/dirs/fn.data_dir.html
-            Self(dirs::data_dir().unwrap().join("slumber"))
-        }
-    }
-
-    /// Directory to store log files
-    pub fn log() -> Self {
-        Self(Self::root().0.join("log"))
-    }
-
-    /// Create this directory, and return the path. This is the only way to
-    /// access the path value directly, enforcing that it can't be used without
-    /// being created.
-    pub fn create(self) -> anyhow::Result<PathBuf> {
-        fs::create_dir_all(&self.0)
-            .context("Error creating directory `{self}`")?;
-        Ok(self.0)
     }
 }
 

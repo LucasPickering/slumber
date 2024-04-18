@@ -4,7 +4,10 @@
 use crate::{
     collection::{ProfileId, RecipeId},
     http::{RequestId, RequestRecord},
-    util::{Directory, ResultExt},
+    util::{
+        paths::{DataDirectory, FileGuard},
+        ResultExt,
+    },
 };
 use anyhow::{anyhow, Context};
 use derive_more::Display;
@@ -52,11 +55,13 @@ pub struct Database {
 pub struct CollectionId(Uuid);
 
 impl Database {
+    const FILE: &'static str = "state.sqlite";
+
     /// Load the database. This will perform migrations, but can be called from
     /// anywhere in the app. The migrations will run on first connection, and
     /// not after that.
     pub fn load() -> anyhow::Result<Self> {
-        let path = Self::path()?;
+        let path = Self::path().create_parent()?;
         info!(?path, "Loading database");
         let mut connection = Connection::open(path)?;
         connection.pragma_update(
@@ -72,10 +77,9 @@ impl Database {
         })
     }
 
-    /// Path to the database file. This will create the directory if it doesn't
-    /// exist
-    fn path() -> anyhow::Result<PathBuf> {
-        Ok(Directory::root().create()?.join("state.sqlite"))
+    /// Path to the database file
+    pub fn path() -> FileGuard {
+        DataDirectory::root().file(Self::FILE)
     }
 
     /// Apply database migrations

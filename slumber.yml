@@ -29,11 +29,12 @@ chains:
       trigger: !expire 12h
     selector: $.headers["X-Amzn-Trace-Id"]
 
-base: &base
-  authentication: !bearer "{{chains.auth_token}}"
-  headers:
-    Accept: application/json
-    Content-Type: application/json
+.ignore:
+  base: &base
+    authentication: !bearer "{{chains.auth_token}}"
+    headers:
+      Accept: application/json
+      Content-Type: application/json
 
 requests:
   login: !request

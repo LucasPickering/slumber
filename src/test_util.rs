@@ -20,6 +20,7 @@ factori!(Collection, {
         profiles = Default::default(),
         chains = Default::default(),
         recipes = Default::default(),
+        _ignore = Default::default(),
     }
 });
 

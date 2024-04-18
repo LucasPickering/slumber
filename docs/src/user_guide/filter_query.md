@@ -40,10 +40,11 @@ chains:
     selector: $.token
 
 # Use YAML anchors for de-duplication
-base: &base
-  headers:
-    Accept: application/json
-    Content-Type: application/json
+.ignore:
+  base: &base
+    headers:
+      Accept: application/json
+      Content-Type: application/json
 
 requests:
   login: !request

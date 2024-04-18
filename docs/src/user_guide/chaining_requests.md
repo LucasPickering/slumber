@@ -9,10 +9,11 @@ chains:
       recipe: login
     selector: $.token
 
-base: &base
-  headers:
-    Accept: application/json
-    Content-Type: application/json
+.ignore:
+  base: &base
+    headers:
+      Accept: application/json
+      Content-Type: application/json
 
 requests:
   login: !request

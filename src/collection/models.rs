@@ -18,6 +18,7 @@ use std::{path::PathBuf, time::Duration};
 /// of configuration.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[serde(deny_unknown_fields)]
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
     pub profiles: IndexMap<ProfileId, Profile>,
@@ -27,11 +28,18 @@ pub struct Collection {
     /// intuitive
     #[serde(default, rename = "requests")]
     pub recipes: RecipeTree,
+    /// A hack-ish to allow users to add arbitrary data to their collection
+    /// file without triggering a unknown field error. Ideally we could
+    /// ignore anything that starts with `.` (recursively) but that
+    /// requires a custom serde impl for each type, or changes to the macro
+    #[serde(default, skip_serializing, rename = ".ignore")]
+    pub _ignore: serde::de::IgnoredAny,
 }
 
 /// Mutually exclusive hot-swappable config group
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[serde(deny_unknown_fields)]
 pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
@@ -57,6 +65,7 @@ pub struct ProfileId(String);
 /// A gathering of like-minded recipes and/or folders
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[serde(deny_unknown_fields)]
 pub struct Folder {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
@@ -76,6 +85,7 @@ pub struct Folder {
 /// meaning related to string interpolation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[serde(deny_unknown_fields)]
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
@@ -112,7 +122,7 @@ pub struct RecipeId(String);
 /// request twice.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Authentication {
     /// `Authorization: Basic {username:password | base64}`
     Basic {
@@ -128,6 +138,7 @@ pub enum Authentication {
 /// can use it in a template via `{{chains.<chain_id>}}`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[serde(deny_unknown_fields)]
 pub struct Chain {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ChainId,
@@ -186,7 +197,7 @@ impl Equivalent<ChainId> for ChainId<&str> {
 /// The source of data for a chain
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainSource {
     /// Load data from the most recent response of a particular request recipe
     Request {
@@ -207,7 +218,7 @@ pub enum ChainSource {
 /// dependency request.
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainRequestTrigger {
     /// Never trigger the request. This is the default because upstream
     /// requests could be mutating, so we want the user to explicitly opt into

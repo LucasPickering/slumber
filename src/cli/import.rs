@@ -1,7 +1,7 @@
 use crate::{cli::Subcommand, collection::Collection, GlobalArgs};
 use anyhow::Context;
 use async_trait::async_trait;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::{
     fs::File,
     io::{self, Write},
@@ -12,18 +12,26 @@ use std::{
 /// Generate a Slumber request collection from an external format
 #[derive(Clone, Debug, Parser)]
 pub struct ImportCommand {
+    /// Input format
+    format: Format,
     /// Collection to import
     input_file: PathBuf,
-    /// Destination for the new slumber collection file. Omit to print to
-    /// stdout.
+    /// Destination for the new slumber collection file [default: stdout]
     output_file: Option<PathBuf>,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum Format {
+    Insomnia,
 }
 
 #[async_trait]
 impl Subcommand for ImportCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
         // Load the input
-        let collection = Collection::from_insomnia(&self.input_file)?;
+        let collection = match self.format {
+            Format::Insomnia => Collection::from_insomnia(&self.input_file)?,
+        };
 
         // Write the output
         let mut writer: Box<dyn Write> = match self.output_file {

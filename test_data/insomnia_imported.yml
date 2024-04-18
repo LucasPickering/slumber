@@ -1,16 +1,15 @@
 # What we expect the Insomnia example collection to import as
 profiles:
-  env_99d30891da4bdcebc63947a8fc17f076de878684:
-    name: Base Environment
-    data: {}
   env_b54010f85b024f5d89724bd918f983ec:
     name: Local
     data:
+      greeting: hello!
       host: http://localhost:3000
   env_6203e0435e4f44e19406bde63f7bfa62:
     name: Remote
     data:
       host: https://httpbin.org
+      greeting: howdy
 chains: {}
 requests:
   req_3bc2de939f1a4d1ebc00835cbefd6b5d: !request
@@ -38,21 +37,21 @@ requests:
       fld_2b83df7de20d446f91d94dcb0b66c06f: !folder
         name: Inner Folder
         requests:
-          req_467d7ec5ceee4893aa443b09e25c6e53: !request
-            name: No Auth
-            method: GET
-            url: https://httpbin.org/get
-            body: null
-            authentication: null
-            query: {}
-            headers: {}
-
           req_30f68ae3069b4ec59707bf793a4b74cb: !request
             name: Bearer Auth
             method: GET
             url: https://httpbin.org/get
             body: null
             authentication: !bearer " {% response 'body', 'req_3bc2de939f1a4d1ebc00835cbefd6b5d', 'b64::JC5oZWFkZXJzLkhvc3Q=::46b', 'when-expired', 60 %}"
+            query: {}
+            headers: {}
+
+          req_82f3033addcc4d128aa34c16a2f2de73: !request
+            name: Digest Auth (Unsupported)
+            method: GET
+            url: https://httpbin.org/get
+            body: null
+            authentication: null
             query: {}
             headers: {}
 
@@ -64,5 +63,14 @@ requests:
             authentication: !basic
               username: user
               password: pass
+            query: {}
+            headers: {}
+
+          req_467d7ec5ceee4893aa443b09e25c6e53: !request
+            name: No Auth
+            method: GET
+            url: https://httpbin.org/get
+            body: null
+            authentication: null
             query: {}
             headers: {}

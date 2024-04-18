@@ -1,7 +1,7 @@
 //! Recipe/folder tree structure
 
 use crate::collection::{cereal::deserialize_id_map, Folder, Recipe, RecipeId};
-use derive_more::{Deref, From};
+use derive_more::{Debug, Deref, From};
 use indexmap::{map::Values, IndexMap};
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
@@ -20,6 +20,7 @@ pub struct RecipeTree {
     /// the tree. This is possible because the IDs are globally unique. It is
     /// an invariant that every lookup key in this map is valid, therefore it's
     /// safe to panic if one is found to be invalid.
+    #[debug(skip)] // It's big and useless
     nodes_by_id: IndexMap<RecipeId, RecipeLookupKey>,
 }
 

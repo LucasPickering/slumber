@@ -13,6 +13,7 @@
 - [Chaining Requests](./user_guide/chaining_requests.md)
 - [Collection Reuse & Inheritance](./user_guide/inheritance.md)
 - [Data Filtering & Querying](./user_guide/filter_query.md)
+- [Importing External Collections](./user_guide/import.md)
 
 # API Reference
 

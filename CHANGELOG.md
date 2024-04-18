@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Changed
+
+- Show `WARN`/`ERROR` log output for CLI commands
+- Improvements to Insomnia import ([#12](https://github.com/LucasPickering/slumber/issues/12))
+- Rename `import-experimental` command to `import`
+  - It's official now! It's still going to get continuted improvement though
+
 ## [0.18.0] - 2024-04-18
 
 ### Breaking

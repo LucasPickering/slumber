@@ -14,7 +14,8 @@ mod util;
 
 use crate::{cli::CliCommand, tui::Tui, util::paths::DataDirectory};
 use clap::Parser;
-use std::{fs::File, path::PathBuf, process::ExitCode};
+use std::{fs::File, io, path::PathBuf, process::ExitCode};
+use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
 #[derive(Debug, Parser)]
@@ -45,8 +46,8 @@ struct GlobalArgs {
 #[tokio::main]
 async fn main() -> anyhow::Result<ExitCode> {
     // Global initialization
-    initialize_tracing().unwrap();
     let args = Args::parse();
+    initialize_tracing(args.subcommand.is_some()).unwrap();
 
     // Select mode based on whether request ID(s) were given
     match args.subcommand {
@@ -74,8 +75,9 @@ async fn main() -> anyhow::Result<ExitCode> {
     }
 }
 
-/// Set up tracing to log to a file
-fn initialize_tracing() -> anyhow::Result<()> {
+/// Set up tracing to log to a file. Optionally also log to stderr (for CLI
+/// usage)
+fn initialize_tracing(console_output: bool) -> anyhow::Result<()> {
     let path = DataDirectory::log().create_parent()?;
     let log_file = File::create(path)?;
     let file_subscriber = tracing_subscriber::fmt::layer()
@@ -85,6 +87,23 @@ fn initialize_tracing() -> anyhow::Result<()> {
         .with_target(false)
         .with_ansi(false)
         .with_filter(EnvFilter::from_default_env());
-    tracing_subscriber::registry().with(file_subscriber).init();
+
+    // Enable console output for CLI
+    let console_subscriber = if console_output {
+        Some(
+            tracing_subscriber::fmt::layer()
+                .with_writer(io::stderr)
+                .with_target(false)
+                .without_time()
+                .with_filter(LevelFilter::WARN),
+        )
+    } else {
+        None
+    };
+
+    tracing_subscriber::registry()
+        .with(file_subscriber)
+        .with(console_subscriber)
+        .init();
     Ok(())
 }

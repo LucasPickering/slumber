@@ -20,7 +20,6 @@ use std::process::ExitCode;
 pub enum CliCommand {
     Request(RequestCommand),
     Generate(GenerateCommand),
-    #[clap(name = "import-experimental")]
     Import(ImportCommand),
     Collections(CollectionsCommand),
     Show(ShowCommand),

@@ -39,7 +39,7 @@ chains:
       recipe: login
     selector: $.token
 
-# Use YAML anchors for de-duplication
+# Use YAML anchors and merge syntax for de-duplication
 .ignore:
   base: &base
     headers:

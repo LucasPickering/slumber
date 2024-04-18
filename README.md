@@ -18,6 +18,15 @@ Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and sha
 - You own your data: all configuration and data is stored locally and can be checked into version control
 - It will never be [enshittified](https://en.wikipedia.org/wiki/Enshittification)
 
+## Features
+
+- Usable as a TUI or CLI
+- [Import from external formats (e.g. Insomnia)](https://slumber.lucaspickering.me/book/user_guide/import.html)
+- [Build requests dynamically from other requests, files, and shell commands](https://slumber.lucaspickering.me/book/user_guide/templates.html)
+- [Browse response data using JSONPath selectors](https://slumber.lucaspickering.me/book/user_guide/filter_query.html)
+- Switch between different environments easily using [profiles](https://slumber.lucaspickering.me/book/api/request_collection/profile.html)
+- And more!
+
 ## Examples
 
 Slumber is based around **collections**. A collection is a group of request **recipes**, which are templates for the requests you want to run. A simple collection could be:

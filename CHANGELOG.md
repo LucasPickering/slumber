@@ -9,6 +9,9 @@
 - Profile values are always treated as templates now
   - Any profile values that were previously the "raw" variant (the default) that contain template syntax (e.g. `{{user_id}}`) will now be rendered as templates. In reality this is very unlikely, so this probably isn't going to break your setup
   - If you have an existing profile value tagged with `!template` it **won't** break, but it will no longer do anything
+- Unknown fields in config/collection files will now be rejected ([#154](https://github.com/LucasPickering/slumber/issues/154))
+  - In most cases this field is a mistake, so this is meant to make debugging easier
+  - If you have an intentional unknown field, you can now nest it under `.ignore` to ignore it
 
 ### Added
 

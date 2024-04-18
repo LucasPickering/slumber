@@ -37,11 +37,12 @@ slumber collections list
 
 A request collection supports the following top-level fields:
 
-| Field      | Type                                                    | Description               | Default |
-| ---------- | ------------------------------------------------------- | ------------------------- | ------- |
-| `profiles` | [`mapping[string, Profile]`](./profile.md)              | Static template values    | `{}`    |
-| `requests` | [`mapping[string, RequestRecipe]`](./request_recipe.md) | Requests Slumber can send | `{}`    |
-| `chains`   | [`mapping[string, Chain]`](./chain.md)                  | Complex template values   | `{}`    |
+| Field      | Type                                                    | Description                                                                                                                        | Default |
+| ---------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `profiles` | [`mapping[string, Profile]`](./profile.md)              | Static template values                                                                                                             | `{}`    |
+| `requests` | [`mapping[string, RequestRecipe]`](./request_recipe.md) | Requests Slumber can send                                                                                                          | `{}`    |
+| `chains`   | [`mapping[string, Chain]`](./chain.md)                  | Complex template values                                                                                                            | `{}`    |
+| `.ignore`  | Any                                                     | Extra data to be ignored by Slumber (useful with [YAML anchors](https://support.atlassian.com/bitbucket-cloud/docs/yaml-anchors/)) |         |
 
 ## Examples
 
@@ -71,11 +72,12 @@ chains:
       recipe: login
     selector: $.token
 
-# Use YAML anchors for de-duplication
-base: &base
-  headers:
-    Accept: application/json
-    Content-Type: application/json
+# Use YAML anchors for de-duplication (Anything under .ignore is ignored)
+.ignore:
+  base: &base
+    headers:
+      Accept: application/json
+      Content-Type: application/json
 
 requests:
   login: !request

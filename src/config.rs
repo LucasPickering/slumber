@@ -16,7 +16,7 @@ use tracing::info;
 /// are made to the config file while a session is running, they won't be
 /// picked up until the app restarts.
 #[derive(Debug, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// The path that the config was loaded from, or tried to be loaded from if
     /// the file didn't exist

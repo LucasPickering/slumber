@@ -63,6 +63,7 @@ impl Collection {
             profiles,
             recipes,
             chains: IndexMap::new(),
+            _ignore: serde::de::IgnoredAny,
         })
     }
 }

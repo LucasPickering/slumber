@@ -4,6 +4,7 @@ use derive_more::{DerefMut, Display};
 use serde::de::DeserializeOwned;
 use std::{
     fmt, fs,
+    iter::FusedIterator,
     ops::Deref,
     path::{Path, PathBuf},
 };
@@ -191,8 +192,8 @@ impl<T: EnumCount, U: EnumCount> EnumCount for EnumChain<T, U> {
 
 impl<T, U> IntoEnumIterator for EnumChain<T, U>
 where
-    T: IntoEnumIterator,
-    U: IntoEnumIterator,
+    T: Clone + IntoEnumIterator,
+    U: Clone + IntoEnumIterator,
 {
     type Iterator = EnumIterChain<T, U>;
 
@@ -202,6 +203,7 @@ where
 }
 
 /// Iterator for [EnumChain]
+#[derive(Clone)]
 pub struct EnumIterChain<T: IntoEnumIterator, U: IntoEnumIterator> {
     t_iter: T::Iterator,
     u_iter: U::Iterator,
@@ -275,6 +277,15 @@ where
     }
 }
 
+impl<T, U> FusedIterator for EnumIterChain<T, U>
+where
+    T: IntoEnumIterator,
+    T::Iterator: FusedIterator,
+    U: IntoEnumIterator,
+    U::Iterator: FusedIterator,
+{
+}
+
 #[cfg(test)]
 macro_rules! assert_err {
     ($e:expr, $msg:expr) => {{
@@ -298,13 +309,13 @@ mod tests {
     use super::*;
     use strum::EnumIter;
 
-    #[derive(Debug, PartialEq, EnumIter)]
+    #[derive(Clone, Debug, PartialEq, EnumIter)]
     enum A {
         One,
         Two,
     }
 
-    #[derive(Debug, PartialEq, EnumIter)]
+    #[derive(Clone, Debug, PartialEq, EnumIter)]
     enum B {
         Three,
         Four,

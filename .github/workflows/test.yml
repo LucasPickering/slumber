@@ -14,13 +14,13 @@ jobs:
     env:
       # Rustfmt requires a nightly toolchain because we use unstable rules. The
       # chosen version is fairly arbitrary
-      TOOLCHAIN: nightly-2023-09-20
+      TOOLCHAIN: nightly-2024-04-20
     steps:
       - uses: actions/checkout@v3
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ env.TOOLCHAIN}}
+          toolchain: ${{env.TOOLCHAIN}}
           components: rustfmt
 
       - name: Cache cargo files
@@ -37,7 +37,7 @@ jobs:
       - name: Rustfmt
         uses: actions-rs/cargo@v1
         with:
-          toolchain: ${{ env.TOOLCHAIN}}
+          toolchain: ${{env.TOOLCHAIN}}
           command: fmt
           args: -- --check
 

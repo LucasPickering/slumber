@@ -11,7 +11,7 @@ use crate::{
             },
             component::record_body::{RecordBody, RecordBodyProps},
             draw::{Draw, Generate, ToStringGenerate},
-            event::{Event, EventHandler, Update, UpdateContext},
+            event::{Event, EventHandler, EventQueue, Update},
             state::{persistence::PersistentKey, RequestState, StateCell},
             util::layout,
             Component,
@@ -153,12 +153,12 @@ enum Tab {
 }
 
 impl EventHandler for CompleteResponseContent {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::OpenActions),
                 ..
-            } => context.open_modal_default::<ActionsModal<MenuAction>>(),
+            } => EventQueue::open_modal_default::<ActionsModal<MenuAction>>(),
             Event::Other(ref other) => {
                 // Check for an action menu event
                 match other.downcast_ref::<MenuAction>() {

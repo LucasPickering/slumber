@@ -3,7 +3,7 @@ use crate::tui::{
     input::Action,
     view::{
         draw::{Draw, Generate},
-        event::{Event, EventHandler, Update, UpdateContext},
+        event::{Event, EventHandler, Update},
         util::layout,
     },
 };
@@ -91,7 +91,7 @@ impl<T> TextWindow<T> {
 }
 
 impl<T: Debug> EventHandler for TextWindow<T> {
-    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(action),

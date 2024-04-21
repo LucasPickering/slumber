@@ -10,7 +10,7 @@ use crate::{
         },
         component::Component,
         draw::{Draw, Generate},
-        event::{Event, EventHandler},
+        event::{Event, EventHandler, EventQueue},
         state::Notification,
     },
 };
@@ -72,14 +72,14 @@ impl PromptModal {
         let text_box = TextBox::default()
             .with_sensitive(prompt.sensitive())
             // Make sure cancel gets propagated to close the modal
-            .with_on_cancel(|_, context| context.queue_event(Event::CloseModal))
-            .with_on_submit(move |_, context| {
+            .with_on_cancel(|_| EventQueue::push(Event::CloseModal))
+            .with_on_submit(move |_| {
                 // We have to defer submission to on_close, because we need the
                 // owned value of `self.prompt`. We could have just put that in
                 // a refcell, but this felt a bit cleaner because we know this
                 // submitter will only be called once.
                 submit_cell.set(true);
-                context.queue_event(Event::CloseModal);
+                EventQueue::push(Event::CloseModal);
             })
             .into();
         Self {

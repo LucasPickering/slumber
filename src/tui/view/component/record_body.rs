@@ -7,7 +7,7 @@ use crate::{
         view::{
             common::{text_box::TextBox, text_window::TextWindow},
             draw::Draw,
-            event::{Event, EventHandler, Update, UpdateContext},
+            event::{Event, EventHandler, EventQueue, Update},
             state::StateCell,
             util::layout,
             Component,
@@ -70,8 +70,8 @@ impl Default for RecordBody {
                 .with_placeholder("'/' to filter body with JSONPath")
                 .with_validator(|text| JsonPath::parse(text).is_ok())
                 // Callback triggers an event, so we can modify our own state
-                .with_on_submit(|text_box, context| {
-                    context.queue_event(Event::other(QuerySubmit(
+                .with_on_submit(|text_box| {
+                    EventQueue::push(Event::other(QuerySubmit(
                         text_box.text().to_owned(),
                     )))
                 })
@@ -81,7 +81,7 @@ impl Default for RecordBody {
 }
 
 impl EventHandler for RecordBody {
-    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::Search),

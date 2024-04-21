@@ -12,7 +12,7 @@ use crate::{
                 primary::{PrimaryView, PrimaryViewProps},
             },
             draw::Draw,
-            event::{Event, EventHandler, Update, UpdateContext},
+            event::{Event, EventHandler, Update},
             state::RequestState,
             util::layout,
             Component,
@@ -103,14 +103,8 @@ impl Root {
 }
 
 impl EventHandler for Root {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
-            Event::Init => {
-                // Tell PrimaryPane to load for whatever recipe is selected
-                // TODO make SelectState call on_select on startup instead
-                context.queue_event(Event::HttpLoadRequest);
-            }
-
             // Update state of HTTP request
             Event::HttpSetState {
                 profile_id,

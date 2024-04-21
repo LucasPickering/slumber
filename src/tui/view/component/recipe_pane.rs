@@ -16,7 +16,7 @@ use crate::{
                 Pane,
             },
             draw::{Draw, Generate, ToStringGenerate},
-            event::{Event, EventHandler, Update, UpdateContext},
+            event::{Event, EventHandler, EventQueue, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
                 select::{Dynamic, SelectState},
@@ -167,12 +167,12 @@ impl RecipePane {
 }
 
 impl EventHandler for RecipePane {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match &event {
             Event::Input {
                 action: Some(Action::OpenActions),
                 ..
-            } => context.open_modal_default::<ActionsModal<MenuAction>>(),
+            } => EventQueue::open_modal_default::<ActionsModal<MenuAction>>(),
             Event::Other(callback) => {
                 match callback.downcast_ref::<MenuAction>() {
                     Some(action) => {
@@ -451,7 +451,7 @@ impl RowState {
     }
 
     /// Toggle row state on submit
-    fn on_submit(_: &mut UpdateContext, row: &mut Self) {
+    fn on_submit(row: &mut Self) {
         *row.enabled ^= true;
     }
 }

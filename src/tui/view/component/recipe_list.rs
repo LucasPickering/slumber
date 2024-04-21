@@ -8,7 +8,7 @@ use crate::{
         view::{
             common::{list::List, Pane},
             draw::{Draw, Generate},
-            event::{Event, EventHandler, UpdateContext},
+            event::{Event, EventHandler, EventQueue},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
                 select::{Dynamic, SelectState},
@@ -39,9 +39,9 @@ struct RecipeListItem {
 impl RecipeListPane {
     pub fn new(recipes: &RecipeTree) -> Self {
         // When highlighting a new recipe, load it from the repo
-        fn on_select(context: &mut UpdateContext, _: &mut RecipeListItem) {
+        fn on_select(_: &mut RecipeListItem) {
             // If a recipe isn't selected, this will do nothing
-            context.queue_event(Event::HttpLoadRequest);
+            EventQueue::push(Event::HttpLoadRequest);
         }
 
         // Flatten the tree into a list

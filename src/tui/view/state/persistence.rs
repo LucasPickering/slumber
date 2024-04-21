@@ -6,7 +6,7 @@ use crate::{
         context::TuiContext,
         view::{
             component::Component,
-            event::{Event, EventHandler, Update, UpdateContext},
+            event::{Event, EventHandler, Update},
         },
     },
 };
@@ -47,8 +47,8 @@ impl<T> EventHandler for Persistent<T>
 where
     T: EventHandler + PersistentContainer,
 {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        self.container.update(context, event)
+    fn update(&mut self, event: Event) -> Update {
+        self.container.update(event)
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {

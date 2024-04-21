@@ -168,6 +168,10 @@ impl Tui {
                 }
             }
 
+            // ===== Event Phase =====
+            // Let the view handle all queued events
+            self.view.handle_events();
+
             // ===== Draw Phase =====
             self.terminal.draw(|f| self.view.draw(f))?;
 

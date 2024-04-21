@@ -1,7 +1,7 @@
 use crate::tui::{
     input::Action,
     view::{
-        event::{Event, EventHandler, Update, UpdateContext},
+        event::{Event, EventHandler, Update},
         state::persistence::{Persistable, PersistentContainer},
     },
 };
@@ -53,7 +53,7 @@ impl SelectStateKind for Dynamic {}
 pub struct Fixed;
 impl SelectStateKind for Fixed {}
 
-type Callback<Item> = Box<dyn Fn(&mut UpdateContext, &mut Item)>;
+type Callback<Item> = Box<dyn Fn(&mut Item)>;
 
 impl<Kind, Item, State: SelectStateData> SelectState<Kind, Item, State>
 where
@@ -62,7 +62,7 @@ where
     /// Set the callback to be called when the user highlights a new item
     pub fn on_select(
         mut self,
-        on_select: impl 'static + Fn(&mut UpdateContext, &mut Item),
+        on_select: impl 'static + Fn(&mut Item),
     ) -> Self {
         self.on_select = Some(Box::new(on_select));
         self
@@ -71,7 +71,7 @@ where
     /// Set the callback to be called when the user hits enter on an item
     pub fn on_submit(
         mut self,
-        on_submit: impl 'static + Fn(&mut UpdateContext, &mut Item),
+        on_submit: impl 'static + Fn(&mut Item),
     ) -> Self {
         self.on_submit = Some(Box::new(on_submit));
         self
@@ -103,29 +103,29 @@ where
     /// Select an item by value. Context is required for callbacks. Generally
     /// the given value will be the type `Item`, but it could be anything that
     /// compares to `Item` (e.g. an ID type).
-    pub fn select<T>(&mut self, context: &mut UpdateContext, value: &T)
+    pub fn select<T>(&mut self, value: &T)
     where
         T: PartialEq<Item>,
     {
         if let Some((index, _)) =
             self.items.iter().find_position(|item| value == *item)
         {
-            self.select_index(context, index);
+            self.select_index(index);
         }
     }
 
-    /// Select the previous item in the list. Context is required for callbacks.
-    pub fn previous(&mut self, context: &mut UpdateContext) {
-        self.select_delta(context, -1);
+    /// Select the previous item in the list
+    pub fn previous(&mut self) {
+        self.select_delta(-1);
     }
 
-    /// Select the next item in the list. Context is required for callbacks.
-    pub fn next(&mut self, context: &mut UpdateContext) {
-        self.select_delta(context, 1);
+    /// Select the next item in the list
+    pub fn next(&mut self) {
+        self.select_delta(1);
     }
 
     /// Select an item by index
-    fn select_index(&mut self, context: &mut UpdateContext, index: usize) {
+    fn select_index(&mut self, index: usize) {
         let state = self.state.get_mut();
         let current = state.selected();
         state.select(index);
@@ -140,7 +140,7 @@ where
                     .selected()
                     .and_then(|index| self.items.get_mut(index));
                 if let Some(selected) = selected {
-                    on_select(context, selected);
+                    on_select(selected);
                 }
             }
             _ => {}
@@ -149,7 +149,7 @@ where
 
     /// Move some number of items up or down the list. Selection will wrap if
     /// it underflows/overflows. Context is required for callbacks.
-    fn select_delta(&mut self, context: &mut UpdateContext, delta: isize) {
+    fn select_delta(&mut self, delta: isize) {
         // If there's nothing in the list, we can't do anything
         if !self.items.is_empty() {
             let index = match self.state.get_mut().selected() {
@@ -161,7 +161,7 @@ where
                 // Nothing selected yet, pick the first item
                 None => 0,
             };
-            self.select_index(context, index);
+            self.select_index(index);
         }
     }
 
@@ -263,7 +263,7 @@ where
     Item: Debug,
     State: Debug + SelectStateData,
 {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
             // Up/down keys/scrolling. Scrolling will only work if .set_area()
             // is called on the wrapping Component by our parent
@@ -272,11 +272,11 @@ where
                 ..
             } => match action {
                 Action::Up | Action::ScrollUp => {
-                    self.previous(context);
+                    self.previous();
                     Update::Consumed
                 }
                 Action::Down | Action::ScrollDown => {
-                    self.next(context);
+                    self.next();
                     Update::Consumed
                 }
                 Action::Submit => {
@@ -289,7 +289,7 @@ where
                             .selected()
                             .and_then(|index| self.items.get_mut(index));
                         if let Some(selected) = selected {
-                            on_submit(context, selected);
+                            on_submit(selected);
                         }
 
                         Update::Consumed
@@ -319,15 +319,8 @@ where
     }
 
     fn set(&mut self, value: <Self::Value as Persistable>::Persisted) {
-        // Do *not* use the helper methods for selecting by value. That requires
-        // UpdateContext because it wants to call the callbacks. It'd be nice if
-        // we could trigger callbacks here, but with no access to the update
-        // context it's not possible.
-        if let Some((index, _)) =
-            self.items.iter().find_position(|item| &value == *item)
-        {
-            self.state.get_mut().select(index);
-        }
+        // This will call the on_select callback if the item is in the list
+        self.select(&value);
     }
 }
 

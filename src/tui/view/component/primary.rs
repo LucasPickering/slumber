@@ -18,7 +18,7 @@ use crate::{
                 response_pane::{ResponsePane, ResponsePaneProps},
             },
             draw::Draw,
-            event::{Event, EventHandler, Update, UpdateContext},
+            event::{Event, EventHandler, EventQueue, Update},
             state::{
                 persistence::{Persistent, PersistentKey},
                 select::{Fixed, SelectState},
@@ -267,7 +267,7 @@ impl PrimaryView {
 }
 
 impl EventHandler for PrimaryView {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match &event {
             // Load latest request for selected recipe from database
             Event::HttpLoadRequest => {
@@ -308,52 +308,47 @@ impl EventHandler for PrimaryView {
                     };
                     // See if any child panes were clicked
                     if self.profile_list_pane.intersects(mouse) {
-                        self.selected_pane
-                            .select(context, &PrimaryPane::ProfileList);
+                        self.selected_pane.select(&PrimaryPane::ProfileList);
                     } else if self.recipe_list_pane.intersects(mouse) {
-                        self.selected_pane
-                            .select(context, &PrimaryPane::RecipeList);
+                        self.selected_pane.select(&PrimaryPane::RecipeList);
                     } else if self.recipe_pane.intersects(mouse) {
-                        self.selected_pane
-                            .select(context, &PrimaryPane::Recipe);
+                        self.selected_pane.select(&PrimaryPane::Recipe);
                     } else if self.request_pane.intersects(mouse) {
-                        self.selected_pane
-                            .select(context, &PrimaryPane::Request);
+                        self.selected_pane.select(&PrimaryPane::Request);
                     } else if self.response_pane.intersects(mouse) {
-                        self.selected_pane
-                            .select(context, &PrimaryPane::Response);
+                        self.selected_pane.select(&PrimaryPane::Response);
                     }
                 }
                 Action::PreviousPane if self.fullscreen_mode.is_none() => {
-                    self.selected_pane.previous(context);
+                    self.selected_pane.previous();
                 }
                 Action::NextPane if self.fullscreen_mode.is_none() => {
-                    self.selected_pane.next(context);
+                    self.selected_pane.next();
                 }
                 Action::Submit => {
                     // Send a request from anywhere
-                    context.queue_event(Event::HttpSendRequest);
+                    EventQueue::push(Event::HttpSendRequest);
                 }
                 Action::OpenActions => {
-                    context.open_modal_default::<ActionsModal>();
+                    EventQueue::open_modal_default::<ActionsModal>();
                 }
                 Action::OpenHelp => {
-                    context.open_modal_default::<HelpModal>();
+                    EventQueue::open_modal_default::<HelpModal>();
                 }
-                Action::SelectProfileList => self
-                    .selected_pane
-                    .select(context, &PrimaryPane::ProfileList),
+                Action::SelectProfileList => {
+                    self.selected_pane.select(&PrimaryPane::ProfileList)
+                }
                 Action::SelectRecipeList => {
-                    self.selected_pane.select(context, &PrimaryPane::RecipeList)
+                    self.selected_pane.select(&PrimaryPane::RecipeList)
                 }
                 Action::SelectRecipe => {
-                    self.selected_pane.select(context, &PrimaryPane::Recipe)
+                    self.selected_pane.select(&PrimaryPane::Recipe)
                 }
                 Action::SelectRequest => {
-                    self.selected_pane.select(context, &PrimaryPane::Request)
+                    self.selected_pane.select(&PrimaryPane::Request)
                 }
                 Action::SelectResponse => {
-                    self.selected_pane.select(context, &PrimaryPane::Response)
+                    self.selected_pane.select(&PrimaryPane::Response)
                 }
 
                 // Toggle fullscreen

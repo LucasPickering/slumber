@@ -3,7 +3,7 @@ use crate::{
         common::{list::List, modal::Modal},
         component::Component,
         draw::{Draw, Generate, ToStringGenerate},
-        event::{Event, EventHandler, UpdateContext},
+        event::{Event, EventHandler, EventQueue},
         state::select::{Fixed, FixedSelect, SelectState},
     },
     util::EnumChain,
@@ -28,18 +28,16 @@ pub struct ActionsModal<T: FixedSelect = EmptyAction> {
 
 impl<T: FixedSelect> Default for ActionsModal<T> {
     fn default() -> Self {
-        let wrapper =
-            move |context: &mut UpdateContext,
-                  action: &mut EnumChain<GlobalAction, T>| {
-                // Close the modal *first*, so the parent can handle the
-                // callback event. Jank but it works
-                context.queue_event(Event::CloseModal);
-                let event = match action {
-                    EnumChain::T(action) => Event::other(*action),
-                    EnumChain::U(action) => Event::other(*action),
-                };
-                context.queue_event(event);
+        let wrapper = move |action: &mut EnumChain<GlobalAction, T>| {
+            // Close the modal *first*, so the parent can handle the
+            // callback event. Jank but it works
+            EventQueue::push(Event::CloseModal);
+            let event = match action {
+                EnumChain::T(action) => Event::other(*action),
+                EnumChain::U(action) => Event::other(*action),
             };
+            EventQueue::push(event);
+        };
 
         Self {
             actions: SelectState::fixed().on_submit(wrapper).into(),

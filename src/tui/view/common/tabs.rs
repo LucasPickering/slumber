@@ -3,7 +3,7 @@ use crate::tui::{
     input::Action,
     view::{
         draw::Draw,
-        event::{Event, EventHandler, Update, UpdateContext},
+        event::{Event, EventHandler, Update},
         state::{
             persistence::{Persistable, Persistent, PersistentKey},
             select::{Fixed, FixedSelect, SelectState},
@@ -32,18 +32,18 @@ impl<T: FixedSelect + Persistable> Tabs<T> {
 }
 
 impl<T: FixedSelect + Persistable> EventHandler for Tabs<T> {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(action),
                 ..
             } => match action {
                 Action::Left => {
-                    self.tabs.previous(context);
+                    self.tabs.previous();
                     Update::Consumed
                 }
                 Action::Right => {
-                    self.tabs.next(context);
+                    self.tabs.next();
                     Update::Consumed
                 }
 

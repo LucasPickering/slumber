@@ -5,7 +5,7 @@ use crate::tui::{
     input::Action,
     view::{
         draw::Draw,
-        event::{Event, EventHandler, Update, UpdateContext},
+        event::{Event, EventHandler, Update},
     },
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -37,7 +37,7 @@ pub struct TextBox {
     on_cancel: Option<Callback>,
 }
 
-type Callback = Box<dyn Fn(&TextBox, &mut UpdateContext)>;
+type Callback = Box<dyn Fn(&TextBox)>;
 
 type Validator = Box<dyn Fn(&str) -> bool>;
 
@@ -87,7 +87,7 @@ impl TextBox {
     /// Set the callback to be called when the user hits escape
     pub fn with_on_cancel(
         mut self,
-        on_cancel: impl 'static + Fn(&Self, &mut UpdateContext),
+        on_cancel: impl 'static + Fn(&Self),
     ) -> Self {
         self.on_cancel = Some(Box::new(on_cancel));
         self
@@ -96,7 +96,7 @@ impl TextBox {
     /// Set the callback to be called when the user hits enter
     pub fn with_on_submit(
         mut self,
-        on_submit: impl 'static + Fn(&Self, &mut UpdateContext),
+        on_submit: impl 'static + Fn(&Self),
     ) -> Self {
         self.on_submit = Some(Box::new(on_submit));
         self
@@ -138,17 +138,17 @@ impl TextBox {
     }
 
     /// Call parent's submissionc callback
-    fn submit(&mut self, context: &mut UpdateContext) {
+    fn submit(&mut self) {
         if let Some(on_submit) = &self.on_submit {
-            on_submit(self, context);
+            on_submit(self);
         }
         self.unfocus();
     }
 
     /// Call parent's cancel callback
-    fn cancel(&mut self, context: &mut UpdateContext) {
+    fn cancel(&mut self) {
         if let Some(on_cancel) = &self.on_cancel {
-            on_cancel(self, context);
+            on_cancel(self);
         }
         self.unfocus();
     }
@@ -181,16 +181,16 @@ impl TextBox {
 }
 
 impl EventHandler for TextBox {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::Submit),
                 ..
-            } => self.submit(context),
+            } => self.submit(),
             Event::Input {
                 action: Some(Action::Cancel),
                 ..
-            } => self.cancel(context),
+            } => self.cancel(),
             Event::Input {
                 action: Some(Action::LeftClick),
                 ..

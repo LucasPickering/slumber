@@ -16,7 +16,7 @@ pub use root::Root;
 
 use crate::tui::view::{
     draw::Draw,
-    event::{Event, EventHandler, Update, UpdateContext},
+    event::{Event, EventHandler, Update},
 };
 use crossterm::event::MouseEvent;
 use derive_more::{Deref, DerefMut};
@@ -94,8 +94,8 @@ impl<T> Component<T> {
 }
 
 impl<T: EventHandler> EventHandler for Component<T> {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        self.inner.update(context, event)
+    fn update(&mut self, event: Event) -> Update {
+        self.inner.update(event)
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {

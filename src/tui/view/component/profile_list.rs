@@ -6,7 +6,7 @@ use crate::{
         view::{
             common::{list::List, Pane},
             draw::{Draw, Generate},
-            event::{Event, EventHandler, Update, UpdateContext},
+            event::{Event, EventHandler, EventQueue, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
                 select::{Dynamic, SelectState},
@@ -34,8 +34,8 @@ pub struct ProfileListPaneProps {
 impl ProfileListPane {
     pub fn new(profiles: Vec<Profile>) -> Self {
         // Loaded request depends on the profile, so refresh on change
-        fn on_select(context: &mut UpdateContext, _: &mut Profile) {
-            context.queue_event(Event::HttpLoadRequest);
+        fn on_select(_: &mut Profile) {
+            EventQueue::push(Event::HttpLoadRequest);
         }
 
         Self {
@@ -53,7 +53,7 @@ impl ProfileListPane {
 }
 
 impl EventHandler for ProfileListPane {
-    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
             // Sending requests from the profile pane is unintuitive, so eat
             // submission events here

@@ -13,7 +13,7 @@ use crate::{
     },
 };
 use crossterm::event::{MouseEvent, MouseEventKind};
-use std::{any::Any, collections::VecDeque, fmt::Debug};
+use std::{any::Any, cell::RefCell, collections::VecDeque, fmt::Debug};
 use tracing::trace;
 
 /// A UI element that can handle user/async input. This trait facilitates an
@@ -22,9 +22,9 @@ use tracing::trace;
 /// element has the opportunity to consume the event so it stops bubbling.
 pub trait EventHandler: Debug {
     /// Update the state of *just* this component according to the message.
-    /// Returned outcome indicates what to do afterwards. Context allows updates
-    /// to trigger side-effects, e.g. launching an HTTP request.
-    fn update(&mut self, _context: &mut UpdateContext, event: Event) -> Update {
+    /// Returned outcome indicates what to do afterwards. Use [UpdateContext]
+    /// to queue subsequent events.
+    fn update(&mut self, event: Event) -> Update {
         Update::Propagate(event)
     }
 
@@ -37,38 +37,51 @@ pub trait EventHandler: Debug {
     }
 }
 
-/// Mutable context passed to each update call. Allows for triggering side
-/// effects.
-pub struct UpdateContext<'a> {
-    event_queue: &'a mut VecDeque<Event>,
-}
+/// A queue of view events. Any component within the view can add to this, and
+/// outside the view (e.g. from the main loop) it can be added to via the view.
+///
+/// This is drained by the view, which is responsible for passing those events
+/// down the component tree.
+#[derive(Default)]
+pub struct EventQueue(VecDeque<Event>);
 
-impl<'a> UpdateContext<'a> {
-    pub fn new(event_queue: &'a mut VecDeque<Event>) -> Self {
-        Self { event_queue }
+impl EventQueue {
+    thread_local! {
+        /// This is used to access the event queue from anywhere in the view
+        /// code. Since the view is all single-threaded, there should only ever
+        /// be one instance of this thread local. All mutable accesses are
+        /// restricted to the methods on the [EventQueue] type, so it's
+        /// impossible for an outside caller to hold the ref cell open.
+        ///
+        /// The advantage of having this in a thread local is it makes it easy
+        /// to queue additional events from anywhere, e.g. in event callbacks
+        /// or during init.
+        static INSTANCE: RefCell<EventQueue> = RefCell::default();
     }
 
-    /// Queue a subsequent view event to be handled after the current one
-    pub fn queue_event(&mut self, event: Event) {
-        trace!(?event, "Queueing subsequent event");
-        self.event_queue.push_back(event);
+    /// Queue a view event to be handled by the component tree
+    pub fn push(event: Event) {
+        trace!(?event, "Queueing view event");
+        Self::INSTANCE
+            .with_borrow_mut(move |context| context.0.push_back(event));
+    }
+
+    /// Pop an event off the queue
+    pub fn pop() -> Option<Event> {
+        Self::INSTANCE.with_borrow_mut(|context| context.0.pop_front())
     }
 
     /// Open a modal
-    pub fn open_modal(
-        &mut self,
-        modal: impl Modal + 'static,
-        priority: ModalPriority,
-    ) {
-        self.queue_event(Event::OpenModal {
+    pub fn open_modal(modal: impl Modal + 'static, priority: ModalPriority) {
+        Self::push(Event::OpenModal {
             modal: Box::new(modal),
             priority,
         });
     }
 
     /// Open a modal that implements `Default`, with low priority
-    pub fn open_modal_default<T: Modal + Default + 'static>(&mut self) {
-        self.open_modal(T::default(), ModalPriority::Low);
+    pub fn open_modal_default<T: Modal + Default + 'static>() {
+        Self::open_modal(T::default(), ModalPriority::Low);
     }
 }
 
@@ -83,10 +96,6 @@ impl<'a> UpdateContext<'a> {
 /// misnomer here and we should rename this?
 #[derive(derive_more::Debug)]
 pub enum Event {
-    /// Sent when the view is first opened. If a component is created after the
-    /// initial view setup, it will *not* receive this message.
-    Init,
-
     /// Input from the user, which may or may not correspond to a bound action.
     /// Most components just care about the action, but some require raw input
     Input {

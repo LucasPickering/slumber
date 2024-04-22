@@ -4,7 +4,7 @@ use crate::{
         component::Component,
         draw::{Draw, Generate, ToStringGenerate},
         event::{Event, EventHandler, EventQueue},
-        state::select::{Fixed, FixedSelect, SelectState},
+        state::fixed_select::{FixedSelect, FixedSelectState},
     },
     util::EnumChain,
 };
@@ -22,8 +22,7 @@ use strum::{EnumCount, EnumIter};
 #[derive(Debug)]
 pub struct ActionsModal<T: FixedSelect = EmptyAction> {
     /// Join the list of global actions into the given one
-    actions:
-        Component<SelectState<Fixed, EnumChain<GlobalAction, T>, ListState>>,
+    actions: Component<FixedSelectState<EnumChain<GlobalAction, T>, ListState>>,
 }
 
 impl<T: FixedSelect> Default for ActionsModal<T> {
@@ -40,7 +39,7 @@ impl<T: FixedSelect> Default for ActionsModal<T> {
         };
 
         Self {
-            actions: SelectState::fixed().on_submit(wrapper).into(),
+            actions: FixedSelectState::new().on_submit(wrapper).into(),
         }
     }
 }
@@ -76,7 +75,7 @@ where
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         let list = List {
             block: None,
-            list: &self.actions,
+            list: self.actions.items(),
         };
         frame.render_stateful_widget(
             list.generate(),

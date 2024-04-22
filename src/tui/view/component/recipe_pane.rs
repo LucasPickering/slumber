@@ -19,7 +19,7 @@ use crate::{
             event::{Event, EventHandler, EventQueue, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
-                select::{Dynamic, SelectState},
+                select::SelectState,
                 StateCell,
             },
             util::layout,
@@ -72,8 +72,8 @@ struct RecipeStateKey {
 #[derive(Debug)]
 struct RecipeState {
     url: TemplatePreview,
-    query: Component<Persistent<SelectState<Dynamic, RowState, TableState>>>,
-    headers: Component<Persistent<SelectState<Dynamic, RowState, TableState>>>,
+    query: Component<Persistent<SelectState<RowState, TableState>>>,
+    headers: Component<Persistent<SelectState<RowState, TableState>>>,
     body: Option<Component<TextWindow<TemplatePreview>>>,
     authentication: Option<Component<AuthenticationDisplay>>,
 }
@@ -125,7 +125,7 @@ impl RecipePane {
         if let Some(state) = self.recipe_state.get() {
             /// Convert select state into the set of disabled keys
             fn to_disabled_set(
-                select_state: &SelectState<Dynamic, RowState, TableState>,
+                select_state: &SelectState<RowState, TableState>,
             ) -> HashSet<String> {
                 select_state
                     .items()
@@ -458,7 +458,7 @@ impl RowState {
 
 /// Convert table select state into a renderable table
 fn to_table<'a>(
-    state: &'a SelectState<Dynamic, RowState, TableState>,
+    state: &'a SelectState<RowState, TableState>,
     header: [&'a str; 3],
 ) -> Table<'a, 3, Row<'a>> {
     Table {

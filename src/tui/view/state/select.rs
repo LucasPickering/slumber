@@ -7,26 +7,16 @@ use crate::tui::{
 };
 use itertools::Itertools;
 use ratatui::widgets::{ListState, TableState};
-use std::{
-    cell::RefCell,
-    fmt::{Debug, Display},
-    marker::PhantomData,
-    ops::DerefMut,
-};
-use strum::{EnumCount, IntoEnumIterator};
+use std::{cell::RefCell, fmt::Debug, ops::DerefMut};
 
-/// State manager for a dynamic list of items. This supports a generic type for
-/// the state "backend", which is the ratatui type that stores the selection
-/// state. Typically you want `ListState` or `TableState`.
+/// State manager for a dynamic list of items.
 ///
-/// This uses a typestate pattern to differentiate between dynamic- and
-/// fixed-size lists. Fixed-size lists must be based on an iterable enum. The
-/// two share most behavior, but have some differences in API, which the `Kind`
-/// parameter will switch between.
+/// This supports a generic type for the state "backend", which is the ratatui
+/// type that stores the selection state. Typically you want `ListState` or
+/// `TableState`.
 #[derive(derive_more::Debug)]
-pub struct SelectState<Kind, Item, State = ListState>
+pub struct SelectState<Item, State = ListState>
 where
-    Kind: SelectStateKind,
     State: SelectStateData,
 {
     /// Use interior mutability because this needs to be modified during the
@@ -41,26 +31,25 @@ where
     /// Callback when the Submit action is performed on an item
     #[debug(skip)]
     on_submit: Option<Callback<Item>>,
-    #[debug(skip)]
-    _kind: PhantomData<Kind>,
 }
-
-/// Marker trait to restrict type-state options
-pub trait SelectStateKind {}
-
-/// Type-state for a dynamically sized [SelectState]
-pub struct Dynamic;
-impl SelectStateKind for Dynamic {}
-/// Type-state for a fixed-size [SelectState]
-pub struct Fixed;
-impl SelectStateKind for Fixed {}
 
 type Callback<Item> = Box<dyn Fn(&mut Item)>;
 
-impl<Kind, Item, State: SelectStateData> SelectState<Kind, Item, State>
-where
-    Kind: SelectStateKind,
-{
+impl<Item, State: SelectStateData> SelectState<Item, State> {
+    pub fn new(items: Vec<Item>) -> Self {
+        let mut state = State::default();
+        // Pre-select the first item if possible
+        if !items.is_empty() {
+            state.select(0);
+        }
+        Self {
+            state: RefCell::new(state),
+            items,
+            on_select: None,
+            on_submit: None,
+        }
+    }
+
     /// Set the callback to be called when the user highlights a new item
     pub fn on_select(
         mut self,
@@ -79,21 +68,19 @@ where
         self
     }
 
+    /// Get all items in the list
     pub fn items(&self) -> &[Item] {
         &self.items
     }
 
-    /// Is the given item selected?
-    pub fn is_selected(&self, item: &Item) -> bool
-    where
-        Item: PartialEq,
-    {
-        self.selected_opt() == Some(item)
+    /// Get the index of the currently selected item (if any)
+    pub fn selected_index(&self) -> Option<usize> {
+        self.state.borrow().selected()
     }
 
-    /// Get the number of items in the list
-    pub fn len(&self) -> usize {
-        self.items.len()
+    /// Get the currently selected item (if any)
+    pub fn selected(&self) -> Option<&Item> {
+        self.items.get(self.state.borrow().selected()?)
     }
 
     /// Get a mutable reference to state. This uses `RefCell` underneath so it
@@ -173,94 +160,7 @@ where
     }
 }
 
-/// Functions available only on dynamic selects, which may have an empty list
-impl<Item, State> SelectState<Dynamic, Item, State>
-where
-    State: SelectStateData,
-{
-    pub fn new(items: Vec<Item>) -> Self {
-        let mut state = State::default();
-        // Pre-select the first item if possible
-        if !items.is_empty() {
-            state.select(0);
-        }
-        Self {
-            state: RefCell::new(state),
-            items,
-            on_select: None,
-            on_submit: None,
-            _kind: PhantomData,
-        }
-    }
-
-    /// Get the currently selected item (if any)
-    pub fn selected(&self) -> Option<&Item> {
-        self.items.get(self.state.borrow().selected()?)
-    }
-}
-
-/// Functions available only on fixed selects, which *cannot* have an empty list
-impl<Item, State> SelectState<Fixed, Item, State>
-where
-    Item: FixedSelect,
-    State: SelectStateData,
-{
-    /// Create a new fixed-size list, with options derived from a static enum.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if the enum is empty.
-    pub fn fixed() -> Self {
-        let items = Item::iter().collect_vec();
-
-        if items.is_empty() {
-            // Wr run on the assumption that it's not empty, to prevent
-            // returning Options
-            panic!(
-                "Empty fixed-size collection not allow. \
-                Add a variant to your enum."
-            );
-        }
-
-        // Pre-select first item
-        let mut state = State::default();
-        state.select(0);
-
-        Self {
-            state: RefCell::new(state),
-            items,
-            on_select: None,
-            on_submit: None,
-            _kind: PhantomData,
-        }
-    }
-
-    /// Get the index of the currently selected item (if any)
-    pub fn selected_index(&self) -> usize {
-        // We know the select list is not empty
-        self.state.borrow().selected().unwrap()
-    }
-
-    /// Get the currently selected item (if any)
-    pub fn selected(&self) -> &Item {
-        // We know the select list is not empty
-        self.selected_opt().unwrap()
-    }
-}
-
-/// Fixed set of items
-impl<Item, State> Default for SelectState<Fixed, Item, State>
-where
-    Item: FixedSelect,
-    State: SelectStateData,
-{
-    fn default() -> Self {
-        Self::fixed()
-    }
-}
-
-/// Empty dynamic list
-impl<Item, State> Default for SelectState<Dynamic, Item, State>
+impl<Item, State> Default for SelectState<Item, State>
 where
     State: SelectStateData,
 {
@@ -270,9 +170,8 @@ where
 }
 
 /// Handle input events to cycle between items
-impl<Kind, Item, State> EventHandler for SelectState<Kind, Item, State>
+impl<Item, State> EventHandler for SelectState<Item, State>
 where
-    Kind: SelectStateKind,
     Item: Debug,
     State: Debug + SelectStateData,
 {
@@ -318,9 +217,8 @@ where
     }
 }
 
-impl<Kind, Item, State> PersistentContainer for SelectState<Kind, Item, State>
+impl<Item, State> PersistentContainer for SelectState<Item, State>
 where
-    Kind: SelectStateKind,
     Item: Persistable,
     // Whatever is persisted in the DB needs to be comparable to the items in
     // the list, so we can select by equality
@@ -339,9 +237,9 @@ where
     }
 }
 
-/// Inner state for [SelectState]. This is an abstraction to allow [SelectState]
-/// to support multiple state "backends" from Ratatui. This enables usage with
-/// different stateful widgets.
+/// Inner state for [SelectState] and [FixedSelectState]. This is an abstraction
+/// to allow them to support multiple state "backends" from Ratatui, to enable
+/// usage with different stateful widgets.
 pub trait SelectStateData: Default {
     fn selected(&self) -> Option<usize>;
 
@@ -376,30 +274,4 @@ impl SelectStateData for usize {
     fn select(&mut self, option: usize) {
         *self = option;
     }
-}
-
-/// Trait alias for a static list of items to be cycled through
-pub trait FixedSelect:
-    'static
-    + Copy
-    + Clone
-    + Debug
-    + Display
-    + EnumCount
-    + IntoEnumIterator
-    + PartialEq
-{
-}
-
-/// Auto-impl for anything we can
-impl<T> FixedSelect for T where
-    T: 'static
-        + Copy
-        + Clone
-        + Debug
-        + Display
-        + EnumCount
-        + IntoEnumIterator
-        + PartialEq
-{
 }

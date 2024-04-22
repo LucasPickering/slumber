@@ -9,7 +9,7 @@ use crate::{
             event::{Event, EventHandler, EventQueue, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
-                select::{Dynamic, SelectState},
+                select::SelectState,
             },
             Component,
         },
@@ -24,7 +24,7 @@ use ratatui::{
 
 #[derive(Debug)]
 pub struct ProfileListPane {
-    profiles: Component<Persistent<SelectState<Dynamic, Profile>>>,
+    profiles: Component<Persistent<SelectState<Profile>>>,
 }
 
 pub struct ProfileListPaneProps {
@@ -47,7 +47,7 @@ impl ProfileListPane {
         }
     }
 
-    pub fn profiles(&self) -> &SelectState<Dynamic, Profile> {
+    pub fn profiles(&self) -> &SelectState<Profile> {
         &self.profiles
     }
 }
@@ -89,7 +89,7 @@ impl Draw<ProfileListPaneProps> for ProfileListPane {
             // Only show the full list if selected
             let list = List {
                 block: None,
-                list: &self.profiles,
+                list: self.profiles.items(),
             };
             frame.render_stateful_widget(
                 list.generate(),

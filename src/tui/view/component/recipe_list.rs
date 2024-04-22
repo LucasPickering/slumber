@@ -9,7 +9,7 @@ use crate::{
             event::{Event, EventHandler, EventQueue, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
-                select::{Dynamic, SelectState},
+                select::SelectState,
             },
             Component,
         },
@@ -38,7 +38,7 @@ pub struct RecipeListPane {
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
-    select_state: Component<Persistent<SelectState<Dynamic, RecipeNode>>>,
+    select_state: Component<Persistent<SelectState<RecipeNode>>>,
     /// Set of all folders that are collapsed
     /// Invariant: No recipes, only folders
     collapsed: Persistent<Collapsed>,
@@ -267,7 +267,7 @@ impl Persistable for Collapsed {
 fn build_select_state(
     recipes: &RecipeTree,
     collapsed: &Collapsed,
-) -> SelectState<Dynamic, RecipeNode> {
+) -> SelectState<RecipeNode> {
     // When highlighting a new recipe, load it from the repo
     fn on_select(_: &mut RecipeNode) {
         // If a recipe isn't selected, this will do nothing

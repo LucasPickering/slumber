@@ -1,27 +1,20 @@
 use crate::tui::{
     context::TuiContext,
-    view::{
-        common::Pane,
-        draw::Generate,
-        state::select::{SelectState, SelectStateKind},
-    },
+    view::{common::Pane, draw::Generate},
 };
-use ratatui::{
-    text::Span,
-    widgets::{ListItem, ListState},
-};
+use ratatui::{text::Span, widgets::ListItem};
 
 /// A list with optional border and title. Each item has to be convertible to
 /// text
-pub struct List<'a, Kind: SelectStateKind, Item> {
+pub struct List<'a, Item, Iter: 'a + IntoIterator<Item = Item>> {
     pub block: Option<Pane<'a>>,
-    pub list: &'a SelectState<Kind, Item, ListState>,
+    pub list: Iter,
 }
 
-impl<'a, Kind, Item> Generate for List<'a, Kind, Item>
+impl<'a, Item, Iter> Generate for List<'a, Item, Iter>
 where
-    Kind: SelectStateKind,
-    &'a Item: Generate<Output<'a> = Span<'a>>,
+    Item: 'a + Generate<Output<'a> = Span<'a>>,
+    Iter: 'a + IntoIterator<Item = Item>,
 {
     type Output<'this> = ratatui::widgets::List<'this> where Self: 'this;
 
@@ -34,8 +27,7 @@ where
         // Convert each list item into text
         let items: Vec<ListItem<'_>> = self
             .list
-            .items()
-            .iter()
+            .into_iter()
             .map(|i| ListItem::new(i.generate()))
             .collect();
 

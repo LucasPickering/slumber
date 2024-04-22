@@ -5,8 +5,8 @@ use crate::tui::{
         draw::Draw,
         event::{Event, EventHandler, Update},
         state::{
+            fixed_select::{FixedSelect, FixedSelectState},
             persistence::{Persistable, Persistent, PersistentKey},
-            select::{Fixed, FixedSelect, SelectState},
         },
     },
 };
@@ -17,20 +17,18 @@ use std::fmt::Debug;
 #[derive(Debug)]
 pub struct Tabs<T>
 where
-    T: FixedSelect + Persistable,
-    T::Persisted: PartialEq<T>,
+    T: FixedSelect + Persistable<Persisted = T>,
 {
-    tabs: Persistent<SelectState<Fixed, T, usize>>,
+    tabs: Persistent<FixedSelectState<T, usize>>,
 }
 
 impl<T> Tabs<T>
 where
-    T: FixedSelect + Persistable,
-    T::Persisted: PartialEq<T>,
+    T: FixedSelect + Persistable<Persisted = T>,
 {
     pub fn new(persistent_key: PersistentKey) -> Self {
         Self {
-            tabs: Persistent::new(persistent_key, SelectState::default()),
+            tabs: Persistent::new(persistent_key, Default::default()),
         }
     }
 
@@ -41,8 +39,7 @@ where
 
 impl<T> EventHandler for Tabs<T>
 where
-    T: FixedSelect + Persistable,
-    T::Persisted: PartialEq<T>,
+    T: FixedSelect + Persistable<Persisted = T>,
 {
     fn update(&mut self, event: Event) -> Update {
         match event {
@@ -68,8 +65,7 @@ where
 
 impl<T> Draw for Tabs<T>
 where
-    T: FixedSelect + Persistable,
-    T::Persisted: PartialEq<T>,
+    T: FixedSelect + Persistable<Persisted = T>,
 {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         frame.render_widget(

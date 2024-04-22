@@ -20,8 +20,8 @@ use crate::{
             draw::Draw,
             event::{Event, EventHandler, EventQueue, Update},
             state::{
+                fixed_select::FixedSelectState,
                 persistence::{Persistent, PersistentKey},
-                select::{Fixed, SelectState},
                 RequestState,
             },
             util::layout,
@@ -42,7 +42,7 @@ use strum::{EnumCount, EnumIter};
 #[derive(derive_more::Debug)]
 pub struct PrimaryView {
     // Own state
-    selected_pane: Persistent<SelectState<Fixed, PrimaryPane>>,
+    selected_pane: Persistent<FixedSelectState<PrimaryPane>>,
     fullscreen_mode: Persistent<Option<FullscreenMode>>,
 
     // Children
@@ -233,7 +233,7 @@ impl PrimaryView {
             // Make profile list as small as possible
             Constraint::Max(
                 // +2 to account for top/bottom border
-                self.profile_list_pane.profiles().len() as u16 + 2,
+                self.profile_list_pane.profiles().items().len() as u16 + 2,
             )
         } else {
             Constraint::Max(3)

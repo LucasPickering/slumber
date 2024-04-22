@@ -309,6 +309,8 @@ impl<Kind, Item, State> PersistentContainer for SelectState<Kind, Item, State>
 where
     Kind: SelectStateKind,
     Item: Persistable,
+    // Whatever is persisted in the DB needs to be comparable to the items in
+    // the list, so we can select by equality
     Item::Persisted: PartialEq<Item>,
     State: SelectStateData,
 {

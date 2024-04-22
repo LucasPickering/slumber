@@ -67,25 +67,26 @@ impl<T: PersistentContainer> Drop for Persistent<T> {
 
 #[derive(Clone, Debug, Serialize)]
 pub enum PersistentKey {
+    /// Which pane is selected?
     PrimaryPane,
+    /// Which pane (if any) is fullscreened?
     FullscreenMode,
+    /// Selected profile in the list
     ProfileId,
+    /// Selected recipe/folder in the tree
     RecipeId,
+    /// Set of folders that are collapsed in the recipe tree
+    RecipeCollapsed,
+    /// Selected tab in the recipe pane
     RecipeTab,
     /// Selected query param, per recipe. Value is the query param name
     RecipeSelectedQuery(RecipeId),
     /// Toggle state for a single recipe+query param
-    RecipeQuery {
-        recipe: RecipeId,
-        param: String,
-    },
+    RecipeQuery { recipe: RecipeId, param: String },
     /// Selected header, per recipe. Value is the header name
     RecipeSelectedHeader(RecipeId),
     /// Toggle state for a single recipe+header
-    RecipeHeader {
-        recipe: RecipeId,
-        header: String,
-    },
+    RecipeHeader { recipe: RecipeId, header: String },
     /// Selected tab in Request pane
     RequestTab,
     /// Selected tab in Response pane
@@ -96,7 +97,7 @@ pub enum PersistentKey {
 pub trait Persistable {
     /// The type of the value that's actually persisted to the database. In most
     /// cases this is the value itself, but some types use others (e.g. an ID).
-    type Persisted: Debug + Serialize + DeserializeOwned + PartialEq<Self>;
+    type Persisted: Debug + Serialize + DeserializeOwned;
 
     /// Get the value that should be persisted to the DB
     fn get_persistent(&self) -> &Self::Persisted;

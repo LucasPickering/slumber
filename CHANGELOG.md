@@ -8,6 +8,7 @@
 - Improvements to Insomnia import ([#12](https://github.com/LucasPickering/slumber/issues/12))
 - Rename `import-experimental` command to `import`
   - It's official now! It's still going to get continuted improvement though
+- Folders can now be collapsed in the recipe list ([#155](https://github.com/LucasPickering/slumber/issues/155))
 
 ## [0.18.0] - 2024-04-18
 

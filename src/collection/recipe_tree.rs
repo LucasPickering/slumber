@@ -64,6 +64,11 @@ impl RecipeTree {
         Ok(new)
     }
 
+    /// Get a recipe/folder's tree lookup key by is unique ID
+    pub fn get_lookup_key(&self, id: &RecipeId) -> Option<&RecipeLookupKey> {
+        self.nodes_by_id.get(id)
+    }
+
     /// Get a folder/recipe by ID
     pub fn get(&self, id: &RecipeId) -> Option<&RecipeNode> {
         let lookup_key = self.nodes_by_id.get(id)?;
@@ -198,6 +203,14 @@ impl RecipeNode {
         match self {
             RecipeNode::Recipe(recipe) => Some(recipe),
             RecipeNode::Folder(_) => None,
+        }
+    }
+
+    /// If this node is a folder, return it. Otherwise return `None`
+    pub fn folder(&self) -> Option<&Folder> {
+        match self {
+            RecipeNode::Recipe(_) => None,
+            RecipeNode::Folder(folder) => Some(folder),
         }
     }
 }

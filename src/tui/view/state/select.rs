@@ -35,8 +35,10 @@ where
     state: RefCell<State>,
     #[debug(skip)]
     items: Vec<Item>,
+    /// Callback when an item is highlighted
     #[debug(skip)]
     on_select: Option<Callback<Item>>,
+    /// Callback when the Submit action is performed on an item
     #[debug(skip)]
     on_submit: Option<Callback<Item>>,
     #[debug(skip)]
@@ -246,6 +248,7 @@ where
     }
 }
 
+/// Fixed set of items
 impl<Item, State> Default for SelectState<Fixed, Item, State>
 where
     Item: FixedSelect,
@@ -253,6 +256,16 @@ where
 {
     fn default() -> Self {
         Self::fixed()
+    }
+}
+
+/// Empty dynamic list
+impl<Item, State> Default for SelectState<Dynamic, Item, State>
+where
+    State: SelectStateData,
+{
+    fn default() -> Self {
+        Self::new(Vec::new())
     }
 }
 

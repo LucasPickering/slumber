@@ -6,7 +6,6 @@ use ratatui::style::{Color, Modifier, Style};
 pub struct Theme {
     pub pane: ThemePane,
     pub list: ThemeList,
-    pub recipe_list: ThemeRecipeList,
     pub tab: ThemeTab,
     pub table: ThemeTable,
     pub template_preview: ThemeTemplatePreview,
@@ -27,14 +26,6 @@ impl Theme {
 pub struct ThemeList {
     /// Highlighted item in a list
     pub highlight: Style,
-}
-
-#[derive(Debug)]
-pub struct ThemeRecipeList {
-    /// Folders in recipe list
-    pub folder: Style,
-    /// Recipes in recipe list
-    pub recipe: Style,
 }
 
 /// Styles for Pane component
@@ -109,10 +100,6 @@ impl Default for Theme {
                     .bg(Self::PRIMARY_COLOR)
                     .fg(Color::Black)
                     .add_modifier(Modifier::BOLD),
-            },
-            recipe_list: ThemeRecipeList {
-                folder: Style::default().fg(Color::Blue),
-                recipe: Style::default().fg(Self::PRIMARY_COLOR),
             },
             tab: ThemeTab {
                 highlight: Style::default()

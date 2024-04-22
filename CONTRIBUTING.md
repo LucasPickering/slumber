@@ -38,6 +38,8 @@ Commit messages form an important historical log for the repository. In your com
 You'll need the following tools to build and run Slumber locally:
 
 - [rustup](https://rustup.rs/)
+- [watchexec-cli](https://crates.io/crates/watchexec-cli)
+  - Not required, but useful for automatically re-running after changes
 - [oranda](https://opensource.axo.dev/oranda/artifacts/)
   - Only required if making documentation changes
 
@@ -48,8 +50,9 @@ That's it!
 - [Fork the repo](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo)
 - Clone your fork
 - `cd slumber`
-- Run `cargo run`
+- Run `./run.sh`
   - This will install the appropriate Rust/Cargo toolchain if you don't have it already
+  - If you don't have `watchexec-cli` installed, you can just run `cargo run` instead
 
 ### Tests
 

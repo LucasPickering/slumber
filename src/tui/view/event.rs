@@ -22,8 +22,8 @@ use tracing::trace;
 /// element has the opportunity to consume the event so it stops bubbling.
 pub trait EventHandler: Debug {
     /// Update the state of *just* this component according to the message.
-    /// Returned outcome indicates what to do afterwards. Use [UpdateContext]
-    /// to queue subsequent events.
+    /// Returned outcome indicates what to do afterwards. Use [EventQueue] to
+    /// queue subsequent events.
     fn update(&mut self, event: Event) -> Update {
         Update::Propagate(event)
     }
@@ -91,9 +91,9 @@ impl EventQueue {
 /// to propagate state changes, as well as side-effect messages to trigger
 /// app-wide changes (e.g. launch a request).
 ///
-/// This is conceptually different from [crate::tui::Message] in that view
-/// messages never queued, they are handled immediately. Maybe "message" is a
-/// misnomer here and we should rename this?
+/// This is conceptually different from [crate::tui::Message] in that events are
+/// restricted to the queue and handled in the main thread. Messages can be
+/// queued asyncronously and are used to interact *between* threads.
 #[derive(derive_more::Debug)]
 pub enum Event {
     /// Input from the user, which may or may not correspond to a bound action.
@@ -198,7 +198,7 @@ pub enum Update {
     /// The message was not consumed by this component, and should be passed to
     /// the parent component. While technically possible, this should *not* be
     /// used to trigger additional events. Instead, use
-    /// [UpdateContext::queue_event] for that. That will ensure the entire tree
+    /// [EventQueue::push] for that. That will ensure the entire tree
     /// has a chance to respond to the entire event.
     Propagate(Event),
 }

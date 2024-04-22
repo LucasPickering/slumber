@@ -6,7 +6,9 @@ Once you've [installed Slumber](/artifacts), setup is easy.
 
 ### 1. Create a Slumber collection file
 
-Create a file called `slumber.yml` and add the following contents:
+Slumber's core feature is that it's **source-based**. That means you write down your configuration in a file first, then run Slumber and it reads the file. This differs from other popular clients such as Postman and Insomnia. The goal of being source-based is to make it easy to save and share your configurations.
+
+To get started, create a file called `slumber.yml` and add the following contents:
 
 ```yaml
 requests:

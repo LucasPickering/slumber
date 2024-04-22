@@ -32,8 +32,9 @@ pub struct InputEngine {
 
 impl InputEngine {
     /// Key code to string mappings
-    /// unstable: include ASCII chars https://github.com/rust-lang/rust/issues/110998
     const KEY_CODES: Mapping<'static, KeyCode> = Mapping(&[
+        // unstable: include ASCII chars
+        // https://github.com/rust-lang/rust/issues/110998
         // vvvvv If making changes, make sure to update the docs vvvvv
         (KeyCode::Esc, &["escape", "esc"]),
         (KeyCode::Enter, &["enter"]),

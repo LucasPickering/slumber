@@ -44,7 +44,7 @@ factori!(Recipe, {
     default {
         id = "recipe1".into(),
         name = None,
-        method = "GET".into(),
+        method = "GET".parse().unwrap(),
         url = "http://localhost".into(),
         body = None,
         authentication = None,

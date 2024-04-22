@@ -4,11 +4,14 @@
 
 ### Changed
 
-- Show `WARN`/`ERROR` log output for CLI commands
+- Folders can now be collapsed in the recipe list ([#155](https://github.com/LucasPickering/slumber/issues/155))
 - Improvements to Insomnia import ([#12](https://github.com/LucasPickering/slumber/issues/12))
 - Rename `import-experimental` command to `import`
   - It's official now! It's still going to get continuted improvement though
-- Folders can now be collapsed in the recipe list ([#155](https://github.com/LucasPickering/slumber/issues/155))
+- Show `WARN`/`ERROR` log output for CLI commands
+- Validate recipe `method` field during deserialization instead of on request init
+  - This means you'll get an error on startup if your method is invalid, instead of when you go to run the request
+  - This is not a breaking change because if you had an incorrect HTTP method, the request still didn't _work_ before, it just broke later
 
 ## [0.18.0] - 2024-04-18
 

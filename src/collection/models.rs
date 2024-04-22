@@ -8,11 +8,14 @@ use crate::{
     http::{ContentType, Query},
     template::Template,
 };
-use derive_more::{Deref, Display, From};
+use anyhow::anyhow;
+use derive_more::{Deref, Display, From, FromStr};
 use equivalent::Equivalent;
 use indexmap::IndexMap;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
+use strum::{EnumIter, IntoEnumIterator};
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
@@ -91,8 +94,9 @@ pub struct Recipe {
     pub id: RecipeId,
     pub name: Option<String>,
     /// *Not* a template string because the usefulness doesn't justify the
-    /// complexity
-    pub method: String,
+    /// complexity. This gives the user an immediate error if the method is
+    /// wrong which is helpful.
+    pub method: Method,
     pub url: Template,
     pub body: Option<Template>,
     pub authentication: Option<Authentication>,
@@ -116,6 +120,37 @@ pub struct Recipe {
     Deserialize,
 )]
 pub struct RecipeId(String);
+
+/// HTTP method. This is duplicated from reqwest's Method so we can enforce
+/// the method is valid during deserialization. This is also generally more
+/// ergonomic at the cost of some flexibility.
+///
+/// The FromStr implementation will be case-insensitive
+#[derive(
+    Copy, Clone, Debug, Display, EnumIter, FromStr, Serialize, Deserialize,
+)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(into = "String", try_from = "String")]
+pub enum Method {
+    #[display("CONNECT")]
+    Connect,
+    #[display("DELETE")]
+    Delete,
+    #[display("GET")]
+    Get,
+    #[display("HEAD")]
+    Head,
+    #[display("OPTIONS")]
+    Options,
+    #[display("PATCH")]
+    Patch,
+    #[display("POST")]
+    Post,
+    #[display("PUT")]
+    Put,
+    #[display("TRACE")]
+    Trace,
+}
 
 /// Shortcut for defining authentication method. If this is defined in addition
 /// to the `Authorization` header, that header will end up being included in the
@@ -252,5 +287,27 @@ impl Recipe {
     /// Get a presentable name for this recipe
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
+    }
+}
+
+/// For deserialization
+impl TryFrom<String> for Method {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        // Provide a better error than what's generated
+        value.parse().map_err(|_| {
+            anyhow!(
+                "Invalid HTTP method `{value}`. Must be one of: {}",
+                Method::iter().map(|method| method.to_string()).join(", ")
+            )
+        })
+    }
+}
+
+/// For serialization
+impl From<Method> for String {
+    fn from(method: Method) -> Self {
+        method.to_string()
     }
 }

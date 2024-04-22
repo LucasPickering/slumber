@@ -63,7 +63,7 @@ pub struct TemplateContext {
 #[derive(Clone, Debug, Deref, Display, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[display("{template}")]
-#[serde(try_from = "String", into = "String")]
+#[serde(into = "String", try_from = "String")]
 pub struct Template {
     #[deref(forward)]
     template: String,
@@ -99,6 +99,7 @@ impl Template {
     }
 }
 
+/// For deserialization
 impl TryFrom<String> for Template {
     type Error = TemplateParseError;
 
@@ -107,6 +108,7 @@ impl TryFrom<String> for Template {
     }
 }
 
+/// For serialization
 impl From<Template> for String {
     fn from(value: Template) -> Self {
         value.template

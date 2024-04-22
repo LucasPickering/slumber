@@ -3,7 +3,7 @@
 
 use crate::{
     collection::{
-        self, Collection, Folder, Profile, ProfileId, Recipe, RecipeId,
+        self, Collection, Folder, Method, Profile, ProfileId, Recipe, RecipeId,
         RecipeNode, RecipeTree,
     },
     template::Template,
@@ -139,7 +139,7 @@ struct Request {
     meta_sort_key: i64,
     name: String,
     url: Template,
-    method: String,
+    method: Method,
     #[serde(deserialize_with = "deserialize_shitty_option")]
     authentication: Option<Authentication>,
     headers: Vec<Header>,

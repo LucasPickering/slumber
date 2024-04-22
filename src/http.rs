@@ -42,7 +42,7 @@ pub use query::*;
 pub use record::*;
 
 use crate::{
-    collection::{self, Authentication, Recipe},
+    collection::{self, Authentication, Method, Recipe},
     config::Config,
     db::CollectionDatabase,
     template::{Template, TemplateContext},
@@ -331,8 +331,6 @@ impl RequestBuilder {
         &self,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Request> {
-        let method = self.recipe.method.parse()?;
-
         // Render everything in parallel
         let (url, headers, body) = try_join!(
             self.render_url(template_context),
@@ -349,7 +347,7 @@ impl RequestBuilder {
             id: self.id,
             profile_id: template_context.selected_profile.clone(),
             recipe_id: self.recipe.id.clone(),
-            method,
+            method: self.recipe.method.into(),
             url,
             headers,
             body,
@@ -536,6 +534,22 @@ impl RequestBuilder {
     }
 }
 
+impl From<Method> for reqwest::Method {
+    fn from(method: Method) -> Self {
+        match method {
+            Method::Connect => reqwest::Method::CONNECT,
+            Method::Delete => reqwest::Method::DELETE,
+            Method::Get => reqwest::Method::GET,
+            Method::Head => reqwest::Method::HEAD,
+            Method::Options => reqwest::Method::OPTIONS,
+            Method::Patch => reqwest::Method::PATCH,
+            Method::Post => reqwest::Method::POST,
+            Method::Put => reqwest::Method::PUT,
+            Method::Trace => reqwest::Method::TRACE,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -568,7 +582,7 @@ mod tests {
         );
         let recipe = create!(
             Recipe,
-            method: "POST".into(),
+            method: "POST".parse().unwrap(),
             url: "{{host}}/users/{{user_id}}".into(),
             query: indexmap! {
                 "mode".into() => "{{mode}}".into(),

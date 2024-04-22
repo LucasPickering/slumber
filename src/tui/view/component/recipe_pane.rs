@@ -224,6 +224,8 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
 
         // Render request contents
         if let Some(recipe) = props.selected_recipe {
+            let method = recipe.method.to_string();
+
             let [metadata_area, tabs_area, content_area] = layout(
                 inner_area,
                 Direction::Vertical,
@@ -238,10 +240,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                 metadata_area,
                 Direction::Horizontal,
                 // Method gets just as much as it needs, URL gets the rest
-                [
-                    Constraint::Max(recipe.method.len() as u16 + 1),
-                    Constraint::Min(0),
-                ],
+                [Constraint::Max(method.len() as u16 + 1), Constraint::Min(0)],
             );
 
             // Whenever the recipe or profile changes, generate a preview for
@@ -258,10 +257,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
             );
 
             // First line: Method + URL
-            frame.render_widget(
-                Paragraph::new(recipe.method.as_str()),
-                method_area,
-            );
+            frame.render_widget(Paragraph::new(method), method_area);
             frame.render_widget(&recipe_state.url, url_area);
 
             // Navigation tabs

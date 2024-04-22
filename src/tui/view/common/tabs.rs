@@ -15,11 +15,19 @@ use std::fmt::Debug;
 
 /// Multi-tab display. Generic parameter defines the available tabs.
 #[derive(Debug)]
-pub struct Tabs<T: FixedSelect + Persistable> {
+pub struct Tabs<T>
+where
+    T: FixedSelect + Persistable,
+    T::Persisted: PartialEq<T>,
+{
     tabs: Persistent<SelectState<Fixed, T, usize>>,
 }
 
-impl<T: FixedSelect + Persistable> Tabs<T> {
+impl<T> Tabs<T>
+where
+    T: FixedSelect + Persistable,
+    T::Persisted: PartialEq<T>,
+{
     pub fn new(persistent_key: PersistentKey) -> Self {
         Self {
             tabs: Persistent::new(persistent_key, SelectState::default()),
@@ -31,7 +39,11 @@ impl<T: FixedSelect + Persistable> Tabs<T> {
     }
 }
 
-impl<T: FixedSelect + Persistable> EventHandler for Tabs<T> {
+impl<T> EventHandler for Tabs<T>
+where
+    T: FixedSelect + Persistable,
+    T::Persisted: PartialEq<T>,
+{
     fn update(&mut self, event: Event) -> Update {
         match event {
             Event::Input {
@@ -54,7 +66,11 @@ impl<T: FixedSelect + Persistable> EventHandler for Tabs<T> {
     }
 }
 
-impl<T: FixedSelect + Persistable> Draw for Tabs<T> {
+impl<T> Draw for Tabs<T>
+where
+    T: FixedSelect + Persistable,
+    T::Persisted: PartialEq<T>,
+{
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         frame.render_widget(
             ratatui::widgets::Tabs::new(T::iter().map(|e| e.to_string()))

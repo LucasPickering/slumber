@@ -2,6 +2,10 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Support booleans and numbers for query values ([#141](https://github.com/LucasPickering/slumber/issues/141))
+
 ### Changed
 
 - Show `WARN`/`ERROR` log output for CLI commands

@@ -258,3 +258,31 @@ pub mod serde_duration {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::template::Template;
+    use rstest::rstest;
+    use serde_test::{assert_de_tokens, Token};
+
+    #[rstest]
+    // boolean
+    #[case(Token::Bool(true), "true")]
+    #[case(Token::Bool(false), "false")]
+    // numeric
+    #[case(Token::U64(1000), "1000")]
+    #[case(Token::I64(-1000), "-1000")]
+    #[case(Token::F64(10.1), "10.1")]
+    #[case(Token::F64(-10.1), "-10.1")]
+    // null
+    #[case(Token::None, "null")]
+    #[case(Token::Unit, "null")]
+    // string
+    #[case(Token::Str("hello"), "hello")]
+    #[case(Token::Str("null"), "null")]
+    #[case(Token::Str("true"), "true")]
+    #[case(Token::Str("false"), "false")]
+    fn test_deserialize_template(#[case] token: Token, #[case] expected: &str) {
+        assert_de_tokens(&Template::from(expected), &[token]);
+    }
+}

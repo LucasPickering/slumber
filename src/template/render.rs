@@ -134,7 +134,7 @@ impl Template {
         let chunks = self.render_chunks(context).await;
 
         // Stitch the rendered chunks together into one string
-        let mut buffer = String::with_capacity(self.len());
+        let mut buffer = String::with_capacity(self.template.len());
         for chunk in chunks {
             match chunk {
                 TemplateChunk::Raw(span) => {

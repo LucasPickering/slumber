@@ -195,6 +195,7 @@ impl Draw<RecipeListPaneProps> for RecipeListPane {
                     .unwrap_or_else(|| {
                         panic!("Recipe node {} is not in tree", node.id())
                     })
+                    .as_slice()
                     .len()
                     - 1;
 

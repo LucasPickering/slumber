@@ -1,7 +1,7 @@
 //! Recipe/folder tree structure
 
 use crate::collection::{cereal::deserialize_id_map, Folder, Recipe, RecipeId};
-use derive_more::{Debug, Deref, From};
+use derive_more::{Debug, From};
 use indexmap::{map::Values, IndexMap};
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
@@ -26,7 +26,7 @@ pub struct RecipeTree {
 
 /// A path into the recipe tree. Every constructed path is assumed to be valid,
 /// which must be enforced by the creator.
-#[derive(Clone, Debug, Deref, From)]
+#[derive(Clone, Debug, From)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct RecipeLookupKey(Vec<RecipeId>);
 
@@ -73,8 +73,8 @@ impl RecipeTree {
     pub fn get(&self, id: &RecipeId) -> Option<&RecipeNode> {
         let lookup_key = self.nodes_by_id.get(id)?;
         let mut nodes = &self.tree;
-        for (depth, step) in lookup_key.iter().enumerate() {
-            let is_last = depth == lookup_key.len() - 1;
+        for (depth, step) in lookup_key.0.iter().enumerate() {
+            let is_last = depth == lookup_key.0.len() - 1;
             let node = nodes.get(step).unwrap_or_else(|| {
                 panic!("Lookup key {lookup_key:?} does not point to a node")
             });
@@ -212,6 +212,12 @@ impl RecipeNode {
             RecipeNode::Recipe(_) => None,
             RecipeNode::Folder(folder) => Some(folder),
         }
+    }
+}
+
+impl RecipeLookupKey {
+    pub fn as_slice(&self) -> &[RecipeId] {
+        &self.0
     }
 }
 

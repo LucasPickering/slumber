@@ -3,7 +3,6 @@ use crate::{
     template::{Template, TemplateChunk},
     tui::{context::TuiContext, message::Message, view::draw::Generate},
 };
-use derive_more::Deref;
 use ratatui::{
     buffer::Buffer,
     prelude::Rect,
@@ -69,14 +68,14 @@ impl Generate for &TemplatePreview {
         Self: 'this,
     {
         match self {
-            TemplatePreview::Disabled { template } => template.deref().into(),
+            TemplatePreview::Disabled { template } => template.as_str().into(),
             // If the preview render is ready, show it. Otherwise fall back
             // to the raw
             TemplatePreview::Enabled { template, chunks } => match chunks.get()
             {
                 Some(chunks) => TextStitcher::stitch_chunks(template, chunks),
                 // Preview still rendering
-                None => template.deref().into(),
+                None => template.as_str().into(),
             },
         }
     }

@@ -16,7 +16,7 @@ use crate::{
         parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
     },
 };
-use derive_more::{Deref, Display};
+use derive_more::Display;
 use indexmap::IndexMap;
 use serde::Serialize;
 use std::{fmt::Debug, sync::atomic::AtomicU8};
@@ -60,12 +60,11 @@ pub struct TemplateContext {
 
 /// An immutable string that can contain templated content. The string is parsed
 /// during creation to identify template keys, hence the immutability.
-#[derive(Clone, Debug, Deref, Display, Serialize)]
+#[derive(Clone, Debug, Display, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[display("{template}")]
 #[serde(into = "String", try_from = "String")]
 pub struct Template {
-    #[deref(forward)]
     template: String,
     /// Pre-parsed chunks of the template. We can't store slices here because
     /// that would be self-referential, so just store locations. These chunks
@@ -74,6 +73,11 @@ pub struct Template {
 }
 
 impl Template {
+    /// Get the raw template text
+    pub fn as_str(&self) -> &str {
+        &self.template
+    }
+
     /// Get a substring of this template. Panics if the span is out of range
     pub fn substring(&self, span: Span) -> &str {
         &self.template[span.start()..span.end()]

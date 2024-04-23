@@ -89,17 +89,6 @@ impl<'de> Deserialize<'de> for Template {
             };
         }
 
-        macro_rules! visit_null {
-            ($func:ident) => {
-                fn $func<E>(self) -> Result<Self::Value, E>
-                where
-                    E: Error,
-                {
-                    Template::try_from("null".to_string()).map_err(E::custom)
-                }
-            };
-        }
-
         impl<'de> Visitor<'de> for TemplateVisitor {
             type Value = Template;
 
@@ -108,7 +97,7 @@ impl<'de> Deserialize<'de> for Template {
                 formatter: &mut std::fmt::Formatter,
             ) -> std::fmt::Result {
                 formatter.write_str(
-                    "Invalid type, must be a string, number, boolean, or null",
+                    "Invalid type, must be a string, number or boolean",
                 )
             }
 
@@ -117,9 +106,6 @@ impl<'de> Deserialize<'de> for Template {
             visit_primitive!(visit_i64, i64);
             visit_primitive!(visit_f64, f64);
             visit_primitive!(visit_str, &str);
-
-            visit_null!(visit_none);
-            visit_null!(visit_unit);
         }
 
         deserializer.deserialize_any(TemplateVisitor)
@@ -278,9 +264,6 @@ mod tests {
     #[case(Token::I64(-1000), "-1000")]
     #[case(Token::F64(10.1), "10.1")]
     #[case(Token::F64(-10.1), "-10.1")]
-    // null
-    #[case(Token::None, "null")]
-    #[case(Token::Unit, "null")]
     // string
     #[case(Token::Str("hello"), "hello")]
     #[case(Token::Str("null"), "null")]

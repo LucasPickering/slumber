@@ -27,7 +27,7 @@ requests:
     method: GET
     url: "{{host}}/fishes"
     query:
-      big: "true"
+      big: true
 ```
 
 You can use the `request` subcommand:

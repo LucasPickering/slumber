@@ -60,5 +60,5 @@ fish: !folder
       method: GET
       url: "{{host}}/fishes"
       query:
-        big: "true"
+        big: true
 ```

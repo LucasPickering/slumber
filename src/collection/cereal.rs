@@ -3,7 +3,9 @@
 use crate::collection::{
     recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, RecipeId,
 };
-use serde::{Deserialize, Deserializer};
+use crate::template::Template;
+use serde::de::Visitor;
+use serde::{de::Error, Deserialize, Deserializer};
 use std::hash::Hash;
 
 /// A type that has an `id` field. This is ripe for a derive macro, maybe a fun
@@ -60,6 +62,64 @@ where
         v.set_id(k.clone());
     }
     Ok(map)
+}
+
+// Custom deserializer for `Template`. This is useful for deserializing values
+// that are not strings, but should be treated as strings such as numbers,
+// booleans, and nulls.
+impl<'de> Deserialize<'de> for Template {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct TemplateVisitor;
+
+        macro_rules! visit_primitive {
+            ($func:ident, $type:ty) => {
+                fn $func<E>(self, v: $type) -> Result<Self::Value, E>
+                where
+                    E: Error,
+                {
+                    Template::try_from(v.to_string()).map_err(E::custom)
+                }
+            };
+        }
+
+        macro_rules! visit_null {
+            ($func:ident) => {
+                fn $func<E>(self) -> Result<Self::Value, E>
+                where
+                    E: Error,
+                {
+                    Template::try_from("null".to_string()).map_err(E::custom)
+                }
+            };
+        }
+
+        impl<'de> Visitor<'de> for TemplateVisitor {
+            type Value = Template;
+
+            fn expecting(
+                &self,
+                formatter: &mut std::fmt::Formatter,
+            ) -> std::fmt::Result {
+                formatter.write_str(
+                    "Invalid type, must be a string, number, boolean, or null",
+                )
+            }
+
+            visit_primitive!(visit_bool, bool);
+            visit_primitive!(visit_u64, u64);
+            visit_primitive!(visit_i64, i64);
+            visit_primitive!(visit_f64, f64);
+            visit_primitive!(visit_str, &str);
+
+            visit_null!(visit_none);
+            visit_null!(visit_unit);
+        }
+
+        deserializer.deserialize_any(TemplateVisitor)
+    }
 }
 
 /// Serialize/deserialize a duration with unit shorthand. This does *not* handle

@@ -1,11 +1,15 @@
 //! Serialization/deserialization helpers for various types
 
-use crate::collection::{
-    recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, RecipeId,
+use crate::{
+    collection::{
+        recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, RecipeId,
+    },
+    template::Template,
 };
-use crate::template::Template;
-use serde::de::Visitor;
-use serde::{de::Error, Deserialize, Deserializer};
+use serde::{
+    de::{Error, Visitor},
+    Deserialize, Deserializer,
+};
 use std::hash::Hash;
 
 /// A type that has an `id` field. This is ripe for a derive macro, maybe a fun

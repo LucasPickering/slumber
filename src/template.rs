@@ -5,7 +5,7 @@ mod render;
 
 pub use error::{ChainError, TemplateError, TriggeredRequestError};
 pub use parse::Span;
-pub use prompt::{Prompt, Prompter};
+pub use prompt::{Prompt, PromptChannel, Prompter};
 
 use crate::{
     collection::{Collection, ProfileId},
@@ -652,9 +652,14 @@ mod tests {
     async fn test_chain_prompt() {
         let chain = create!(
             Chain,
-            source: ChainSource::Prompt { message: Some("password".into()) },
+            source: ChainSource::Prompt {
+                message: Some("password".into()),
+                default: Some("default".into()),
+            },
         );
-        let context = create!(
+
+        // Test value from prompter
+        let mut context = create!(
             TemplateContext,
             collection: create!(
                 Collection,
@@ -662,8 +667,11 @@ mod tests {
             )
             prompter: Box::new(TestPrompter::new(Some("hello!"))),
         );
-
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
+
+        // Test default value
+        context.prompter = Box::new(TestPrompter::new::<String>(None));
+        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "default");
     }
 
     /// Prompting gone wrong
@@ -671,7 +679,10 @@ mod tests {
     async fn test_chain_prompt_error() {
         let chain = create!(
             Chain,
-            source: ChainSource::Prompt { message: Some("password".into()) },
+            source: ChainSource::Prompt {
+                message: Some("password".into()),
+                default: None,
+            },
         );
         let context = create!(
             TemplateContext,
@@ -694,7 +705,10 @@ mod tests {
     async fn test_chain_sensitive() {
         let chain = create!(
             Chain,
-            source: ChainSource::Prompt { message: Some("password".into()) },
+            source: ChainSource::Prompt {
+                message: Some("password".into()),
+                default: None,
+            },
             sensitive: true,
         );
         let context = create!(

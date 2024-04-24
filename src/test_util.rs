@@ -133,9 +133,11 @@ impl TestPrompter {
 
 impl Prompter for TestPrompter {
     fn prompt(&self, prompt: Prompt) {
-        // If no value was given, don't respond at all
+        // If no value was given, check default. If no default, don't respond
         if let Some(value) = self.value.as_ref() {
-            prompt.respond(value.clone())
+            prompt.channel.respond(value.clone())
+        } else if let Some(default) = prompt.default {
+            prompt.channel.respond(default);
         }
     }
 }

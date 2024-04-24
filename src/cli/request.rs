@@ -22,6 +22,7 @@ use std::{
     process::ExitCode,
     str::FromStr,
 };
+use tracing::warn;
 
 /// Exit code to return when `exit_status` flag is set and the HTTP response has
 /// an error status code
@@ -216,17 +217,33 @@ impl Prompter for CliPrompter {
         // This will implicitly queue the prompts by blocking the main thread.
         // Since the CLI has nothing else to do while waiting on a response,
         // that's fine.
-        let result = if prompt.sensitive() {
-            Password::new().with_prompt(prompt.message()).interact()
+        let result = if prompt.sensitive {
+            // Dialoguer doesn't support default values here so there's nothing
+            // we can do
+            if prompt.default.is_some() {
+                warn!(
+                    "Default value not supported for sensitive prompts in CLI"
+                );
+            }
+
+            Password::new()
+                .with_prompt(prompt.message)
+                .allow_empty_password(true)
+                .interact()
         } else {
-            Input::new().with_prompt(prompt.message()).interact()
+            let mut input =
+                Input::new().with_prompt(prompt.message).allow_empty(true);
+            if let Some(default) = prompt.default {
+                input = input.default(default);
+            }
+            input.interact()
         };
 
         // If we failed to read the value, print an error and report nothing
         if let Ok(value) =
             result.context("Error reading value from prompt").traced()
         {
-            prompt.respond(value);
+            prompt.channel.respond(value);
         }
     }
 }

@@ -63,6 +63,13 @@ impl TextBox {
         self
     }
 
+    /// Set initialize value for the text box
+    pub fn with_default(mut self, default: String) -> Self {
+        self.state.text = default;
+        self.state.end();
+        self
+    }
+
     /// Mark content as sensitive, to be replaced with a placeholder character
     pub fn with_sensitive(mut self, sensitive: bool) -> Self {
         self.sensitive = sensitive;

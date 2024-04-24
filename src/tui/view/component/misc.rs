@@ -2,7 +2,7 @@
 //! generic/utility, but don't fall into a clear category.
 
 use crate::{
-    template::Prompt,
+    template::{Prompt, PromptChannel},
     tui::view::{
         common::{
             modal::{IntoModal, Modal},
@@ -56,8 +56,10 @@ impl IntoModal for anyhow::Error {
 /// Inner state for the prompt modal
 #[derive(Debug)]
 pub struct PromptModal {
-    /// Prompt currently being shown
-    prompt: Prompt,
+    /// Modal title, from the prompt message
+    title: String,
+    /// Channel used to submit entered value
+    channel: PromptChannel,
     /// Flag set before closing to indicate if we should submit in our own
     /// `on_close`. This is set from the text box's `on_submit`.
     submit: Rc<Cell<bool>>,
@@ -70,7 +72,8 @@ impl PromptModal {
         let submit = Rc::new(Cell::new(false));
         let submit_cell = Rc::clone(&submit);
         let text_box = TextBox::default()
-            .with_sensitive(prompt.sensitive())
+            .with_sensitive(prompt.sensitive)
+            .with_default(prompt.default.unwrap_or_default())
             // Make sure cancel gets propagated to close the modal
             .with_on_cancel(|_| EventQueue::push(Event::CloseModal))
             .with_on_submit(move |_| {
@@ -83,7 +86,8 @@ impl PromptModal {
             })
             .into();
         Self {
-            prompt,
+            title: prompt.message,
+            channel: prompt.channel,
             submit,
             text_box,
         }
@@ -92,7 +96,7 @@ impl PromptModal {
 
 impl Modal for PromptModal {
     fn title(&self) -> &str {
-        self.prompt.message()
+        &self.title
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
@@ -102,7 +106,7 @@ impl Modal for PromptModal {
     fn on_close(self: Box<Self>) {
         if self.submit.get() {
             // Return the user's value and close the prompt
-            self.prompt.respond(self.text_box.into_inner().into_text());
+            self.channel.respond(self.text_box.into_inner().into_text());
         }
     }
 }

@@ -5,6 +5,7 @@
 ### Added
 
 - Support booleans and numbers for query values ([#141](https://github.com/LucasPickering/slumber/issues/141))
+- Add `default` field to `!prompt` chains, which allows setting a pre-populated value for the prompt textbox
 
 ### Changed
 

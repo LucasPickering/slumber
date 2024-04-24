@@ -10,7 +10,7 @@ pub struct PreviewPrompter;
 
 impl Prompter for PreviewPrompter {
     fn prompt(&self, prompt: Prompt) {
-        prompt.respond("<prompt>".into())
+        prompt.channel.respond("<prompt>".into())
     }
 }
 

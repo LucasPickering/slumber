@@ -96,9 +96,7 @@ impl<'de> Deserialize<'de> for Template {
                 &self,
                 formatter: &mut std::fmt::Formatter,
             ) -> std::fmt::Result {
-                formatter.write_str(
-                    "Invalid type, must be a string, number or boolean",
-                )
+                formatter.write_str("string, number, or boolean")
             }
 
             visit_primitive!(visit_bool, bool);

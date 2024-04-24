@@ -101,6 +101,7 @@ Read a file and use its contents as the rendered value.
 
 Prompt the user for input to use as the rendered value.
 
-| Field     | Type       | Description                     | Default  |
-| --------- | ---------- | ------------------------------- | -------- |
-| `message` | `Template` | Descriptive prompt for the user | Required |
+| Field     | Type       | Description                                                                                                                                   | Default  |
+| --------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `message` | `Template` | Descriptive prompt for the user                                                                                                               | Chain ID |
+| `default` | `Template` | Value to pre-populated the prompt textbox. **Note**: Dur to a library limitation, not supported on chains with `sensitive: true` _in the CLI_ | `null`   |

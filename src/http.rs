@@ -462,9 +462,12 @@ impl RequestBuilder {
                             .context("Error rendering username")
                     },
                     async {
-                        Template::render_opt(password, template_context)
-                            .await
-                            .context("Error rendering password")
+                        Template::render_opt(
+                            password.as_ref(),
+                            template_context,
+                        )
+                        .await
+                        .context("Error rendering password")
                     },
                 )?;
 
@@ -527,9 +530,10 @@ impl RequestBuilder {
         &self,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Option<Bytes>> {
-        let body = Template::render_opt(&self.recipe.body, template_context)
-            .await
-            .context("Error rendering body")?;
+        let body =
+            Template::render_opt(self.recipe.body.as_ref(), template_context)
+                .await
+                .context("Error rendering body")?;
         Ok(body.map(Bytes::from))
     }
 }

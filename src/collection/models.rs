@@ -245,8 +245,13 @@ pub enum ChainSource {
     Command { command: Vec<Template> },
     /// Load data from a file
     File { path: Template },
-    /// Prompt the user for a value, with an optional label
-    Prompt { message: Option<Template> },
+    /// Prompt the user for a value
+    Prompt {
+        /// Descriptor to show to the user
+        message: Option<Template>,
+        /// Default value for the shown textbox
+        default: Option<Template>,
+    },
 }
 
 /// Define when a recipe with a chained request should auto-execute the

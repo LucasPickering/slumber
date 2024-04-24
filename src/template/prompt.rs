@@ -1,5 +1,6 @@
 use crate::util::ResultExt;
 use anyhow::anyhow;
+use derive_more::From;
 use std::fmt::Debug;
 use tokio::sync::oneshot;
 
@@ -24,28 +25,28 @@ pub trait Prompter: Debug + Send + Sync {
 #[derive(Debug)]
 pub struct Prompt {
     /// Tell the user what we're asking for
-    pub(super) message: String,
+    pub message: String,
+    /// Value used to pre-populate the text box
+    pub default: Option<String>,
     /// Should the value the user is typing be masked? E.g. password input
-    pub(super) sensitive: bool,
+    pub sensitive: bool,
     /// How the prompter will pass the answer back
-    pub(super) channel: oneshot::Sender<String>,
+    pub channel: PromptChannel,
 }
 
-impl Prompt {
-    pub fn message(&self) -> &str {
-        &self.message
-    }
+/// Channel used to return a prompt response. This is its own type so we can
+/// provide wrapping functionality while letting the user decompose the `Prompt`
+/// type.
+#[derive(Debug, From)]
+pub struct PromptChannel(oneshot::Sender<String>);
 
-    pub fn sensitive(&self) -> bool {
-        self.sensitive
-    }
-
+impl PromptChannel {
     /// Return the value that the user gave
     pub fn respond(self, response: String) {
         // This error *shouldn't* ever happen, because the templating task
         // stays open until it gets a response
         let _ = self
-            .channel
+            .0
             .send(response)
             .map_err(|_| anyhow!("Prompt listener dropped"))
             .traced();

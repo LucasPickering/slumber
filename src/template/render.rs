@@ -48,7 +48,7 @@ impl Template {
     /// Render an optional template. This is useful because `Option::map`
     /// doesn't work with an async operation in the closure
     pub async fn render_opt(
-        template: &Option<Self>,
+        template: Option<&Self>,
         context: &TemplateContext,
     ) -> anyhow::Result<Option<String>> {
         if let Some(template) = template {
@@ -279,10 +279,11 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     // No way to guess content type on this
                     (self.render_command(context, command).await?, None)
                 }
-                ChainSource::Prompt { message } => (
+                ChainSource::Prompt { message, default } => (
                     self.render_prompt(
                         context,
                         message.as_ref(),
+                        default.as_ref(),
                         chain.sensitive,
                     )
                     .await?
@@ -487,6 +488,7 @@ impl<'a> ChainTemplateSource<'a> {
         &self,
         context: &'a TemplateContext,
         message: Option<&Template>,
+        default: Option<&Template>,
         sensitive: bool,
     ) -> Result<String, ChainError> {
         // Use the prompter to ask the user a question, and wait for a response
@@ -502,10 +504,22 @@ impl<'a> ChainTemplateSource<'a> {
         } else {
             self.chain_id.to_string()
         };
+        let default = if let Some(template) = default {
+            Some(template.render_stitched(context).await.map_err(|error| {
+                ChainError::Nested {
+                    field: "default".into(),
+                    error: error.into(),
+                }
+            })?)
+        } else {
+            None
+        };
+
         context.prompter.prompt(Prompt {
             message,
+            default,
             sensitive,
-            channel: tx,
+            channel: tx.into(),
         });
         rx.await.map_err(|_| ChainError::PromptNoResponse)
     }

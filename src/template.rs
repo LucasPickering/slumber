@@ -18,7 +18,7 @@ use crate::{
 };
 use derive_more::{Deref, Display};
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{fmt::Debug, sync::atomic::AtomicU8};
 
 /// Maximum number of layers of nested templates
@@ -58,9 +58,9 @@ pub struct TemplateContext {
     pub recursion_count: AtomicU8,
 }
 
-/// A immutable string that can contain templated content. The string is parsed
+/// An immutable string that can contain templated content. The string is parsed
 /// during creation to identify template keys, hence the immutability.
-#[derive(Clone, Debug, Deref, Display, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deref, Display, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[display("{template}")]
 #[serde(into = "String", try_from = "String")]

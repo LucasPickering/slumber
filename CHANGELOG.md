@@ -2,6 +2,10 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Support booleans and numbers for query values ([#141](https://github.com/LucasPickering/slumber/issues/141))
+
 ### Changed
 
 - Folders can now be collapsed in the recipe list ([#155](https://github.com/LucasPickering/slumber/issues/155))

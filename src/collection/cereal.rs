@@ -1,9 +1,15 @@
 //! Serialization/deserialization helpers for various types
 
-use crate::collection::{
-    recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, RecipeId,
+use crate::{
+    collection::{
+        recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, RecipeId,
+    },
+    template::Template,
 };
-use serde::{Deserialize, Deserializer};
+use serde::{
+    de::{Error, Visitor},
+    Deserialize, Deserializer,
+};
 use std::hash::Hash;
 
 /// A type that has an `id` field. This is ripe for a derive macro, maybe a fun
@@ -60,6 +66,48 @@ where
         v.set_id(k.clone());
     }
     Ok(map)
+}
+
+// Custom deserializer for `Template`. This is useful for deserializing values
+// that are not strings, but should be treated as strings such as numbers,
+// booleans, and nulls.
+impl<'de> Deserialize<'de> for Template {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct TemplateVisitor;
+
+        macro_rules! visit_primitive {
+            ($func:ident, $type:ty) => {
+                fn $func<E>(self, v: $type) -> Result<Self::Value, E>
+                where
+                    E: Error,
+                {
+                    Template::try_from(v.to_string()).map_err(E::custom)
+                }
+            };
+        }
+
+        impl<'de> Visitor<'de> for TemplateVisitor {
+            type Value = Template;
+
+            fn expecting(
+                &self,
+                formatter: &mut std::fmt::Formatter,
+            ) -> std::fmt::Result {
+                formatter.write_str("string, number, or boolean")
+            }
+
+            visit_primitive!(visit_bool, bool);
+            visit_primitive!(visit_u64, u64);
+            visit_primitive!(visit_i64, i64);
+            visit_primitive!(visit_f64, f64);
+            visit_primitive!(visit_str, &str);
+        }
+
+        deserializer.deserialize_any(TemplateVisitor)
+    }
 }
 
 /// Serialize/deserialize a duration with unit shorthand. This does *not* handle
@@ -196,5 +244,30 @@ pub mod serde_duration {
         ) {
             assert_de_tokens_error::<Wrap>(&[Token::Str(s)], error)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::template::Template;
+    use rstest::rstest;
+    use serde_test::{assert_de_tokens, Token};
+
+    #[rstest]
+    // boolean
+    #[case(Token::Bool(true), "true")]
+    #[case(Token::Bool(false), "false")]
+    // numeric
+    #[case(Token::U64(1000), "1000")]
+    #[case(Token::I64(-1000), "-1000")]
+    #[case(Token::F64(10.1), "10.1")]
+    #[case(Token::F64(-10.1), "-10.1")]
+    // string
+    #[case(Token::Str("hello"), "hello")]
+    #[case(Token::Str("null"), "null")]
+    #[case(Token::Str("true"), "true")]
+    #[case(Token::Str("false"), "false")]
+    fn test_deserialize_template(#[case] token: Token, #[case] expected: &str) {
+        assert_de_tokens(&Template::from(expected), &[token]);
     }
 }

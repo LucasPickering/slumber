@@ -1,6 +1,6 @@
 pub mod paths;
 
-use crate::http::RequestError;
+use crate::{http::RequestError, template::ChainError};
 use derive_more::{DerefMut, Display};
 use serde::de::DeserializeOwned;
 use std::{fmt, iter::FusedIterator, ops::Deref};
@@ -89,6 +89,15 @@ impl<T> ResultExt<T, anyhow::Error> for anyhow::Result<T> {
 }
 
 impl<T> ResultExt<T, RequestError> for Result<T, RequestError> {
+    fn traced(self) -> Self {
+        if let Err(err) = &self {
+            error!(error = %err);
+        }
+        self
+    }
+}
+
+impl<T> ResultExt<T, ChainError> for Result<T, ChainError> {
     fn traced(self) -> Self {
         if let Err(err) = &self {
             error!(error = %err);

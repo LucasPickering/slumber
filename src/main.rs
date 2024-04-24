@@ -16,7 +16,7 @@ use crate::{cli::CliCommand, tui::Tui, util::paths::DataDirectory};
 use clap::Parser;
 use std::{fs::File, io, path::PathBuf, process::ExitCode};
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{filter::EnvFilter, prelude::*};
+use tracing_subscriber::{filter::EnvFilter, fmt::format::FmtSpan, prelude::*};
 
 #[derive(Debug, Parser)]
 #[clap(
@@ -86,6 +86,7 @@ fn initialize_tracing(console_output: bool) -> anyhow::Result<()> {
         .with_writer(log_file)
         .with_target(false)
         .with_ansi(false)
+        .with_span_events(FmtSpan::NEW)
         .with_filter(EnvFilter::from_default_env());
 
     // Enable console output for CLI
@@ -94,6 +95,7 @@ fn initialize_tracing(console_output: bool) -> anyhow::Result<()> {
             tracing_subscriber::fmt::layer()
                 .with_writer(io::stderr)
                 .with_target(false)
+                .with_span_events(FmtSpan::NEW)
                 .without_time()
                 .with_filter(LevelFilter::WARN),
         )

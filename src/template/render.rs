@@ -12,14 +12,14 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use futures::future::{self, join_all};
+use futures::future;
 use std::{
     env,
     path::PathBuf,
     sync::{atomic::Ordering, Arc},
 };
 use tokio::{fs, process::Command, sync::oneshot};
-use tracing::{debug, info, instrument, trace};
+use tracing::{debug, debug_span, instrument, trace};
 
 /// Outcome of rendering a single chunk. This allows attaching some metadata to
 /// the render.
@@ -117,7 +117,7 @@ impl Template {
         });
 
         // Parallelization!
-        join_all(futures).await
+        future::join_all(futures).await
     }
 
     /// Helper for stitching chunks together into a single string. If any chunk
@@ -462,25 +462,29 @@ impl<'a> ChainTemplateSource<'a> {
         ))
         .await?;
 
-        match command.as_slice() {
-            [] => Err(ChainError::CommandMissing),
-            [program, args @ ..] => {
-                let output =
-                    Command::new(program).args(args).output().await.map_err(
-                        |error| ChainError::Command {
-                            command: command.to_owned(),
-                            error,
-                        },
-                    )?;
-                info!(
-                    ?command,
+        let [program, args @ ..] = command.as_slice() else {
+            return Err(ChainError::CommandMissing);
+        };
+        debug_span!("Executing command", ?command)
+            .in_scope(|| async {
+                let output = Command::new(program)
+                    .args(args)
+                    .output()
+                    .await
+                    .map_err(|error| ChainError::Command {
+                        command: command.to_owned(),
+                        error,
+                    })
+                    .traced()?;
+
+                debug!(
                     stdout = %String::from_utf8_lossy(&output.stdout),
                     stderr = %String::from_utf8_lossy(&output.stderr),
-                    "Executed subcommand"
+                    "Command success"
                 );
                 Ok(output.stdout)
-            }
-        }
+            })
+            .await
     }
 
     /// Render a value by asking the user to provide it

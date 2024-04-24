@@ -198,11 +198,7 @@ mod tests {
     async fn test_override() {
         let profile_data = indexmap! {"field1".into() => "field".into()};
         let source = ChainSource::Command {
-            command: ["echo", "chain"]
-                .iter()
-                .cloned()
-                .map(String::from)
-                .collect(),
+            command: vec!["echo".into(), "chain".into()],
         };
         let overrides = indexmap! {
             "field1".into() => "override".into(),
@@ -280,7 +276,8 @@ mod tests {
     #[case("{{onion_id}}", "Unknown field `onion_id`")]
     #[case(
         "{{nested}}",
-        "Error in nested template `{{onion_id}}`: Unknown field `onion_id`"
+        "Rendering nested template for field `nested`: \
+        Unknown field `onion_id`"
     )]
     #[case("{{recursive}}", "Template recursion limit reached")]
     #[tokio::test]
@@ -430,7 +427,7 @@ mod tests {
         "content type not provided",
     )]
     // Response can't be parsed according to the content type we gave
-    #[case(
+    #[case::parse_response(
         "chain1",
         create!(
             Chain,
@@ -446,10 +443,10 @@ mod tests {
             RequestRecord,
             response: create!(Response, body: "not json!".into()),
         )),
-        "Error parsing response",
+        "Parsing response: expected ident at line 1 column 2",
     )]
     // Query returned multiple results
-    #[case(
+    #[case::query_multiple_results(
         "chain1",
         create!(
             Chain,
@@ -567,7 +564,7 @@ mod tests {
     #[tokio::test]
     async fn test_chain_command() {
         let command = vec!["echo".into(), "-n".into(), "hello!".into()];
-        let chain = create!(Chain, source: ChainSource::Command{command});
+        let chain = create!(Chain, source: ChainSource::Command { command });
         let context = create!(
             TemplateContext,
             collection: create!(
@@ -590,7 +587,7 @@ mod tests {
         #[case] expected_error: &str,
     ) {
         let source = ChainSource::Command {
-            command: command.iter().cloned().map(String::from).collect(),
+            command: command.iter().copied().map(Template::from).collect(),
         };
         let chain = create!(Chain, source: source);
         let context = create!(
@@ -609,11 +606,11 @@ mod tests {
     async fn test_chain_file() {
         // Create a temp file that we'll read from
         let temp_dir = env::temp_dir();
-        let file_path = temp_dir.join("stuff.txt");
-        fs::write(&file_path, "hello!").await.unwrap();
+        let path = temp_dir.join("stuff.txt");
+        fs::write(&path, "hello!").await.unwrap();
+        let path: Template = path.to_str().unwrap().into();
 
-        let chain =
-            create!(Chain, source: ChainSource::File { path: file_path });
+        let chain = create!(Chain, source: ChainSource::File { path });
         let context = create!(
             TemplateContext,
             collection: create!(
@@ -628,7 +625,9 @@ mod tests {
     /// Test failure with chained file
     #[tokio::test]
     async fn test_chain_file_error() {
-        let chain = create!(Chain, source: ChainSource::File { path: "not-a-real-file".into() });
+        let chain = create!(
+            Chain, source: ChainSource::File { path: "not-real".into() },
+        );
         let context = create!(
             TemplateContext,
             collection: create!(
@@ -639,7 +638,7 @@ mod tests {
 
         assert_err!(
             render!("{{chains.chain1}}", context),
-            "Error reading from file"
+            "Reading file `not-real`"
         );
     }
 
@@ -712,6 +711,84 @@ mod tests {
         );
     }
 
+    /// Test linking two chains together. This example is contribed because the
+    /// command could just read the file itself, but don't worry about it it's
+    /// just a test.
+    #[tokio::test]
+    async fn test_chain_nested() {
+        // Chain 1 - file
+        let temp_dir = env::temp_dir();
+        let path = temp_dir.join("stuff.txt");
+        fs::write(&path, "hello!").await.unwrap();
+        let path: Template = path.to_str().unwrap().into();
+        let file_chain = create!(
+            Chain,
+            id: "file".into(),
+            source: ChainSource::File { path },
+        );
+
+        // Chain 2 - command
+        let command =
+            vec!["echo".into(), "-n".into(), "answer: {{chains.file}}".into()];
+        let command_chain = create!(
+            Chain,
+            id: "command".into(),
+            source: ChainSource::Command { command },
+        );
+
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                chains: indexmap! {
+                    file_chain.id.clone() => file_chain,
+                    command_chain.id.clone() => command_chain,
+                },
+            ),
+        );
+        assert_eq!(
+            render!("{{chains.command}}", context).unwrap(),
+            "answer: hello!"
+        );
+    }
+
+    /// Test when an error occurs in a nested chain
+    #[tokio::test]
+    async fn test_chain_nested_error() {
+        // Chain 1 - file
+        let file_chain = create!(
+            Chain,
+            id: "file".into(),
+            source: ChainSource::File { path: "bogus.txt".into() },
+        );
+
+        // Chain 2 - command
+        let command =
+            vec!["echo".into(), "-n".into(), "answer: {{chains.file}}".into()];
+        let command_chain = create!(
+            Chain,
+            id: "command".into(),
+            source: ChainSource::Command { command },
+        );
+
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                chains: indexmap! {
+                    file_chain.id.clone() => file_chain,
+                    command_chain.id.clone() => command_chain,
+                },
+            ),
+        );
+        assert_err!(
+            render!("{{chains.command}}", context),
+            "Rendering nested template for field `command[2]`: \
+            Resolving chain `file`: Reading file `bogus.txt`: \
+            No such file or directory"
+        );
+    }
+
     #[tokio::test]
     async fn test_environment_success() {
         let context = create!(TemplateContext);
@@ -724,7 +801,7 @@ mod tests {
         let context = create!(TemplateContext);
         assert_err!(
             render!("{{env.UNKNOWN}}", context),
-            "Error accessing environment variable `UNKNOWN`"
+            "Accessing environment variable `UNKNOWN`"
         );
     }
 

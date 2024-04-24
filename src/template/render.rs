@@ -12,14 +12,14 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use futures::future::join_all;
+use futures::future::{self, join_all};
 use std::{
     env,
-    path::Path,
+    path::PathBuf,
     sync::{atomic::Ordering, Arc},
 };
 use tokio::{fs, process::Command, sync::oneshot};
-use tracing::{info, instrument, trace};
+use tracing::{debug, info, instrument, trace};
 
 /// Outcome of rendering a single chunk. This allows attaching some metadata to
 /// the render.
@@ -126,6 +126,8 @@ impl Template {
         &self,
         context: &TemplateContext,
     ) -> Result<String, TemplateError> {
+        debug!(template = self.template, "Rendering template");
+
         if context.recursion_count.load(Ordering::Relaxed) >= RECURSION_LIMIT {
             return Err(TemplateError::RecursionLimit);
         }
@@ -226,8 +228,8 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
         context.recursion_count.fetch_add(1, Ordering::Relaxed);
         let rendered =
             template.render_stitched(context).await.map_err(|error| {
-                TemplateError::Nested {
-                    template: template.clone(),
+                TemplateError::FieldNested {
+                    field: field.to_owned(),
                     error: Box::new(error),
                 }
             })?;
@@ -271,18 +273,16 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     (response.body.into_bytes(), content_type)
                 }
                 ChainSource::File { path } => {
-                    // Guess content type based on file extension
-                    let content_type = ContentType::from_extension(path).ok();
-                    (self.render_file(path).await?, content_type)
+                    self.render_file(context, path).await?
                 }
                 ChainSource::Command { command } => {
                     // No way to guess content type on this
-                    (self.render_command(command).await?, None)
+                    (self.render_command(context, command).await?, None)
                 }
                 ChainSource::Prompt { message } => (
                     self.render_prompt(
                         context,
-                        message.as_deref(),
+                        message.as_ref(),
                         chain.sensitive,
                     )
                     .await?
@@ -419,20 +419,49 @@ impl<'a> ChainTemplateSource<'a> {
         Ok(record.response)
     }
 
-    /// Render a chained value from a file
-    async fn render_file(&self, path: &'a Path) -> Result<Vec<u8>, ChainError> {
-        fs::read(path).await.map_err(|error| ChainError::File {
-            path: path.to_owned(),
-            error,
-        })
+    /// Render a chained value from a file. Return the files bytes, as well as
+    /// its content type if it's known
+    async fn render_file(
+        &self,
+        context: &TemplateContext,
+        path: &Template,
+    ) -> Result<(Vec<u8>, Option<ContentType>), ChainError> {
+        let path: PathBuf = path
+            .render_stitched(context)
+            .await
+            .map_err(|error| ChainError::Nested {
+                field: "path".into(),
+                error: error.into(),
+            })?
+            .into();
+        // Guess content type based on file extension
+        let content_type = ContentType::from_extension(&path).ok();
+        let content = fs::read(&path)
+            .await
+            .map_err(|error| ChainError::File { path, error })?;
+        Ok((content, content_type))
     }
 
     /// Render a chained value from an external command
     async fn render_command(
         &self,
-        command: &[String],
+        context: &TemplateContext,
+        command: &[Template],
     ) -> Result<Vec<u8>, ChainError> {
-        match command {
+        // Render each arg in the command
+        let command = future::try_join_all(command.iter().enumerate().map(
+            |(i, template)| async move {
+                template.render_stitched(context).await.map_err(|error| {
+                    ChainError::Nested {
+                        field: format!("command[{i}]"),
+                        error: error.into(),
+                    }
+                })
+            },
+        ))
+        .await?;
+
+        match command.as_slice() {
             [] => Err(ChainError::CommandMissing),
             [program, args @ ..] => {
                 let output =
@@ -457,14 +486,24 @@ impl<'a> ChainTemplateSource<'a> {
     async fn render_prompt(
         &self,
         context: &'a TemplateContext,
-        label: Option<&str>,
+        message: Option<&Template>,
         sensitive: bool,
     ) -> Result<String, ChainError> {
         // Use the prompter to ask the user a question, and wait for a response
         // on the prompt channel
         let (tx, rx) = oneshot::channel();
+        let message = if let Some(template) = message {
+            template.render_stitched(context).await.map_err(|error| {
+                ChainError::Nested {
+                    field: "message".into(),
+                    error: error.into(),
+                }
+            })?
+        } else {
+            self.chain_id.to_string()
+        };
         context.prompter.prompt(Prompt {
-            label: label.unwrap_or(&self.chain_id).into(),
+            message,
             sensitive,
             channel: tx,
         });

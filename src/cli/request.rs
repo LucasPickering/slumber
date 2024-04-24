@@ -217,9 +217,9 @@ impl Prompter for CliPrompter {
         // Since the CLI has nothing else to do while waiting on a response,
         // that's fine.
         let result = if prompt.sensitive() {
-            Password::new().with_prompt(prompt.label()).interact()
+            Password::new().with_prompt(prompt.message()).interact()
         } else {
-            Input::new().with_prompt(prompt.label()).interact()
+            Input::new().with_prompt(prompt.message()).interact()
         };
 
         // If we failed to read the value, print an error and report nothing

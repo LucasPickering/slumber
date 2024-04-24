@@ -90,9 +90,9 @@ Now we can make our requests back-to-back:
 
 This demonstrates how to use chains to link responses to requests. Chains can link to other value sources though, including user-provided values (via a prompt) and shell commands. For a full list of chain types, see [the Chain API reference](../api/request_collection/chain.md).
 
-## Recursive Templates
+## Nested Templates
 
-What if you need a more complex chained value? Let's say the endpoint to get a fish requires the fish ID to be in the format `fish_{id}`. Why? Don't worry about it. Fish are particular. Templates support recursion implicitly. You can use this to compose template values into more complex strings. Just be careful not to trigger infinite recursion!
+What if you need a more complex chained value? Let's say the endpoint to get a fish requires the fish ID to be in the format `fish_{id}`. Why? Don't worry about it. Fish are particular. Templates support nesting implicitly. You can use this to compose template values into more complex strings. Just be careful not to trigger infinite recursion!
 
 ```yaml
 profiles:

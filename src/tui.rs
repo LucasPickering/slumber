@@ -23,7 +23,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::Future;
-use notify::{RecursiveMode, Watcher};
+use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use signal_hook::{
     consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM},
@@ -300,15 +300,26 @@ impl Tui {
     fn watch_collection(&self) -> anyhow::Result<impl Watcher> {
         // Spawn a watcher for the collection file
         let messages_tx = self.messages_tx.clone();
-        let mut watcher =
-            notify::recommended_watcher(move |result: notify::Result<_>| {
-                match result {
-                    Ok(_) => messages_tx.send(Message::CollectionStartReload),
-                    Err(err) => {
-                        error!(error = %err, "Error watching collection file");
-                    }
+        let f = move |result: notify::Result<_>| {
+            match result {
+                // Only reload if the file *content* changes
+                Ok(
+                    event @ notify::Event {
+                        kind: notify::EventKind::Modify(ModifyKind::Data(_)),
+                        ..
+                    },
+                ) => {
+                    info!(?event, "Collection file changed, reloading");
+                    messages_tx.send(Message::CollectionStartReload);
                 }
-            })?;
+                // Do nothing for other event kinds
+                Ok(_) => {}
+                Err(err) => {
+                    error!(error = %err, "Error watching collection file");
+                }
+            }
+        };
+        let mut watcher = notify::recommended_watcher(f)?;
         watcher
             .watch(self.collection_file.path(), RecursiveMode::NonRecursive)?;
         info!(

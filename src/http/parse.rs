@@ -177,14 +177,14 @@ mod tests {
 
     /// Test all content types and their variants
     #[rstest]
-    #[case("application/json", ContentType::Json)]
-    #[case(
+    #[case::json("application/json", ContentType::Json)]
+    #[case::json_with_metadata(
         // Test extra metadata in the content-type header
         "application/json; charset=utf-8; boundary=asdf",
         ContentType::Json
     )]
     // Test extended MIME type
-    #[case("application/geo+json", ContentType::Json)]
+    #[case::json_extended("application/geo+json", ContentType::Json)]
     fn test_try_from_mime(
         #[case] mime_type: &str,
         #[case] expected: ContentType,
@@ -194,10 +194,10 @@ mod tests {
 
     /// Test invalid/unknown MIME types
     #[rstest]
-    #[case("json")] // Bare types not supported
-    #[case("application/+json")]
-    #[case("application/ +json")] // Spaces are bad!
-    #[case("text/html")]
+    #[case::invalid("json")] // Bare types not supported
+    #[case::json_empty_extension("application/+json")]
+    #[case::whitespace("application/ +json")] // Spaces are bad!
+    #[case::unknown("text/html")]
     fn test_try_from_mime_error(#[case] mime_type: &str) {
         assert_err!(
             ContentType::from_header(mime_type),
@@ -225,7 +225,7 @@ mod tests {
 
     /// Test all content types
     #[rstest]
-    #[case(
+    #[case::json(
         "application/json",
         "{\"hello\": \"goodbye\"}",
         Json(json!({"hello": "goodbye"}))
@@ -252,10 +252,18 @@ mod tests {
 
     /// Test various failure cases
     #[rstest]
-    #[case(None::<&str>, "", "no content-type header")]
-    #[case(Some("bad-header"), "", "Unknown content type \"bad-header\"")]
-    #[case(Some(b"\xc3\x28".as_slice()), "", "not valid utf-8")]
-    #[case(Some("application/json"), "not json!", "expected ident")]
+    #[case::no_content_type(None::<&str>, "", "no content-type header")]
+    #[case::unknown_content_type(
+        Some("bad-header"),
+        "",
+        "Unknown content type \"bad-header\""
+    )]
+    #[case::invalid_header_utf8(Some(b"\xc3\x28".as_slice()), "", "not valid utf-8")]
+    #[case::invalid_content(
+        Some("application/json"),
+        "not json!",
+        "expected ident"
+    )]
     fn test_parse_body_error<
         T: TryInto<HeaderValue, Error = InvalidHeaderValue>,
     >(

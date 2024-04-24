@@ -318,7 +318,7 @@ mod tests {
 
     /// Deserializing with a duplicate ID anywhere in the tree should fail
     #[rstest]
-    #[case(
+    #[case::anywhere(
         // Two requests share an ID
         mapping([
             (
@@ -350,7 +350,7 @@ mod tests {
         ])
     )]
     // Two folders share an ID
-    #[case(
+    #[case::folder(
         mapping([
             (
                 "f1",
@@ -366,7 +366,7 @@ mod tests {
         ])
     )]
     // Request + folder share an ID
-    #[case(
+    #[case::request_folder(
         mapping([
             (
                 "f1",

@@ -621,21 +621,21 @@ mod tests {
     }
 
     #[rstest]
-    #[case(
+    #[case::basic(
         Authentication::Basic {
             username: "{{username}}".into(),
             password: Some("{{password}}".into()),
         },
         "Basic dXNlcjpodW50ZXIy"
     )]
-    #[case(
+    #[case::basic_no_password(
         Authentication::Basic {
             username: "{{username}}".into(),
             password: None,
         },
         "Basic dXNlcjo="
     )]
-    #[case(Authentication::Bearer("{{token}}".into()), "Bearer token!")]
+    #[case::bearer(Authentication::Bearer("{{token}}".into()), "Bearer token!")]
     #[tokio::test]
     async fn test_authentication(
         #[case] authentication: Authentication,

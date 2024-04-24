@@ -195,11 +195,11 @@ pub mod serde_duration {
         struct Wrap(#[serde(with = "super")] Duration);
 
         #[rstest]
-        #[case(Duration::from_secs(3), "3s")]
-        #[case(Duration::from_secs(3000), "3000s")]
+        #[case::seconds_short(Duration::from_secs(3), "3s")]
+        #[case::seconds_long(Duration::from_secs(3000), "3000s")]
         // Subsecond precision is lost
-        #[case(Duration::from_millis(500), "0s")]
-        #[case(Duration::from_millis(1999), "1s")]
+        #[case::seconds_subsecond_lost(Duration::from_millis(400), "0s")]
+        #[case::seconds_subsecond_round_down(Duration::from_millis(1999), "1s")]
         fn test_serialize(
             #[case] duration: Duration,
             #[case] expected: &'static str,
@@ -208,12 +208,12 @@ pub mod serde_duration {
         }
 
         #[rstest]
-        #[case("0s", Duration::from_secs(0))]
-        #[case("1s", Duration::from_secs(1))]
-        #[case("100s", Duration::from_secs(100))]
-        #[case("3m", Duration::from_secs(180))]
-        #[case("3h", Duration::from_secs(10800))]
-        #[case("2d", Duration::from_secs(172800))]
+        #[case::seconds_zero("0s", Duration::from_secs(0))]
+        #[case::seconds_short("1s", Duration::from_secs(1))]
+        #[case::seconds_longer("100s", Duration::from_secs(100))]
+        #[case::minutes("3m", Duration::from_secs(180))]
+        #[case::hours("3h", Duration::from_secs(10800))]
+        #[case::days("2d", Duration::from_secs(172800))]
         fn test_deserialize(
             #[case] s: &'static str,
             #[case] expected: Duration,
@@ -222,19 +222,19 @@ pub mod serde_duration {
         }
 
         #[rstest]
-        #[case(
+        #[case::negative(
             "-1s",
             r#"Invalid duration, must be "<quantity><unit>" (e.g. "12d")"#
         )]
-        #[case(
+        #[case::whitespace(
             " 1s ",
             r#"Invalid duration, must be "<quantity><unit>" (e.g. "12d")"#
         )]
-        #[case(
+        #[case::decimal(
             "3.5s",
             r#"Invalid duration, must be "<quantity><unit>" (e.g. "12d")"#
         )]
-        #[case(
+        #[case::invalid_unit(
             "3hr",
             r#"Unknown duration unit: "hr"; must be one of ["s", "m", "h", "d"]"#
         )]
@@ -255,18 +255,18 @@ mod tests {
 
     #[rstest]
     // boolean
-    #[case(Token::Bool(true), "true")]
-    #[case(Token::Bool(false), "false")]
+    #[case::bool_true(Token::Bool(true), "true")]
+    #[case::bool_false(Token::Bool(false), "false")]
     // numeric
-    #[case(Token::U64(1000), "1000")]
-    #[case(Token::I64(-1000), "-1000")]
-    #[case(Token::F64(10.1), "10.1")]
-    #[case(Token::F64(-10.1), "-10.1")]
+    #[case::u64(Token::U64(1000), "1000")]
+    #[case::i64_negative(Token::I64(-1000), "-1000")]
+    #[case::float_positive(Token::F64(10.1), "10.1")]
+    #[case::float_negative(Token::F64(-10.1), "-10.1")]
     // string
-    #[case(Token::Str("hello"), "hello")]
-    #[case(Token::Str("null"), "null")]
-    #[case(Token::Str("true"), "true")]
-    #[case(Token::Str("false"), "false")]
+    #[case::str(Token::Str("hello"), "hello")]
+    #[case::str_null(Token::Str("null"), "null")]
+    #[case::str_true(Token::Str("true"), "true")]
+    #[case::str_false(Token::Str("false"), "false")]
     fn test_deserialize_template(#[case] token: Token, #[case] expected: &str) {
         assert_de_tokens(&Template::from(expected), &[token]);
     }

@@ -566,34 +566,34 @@ mod tests {
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
 
     #[rstest]
-    #[case(" w ", KeyCode::Char('w'))]
-    #[case("f2", KeyCode::F(2))]
-    #[case("tab", KeyCode::Tab)]
-    #[case("backtab", KeyCode::BackTab)]
+    #[case::whitespace_stripped(" w ", KeyCode::Char('w'))]
+    #[case::f_key("f2", KeyCode::F(2))]
+    #[case::tab("tab", KeyCode::Tab)]
+    #[case::backtab("backtab", KeyCode::BackTab)]
     // crossterm treats shift+tab as a special case, we translate for
     // convenience
-    #[case("shift tab", KeyCode::BackTab)]
-    #[case("alt shift tab", KeyCombination {
+    #[case::shift_tab("shift tab", KeyCode::BackTab)]
+    #[case::multiple_modifiers("alt shift tab", KeyCombination {
         code: KeyCode::BackTab,
         modifiers: KeyModifiers::ALT
     })]
-    #[case("pgup", KeyCode::PageUp)]
-    #[case("pgdn", KeyCode::PageDown)]
-    #[case("capslock", KeyCode::CapsLock)]
-    #[case("shift f2", KeyCombination {
+    #[case::page_up("pgup", KeyCode::PageUp)]
+    #[case::page_down("pgdn", KeyCode::PageDown)]
+    #[case::caps_lock("capslock", KeyCode::CapsLock)]
+    #[case::f_key_with_modifier("shift f2", KeyCombination {
         code: KeyCode::F(2),
         modifiers: KeyModifiers::SHIFT,
     })]
     // Bonus spaces!
-    #[case("shift  f2", KeyCombination {
+    #[case::extra_whitespace("shift  f2", KeyCombination {
         code: KeyCode::F(2),
         modifiers: KeyModifiers::SHIFT,
     })]
-    #[case("shift   f2", KeyCombination {
+    #[case::extra_extra_whitespace("shift   f2", KeyCombination {
         code: KeyCode::F(2),
         modifiers: KeyModifiers::SHIFT,
     })]
-    #[case("super hyper meta alt ctrl shift f2", KeyCombination {
+    #[case::all_modifiers("super hyper meta alt ctrl shift f2", KeyCombination {
         code: KeyCode::F(2),
         modifiers: KeyModifiers::all(),
     })]
@@ -605,13 +605,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case("", "Empty key combination")]
-    #[case("  ", "Empty key combination")]
-    #[case("shift+w", "Invalid key code")]
-    #[case("w shift", "Invalid key code")]
-    #[case("shart w", "Invalid key modifier \"shart\"")]
-    #[case("shift", "Invalid key code \"shift\"")]
-    #[case("alt alt w", "Duplicate modifier")]
+    #[case::empty("", "Empty key combination")]
+    #[case::whitespace_only("  ", "Empty key combination")]
+    #[case::invalid_delimiter("shift+w", "Invalid key code")]
+    #[case::modifier_last("w shift", "Invalid key code")]
+    #[case::invalid_modifier("shart w", "Invalid key modifier \"shart\"")]
+    #[case::modifier_only("shift", "Invalid key code \"shift\"")]
+    #[case::duplicate_modifier("alt alt w", "Duplicate modifier")]
     fn test_parse_key_combination_error(
         #[case] input: &str,
         #[case] expected_error: &str,

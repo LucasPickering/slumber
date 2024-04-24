@@ -273,13 +273,16 @@ mod tests {
 
     /// Potential error cases for a profile field
     #[rstest]
-    #[case("{{onion_id}}", "Unknown field `onion_id`")]
-    #[case(
+    #[case::unknown_field("{{onion_id}}", "Unknown field `onion_id`")]
+    #[case::nested(
         "{{nested}}",
         "Rendering nested template for field `nested`: \
         Unknown field `onion_id`"
     )]
-    #[case("{{recursive}}", "Template recursion limit reached")]
+    #[case::recursion_limit(
+        "{{recursive}}",
+        "Template recursion limit reached"
+    )]
     #[tokio::test]
     async fn test_field_error(#[case] template: &str, #[case] expected: &str) {
         let profile_data = indexmap! {
@@ -301,15 +304,15 @@ mod tests {
 
     /// Test success cases with chained responses
     #[rstest]
-    #[case(
+    #[case::no_selector(
         None,
         r#"{"array":[1,2],"bool":false,"number":6,"object":{"a":1},"string":"Hello World!"}"#,
     )]
-    #[case(Some("$.string"), "Hello World!")]
-    #[case(Some("$.number"), "6")]
-    #[case(Some("$.bool"), "false")]
-    #[case(Some("$.array"), "[1,2]")]
-    #[case(Some("$.object"), "{\"a\":1}")]
+    #[case::string(Some("$.string"), "Hello World!")]
+    #[case::number(Some("$.number"), "6")]
+    #[case::bool(Some("$.bool"), "false")]
+    #[case::array(Some("$.array"), "[1,2]")]
+    #[case::object(Some("$.object"), "{\"a\":1}")]
     #[tokio::test]
     async fn test_chain_request(
         #[case] selector: Option<&str>,
@@ -365,9 +368,9 @@ mod tests {
     /// chain-specific error variants
     #[rstest]
     // Referenced a chain that doesn't exist
-    #[case("unknown", create!(Chain), None, None, "Unknown chain")]
+    #[case::unknown_chain("unknown", create!(Chain), None, None, "Unknown chain")]
     // Chain references a recipe that's not in the collection
-    #[case(
+    #[case::unknown_recipe(
         "chain1",
         create!(
             Chain,
@@ -381,7 +384,7 @@ mod tests {
         "Unknown request recipe",
     )]
     // Recipe exists but has no history in the DB
-    #[case(
+    #[case::no_response(
         "chain1",
         create!(
             Chain,
@@ -395,7 +398,7 @@ mod tests {
         "No response available",
     )]
     // Subrequest can't be executed because triggers are disabled
-    #[case(
+    #[case::trigger_disabled(
         "chain1",
         create!(
             Chain,
@@ -409,7 +412,7 @@ mod tests {
         "Triggered request execution not allowed in this context",
     )]
     // Response doesn't include a hint to its content type
-    #[case(
+    #[case::no_content_type(
         "chain1",
         create!(
             Chain,
@@ -501,17 +504,20 @@ mod tests {
 
     /// Test triggered sub-requests. We expect all of these *to trigger*
     #[rstest]
-    #[case(ChainRequestTrigger::NoHistory, None)]
-    #[case(ChainRequestTrigger::Expire(Duration::from_secs(0)), None)]
-    #[case(
+    #[case::no_history(ChainRequestTrigger::NoHistory, None)]
+    #[case::expire_empty(
+        ChainRequestTrigger::Expire(Duration::from_secs(0)),
+        None
+    )]
+    #[case::expire_with_duration(
         ChainRequestTrigger::Expire(Duration::from_secs(60)),
         Some(create!(
             RequestRecord,
             end_time: Utc::now() - Duration::from_secs(100)
         ))
     )]
-    #[case(ChainRequestTrigger::Always, None)]
-    #[case(ChainRequestTrigger::Always, Some(create!(RequestRecord)))]
+    #[case::always_no_history(ChainRequestTrigger::Always, None)]
+    #[case::always_with_history(ChainRequestTrigger::Always, Some(create!(RequestRecord)))]
     #[tokio::test]
     async fn test_triggered_request(
         #[case] trigger: ChainRequestTrigger,
@@ -578,9 +584,9 @@ mod tests {
 
     /// Test failure with chained command
     #[rstest]
-    #[case(&[], "No command given")]
-    #[case(&["totally not a program"], "No such file or directory")]
-    #[case(&["head", "/dev/random"], "invalid utf-8 sequence")]
+    #[case::no_command(&[], "No command given")]
+    #[case::unknown_command(&["totally not a program"], "No such file or directory")]
+    #[case::command_error(&["head", "/dev/random"], "invalid utf-8 sequence")]
     #[tokio::test]
     async fn test_chain_command_error(
         #[case] command: &[&str],

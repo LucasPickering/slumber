@@ -157,23 +157,23 @@ mod tests {
 
     /// Test parsing success cases
     #[rstest]
-    #[case("", vec![])]
-    #[case("raw", vec![TemplateInputChunk::Raw("raw")])]
-    #[case("unopened}}", vec![TemplateInputChunk::Raw("unopened}}")])]
-    #[case(
+    #[case::empty("", vec![])]
+    #[case::raw("raw", vec![TemplateInputChunk::Raw("raw")])]
+    #[case::unopened_key("unopened}}", vec![TemplateInputChunk::Raw("unopened}}")])]
+    #[case::field(
         "{{field1}}",
         vec![TemplateInputChunk::Key(TemplateKey::Field("field1"))]
     )]
-    #[case("{{1}}", vec![TemplateInputChunk::Key(TemplateKey::Field("1"))])]
-    #[case(
+    #[case::field_number_id("{{1}}", vec![TemplateInputChunk::Key(TemplateKey::Field("1"))])]
+    #[case::chain(
         "{{chains.chain1}}",
         vec![TemplateInputChunk::Key(TemplateKey::Chain("chain1"))]
     )]
-    #[case(
+    #[case::env(
         "{{env.ENV}}",
         vec![TemplateInputChunk::Key(TemplateKey::Environment("ENV"))]
     )]
-    #[case(
+    #[case::utf8(
         "intro\n{{user_id}} 💚💙💜 {{chains.chain}}\noutro\r\nmore outro",
         vec![
             TemplateInputChunk::Raw("intro\n"),
@@ -201,14 +201,14 @@ mod tests {
     /// Test parsing error cases. The error messages are not very descriptive
     /// so don't even bother looking for particular content
     #[rstest]
-    #[case("{{")]
-    #[case("{{}}")]
-    #[case("{{.}}")]
-    #[case("{{bogus.}}")]
-    #[case("{{bogus.one}}")]
-    #[case("{{chains.one.two}}")]
-    #[case("{{env.one.two}}")]
-    #[case("{{ field }}")] // Invalid whitespace
+    #[case::unclosed_key("{{")]
+    #[case::empty_key("{{}}")]
+    #[case::invalid_key("{{.}}")]
+    #[case::incomplete_dotted_key("{{bogus.}}")]
+    #[case::invalid_dotted_key("{{bogus.one}}")]
+    #[case::invalid_chain("{{chains.one.two}}")]
+    #[case::invalid_env("{{env.one.two}}")]
+    #[case::whitespace("{{ field }}")]
     fn test_parse_error(#[case] template: &str) {
         assert_err!(Template::parse(template.into()), "at line 1");
     }

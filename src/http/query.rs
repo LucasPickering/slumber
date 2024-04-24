@@ -80,10 +80,10 @@ mod tests {
     use serde_json::json;
 
     #[rstest]
-    #[case("$", json(json!({"test": "hi!"})), r#"{"test":"hi!"}"#)]
-    #[case("$.test", json(json!({"test": "hi!"})), "hi!")]
-    #[case("$.test", json(json!({"test": 3})), "3")]
-    #[case("$.test", json(json!({"test": true})), "true")]
+    #[case::root("$", json(json!({"test": "hi!"})), r#"{"test":"hi!"}"#)]
+    #[case::string("$.test", json(json!({"test": "hi!"})), "hi!")]
+    #[case::int("$.test", json(json!({"test": 3})), "3")]
+    #[case::bool("$.test", json(json!({"test": true})), "true")]
     fn test_query_to_string(
         #[case] query: &str,
         #[case] content: Box<dyn ResponseContent>,
@@ -95,8 +95,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case("$[*]", json(json!([1, 2])), "Expected exactly one result")]
-    #[case("$[*]", json(json!([])), "Expected exactly one result")]
+    #[case::too_many_results("$[*]", json(json!([1, 2])), "Expected exactly one result")]
+    #[case::no_results("$[*]", json(json!([])), "Expected exactly one result")]
     fn test_query_to_string_error(
         #[case] query: &str,
         #[case] content: Box<dyn ResponseContent>,

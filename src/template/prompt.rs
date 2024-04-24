@@ -24,7 +24,7 @@ pub trait Prompter: Debug + Send + Sync {
 #[derive(Debug)]
 pub struct Prompt {
     /// Tell the user what we're asking for
-    pub(super) label: String,
+    pub(super) message: String,
     /// Should the value the user is typing be masked? E.g. password input
     pub(super) sensitive: bool,
     /// How the prompter will pass the answer back
@@ -32,8 +32,8 @@ pub struct Prompt {
 }
 
 impl Prompt {
-    pub fn label(&self) -> &str {
-        &self.label
+    pub fn message(&self) -> &str {
+        &self.message
     }
 
     pub fn sensitive(&self) -> bool {

@@ -1,7 +1,7 @@
 use crate::{
     collection::{ChainId, ProfileId, RecipeId},
     http::{QueryError, RequestBuildError, RequestError},
-    template::{Template, RECURSION_LIMIT},
+    template::RECURSION_LIMIT,
     util::doc_link,
 };
 use nom::error::VerboseError;
@@ -28,6 +28,9 @@ impl TemplateParseError {
 /// The error always holds owned data so it can be detached from the lifetime
 /// of the template context. This requires a mild amount of cloning in error
 /// cases, but those should be infrequent so it's fine.
+///
+/// These error messages are generally shown with additional parent context, so
+/// they should be pretty brief.
 #[derive(Debug, Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum TemplateError {
@@ -43,10 +46,10 @@ pub enum TemplateError {
     #[error("Unknown field `{field}`")]
     FieldUnknown { field: String },
 
-    /// An bubbled-up error from a nested render
-    #[error("Error in nested template `{template}`")]
-    Nested {
-        template: Template,
+    /// An bubbled-up error from rendering a profile field value
+    #[error("Rendering nested template for field `{field}`")]
+    FieldNested {
+        field: String,
         #[source]
         error: Box<Self>,
     },
@@ -58,7 +61,7 @@ pub enum TemplateError {
     )]
     RecursionLimit,
 
-    #[error("Error resolving chain `{chain_id}`")]
+    #[error("Resolving chain `{chain_id}`")]
     Chain {
         chain_id: ChainId,
         #[source]
@@ -66,7 +69,7 @@ pub enum TemplateError {
     },
 
     /// Variable either didn't exist or had non-unicode content
-    #[error("Error accessing environment variable `{variable}`")]
+    #[error("Accessing environment variable `{variable}`")]
     EnvironmentVariable {
         variable: String,
         #[source]
@@ -113,7 +116,7 @@ pub enum ChainError {
     UnknownContentType,
 
     /// Something bad happened while triggering a request dependency
-    #[error("Error triggering upstream recipe `{recipe_id}`")]
+    #[error("Triggering upstream recipe `{recipe_id}`")]
     Trigger {
         recipe_id: RecipeId,
         #[source]
@@ -121,7 +124,7 @@ pub enum ChainError {
     },
 
     /// Failed to parse the response body before applying a selector
-    #[error("Error parsing response")]
+    #[error("Parsing response")]
     ParseResponse {
         #[source]
         error: anyhow::Error,
@@ -137,7 +140,7 @@ pub enum ChainError {
     CommandMissing,
 
     /// Error executing an external command
-    #[error("Error executing command {command:?}")]
+    #[error("Executing command {command:?}")]
     Command {
         command: Vec<String>,
         #[source]
@@ -145,7 +148,7 @@ pub enum ChainError {
     },
 
     /// Error opening/reading a file
-    #[error("Error reading from file `{path}`")]
+    #[error("Reading file `{path}`")]
     File {
         path: PathBuf,
         #[source]
@@ -156,6 +159,15 @@ pub enum ChainError {
     /// `RecvError` here, because it provides useless extra output to the user.
     #[error("No response from prompt")]
     PromptNoResponse,
+
+    /// A bubbled-error from rendering a nested template in the chain arguments
+    #[error("Rendering nested template for field `{field}`")]
+    Nested {
+        /// Specific field that contained the error, to give the user context
+        field: String,
+        #[source]
+        error: Box<TemplateError>,
+    },
 }
 
 /// Error occurred while trying to build/execute a triggered request

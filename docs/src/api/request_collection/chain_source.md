@@ -85,22 +85,22 @@ trigger: !always
 
 Execute a command and use its stdout as the rendered value.
 
-| Field     | Type       | Description                                                 | Default  |
-| --------- | ---------- | ----------------------------------------------------------- | -------- |
-| `command` | `string[]` | Command to execute, in the format `[program, ...arguments]` | Required |
+| Field     | Type         | Description                                                 | Default  |
+| --------- | ------------ | ----------------------------------------------------------- | -------- |
+| `command` | `Template[]` | Command to execute, in the format `[program, ...arguments]` | Required |
 
 ### File
 
 Read a file and use its contents as the rendered value.
 
-| Field  | Type     | Description                                              | Default  |
-| ------ | -------- | -------------------------------------------------------- | -------- |
-| `path` | `string` | Path of the file to load (relative to current directory) | Required |
+| Field  | Type       | Description                                              | Default  |
+| ------ | ---------- | -------------------------------------------------------- | -------- |
+| `path` | `Template` | Path of the file to load (relative to current directory) | Required |
 
 ### Prompt
 
 Prompt the user for input to use as the rendered value.
 
-| Field     | Type     | Description                     | Default  |
-| --------- | -------- | ------------------------------- | -------- |
-| `message` | `string` | Descriptive prompt for the user | Required |
+| Field     | Type       | Description                     | Default  |
+| --------- | ---------- | ------------------------------- | -------- |
+| `message` | `Template` | Descriptive prompt for the user | Required |

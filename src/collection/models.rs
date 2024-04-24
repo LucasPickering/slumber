@@ -14,7 +14,7 @@ use equivalent::Equivalent;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, time::Duration};
+use std::time::Duration;
 use strum::{EnumIter, IntoEnumIterator};
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
@@ -242,11 +242,11 @@ pub enum ChainSource {
         trigger: ChainRequestTrigger,
     },
     /// Run an external command to get a result
-    Command { command: Vec<String> },
+    Command { command: Vec<Template> },
     /// Load data from a file
-    File { path: PathBuf },
+    File { path: Template },
     /// Prompt the user for a value, with an optional label
-    Prompt { message: Option<String> },
+    Prompt { message: Option<Template> },
 }
 
 /// Define when a recipe with a chained request should auto-execute the

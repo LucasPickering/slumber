@@ -92,7 +92,7 @@ impl PromptModal {
 
 impl Modal for PromptModal {
     fn title(&self) -> &str {
-        self.prompt.label()
+        self.prompt.message()
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {

@@ -16,6 +16,9 @@
 - Validate recipe `method` field during deserialization instead of on request init
   - This means you'll get an error on startup if your method is invalid, instead of when you go to run the request
   - This is not a breaking change because if you had an incorrect HTTP method, the request still didn't _work_ before, it just broke later
+- Arguments to chains are now treated as templates ([#151](https://github.com/LucasPickering/slumber/issues/151))
+  - Support fields are `path` for `!file` chains, `command` for `!command` chains, and `message` for `!prompt` chains
+  - This means you can now _really_ chain chains together!
 
 ## [0.18.0] - 2024-04-18
 

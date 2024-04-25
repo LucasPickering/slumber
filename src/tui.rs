@@ -1,6 +1,7 @@
 mod context;
 pub mod input;
 mod message;
+mod signal;
 mod view;
 
 use crate::{
@@ -13,6 +14,7 @@ use crate::{
         context::TuiContext,
         input::Action,
         message::{Message, MessageSender, RequestConfig},
+        signal::signals,
         view::{ModalPriority, PreviewPrompter, RequestState, View},
     },
     util::Replaceable,
@@ -25,10 +27,6 @@ use crossterm::{
 use futures::Future;
 use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
-use signal_hook::{
-    consts::{SIGHUP, SIGINT, SIGQUIT, SIGTERM},
-    iterator::Signals,
-};
 use std::{
     io::{self, Stdout},
     ops::Deref,
@@ -127,10 +125,7 @@ impl Tui {
     /// the struct definition for a description of the different phases of the
     /// run loop.
     fn run(mut self) -> anyhow::Result<()> {
-        // Listen for signals to stop the program
-        let mut quit_signals = Signals::new([SIGHUP, SIGINT, SIGTERM, SIGQUIT])
-            .context("Error creating signal handler")?;
-
+        self.listen_for_signals();
         // Hang onto this because it stops running when dropped
         let _watcher = self.watch_collection()?;
 
@@ -174,11 +169,6 @@ impl Tui {
 
             // ===== Draw Phase =====
             self.terminal.draw(|f| self.view.draw(f))?;
-
-            // ===== Signal Phase =====
-            if quit_signals.pending().next().is_some() {
-                self.quit();
-            }
         }
 
         Ok(())
@@ -293,6 +283,16 @@ impl Tui {
             }
         }
         Ok(())
+    }
+
+    /// Spawn a task to listen in the backgrouns for quit signals
+    fn listen_for_signals(&self) {
+        let messages = self.messages_tx.clone();
+        self.spawn(async move {
+            signals().await?;
+            messages.send(Message::Quit);
+            Ok(())
+        });
     }
 
     /// Spawn a watcher to automatically reload the collection when the file

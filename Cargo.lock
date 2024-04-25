@@ -1962,7 +1962,6 @@ dependencies = [
  "serde_json_path",
  "serde_test",
  "serde_yaml",
- "signal-hook",
  "strum",
  "thiserror",
  "tokio",

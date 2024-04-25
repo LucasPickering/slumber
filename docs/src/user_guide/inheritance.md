@@ -51,11 +51,13 @@ chains:
     source: !file
       path: ./api_token.txt
 
-# The name here is arbitrary, pick any name you like
-request_base: &request_base
-  headers:
-    Accept: application/json
-  authentication: !bearer "{{chains.token}}"
+# This is needed to tell Slumber not to complain about an unknown key
+.ignore:
+  # The name here is arbitrary, pick any name you like
+  request_base: &request_base
+    headers:
+      Accept: application/json
+    authentication: !bearer "{{chains.token}}"
 
 requests:
   list_fish: !request
@@ -88,11 +90,11 @@ chains:
     source: !file
       path: ./api_token.txt
 
-# The name here is arbitrary, pick any name you like
-request_base: &request_base
-  headers: &headers_base # This will let us pull in the header map to extend it
-    Accept: application/json
-  authentication: !bearer "{{chains.token}}"
+.ignore:
+  request_base: &request_base
+    headers: &headers_base # This will let us pull in the header map
+      Accept: application/json
+    authentication: !bearer "{{chains.token}}"
 
 requests:
   list_fish: !request

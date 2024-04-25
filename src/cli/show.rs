@@ -29,8 +29,7 @@ impl Subcommand for ShowCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.target {
             ShowTarget::Paths => {
-                let collection_path =
-                    CollectionFile::try_path(global.collection);
+                let collection_path = CollectionFile::try_path(global.file);
                 println!("Data directory: {}", DataDirectory::root());
                 println!("Log file: {}", DataDirectory::log());
                 println!("Config: {}", Config::path());
@@ -48,8 +47,7 @@ impl Subcommand for ShowCommand {
                 println!("{}", to_yaml(&config));
             }
             ShowTarget::Collection => {
-                let collection_path =
-                    CollectionFile::try_path(global.collection)?;
+                let collection_path = CollectionFile::try_path(global.file)?;
                 let collection_file =
                     CollectionFile::load(collection_path).await?;
                 println!("{}", to_yaml(&collection_file.collection));

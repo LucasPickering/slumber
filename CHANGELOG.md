@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Added
+
+- Add two new build targets to releases: `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-musl`
+
+### Fixed
+
+- Fix build on Windows ([#180](https://github.com/LucasPickering/slumber/issues/180))
+  - I can't guarantee it _works_ on Windows since I don't have a machine to test on, but it at least compiles now
+
 ## [1.0.0] - 2024-04-25
 
 ### Breaking

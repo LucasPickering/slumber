@@ -9,25 +9,23 @@ assignees: ""
 **Did you [search](https://github.com/LucasPickering/slumber/issues) for existing issues already?**
 
 **Describe the bug**
-A clear and concise description of what the bug is.
+_A clear and concise description of what the bug is_
 
 **To Reproduce**
-Steps to reproduce the behavior:
+_Steps to reproduce the behavior_
 
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+1.
 
 **Expected behavior**
-A clear and concise description of what you expected to happen.
+_A clear and concise description of what you expected to happen_
 
 **Screenshots**
-If applicable, add screenshots to help explain your problem.
+_If applicable, add screenshots to help explain your problem_
 
 **Version (please complete the following information):**
 
 - OS:
+- Terminal:
 - Slumber Version:
 
 **Additional context**

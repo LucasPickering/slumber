@@ -2,7 +2,7 @@
 
 ## Description
 
-_Describe the change. If there is an associated issue, please include the issue link (make sure to use a [resolving keyword](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue) so GitHub auto-links it). For UI changes, please also include screenshots._
+_Describe the change. If there is an associated issue, please include the issue link (e.g. "Closes #xxx"). For UI changes, please also include screenshots._
 
 ## Known Risks
 

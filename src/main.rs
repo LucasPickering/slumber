@@ -36,11 +36,11 @@ struct Args {
 /// Arguments that are available to all subcommands and the TUI
 #[derive(Debug, Parser)]
 struct GlobalArgs {
-    /// Collection file, which defines your profiless and recipes. If omitted,
-    /// check for the following files in the current directory (first match
-    /// will be used): slumber.yml, slumber.yaml, .slumber.yml, .slumber.yaml
+    /// Collection file, which defines profiles, recipes, etc. If omitted,
+    /// check the current directory for the following files (in this order):
+    /// slumber.yml, slumber.yaml, .slumber.yml, .slumber.yaml
     #[clap(long, short)]
-    collection: Option<PathBuf>,
+    file: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<ExitCode> {
         // Run the TUI
         None => {
             // This should return the error so we get a full stack trac
-            Tui::start(args.global.collection).await?;
+            Tui::start(args.global.file).await?;
             Ok(ExitCode::SUCCESS)
         }
 

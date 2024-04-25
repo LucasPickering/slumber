@@ -2,6 +2,11 @@
 
 ## [Unreleased] - ReleaseDate
 
+### Breaking
+
+- Rename collection file parameter on all CLI commands from `--collection`/`-c` to `--file`/`-f`
+  - The goal here is to be more intuitive/predictable, since `-f` is much more common in similar programs (e.g. docker-compose)
+
 ### Added
 
 - Support booleans and numbers for query values ([#141](https://github.com/LucasPickering/slumber/issues/141))

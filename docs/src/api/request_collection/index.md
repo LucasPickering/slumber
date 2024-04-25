@@ -13,10 +13,10 @@ A collection is defined as a [YAML](https://yaml.org/) file. When you run `slumb
 - `.slumber.yml`
 - `.slumber.yaml`
 
-Whichever of those files is found _first_ will be used. If you want to use a different file for your collection (e.g. if you want to store multiple collections in the same directory), you can override the auto-search with the `--collection` (or `-c`) command line argument. E.g.:
+Whichever of those files is found _first_ will be used. If you want to use a different file for your collection (e.g. if you want to store multiple collections in the same directory), you can override the auto-search with the `--file` (or `-f`) command line argument. E.g.:
 
 ```sh
-slumber -c my-collection.yml
+slumber -f my-collection.yml
 ```
 
 ## Collection History & Migration

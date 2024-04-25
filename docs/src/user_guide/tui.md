@@ -8,10 +8,10 @@ To start the TUI, simply run:
 slumber
 ```
 
-This will detect your request collection file [according to the protocol](../api/request_collection/index.md#format--loading). If you want to load a different file, you can use the `--collection` parameter:
+This will detect your request collection file [according to the protocol](../api/request_collection/index.md#format--loading). If you want to load a different file, you can use the `--file` parameter:
 
 ```sh
-slumber --collection my-slumber.yml
+slumber --file my-slumber.yml
 ```
 
 ## Auto-Reload

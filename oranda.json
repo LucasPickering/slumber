@@ -7,10 +7,10 @@
     "artifacts": {
       "package_managers": {
         "preferred": {
-          "cargo": "cargo install env-select"
+          "cargo": "cargo install slumber"
         },
         "additional": {
-          "binstall": "cargo binstall env-select"
+          "binstall": "cargo binstall slumber"
         }
       }
     }

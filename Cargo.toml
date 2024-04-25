@@ -2,6 +2,7 @@
 authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
 description = "Terminal-based HTTP client"
 edition = "2021"
+homepage = "https://slumber.lucaspickering.me"
 keywords = ["rest", "http", "terminal", "tui"]
 license = "MIT"
 name = "slumber"
@@ -70,7 +71,7 @@ pre-release-replacements = [
 # Config for 'cargo dist'
 [workspace.metadata.dist]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.3.1"
+cargo-dist-version = "0.13.3"
 # CI backends to support
 ci = ["github"]
 # The installers to generate for each app
@@ -78,8 +79,10 @@ installers = ["shell", "homebrew"]
 # A GitHub repo to push Homebrew formulas to
 tap = "LucasPickering/homebrew-tap"
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"]
 # Publish jobs to run in CI
 publish-jobs = ["homebrew"]
 # Publish jobs to run in CI
-pr-run-mode = "plan"
+pr-run-mode = "upload"
+# Whether to install an updater program
+install-updater = false

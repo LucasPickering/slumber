@@ -1,7 +1,5 @@
 # Slumber
 
-> Disclaimer: Slumber is still early in development. It is ready to use, but updates still will have occasional breaking changes. Until version 1.0 is released, be prepared to have to change your config file after upgrades. I'll do my best to keep the upgrades as smooth as possible.
-
 ![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)
 ![crates.io](https://img.shields.io/crates/v/slumber.svg)
 

@@ -15,6 +15,14 @@
 - [Data Filtering & Querying](./user_guide/filter_query.md)
 - [Importing External Collections](./user_guide/import.md)
 
+# CLI Commands
+
+- [slumber request](./cli/request.md)
+- [slumber import](./cli/import.md)
+- [slumber generate](./cli/generate.md)
+- [slumber collections](./cli/collections.md)
+- [slumber show](./cli/show.md)
+
 # API Reference
 
 - [Request Collection](./api/request_collection/index.md)

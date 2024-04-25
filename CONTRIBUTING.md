@@ -81,7 +81,7 @@ oranda dev
 - Any new file added to the book must be listed in `SUMMARY.md`
 - All fields, types, etc. in the collection (`slumber.yml`) or config (`config.yml`) files **must** be documented
 - Larger features should be documented via a section in the user guide
-- CLI features generally do not need to be documented, because help text is available automatically
+- CLI commands should be documented under the the CLI section of the API reference. This documentation does **not** need to be exhaustive, as we already have `--help`.
 - UI features do _not_ need to be documented. If a UI needs documentation, it's probably not good anyway :)
 
 When writing docs, try to follow existing style/patterns of related pages. User Guide pages follow a tutorial-like structure, while API pages should include a description of available fields/variants, as well as examples.

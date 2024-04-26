@@ -552,8 +552,8 @@ mod tests {
     /// Test "Copy URL" action
     #[rstest]
     fn test_copy_url(mut component: RecipePane, mut messages: MessageQueue) {
-        let update =
-            component.update(messages.tx(), Event::other(MenuAction::CopyUrl));
+        let update = component
+            .update(messages.tx(), Event::new_other(MenuAction::CopyUrl));
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 
@@ -574,8 +574,8 @@ mod tests {
     /// Test "Copy Body" action
     #[rstest]
     fn test_copy_body(mut component: RecipePane, mut messages: MessageQueue) {
-        let update =
-            component.update(messages.tx(), Event::other(MenuAction::CopyBody));
+        let update = component
+            .update(messages.tx(), Event::new_other(MenuAction::CopyBody));
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 
@@ -599,8 +599,8 @@ mod tests {
         mut component: RecipePane,
         mut messages: MessageQueue,
     ) {
-        let update =
-            component.update(messages.tx(), Event::other(MenuAction::CopyCurl));
+        let update = component
+            .update(messages.tx(), Event::new_other(MenuAction::CopyCurl));
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 

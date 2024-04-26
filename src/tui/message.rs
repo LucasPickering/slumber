@@ -7,7 +7,7 @@ use crate::{
         RecipeOptions, Request, RequestBuildError, RequestError, RequestRecord,
     },
     template::{Prompt, Prompter, Template, TemplateChunk},
-    tui::input::Action,
+    tui::{input::Action, view::Confirm},
     util::ResultExt,
 };
 use anyhow::Context;
@@ -48,8 +48,8 @@ impl Prompter for MessageSender {
 
 /// A message triggers some *asynchronous* action. Most state modifications can
 /// be made synchronously by the input handler, but some require async handling
-/// at the top level. The controller is responsible for both triggering and
-/// handling messages.
+/// at the top level. Messages can be triggered from anywhere (via the TUI
+/// context), but are all handled by the top-level controller.
 #[derive(Debug)]
 pub enum Message {
     /// Trigger collection reload
@@ -58,6 +58,10 @@ pub enum Message {
     CollectionEndReload(Collection),
     /// Open the collection in the user's editor
     CollectionEdit,
+
+    /// Show a yes/no confirmation to the user. Use the included channel to
+    /// return the value.
+    ConfirmStart(Confirm),
 
     /// Render request URL from a recipe, then copy rendered URL
     CopyRequestUrl(RequestConfig),
@@ -98,6 +102,8 @@ pub enum Message {
         action: Option<Action>,
     },
 
+    /// Send an informational notification to the user
+    Notify(String),
     /// Show a prompt to the user, asking for some input. Use the included
     /// channel to return the value.
     PromptStart(Prompt),
@@ -109,6 +115,15 @@ pub enum Message {
     RequestLoad {
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
+    },
+
+    /// Save data to a file. Could be binary (e.g. image) or encoded text
+    SaveFile {
+        /// A suggestion for the file name. User will have the opportunity to
+        /// change this
+        default_path: Option<String>,
+        /// Data to save
+        data: Vec<u8>,
     },
 
     /// Render a template string, to be previewed in the UI. Ideally this could

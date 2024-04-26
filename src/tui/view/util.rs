@@ -1,7 +1,17 @@
 //! Helper structs and functions for building components
 
-use crate::template::{Prompt, Prompter};
+use crate::template::{Prompt, PromptChannel, Prompter};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+
+/// A data structure for representation a yes/no confirmation. This is similar
+/// to [Prompt], but it only asks a yes/no question.
+#[derive(Debug)]
+pub struct Confirm {
+    /// Question to ask the user
+    pub message: String,
+    /// A channel to pass back the user's response
+    pub channel: PromptChannel<bool>,
+}
 
 /// A prompter that returns a static value; used for template previews, where
 /// user interaction isn't possible

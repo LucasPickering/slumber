@@ -70,7 +70,7 @@ impl Default for RecordBody {
                 .with_validator(|text| JsonPath::parse(text).is_ok())
                 // Callback triggers an event, so we can modify our own state
                 .with_on_submit(|text_box| {
-                    EventQueue::push(Event::other(QuerySubmit(
+                    EventQueue::push(Event::new_other(QuerySubmit(
                         text_box.text().to_owned(),
                     )))
                 })

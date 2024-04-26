@@ -31,18 +31,18 @@ pub struct Prompt {
     /// Should the value the user is typing be masked? E.g. password input
     pub sensitive: bool,
     /// How the prompter will pass the answer back
-    pub channel: PromptChannel,
+    pub channel: PromptChannel<String>,
 }
 
 /// Channel used to return a prompt response. This is its own type so we can
 /// provide wrapping functionality while letting the user decompose the `Prompt`
 /// type.
 #[derive(Debug, From)]
-pub struct PromptChannel(oneshot::Sender<String>);
+pub struct PromptChannel<T>(oneshot::Sender<T>);
 
-impl PromptChannel {
+impl<T> PromptChannel<T> {
     /// Return the value that the user gave
-    pub fn respond(self, response: String) {
+    pub fn respond(self, response: T) {
         // This error *shouldn't* ever happen, because the templating task
         // stays open until it gets a response
         let _ = self

@@ -1,7 +1,7 @@
 pub mod context;
 pub mod input;
 pub mod message;
-mod signal;
+mod util;
 mod view;
 
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
         context::TuiContext,
         input::{Action, InputEngine},
         message::{Message, MessageSender, RequestConfig},
-        signal::signals,
+        util::{save_file, signals},
         view::{ModalPriority, PreviewPrompter, RequestState, View},
     },
     util::Replaceable,
@@ -189,6 +189,9 @@ impl Tui {
                 self.copy_request_curl(request_config)?;
             }
             Message::CopyText(text) => self.view.copy_text(text),
+            Message::SaveFile { default_path, data } => {
+                self.spawn(save_file(self.messages_tx(), default_path, data));
+            }
 
             Message::Error { error } => {
                 self.view.open_modal(error, ModalPriority::High)
@@ -253,8 +256,12 @@ impl Tui {
                 self.load_request(profile_id.as_ref(), &recipe_id)?;
             }
 
+            Message::Notify(message) => self.view.notify(message),
             Message::PromptStart(prompt) => {
                 self.view.open_modal(prompt, ModalPriority::Low);
+            }
+            Message::ConfirmStart(confirm) => {
+                self.view.open_modal(confirm, ModalPriority::Low);
             }
 
             Message::TemplatePreview {

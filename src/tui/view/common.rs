@@ -2,6 +2,7 @@
 //! generic, i.e. usable in more than a single narrow context.
 
 pub mod actions;
+pub mod button;
 pub mod header_table;
 pub mod list;
 pub mod modal;

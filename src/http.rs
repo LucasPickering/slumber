@@ -33,6 +33,7 @@
 //! | RequestRecord |
 //! +---------------+
 
+mod cereal;
 mod content_type;
 mod query;
 mod record;

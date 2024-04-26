@@ -1,5 +1,3 @@
-//! Specific single-use components
-
 mod help;
 mod misc;
 mod primary;

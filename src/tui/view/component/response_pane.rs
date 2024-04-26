@@ -1,5 +1,5 @@
 use crate::{
-    http::{RequestId, RequestRecord},
+    http::{RequestId, RequestRecord, Response},
     tui::{
         context::TuiContext,
         input::Action,
@@ -27,6 +27,7 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
 /// Display HTTP response state, which could be in progress, complete, or
@@ -46,6 +47,8 @@ pub struct ResponsePaneProps<'a> {
 enum MenuAction {
     #[display("Copy Body")]
     CopyBody,
+    #[display("Save Body as File")]
+    SaveBody,
 }
 
 impl ToStringGenerate for MenuAction {}
@@ -113,20 +116,21 @@ struct CompleteResponseContent {
     /// Persist the response body to track view state. Update whenever the
     /// loaded request changes
     #[debug(skip)]
-    body: StateCell<RequestId, Component<RecordBody>>,
-}
-
-impl Default for CompleteResponseContent {
-    fn default() -> Self {
-        Self {
-            tabs: Tabs::new(PersistentKey::ResponseTab).into(),
-            body: Default::default(),
-        }
-    }
+    state: StateCell<RequestId, State>,
 }
 
 struct CompleteResponseContentProps<'a> {
     record: &'a RequestRecord,
+}
+
+/// Internal state
+struct State {
+    /// Use Arc so we're not cloning large responses
+    response: Arc<Response>,
+    /// The presentable version of the response body, which may or may not
+    /// match the response body. We apply transformations such as filter,
+    /// prettification, or in the case of binary responses, a hex dump.
+    body: Component<RecordBody>,
 }
 
 #[derive(
@@ -145,31 +149,51 @@ enum Tab {
     Headers,
 }
 
+impl CompleteResponseContent {}
+
 impl EventHandler for CompleteResponseContent {
     fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
-        match event {
-            Event::Input {
-                action: Some(Action::OpenActions),
-                ..
-            } => EventQueue::open_modal_default::<ActionsModal<MenuAction>>(),
-            Event::Other(ref other) => {
-                // Check for an action menu event
-                match other.downcast_ref::<MenuAction>() {
-                    Some(MenuAction::CopyBody) => {
-                        // We need to generate the copy text here because it can
-                        // be formatted/queried
-                        if let Some(body) =
-                            self.body.get().and_then(|body| body.text())
-                        {
-                            messages_tx.send(Message::CopyText(body));
-                        }
+        if let Some(Action::OpenActions) = event.action() {
+            EventQueue::open_modal_default::<ActionsModal<MenuAction>>();
+            Update::Consumed
+        } else if let Some(action) = event.other::<MenuAction>() {
+            match action {
+                MenuAction::CopyBody => {
+                    // Use whatever text is visible to the user
+                    if let Some(body) =
+                        self.state.get().and_then(|state| state.body.text())
+                    {
+                        messages_tx.send(Message::CopyText(body));
                     }
-                    None => return Update::Propagate(event),
+                }
+                MenuAction::SaveBody => {
+                    // For text, use whatever is visible to the user. For
+                    // binary, use the raw value
+                    if let Some(state) = self.state.get() {
+                        // If we've parsed the body, then save exactly what the
+                        // user sees. Otherwise, save the raw bytes. This is
+                        // going to clone the whole body, which could be big.
+                        // If we need to optimize this, we would have to shove
+                        // all querying to the main data storage, so the main
+                        // loop can access it directly to be written.
+                        let data = if state.response.body.parsed().is_some() {
+                            state.body.text().unwrap_or_default().into_bytes()
+                        } else {
+                            state.response.body.bytes().to_vec()
+                        };
+
+                        // This will trigger a modal to ask the user for a path
+                        messages_tx.send(Message::SaveFile {
+                            default_path: state.response.file_name(),
+                            data,
+                        });
+                    }
                 }
             }
-            _ => return Update::Propagate(event),
+            Update::Consumed
+        } else {
+            Update::Propagate(event)
         }
-        Update::Consumed
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
@@ -177,8 +201,8 @@ impl EventHandler for CompleteResponseContent {
         let mut children = vec![];
         match selected_tab {
             Tab::Body => {
-                if let Some(body) = self.body.get_mut() {
-                    children.push(body.as_child());
+                if let Some(state) = self.state.get_mut() {
+                    children.push(state.body.as_child());
                 }
             }
             Tab::Headers => {}
@@ -193,10 +217,16 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
     fn draw(
         &self,
         frame: &mut Frame,
-        props: CompleteResponseContentProps<'a>,
+        props: CompleteResponseContentProps,
         area: Rect,
     ) {
         let response = &props.record.response;
+        // Set response state regardless of what tab we're on, so we always
+        // have access to it
+        let state = self.state.get_or_update(props.record.id, || State {
+            response: Arc::clone(&props.record.response),
+            body: Default::default(),
+        });
 
         // Split the main area again to allow tabs
         let [header_area, tabs_area, content_area] = Layout::vertical([
@@ -227,9 +257,7 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
         // Main content for the response
         match self.tabs.selected() {
             Tab::Body => {
-                let body =
-                    self.body.get_or_update(props.record.id, Default::default);
-                body.draw(
+                state.body.draw(
                     frame,
                     RecordBodyProps {
                         body: &response.body,
@@ -246,5 +274,139 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
                 content_area,
             ),
         }
+    }
+}
+
+impl Default for CompleteResponseContent {
+    fn default() -> Self {
+        Self {
+            tabs: Tabs::new(PersistentKey::ResponseTab).into(),
+            state: Default::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::*;
+    use factori::create;
+    use indexmap::indexmap;
+    use ratatui::{backend::TestBackend, Terminal};
+    use rstest::rstest;
+
+    /// Test "Copy Body" menu action
+    #[rstest]
+    #[case::json_body(
+        create!(
+            Response,
+            headers: header_map(indexmap! {"content-type" => "application/json"}),
+            body: br#"{"hello":"world"}"#.to_vec().into()
+        ),
+        // Body gets prettified
+        "{\n  \"hello\": \"world\"\n}"
+    )]
+    #[case::binary_body(
+        create!(
+            Response,
+            headers: header_map(indexmap! {"content-type" => "image/png"}),
+            body: b"\x01\x02\x03\xff".to_vec().into()
+        ),
+        "01 02 03 ff"
+    )]
+    #[tokio::test]
+    async fn test_copy_body(
+        _tui_context: (),
+        mut messages: MessageQueue,
+        mut terminal: Terminal<TestBackend>,
+        #[case] response: Response,
+        #[case] expected_body: &str,
+    ) {
+        // Draw once to initialize state
+        let mut component = CompleteResponseContent::default();
+        response.parse_body(); // Normally the view does this
+        let record = create!(RequestRecord, response: response.into());
+        component.draw(
+            &mut terminal.get_frame(),
+            CompleteResponseContentProps { record: &record },
+            Rect::default(),
+        );
+
+        let update = component
+            .update(messages.tx(), Event::new_other(MenuAction::CopyBody));
+        // unstable: https://github.com/rust-lang/rust/issues/82775
+        assert!(matches!(update, Update::Consumed));
+
+        let message = messages.pop();
+        let Message::CopyText(body) = &message else {
+            panic!("Wrong message: {message:?}")
+        };
+        assert_eq!(body, expected_body);
+    }
+
+    /// Test "Save Body as File" menu action
+    #[rstest]
+    #[case::json_body(
+        create!(
+            Response,
+            headers: header_map(indexmap! {"content-type" => "application/json"}),
+            body: br#"{"hello":"world"}"#.to_vec().into()
+        ),
+        // Body gets prettified
+        b"{\n  \"hello\": \"world\"\n}",
+        "data.json"
+    )]
+    #[case::binary_body(
+        create!(
+            Response,
+            headers: header_map(indexmap! {"content-type" => "image/png"}),
+            body: b"\x01\x02\x03".to_vec().into()
+        ),
+        b"\x01\x02\x03",
+        "data.png"
+    )]
+    #[case::content_disposition(
+        create!(
+            Response,
+            headers: header_map(indexmap! {
+                "content-type" => "image/png",
+                "content-disposition" => "attachment; filename=\"dogs.png\"",
+            }),
+            body: b"\x01\x02\x03".to_vec().into()
+        ),
+        b"\x01\x02\x03",
+        "dogs.png"
+    )]
+    #[tokio::test]
+    async fn test_save_file(
+        _tui_context: (),
+        mut messages: MessageQueue,
+        mut terminal: Terminal<TestBackend>,
+        #[case] response: Response,
+        #[case] expected_body: &[u8],
+        #[case] expected_path: &str,
+    ) {
+        let mut component = CompleteResponseContent::default();
+        response.parse_body(); // Normally the view does this
+        let record = create!(RequestRecord, response: response.into());
+
+        // Draw once to initialize state
+        component.draw(
+            &mut terminal.get_frame(),
+            CompleteResponseContentProps { record: &record },
+            Rect::default(),
+        );
+
+        let update = component
+            .update(messages.tx(), Event::new_other(MenuAction::SaveBody));
+        // unstable: https://github.com/rust-lang/rust/issues/82775
+        assert!(matches!(update, Update::Consumed));
+
+        let message = messages.pop();
+        let Message::SaveFile { data, default_path } = &message else {
+            panic!("Wrong message: {message:?}")
+        };
+        assert_eq!(data, expected_body);
+        assert_eq!(default_path.as_deref(), Some(expected_path));
     }
 }

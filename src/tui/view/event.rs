@@ -140,7 +140,7 @@ pub enum Event {
 
 impl Event {
     /// Create a dynamic "other" variant
-    pub fn other<T: Any>(value: T) -> Event {
+    pub fn new_other<T: Any>(value: T) -> Event {
         Event::Other(Box::new(value))
     }
 
@@ -150,6 +150,14 @@ impl Event {
     pub fn action(&self) -> Option<Action> {
         match self {
             Self::Input { action, .. } => *action,
+            _ => None,
+        }
+    }
+
+    /// Get a dynamic "other" variant, if this event is one
+    pub fn other<T: Any>(&self) -> Option<&T> {
+        match self {
+            Self::Other(other) => other.downcast_ref(),
             _ => None,
         }
     }

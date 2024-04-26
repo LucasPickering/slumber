@@ -1,0 +1,11 @@
+# What we expect the OpenAPIv3 example collection to import as
+requests:
+  updatePet: !request
+    name: Update an existing pet
+    method: PUT
+    url: "{{host}}/pet"
+    body: null
+    authentication: null
+    query: {}
+    headers: {}
+

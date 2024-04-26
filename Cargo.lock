@@ -1310,6 +1310,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "openapiv3"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc02deea53ffe807708244e5914f6b099ad7015a207ee24317c22112e17d9c5c"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2020,6 +2031,7 @@ dependencies = [
  "nom",
  "notify",
  "open",
+ "openapiv3",
  "pretty_assertions",
  "ratatui",
  "reqwest",

@@ -2,7 +2,7 @@
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    http::{ContentType, ResponseContent},
+    http::{cereal, ContentType, ResponseContent},
     util::ResultExt,
 };
 use anyhow::Context;
@@ -10,9 +10,9 @@ use bytes::Bytes;
 use bytesize::ByteSize;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::{Display, From};
-use indexmap::IndexMap;
+use mime::Mime;
 use reqwest::{
-    header::{self, HeaderMap, HeaderValue},
+    header::{self, HeaderMap},
     Method, StatusCode,
 };
 use serde::{Deserialize, Serialize};
@@ -111,11 +111,11 @@ pub struct Request {
     /// The recipe used to generate this request (for historical context)
     pub recipe_id: RecipeId,
 
-    #[serde(with = "serde_method")]
+    #[serde(with = "cereal::serde_method")]
     pub method: Method,
     /// URL, including query params/fragment
     pub url: Url,
-    #[serde(with = "serde_header_map")]
+    #[serde(with = "cereal::serde_header_map")]
     pub headers: HeaderMap,
     /// Body content as bytes. This should be decoded as needed
     pub body: Option<Body>,
@@ -171,9 +171,9 @@ impl Request {
 /// potentially be very large.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
-    #[serde(with = "serde_status_code")]
+    #[serde(with = "cereal::serde_status_code")]
     pub status: StatusCode,
-    #[serde(with = "serde_header_map")]
+    #[serde(with = "cereal::serde_header_map")]
     pub headers: HeaderMap,
     pub body: Body,
 }
@@ -194,11 +194,39 @@ impl Response {
         }
     }
 
-    /// Get the value of the `content-type` header
-    pub fn content_type(&self) -> Option<&[u8]> {
+    /// Get a suggested file name for the content of this response. First we'll
+    /// check the Content-Disposition header. If it's missing or doesn't have a
+    /// file name, we'll check the Content-Type to at least guess at an
+    /// extension.
+    pub fn file_name(&self) -> Option<String> {
         self.headers
-            .get(header::CONTENT_TYPE)
-            .map(HeaderValue::as_bytes)
+            .get(header::CONTENT_DISPOSITION)
+            .and_then(|value| {
+                // Parse header for the `filename="{}"` parameter
+                // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+                let value = value.to_str().ok()?;
+                value.split(';').find_map(|part| {
+                    let (key, value) = part.trim().split_once('=')?;
+                    if key == "filename" {
+                        Some(value.trim_matches('"').to_owned())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .or_else(|| {
+                // Grab the extension from the Content-Type header. Don't use
+                // self.conten_type() because we want to accept unknown types.
+                let content_type = self.headers.get(header::CONTENT_TYPE)?;
+                let mime: Mime = content_type.to_str().ok()?.parse().ok()?;
+                Some(format!("data.{}", mime.subtype()))
+            })
+    }
+
+    /// Get the content type of this response, based on the `Content-Type`
+    /// header. Return `None` if the header is missing or an unknown type.
+    pub fn content_type(&self) -> Option<ContentType> {
+        ContentType::from_response(self).ok()
     }
 }
 
@@ -309,102 +337,46 @@ impl PartialEq for Body {
     }
 }
 
-/// Serialization/deserialization for [reqwest::Method]
-mod serde_method {
-    use super::*;
-    use serde::{de, Deserializer, Serializer};
-
-    pub fn serialize<S>(
-        method: &Method,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(method.as_str())
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Method, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        <&str>::deserialize(deserializer)?
-            .parse()
-            .map_err(de::Error::custom)
-    }
-}
-
-/// Serialization/deserialization for [reqwest::header::HeaderMap]
-mod serde_header_map {
-    use super::*;
-    use reqwest::header::{HeaderName, HeaderValue};
-    use serde::{de, Deserializer, Serializer};
-
-    pub fn serialize<S>(
-        headers: &HeaderMap,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // HeaderValue -> str is fallible, so we'll serialize as bytes instead
-        <IndexMap<&str, &[u8]>>::serialize(
-            &headers
-                .into_iter()
-                .map(|(k, v)| (k.as_str(), v.as_bytes()))
-                .collect(),
-            serializer,
-        )
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<HeaderMap, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        <IndexMap<String, Vec<u8>>>::deserialize(deserializer)?
-            .into_iter()
-            .map::<Result<(HeaderName, HeaderValue), _>, _>(|(k, v)| {
-                // Fallibly map each key and value to header types
-                Ok((
-                    k.try_into().map_err(de::Error::custom)?,
-                    v.try_into().map_err(de::Error::custom)?,
-                ))
-            })
-            .collect()
-    }
-}
-
-/// Serialization/deserialization for [reqwest::StatusCode]
-mod serde_status_code {
-    use super::*;
-    use serde::{de, Deserializer, Serializer};
-
-    pub fn serialize<S>(
-        status_code: &StatusCode,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_u16(status_code.as_u16())
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<StatusCode, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        StatusCode::from_u16(u16::deserialize(deserializer)?)
-            .map_err(de::Error::custom)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_util::*;
     use factori::create;
     use indexmap::indexmap;
+    use rstest::rstest;
     use serde_json::json;
+
+    #[rstest]
+    #[case::content_disposition(
+        create!(Response, headers: header_map(indexmap! {
+            "content-disposition" => "form-data;name=\"field\"; filename=\"fish.png\"",
+            "content-type" => "image/png",
+        })),
+        Some("fish.png")
+    )]
+    #[case::content_type_known(
+        create!(Response, headers: header_map(indexmap! {
+            "content-disposition" => "form-data",
+            "content-type" => "application/json",
+        })),
+        Some("data.json")
+    )]
+    #[case::content_type_unknown(
+        create!(Response, headers: header_map(indexmap! {
+            "content-disposition" => "form-data",
+            "content-type" => "image/jpeg",
+        })),
+        Some("data.jpeg")
+    )]
+    #[case::none(
+        create!(Response),None
+    )]
+    fn test_file_name(
+        #[case] response: Response,
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(response.file_name().as_deref(), expected);
+    }
 
     #[test]
     fn test_to_curl() {

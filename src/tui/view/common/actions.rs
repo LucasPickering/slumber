@@ -32,8 +32,8 @@ impl<T: FixedSelect> Default for ActionsModal<T> {
             // callback event. Jank but it works
             EventQueue::push(Event::CloseModal);
             let event = match action {
-                EnumChain::T(action) => Event::other(*action),
-                EnumChain::U(action) => Event::other(*action),
+                EnumChain::T(action) => Event::new_other(*action),
+                EnumChain::U(action) => Event::new_other(*action),
             };
             EventQueue::push(event);
         };

@@ -166,8 +166,7 @@ fn operation_to_recipe<
         match param {
             Parameter::Query { parameter_data, .. } => {
                 // the name corresponds to the parameter name used by the in property.
-                let template = Template::dangerous("EMPTY".to_string());
-                query_params.insert(parameter_data.name, template);
+                query_params.insert(parameter_data.name, Template::empty());
             }
             Parameter::Header { parameter_data, .. } => {
                 // if the name field is "Accept", "Content-Type" or "Authorization", the parameter definition SHALL be ignored.
@@ -178,8 +177,7 @@ fn operation_to_recipe<
                         continue;
                     }
                     header => {
-                        let template = Template::dangerous("EMPTY".to_string());
-                        headers_params.insert(header.to_string(), template);
+                        headers_params.insert(header.to_string(), Template::empty());
                     }
                 }
             }
@@ -219,13 +217,13 @@ fn operation_to_recipe<
                             "Basic" | "basic" => {
                                 http_auth = Some(Authentication::Basic {
                                     password: None,
-                                    username: Template::dangerous("USERNAME".to_string()),
+                                    username: Template::empty(),
                                 });
                             },
                             "Bearer" | "bearer" => {
                                 let template = match bearer_format {
                                     Some(format) => Template::parse(format).context("Failed to parse template")?,
-                                    None => Template::dangerous("EMPTY".to_string()),
+                                    None => Template::empty(),
                                 };
                                 http_auth = Some(Authentication::Bearer(template));
                             },
@@ -243,13 +241,13 @@ fn operation_to_recipe<
                             APIKeyLocation::Query => {
                                 query_params.insert(
                                     name,
-                                    Template::dangerous("EMPTY".to_string()),
+                                    Template::empty(),
                                 );
                             }
                             APIKeyLocation::Header => {
                                 headers_params.insert(
                                     name,
-                                    Template::dangerous("EMPTY".to_string()),
+                                    Template::empty(),
                                 );
                             }
                             // TODO: Support Cookies

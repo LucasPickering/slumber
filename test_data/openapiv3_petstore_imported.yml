@@ -15,6 +15,6 @@ requests:
     body: null
     authentication: null
     query:
-      status: "EMPTY"
+      status: ""
     headers: {}
 

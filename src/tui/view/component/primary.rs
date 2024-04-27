@@ -24,7 +24,6 @@ use crate::{
                 persistence::{Persistent, PersistentKey},
                 RequestState,
             },
-            util::layout,
             Component,
         },
     },
@@ -32,7 +31,8 @@ use crate::{
 use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
-    prelude::{Constraint, Direction, Rect},
+    layout::Layout,
+    prelude::{Constraint, Rect},
     Frame,
 };
 use serde::{Deserialize, Serialize};
@@ -143,11 +143,9 @@ impl PrimaryView {
         area: Rect,
     ) {
         // Split the main pane horizontally
-        let [left_area, right_area] = layout(
-            area,
-            Direction::Horizontal,
-            [Constraint::Max(40), Constraint::Min(40)],
-        );
+        let [left_area, right_area] =
+            Layout::horizontal([Constraint::Max(40), Constraint::Min(40)])
+                .areas(area);
 
         let [profiles_area, recipes_area] =
             self.get_left_column_layout(left_area);
@@ -238,7 +236,7 @@ impl PrimaryView {
         } else {
             Constraint::Max(3)
         };
-        layout(area, Direction::Vertical, [profiles, Constraint::Min(0)])
+        Layout::vertical([profiles, Constraint::Min(0)]).areas(area)
     }
 
     /// Get layout for the right column of panes
@@ -254,15 +252,12 @@ impl PrimaryView {
             (1, 1, 1) // Default to even sizing
         };
         let denominator = top + middle + bottom;
-        layout(
-            area,
-            Direction::Vertical,
-            [
-                Constraint::Ratio(top, denominator),
-                Constraint::Ratio(middle, denominator),
-                Constraint::Ratio(bottom, denominator),
-            ],
-        )
+        Layout::vertical([
+            Constraint::Ratio(top, denominator),
+            Constraint::Ratio(middle, denominator),
+            Constraint::Ratio(bottom, denominator),
+        ])
+        .areas(area)
     }
 }
 

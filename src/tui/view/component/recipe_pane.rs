@@ -22,7 +22,6 @@ use crate::{
                 select::SelectState,
                 StateCell,
             },
-            util::layout,
             Component,
         },
     },
@@ -30,7 +29,8 @@ use crate::{
 use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
-    prelude::{Constraint, Direction, Rect},
+    layout::Layout,
+    prelude::{Constraint, Rect},
     widgets::{Paragraph, Row, TableState},
     Frame,
 };
@@ -226,22 +226,18 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
         if let Some(recipe) = props.selected_recipe {
             let method = recipe.method.to_string();
 
-            let [metadata_area, tabs_area, content_area] = layout(
-                inner_area,
-                Direction::Vertical,
-                [
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Min(0),
-                ],
-            );
+            let [metadata_area, tabs_area, content_area] = Layout::vertical([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ])
+            .areas(inner_area);
 
-            let [method_area, url_area] = layout(
-                metadata_area,
-                Direction::Horizontal,
+            let [method_area, url_area] = Layout::horizontal(
                 // Method gets just as much as it needs, URL gets the rest
                 [Constraint::Max(method.len() as u16 + 1), Constraint::Min(0)],
-            );
+            )
+            .areas(metadata_area);
 
             // Whenever the recipe or profile changes, generate a preview for
             // each templated value. Almost anything that could change the

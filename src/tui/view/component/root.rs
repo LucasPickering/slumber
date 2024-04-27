@@ -14,13 +14,13 @@ use crate::{
             draw::Draw,
             event::{Event, EventHandler, Update},
             state::RequestState,
-            util::layout,
             Component,
         },
     },
 };
 use ratatui::{
-    prelude::{Constraint, Direction, Rect},
+    layout::Layout,
+    prelude::{Constraint, Rect},
     Frame,
 };
 use std::collections::{hash_map::Entry, HashMap};
@@ -169,11 +169,9 @@ impl EventHandler for Root {
 impl Draw for Root {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         // Create layout
-        let [main_area, footer_area] = layout(
-            area,
-            Direction::Vertical,
-            [Constraint::Min(0), Constraint::Length(1)],
-        );
+        let [main_area, footer_area] =
+            Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
+                .areas(area);
 
         // Main content
         self.primary_view.draw(
@@ -185,11 +183,9 @@ impl Draw for Root {
         );
 
         // Footer
-        let [notification_area, help_area] = layout(
-            footer_area,
-            Direction::Horizontal,
-            [Constraint::Min(10), Constraint::Length(29)],
-        );
+        let [notification_area, help_area] =
+            Layout::horizontal([Constraint::Min(10), Constraint::Length(29)])
+                .areas(footer_area);
         if let Some(notification_text) = &self.notification_text {
             notification_text.draw(frame, (), notification_area);
         }

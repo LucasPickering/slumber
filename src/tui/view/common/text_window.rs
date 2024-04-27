@@ -4,11 +4,11 @@ use crate::tui::{
     view::{
         draw::{Draw, Generate},
         event::{Event, EventHandler, Update},
-        util::layout,
     },
 };
 use ratatui::{
-    prelude::{Alignment, Constraint, Direction, Rect},
+    layout::Layout,
+    prelude::{Alignment, Constraint, Rect},
     text::{Line, Text},
     widgets::Paragraph,
     Frame,
@@ -121,18 +121,13 @@ where
         // Assume no line wrapping when calculating line count
         let text_height = text.line_count(u16::MAX) as u16;
 
-        let [gutter_area, _, text_area] = layout(
-            area,
-            Direction::Horizontal,
-            [
-                // Size gutter based on width of max line number
-                Constraint::Length(
-                    (text_height as f32).log10().floor() as u16 + 1,
-                ),
-                Constraint::Length(1), // Spacer
-                Constraint::Min(0),
-            ],
-        );
+        let [gutter_area, _, text_area] = Layout::horizontal([
+            // Size gutter based on width of max line number
+            Constraint::Length((text_height as f32).log10().floor() as u16 + 1),
+            Constraint::Length(1), // Spacer
+            Constraint::Min(0),
+        ])
+        .areas(area);
 
         // Store text and window sizes for calculations in the update code
         self.text_width.set(text.line_width() as u16);

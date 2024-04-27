@@ -13,14 +13,14 @@ use crate::{
             draw::{Draw, Generate, ToStringGenerate},
             event::{Event, EventHandler, EventQueue, Update},
             state::{persistence::PersistentKey, RequestState, StateCell},
-            util::layout,
             Component,
         },
     },
 };
 use derive_more::{Debug, Display};
 use ratatui::{
-    prelude::{Alignment, Constraint, Direction, Rect},
+    layout::Layout,
+    prelude::{Alignment, Constraint, Rect},
     widgets::{Paragraph, Wrap},
     Frame,
 };
@@ -75,11 +75,9 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
         // Don't render anything else unless we have a request state
         if let Some(request_state) = props.active_request {
             // Time goes in the top-right,
-            let [time_area, _] = layout(
-                inner_area,
-                Direction::Vertical,
-                [Constraint::Length(1), Constraint::Min(0)],
-            );
+            let [time_area, _] =
+                Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+                    .areas(inner_area);
 
             // Request metadata
             if let Some(metadata) = request_state.metadata() {
@@ -244,11 +242,9 @@ impl<'a> Draw<RenderedRequestProps<'a>> for RenderedRequest {
         });
 
         // Split the main area again to allow tabs
-        let [tabs_area, content_area] = layout(
-            area,
-            Direction::Vertical,
-            [Constraint::Length(1), Constraint::Min(0)],
-        );
+        let [tabs_area, content_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+                .areas(area);
 
         // Navigation tabs
         self.tabs.draw(frame, (), tabs_area);

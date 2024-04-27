@@ -7,13 +7,12 @@ use crate::{
             common::{modal::Modal, table::Table},
             draw::{Draw, Generate},
             event::EventHandler,
-            util::layout,
         },
     },
 };
 use itertools::Itertools;
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     text::Line,
     widgets::Paragraph,
     Frame,
@@ -88,15 +87,12 @@ impl Draw for HelpModal {
         let tui_context = TuiContext::get();
 
         // Create layout
-        let [collection_area, _, keybindings_area] = layout(
-            area,
-            Direction::Vertical,
-            [
-                Constraint::Length(Self::GENERAL_LENGTH + 1),
-                Constraint::Length(1),
-                Constraint::Min(0),
-            ],
-        );
+        let [collection_area, _, keybindings_area] = Layout::vertical([
+            Constraint::Length(Self::GENERAL_LENGTH + 1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .areas(area);
 
         // Collection metadata
         let collection_metadata = Table {

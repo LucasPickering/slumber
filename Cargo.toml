@@ -25,6 +25,7 @@ dialoguer = {version = "^0.11.0", default-features = false, features = ["passwor
 dirs = "^5.0.1"
 equivalent = "^1"
 futures = "^0.3.28"
+httparse = "1.8.0"
 indexmap = {version = "^2.0.1", features = ["serde"]}
 itertools = "^0.12.0"
 nom = "7.1.3"

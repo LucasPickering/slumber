@@ -1,9 +1,11 @@
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 
-use derive_more::FromStr;
 use nom::{
     branch::alt, bytes::complete::{tag, take_till, take_until}, character::{complete::{alpha1,alphanumeric1, anychar, char, multispace0, multispace1, newline, one_of, space0, space1}, is_space}, combinator::{not, opt, recognize}, error::{Error as NomError, ErrorKind, ParseError, VerboseError}, multi::{many0_count, many1}, sequence::{delimited, pair, tuple}, FindSubstring, Finish, IResult, InputLength, InputTake, Offset, Parser
 };
+use httparse::{self};
 
 /// Notes:
 /// for line in lines:
@@ -26,10 +28,51 @@ const VARIABLE_CLOSE: &str = "}}";
 enum Line {
     Seperator,
     Name(String),
-    Variable(String, String),
     Request(String),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct JetbrainsRequest {
+    name: Option<String>,
+    request: String,
+}
+
+impl JetbrainsRequest {
+    fn is_empty(&self) -> bool {
+        self.request == "" 
+    }
+
+    fn push_line(&mut self, value: &str) -> &mut Self {
+        self.request.push_str(&format!("{value}\r\n"));
+        self
+    }
+
+    fn set_name(&mut self, name: &str) -> &mut Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    fn trim(&mut self) -> &mut Self {
+        self.request.trim();
+        self
+    }
+}
+
+impl Default for JetbrainsRequest {
+    fn default() -> Self {
+        Self {
+            name: None,
+            request: "".into(),
+        }
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+struct JetbrainsHttp {
+    sections: Vec<JetbrainsRequest>,
+    variables: HashMap<String, String>,
+}
 
 fn parse_seperator(input: &str) -> IResult<&str, Vec<Line>> {
     let (input, _) = tag(REQUEST_DELIMITER)(input)?;
@@ -73,9 +116,18 @@ fn parse_variable_assignment(input: &str) -> IResult<&str, (&str, &str)> {
     Ok((input, (id.into(), value.into())))
 }
 
+fn starting_slash_comment(line: &str) -> StrResult {
+    tag("//")(line)
+}
 
 fn parse_line_without_comment(line: &str) -> StrResult {
-    alt((take_until("#"), take_until("//")))(line)
+    // A comment can start with `//` but it cant be in the middle
+    // This would prevent you from writing urls: `https://`
+    if let Ok((inp, _)) = starting_slash_comment(line) { 
+        return Ok((inp, ""))
+    }
+
+    take_until("#")(line)
 }
 
 fn parse_variable_substitution(input: &str) -> StrResult {
@@ -114,12 +166,11 @@ fn parse_request_line<'a>(line: &'a str, variables: &'a HashMap<String, String>)
 } 
 
 
-fn parse_lines(input: &str) -> Vec<Line> {
+fn parse_lines(input: &str) -> (Vec<Line>, HashMap<String, String>) {
     let mut lines: Vec<Line> = vec![];
     let mut variables: HashMap<String, String> = HashMap::new();
     for line in input.trim().lines() {
         let line = &format!("{line}\n");
-        println!("{line}");
         if let Ok((_, sep_lines)) = parse_seperator(line) {
             lines.extend(sep_lines);
             continue;
@@ -135,18 +186,42 @@ fn parse_lines(input: &str) -> Vec<Line> {
             .unwrap_or(line);
 
         if let Ok((_, (key, val))) = parse_variable_assignment(line) {
-            lines.push(Line::Variable(key.into(), val.into()));
             variables.insert(key.into(), val.into());
             continue;
         }
 
-        lines.push(Line::Request(line.into()));
-        // if let Ok((_, req)) = parse_request_line(line, &variables) {
-        //     lines.push(req);
-        //     continue;
-        // }
+        if line != "\n" {
+            lines.push(Line::Request(line.into()));
+        }
     }
-    lines
+    (lines, variables)
+}
+
+fn build_file_from_lines(lines: Vec<Line>, variables: HashMap<String, String>) -> JetbrainsHttp {
+    let mut sections: Vec<JetbrainsRequest> = vec![];
+    let mut current_request: JetbrainsRequest = JetbrainsRequest::default();
+    for line in lines {
+        match line {
+            Line::Seperator => {
+                if !current_request.is_empty() {
+                    current_request.trim();
+                    sections.push(current_request);
+                }
+                current_request = JetbrainsRequest::default();
+            },
+            Line::Name(name) => {
+                current_request.set_name(&name);
+            },
+            Line::Request(req) => {
+                current_request.push_line(&req);
+            }
+        }
+    }
+
+    JetbrainsHttp {
+        sections,
+        variables,
+    }
 }
 
 
@@ -215,10 +290,9 @@ mod test {
 ###
 @MY_VAR = 123
 @hello=blahblah
-GET blahblah HTTP/1.1
+GET https://httpbin.org HTTP/1.1
 
-example example
-
+// Comment
 @var = 12
 
 ### Request
@@ -229,10 +303,19 @@ example example
 ######
 # @name OtherRequest
 
-GET blahblah HTTP/1.1
+POST {{HOST}}/post HTTP/1.1
+Content-Type: application/json
+X-Http-Method-Override: PUT
+
+{
+    "data": "my data"
+}
         "#;
     
-        let lines = parse_lines(example);
+        let (lines, variables) = parse_lines(example);
         println!("{:?}", lines);
+
+        let file = build_file_from_lines(lines, variables);
+        println!("{:?}", file);
     }
 }

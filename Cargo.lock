@@ -1943,6 +1943,7 @@ dependencies = [
  "equivalent",
  "factori",
  "futures",
+ "httparse",
  "indexmap",
  "itertools",
  "mockito",

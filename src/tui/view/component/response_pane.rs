@@ -13,7 +13,6 @@ use crate::{
             draw::{Draw, Generate, ToStringGenerate},
             event::{Event, EventHandler, EventQueue, Update},
             state::{persistence::PersistentKey, RequestState, StateCell},
-            util::layout,
             Component,
         },
     },
@@ -21,7 +20,8 @@ use crate::{
 use chrono::Utc;
 use derive_more::{Debug, Display};
 use ratatui::{
-    prelude::{Alignment, Constraint, Direction, Rect},
+    layout::Layout,
+    prelude::{Alignment, Constraint, Rect},
     text::Line,
     widgets::{Paragraph, Wrap},
     Frame,
@@ -206,15 +206,12 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
         let response = &props.record.response;
 
         // Split the main area again to allow tabs
-        let [header_area, tabs_area, content_area] = layout(
-            area,
-            Direction::Vertical,
-            [
-                Constraint::Length(1),
-                Constraint::Length(1),
-                Constraint::Min(0),
-            ],
-        );
+        let [header_area, tabs_area, content_area] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .areas(area);
 
         // Metadata
         frame.render_widget(

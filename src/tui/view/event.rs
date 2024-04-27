@@ -139,7 +139,7 @@ pub enum Event {
 
 impl Event {
     /// Create a dynamic "other" variant
-    pub fn new<T: Any>(value: T) -> Event {
+    pub fn other<T: Any>(value: T) -> Event {
         Event::Other(Box::new(value))
     }
 

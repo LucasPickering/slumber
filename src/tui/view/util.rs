@@ -14,22 +14,6 @@ impl Prompter for PreviewPrompter {
     }
 }
 
-/// Helper for building a layout with a fixed number of constraints
-pub fn layout<const N: usize>(
-    area: Rect,
-    direction: Direction,
-    constraints: [Constraint; N],
-) -> [Rect; N] {
-    Layout::default()
-        .direction(direction)
-        .constraints(constraints)
-        .split(area)
-        .as_ref()
-        .try_into()
-        // Should be unreachable
-        .expect("Chunk length does not match constraint length")
-}
-
 /// Created a rectangle centered on the given `Rect`.
 pub fn centered_rect(
     width: Constraint,

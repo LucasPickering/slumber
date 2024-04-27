@@ -9,7 +9,6 @@ use crate::{
             draw::Draw,
             event::{Event, EventHandler, EventQueue, Update},
             state::StateCell,
-            util::layout,
             Component,
         },
     },
@@ -18,7 +17,7 @@ use crate::{
 use anyhow::Context;
 use derive_more::Debug;
 use ratatui::{
-    layout::{Constraint, Direction},
+    layout::{Constraint, Layout},
     prelude::Rect,
     Frame,
 };
@@ -71,7 +70,7 @@ impl Default for RecordBody {
                 .with_validator(|text| JsonPath::parse(text).is_ok())
                 // Callback triggers an event, so we can modify our own state
                 .with_on_submit(|text_box| {
-                    EventQueue::push(Event::new(QuerySubmit(
+                    EventQueue::push(Event::other(QuerySubmit(
                         text_box.text().to_owned(),
                     )))
                 })
@@ -124,14 +123,11 @@ impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
         let query_available = props.parsed_body.is_some();
         self.query_available.set(query_available);
 
-        let [body_area, query_area] = layout(
-            area,
-            Direction::Vertical,
-            [
-                Constraint::Min(0),
-                Constraint::Length(if query_available { 1 } else { 0 }),
-            ],
-        );
+        let [body_area, query_area] = Layout::vertical([
+            Constraint::Min(0),
+            Constraint::Length(if query_available { 1 } else { 0 }),
+        ])
+        .areas(area);
 
         // Draw the body
         let text = self.text_window.get_or_update(self.query.clone(), || {

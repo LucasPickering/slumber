@@ -1,7 +1,7 @@
 //! Request/response body display component
 
 use crate::{
-    http::{Query, ResponseContent},
+    http::{Body, Query},
     tui::{
         input::Action,
         view::{
@@ -42,8 +42,7 @@ pub struct RecordBody {
 }
 
 pub struct RecordBodyProps<'a> {
-    pub raw_body: &'a [u8],
-    pub parsed_body: Option<&'a dyn ResponseContent>,
+    pub body: &'a Body,
 }
 
 /// Callback event from the query text box when user hits Enter
@@ -120,7 +119,7 @@ impl EventHandler for RecordBody {
 impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
     fn draw(&self, frame: &mut Frame, props: RecordBodyProps, area: Rect) {
         // Body can only be queried if it's been parsed
-        let query_available = props.parsed_body.is_some();
+        let query_available = props.body.parsed().is_some();
         self.query_available.set(query_available);
 
         let [body_area, query_area] = Layout::vertical([
@@ -131,11 +130,7 @@ impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
 
         // Draw the body
         let text = self.text_window.get_or_update(self.query.clone(), || {
-            init_text_window(
-                props.raw_body,
-                props.parsed_body,
-                self.query.as_ref(),
-            )
+            init_text_window(props.body, self.query.as_ref())
         });
         text.draw(frame, (), body_area);
 
@@ -146,14 +141,14 @@ impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
 }
 
 fn init_text_window(
-    raw_body: &[u8],
-    parsed_body: Option<&dyn ResponseContent>,
+    body: &Body,
     query: Option<&Query>,
 ) -> Component<TextWindow<String>> {
     // Query and prettify text if possible. This involves a lot of cloning
     // because it makes stuff easier. If it becomes a bottleneck on large
     // responses it's fixable.
-    let body = parsed_body
+    let body = body
+        .parsed()
         .map(|parsed_body| {
             // Body is a known content type so we parsed it - apply a query if
             // necessary and prettify the output
@@ -163,7 +158,7 @@ fn init_text_window(
         })
         // Content couldn't be parsed, fall back to the raw text
         // If the text isn't UTF-8, we'll show a placeholder instead
-        .unwrap_or_else(|| format!("{:#}", MaybeStr(raw_body)));
+        .unwrap_or_else(|| format!("{:#}", MaybeStr(body.bytes())));
 
     TextWindow::new(body).into()
 }

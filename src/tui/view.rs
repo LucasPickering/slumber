@@ -129,9 +129,7 @@ impl View {
     /// Copy text to the user's clipboard, and notify them
     pub fn copy_text(&mut self, text: String) {
         match cli_clipboard::set_contents(text) {
-            Ok(()) => {
-                self.notify("Copied text to clipboard");
-            }
+            Ok(()) => self.notify("Copied text to clipboard"),
             Err(error) => {
                 // Returned error doesn't impl 'static so we can't
                 // directly convert it to anyhow

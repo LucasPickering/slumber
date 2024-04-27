@@ -270,7 +270,9 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     // Guess content type based on HTTP header
                     let content_type =
                         ContentType::from_response(&response).ok();
-                    (response.body.into_bytes(), content_type)
+                    // This will clone the bytes, which is necessary for the
+                    // string conversion below anyway
+                    (response.body.into_bytes().into(), content_type)
                 }
                 ChainSource::File { path } => {
                     self.render_file(context, path).await?
@@ -417,7 +419,9 @@ impl<'a> ChainTemplateSource<'a> {
             ChainRequestTrigger::Always => send_request().await?,
         };
 
-        Ok(record.response)
+        // We haven't passed the record around so we can unwrap the Arc safely
+        Ok(Arc::try_unwrap(record.response)
+            .expect("Request Arc should have only one reference"))
     }
 
     /// Render a chained value from a file. Return the files bytes, as well as

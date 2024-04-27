@@ -31,7 +31,7 @@ pub enum ContentType {
 
 /// A response content type that we know how to parse. This is defined as a
 /// trait rather than an enum because it breaks apart the logic more clearly.
-pub trait ResponseContent: Debug + Display {
+pub trait ResponseContent: Debug + Display + Send + Sync {
     /// Get the type of this content
     fn content_type(&self) -> ContentType;
 

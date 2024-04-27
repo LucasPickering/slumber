@@ -86,7 +86,7 @@ factori!(RequestRecord, {
     default {
         id = RequestId::new(),
         request = request().into(),
-        response = response(),
+        response = response().into(),
         start_time = Utc::now(),
         end_time = Utc::now(),
     }

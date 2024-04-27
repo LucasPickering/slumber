@@ -383,7 +383,8 @@ impl Tui {
                 .build_body(&template_context)
                 .await?
                 .ok_or(anyhow!("Request has no body"))?;
-            let body = String::from_utf8(body.into())
+            // Clone the bytes :(
+            let body = String::from_utf8(body.into_bytes().into())
                 .context("Cannot copy request body")?;
             TuiContext::send_message(Message::CopyText(body));
             Ok(())

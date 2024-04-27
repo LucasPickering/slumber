@@ -126,30 +126,23 @@ impl RecipeListPane {
 
 impl EventHandler for RecipeListPane {
     fn update(&mut self, event: Event) -> Update {
-        if let Event::Input {
-            action: Some(action),
-            ..
-        } = event
-        {
-            match action {
-                Action::Left => {
-                    self.set_selected_collapsed(CollapseState::Collapse);
-                }
-                Action::Right => {
-                    self.set_selected_collapsed(CollapseState::Expand);
-                }
-                Action::Submit => {
-                    if !self.set_selected_collapsed(CollapseState::Toggle) {
-                        // Propgate submit event for recipes, so it launches a
-                        // request
-                        return Update::Propagate(event);
-                    }
-                }
-                _ => return Update::Propagate(event),
-            };
-        } else {
+        let Some(action) = event.action() else {
             return Update::Propagate(event);
+        };
+        match action {
+            Action::Left => {
+                self.set_selected_collapsed(CollapseState::Collapse);
+            }
+            Action::Right => {
+                self.set_selected_collapsed(CollapseState::Expand);
+            }
+            // If this state update does nothing, then we have a recipe
+            // selected. Fall through to propagate the event
+            Action::Submit
+                if self.set_selected_collapsed(CollapseState::Toggle) => {}
+            _ => return Update::Propagate(event),
         }
+
         Update::Consumed
     }
 

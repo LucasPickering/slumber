@@ -1145,6 +1145,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "nanohttp"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a087b38dfd5b94eced1e3974b4d58775ada79acd5f924f60c0373b03a24b1ace"
+
+[[package]]
 name = "nix"
 version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1943,10 +1949,10 @@ dependencies = [
  "equivalent",
  "factori",
  "futures",
- "httparse",
  "indexmap",
  "itertools",
  "mockito",
+ "nanohttp",
  "nom",
  "notify",
  "open",

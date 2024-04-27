@@ -1,6 +1,7 @@
 use crate::{
     config::Config,
     db::CollectionDatabase,
+    http::HttpEngine,
     tui::{
         input::InputEngine,
         message::{Message, MessageSender},
@@ -9,7 +10,7 @@ use crate::{
 };
 use std::sync::OnceLock;
 
-/// The singleton value for the theme. Initialized once during startup, then
+/// The singleton value for the context. Initialized once during startup, then
 /// freely available *read only* everywhere.
 static CONTEXT: OnceLock<TuiContext> = OnceLock::new();
 
@@ -35,10 +36,13 @@ pub struct TuiContext {
     pub theme: Theme,
     /// Input:action bindings
     pub input_engine: InputEngine,
+    /// For sending HTTP requests
+    pub http_engine: HttpEngine,
     /// Async message queue. Used to trigger async tasks and mutations from the
     /// view.
     pub messages_tx: MessageSender,
-    /// Persistence database
+    /// Persistence database. The TUI only ever needs to run DB ops related to
+    /// our collection, so we can use a collection-restricted DB handle
     pub database: CollectionDatabase,
 }
 
@@ -50,11 +54,13 @@ impl TuiContext {
         database: CollectionDatabase,
     ) {
         let input_engine = InputEngine::new(config.input_bindings.clone());
+        let http_engine = HttpEngine::new(&config, database.clone());
         CONTEXT
             .set(Self {
                 config,
                 theme: Theme::default(),
                 input_engine,
+                http_engine,
                 messages_tx,
                 database,
             })

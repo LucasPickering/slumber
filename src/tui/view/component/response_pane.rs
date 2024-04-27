@@ -1,5 +1,5 @@
 use crate::{
-    http::{RequestId, RequestRecord, ResponseContent},
+    http::{RequestId, RequestRecord},
     tui::{
         context::TuiContext,
         input::Action,
@@ -90,15 +90,9 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 );
             }
 
-            Some(RequestState::Response {
-                record,
-                parsed_body,
-            }) => self.content.draw(
+            Some(RequestState::Response { record }) => self.content.draw(
                 frame,
-                CompleteResponseContentProps {
-                    record,
-                    parsed_body: parsed_body.as_deref(),
-                },
+                CompleteResponseContentProps { record },
                 area,
             ),
 
@@ -133,7 +127,6 @@ impl Default for CompleteResponseContent {
 
 struct CompleteResponseContentProps<'a> {
     record: &'a RequestRecord,
-    parsed_body: Option<&'a dyn ResponseContent>,
 }
 
 #[derive(
@@ -239,8 +232,7 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
                 body.draw(
                     frame,
                     RecordBodyProps {
-                        raw_body: response.body.bytes(),
-                        parsed_body: props.parsed_body,
+                        body: &response.body,
                     },
                     content_area,
                 );

@@ -334,7 +334,7 @@ mod tests {
             .insert_request(&create!(
                 RequestRecord,
                 request: request.into(),
-                response: response,
+                response: response.into(),
             ))
             .unwrap();
         let selector = selector.map(|s| s.parse().unwrap());
@@ -425,7 +425,7 @@ mod tests {
         Some("recipe1"),
         Some(create!(
             RequestRecord,
-            response: create!(Response, body: "not json!".into()),
+            response: create!(Response, body: "not json!".into()).into(),
         )),
         "content type not provided",
     )]
@@ -444,7 +444,7 @@ mod tests {
         Some("recipe1"),
         Some(create!(
             RequestRecord,
-            response: create!(Response, body: "not json!".into()),
+            response: create!(Response, body: "not json!".into()).into(),
         )),
         "Parsing response: expected ident at line 1 column 2",
     )]
@@ -463,7 +463,7 @@ mod tests {
         Some("recipe1"),
         Some(create!(
             RequestRecord,
-            response: create!(Response, body: "[1, 2]".into()),
+            response: create!(Response, body: "[1, 2]".into()).into(),
         )),
         "Expected exactly one result",
     )]

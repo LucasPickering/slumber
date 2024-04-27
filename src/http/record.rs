@@ -18,9 +18,10 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Debug, Write},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 use thiserror::Error;
+use tracing::error;
 use url::Url;
 use uuid::Uuid;
 
@@ -76,11 +77,10 @@ impl Default for RequestId {
 pub struct RequestRecord {
     /// ID to uniquely refer to this record. Useful for historical records.
     pub id: RequestId,
-    /// What we said. This has Arc to prevent cloning when the creator needs to
-    /// hang onto it.
+    /// What we said. Use an Arc so the view can hang onto it.
     pub request: Arc<Request>,
-    // What we heard
-    pub response: Response,
+    /// What we heard. Use an Arc so the view can hang onto it.
+    pub response: Arc<Response>,
     /// When was the request sent to the server?
     pub start_time: DateTime<Utc>,
     /// When did we finish receiving the *entire* response?
@@ -118,7 +118,7 @@ pub struct Request {
     #[serde(with = "serde_header_map")]
     pub headers: HeaderMap,
     /// Body content as bytes. This should be decoded as needed
-    pub body: Option<Bytes>,
+    pub body: Option<Body>,
 }
 
 impl Request {
@@ -153,7 +153,8 @@ impl Request {
     pub fn body_str(&self) -> anyhow::Result<Option<&str>> {
         if let Some(body) = &self.body {
             Ok(Some(
-                std::str::from_utf8(body).context("Error decoding body")?,
+                std::str::from_utf8(&body.data)
+                    .context("Error decoding body")?,
             ))
         } else {
             Ok(None)
@@ -165,6 +166,9 @@ impl Request {
 /// to the user. A simpler alternative to [reqwest::Response], because there's
 /// no way to access all resolved data on that type at once. Resolving the
 /// response body requires moving the response.
+///
+/// This intentionally does not implement Clone, because responses could
+/// potentially be very large.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
     #[serde(with = "serde_status_code")]
@@ -175,11 +179,19 @@ pub struct Response {
 }
 
 impl Response {
-    /// Parse the body of this response, based on its `content-type` header
-    pub fn parse_body(&self) -> anyhow::Result<Box<dyn ResponseContent>> {
-        ContentType::parse_response(self)
+    /// Attempt to parse the body of this response, and store it in the body
+    /// struct. If parsing fails, we'll store `None` instead.
+    pub fn parse_body(&self) {
+        let body = ContentType::parse_response(self)
             .context("Error parsing response body")
             .traced()
+            .ok();
+        // Store whether we succeeded or not, so we know not to try again
+        if self.body.parsed.set(body).is_err() {
+            // Unfortunately we don't have any helpful context to include here.
+            // The body could potentially be huge so don't log it.
+            error!("Response body parsed twice");
+        }
     }
 
     /// Get the value of the `content-type` header
@@ -188,57 +200,59 @@ impl Response {
             .get(header::CONTENT_TYPE)
             .map(HeaderValue::as_bytes)
     }
-
-    /// Make the response body pretty, if possible. This fails if the response
-    /// has an unknown content-type, or if the body doesn't parse according to
-    /// the content-type.
-    pub fn prettify_body(&self) -> anyhow::Result<String> {
-        Ok(self.parse_body()?.prettify())
-    }
 }
 
-/// HTTP response body. Content is stored as bytes to support non-text content.
-/// Should be converted to text only as needed
-#[derive(Default, From, Serialize, Deserialize)]
-pub struct Body(Bytes);
+/// HTTP request OR response body. Content is stored as bytes to support
+/// non-text content. Should be converted to text only as needed
+#[derive(Default, Deserialize)]
+#[serde(from = "Bytes")] // Can't use into=Bytes because that requires cloning
+pub struct Body {
+    /// Raw body
+    data: Bytes,
+    /// For responses of a known content type, we can parse the body into a
+    /// real data structure. This is populated *lazily*, i.e. on first request.
+    /// Useful for filtering and prettification. We store `None` here if we
+    /// tried and failed to parse, so that we know not to try again.
+    #[serde(skip)]
+    parsed: OnceLock<Option<Box<dyn ResponseContent>>>,
+}
 
 impl Body {
-    pub fn new(bytes: Bytes) -> Self {
-        Self(bytes)
+    pub fn new(data: Bytes) -> Self {
+        Self {
+            data,
+            parsed: Default::default(),
+        }
     }
 
     /// Raw content bytes
     pub fn bytes(&self) -> &[u8] {
-        &self.0
+        &self.data
     }
 
     /// Owned raw content bytes
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.0.into()
+    pub fn into_bytes(self) -> Bytes {
+        self.data
     }
 
     /// Get bytes as text, if valid UTF-8
     pub fn text(&self) -> Option<&str> {
-        std::str::from_utf8(&self.0).ok()
+        std::str::from_utf8(&self.data).ok()
     }
 
     /// Get body size, in bytes
     pub fn size(&self) -> ByteSize {
         ByteSize(self.bytes().len() as u64)
     }
-}
 
-#[cfg(test)]
-impl From<String> for Body {
-    fn from(value: String) -> Self {
-        Self(value.into())
-    }
-}
-
-#[cfg(test)]
-impl From<&str> for Body {
-    fn from(value: &str) -> Self {
-        value.to_owned().into()
+    /// Get the parsed version of this body. Must haved call
+    /// [Response::parse_body] first to actually do the parse. Parsing has to
+    /// be done on the parent because we don't have access to the `Content-Type`
+    /// header here, which tells us how to parse.
+    ///
+    /// Return `None` if parsing either hasn't happened yet, or failed.
+    pub fn parsed(&self) -> Option<&dyn ResponseContent> {
+        self.parsed.get().and_then(Option::as_deref)
     }
 }
 
@@ -246,8 +260,52 @@ impl Debug for Body {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Don't print the actual body because it could be huge
         f.debug_tuple("Body")
-            .field(&format!("<{} bytes>", self.0.len()))
+            .field(&format!("<{} bytes>", self.data.len()))
             .finish()
+    }
+}
+
+impl From<Bytes> for Body {
+    fn from(bytes: Bytes) -> Self {
+        Self::new(bytes)
+    }
+}
+
+impl Serialize for Body {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Serialize just the bytes, everything else is derived
+        self.data.serialize(serializer)
+    }
+}
+
+#[cfg(test)]
+impl From<Vec<u8>> for Body {
+    fn from(value: Vec<u8>) -> Self {
+        Self::new(value.into())
+    }
+}
+
+impl From<String> for Body {
+    fn from(value: String) -> Self {
+        Self::new(value.into())
+    }
+}
+
+#[cfg(test)]
+impl From<&str> for Body {
+    fn from(value: &str) -> Self {
+        Self::new(value.to_owned().into())
+    }
+}
+
+#[cfg(test)]
+impl PartialEq for Body {
+    fn eq(&self, other: &Self) -> bool {
+        // Ignore derived data
+        self.data == other.data
     }
 }
 

@@ -6,7 +6,6 @@ pub mod select;
 
 use crate::http::{
     Request, RequestBuildError, RequestError, RequestId, RequestRecord,
-    ResponseContent,
 };
 use chrono::{DateTime, Duration, Utc};
 use derive_more::Deref;
@@ -116,12 +115,7 @@ pub enum RequestState {
     /// A resolved HTTP response, with all content loaded and ready to be
     /// displayed. This does *not necessarily* have a 2xx/3xx status code, any
     /// received response is considered a "success".
-    Response {
-        record: RequestRecord,
-        /// For responses of a known content type, we'll pre-parsed it so we
-        /// can do fancy things like prettification and filtering later
-        parsed_body: Option<Box<dyn ResponseContent>>,
-    },
+    Response { record: RequestRecord },
 
     /// Error occurred sending the request or receiving the response.
     RequestError { error: RequestError },
@@ -193,13 +187,11 @@ impl RequestState {
     /// Create a request state from a completed response. This is **expensive**,
     /// don't call it unless you need the value.
     pub fn response(record: RequestRecord) -> Self {
-        // Parsing might get slow on large responses, maybe we want to punt
-        // this into a separate task?
-        let parsed_body = record.response.parse_body().ok();
-        Self::Response {
-            record,
-            parsed_body,
-        }
+        // Pre-parse the body so the view doesn't have to do it. We're in the
+        // main thread still here though so large bodies may take a while. Maybe
+        // we want to punt this into a separate task?
+        record.response.parse_body();
+        Self::Response { record }
     }
 }
 

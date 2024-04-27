@@ -42,24 +42,15 @@ where
     T: FixedSelect + Persistable<Persisted = T>,
 {
     fn update(&mut self, event: Event) -> Update {
-        match event {
-            Event::Input {
-                action: Some(action),
-                ..
-            } => match action {
-                Action::Left => {
-                    self.tabs.previous();
-                    Update::Consumed
-                }
-                Action::Right => {
-                    self.tabs.next();
-                    Update::Consumed
-                }
-
-                _ => Update::Propagate(event),
-            },
-            _ => Update::Propagate(event),
+        let Some(action) = event.action() else {
+            return Update::Propagate(event);
+        };
+        match action {
+            Action::Left => self.tabs.previous(),
+            Action::Right => self.tabs.next(),
+            _ => return Update::Propagate(event),
         }
+        Update::Consumed
     }
 }
 

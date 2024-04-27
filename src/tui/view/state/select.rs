@@ -176,44 +176,33 @@ where
     State: Debug + SelectStateData,
 {
     fn update(&mut self, event: Event) -> Update {
-        match event {
-            // Up/down keys/scrolling. Scrolling will only work if .set_area()
-            // is called on the wrapping Component by our parent
-            Event::Input {
-                action: Some(action),
-                ..
-            } => match action {
-                Action::Up | Action::ScrollUp => {
-                    self.previous();
-                    Update::Consumed
-                }
-                Action::Down | Action::ScrollDown => {
-                    self.next();
-                    Update::Consumed
-                }
-                Action::Submit => {
-                    // If we have an on_submit, our parent wants us to handle
-                    // submit events so consume it even if nothing is selected
-                    if let Some(on_submit) = &self.on_submit {
-                        let selected = self
-                            .state
-                            .get_mut()
-                            .selected()
-                            .and_then(|index| self.items.get_mut(index));
-                        if let Some(selected) = selected {
-                            on_submit(selected);
-                        }
-
-                        Update::Consumed
-                    } else {
-                        Update::Propagate(event)
+        let Some(action) = event.action() else {
+            return Update::Propagate(event);
+        };
+        // Up/down keys and scrolling. Scrolling will only work if .set_area()
+        // is called on the wrapping Component by our parent
+        match action {
+            Action::Up | Action::ScrollUp => self.previous(),
+            Action::Down | Action::ScrollDown => self.next(),
+            Action::Submit => {
+                // If we have an on_submit, our parent wants us to handle
+                // submit events so consume it even if nothing is selected
+                if let Some(on_submit) = &self.on_submit {
+                    let selected = self
+                        .state
+                        .get_mut()
+                        .selected()
+                        .and_then(|index| self.items.get_mut(index));
+                    if let Some(selected) = selected {
+                        on_submit(selected);
                     }
+                } else {
+                    return Update::Propagate(event);
                 }
-                _ => Update::Propagate(event),
-            },
-
-            _ => Update::Propagate(event),
+            }
+            _ => return Update::Propagate(event),
         }
+        Update::Consumed
     }
 }
 

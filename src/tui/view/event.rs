@@ -138,9 +138,19 @@ pub enum Event {
 }
 
 impl Event {
-    /// Helper for creating a dynamic "other" variant
-    pub fn other<T: Any>(value: T) -> Event {
+    /// Create a dynamic "other" variant
+    pub fn new<T: Any>(value: T) -> Event {
         Event::Other(Box::new(value))
+    }
+
+    /// Get the mapped input action for this event, if any. A lot of components
+    /// only handle mapped input events, so this is shorthand to check if this
+    /// is one of those events.
+    pub fn action(&self) -> Option<Action> {
+        match self {
+            Self::Input { action, .. } => *action,
+            _ => None,
+        }
     }
 }
 

@@ -7,8 +7,8 @@ mod view;
 use crate::{
     collection::{Collection, CollectionFile, ProfileId, RecipeId},
     config::Config,
-    db::{CollectionDatabase, Database},
-    http::{HttpEngine, Request, RequestBuilder},
+    db::Database,
+    http::{Request, RequestBuilder},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
         context::TuiContext,
@@ -44,22 +44,17 @@ use tracing::{debug, error, info, trace};
 /// - Input phase: Check for input from the user
 /// - Message phase: Process any async messages from input or external sources
 ///   (HTTP, file system, etc.)
+/// - Event phase: Handle any *view* events that have been queued up
 /// - Draw phase: Draw the entire UI
-/// - Signal phase: Check for process signals that should trigger an exit
 #[derive(Debug)]
 pub struct Tui {
     terminal: Term,
     messages_rx: UnboundedReceiver<Message>,
-    messages_tx: MessageSender,
-    http_engine: HttpEngine,
     /// Replaceable allows us to enforce that the view is dropped before being
     /// recreated. The view persists its state on drop, so that has to happen
     /// before the new one is created.
     view: Replaceable<View>,
     collection_file: CollectionFile,
-    /// We only ever need to run DB ops related to our collection, so we can
-    /// use a collection-restricted DB handle
-    database: CollectionDatabase,
     should_run: bool,
 }
 
@@ -84,7 +79,6 @@ impl Tui {
         let messages_tx = MessageSender::new(messages_tx);
         // Load a database for this particular collection
         let database = Database::load()?.into_collection(&collection_path)?;
-        let http_engine = HttpEngine::new(&config, database.clone());
         // Initialize global view context
         TuiContext::init(config, messages_tx.clone(), database.clone());
 
@@ -95,7 +89,7 @@ impl Tui {
         let collection_file = CollectionFile::load(collection_path.clone())
             .await
             .unwrap_or_else(|error| {
-                messages_tx.send(Message::Error { error });
+                TuiContext::send_message(Message::Error { error });
                 CollectionFile::with_path(collection_path)
             });
         let view = View::new(&collection_file.collection);
@@ -108,14 +102,11 @@ impl Tui {
         let app = Tui {
             terminal,
             messages_rx,
-            messages_tx,
-            http_engine,
 
             collection_file,
             should_run: true,
 
             view: Replaceable::new(view),
-            database,
         };
 
         app.run()
@@ -174,21 +165,16 @@ impl Tui {
         Ok(())
     }
 
-    /// GOODBYE
-    fn quit(&mut self) {
-        info!("Initiating graceful shutdown");
-        self.should_run = false;
-    }
-
     /// Handle an incoming message. Any error here will be displayed as a modal
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::CollectionStartReload => {
-                let messages_tx = self.messages_tx.clone();
                 let future = self.collection_file.reload();
                 self.spawn(async move {
                     let collection = future.await?;
-                    messages_tx.send(Message::CollectionEndReload(collection));
+                    TuiContext::send_message(Message::CollectionEndReload(
+                        collection,
+                    ));
                     Ok(())
                 });
             }
@@ -268,8 +254,6 @@ impl Tui {
                 self.view.open_modal(prompt, ModalPriority::Low);
             }
 
-            Message::Quit => self.quit(),
-
             Message::TemplatePreview {
                 template,
                 profile_id,
@@ -281,16 +265,17 @@ impl Tui {
                     destination,
                 )?;
             }
+
+            Message::Quit => self.quit(),
         }
         Ok(())
     }
 
     /// Spawn a task to listen in the backgrouns for quit signals
     fn listen_for_signals(&self) {
-        let messages = self.messages_tx.clone();
         self.spawn(async move {
             signals().await?;
-            messages.send(Message::Quit);
+            TuiContext::send_message(Message::Quit);
             Ok(())
         });
     }
@@ -299,7 +284,6 @@ impl Tui {
     /// changes. Return the watcher because it stops when dropped.
     fn watch_collection(&self) -> anyhow::Result<impl Watcher> {
         // Spawn a watcher for the collection file
-        let messages_tx = self.messages_tx.clone();
         let f = move |result: notify::Result<_>| {
             match result {
                 // Only reload if the file *content* changes
@@ -310,7 +294,7 @@ impl Tui {
                     },
                 ) => {
                     info!(?event, "Collection file changed, reloading");
-                    messages_tx.send(Message::CollectionStartReload);
+                    TuiContext::send_message(Message::CollectionStartReload);
                 }
                 // Do nothing for other event kinds
                 Ok(_) => {}
@@ -345,19 +329,24 @@ impl Tui {
         ));
     }
 
+    /// GOODBYE
+    fn quit(&mut self) {
+        info!("Initiating graceful shutdown");
+        self.should_run = false;
+    }
+
     /// Render URL for a request, then copy it to the clipboard
     fn copy_request_url(
         &self,
         request_config: RequestConfig,
     ) -> anyhow::Result<()> {
         let builder = self.get_request_builder(request_config.clone())?;
-        let messages_tx = self.messages_tx.clone();
-        // Spawn a task to do the render+copy
         let template_context =
             self.template_context(request_config.profile_id, true)?;
+        // Spawn a task to do the render+copy
         self.spawn(async move {
             let url = builder.build_url(&template_context).await?;
-            messages_tx.send(Message::CopyText(url.to_string()));
+            TuiContext::send_message(Message::CopyText(url.to_string()));
             Ok(())
         });
         Ok(())
@@ -369,10 +358,9 @@ impl Tui {
         request_config: RequestConfig,
     ) -> anyhow::Result<()> {
         let builder = self.get_request_builder(request_config.clone())?;
-        let messages_tx = self.messages_tx.clone();
-        // Spawn a task to do the render+copy
         let template_context =
             self.template_context(request_config.profile_id, true)?;
+        // Spawn a task to do the render+copy
         self.spawn(async move {
             let body = builder
                 .build_body(&template_context)
@@ -380,7 +368,7 @@ impl Tui {
                 .ok_or(anyhow!("Request has no body"))?;
             let body = String::from_utf8(body.into())
                 .context("Cannot copy request body")?;
-            messages_tx.send(Message::CopyText(body));
+            TuiContext::send_message(Message::CopyText(body));
             Ok(())
         });
         Ok(())
@@ -392,14 +380,13 @@ impl Tui {
         request_config: RequestConfig,
     ) -> anyhow::Result<()> {
         let builder = self.get_request_builder(request_config.clone())?;
-        let messages_tx = self.messages_tx.clone();
-        // Spawn a task to do the render+copy
         let template_context =
             self.template_context(request_config.profile_id, true)?;
+        // Spawn a task to do the render+copy
         self.spawn(async move {
             let request = builder.build(&template_context).await?;
             let command = request.to_curl()?;
-            messages_tx.send(Message::CopyText(command));
+            TuiContext::send_message(Message::CopyText(command));
             Ok(())
         });
         Ok(())
@@ -413,9 +400,7 @@ impl Tui {
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
 
-        let http_engine = self.http_engine.clone();
         let builder = self.get_request_builder(request_config.clone())?;
-        let messages_tx = self.messages_tx.clone();
 
         let template_context =
             self.template_context(request_config.profile_id.clone(), true)?;
@@ -436,13 +421,15 @@ impl Tui {
         // We can't use self.spawn here because HTTP errors are handled
         // differently from all other error types
         tokio::spawn(async move {
+            let context = TuiContext::get();
+
             // Build the request
             let request: Arc<Request> = builder
                 .build(&template_context)
                 .await
                 .map_err(|error| {
                     // Report the error, but don't actually return anything
-                    messages_tx.send(Message::HttpBuildError {
+                    context.messages_tx.send(Message::HttpBuildError {
                         profile_id: profile_id.clone(),
                         recipe_id: recipe_id.clone(),
                         error,
@@ -451,15 +438,15 @@ impl Tui {
                 .into();
 
             // Report liftoff
-            messages_tx.send(Message::HttpLoading {
+            context.messages_tx.send(Message::HttpLoading {
                 profile_id,
                 recipe_id,
                 request: Arc::clone(&request),
             });
 
             // Send the request and report the result to the main thread
-            let result = http_engine.send(request).await;
-            messages_tx.send(Message::HttpComplete(result));
+            let result = context.http_engine.clone().send(request).await;
+            context.messages_tx.send(Message::HttpComplete(result));
 
             // By returning an empty result, we can use `?` to break out early.
             // `return` and `break` don't work in an async block :/
@@ -476,8 +463,9 @@ impl Tui {
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
     ) -> anyhow::Result<()> {
+        let database = &TuiContext::get().database;
         if let Some(record) =
-            self.database.get_last_request(profile_id, recipe_id)?
+            database.get_last_request(profile_id, recipe_id)?
         {
             self.view.set_request_state(
                 profile_id.cloned(),
@@ -491,7 +479,6 @@ impl Tui {
     /// Helper to create a [RequestBuilder] based on request parameters
     fn get_request_builder(
         &self,
-
         RequestConfig {
             recipe_id, options, ..
         }: RequestConfig,
@@ -534,10 +521,9 @@ impl Tui {
         &self,
         future: impl Future<Output = anyhow::Result<()>> + Send + 'static,
     ) {
-        let messages_tx = self.messages_tx.clone();
         tokio::spawn(async move {
             if let Err(err) = future.await {
-                messages_tx.send(Message::Error { error: err })
+                TuiContext::send_message(Message::Error { error: err })
             }
         });
     }
@@ -550,8 +536,9 @@ impl Tui {
         profile_id: Option<ProfileId>,
         real_prompt: bool,
     ) -> anyhow::Result<TemplateContext> {
+        let context = TuiContext::get();
         let prompter: Box<dyn Prompter> = if real_prompt {
-            Box::new(self.messages_tx.clone())
+            Box::new(TuiContext::get().messages_tx.clone())
         } else {
             Box::new(PreviewPrompter)
         };
@@ -560,8 +547,8 @@ impl Tui {
         Ok(TemplateContext {
             selected_profile: profile_id,
             collection: collection.clone(),
-            http_engine: Some(self.http_engine.clone()),
-            database: self.database.clone(),
+            http_engine: Some(context.http_engine.clone()),
+            database: context.database.clone(),
             overrides: Default::default(),
             prompter,
             recursion_count: Default::default(),

@@ -1,0 +1,36 @@
+profiles:
+  default:
+    name: null
+    data:
+      HOST: http://httpbin.org
+      endpoint: put
+chains: {}
+requests:
+  request_1: !request
+    name: SimpleGet
+    method: GET
+    url: '{{HOST}}/get'
+    body: null
+    authentication: null
+    query: {}
+    headers: {}
+  request_2: !request
+    name: JsonPost
+    method: POST
+    url: '{{HOST}}/post'
+    body: "{\r\n\"data\": \"my data\"\r\n}"
+    authentication: null
+    query: {}
+    headers:
+      Content-Type: application/json
+  request_3: !request
+    name: null
+    method: PUT
+    url: https://httpbin.org/{{endpoint}}
+    body: a=b&c=d
+    authentication: null
+    query: {}
+    headers:
+      ContentType: application/x-www-form-urlencoded
+      Content-Type: json
+      My-Header: hello

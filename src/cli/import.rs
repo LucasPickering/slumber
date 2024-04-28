@@ -23,8 +23,8 @@ pub struct ImportCommand {
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum Format {
     Insomnia,
-    JetbrainsHttp,
-    VscodeRest,
+    Jetbrains,
+    Vscode,
 }
 
 #[async_trait]
@@ -33,7 +33,8 @@ impl Subcommand for ImportCommand {
         // Load the input
         let collection = match self.format {
             Format::Insomnia => Collection::from_insomnia(&self.input_file)?,
-            _ => todo!(),
+            Format::Vscode => Collection::from_vscode(&self.input_file)?,
+            Format::Jetbrains => Collection::from_jetbrains(&self.input_file)?,
         };
 
         // Write the output

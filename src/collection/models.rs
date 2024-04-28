@@ -65,6 +65,12 @@ pub struct Profile {
 )]
 pub struct ProfileId(String);
 
+impl From<&str> for ProfileId {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+
 /// A gathering of like-minded recipes and/or folders
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -120,6 +126,13 @@ pub struct Recipe {
     Deserialize,
 )]
 pub struct RecipeId(String);
+
+impl From<&str> for RecipeId {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+
 
 /// HTTP method. This is duplicated from reqwest's Method so we can enforce
 /// the method is valid during deserialization. This is also generally more

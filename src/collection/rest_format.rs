@@ -4,7 +4,10 @@
 ///! Jetbrains and nvim-rest call it `.http` 
 ///! VSCode and Visual Studio call it `.rest`
 
-use std::{collections::HashMap, str::Utf8Error};
+use std::io::Read;
+use std::{str::Utf8Error};
+use std::path::Path;
+use std::fs::File;
 use std::str;
 use derive_more::FromStr;
 use nom::{
@@ -14,90 +17,173 @@ use nom::{
     }, combinator::{opt, recognize}, error::Error as NomError, multi::many0_count, sequence::{pair, tuple}, AsBytes, IResult, Parser
 };
 use httparse::{Request, Header};
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use url::{Url, UrlQuery};
 use indexmap::IndexMap;
 
+use crate::collection::RecipeId;
 use crate::template::Template;
+
+use super::{Collection, Method, Profile, ProfileId, Recipe, RecipeNode};
+use super::recipe_tree::RecipeTree;
 
 type StrResult<'a> = Result<(&'a str, &'a str), nom::Err<NomError<&'a str>>>;
 
 const REQUEST_DELIMITER: &str = "###";
-const BODY_DELIMITER: &str = "\r\n";
+const BODY_DELIMITER: &str = "\r\n\r\n";
 
 const NAME_ANNOTATION: &str = "@name";
 
 const VARIABLE_OPEN: &str = "{{";
 const VARIABLE_CLOSE: &str = "}}";
 
-/// A single line during parsing
-#[derive(Debug, Clone, PartialEq)]
-enum Line {
-    /// A section seperator: 
-    /// `### ?RequestName`
-    Seperator(Option<String>),
-    /// A request name annotation: 
-    /// `# @name RequestName`
-    Name(String),
-    /// A single line of a request: 
-    /// `POST https://example.com HTTP/1.1`
-    Request(String),
+/// REST is a pretty simple format and doesn't have anything like profiles
+/// It does have variables, so this just throws them into a default profile
+impl Profile {
+    fn default_with_data(data: IndexMap<String, Template>) -> Self {
+        Self {
+            id: "default".into(),
+            name: None,
+            data,
+        }        
+    }
+}
+
+impl RecipeTree {
+    fn from_recipe_vector(recipes: Vec<Recipe>) -> anyhow::Result<Self> {
+        let mut tree: IndexMap<RecipeId, RecipeNode> = IndexMap::new(); 
+        for recipe in recipes.into_iter() {
+            let id = recipe.id.clone(); 
+            tree.insert(id, RecipeNode::Recipe(recipe));
+        }
+
+        Ok(RecipeTree::new(tree).unwrap())
+    }
+}
+
+fn has_extension_or_error(path: &Path, ext: &str) -> anyhow::Result<()> {
+    match path.extension() {
+        Some(file_ext) if file_ext != ext => Err(anyhow!("File must have extension \"{}\"", ext)),
+        None => Err(anyhow!("File must an extension")),
+        _ => Ok(())
+    }
+}
+
+impl Collection {
+    pub fn from_jetbrains(
+        jetbrains_file: impl AsRef<Path>
+    ) -> anyhow::Result<Self> {
+        let jetbrains_file = jetbrains_file.as_ref();
+        has_extension_or_error(jetbrains_file, "http")?; 
+        Self::from_rest_file(jetbrains_file)
+    }
+
+    pub fn from_vscode(
+        vscode_file: impl AsRef<Path>
+    ) -> anyhow::Result<Self> {
+        let vscode_file = vscode_file.as_ref();
+        has_extension_or_error(vscode_file, "rest")?;
+        Self::from_rest_file(vscode_file)
+    }
+    
+    fn from_rest_file(
+        rest_file: &Path 
+    ) -> anyhow::Result<Self> {
+        let mut file = File::open(rest_file).context(format!(
+            "Error opening REST file {rest_file:?}"
+        ))?;
+
+        let mut text = String::new();
+        file.read_to_string(&mut text)
+            .context(format!("Error reading REST file {rest_file:?}"))?;
+
+        Self::from_rest_str(&text)
+    }
+
+
+    fn from_rest_str(text: &str) -> anyhow::Result<Collection> {
+        let RestFormat { recipes, variables } = RestFormat::from_str(&text)?;
+        let tree = RecipeTree::from_recipe_vector(recipes)?; 
+        let default_profile = Profile::default_with_data(variables);
+       
+        let profile_id = default_profile.id.clone();
+        let profiles = IndexMap::from([
+            (profile_id, default_profile)
+        ]);
+
+        let collection = Self {
+            profiles,
+            chains: IndexMap::new(),
+            recipes: tree, 
+            _ignore: serde::de::IgnoredAny,
+        };
+
+        Ok(collection)
+    }
 }
 
 
-#[derive(Debug, Clone)]
-pub struct RestRequest {
-    pub name: Option<String>,
-    pub url: RestUrl,
-}
-
-impl RestRequest {
-    fn from(name: Option<String>, raw_request: &str) -> anyhow::Result<Self> {
-        let (req_portion, body_portion) = parse_request_and_body(raw_request); 
-
+impl Recipe {
+    fn from_raw_rest(name: Option<String>, raw_request: &str, index: usize) -> anyhow::Result<Self> {
+        let (req_portion, body_portion) = parse_request_and_body(raw_request.trim()); 
         let mut headers = [httparse::EMPTY_HEADER; 64];
         let mut req = httparse::Request::new(&mut headers);
         let req_buffer = req_portion.as_bytes();
         req.parse(req_buffer)
             .map_err(|_| anyhow!("Failed to parse request!"))?;
 
-        let url = RestUrl::from_str(req.path.unwrap_or("/"))?; 
+        let path = req.path
+            .ok_or(anyhow!("There is no path for this request!"))?;
+        let RestUrl { url, query } = RestUrl::from_str(path)?;
+        let headers = build_header_map(req.headers)?;
 
-        let headers = Self::build_header_map(req.headers)?;
+        let method_literal = req.method
+            .ok_or(anyhow!("There is not a method for this request!"))?;
+        let method = Method::from_str(&method_literal)?;
 
         let body: Option<Template> = match body_portion {
             Some(raw_body) => Some(raw_body.try_into()?),
             None => None,
         };
 
-        println!("Request: {:?}\nHeaders: {:?}", req, headers);
-        Ok(Self {
+        let id_name = format!("request_{}", index+1);
+        let id: RecipeId = id_name.into();
+        let recipe = Self {
+            id,
             name,
+            method,
             url,
-        })
+            body,
+            query,
+            headers,
+            authentication: None,
+        };
+        println!("{:?}\n\n", recipe);
+
+        Ok(recipe)
     }
 
-    /// Httparse doesn't take ownership of the headers
-    /// This is just coercing them into an easier format
-    fn build_header_map(headers_slice: &mut [Header]) -> anyhow::Result<IndexMap<String, Template>> {
-        let headers_vec: Vec<Header> = headers_slice
-            .iter()
-            .take_while(|h| !h.name.is_empty() && !h.value.is_empty())
-            .map(|h| h.to_owned())
-            .collect();
-
-        let mut headers: IndexMap<String, Template> = IndexMap::new();
-        for header in headers_vec {
-            let name = header.name.to_string();
-            let str_val = str::from_utf8(header.value)?;
-            let value: Template = str_val.to_string().try_into()?;
-            headers.insert(name, value);
-        }
-
-        Ok(headers)
-    }
 }
 
+/// `httparse` doesn't take ownership of the headers
+/// This is just coercing them into an easier format
+fn build_header_map(headers_slice: &mut [Header]) -> anyhow::Result<IndexMap<String, Template>> {
+    let headers_vec: Vec<Header> = headers_slice
+        .iter()
+        .take_while(|h| !h.name.is_empty() && !h.value.is_empty())
+        .map(|h| h.to_owned())
+        .collect();
+
+    let mut headers: IndexMap<String, Template> = IndexMap::new();
+    for header in headers_vec {
+        let name = header.name.to_string();
+        let str_val = str::from_utf8(header.value)?;
+        let value: Template = str_val.to_string().try_into()?;
+        headers.insert(name, value);
+    }
+
+    Ok(headers)
+}
 
 #[derive(Debug, Clone)]
 struct RestUrl {
@@ -147,8 +233,8 @@ impl FromStr for RestUrl {
 
 #[derive(Debug, Clone)]
 pub struct RestFormat {
-    pub sections: Vec<RestRequest>,
-    pub variables: HashMap<String, String>,
+    pub recipes: Vec<Recipe>,
+    pub variables: IndexMap<String, Template>,
 }
 
 fn parse_request_and_body(input: &str) -> (String, Option<String>) {
@@ -157,10 +243,25 @@ fn parse_request_and_body(input: &str) -> (String, Option<String>) {
     }
 
     match take_until_body(input) { 
-        Ok((body_portion, req_portion)) => (req_portion.into(), Some(body_portion.into())),
+        Ok((body_portion, req_portion)) => (req_portion.into(), Some(body_portion.trim().into())),
         _ => (input.into(), None),
     }
 } 
+
+/// A single line during parsing
+#[derive(Debug, Clone, PartialEq)]
+enum Line {
+    /// A section seperator: 
+    /// `### ?RequestName`
+    Seperator(Option<String>),
+    /// A request name annotation: 
+    /// `# @name RequestName`
+    Name(String),
+    /// A single line of a request: 
+    /// `POST https://example.com HTTP/1.1`
+    Request(String),
+}
+
 
 fn parse_seperator(input: &str) -> IResult<&str, Option<String>> {
     let (input, _) = tag(REQUEST_DELIMITER)(input)?;
@@ -228,9 +329,9 @@ fn until_variable_open(input: &str) -> StrResult {
     take_until(VARIABLE_OPEN)(input)
 }
 
-fn parse_lines(input: &str) -> (Vec<Line>, HashMap<String, String>) {
+fn parse_lines(input: &str) -> anyhow::Result<(Vec<Line>, IndexMap<String, Template>)> {
     let mut lines: Vec<Line> = vec![];
-    let mut variables: HashMap<String, String> = HashMap::new();
+    let mut variables: IndexMap<String, Template> = IndexMap::new();
     for line in input.trim().lines() {
         let line = &format!("{line}\n");
         if let Ok((_, seperator_name)) = parse_seperator(line) {
@@ -248,32 +349,32 @@ fn parse_lines(input: &str) -> (Vec<Line>, HashMap<String, String>) {
             .unwrap_or(line);
 
         if let Ok((_, (key, val))) = parse_variable_assignment(line) {
-            variables.insert(key.into(), val.into());
+            let value_template: Template = val.to_string().try_into()?; 
+            variables.insert(key.into(), value_template); 
             continue;
         }
 
         lines.push(Line::Request(line.trim().into()));
     }
-    (lines, variables)
+    Ok((lines, variables))
 }
 
 impl RestFormat {
-
     fn from_lines(
         lines: Vec<Line>,
-        variables: HashMap<String, String>,
+        variables: IndexMap<String, Template>,
     ) -> anyhow::Result<Self> {
-        let mut sections: Vec<RestRequest> = vec![];
+        let mut recipes: Vec<Recipe> = vec![];
         let mut current_name: Option<String> = None;
         let mut current_request: String = "".into();
         for line in lines {
             match line {
                 Line::Seperator(name_opt) => {
-                    if current_request != "" {
-                        let request = RestRequest::from(
-                            current_name, &current_request,
+                    if current_request.trim() != "" {
+                        let recipe = Recipe::from_raw_rest(
+                            current_name, &current_request, recipes.len()
                         )?;
-                        sections.push(request);
+                        recipes.push(recipe);
                     }
 
                     current_name = None;
@@ -292,11 +393,11 @@ impl RestFormat {
             }
         }
 
-        let request = RestRequest::from(current_name, &current_request)?;
-        sections.push(request);
+        let request = Recipe::from_raw_rest(current_name, &current_request, recipes.len())?;
+        recipes.push(request);
 
         Ok(Self {
-            sections,
+            recipes,
             variables,
         })
     }
@@ -305,7 +406,7 @@ impl RestFormat {
 impl FromStr for RestFormat {
     type Err = anyhow::Error;
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        let (lines, variables) = parse_lines(text);
+        let (lines, variables) = parse_lines(text)?;
         Ok(Self::from_lines(lines, variables)?)
     }
 }
@@ -396,7 +497,7 @@ X-Http-Method-Override: PUT
         "#;
 
         let file = RestFormat::from_str(example).unwrap();
-        let output = format!("{:?}", file.sections);
+        let output = format!("{:?}", file.recipes);
         println!(
             "{}",
             output.replace("JetbrainsRequest {", "\nJetbrainsRequest {")
@@ -424,5 +525,32 @@ X-Http-Method-Override: PUT
         let example = "{{my_url}}";
         let parsed: RestUrl = example.parse().unwrap();
         assert_eq!(parsed.url.to_string(), "{{my_url}}"); 
+    }
+
+    #[test]
+    fn parse_request_and_body_test() {
+        let example = r#"
+POST /post?q=hello HTTP/1.1
+Host: localhost
+Content-Type: application/json
+X-Http-Method-Override: PUT
+
+{
+    "data": "my data"
+}
+"#.trim().replace("\n", "\r\n");
+
+        let (req, body) = parse_request_and_body(&example);
+        println!("{req:?}");
+        println!("{body:?}");
+    }
+
+
+    const JETBRAINS_FILE: &str = "./test_data/jetbrains.http";
+
+    #[test]
+    fn test_jetbrains_import() {
+        let imported = Collection::from_jetbrains(JETBRAINS_FILE).unwrap();
+        println!("{:?}", imported); 
     }
 }

@@ -143,12 +143,6 @@ impl Prompter for TestPrompter {
 }
 
 // Some helpful conversion implementations
-impl From<&str> for ProfileId {
-    fn from(value: &str) -> Self {
-        value.to_owned().into()
-    }
-}
-
 impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
     fn from(value: IndexMap<RecipeId, Recipe>) -> Self {
         let tree = value
@@ -156,12 +150,6 @@ impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
             .map(|(id, recipe)| (id, RecipeNode::Recipe(recipe)))
             .collect();
         Self::new(tree).expect("Duplicate recipe ID")
-    }
-}
-
-impl From<&str> for RecipeId {
-    fn from(value: &str) -> Self {
-        value.to_owned().into()
     }
 }
 

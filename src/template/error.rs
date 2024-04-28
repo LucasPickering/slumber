@@ -168,6 +168,10 @@ pub enum ChainError {
         #[source]
         error: Box<TemplateError>,
     },
+
+    /// Specified !header did not exist in the response
+    #[error("Header `{header}` not in response")]
+    MissingHeader { header: String },
 }
 
 /// Error occurred while trying to build/execute a triggered request

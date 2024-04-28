@@ -179,7 +179,10 @@ impl<T> TemplateKey<T> {
 mod tests {
     use super::*;
     use crate::{
-        collection::{Chain, ChainRequestTrigger, ChainSource, RecipeId},
+        collection::{
+            Chain, ChainRequestSection, ChainRequestTrigger, ChainSource,
+            RecipeId,
+        },
         config::Config,
         http::{ContentType, RequestRecord},
         test_util::*,
@@ -305,16 +308,19 @@ mod tests {
     #[rstest]
     #[case::no_selector(
         None,
-        r#"{"array":[1,2],"bool":false,"number":6,"object":{"a":1},"string":"Hello World!"}"#,
+        ChainRequestSection::Body,
+        r#"{"array":[1,2],"bool":false,"number":6,"object":{"a":1},"string":"Hello World!"}"#
     )]
-    #[case::string(Some("$.string"), "Hello World!")]
-    #[case::number(Some("$.number"), "6")]
-    #[case::bool(Some("$.bool"), "false")]
-    #[case::array(Some("$.array"), "[1,2]")]
-    #[case::object(Some("$.object"), "{\"a\":1}")]
+    #[case::string(Some("$.string"), ChainRequestSection::Body, "Hello World!")]
+    #[case::number(Some("$.number"), ChainRequestSection::Body, "6")]
+    #[case::bool(Some("$.bool"), ChainRequestSection::Body, "false")]
+    #[case::array(Some("$.array"), ChainRequestSection::Body, "[1,2]")]
+    #[case::object(Some("$.object"), ChainRequestSection::Body, "{\"a\":1}")]
+    #[case::header(None, ChainRequestSection::Header("Token".into()), "Secret Value")]
     #[tokio::test]
     async fn test_chain_request(
         #[case] selector: Option<&str>,
+        #[case] section: ChainRequestSection,
         #[case] expected_value: &str,
     ) {
         let recipe_id: RecipeId = "recipe1".into();
@@ -326,9 +332,10 @@ mod tests {
             "array": [1,2],
             "object": {"a": 1},
         });
+        let response_headers =
+            header_map(indexmap! {"Token" => "Secret Value"});
         let request = create!(Request, recipe_id: recipe_id.clone());
-        let response =
-            create!(Response, body: response_body.to_string().into());
+        let response = create!(Response, body: response_body.to_string().into(), headers: response_headers);
         database
             .insert_request(&create!(
                 RequestRecord,
@@ -343,6 +350,7 @@ mod tests {
             source: ChainSource::Request {
                 recipe: recipe_id.clone(),
                 trigger: Default::default(),
+                section,
             },
             selector: selector,
             content_type: Some(ContentType::Json),
@@ -376,6 +384,7 @@ mod tests {
             source: ChainSource::Request {
                 recipe: "unknown".into(),
                 trigger: Default::default(),
+                section: Default::default(),
             }
         ),
         None,
@@ -390,6 +399,7 @@ mod tests {
             source: ChainSource::Request {
                 recipe: "recipe1".into(),
                 trigger: Default::default(),
+                section: Default::default(),
             }
         ),
         Some("recipe1"),
@@ -404,6 +414,7 @@ mod tests {
             source: ChainSource::Request {
                 recipe: "recipe1".into(),
                 trigger: ChainRequestTrigger::Always,
+                section: Default::default(),
             }
         ),
         Some("recipe1"),
@@ -418,6 +429,7 @@ mod tests {
             source: ChainSource::Request {
                 recipe: "recipe1".into(),
                 trigger: Default::default(),
+                section: Default::default(),
             },
             selector: Some("$.message".parse().unwrap()),
         ),
@@ -436,6 +448,7 @@ mod tests {
             source: ChainSource::Request {
                 recipe: "recipe1".into(),
                 trigger: Default::default(),
+                section: Default::default(),
             },
             selector: Some("$.message".parse().unwrap()),
             content_type: Some(ContentType::Json),
@@ -455,6 +468,7 @@ mod tests {
             source: ChainSource::Request {
                 recipe: "recipe1".into(),
                 trigger: Default::default(),
+                section:Default::default()
             },
             selector: Some("$.*".parse().unwrap()),
             content_type: Some(ContentType::Json),
@@ -546,6 +560,7 @@ mod tests {
             source: ChainSource::Request {
                 recipe: recipe.id.clone(),
                 trigger,
+                section:Default::default(),
             },
         );
         let http_engine = HttpEngine::new(&Config::default(), database.clone());

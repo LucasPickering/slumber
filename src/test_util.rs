@@ -98,6 +98,7 @@ factori!(Chain, {
         source = ChainSource::Request {
             recipe: RecipeId::default(),
             trigger: Default::default(),
+            section: Default::default(),
         },
         sensitive = false,
         selector = None,

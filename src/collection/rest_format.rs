@@ -3,12 +3,11 @@
 ///! Jetbrains and nvim-rest call it `.http`
 ///! VSCode and Visual Studio call it `.rest`
 use anyhow::{anyhow, Context};
-use base64::{prelude::BASE64_STANDARD, Engine};
 use derive_more::FromStr;
 use indexmap::IndexMap;
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_till, take_until, take_until1},
+    bytes::complete::{tag, take_till, take_until},
     character::complete::{
         alpha1, alphanumeric1, char, newline, space0, space1,
     },
@@ -101,51 +100,6 @@ fn build_default_profile(data: IndexMap<String, Template>) -> Profile {
     }
 }
 
-impl FromStr for Authentication {
-    type Err = anyhow::Error;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        fn bearer(input: &str) -> StrResult {
-            tag("Bearer ")(input)
-        }
-
-        fn basic(input: &str) -> StrResult {
-            tag("Basic ")(input)
-        }
-
-        fn username_and_password(input: &str) -> StrResult {
-            let (password, (username, _)) =
-                pair(take_until(":"), tag(":"))(input)?;
-            Ok((username, password))
-        }
-
-        if let Ok((token, _)) = bearer(input) {
-            let parsed: Template =
-                token.to_string().try_into().map_err(|_| {
-                    anyhow!("Cannot convert auth header to template")
-                })?;
-            return Ok(Self::Bearer(parsed));
-        }
-
-        if let Ok((encoded, _)) = basic(input) {
-            let decoded_bytes = BASE64_STANDARD.decode(encoded)?;
-            let decoded = str::from_utf8(decoded_bytes.as_slice())?;
-
-            let (username, password): (Template, Option<Template>) =
-                match username_and_password(decoded) {
-                    Ok((u, p)) => (
-                        u.to_string().try_into()?,
-                        Some(p.to_string().try_into()?),
-                    ),
-                    Err(_) => (decoded.to_string().try_into()?, None),
-                };
-
-            return Ok(Self::Basic { username, password });
-        }
-
-        return Err(anyhow!("Failed to parse auth header"));
-    }
-}
 
 /// A list of ungrouped recipes is returned from the parser
 /// This converts them into a recipe tree
@@ -228,8 +182,8 @@ impl Recipe {
 
 /// `httparse` doesn't take ownership of the headers
 /// This is just coercing them into templates
-/// If an authentication header can be found and parsed
-/// return them as well
+/// If an authentication header can be found and parsed,
+/// turn it into an Authentication struct 
 fn build_headers(
     headers_slice: &mut [httparse::Header],
 ) -> anyhow::Result<(IndexMap<String, Template>, Option<Authentication>)> {
@@ -248,8 +202,7 @@ fn build_headers(
 
         // If successfully parse authentication from header, save it
         if name.to_lowercase() == AUTHORIZATION.to_string() {
-            if let Ok(auth) = Authentication::from_str(str_val) {
-                
+            if let Ok(auth) = Authentication::from_header_value(str_val) {
                 authentication = Some(auth);
                 continue;
             }
@@ -665,37 +618,5 @@ X-Http-Method-Override: PUT
         let (req, body) = parse_request_and_body(&example);
         println!("{req:?}");
         println!("{body:?}");
-    }
-
-    #[test]
-    fn parse_auth_header_test() {
-        let example = "Basic Zm9vOmJhcg==";
-        match Authentication::from_str(example).unwrap() {
-            Authentication::Basic { username, password } => {
-                assert_eq!(username.to_string(), "foo");
-                assert_eq!(password.unwrap().to_string(), "bar");
-            }
-            _ => panic!("Should be basic auth!"),
-        };
-
-        let example = "Basic dXNlcm5hbWV3aXRob3V0cGFzc3dvcmQ=";
-        match Authentication::from_str(example).unwrap() {
-            Authentication::Basic { username, password } => {
-                assert_eq!(username.to_string(), "usernamewithoutpassword");
-                assert!(password.is_none());
-            }
-            _ => panic!("Should be basic auth!"),
-        };
-
-        let example = "Bearer eyjlavljhhkjasdjlkhskljdfklasdlkjhf";
-        match Authentication::from_str(example).unwrap() {
-            Authentication::Bearer(bearer) => {
-                assert_eq!(
-                    bearer.to_string(),
-                    "eyjlavljhhkjasdjlkhskljdfklasdlkjhf"
-                )
-            }
-            _ => panic!("Should be bearer auth!"),
-        }
     }
 }

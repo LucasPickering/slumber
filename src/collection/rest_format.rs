@@ -1,87 +1,166 @@
 #![allow(dead_code)]
+///! Parses a `.rest` or `.http` file 
+///! These files are used in many IDEs such as Jetbrains, VSCode, and Visual Studio
+///! Jetbrains and nvim-rest call it `.http` 
+///! VSCode and Visual Studio call it `.rest`
 
-use std::collections::HashMap;
-
-use nanohttp::{Header, Method, Path, Request};
+use std::{collections::HashMap, str::Utf8Error};
+use std::str;
+use derive_more::FromStr;
 use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_till, take_until},
-    character::{
-        complete::{
-            alpha1, alphanumeric1, anychar, char, multispace0, multispace1,
-            newline, one_of, space0, space1,
-        },
-        is_space,
-    },
-    combinator::{not, opt, recognize},
-    error::{Error as NomError, ErrorKind, ParseError, VerboseError},
-    multi::{many0_count, many1},
-    sequence::{delimited, pair, tuple},
-    Parser, IResult,
+    branch::alt, bytes::{complete::{tag, take_till, take_until}}, character::complete::{
+        alpha1, alphanumeric1, char, 
+        newline, space0, space1,
+    }, combinator::{opt, recognize}, error::Error as NomError, multi::many0_count, sequence::{pair, tuple}, AsBytes, IResult, Parser
 };
+use httparse::{Request, Header};
+use anyhow::anyhow;
+use url::{Url, UrlQuery};
+use indexmap::IndexMap;
 
-/// Notes:
-/// for line in lines:
-///     parse_separator: check for ###, check if name exists `### RequestName`
-///     parse name annotation: m match `# @name=Name` or `# @name Name`
-///     parse_comment: `hello # comment`, `// comment`, '# comment'
-///     parse_variable: @x = y
-///     parse_request: build up the request line by line, fill in the variables
+use crate::template::Template;
 
 type StrResult<'a> = Result<(&'a str, &'a str), nom::Err<NomError<&'a str>>>;
 
 const REQUEST_DELIMITER: &str = "###";
+const BODY_DELIMITER: &str = "\r\n";
+
 const NAME_ANNOTATION: &str = "@name";
 
 const VARIABLE_OPEN: &str = "{{";
 const VARIABLE_CLOSE: &str = "}}";
 
-/// The variable literals are replaced with URL safe characters so `nanohttp` can parse it as
-/// normal
-const PLACEHOLDER_VARIABLE_OPEN: &str = "VAROPEN";
-const PLACEHOLDER_VARIABLE_CLOSE: &str = "VARCLOSE";
-
+/// A single line during parsing
 #[derive(Debug, Clone, PartialEq)]
 enum Line {
+    /// A section seperator: 
+    /// `### ?RequestName`
     Seperator(Option<String>),
+    /// A request name annotation: 
+    /// `# @name RequestName`
     Name(String),
+    /// A single line of a request: 
+    /// `POST https://example.com HTTP/1.1`
     Request(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct JetbrainsRequest {
-    name: Option<String>,
-    method: Method,
-    path: Path,
-    version: String,
-    scheme: String,
-    headers: Vec<Header>,
+
+#[derive(Debug, Clone)]
+pub struct RestRequest {
+    pub name: Option<String>,
+    pub url: RestUrl,
 }
 
-impl JetbrainsRequest {
-    fn from(name: Option<String>, raw_request: &str) -> Self {
-        let request = Request::from_string(raw_request).unwrap();
-        let headers = request.headers;
-        let method = request.method;
-        let path = request.path;
-        let scheme = request.scheme;
-        let version = request.version;
-        Self {
+impl RestRequest {
+    fn from(name: Option<String>, raw_request: &str) -> anyhow::Result<Self> {
+        let (req_portion, body_portion) = parse_request_and_body(raw_request); 
+
+        let mut headers = [httparse::EMPTY_HEADER; 64];
+        let mut req = httparse::Request::new(&mut headers);
+        let req_buffer = req_portion.as_bytes();
+        req.parse(req_buffer)
+            .map_err(|_| anyhow!("Failed to parse request!"))?;
+
+        let url = RestUrl::from_str(req.path.unwrap_or("/"))?; 
+
+        let headers = Self::build_header_map(req.headers)?;
+
+        let body: Option<Template> = match body_portion {
+            Some(raw_body) => Some(raw_body.try_into()?),
+            None => None,
+        };
+
+        println!("Request: {:?}\nHeaders: {:?}", req, headers);
+        Ok(Self {
             name,
-            method,
-            path,
-            version,
-            scheme,
-            headers,
+            url,
+        })
+    }
+
+    /// Httparse doesn't take ownership of the headers
+    /// This is just coercing them into an easier format
+    fn build_header_map(headers_slice: &mut [Header]) -> anyhow::Result<IndexMap<String, Template>> {
+        let headers_vec: Vec<Header> = headers_slice
+            .iter()
+            .take_while(|h| !h.name.is_empty() && !h.value.is_empty())
+            .map(|h| h.to_owned())
+            .collect();
+
+        let mut headers: IndexMap<String, Template> = IndexMap::new();
+        for header in headers_vec {
+            let name = header.name.to_string();
+            let str_val = str::from_utf8(header.value)?;
+            let value: Template = str_val.to_string().try_into()?;
+            headers.insert(name, value);
         }
+
+        Ok(headers)
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct JetbrainsHttp {
-    sections: Vec<JetbrainsRequest>,
-    variables: HashMap<String, String>,
+
+#[derive(Debug, Clone)]
+struct RestUrl {
+    url: Template,
+    query: IndexMap<String, Template>,
 }
+
+impl FromStr for RestUrl {
+    type Err = anyhow::Error;
+
+    fn from_str(path: &str) -> Result<Self, Self::Err> {
+        if path.contains("?") {
+            let mut parts = path.split("?");
+            let url_part = parts.next()
+                .ok_or(anyhow!("Invalid url"))?
+                .to_string();
+            let query_part = parts.next()
+                .ok_or(anyhow!("Invalid query"))?;
+
+            let url: Template = url_part.try_into()?;
+            
+            // Inject the query into a localhost url
+            // The template literals in the url would screw up parsing
+            // I'd rather use a well tested crate that implementing query parsing
+            let fake_url = Url::parse(&format!("http://localhost?{query_part}"))?;
+            
+            let mut query: IndexMap<String, Template> = IndexMap::new();
+            for (k, v) in fake_url.query_pairs() {
+                let key = k.to_string();
+                let value: Template = v.to_string().try_into()?;
+                query.insert(key, value);
+            }
+
+            return Ok(Self {
+                url,
+                query,
+            })
+        }
+        
+        Ok(Self {
+            url: path.to_string().try_into()?,
+            query: IndexMap::new(),
+        })
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct RestFormat {
+    pub sections: Vec<RestRequest>,
+    pub variables: HashMap<String, String>,
+}
+
+fn parse_request_and_body(input: &str) -> (String, Option<String>) {
+    fn take_until_body(raw: &str) -> StrResult {
+        take_until(BODY_DELIMITER)(raw)
+    }
+
+    match take_until_body(input) { 
+        Ok((body_portion, req_portion)) => (req_portion.into(), Some(body_portion.into())),
+        _ => (input.into(), None),
+    }
+} 
 
 fn parse_seperator(input: &str) -> IResult<&str, Option<String>> {
     let (input, _) = tag(REQUEST_DELIMITER)(input)?;
@@ -126,12 +205,14 @@ fn starting_slash_comment(line: &str) -> StrResult {
 }
 
 fn parse_line_without_comment(line: &str) -> StrResult {
-    // A comment can start with `//` but it cant be in the middle
+    // A comment can start with `//` but it can't be in the middle
     // This would prevent you from writing urls: `https://`
     if let Ok((inp, _)) = starting_slash_comment(line) {
         return Ok((inp, ""));
     }
-
+    
+    // Hash comments can appear anywhere
+    // `GET example.com HTTP/v.1 # Sends a get request`
     take_until("#")(line)
 }
 
@@ -171,32 +252,27 @@ fn parse_lines(input: &str) -> (Vec<Line>, HashMap<String, String>) {
             continue;
         }
 
-        if line != "\n" {
-            let placeholder_line = line;
-                // .replace(VARIABLE_OPEN, PLACEHOLDER_VARIABLE_OPEN)
-                // .replace(VARIABLE_CLOSE, PLACEHOLDER_VARIABLE_CLOSE);
-            lines.push(Line::Request(placeholder_line.into()));
-        }
+        lines.push(Line::Request(line.trim().into()));
     }
     (lines, variables)
 }
 
-impl JetbrainsHttp {
+impl RestFormat {
+
     fn from_lines(
         lines: Vec<Line>,
         variables: HashMap<String, String>,
-    ) -> Self {
-        let mut sections: Vec<JetbrainsRequest> = vec![];
+    ) -> anyhow::Result<Self> {
+        let mut sections: Vec<RestRequest> = vec![];
         let mut current_name: Option<String> = None;
         let mut current_request: String = "".into();
         for line in lines {
             match line {
                 Line::Seperator(name_opt) => {
                     if current_request != "" {
-                        let request = JetbrainsRequest::from(
-                            current_name,
-                            &current_request,
-                        );
+                        let request = RestRequest::from(
+                            current_name, &current_request,
+                        )?;
                         sections.push(request);
                     }
 
@@ -216,13 +292,21 @@ impl JetbrainsHttp {
             }
         }
 
-        let request = JetbrainsRequest::from(current_name, &current_request);
+        let request = RestRequest::from(current_name, &current_request)?;
         sections.push(request);
 
-        Self {
+        Ok(Self {
             sections,
             variables,
-        }
+        })
+    }
+}
+
+impl FromStr for RestFormat {
+    type Err = anyhow::Error;
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        let (lines, variables) = parse_lines(text);
+        Ok(Self::from_lines(lines, variables)?)
     }
 }
 
@@ -301,7 +385,7 @@ example example
 ######
 # @name JSONRequest
 
-POST /post HTTP/1.1
+POST /post?q=hello HTTP/1.1
 Host: localhost
 Content-Type: application/json
 X-Http-Method-Override: PUT
@@ -311,14 +395,34 @@ X-Http-Method-Override: PUT
 }
         "#;
 
-        let (lines, variables) = parse_lines(example);
-        println!("{:?}", lines);
-
-        let file = JetbrainsHttp::from_lines(lines, variables);
+        let file = RestFormat::from_str(example).unwrap();
         let output = format!("{:?}", file.sections);
         println!(
             "{}",
             output.replace("JetbrainsRequest {", "\nJetbrainsRequest {")
         );
+    }
+
+    #[test]
+    fn parse_url_test() {
+        let example = "{{VAR}}?x={{b}}&word=cool";
+        let parsed = RestUrl::from_str(example).unwrap();
+        assert_eq!(parsed.url.to_string(), "{{VAR}}");
+        assert_eq!(parsed.query.get("x").unwrap().to_string(), "{{b}}");
+        assert_eq!(parsed.query.get("word").unwrap().to_string(), "cool");
+
+        let example = "https://example.com";
+        let parsed: RestUrl = example.parse().unwrap();
+        assert_eq!(parsed.url.to_string(), "https://example.com");
+        assert_eq!(parsed.query.len(), 0);
+
+        let example = "https://example.com?q={{query}}";
+        let parsed: RestUrl = example.parse().unwrap();
+        assert_eq!(parsed.url.to_string(), "https://example.com");
+        assert_eq!(parsed.query.get("q").unwrap().to_string(), "{{query}}");
+
+        let example = "{{my_url}}";
+        let parsed: RestUrl = example.parse().unwrap();
+        assert_eq!(parsed.url.to_string(), "{{my_url}}"); 
     }
 }

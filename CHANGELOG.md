@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased] - ReleaseDate
+
+### Changed
+
+- Reduce UI latency under certain scenarios
+  - Previously some actions would feel laggy because of an inherent 250ms delay in processing some events
+
+### Fixed
+
+- Fix Slumber going into zombie mode and CPU spiking to 100% under certain closure scenarios ([#136](https://github.com/LucasPickering/slumber/issues/136))
+
 ## [1.0.1] - 2024-04-27
 
 ### Added

@@ -7,6 +7,7 @@ use crate::{
         RecipeOptions, Request, RequestBuildError, RequestError, RequestRecord,
     },
     template::{Prompt, Prompter, Template, TemplateChunk},
+    tui::input::Action,
     util::ResultExt,
 };
 use anyhow::Context;
@@ -88,6 +89,14 @@ pub enum Message {
     /// recipe ID here because it's in the inner container already. Combining
     /// these two cases saves a bit of boilerplate.
     HttpComplete(Result<RequestRecord, RequestError>),
+
+    /// User input from the terminal
+    Input {
+        /// Raw input event
+        event: crossterm::event::Event,
+        /// Action mapped via input bindings. This is what most consumers use
+        action: Option<Action>,
+    },
 
     /// Show a prompt to the user, asking for some input. Use the included
     /// channel to return the value.

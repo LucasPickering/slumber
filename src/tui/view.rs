@@ -112,12 +112,6 @@ impl View {
     pub fn handle_events(&mut self) {
         // It's possible for components to queue additional events
         while let Some(event) = EventQueue::pop() {
-            // Certain events *just don't matter*, AT ALL. They're not even
-            // supposed to be around, like, in the area
-            if event.should_kill() {
-                continue;
-            }
-
             trace_span!("View event", ?event).in_scope(|| {
                 match Self::update_all(self.root.as_child(), event) {
                     Update::Consumed => {

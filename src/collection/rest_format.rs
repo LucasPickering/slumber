@@ -35,9 +35,7 @@ type StrResult<'a> = Result<(&'a str, &'a str), nom::Err<NomError<&'a str>>>;
 
 const REQUEST_DELIMITER: &str = "###";
 
-/// The HTTP format requires returns
 const REQUEST_NEWLINE: &str = "\r\n";
-/// A body is seperated from a request with 2 newlines
 const BODY_DELIMITER: &str = "\r\n\r\n";
 
 const NAME_ANNOTATION: &str = "@name";
@@ -99,7 +97,6 @@ fn build_default_profile(data: IndexMap<String, Template>) -> Profile {
         data,
     }
 }
-
 
 /// A list of ungrouped recipes is returned from the parser
 /// This converts them into a recipe tree
@@ -183,7 +180,7 @@ impl Recipe {
 /// `httparse` doesn't take ownership of the headers
 /// This is just coercing them into templates
 /// If an authentication header can be found and parsed,
-/// turn it into an Authentication struct 
+/// turn it into an Authentication struct
 fn build_headers(
     headers_slice: &mut [httparse::Header],
 ) -> anyhow::Result<(IndexMap<String, Template>, Option<Authentication>)> {
@@ -295,7 +292,8 @@ fn parse_request_and_body(input: &str) -> (String, Option<String>) {
 
     match take_until_body(input) {
         Ok((body_portion, req_portion)) => {
-            (req_portion.into(), Some(body_portion.trim().into()))
+            let req_with_end = format!("{req_portion}{REQUEST_NEWLINE}");
+            (req_with_end, Some(body_portion.trim().into()))
         }
         _ => (input.into(), None),
     }
@@ -474,17 +472,10 @@ mod test {
     use super::*;
 
     const JETBRAINS_FILE: &str = "./test_data/jetbrains.http";
-    const VSCODE_FILE: &str = "./test_data/vscode.rest";
 
     #[test]
     fn test_jetbrains_import() {
         let imported = Collection::from_jetbrains(JETBRAINS_FILE).unwrap();
-        println!("{:?}", imported);
-    }
-
-    #[test]
-    fn test_vscode_import() {
-        let imported = Collection::from_vscode(VSCODE_FILE).unwrap();
         println!("{:?}", imported);
     }
 
@@ -540,44 +531,6 @@ mod test {
     }
 
     #[test]
-    fn parse_lines_test() {
-        let example = r#"
-###
-@MY_VAR = 123
-@hello=blahblah
-GET https://httpbin1.org HTTP/1.1
-Host: localhost
-
-// Comment
-@var = 12
-
-### HelloHttpBinRequest
-
-GET {{hello}} HTTP/1.1
-
-example example
-######
-# @name JSONRequest
-
-POST /post?q=hello HTTP/1.1
-Host: localhost
-Content-Type: application/json
-X-Http-Method-Override: PUT
-
-{
-    "data": "my data"
-}
-        "#;
-
-        let file = RestFormat::from_str(example).unwrap();
-        let output = format!("{:?}", file.recipes);
-        println!(
-            "{}",
-            output.replace("JetbrainsRequest {", "\nJetbrainsRequest {")
-        );
-    }
-
-    #[test]
     fn parse_url_test() {
         let example = "{{VAR}}?x={{b}}&word=cool";
         let parsed = RestUrl::from_str(example).unwrap();
@@ -616,6 +569,17 @@ X-Http-Method-Override: PUT
         .replace("\n", REQUEST_NEWLINE);
 
         let (req, body) = parse_request_and_body(&example);
+       
+        assert_eq!(req, r#"POST /post?q=hello HTTP/1.1
+Host: localhost
+Content-Type: application/json
+X-Http-Method-Override: PUT
+"#.replace("\n", "\r\n"));
+        
+        assert_eq!(body, Some(r#"{
+    "data": "my data"
+}"#.replace("\n", "\r\n")));
+
         println!("{req:?}");
         println!("{body:?}");
     }

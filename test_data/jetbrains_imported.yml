@@ -29,6 +29,7 @@ requests:
     query: {}
     headers:
       Content-Type: application/json
+      X-Http-Method-Override: PUT
   request_3: !request
     name: null
     method: PUT
@@ -37,9 +38,9 @@ requests:
     authentication: !bearer efaxijasdfjasdfa
     query: {}
     headers:
-      ContentType: application/x-www-form-urlencoded
-      Content-Type: json
+      Content-Type: application/x-www-form-urlencoded
       My-Header: hello
+      Other-Header: goodbye
   request_4: !request
     name: WithQuery
     method: GET
@@ -57,4 +58,5 @@ requests:
     body: "{\r\n\"name\": \"{{name}}\"\r\n}"
     authentication: null
     query: {}
-    headers: {}
+    headers:
+      Content-Type: application/json

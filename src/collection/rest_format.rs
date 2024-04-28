@@ -1,97 +1,69 @@
-#![allow(dead_code)]
-///! Parses a `.rest` or `.http` file 
+///! Parses a `.rest` or `.http` file
 ///! These files are used in many IDEs such as Jetbrains, VSCode, and Visual Studio
-///! Jetbrains and nvim-rest call it `.http` 
+///! Jetbrains and nvim-rest call it `.http`
 ///! VSCode and Visual Studio call it `.rest`
-
-use std::io::Read;
-use std::{str::Utf8Error};
-use std::path::Path;
-use std::fs::File;
-use std::str;
-use derive_more::FromStr;
-use nom::{
-    branch::alt, bytes::{complete::{tag, take_till, take_until}}, character::complete::{
-        alpha1, alphanumeric1, char, 
-        newline, space0, space1,
-    }, combinator::{opt, recognize}, error::Error as NomError, multi::many0_count, sequence::{pair, tuple}, AsBytes, IResult, Parser
-};
-use httparse::{Request, Header};
 use anyhow::{anyhow, Context};
-use url::{Url, UrlQuery};
+use base64::{prelude::BASE64_STANDARD, Engine};
+use derive_more::FromStr;
 use indexmap::IndexMap;
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take_till, take_until, take_until1},
+    character::complete::{
+        alpha1, alphanumeric1, char, newline, space0, space1,
+    },
+    combinator::{opt, recognize},
+    error::Error as NomError,
+    multi::many0_count,
+    sequence::{pair, tuple},
+    IResult, Parser,
+};
+use reqwest::header::AUTHORIZATION;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+use std::str;
+use url::Url;
 
-use crate::collection::RecipeId;
 use crate::template::Template;
 
-use super::{Collection, Method, Profile, ProfileId, Recipe, RecipeNode};
 use super::recipe_tree::RecipeTree;
+use super::{
+    Authentication, Collection, Method, Profile, Recipe, RecipeId, RecipeNode,
+};
 
 type StrResult<'a> = Result<(&'a str, &'a str), nom::Err<NomError<&'a str>>>;
 
 const REQUEST_DELIMITER: &str = "###";
+
+/// The HTTP format requires returns
+const REQUEST_NEWLINE: &str = "\r\n";
+/// A body is seperated from a request with 2 newlines
 const BODY_DELIMITER: &str = "\r\n\r\n";
 
 const NAME_ANNOTATION: &str = "@name";
 
-const VARIABLE_OPEN: &str = "{{";
-const VARIABLE_CLOSE: &str = "}}";
-
-/// REST is a pretty simple format and doesn't have anything like profiles
-/// It does have variables, so this just throws them into a default profile
-impl Profile {
-    fn default_with_data(data: IndexMap<String, Template>) -> Self {
-        Self {
-            id: "default".into(),
-            name: None,
-            data,
-        }        
-    }
-}
-
-impl RecipeTree {
-    fn from_recipe_vector(recipes: Vec<Recipe>) -> anyhow::Result<Self> {
-        let mut tree: IndexMap<RecipeId, RecipeNode> = IndexMap::new(); 
-        for recipe in recipes.into_iter() {
-            let id = recipe.id.clone(); 
-            tree.insert(id, RecipeNode::Recipe(recipe));
-        }
-
-        Ok(RecipeTree::new(tree).unwrap())
-    }
-}
-
-fn has_extension_or_error(path: &Path, ext: &str) -> anyhow::Result<()> {
-    match path.extension() {
-        Some(file_ext) if file_ext != ext => Err(anyhow!("File must have extension \"{}\"", ext)),
-        None => Err(anyhow!("File must an extension")),
-        _ => Ok(())
-    }
-}
-
 impl Collection {
+    /// Convert a jetbrains `.http` file into a slumber a collection
     pub fn from_jetbrains(
-        jetbrains_file: impl AsRef<Path>
+        jetbrains_file: impl AsRef<Path>,
     ) -> anyhow::Result<Self> {
         let jetbrains_file = jetbrains_file.as_ref();
-        has_extension_or_error(jetbrains_file, "http")?; 
+        has_extension_or_error(jetbrains_file, "http")?;
         Self::from_rest_file(jetbrains_file)
     }
 
-    pub fn from_vscode(
-        vscode_file: impl AsRef<Path>
-    ) -> anyhow::Result<Self> {
+    /// Convert a vscode `.rest` file into a slumber a collection
+    pub fn from_vscode(vscode_file: impl AsRef<Path>) -> anyhow::Result<Self> {
         let vscode_file = vscode_file.as_ref();
         has_extension_or_error(vscode_file, "rest")?;
         Self::from_rest_file(vscode_file)
     }
-    
-    fn from_rest_file(
-        rest_file: &Path 
-    ) -> anyhow::Result<Self> {
-        let mut file = File::open(rest_file).context(format!(
-            "Error opening REST file {rest_file:?}"
-        ))?;
+
+    /// Convert an `.http` or a `.rest` file into a slumber collection
+    fn from_rest_file(rest_file: &Path) -> anyhow::Result<Self> {
+        let mut file = File::open(rest_file)
+            .context(format!("Error opening REST file {rest_file:?}"))?;
 
         let mut text = String::new();
         file.read_to_string(&mut text)
@@ -100,21 +72,18 @@ impl Collection {
         Self::from_rest_str(&text)
     }
 
-
     fn from_rest_str(text: &str) -> anyhow::Result<Collection> {
         let RestFormat { recipes, variables } = RestFormat::from_str(&text)?;
-        let tree = RecipeTree::from_recipe_vector(recipes)?; 
-        let default_profile = Profile::default_with_data(variables);
-       
+        let tree = build_recipe_tree(recipes)?;
+        let default_profile = build_default_profile(variables);
+
         let profile_id = default_profile.id.clone();
-        let profiles = IndexMap::from([
-            (profile_id, default_profile)
-        ]);
+        let profiles = IndexMap::from([(profile_id, default_profile)]);
 
         let collection = Self {
             profiles,
             chains: IndexMap::new(),
-            recipes: tree, 
+            recipes: tree,
             _ignore: serde::de::IgnoredAny,
         };
 
@@ -122,23 +91,116 @@ impl Collection {
     }
 }
 
+/// REST is a pretty simple format and doesn't have anything like profiles
+/// It does have variables, so this just throws them into a default profile
+fn build_default_profile(data: IndexMap<String, Template>) -> Profile {
+    Profile {
+        id: "default".into(),
+        name: None,
+        data,
+    }
+}
+
+impl FromStr for Authentication {
+    type Err = anyhow::Error;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        fn bearer(input: &str) -> StrResult {
+            tag("Bearer ")(input)
+        }
+
+        fn basic(input: &str) -> StrResult {
+            tag("Basic ")(input)
+        }
+
+        fn username_and_password(input: &str) -> StrResult {
+            let (password, (username, _)) =
+                pair(take_until(":"), tag(":"))(input)?;
+            Ok((username, password))
+        }
+
+        if let Ok((token, _)) = bearer(input) {
+            let parsed: Template =
+                token.to_string().try_into().map_err(|_| {
+                    anyhow!("Cannot convert auth header to template")
+                })?;
+            return Ok(Self::Bearer(parsed));
+        }
+
+        if let Ok((encoded, _)) = basic(input) {
+            let decoded_bytes = BASE64_STANDARD.decode(encoded)?;
+            let decoded = str::from_utf8(decoded_bytes.as_slice())?;
+
+            let (username, password): (Template, Option<Template>) =
+                match username_and_password(decoded) {
+                    Ok((u, p)) => (
+                        u.to_string().try_into()?,
+                        Some(p.to_string().try_into()?),
+                    ),
+                    Err(_) => (decoded.to_string().try_into()?, None),
+                };
+
+            return Ok(Self::Basic { username, password });
+        }
+
+        return Err(anyhow!("Failed to parse auth header"));
+    }
+}
+
+/// A list of ungrouped recipes is returned from the parser
+/// This converts them into a recipe tree
+fn build_recipe_tree(recipes: Vec<Recipe>) -> anyhow::Result<RecipeTree> {
+    let mut tree: IndexMap<RecipeId, RecipeNode> = IndexMap::new();
+    for recipe in recipes.into_iter() {
+        let id = recipe.id.clone();
+        tree.insert(id, RecipeNode::Recipe(recipe));
+    }
+
+    Ok(RecipeTree::new(tree).expect("IDs are generated by index"))
+}
+
+/// The different import targets have different extensions
+/// `http` or `rest`
+fn has_extension_or_error(path: &Path, ext: &str) -> anyhow::Result<()> {
+    match path.extension() {
+        Some(file_ext) if file_ext != ext => {
+            Err(anyhow!("File must have extension \"{}\"", ext))
+        }
+        None => Err(anyhow!("File must have extension \"{}\"", ext)),
+        _ => Ok(()),
+    }
+}
 
 impl Recipe {
-    fn from_raw_rest(name: Option<String>, raw_request: &str, index: usize) -> anyhow::Result<Self> {
-        let (req_portion, body_portion) = parse_request_and_body(raw_request.trim()); 
+    /// Create a recipe from an optionally named raw http request
+    /// Index is needed so an ID can be constructred
+    fn from_raw_request(
+        name: Option<String>,
+        raw_request: &str,
+        index: usize,
+    ) -> anyhow::Result<Self> {
+        let (req_portion, body_portion) =
+            parse_request_and_body(raw_request.trim());
+
+        // We need an empty buffer of headers (max of 64)
         let mut headers = [httparse::EMPTY_HEADER; 64];
         let mut req = httparse::Request::new(&mut headers);
         let req_buffer = req_portion.as_bytes();
-        req.parse(req_buffer)
-            .map_err(|_| anyhow!("Failed to parse request!"))?;
+        req.parse(req_buffer).map_err(|parse_err| {
+            anyhow!("Failed to parse request! {parse_err:?}")
+        })?;
 
-        let path = req.path
+        let path = req
+            .path
             .ok_or(anyhow!("There is no path for this request!"))?;
-        let RestUrl { url, query } = RestUrl::from_str(path)?;
-        let headers = build_header_map(req.headers)?;
 
-        let method_literal = req.method
-            .ok_or(anyhow!("There is not a method for this request!"))?;
+        let RestUrl { url, query } = RestUrl::from_str(path)?;
+        let (headers, authentication) = build_headers(req.headers)?;
+
+        let method_literal = req.method.ok_or(anyhow!(
+            "There is not a method for this request! (URL: {})",
+            url
+        ))?;
         let method = Method::from_str(&method_literal)?;
 
         let body: Option<Template> = match body_portion {
@@ -146,7 +208,7 @@ impl Recipe {
             None => None,
         };
 
-        let id_name = format!("request_{}", index+1);
+        let id_name = format!("request_{}", index + 1);
         let id: RecipeId = id_name.into();
         let recipe = Self {
             id,
@@ -156,33 +218,51 @@ impl Recipe {
             body,
             query,
             headers,
-            authentication: None,
+            authentication,
         };
         println!("{:?}\n\n", recipe);
 
         Ok(recipe)
     }
-
 }
 
 /// `httparse` doesn't take ownership of the headers
-/// This is just coercing them into an easier format
-fn build_header_map(headers_slice: &mut [Header]) -> anyhow::Result<IndexMap<String, Template>> {
-    let headers_vec: Vec<Header> = headers_slice
+/// This is just coercing them into templates
+/// If an authentication header can be found and parsed
+/// return them as well
+fn build_headers(
+    headers_slice: &mut [httparse::Header],
+) -> anyhow::Result<(IndexMap<String, Template>, Option<Authentication>)> {
+    let headers_vec: Vec<httparse::Header> = headers_slice
         .iter()
         .take_while(|h| !h.name.is_empty() && !h.value.is_empty())
         .map(|h| h.to_owned())
         .collect();
 
     let mut headers: IndexMap<String, Template> = IndexMap::new();
+    let mut authentication: Option<Authentication> = None;
     for header in headers_vec {
         let name = header.name.to_string();
-        let str_val = str::from_utf8(header.value)?;
-        let value: Template = str_val.to_string().try_into()?;
+        let str_val = str::from_utf8(header.value)
+            .context(format!("Cannot parse header {} as UTF8", name))?;
+
+        // If successfully parse authentication from header, save it
+        if name.to_lowercase() == AUTHORIZATION.to_string() {
+            if let Ok(auth) = Authentication::from_str(str_val) {
+                
+                authentication = Some(auth);
+                continue;
+            }
+        }
+
+        let value: Template = str_val
+            .to_string()
+            .try_into()
+            .context(format!("Cannot parse header value as template"))?;
         headers.insert(name, value);
     }
 
-    Ok(headers)
+    Ok((headers, authentication))
 }
 
 #[derive(Debug, Clone)]
@@ -191,38 +271,52 @@ struct RestUrl {
     query: IndexMap<String, Template>,
 }
 
+/// Parse the query portion of a URL
+///
+/// This injects the query portion into a fake url
+/// The template literals in the url would screw up parsing
+/// I'd rather use a well tested crate than implementing query parsing
+/// There's no public interface in URL to parse the query portion alone
+fn parse_query(
+    query_portion: &str,
+) -> anyhow::Result<IndexMap<String, Template>> {
+    let fake_url = Url::parse(&format!("http://localhost?{query_portion}"))
+        .context(format!("Invalid query (Query: {query_portion})"))?;
+
+    let mut query: IndexMap<String, Template> = IndexMap::new();
+    for (k, v) in fake_url.query_pairs() {
+        let key = k.to_string();
+        let value: Template = v
+            .to_string()
+            .try_into()
+            .context("Failed to parse query as template (Query: {k}={v})")?;
+        query.insert(key, value);
+    }
+    Ok(query)
+}
+
 impl FromStr for RestUrl {
     type Err = anyhow::Error;
 
     fn from_str(path: &str) -> Result<Self, Self::Err> {
         if path.contains("?") {
             let mut parts = path.split("?");
-            let url_part = parts.next()
-                .ok_or(anyhow!("Invalid url"))?
+            let url_part = parts
+                .next()
+                .ok_or(anyhow!("Empty URL (URL: {path})"))?
                 .to_string();
-            let query_part = parts.next()
-                .ok_or(anyhow!("Invalid query"))?;
+            let query_part =
+                parts.next().ok_or(anyhow!("Empty Query (URL: {path})"))?;
 
-            let url: Template = url_part.try_into()?;
-            
-            // Inject the query into a localhost url
-            // The template literals in the url would screw up parsing
-            // I'd rather use a well tested crate that implementing query parsing
-            let fake_url = Url::parse(&format!("http://localhost?{query_part}"))?;
-            
-            let mut query: IndexMap<String, Template> = IndexMap::new();
-            for (k, v) in fake_url.query_pairs() {
-                let key = k.to_string();
-                let value: Template = v.to_string().try_into()?;
-                query.insert(key, value);
-            }
+            let url: Template = url_part
+                .try_into()
+                .context("Failed to parse URL as a template")?;
 
-            return Ok(Self {
-                url,
-                query,
-            })
+            let query = parse_query(query_part)?;
+
+            return Ok(Self { url, query });
         }
-        
+
         Ok(Self {
             url: path.to_string().try_into()?,
             query: IndexMap::new(),
@@ -230,39 +324,47 @@ impl FromStr for RestUrl {
     }
 }
 
-
+/// A basic representaion of the REST format
 #[derive(Debug, Clone)]
 pub struct RestFormat {
+    /// A list of recipes
     pub recipes: Vec<Recipe>,
+    /// Variables used for templating
     pub variables: IndexMap<String, Template>,
 }
 
+/// `httparse` does not parse bodies
+/// We need to seperate them from the request portion
 fn parse_request_and_body(input: &str) -> (String, Option<String>) {
     fn take_until_body(raw: &str) -> StrResult {
         take_until(BODY_DELIMITER)(raw)
     }
 
-    match take_until_body(input) { 
-        Ok((body_portion, req_portion)) => (req_portion.into(), Some(body_portion.trim().into())),
+    match take_until_body(input) {
+        Ok((body_portion, req_portion)) => {
+            (req_portion.into(), Some(body_portion.trim().into()))
+        }
         _ => (input.into(), None),
     }
-} 
+}
 
 /// A single line during parsing
+/// This is the equivalent of a lex token
 #[derive(Debug, Clone, PartialEq)]
 enum Line {
-    /// A section seperator: 
+    /// A section seperator:
     /// `### ?RequestName`
     Seperator(Option<String>),
-    /// A request name annotation: 
+    /// A request name annotation:
     /// `# @name RequestName`
     Name(String),
-    /// A single line of a request: 
+    /// A single line of a request:
     /// `POST https://example.com HTTP/1.1`
     Request(String),
 }
 
-
+/// Attempt to parse an optionally named seperator
+/// `### {optional_name}`
 fn parse_seperator(input: &str) -> IResult<&str, Option<String>> {
     let (input, _) = tag(REQUEST_DELIMITER)(input)?;
     let (input, req_name) =
@@ -272,6 +374,8 @@ fn parse_seperator(input: &str) -> IResult<&str, Option<String>> {
     Ok((input, potential_name))
 }
 
+/// Attempt to parse a name annotation
+/// `# @name RequestName`
 fn parse_request_name_annotation(input: &str) -> IResult<&str, &str> {
     let (input, _) = pair(char('#'), space0)(input)?;
     let (input, _) = tag(NAME_ANNOTATION)(input)?;
@@ -281,16 +385,17 @@ fn parse_request_name_annotation(input: &str) -> IResult<&str, &str> {
     Ok((input, req_name.into()))
 }
 
-fn parse_variable_identifier(input: &str) -> IResult<&str, &str> {
-    recognize(pair(
-        alpha1,
-        many0_count(alt((alphanumeric1, tag("_"), tag("-"), tag(".")))),
-    ))
-    .parse(input)
-}
-
-/// Parses an HTTP File variable (@MY_VAR = 1234)
+/// Parses an HTTP File variable
+/// `@my_variable = hello`
 fn parse_variable_assignment(input: &str) -> IResult<&str, (&str, &str)> {
+    fn parse_variable_identifier(input: &str) -> IResult<&str, &str> {
+        recognize(pair(
+            alpha1,
+            many0_count(alt((alphanumeric1, tag("_"), tag("-"), tag(".")))),
+        ))
+        .parse(input)
+    }
+
     let (input, _) = char('@')(input)?;
     let (input, id) = parse_variable_identifier(input)?;
 
@@ -301,35 +406,27 @@ fn parse_variable_assignment(input: &str) -> IResult<&str, (&str, &str)> {
     Ok((input, (id.into(), value.into())))
 }
 
-fn starting_slash_comment(line: &str) -> StrResult {
-    tag("//")(line)
-}
-
+/// Attempt to remove a comment, if one exists
 fn parse_line_without_comment(line: &str) -> StrResult {
+    fn starting_slash_comment(line: &str) -> StrResult {
+        tag("//")(line)
+    }
+
     // A comment can start with `//` but it can't be in the middle
     // This would prevent you from writing urls: `https://`
     if let Ok((inp, _)) = starting_slash_comment(line) {
         return Ok((inp, ""));
     }
-    
+
     // Hash comments can appear anywhere
-    // `GET example.com HTTP/v.1 # Sends a get request`
+    // `GET example.com HTTP/v1.1 # Sends a get request`
     take_until("#")(line)
 }
 
-fn parse_variable_substitution(input: &str) -> StrResult {
-    let (input, _) = pair(tag(VARIABLE_OPEN), space0)(input)?;
-    let (input, id) = parse_variable_identifier(input)?;
-    let (input, _) = pair(space0, tag(VARIABLE_CLOSE))(input)?;
-
-    Ok((input, id))
-}
-
-fn until_variable_open(input: &str) -> StrResult {
-    take_until(VARIABLE_OPEN)(input)
-}
-
-fn parse_lines(input: &str) -> anyhow::Result<(Vec<Line>, IndexMap<String, Template>)> {
+/// Parse an input string line by line
+fn parse_lines(
+    input: &str,
+) -> anyhow::Result<(Vec<Line>, IndexMap<String, Template>)> {
     let mut lines: Vec<Line> = vec![];
     let mut variables: IndexMap<String, Template> = IndexMap::new();
     for line in input.trim().lines() {
@@ -344,13 +441,15 @@ fn parse_lines(input: &str) -> anyhow::Result<(Vec<Line>, IndexMap<String, Templ
             continue;
         }
 
+        // Now that all the things that look like comments have been parsed,
+        // we can remove the comments
         let line = parse_line_without_comment(line)
             .map(|(_, without_comment)| without_comment)
             .unwrap_or(line);
 
         if let Ok((_, (key, val))) = parse_variable_assignment(line) {
-            let value_template: Template = val.to_string().try_into()?; 
-            variables.insert(key.into(), value_template); 
+            let value_template: Template = val.to_string().try_into()?;
+            variables.insert(key.into(), value_template);
             continue;
         }
 
@@ -360,6 +459,8 @@ fn parse_lines(input: &str) -> anyhow::Result<(Vec<Line>, IndexMap<String, Templ
 }
 
 impl RestFormat {
+    /// Take each parsed line (like a lex token) and
+    /// convert it to the REST format
     fn from_lines(
         lines: Vec<Line>,
         variables: IndexMap<String, Template>,
@@ -371,8 +472,10 @@ impl RestFormat {
             match line {
                 Line::Seperator(name_opt) => {
                     if current_request.trim() != "" {
-                        let recipe = Recipe::from_raw_rest(
-                            current_name, &current_request, recipes.len()
+                        let recipe = Recipe::from_raw_request(
+                            current_name,
+                            &current_request,
+                            recipes.len(),
                         )?;
                         recipes.push(recipe);
                     }
@@ -388,18 +491,20 @@ impl RestFormat {
                     current_name = Some(name);
                 }
                 Line::Request(req) => {
-                    current_request.push_str(&format!("{req}\r\n"));
+                    let next_line = format!("{req}{REQUEST_NEWLINE}");
+                    current_request.push_str(&next_line);
                 }
             }
         }
 
-        let request = Recipe::from_raw_rest(current_name, &current_request, recipes.len())?;
-        recipes.push(request);
+        let recipe = Recipe::from_raw_request(
+            current_name,
+            &current_request,
+            recipes.len(),
+        )?;
+        recipes.push(recipe);
 
-        Ok(Self {
-            recipes,
-            variables,
-        })
+        Ok(Self { recipes, variables })
     }
 }
 
@@ -415,12 +520,27 @@ impl FromStr for RestFormat {
 mod test {
     use super::*;
 
+    const JETBRAINS_FILE: &str = "./test_data/jetbrains.http";
+    const VSCODE_FILE: &str = "./test_data/vscode.rest";
+
+    #[test]
+    fn test_jetbrains_import() {
+        let imported = Collection::from_jetbrains(JETBRAINS_FILE).unwrap();
+        println!("{:?}", imported);
+    }
+
+    #[test]
+    fn test_vscode_import() {
+        let imported = Collection::from_vscode(VSCODE_FILE).unwrap();
+        println!("{:?}", imported);
+    }
+
     #[test]
     fn parse_http_variable() {
         let example_var = "@MY_VAR    = 1231\n";
         let (_, var) = parse_variable_assignment(example_var).unwrap();
 
-        assert_eq!(var, ("MY_VAR", "1231"),);
+        assert_eq!(var, ("MY_VAR", "1231"));
 
         let example_var = "@MY_NAME =hello\n";
         let (rest, var) = parse_variable_assignment(example_var).unwrap();
@@ -524,7 +644,7 @@ X-Http-Method-Override: PUT
 
         let example = "{{my_url}}";
         let parsed: RestUrl = example.parse().unwrap();
-        assert_eq!(parsed.url.to_string(), "{{my_url}}"); 
+        assert_eq!(parsed.url.to_string(), "{{my_url}}");
     }
 
     #[test]
@@ -538,19 +658,44 @@ X-Http-Method-Override: PUT
 {
     "data": "my data"
 }
-"#.trim().replace("\n", "\r\n");
+"#
+        .trim()
+        .replace("\n", REQUEST_NEWLINE);
 
         let (req, body) = parse_request_and_body(&example);
         println!("{req:?}");
         println!("{body:?}");
     }
 
-
-    const JETBRAINS_FILE: &str = "./test_data/jetbrains.http";
-
     #[test]
-    fn test_jetbrains_import() {
-        let imported = Collection::from_jetbrains(JETBRAINS_FILE).unwrap();
-        println!("{:?}", imported); 
+    fn parse_auth_header_test() {
+        let example = "Basic Zm9vOmJhcg==";
+        match Authentication::from_str(example).unwrap() {
+            Authentication::Basic { username, password } => {
+                assert_eq!(username.to_string(), "foo");
+                assert_eq!(password.unwrap().to_string(), "bar");
+            }
+            _ => panic!("Should be basic auth!"),
+        };
+
+        let example = "Basic dXNlcm5hbWV3aXRob3V0cGFzc3dvcmQ=";
+        match Authentication::from_str(example).unwrap() {
+            Authentication::Basic { username, password } => {
+                assert_eq!(username.to_string(), "usernamewithoutpassword");
+                assert!(password.is_none());
+            }
+            _ => panic!("Should be basic auth!"),
+        };
+
+        let example = "Bearer eyjlavljhhkjasdjlkhskljdfklasdlkjhf";
+        match Authentication::from_str(example).unwrap() {
+            Authentication::Bearer(bearer) => {
+                assert_eq!(
+                    bearer.to_string(),
+                    "eyjlavljhhkjasdjlkhskljdfklasdlkjhf"
+                )
+            }
+            _ => panic!("Should be bearer auth!"),
+        }
     }
 }

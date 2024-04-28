@@ -23,7 +23,9 @@ pub struct ImportCommand {
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum Format {
     Insomnia,
+    /// A Jetbrains `.http` file in the REST format 
     Jetbrains,
+    /// A VSCOde `.rest` file in the REST format
     Vscode,
 }
 

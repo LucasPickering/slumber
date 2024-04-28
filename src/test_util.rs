@@ -1,6 +1,6 @@
 use crate::{
     collection::{
-        Chain, ChainSource, Collection, Folder, Profile, ProfileId, Recipe,
+        Chain, ChainSource, Collection, Folder, Profile, Recipe,
         RecipeId, RecipeNode, RecipeTree,
     },
     db::CollectionDatabase,

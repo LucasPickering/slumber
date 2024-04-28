@@ -4,6 +4,10 @@ profiles:
     data:
       HOST: http://httpbin.org
       endpoint: put
+      sort_by: products
+      first_name: joe
+      last_name: list
+      name: '{{first_name}}_{{last_name}}'
 chains: {}
 requests:
   request_1: !request
@@ -19,7 +23,9 @@ requests:
     method: POST
     url: '{{HOST}}/post'
     body: "{\r\n\"data\": \"my data\"\r\n}"
-    authentication: null
+    authentication: !basic
+      username: foo
+      password: bar
     query: {}
     headers:
       Content-Type: application/json
@@ -28,9 +34,27 @@ requests:
     method: PUT
     url: https://httpbin.org/{{endpoint}}
     body: a=b&c=d
-    authentication: null
+    authentication: !bearer efaxijasdfjasdfa
     query: {}
     headers:
       ContentType: application/x-www-form-urlencoded
       Content-Type: json
       My-Header: hello
+  request_4: !request
+    name: WithQuery
+    method: GET
+    url: '{{HOST}}/get'
+    body: null
+    authentication: null
+    query:
+      q: query
+      sort: '{{sort_by}}'
+    headers: {}
+  request_5: !request
+    name: CanTemplateVariables
+    method: POST
+    url: '{{HOST}}/post'
+    body: "{\r\n\"name\": \"{{name}}\"\r\n}"
+    authentication: null
+    query: {}
+    headers: {}

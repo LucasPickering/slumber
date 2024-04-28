@@ -101,6 +101,22 @@ impl InputEngine {
         // ^^^^^ If making changes, make sure to update the docs ^^^^^
     ]);
 
+    /// Should this event immediately be killed? This means it will never be
+    /// handled by a component. This is used to filter out junk events that we
+    /// don't care about, to prevent clogging up the message queue
+    pub fn should_kill(event: &Event) -> bool {
+        matches!(
+            event,
+            Event::FocusGained
+                | Event::FocusLost
+                | Event::Resize(_, _)
+                | Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Moved,
+                    ..
+                })
+        )
+    }
+
     pub fn new(user_bindings: IndexMap<Action, InputBinding>) -> Self {
         let mut new = Self::default();
         // User bindings should overwrite any default ones

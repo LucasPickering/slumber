@@ -12,7 +12,7 @@ use crate::{
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
         context::TuiContext,
-        input::Action,
+        input::{Action, InputEngine},
         message::{Message, MessageSender, RequestConfig},
         signal::signals,
         view::{ModalPriority, PreviewPrompter, RequestState, View},
@@ -21,10 +21,10 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{DisableMouseCapture, EnableMouseCapture, EventStream},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use futures::Future;
+use futures::{Future, StreamExt};
 use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use std::{
@@ -32,20 +32,16 @@ use std::{
     ops::Deref,
     path::PathBuf,
     sync::{Arc, OnceLock},
-    time::{Duration, Instant},
+    time::Duration,
 };
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use tokio::{
+    sync::mpsc::{self, UnboundedReceiver},
+    time,
+};
 use tracing::{debug, error, info, trace};
 
-/// Main controller struct for the TUI. The app uses a React-like architecture
-/// for the view, with a wrapping controller (this struct). The main loop goes
-/// through the following phases on each iteration:
-///
-/// - Input phase: Check for input from the user
-/// - Message phase: Process any async messages from input or external sources
-///   (HTTP, file system, etc.)
-/// - Event phase: Handle any *view* events that have been queued up
-/// - Draw phase: Draw the entire UI
+/// Main controller struct for the TUI. The app uses a React-ish architecture
+/// for the view, with a wrapping controller (this struct)
 #[derive(Debug)]
 pub struct Tui {
     terminal: Term,
@@ -61,7 +57,7 @@ pub struct Tui {
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
 impl Tui {
-    /// Rough maximum time for each iteration of the main loop
+    /// Rough **maximum** time for each iteration of the main loop
     const TICK_TIME: Duration = Duration::from_millis(250);
 
     /// Start the TUI. Any errors that occur during startup will be panics,
@@ -109,44 +105,39 @@ impl Tui {
             view: Replaceable::new(view),
         };
 
-        app.run()
+        app.run().await
     }
 
     /// Run the main TUI update loop. Any error returned from this is fatal. See
     /// the struct definition for a description of the different phases of the
     /// run loop.
-    fn run(mut self) -> anyhow::Result<()> {
+    async fn run(mut self) -> anyhow::Result<()> {
         self.listen_for_signals();
         // Hang onto this because it stops running when dropped
         let _watcher = self.watch_collection()?;
 
-        let mut last_tick = Instant::now();
+        // Listen for input in a separate task
+        tokio::spawn(Self::input_loop());
 
+        // This loop is limited by the rate that messages come in, with a
+        // minimum rate enforced by a timeout
         while self.should_run {
-            // ===== Input Phase =====
-            let timeout = Self::TICK_TIME
-                .checked_sub(last_tick.elapsed())
-                .unwrap_or_else(|| Duration::from_secs(0));
-            // This is where the tick rate is enforced
-            if crossterm::event::poll(timeout)? {
-                // Forward input to the view. Include the raw event for text
-                // editors and such
-                let event = crossterm::event::read()?;
-                let action = TuiContext::get().input_engine.action(&event);
-                if let Some(Action::ForceQuit) = action {
-                    // Short-circuit the view/message cycle, to make sure this
-                    // doesn't get ate
-                    self.quit();
-                } else {
-                    self.view.handle_input(event, action);
-                }
-            }
-            if last_tick.elapsed() >= Self::TICK_TIME {
-                last_tick = Instant::now();
-            }
+            // ===== Draw Phase =====
+            // Draw *first* so initial UI state is rendered immediately
+            self.terminal.draw(|f| self.view.draw(f))?;
 
             // ===== Message Phase =====
-            while let Ok(message) = self.messages_rx.try_recv() {
+            // Grab one message out of the queue and handle it. This will block
+            // while the queue is empty so we don't waste CPU cycles. The
+            // timeout here makes sure we don't block forever, so thinks like
+            // time displays during in-flight requests will update.
+            let future =
+                time::timeout(Self::TICK_TIME, self.messages_rx.recv());
+            if let Ok(message) = future.await {
+                // Error would indicate a very weird and fatal bug so we wanna
+                // know about it
+                let message =
+                    message.expect("Message channel dropped while running");
                 trace!(?message, "Handling message");
                 // If an error occurs, store it so we can show the user
                 if let Err(error) = self.handle_message(message) {
@@ -157,12 +148,28 @@ impl Tui {
             // ===== Event Phase =====
             // Let the view handle all queued events
             self.view.handle_events();
-
-            // ===== Draw Phase =====
-            self.terminal.draw(|f| self.view.draw(f))?;
         }
 
         Ok(())
+    }
+
+    /// Blocking loop to read input from the terminal. Each event is pushed
+    /// into the message queue for handling by the main loop.
+    async fn input_loop() {
+        let mut stream = EventStream::new();
+
+        while let Some(result) = stream.next().await {
+            // Failure to read input is both weird and fatal, so panic
+            let event = result.expect("Error reading terminal input");
+
+            // Filter out junk events so we don't clog the message queue
+            if InputEngine::should_kill(&event) {
+                continue;
+            }
+
+            let action = TuiContext::get().input_engine.action(&event);
+            TuiContext::send_message(Message::Input { event, action });
+        }
     }
 
     /// Handle an incoming message. Any error here will be displayed as a modal
@@ -241,6 +248,16 @@ impl Tui {
                     ),
                 };
                 self.view.set_request_state(profile_id, recipe_id, state);
+            }
+
+            // Force quit short-circuits the view/message cycle, to make sure
+            // it doesn't get ate by text boxes
+            Message::Input {
+                action: Some(Action::ForceQuit),
+                ..
+            } => self.quit(),
+            Message::Input { event, action } => {
+                self.view.handle_input(event, action);
             }
 
             Message::RequestLoad {

@@ -12,7 +12,6 @@ use crate::{
         },
     },
 };
-use crossterm::event::{MouseEvent, MouseEventKind};
 use std::{any::Any, cell::RefCell, collections::VecDeque, fmt::Debug};
 use tracing::trace;
 
@@ -155,26 +154,6 @@ impl Event {
 }
 
 impl Event {
-    /// Should this event immediately be killed, meaning it will never be
-    /// handled by a component. This is used to filter out junk events that will
-    /// never be handled, mostly to make debug logging cleaner.
-    pub fn should_kill(&self) -> bool {
-        use crossterm::event::Event;
-        matches!(
-            self,
-            Self::Input {
-                event: Event::FocusGained
-                    | Event::FocusLost
-                    | Event::Resize(_, _)
-                    | Event::Mouse(MouseEvent {
-                        kind: MouseEventKind::Moved,
-                        ..
-                    }),
-                ..
-            }
-        )
-    }
-
     /// Is this event pertinent to the component? Most events should be handled,
     /// but some (e.g. cursor events) need to be selectively filtered
     pub fn should_handle<T>(&self, component: &Component<T>) -> bool {

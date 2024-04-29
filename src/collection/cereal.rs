@@ -146,6 +146,7 @@ pub mod serde_duration {
     where
         D: Deserializer<'de>,
     {
+        // TODO remove regex
         // unstable: use LazyLock https://github.com/rust-lang/rust/pull/121377
         static REGEX: OnceLock<Regex> = OnceLock::new();
         let s = String::deserialize(deserializer)?;

@@ -5,27 +5,28 @@
 //! not a value, use [ContentType]. If you want to parse dynamically based on
 //! the response's metadata, use [ContentType::parse_response].
 
-use crate::http::Response;
+use crate::{http::Response, util::Mapping};
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
-use regex::Regex;
-use serde::{de::IntoDeserializer, Deserialize, Serialize};
-use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path, sync::OnceLock};
+use mime::{Mime, APPLICATION, JSON};
+use reqwest::header::{self, HeaderValue};
+use serde::{Deserialize, Serialize};
+use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path};
 
 /// All supported content types. Each variant should have a corresponding
 /// implementation of [ResponseContent].
 ///
-/// Serialization/deserialization of this only uses the short name. To parse
-/// a MIME type (from an HTTP header), use [Self::from_response]. This is to
-/// prevent accidentally supporting invalid MIME types.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+/// Each content type is can be referred to in a few ways:
+/// - Its serialization string, which is only used within Slumber (e.g. in the
+///   collection model)
+/// - Its MIME type
+/// - Its file extension(s)
+///
+/// For the serialization string, obviously use serde. For the others, use
+/// the corresponding methods/associated functions.
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentType {
-    // Primary serialization string here should match the string we expect
-    // users to enter in their collection file for manual overrides, i.e. the
-    // most obvious/user-friendly value. MIME types are implemented
-    // separately.
     Json,
 }
 
@@ -82,6 +83,40 @@ impl ResponseContent for Json {
 }
 
 impl ContentType {
+    /// File extensions for each content type
+    const EXTENSIONS: Mapping<'static, ContentType> =
+        Mapping::new(&[(Self::Json, &["json"])]);
+
+    /// Get the file extension associated with this content type. For content
+    /// types that have multiple common extensions (e.g. `image/jpeg` has `jpeg`
+    /// and `jpg`), return whichever is defined first in the mapping.
+    pub fn extension(&self) -> &'static str {
+        Self::EXTENSIONS.get_label(*self)
+    }
+
+    /// Guess content type from a file path based on its extension
+    pub fn from_path(path: &Path) -> anyhow::Result<Self> {
+        let extension = path
+            .extension()
+            .and_then(OsStr::to_str)
+            .ok_or_else(|| anyhow!("Path {path:?} has no extension"))?;
+        Self::EXTENSIONS
+            .get(extension)
+            .ok_or_else(|| anyhow!("Unknown extension `{extension}`"))
+    }
+
+    /// Parse the content type from a response's `Content-Type` header
+    pub fn from_response(response: &Response) -> anyhow::Result<Self> {
+        let header_value = response
+            .headers
+            .get(header::CONTENT_TYPE)
+            .map(HeaderValue::as_bytes)
+            .ok_or_else(|| anyhow!("Response has no content-type header"))?;
+        let header_value = std::str::from_utf8(header_value)
+            .context("content-type header is not valid utf-8")?;
+        Self::from_mime(header_value)
+    }
+
     /// Parse some content of this type. Return a dynamically dispatched content
     /// object.
     pub fn parse_content(
@@ -115,50 +150,21 @@ impl ContentType {
         content_type.parse_content(response.body.bytes())
     }
 
-    /// Parse the content type from a file's extension
-    pub fn from_extension(path: &Path) -> anyhow::Result<Self> {
-        let extension = path
-            .extension()
-            .and_then(OsStr::to_str)
-            .ok_or_else(|| anyhow!("Path {path:?} has no extension"))?;
-        // Lean on serde for parsing
-        ContentType::deserialize(extension.into_deserializer())
-            .map_err(serde::de::value::Error::into)
-    }
-
-    /// Parse the content type from a response's `Content-Type` header
-    pub fn from_response(response: &Response) -> anyhow::Result<Self> {
-        // If the header value isn't utf-8, we're hosed
-        let header_value = response
-            .content_type()
-            .ok_or_else(|| anyhow!("Response has no content-type header"))?;
-        let header_value = std::str::from_utf8(header_value)
-            .context("content-type header is not valid utf-8")?;
-        Self::from_header(header_value)
-    }
-
     /// Parse the value of the content-type header and map it to a known content
     /// type
-    fn from_header(header_value: &str) -> anyhow::Result<Self> {
-        // unstable: use LazyLock https://github.com/rust-lang/rust/pull/121377
-        static JSON_REGEX: OnceLock<Regex> = OnceLock::new();
+    fn from_mime(mime_type: &str) -> anyhow::Result<Self> {
+        let mime_type: Mime = mime_type
+            .parse()
+            .with_context(|| format!("Invalid content type `{mime_type}`"))?;
 
-        // Remove extra metadata from the header. It feels like there should be
-        // a helper for this in hyper or reqwest but I couldn't find it.
-        // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-        let content_type = header_value
-            .split_once(';')
-            .map(|t| t.0)
-            .unwrap_or(header_value);
-
-        let regex = JSON_REGEX.get_or_init(|| {
-            Regex::new("^application/(\\w+\\+)?json$").unwrap()
-        });
-
-        if regex.is_match(content_type) {
-            Ok(Self::Json)
-        } else {
-            Err(anyhow!("Unknown content type {header_value:?}"))
+        let suffix = mime_type.suffix().map(|name| name.as_str());
+        match (mime_type.type_(), mime_type.subtype(), suffix) {
+            // JSON has a lot of extended types that follow the pattern
+            // "application/*+json", match those too
+            (APPLICATION, JSON, _) | (APPLICATION, _, Some("json")) => {
+                Ok(Self::Json)
+            }
+            _ => Err(anyhow!("Unknown content type `{mime_type}`")),
         }
     }
 }
@@ -189,37 +195,37 @@ mod tests {
         #[case] mime_type: &str,
         #[case] expected: ContentType,
     ) {
-        assert_eq!(ContentType::from_header(mime_type).unwrap(), expected);
+        assert_eq!(ContentType::from_mime(mime_type).unwrap(), expected);
     }
 
     /// Test invalid/unknown MIME types
     #[rstest]
-    #[case::invalid("json")] // Bare types not supported
-    #[case::json_empty_extension("application/+json")]
-    #[case::whitespace("application/ +json")] // Spaces are bad!
-    #[case::unknown("text/html")]
-    fn test_try_from_mime_error(#[case] mime_type: &str) {
-        assert_err!(
-            ContentType::from_header(mime_type),
-            "Unknown content type"
-        );
+    #[case::invalid("json", "Invalid content type")]
+    #[case::json_empty_extension("application/+json", "Unknown content type")]
+    #[case::whitespace("application/ +json", "Invalid content type")]
+    #[case::unknown("text/html", "Unknown content type")]
+    fn test_try_from_mime_error(
+        #[case] mime_type: &str,
+        #[case] expected_error: &str,
+    ) {
+        assert_err!(ContentType::from_mime(mime_type), expected_error);
     }
 
     #[test]
     fn test_from_extension() {
         assert_eq!(
-            ContentType::from_extension(Path::new("turbo.json")).unwrap(),
+            ContentType::from_path(Path::new("turbo.json")).unwrap(),
             ContentType::Json
         );
 
         // Errors
         assert_err!(
-            ContentType::from_extension(Path::new("no_extension")),
+            ContentType::from_path(Path::new("no_extension")),
             "no extension"
         );
         assert_err!(
-            ContentType::from_extension(Path::new("turbo.ohno")),
-            "unknown variant `ohno`"
+            ContentType::from_path(Path::new("turbo.ohno")),
+            "Unknown extension `ohno`"
         )
     }
 
@@ -256,7 +262,7 @@ mod tests {
     #[case::unknown_content_type(
         Some("bad-header"),
         "",
-        "Unknown content type \"bad-header\""
+        "Invalid content type `bad-header`"
     )]
     #[case::invalid_header_utf8(Some(b"\xc3\x28".as_slice()), "", "not valid utf-8")]
     #[case::invalid_content(

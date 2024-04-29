@@ -3,7 +3,11 @@ pub mod paths;
 use crate::{http::RequestError, template::ChainError};
 use derive_more::{DerefMut, Display};
 use serde::de::DeserializeOwned;
-use std::{fmt, iter::FusedIterator, ops::Deref};
+use std::{
+    fmt::{self, Debug},
+    iter::FusedIterator,
+    ops::Deref,
+};
 use strum::{EnumCount, IntoEnumIterator};
 use tracing::error;
 
@@ -132,6 +136,52 @@ impl<'a> Display for MaybeStr<'a> {
             }
             Ok(())
         }
+    }
+}
+
+/// A static mapping between values (of type `T`) and labels (strings). Used to
+/// both stringify from and parse to `T`.
+pub struct Mapping<'a, T: Copy>(&'a [(T, &'a [&'a str])]);
+
+impl<'a, T: Copy> Mapping<'a, T> {
+    /// Construct a new mapping
+    pub const fn new(mapping: &'a [(T, &'a [&'a str])]) -> Self {
+        Self(mapping)
+    }
+
+    /// Get a value by one of its labels
+    pub fn get(&self, s: &str) -> Option<T> {
+        for (value, strs) in self.0 {
+            for other_string in *strs {
+                if *other_string == s {
+                    return Some(*value);
+                }
+            }
+        }
+        None
+    }
+
+    /// Get the label mapped to a value. If it has multiple labels, use the
+    /// first. Panic if the value has no mapped labels
+    pub fn get_label(&self, value: T) -> &str
+    where
+        T: Debug + PartialEq,
+    {
+        let (_, strings) = self
+            .0
+            .iter()
+            .find(|(v, _)| v == &value)
+            .unwrap_or_else(|| panic!("Unknown value {value:?}"));
+        strings
+            .first()
+            .unwrap_or_else(|| panic!("No mapped strings for value {value:?}"))
+    }
+
+    /// Get all available mapped strings
+    pub fn all_strings(&self) -> impl Iterator<Item = &str> {
+        self.0
+            .iter()
+            .flat_map(|(_, strings)| strings.iter().copied())
     }
 }
 

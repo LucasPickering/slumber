@@ -33,11 +33,11 @@
 //! | RequestRecord |
 //! +---------------+
 
-mod parse;
+mod content_type;
 mod query;
 mod record;
 
-pub use parse::*;
+pub use content_type::*;
 pub use query::*;
 pub use record::*;
 

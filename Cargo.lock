@@ -1946,6 +1946,7 @@ dependencies = [
  "futures",
  "indexmap",
  "itertools",
+ "mime",
  "mockito",
  "nom",
  "notify",

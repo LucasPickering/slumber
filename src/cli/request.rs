@@ -172,7 +172,7 @@ impl BuildRequestCommand {
             collection.profiles.get(profile_id).ok_or_else(|| {
                 anyhow!(
                     "No profile with ID `{profile_id}`; options are: {}",
-                    collection.profiles.keys().join(", ")
+                    collection.profiles.keys().format(", ")
                 )
             })?;
         }
@@ -185,7 +185,7 @@ impl BuildRequestCommand {
                 anyhow!(
                     "No recipe with ID `{}`; options are: {}",
                     self.recipe_id,
-                    collection.recipes.recipe_ids().join(", ")
+                    collection.recipes.recipe_ids().format(", ")
                 )
             })?
             .clone();

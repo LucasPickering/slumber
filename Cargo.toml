@@ -34,7 +34,6 @@ notify = {version = "^6.1.1", default-features = false, features = ["macos_fseve
 open = "5.1.1"
 pretty_assertions = "1.4.0"
 ratatui = {version = "^0.26.0", features = ["unstable-rendered-line-info"]}
-regex = {version = "1.10.3", default-features = false, features = ["perf"]}
 reqwest = {version = "^0.11.20", default-features = false, features = ["rustls-tls"]}
 rmp-serde = "^1.1.2"
 rusqlite = {version = "^0.30.0", default-features = false, features = ["bundled", "chrono", "uuid"]}

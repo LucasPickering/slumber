@@ -26,10 +26,11 @@ use url::Url;
 
 use crate::template::Template;
 
-use super::recipe_tree::RecipeTree;
+use super::{recipe_tree::RecipeTree, ProfileId};
 use super::{
     Authentication, Collection, Method, Profile, Recipe, RecipeId, RecipeNode,
 };
+use super::jetbrains_env::{JetbrainsEnv};
 
 type StrResult<'a> = Result<(&'a str, &'a str), nom::Err<NomError<&'a str>>>;
 
@@ -47,18 +48,31 @@ impl Collection {
     ) -> anyhow::Result<Self> {
         let jetbrains_file = jetbrains_file.as_ref();
         has_extension_or_error(jetbrains_file, "http")?;
-        Self::from_rest_file(jetbrains_file)
+        Self::from_rest_file(jetbrains_file, None)
+    }
+
+    pub fn from_jetbrains_with_env(
+        jetbrains_file: impl AsRef<Path>,
+    ) -> anyhow::Result<Self> {
+        let jetbrains_file = jetbrains_file.as_ref();
+        has_extension_or_error(jetbrains_file, "http")?;
+       
+        let dir = jetbrains_file.parent()
+            .ok_or(anyhow!("Could not find directory"))?;
+        let env = JetbrainsEnv::from_directory(dir)?;
+
+        Self::from_rest_file(jetbrains_file, Some(env))
     }
 
     /// Convert a vscode `.rest` file into a slumber a collection
     pub fn from_vscode(vscode_file: impl AsRef<Path>) -> anyhow::Result<Self> {
         let vscode_file = vscode_file.as_ref();
         has_extension_or_error(vscode_file, "rest")?;
-        Self::from_rest_file(vscode_file)
+        Self::from_rest_file(vscode_file, None)
     }
 
     /// Convert an `.http` or a `.rest` file into a slumber collection
-    fn from_rest_file(rest_file: &Path) -> anyhow::Result<Self> {
+    fn from_rest_file(rest_file: &Path, env: Option<JetbrainsEnv>) -> anyhow::Result<Self> {
         let mut file = File::open(rest_file)
             .context(format!("Error opening REST file {rest_file:?}"))?;
 
@@ -66,16 +80,14 @@ impl Collection {
         file.read_to_string(&mut text)
             .context(format!("Error reading REST file {rest_file:?}"))?;
 
-        Self::from_rest_str(&text)
+        Self::from_rest_str(&text, env)
     }
 
-    fn from_rest_str(text: &str) -> anyhow::Result<Collection> {
+    fn from_rest_str(text: &str, env: Option<JetbrainsEnv>) -> anyhow::Result<Collection> {
         let RestFormat { recipes, variables } = RestFormat::from_str(&text)?;
         let tree = build_recipe_tree(recipes)?;
-        let default_profile = build_default_profile(variables);
 
-        let profile_id = default_profile.id.clone();
-        let profiles = IndexMap::from([(profile_id, default_profile)]);
+        let profiles = build_profiles(variables, env);
 
         let collection = Self {
             profiles,
@@ -88,14 +100,14 @@ impl Collection {
     }
 }
 
-/// REST is a pretty simple format and doesn't have anything like profiles
-/// It does have variables, so this just throws them into a default profile
-fn build_default_profile(data: IndexMap<String, Template>) -> Profile {
-    Profile {
-        id: "default".into(),
-        name: None,
-        data,
-    }
+
+fn build_profiles(data: IndexMap<String, Template>, jetbrains_env: Option<JetbrainsEnv>) -> IndexMap<ProfileId, Profile> {
+    todo!() 
+    // vec![Profile {
+    //     id: "default".into(),
+    //     name: None,
+    //     data,
+    // }]
 }
 
 /// A list of ungrouped recipes is returned from the parser
@@ -148,10 +160,7 @@ impl Recipe {
         let RestUrl { url, query } = RestUrl::from_str(path)?;
         let (headers, authentication) = build_headers(req.headers)?;
 
-        let method_literal = req.method.ok_or(anyhow!(
-            "There is not a method for this request! (URL: {})",
-            url
-        ))?;
+        let method_literal = req.method.unwrap_or("GET");
         let method = Method::from_str(&method_literal)?;
 
         let body: Option<Template> = match body_portion {
@@ -161,7 +170,7 @@ impl Recipe {
 
         let id_name = format!("request_{}", index + 1);
         let id: RecipeId = id_name.into();
-        let recipe = Self {
+        Ok(Self {
             id,
             name,
             method,
@@ -170,10 +179,7 @@ impl Recipe {
             query,
             headers,
             authentication,
-        };
-        println!("{:?}\n\n", recipe);
-
-        Ok(recipe)
+        })
     }
 }
 
@@ -211,7 +217,6 @@ fn build_headers(
             .context(format!("Cannot parse header value as template"))?;
         headers.insert(name, value);
     }
-
     Ok((headers, authentication))
 }
 
@@ -467,16 +472,25 @@ impl FromStr for RestFormat {
     }
 }
 
+
+
 #[cfg(test)]
 mod test {
+    use crate::collection::CollectionFile;
+
     use super::*;
 
     const JETBRAINS_FILE: &str = "./test_data/jetbrains.http";
+    const JETBRAINS_RESULT: &str = "./test_data/jetbrains_imported.yml";
 
-    #[test]
-    fn test_jetbrains_import() {
+    #[tokio::test]
+    async fn test_jetbrains_import() {
         let imported = Collection::from_jetbrains(JETBRAINS_FILE).unwrap();
-        println!("{:?}", imported);
+        let expected = CollectionFile::load(JETBRAINS_RESULT.into())
+            .await
+            .unwrap()
+            .collection;
+        assert_eq!(imported, expected);
     }
 
     #[test]
@@ -528,6 +542,9 @@ mod test {
         let line = "# @name Cool";
         let (_, name) = parse_request_name_annotation(line).unwrap();
         assert_eq!(name, "Cool".to_string());
+
+        let line = "# a comment";
+        assert!(parse_request_name_annotation(line).is_err());
     }
 
     #[test]

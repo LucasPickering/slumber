@@ -27,8 +27,6 @@ enum Format {
     Jetbrains,
     /// A VSCOde `.rest` file in the REST format
     Vscode,
-    /// A Jetbrains `.http` file with an `http-client.env.json` in the same directory
-    JetbrainsWithEnv,
 }
 
 #[async_trait]
@@ -39,7 +37,6 @@ impl Subcommand for ImportCommand {
             Format::Insomnia => Collection::from_insomnia(&self.input_file)?,
             Format::Vscode => Collection::from_vscode(&self.input_file)?,
             Format::Jetbrains => Collection::from_jetbrains(&self.input_file)?,
-            Format::JetbrainsWithEnv => todo!()
         };
 
         // Write the output

@@ -43,25 +43,18 @@ const NAME_ANNOTATION: &str = "@name";
 
 impl Collection {
     /// Convert a jetbrains `.http` file into a slumber a collection
+    /// With an optional `http-client.env.json` file in the same directory 
     pub fn from_jetbrains(
         jetbrains_file: impl AsRef<Path>,
     ) -> anyhow::Result<Self> {
         let jetbrains_file = jetbrains_file.as_ref();
         has_extension_or_error(jetbrains_file, "http")?;
-        Self::from_rest_file(jetbrains_file, None)
-    }
-
-    pub fn from_jetbrains_with_env(
-        jetbrains_file: impl AsRef<Path>,
-    ) -> anyhow::Result<Self> {
-        let jetbrains_file = jetbrains_file.as_ref();
-        has_extension_or_error(jetbrains_file, "http")?;
-       
+        
         let dir = jetbrains_file.parent()
             .ok_or(anyhow!("Could not find directory"))?;
-        let env = JetbrainsEnv::from_directory(dir)?;
+        let env = JetbrainsEnv::from_directory(dir).ok();
 
-        Self::from_rest_file(jetbrains_file, Some(env))
+        Self::from_rest_file(jetbrains_file, env)
     }
 
     /// Convert a vscode `.rest` file into a slumber a collection
@@ -83,11 +76,14 @@ impl Collection {
         Self::from_rest_str(&text, env)
     }
 
-    fn from_rest_str(text: &str, env: Option<JetbrainsEnv>) -> anyhow::Result<Collection> {
+    fn from_rest_str(text: &str, env_file: Option<JetbrainsEnv>) -> anyhow::Result<Collection> {
         let RestFormat { recipes, variables } = RestFormat::from_str(&text)?;
         let tree = build_recipe_tree(recipes)?;
 
-        let profiles = build_profiles(variables, env);
+        let profiles = match env_file {
+            Some(env) => env.to_profiles(variables)?, 
+            None => build_default_profiles(variables),
+        };
 
         let collection = Self {
             profiles,
@@ -100,15 +96,17 @@ impl Collection {
     }
 }
 
-
-fn build_profiles(data: IndexMap<String, Template>, jetbrains_env: Option<JetbrainsEnv>) -> IndexMap<ProfileId, Profile> {
-    todo!() 
-    // vec![Profile {
-    //     id: "default".into(),
-    //     name: None,
-    //     data,
-    // }]
+fn build_default_profiles(data: IndexMap<String, Template>) -> IndexMap<ProfileId, Profile> {
+    let profile = Profile {
+        id: "default".into(),
+        name: None,
+        data,
+    }; 
+    IndexMap::from([
+        ("default".into(), profile)
+    ])
 }
+
 
 /// A list of ungrouped recipes is returned from the parser
 /// This converts them into a recipe tree

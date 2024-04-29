@@ -440,7 +440,7 @@ impl<'a> ChainTemplateSource<'a> {
             })?
             .into();
         // Guess content type based on file extension
-        let content_type = ContentType::from_extension(&path).ok();
+        let content_type = ContentType::from_path(&path).ok();
         let content = fs::read(&path)
             .await
             .map_err(|error| ChainError::File { path, error })?;

@@ -1,5 +1,6 @@
 //! Logic related to input handling. This is considered part of the controller.
 
+use crate::util::Mapping;
 use anyhow::{anyhow, bail};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MediaKeyCode,
@@ -32,7 +33,7 @@ pub struct InputEngine {
 
 impl InputEngine {
     /// Key code to string mappings
-    const KEY_CODES: Mapping<'static, KeyCode> = Mapping(&[
+    const KEY_CODES: Mapping<'static, KeyCode> = Mapping::new(&[
         // unstable: include ASCII chars
         // https://github.com/rust-lang/rust/issues/110998
         // vvvvv If making changes, make sure to update the docs vvvvv
@@ -90,7 +91,7 @@ impl InputEngine {
         // ^^^^^ If making changes, make sure to update the docs ^^^^^
     ]);
     /// Key modifier to string mappings
-    const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping(&[
+    const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping::new(&[
         // vvvvv If making changes, make sure to update the docs vvvvv
         (KeyModifiers::SHIFT, &["shift"]),
         (KeyModifiers::ALT, &["alt"]),
@@ -492,47 +493,6 @@ impl TryFrom<String> for KeyCombination {
     }
 }
 
-/// A static mapping between some type and strings. Used to both stringify and
-/// parse from/to the type.
-struct Mapping<'a, T: Copy>(&'a [(T, &'a [&'a str])]);
-
-impl<'a, T: Copy> Mapping<'a, T> {
-    /// Get a value by one of its associated strings
-    fn get(&self, string: &str) -> Option<T> {
-        for (value, strs) in self.0 {
-            for other_string in *strs {
-                if *other_string == string {
-                    return Some(*value);
-                }
-            }
-        }
-        None
-    }
-
-    /// Get the string mapped to a value. If it has multiple strings, use the
-    /// first. Panic if the value has no mapped strings
-    fn get_string(&self, value: T) -> &str
-    where
-        T: Debug + PartialEq,
-    {
-        let (_, strings) = self
-            .0
-            .iter()
-            .find(|(v, _)| v == &value)
-            .unwrap_or_else(|| panic!("Unknown value {value:?}"));
-        strings
-            .first()
-            .unwrap_or_else(|| panic!("No mapped strings for value {value:?}"))
-    }
-
-    /// Get all available mapped strings
-    fn all_strings(&self) -> impl Iterator<Item = &str> {
-        self.0
-            .iter()
-            .flat_map(|(_, strings)| strings.iter().copied())
-    }
-}
-
 /// Parse a plain key code
 fn parse_key_code(s: &str) -> anyhow::Result<KeyCode> {
     // Check for plain char code
@@ -554,7 +514,7 @@ fn stringify_key_code(code: KeyCode) -> Cow<'static, str> {
     if let KeyCode::Char(c) = code {
         c.to_string().into()
     } else {
-        InputEngine::KEY_CODES.get_string(code).into()
+        InputEngine::KEY_CODES.get_label(code).into()
     }
 }
 
@@ -570,7 +530,7 @@ fn parse_key_modifier(s: &str) -> anyhow::Result<KeyModifiers> {
 
 /// Convert key modifier to string. Inverse of parsing
 fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
-    InputEngine::KEY_MODIFIERS.get_string(modifier).into()
+    InputEngine::KEY_MODIFIERS.get_label(modifier).into()
 }
 
 #[cfg(test)]

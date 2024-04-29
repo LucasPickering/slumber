@@ -304,7 +304,7 @@ impl TryFrom<String> for Method {
         value.parse().map_err(|_| {
             anyhow!(
                 "Invalid HTTP method `{value}`. Must be one of: {}",
-                Method::iter().map(|method| method.to_string()).join(", ")
+                Method::iter().map(|method| method.to_string()).format(", ")
             )
         })
     }

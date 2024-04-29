@@ -1953,7 +1953,6 @@ dependencies = [
  "open",
  "pretty_assertions",
  "ratatui",
- "regex",
  "reqwest",
  "rmp-serde",
  "rstest",

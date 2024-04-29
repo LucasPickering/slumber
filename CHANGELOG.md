@@ -2,6 +2,8 @@
 
 ## [Unreleased] - ReleaseDate
 
+## [1.0.2] - 2024-04-29
+
 ### Changed
 
 - Reduce UI latency under certain scenarios

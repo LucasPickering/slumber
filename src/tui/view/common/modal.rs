@@ -1,5 +1,6 @@
 use crate::tui::{
     input::Action,
+    message::MessageSender,
     view::{
         draw::Draw,
         event::{Event, EventHandler, Update},
@@ -92,7 +93,7 @@ impl ModalQueue {
 }
 
 impl EventHandler for ModalQueue {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
         match event {
             // Close the active modal. If there's no modal open, we'll propagate
             // the event down
@@ -161,8 +162,8 @@ impl Draw for ModalQueue {
 }
 
 impl EventHandler for Box<dyn Modal> {
-    fn update(&mut self, event: Event) -> Update {
-        self.deref_mut().update(event)
+    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+        self.deref_mut().update(messages_tx, event)
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {

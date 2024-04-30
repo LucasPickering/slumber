@@ -3,6 +3,7 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
+        message::MessageSender,
         view::{
             common::Pane,
             draw::{Draw, Generate},
@@ -125,7 +126,7 @@ impl RecipeListPane {
 }
 
 impl EventHandler for RecipeListPane {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };

@@ -1,6 +1,7 @@
 use crate::tui::{
     context::TuiContext,
     input::Action,
+    message::MessageSender,
     view::{
         draw::{Draw, Generate},
         event::{Event, EventHandler, Update},
@@ -91,7 +92,7 @@ impl<T> TextWindow<T> {
 }
 
 impl<T: Debug> EventHandler for TextWindow<T> {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };

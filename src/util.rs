@@ -54,7 +54,7 @@ impl<T> Replaceable<T> {
     ///
     /// The only time this value will panic on access is while the passed
     /// closure is executing (or during unwind if it panicked).
-    pub fn replace(&mut self, f: impl Fn(T) -> T) {
+    pub fn replace(&mut self, f: impl FnOnce(T) -> T) {
         let old = self.0.take().expect("Replaceable value not present!");
         self.0 = Some(f(old));
     }

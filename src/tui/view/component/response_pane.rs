@@ -3,7 +3,7 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
-        message::Message,
+        message::{Message, MessageSender},
         view::{
             common::{
                 actions::ActionsModal, header_table::HeaderTable, tabs::Tabs,
@@ -146,7 +146,7 @@ enum Tab {
 }
 
 impl EventHandler for CompleteResponseContent {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::OpenActions),
@@ -161,7 +161,7 @@ impl EventHandler for CompleteResponseContent {
                         if let Some(body) =
                             self.body.get().and_then(|body| body.text())
                         {
-                            TuiContext::send_message(Message::CopyText(body));
+                            messages_tx.send(Message::CopyText(body));
                         }
                     }
                     None => return Update::Propagate(event),

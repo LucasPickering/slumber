@@ -2,11 +2,7 @@ use crate::{
     config::Config,
     db::CollectionDatabase,
     http::HttpEngine,
-    tui::{
-        input::InputEngine,
-        message::{Message, MessageSender},
-        view::Theme,
-    },
+    tui::{input::InputEngine, view::Theme},
 };
 use std::sync::OnceLock;
 
@@ -20,14 +16,8 @@ static CONTEXT: OnceLock<TuiContext> = OnceLock::new();
 /// or collection reload, should *not* go in here.
 ///
 /// The purpose of this is to make it easy for components in the view to access
-/// global data without needing to drill it all down the tree. This is purely
-/// for convenience. The invariants that make this work are simple and easy to
-/// enforce.
-///
-/// Context data falls into two categories:
-/// - Read-only
-/// - Concurrently modifiable
-/// Both are safe to access in statics!
+/// **read-only** global data without needing to drill it all down the tree.
+/// This is purely for convenience.
 #[derive(Debug)]
 pub struct TuiContext {
     /// App-level configuration
@@ -38,9 +28,6 @@ pub struct TuiContext {
     pub input_engine: InputEngine,
     /// For sending HTTP requests
     pub http_engine: HttpEngine,
-    /// Async message queue. Used to trigger async tasks and mutations from the
-    /// view.
-    pub messages_tx: MessageSender,
     /// Persistence database. The TUI only ever needs to run DB ops related to
     /// our collection, so we can use a collection-restricted DB handle
     pub database: CollectionDatabase,
@@ -48,11 +35,7 @@ pub struct TuiContext {
 
 impl TuiContext {
     /// Initialize global context. Should be called only once, during startup.
-    pub fn init(
-        config: Config,
-        messages_tx: MessageSender,
-        database: CollectionDatabase,
-    ) {
+    pub fn init(config: Config, database: CollectionDatabase) {
         let input_engine = InputEngine::new(config.input_bindings.clone());
         let http_engine = HttpEngine::new(&config, database.clone());
         CONTEXT
@@ -61,7 +44,6 @@ impl TuiContext {
                 theme: Theme::default(),
                 input_engine,
                 http_engine,
-                messages_tx,
                 database,
             })
             .expect("Global context is already initialized");
@@ -73,11 +55,6 @@ impl TuiContext {
         // configurable we'll need to populate the static value during startup
         CONTEXT.get().expect("Global context is not initialized")
     }
-
-    /// Send a message to trigger an async action
-    pub fn send_message(message: Message) {
-        Self::get().messages_tx.send(message);
-    }
 }
 
 /// Test fixture for using context. This will initialize it once for all tests
@@ -85,10 +62,5 @@ impl TuiContext {
 #[rstest::fixture]
 #[once]
 pub fn tui_context() {
-    use tokio::sync::mpsc;
-    TuiContext::init(
-        Config::default(),
-        MessageSender::new(mpsc::unbounded_channel().0),
-        CollectionDatabase::testing(),
-    );
+    TuiContext::init(Config::default(), CollectionDatabase::testing());
 }

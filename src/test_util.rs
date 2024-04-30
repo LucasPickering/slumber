@@ -1,7 +1,7 @@
 use crate::{
     collection::{
-        Chain, ChainSource, Collection, Folder, Profile, Recipe,
-        RecipeId, RecipeNode, RecipeTree,
+        Chain, ChainSource, Collection, Folder, Profile, Recipe, RecipeId,
+        RecipeNode, RecipeTree,
     },
     db::CollectionDatabase,
     http::{Body, Request, RequestId, RequestRecord, Response},

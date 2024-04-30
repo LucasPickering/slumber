@@ -133,7 +133,6 @@ impl From<&str> for RecipeId {
     }
 }
 
-
 /// HTTP method. This is duplicated from reqwest's Method so we can enforce
 /// the method is valid during deserialization. This is also generally more
 /// ergonomic at the cost of some flexibility.

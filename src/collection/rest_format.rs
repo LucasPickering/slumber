@@ -1,10 +1,10 @@
 ///! Parses a `.rest` or `.http` file
-///! These files are used in many IDEs such as Jetbrains, VSCode, and Visual Studio
-///! Jetbrains and nvim-rest call it `.http`
+///! These files are used in many IDEs such as Jetbrains, VSCode, and
+/// Visual Studio ! Jetbrains and nvim-rest call it `.http`
 ///! VSCode and Visual Studio call it `.rest`
 use anyhow::{anyhow, Context};
 use derive_more::FromStr;
-use indexmap::{IndexMap, indexmap};
+use indexmap::{indexmap, IndexMap};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_till, take_until},
@@ -18,19 +18,15 @@ use nom::{
     IResult, Parser,
 };
 use reqwest::header::AUTHORIZATION;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
-use std::str;
+use std::{fs::File, io::Read, path::Path, str};
 use url::Url;
 
 use crate::template::Template;
 
-use super::{recipe_tree::RecipeTree, ProfileId};
 use super::{
-    Authentication, Collection, Method, Profile, Recipe, RecipeId, RecipeNode,
+    jetbrains_env::{JetbrainsEnvImport, JetbrainsEnv}, recipe_tree::RecipeTree, Authentication,
+    Collection, Method, Profile, ProfileId, Recipe, RecipeId, RecipeNode,
 };
-use super::jetbrains_env::JetbrainsEnv;
 
 type StrResult<'a> = Result<(&'a str, &'a str), nom::Err<NomError<&'a str>>>;
 
@@ -43,31 +39,46 @@ const NAME_ANNOTATION: &str = "@name";
 
 impl Collection {
     /// Convert a jetbrains `.http` file into a slumber a collection
-    /// With an optional `http-client.env.json` file in the same directory 
+    /// With an optional `http-client.env.json` file in the same directory
     pub fn from_jetbrains(
         jetbrains_file: impl AsRef<Path>,
     ) -> anyhow::Result<Self> {
         let jetbrains_file = jetbrains_file.as_ref();
         has_extension_or_error(jetbrains_file, "http")?;
-        
+
         Self::from_rest_file(jetbrains_file, None)
     }
 
     /// Convert a jetbrains `.http` file into a slumber a collection
-    /// With an optional `http-client.env.json` file in the same directory 
-    pub fn from_jetbrains_with_env(
+    /// Including the `http-client.env.json` file in the same directory
+    pub fn from_jetbrains_with_public_env(
+        jetbrains_file: impl AsRef<Path>
+    ) -> anyhow::Result<Self> {
+        Self::from_jetbrains_with_env(jetbrains_file, JetbrainsEnvImport::Public)
+    }
+
+    /// Convert a jetbrains `.http` file into a slumber a collection
+    /// Including the `http-client.env.json` and `http-client.private.env.json` files in the same directory
+    pub fn from_jetbrains_with_public_and_private_env(
+        jetbrains_file: impl AsRef<Path>
+    ) -> anyhow::Result<Self> {
+        Self::from_jetbrains_with_env(jetbrains_file, JetbrainsEnvImport::PublicAndPrivate)
+    } 
+
+    fn from_jetbrains_with_env(
         jetbrains_file: impl AsRef<Path>,
+        import_type: JetbrainsEnvImport 
     ) -> anyhow::Result<Self> {
         let jetbrains_file = jetbrains_file.as_ref();
         has_extension_or_error(jetbrains_file, "http")?;
-        
-        let dir = jetbrains_file.parent()
+
+        let dir = jetbrains_file
+            .parent()
             .ok_or(anyhow!("Could not find directory"))?;
-        let env = JetbrainsEnv::from_directory(dir)?;
+        let env = JetbrainsEnv::from_directory(dir, import_type)?;
 
         Self::from_rest_file(jetbrains_file, Some(env))
     }
-
 
     /// Convert a vscode `.rest` file into a slumber a collection
     pub fn from_vscode(vscode_file: impl AsRef<Path>) -> anyhow::Result<Self> {
@@ -77,7 +88,10 @@ impl Collection {
     }
 
     /// Convert an `.http` or a `.rest` file into a slumber collection
-    fn from_rest_file(rest_file: &Path, env_file: Option<JetbrainsEnv>) -> anyhow::Result<Self> {
+    fn from_rest_file(
+        rest_file: &Path,
+        env_file: Option<JetbrainsEnv>,
+    ) -> anyhow::Result<Self> {
         let mut file = File::open(rest_file)
             .context(format!("Error opening REST file {rest_file:?}"))?;
 
@@ -89,7 +103,7 @@ impl Collection {
         let tree = build_recipe_tree(recipes)?;
 
         let profiles = match env_file {
-            Some(env) => env.to_profiles(variables)?, 
+            Some(env) => env.to_profiles(variables)?,
             None => build_default_profiles(variables),
         };
 
@@ -104,17 +118,19 @@ impl Collection {
     }
 }
 
-/// If there are no env files, just throw the global variables into a default profile
-fn build_default_profiles(data: IndexMap<String, Template>) -> IndexMap<ProfileId, Profile> {
+/// If there are no env files, just throw the global variables into a default
+/// profile
+fn build_default_profiles(
+    data: IndexMap<String, Template>,
+) -> IndexMap<ProfileId, Profile> {
     indexmap! {
         "default".into() => Profile {
             id: "default".into(),
             name: None,
             data,
-        } 
+        }
     }
 }
-
 
 /// A list of ungrouped recipes is returned from the parser
 /// This converts them into a recipe tree
@@ -264,7 +280,7 @@ impl FromStr for RestUrl {
         fn url_and_query(input: &str) -> StrResult {
             let (query, (url, _)) = pair(take_until("?"), tag("?"))(input)?;
             Ok((url, query))
-        } 
+        }
 
         if let Ok((url_part, query_part)) = url_and_query(path) {
             let url: Template = url_part
@@ -478,8 +494,6 @@ impl FromStr for RestFormat {
     }
 }
 
-
-
 #[cfg(test)]
 mod test {
     use crate::collection::CollectionFile;
@@ -488,7 +502,8 @@ mod test {
 
     const JETBRAINS_FILE: &str = "./test_data/jetbrains.http";
     const JETBRAINS_RESULT: &str = "./test_data/jetbrains_imported.yml";
-    const JETBRAINS_RESULT_WITH_ENV: &str = "./test_data/jetbrains_with_env_imported.yml";
+    const JETBRAINS_RESULT_WITH_ENV: &str =
+        "./test_data/jetbrains_with_env_imported.yml";
 
     #[tokio::test]
     async fn test_jetbrains_import() {
@@ -502,7 +517,8 @@ mod test {
 
     #[tokio::test]
     async fn test_jetbrains_with_env_import() {
-        let imported = Collection::from_jetbrains_with_env(JETBRAINS_FILE).unwrap();
+        let imported =
+            Collection::from_jetbrains_with_public_and_private_env(JETBRAINS_FILE).unwrap();
         let expected = CollectionFile::load(JETBRAINS_RESULT_WITH_ENV.into())
             .await
             .unwrap()
@@ -601,15 +617,25 @@ X-Http-Method-Override: PUT
         .replace("\n", REQUEST_NEWLINE);
 
         let (req, body) = parse_request_and_body(&example);
-       
-        assert_eq!(req, r#"POST /post?q=hello HTTP/1.1
+
+        assert_eq!(
+            req,
+            r#"POST /post?q=hello HTTP/1.1
 Host: localhost
 Content-Type: application/json
 X-Http-Method-Override: PUT
-"#.replace("\n", "\r\n"));
-        
-        assert_eq!(body, Some(r#"{
+"#
+            .replace("\n", "\r\n")
+        );
+
+        assert_eq!(
+            body,
+            Some(
+                r#"{
     "data": "my data"
-}"#.replace("\n", "\r\n")));
+}"#
+                .replace("\n", "\r\n")
+            )
+        );
     }
 }

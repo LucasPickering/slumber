@@ -7,18 +7,18 @@
 
 use crate::{collection::Authentication, http::Response, template::Template};
 use anyhow::{anyhow, Context};
-use derive_more::{Deref, Display, From};
-use regex::Regex;
-use serde::{de::IntoDeserializer, Deserialize, Serialize};
-use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path, sync::OnceLock};
 use base64::{prelude::BASE64_STANDARD, Engine};
-use std::str;
+use derive_more::{Deref, Display, From};
 use nom::{
     bytes::complete::{tag, take_until},
     sequence::pair,
     IResult,
 };
-
+use regex::Regex;
+use serde::{de::IntoDeserializer, Deserialize, Serialize};
+use std::{
+    borrow::Cow, ffi::OsStr, fmt::Debug, path::Path, str, sync::OnceLock,
+};
 
 /// All supported content types. Each variant should have a corresponding
 /// implementation of [ResponseContent].
@@ -172,8 +172,8 @@ impl ContentType {
 }
 
 impl Authentication {
-    /// Convert the value of an Authorization header into an authentication struct
-    /// Can either be Bearer or Basic
+    /// Convert the value of an Authorization header into an authentication
+    /// struct Can either be Bearer or Basic
     pub fn from_header(input: &str) -> anyhow::Result<Self> {
         fn bearer(input: &str) -> IResult<&str, &str> {
             tag("Bearer ")(input)
@@ -201,16 +201,14 @@ impl Authentication {
             let decoded_bytes = BASE64_STANDARD.decode(encoded)?;
             let decoded = str::from_utf8(decoded_bytes.as_slice())?;
 
-            let (username, password) =
-                match username_and_password(decoded) {
-                    // There is a username and password seperated by a colon 
-                    Ok((u, p)) => (
-                        u.to_string().try_into()?,
-                        Some(p.to_string().try_into()?),
-                    ),
-                    // There is just a username 
-                    Err(_) => (decoded.to_string().try_into()?, None),
-                };
+            let (username, password) = match username_and_password(decoded) {
+                // There is a username and password seperated by a colon
+                Ok((u, p)) => {
+                    (u.to_string().try_into()?, Some(p.to_string().try_into()?))
+                }
+                // There is just a username
+                Err(_) => (decoded.to_string().try_into()?, None),
+            };
 
             return Ok(Self::Basic { username, password });
         }
@@ -218,8 +216,6 @@ impl Authentication {
         return Err(anyhow!("Failed to parse auth header"));
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

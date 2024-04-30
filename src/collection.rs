@@ -3,10 +3,10 @@
 
 mod cereal;
 mod insomnia;
+mod jetbrains_env;
 mod models;
 mod recipe_tree;
 mod rest_format;
-mod jetbrains_env;
 
 pub use models::*;
 pub use recipe_tree::*;

@@ -14,9 +14,8 @@ pub use util::PreviewPrompter;
 use crate::{
     collection::{CollectionFile, ProfileId, RecipeId},
     tui::{
-        context::TuiContext,
         input::Action,
-        message::Message,
+        message::{Message, MessageSender},
         view::{
             component::{Component, Root},
             draw::Draw,
@@ -44,12 +43,21 @@ use tracing::{error, trace, trace_span};
 #[derive(Debug)]
 pub struct View {
     root: Component<Root>,
+    /// A channel for sending async messages to the main loop
+    messages_tx: MessageSender,
 }
 
 impl View {
-    pub fn new(collection_file: &CollectionFile) -> Self {
+    pub fn new(
+        collection_file: &CollectionFile,
+        messages_tx: MessageSender,
+    ) -> Self {
         let mut view = Self {
-            root: Root::new(&collection_file.collection).into(),
+            // Forward the message sender so it can be used during component
+            // construction
+            root: Root::new(&collection_file.collection, messages_tx.clone())
+                .into(),
+            messages_tx,
         };
         view.notify(format!(
             "Loaded collection from {}",
@@ -118,7 +126,11 @@ impl View {
         // It's possible for components to queue additional events
         while let Some(event) = EventQueue::pop() {
             trace_span!("View event", ?event).in_scope(|| {
-                match Self::update_all(self.root.as_child(), event) {
+                match Self::update_all(
+                    &self.messages_tx,
+                    self.root.as_child(),
+                    event,
+                ) {
                     Update::Consumed => {
                         trace!("View event consumed")
                     }
@@ -138,7 +150,7 @@ impl View {
             Err(error) => {
                 // Returned error doesn't impl 'static so we can't
                 // directly convert it to anyhow
-                TuiContext::send_message(Message::Error {
+                self.messages_tx.send(Message::Error {
                     error: anyhow!("Error copying text: {error}"),
                 })
             }
@@ -149,13 +161,15 @@ impl View {
     /// lowest descendant. Recursively walk up the tree until a component
     /// consumes the event.
     fn update_all(
+        messages_tx: &MessageSender,
         mut component: Component<&mut dyn EventHandler>,
         mut event: Event,
     ) -> Update {
         // If we have a child, send them the event. If not, eat it ourselves
         for child in component.children() {
             if event.should_handle(&child) {
-                let update = Self::update_all(child, event); // RECURSION
+                // RECURSION
+                let update = Self::update_all(messages_tx, child, event);
                 match update {
                     Update::Propagate(returned) => {
                         // Keep going to the next child. It's possible the child
@@ -178,7 +192,7 @@ impl View {
             component = ?component.inner(),
         );
         span.in_scope(|| {
-            let update = component.update(event);
+            let update = component.update(messages_tx, event);
             trace!(?update);
             update
         })

@@ -4,6 +4,7 @@ use crate::{
     http::{Body, Query},
     tui::{
         input::Action,
+        message::MessageSender,
         view::{
             common::{text_box::TextBox, text_window::TextWindow},
             draw::Draw,
@@ -79,7 +80,7 @@ impl Default for RecordBody {
 }
 
 impl EventHandler for RecordBody {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::Search),

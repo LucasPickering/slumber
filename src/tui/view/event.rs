@@ -5,6 +5,7 @@ use crate::{
     collection::{ProfileId, RecipeId},
     tui::{
         input::Action,
+        message::MessageSender,
         view::{
             common::modal::{Modal, ModalPriority},
             state::{Notification, RequestState},
@@ -20,10 +21,11 @@ use tracing::trace;
 /// children. Events will be propagated bottom-up (i.e. leff-to-root), and each
 /// element has the opportunity to consume the event so it stops bubbling.
 pub trait EventHandler: Debug {
-    /// Update the state of *just* this component according to the message.
-    /// Returned outcome indicates what to do afterwards. Use [EventQueue] to
-    /// queue subsequent events.
-    fn update(&mut self, event: Event) -> Update {
+    /// Update the state of *just* this component according to the event.
+    /// Returned outcome indicates whether the event was consumed, or it should
+    /// be propgated to our parent. Use [EventQueue] to queue subsequent events,
+    /// and the given message sender to queue async messages.
+    fn update(&mut self, _messages_tx: &MessageSender, event: Event) -> Update {
         Update::Propagate(event)
     }
 

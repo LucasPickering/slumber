@@ -3,7 +3,7 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
-        message::Message,
+        message::{Message, MessageSender},
         view::{
             common::{
                 actions::ActionsModal, header_table::HeaderTable, tabs::Tabs,
@@ -175,7 +175,7 @@ enum Tab {
 }
 
 impl EventHandler for RenderedRequest {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::OpenActions),
@@ -186,7 +186,7 @@ impl EventHandler for RenderedRequest {
                 match other.downcast_ref::<MenuAction>() {
                     Some(MenuAction::CopyUrl) => {
                         if let Some(state) = self.state.get() {
-                            TuiContext::send_message(Message::CopyText(
+                            messages_tx.send(Message::CopyText(
                                 state.request.url.to_string(),
                             ))
                         }
@@ -198,7 +198,7 @@ impl EventHandler for RenderedRequest {
                         if let Some(body) =
                             self.state.get().and_then(|state| state.body.text())
                         {
-                            TuiContext::send_message(Message::CopyText(body));
+                            messages_tx.send(Message::CopyText(body));
                         }
                     }
                     None => return Update::Propagate(event),

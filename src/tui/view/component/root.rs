@@ -1,9 +1,8 @@
 use crate::{
     collection::{Collection, ProfileId, RecipeId},
     tui::{
-        context::TuiContext,
         input::Action,
-        message::Message,
+        message::{Message, MessageSender},
         view::{
             common::{actions::GlobalAction, modal::ModalQueue},
             component::{
@@ -51,13 +50,13 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new(collection: &Collection) -> Self {
+    pub fn new(collection: &Collection, messages_tx: MessageSender) -> Self {
         Self {
             // State
             active_requests: HashMap::new(),
 
             // Children
-            primary_view: PrimaryView::new(collection).into(),
+            primary_view: PrimaryView::new(collection, messages_tx).into(),
             modal_queue: Component::default(),
             notification_text: None,
         }
@@ -103,7 +102,7 @@ impl Root {
 }
 
 impl EventHandler for Root {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
         match event {
             // Update state of HTTP request
             Event::HttpSetState {
@@ -124,9 +123,9 @@ impl EventHandler for Root {
                 action: Some(action),
                 ..
             } => match action {
-                Action::Quit => TuiContext::send_message(Message::Quit),
+                Action::Quit => messages_tx.send(Message::Quit),
                 Action::ReloadCollection => {
-                    TuiContext::send_message(Message::CollectionStartReload)
+                    messages_tx.send(Message::CollectionStartReload)
                 }
                 _ => return Update::Propagate(event),
             },
@@ -138,7 +137,7 @@ impl EventHandler for Root {
             Event::Other(ref callback) => {
                 match callback.downcast_ref::<GlobalAction>() {
                     Some(GlobalAction::EditCollection) => {
-                        TuiContext::send_message(Message::CollectionEdit)
+                        messages_tx.send(Message::CollectionEdit)
                     }
                     None => return Update::Propagate(event),
                 }

@@ -45,7 +45,13 @@ use tracing::{debug, error, info, trace};
 #[derive(Debug)]
 pub struct Tui {
     terminal: Term,
+    /// Receiver for the async message queue, which allows background tasks and
+    /// the view to pass data and trigger side effects. Nobody else gets to
+    /// touch this
     messages_rx: UnboundedReceiver<Message>,
+    /// Transmitter for the async message queue, which can be freely cloned and
+    /// passed around
+    messages_tx: MessageSender,
     /// Replaceable allows us to enforce that the view is dropped before being
     /// recreated. The view persists its state on drop, so that has to happen
     /// before the new one is created.
@@ -76,7 +82,7 @@ impl Tui {
         // Load a database for this particular collection
         let database = Database::load()?.into_collection(&collection_path)?;
         // Initialize global view context
-        TuiContext::init(config, messages_tx.clone(), database.clone());
+        TuiContext::init(config, database.clone());
 
         // ===== Initialize collection & view =====
 
@@ -85,10 +91,10 @@ impl Tui {
         let collection_file = CollectionFile::load(collection_path.clone())
             .await
             .unwrap_or_else(|error| {
-                TuiContext::send_message(Message::Error { error });
+                messages_tx.send(Message::Error { error });
                 CollectionFile::with_path(collection_path)
             });
-        let view = View::new(&collection_file);
+        let view = View::new(&collection_file, messages_tx.clone());
 
         // The code to revert the terminal takeover is in `Tui::drop`, so we
         // shouldn't take over the terminal until right before creating the
@@ -98,6 +104,7 @@ impl Tui {
         let app = Tui {
             terminal,
             messages_rx,
+            messages_tx,
 
             collection_file,
             should_run: true,
@@ -112,12 +119,11 @@ impl Tui {
     /// the struct definition for a description of the different phases of the
     /// run loop.
     async fn run(mut self) -> anyhow::Result<()> {
+        // Spawn background tasks
         self.listen_for_signals();
+        self.listen_for_input();
         // Hang onto this because it stops running when dropped
         let _watcher = self.watch_collection()?;
-
-        // Listen for input in a separate task
-        tokio::spawn(Self::input_loop());
 
         // This loop is limited by the rate that messages come in, with a
         // minimum rate enforced by a timeout
@@ -129,7 +135,7 @@ impl Tui {
             // ===== Message Phase =====
             // Grab one message out of the queue and handle it. This will block
             // while the queue is empty so we don't waste CPU cycles. The
-            // timeout here makes sure we don't block forever, so thinks like
+            // timeout here makes sure we don't block forever, so things like
             // time displays during in-flight requests will update.
             let future =
                 time::timeout(Self::TICK_TIME, self.messages_rx.recv());
@@ -153,35 +159,15 @@ impl Tui {
         Ok(())
     }
 
-    /// Blocking loop to read input from the terminal. Each event is pushed
-    /// into the message queue for handling by the main loop.
-    async fn input_loop() {
-        let mut stream = EventStream::new();
-
-        while let Some(result) = stream.next().await {
-            // Failure to read input is both weird and fatal, so panic
-            let event = result.expect("Error reading terminal input");
-
-            // Filter out junk events so we don't clog the message queue
-            if InputEngine::should_kill(&event) {
-                continue;
-            }
-
-            let action = TuiContext::get().input_engine.action(&event);
-            TuiContext::send_message(Message::Input { event, action });
-        }
-    }
-
     /// Handle an incoming message. Any error here will be displayed as a modal
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::CollectionStartReload => {
                 let future = self.collection_file.reload();
+                let messages_tx = self.messages_tx();
                 self.spawn(async move {
                     let collection = future.await?;
-                    TuiContext::send_message(Message::CollectionEndReload(
-                        collection,
-                    ));
+                    messages_tx.send(Message::CollectionEndReload(collection));
                     Ok(())
                 });
             }
@@ -288,11 +274,39 @@ impl Tui {
         Ok(())
     }
 
+    /// Get a cheap clone of the message queue transmitter
+    fn messages_tx(&self) -> MessageSender {
+        self.messages_tx.clone()
+    }
+
+    /// Spawn a task to read input from the terminal. Each event is pushed
+    /// into the message queue for handling by the main loop.
+    fn listen_for_input(&self) {
+        let messages_tx = self.messages_tx();
+
+        tokio::spawn(async move {
+            let mut stream = EventStream::new();
+            while let Some(result) = stream.next().await {
+                // Failure to read input is both weird and fatal, so panic
+                let event = result.expect("Error reading terminal input");
+
+                // Filter out junk events so we don't clog the message queue
+                if InputEngine::should_kill(&event) {
+                    continue;
+                }
+
+                let action = TuiContext::get().input_engine.action(&event);
+                messages_tx.send(Message::Input { event, action });
+            }
+        });
+    }
+
     /// Spawn a task to listen in the backgrouns for quit signals
     fn listen_for_signals(&self) {
+        let messages_tx = self.messages_tx();
         self.spawn(async move {
             signals().await?;
-            TuiContext::send_message(Message::Quit);
+            messages_tx.send(Message::Quit);
             Ok(())
         });
     }
@@ -301,6 +315,7 @@ impl Tui {
     /// changes. Return the watcher because it stops when dropped.
     fn watch_collection(&self) -> anyhow::Result<impl Watcher> {
         // Spawn a watcher for the collection file
+        let messages_tx = self.messages_tx();
         let f = move |result: notify::Result<_>| {
             match result {
                 // Only reload if the file *content* changes
@@ -311,7 +326,7 @@ impl Tui {
                     },
                 ) => {
                     info!(?event, "Collection file changed, reloading");
-                    TuiContext::send_message(Message::CollectionStartReload);
+                    messages_tx.send(Message::CollectionStartReload);
                 }
                 // Do nothing for other event kinds
                 Ok(_) => {}
@@ -336,9 +351,11 @@ impl Tui {
 
         // Rebuild the whole view, because tons of things can change. Drop the
         // old one *first* to make sure UI state is saved before being restored
-        self.view.replace(|old| {
+        let messages_tx = self.messages_tx();
+        let collection_file = &self.collection_file;
+        self.view.replace(move |old| {
             drop(old);
-            View::new(&self.collection_file)
+            View::new(collection_file, messages_tx)
         });
     }
 
@@ -356,10 +373,11 @@ impl Tui {
         let builder = self.get_request_builder(request_config.clone())?;
         let template_context =
             self.template_context(request_config.profile_id, true)?;
+        let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
             let url = builder.build_url(&template_context).await?;
-            TuiContext::send_message(Message::CopyText(url.to_string()));
+            messages_tx.send(Message::CopyText(url.to_string()));
             Ok(())
         });
         Ok(())
@@ -373,6 +391,7 @@ impl Tui {
         let builder = self.get_request_builder(request_config.clone())?;
         let template_context =
             self.template_context(request_config.profile_id, true)?;
+        let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
             let body = builder
@@ -382,7 +401,7 @@ impl Tui {
             // Clone the bytes :(
             let body = String::from_utf8(body.into_bytes().into())
                 .context("Cannot copy request body")?;
-            TuiContext::send_message(Message::CopyText(body));
+            messages_tx.send(Message::CopyText(body));
             Ok(())
         });
         Ok(())
@@ -396,11 +415,12 @@ impl Tui {
         let builder = self.get_request_builder(request_config.clone())?;
         let template_context =
             self.template_context(request_config.profile_id, true)?;
+        let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
             let request = builder.build(&template_context).await?;
             let command = request.to_curl()?;
-            TuiContext::send_message(Message::CopyText(command));
+            messages_tx.send(Message::CopyText(command));
             Ok(())
         });
         Ok(())
@@ -418,6 +438,7 @@ impl Tui {
 
         let template_context =
             self.template_context(request_config.profile_id.clone(), true)?;
+        let messages_tx = self.messages_tx();
         let RequestConfig {
             profile_id,
             recipe_id,
@@ -443,7 +464,7 @@ impl Tui {
                 .await
                 .map_err(|error| {
                     // Report the error, but don't actually return anything
-                    context.messages_tx.send(Message::HttpBuildError {
+                    messages_tx.send(Message::HttpBuildError {
                         profile_id: profile_id.clone(),
                         recipe_id: recipe_id.clone(),
                         error,
@@ -452,7 +473,7 @@ impl Tui {
                 .into();
 
             // Report liftoff
-            context.messages_tx.send(Message::HttpLoading {
+            messages_tx.send(Message::HttpLoading {
                 profile_id,
                 recipe_id,
                 request: Arc::clone(&request),
@@ -460,7 +481,7 @@ impl Tui {
 
             // Send the request and report the result to the main thread
             let result = context.http_engine.clone().send(request).await;
-            context.messages_tx.send(Message::HttpComplete(result));
+            messages_tx.send(Message::HttpComplete(result));
 
             // By returning an empty result, we can use `?` to break out early.
             // `return` and `break` don't work in an async block :/
@@ -535,9 +556,10 @@ impl Tui {
         &self,
         future: impl Future<Output = anyhow::Result<()>> + Send + 'static,
     ) {
+        let messages_tx = self.messages_tx();
         tokio::spawn(async move {
             if let Err(err) = future.await {
-                TuiContext::send_message(Message::Error { error: err })
+                messages_tx.send(Message::Error { error: err })
             }
         });
     }
@@ -552,7 +574,7 @@ impl Tui {
     ) -> anyhow::Result<TemplateContext> {
         let context = TuiContext::get();
         let prompter: Box<dyn Prompter> = if real_prompt {
-            Box::new(TuiContext::get().messages_tx.clone())
+            Box::new(self.messages_tx())
         } else {
             Box::new(PreviewPrompter)
         };

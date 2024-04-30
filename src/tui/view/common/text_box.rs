@@ -3,6 +3,7 @@
 use crate::tui::{
     context::TuiContext,
     input::Action,
+    message::MessageSender,
     view::{
         draw::Draw,
         event::{Event, EventHandler, Update},
@@ -188,7 +189,7 @@ impl TextBox {
 }
 
 impl EventHandler for TextBox {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::Submit),

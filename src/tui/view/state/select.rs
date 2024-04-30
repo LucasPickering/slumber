@@ -1,5 +1,6 @@
 use crate::tui::{
     input::Action,
+    message::MessageSender,
     view::{
         event::{Event, EventHandler, Update},
         state::persistence::{Persistable, PersistentContainer},
@@ -175,7 +176,7 @@ where
     Item: Debug,
     State: Debug + SelectStateData,
 {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };

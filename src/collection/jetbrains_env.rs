@@ -2,13 +2,13 @@ use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{fs::File, hash::Hash, io::Read, path::Path};
+use std::{fs::File, io::Read, path::Path};
 
 use super::{Profile, ProfileId};
 use crate::template::Template;
 
-const JETBRAINS_CLIENT_ENV: &str = "http-client.env.json";
-const JETBRAINS_PRIVATE_CLIENT_ENV: &str = "http-client.private.env.json";
+const JETBRAINS_CLIENT_ENV_NAME: &str = "http-client.env.json";
+const JETBRAINS_PRIVATE_CLIENT_ENV_NAME: &str = "http-client.private.env.json";
 
 /// Represents the `http-client` and `http-client.private` files
 /// used for the HTTP enviroment
@@ -18,6 +18,8 @@ pub struct JetbrainsEnv {
 }
 
 impl JetbrainsEnv {
+    /// Search a directory for `http-client.env.json` and `http-client.private.env.json`
+    /// This must be in the same directory as your HTTP file
     pub fn from_directory(dir: &Path) -> anyhow::Result<Self> {
         if dir.is_file() {
             return Err(anyhow!("Can only search directory!"));
@@ -37,10 +39,12 @@ impl JetbrainsEnv {
         })
     }
 
+    /// Convert the jetbrains env into slumber profiles
+    /// The globals must be included from the the REST file
     pub fn to_profiles(&self, globals: IndexMap<String, Template>) -> anyhow::Result<IndexMap<ProfileId, Profile>> {
         let mut profiles: IndexMap<ProfileId, Profile> = IndexMap::new(); 
         for (profile_name, env_item) in self.env.items.iter() {
-            let templates = env_item.to_templates(globals.clone())?;
+            let templates = env_item.to_templates(&globals)?;
             let id: ProfileId = profile_name.to_string().into();
             let lookup_id = id.clone();
 
@@ -55,6 +59,8 @@ impl JetbrainsEnv {
     }
 }
 
+/// Each individual profile
+/// This contains a map of JSON values 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct EnvForProfile {
     #[serde(flatten)]
@@ -66,20 +72,25 @@ impl EnvForProfile {
     /// Inject any global variables (written in the http file) into each enviroment
     fn to_templates(
         &self,
-        globals: IndexMap<String, Template>,
+        globals: &IndexMap<String, Template>,
     ) -> anyhow::Result<IndexMap<String, Template>> {
         let mut data: IndexMap<String, Template> = IndexMap::new();
         for (key, value) in self.items.iter() {
-            let key = key.to_string();
             let template = match value {
                 Value::String(s) => s.to_string().try_into()?,
                 Value::Number(n) => n.to_string().try_into()?,
-                _ => return Err(anyhow!("Only strings and numbers are supported in Jetbrains HTTP Client Envs!")),
+                Value::Bool(b) => b.to_string().try_into()?,
+                _ => return Err(anyhow!("Only strings, numbers and bools are supported in Jetbrains HTTP Client Envs!")),
             };
 
-            data.insert(key, template);
+            data.insert(key.into(), template);
         }
-        Ok(merge_maps(data, globals))
+
+        for (key, value) in globals.iter() {
+            data.insert(key.into(), value.clone());
+        }
+
+        Ok(data)
     }
 }
 
@@ -106,14 +117,17 @@ impl ClientEnvJson {
         Ok(env)
     }
 
+    /// Attempt to load `http-client.env.json`
     fn from_public(dir: &Path) -> anyhow::Result<Self> {
-        Self::from_file(dir.join(JETBRAINS_CLIENT_ENV))
+        Self::from_file(dir.join(JETBRAINS_CLIENT_ENV_NAME))
     }
 
+    /// Attempt to load `http-client.private.env.json`
     fn from_private(dir: &Path) -> anyhow::Result<Self> {
-        Self::from_file(dir.join(JETBRAINS_PRIVATE_CLIENT_ENV))
+        Self::from_file(dir.join(JETBRAINS_PRIVATE_CLIENT_ENV_NAME))
     }
 
+    /// Used for merging the public and private files
     fn merge(self, other: Self) -> anyhow::Result<Self> {
         let mut items = self.items.clone();
         for (profile_name, profile_a) in other.items.into_iter() {
@@ -128,18 +142,11 @@ impl ClientEnvJson {
     }
 }
 
-fn merge_maps<K: Eq + Hash + Clone, V: Clone>(
-    map1: IndexMap<K, V>,
-    map2: IndexMap<K, V>,
-) -> IndexMap<K, V> {
-    let mut merged = map1.clone();
-    merged.extend(map2);
-    merged
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+    use indexmap::indexmap;
 
     #[test]
     fn parse_client_env() {
@@ -162,13 +169,75 @@ mod tests {
         }"#;
 
         let client: ClientEnvJson = serde_json::from_str(example).unwrap();
-        println!("{:?}", client);
+        let dev = client.items.get("development").unwrap();
+        let prod = client.items.get("production").unwrap();
+    
+        let host = dev.items.get("host").unwrap();
+        assert_eq!(host, &Value::String("localhost".into()));
+
+        let id = prod.items.get("id-value").unwrap();
+        assert_eq!(id, &json!(6789));
     }
 
     #[test]
     fn read_from_dir() {
-        let env =
+        let env_file =
             JetbrainsEnv::from_directory(Path::new("./test_data")).unwrap();
-        println!("{env:?}");
+
+        let dev = env_file.env.items.get("development").unwrap();
+        let host = dev.items.get("host").unwrap();
+        assert_eq!(host, &Value::String("localhost".into()));
+        
+        let secret = dev.items.get("super-secret-number").unwrap();
+        assert_eq!(secret, &json!(12345));
+    }
+
+    #[test]
+    fn convert_to_profiles() {
+        let example = r#"{
+    "development": {
+        "host": "localhost",
+        "id-value": 12345,
+        "username": "",
+        "password": "",
+        "my-var": "my-dev-value"
+    },
+
+    "production": {
+        "host": "example.com",
+        "id-value": 6789,
+        "username": "",
+        "password": "",
+        "my-var": "my-prod-value"
+    }
+}"#;
+
+        let loaded_json: ClientEnvJson = serde_json::from_str(example).unwrap();
+        let env = JetbrainsEnv { 
+            env: loaded_json 
+        };
+
+        let variables: IndexMap<String, Template> = indexmap! {
+            "fruit".into() => "apple".try_into().unwrap(),
+            "meat".into() => "{{cow}}".try_into().unwrap(),
+        };
+
+        let profiles = env.to_profiles(IndexMap::new()).unwrap();
+
+        let id: ProfileId = "development".into();
+        let dev = profiles.get(&id).unwrap();
+        let val = dev.data.get("id-value").unwrap(); 
+        assert_eq!(val, &Template::from("12345"));
+
+
+        let profiles_globals = env.to_profiles(variables).unwrap();
+
+        let id: ProfileId = "development".into();
+        let dev = profiles_globals.get(&id).unwrap();
+        let val = dev.data.get("id-value").unwrap(); 
+        assert_eq!(val, &Template::from("12345"));
+
+        let fruit = dev.data.get("fruit").unwrap();
+        assert_eq!(fruit, &Template::from("apple"));
     }
 }

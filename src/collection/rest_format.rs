@@ -4,7 +4,7 @@
 ///! VSCode and Visual Studio call it `.rest`
 use anyhow::{anyhow, Context};
 use derive_more::FromStr;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, indexmap};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_till, take_until},
@@ -77,7 +77,7 @@ impl Collection {
     }
 
     /// Convert an `.http` or a `.rest` file into a slumber collection
-    fn from_rest_file(rest_file: &Path, env: Option<JetbrainsEnv>) -> anyhow::Result<Self> {
+    fn from_rest_file(rest_file: &Path, env_file: Option<JetbrainsEnv>) -> anyhow::Result<Self> {
         let mut file = File::open(rest_file)
             .context(format!("Error opening REST file {rest_file:?}"))?;
 
@@ -85,10 +85,6 @@ impl Collection {
         file.read_to_string(&mut text)
             .context(format!("Error reading REST file {rest_file:?}"))?;
 
-        Self::from_rest_str(&text, env)
-    }
-
-    fn from_rest_str(text: &str, env_file: Option<JetbrainsEnv>) -> anyhow::Result<Self> {
         let RestFormat { recipes, variables } = RestFormat::from_str(&text)?;
         let tree = build_recipe_tree(recipes)?;
 
@@ -108,15 +104,15 @@ impl Collection {
     }
 }
 
+/// If there are no env files, just throw the global variables into a default profile
 fn build_default_profiles(data: IndexMap<String, Template>) -> IndexMap<ProfileId, Profile> {
-    let profile = Profile {
-        id: "default".into(),
-        name: None,
-        data,
-    }; 
-    IndexMap::from([
-        ("default".into(), profile)
-    ])
+    indexmap! {
+        "default".into() => Profile {
+            id: "default".into(),
+            name: None,
+            data,
+        } 
+    }
 }
 
 
@@ -265,16 +261,14 @@ impl FromStr for RestUrl {
     type Err = anyhow::Error;
 
     fn from_str(path: &str) -> Result<Self, Self::Err> {
-        if path.contains("?") {
-            let mut parts = path.split("?");
-            let url_part = parts
-                .next()
-                .ok_or(anyhow!("Empty URL (URL: {path})"))?
-                .to_string();
-            let query_part =
-                parts.next().ok_or(anyhow!("Empty Query (URL: {path})"))?;
+        fn url_and_query(input: &str) -> StrResult {
+            let (query, (url, _)) = pair(take_until("?"), tag("?"))(input)?;
+            Ok((url, query))
+        } 
 
+        if let Ok((url_part, query_part)) = url_and_query(path) {
             let url: Template = url_part
+                .to_string()
                 .try_into()
                 .context("Failed to parse URL as a template")?;
 
@@ -283,6 +277,7 @@ impl FromStr for RestUrl {
             return Ok(Self { url, query });
         }
 
+        // The url is just a string or template
         Ok(Self {
             url: path.to_string().try_into()?,
             query: IndexMap::new(),
@@ -493,11 +488,22 @@ mod test {
 
     const JETBRAINS_FILE: &str = "./test_data/jetbrains.http";
     const JETBRAINS_RESULT: &str = "./test_data/jetbrains_imported.yml";
+    const JETBRAINS_RESULT_WITH_ENV: &str = "./test_data/jetbrains_with_env_imported.yml";
 
     #[tokio::test]
     async fn test_jetbrains_import() {
         let imported = Collection::from_jetbrains(JETBRAINS_FILE).unwrap();
         let expected = CollectionFile::load(JETBRAINS_RESULT.into())
+            .await
+            .unwrap()
+            .collection;
+        assert_eq!(imported, expected);
+    }
+
+    #[tokio::test]
+    async fn test_jetbrains_with_env_import() {
+        let imported = Collection::from_jetbrains_with_env(JETBRAINS_FILE).unwrap();
+        let expected = CollectionFile::load(JETBRAINS_RESULT_WITH_ENV.into())
             .await
             .unwrap()
             .collection;
@@ -521,8 +527,6 @@ mod test {
         let (_, var) = parse_variable_assignment(example_var).unwrap();
 
         assert_eq!(var, ("Cool-Word", "super_cool"));
-
-        println!("{var:?}");
     }
 
     #[test]
@@ -607,8 +611,5 @@ X-Http-Method-Override: PUT
         assert_eq!(body, Some(r#"{
     "data": "my data"
 }"#.replace("\n", "\r\n")));
-
-        println!("{req:?}");
-        println!("{body:?}");
     }
 }

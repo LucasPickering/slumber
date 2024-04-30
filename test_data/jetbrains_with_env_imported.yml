@@ -1,7 +1,28 @@
 profiles:
-  default:
-    name: null
+  development:
+    name: development
     data:
+      host: localhost
+      id-value: '12345'
+      username: ''
+      password: ''
+      my-var: my-dev-value
+      super-secret-number: '12345'
+      HOST: http://httpbin.org
+      endpoint: put
+      sort_by: products
+      first_name: joe
+      last_name: list
+      name: '{{first_name}}_{{last_name}}'
+  production:
+    name: production
+    data:
+      host: example.com
+      id-value: '6789'
+      username: ''
+      password: ''
+      my-var: my-prod-value
+      super-secret-number: '12345'
       HOST: http://httpbin.org
       endpoint: put
       sort_by: products

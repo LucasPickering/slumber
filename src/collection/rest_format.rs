@@ -30,7 +30,7 @@ use super::{recipe_tree::RecipeTree, ProfileId};
 use super::{
     Authentication, Collection, Method, Profile, Recipe, RecipeId, RecipeNode,
 };
-use super::jetbrains_env::{JetbrainsEnv};
+use super::jetbrains_env::JetbrainsEnv;
 
 type StrResult<'a> = Result<(&'a str, &'a str), nom::Err<NomError<&'a str>>>;
 
@@ -50,12 +50,24 @@ impl Collection {
         let jetbrains_file = jetbrains_file.as_ref();
         has_extension_or_error(jetbrains_file, "http")?;
         
+        Self::from_rest_file(jetbrains_file, None)
+    }
+
+    /// Convert a jetbrains `.http` file into a slumber a collection
+    /// With an optional `http-client.env.json` file in the same directory 
+    pub fn from_jetbrains_with_env(
+        jetbrains_file: impl AsRef<Path>,
+    ) -> anyhow::Result<Self> {
+        let jetbrains_file = jetbrains_file.as_ref();
+        has_extension_or_error(jetbrains_file, "http")?;
+        
         let dir = jetbrains_file.parent()
             .ok_or(anyhow!("Could not find directory"))?;
-        let env = JetbrainsEnv::from_directory(dir).ok();
+        let env = JetbrainsEnv::from_directory(dir)?;
 
-        Self::from_rest_file(jetbrains_file, env)
+        Self::from_rest_file(jetbrains_file, Some(env))
     }
+
 
     /// Convert a vscode `.rest` file into a slumber a collection
     pub fn from_vscode(vscode_file: impl AsRef<Path>) -> anyhow::Result<Self> {
@@ -76,7 +88,7 @@ impl Collection {
         Self::from_rest_str(&text, env)
     }
 
-    fn from_rest_str(text: &str, env_file: Option<JetbrainsEnv>) -> anyhow::Result<Collection> {
+    fn from_rest_str(text: &str, env_file: Option<JetbrainsEnv>) -> anyhow::Result<Self> {
         let RestFormat { recipes, variables } = RestFormat::from_str(&text)?;
         let tree = build_recipe_tree(recipes)?;
 
@@ -202,8 +214,9 @@ fn build_headers(
             .context(format!("Cannot parse header {} as UTF8", name))?;
 
         // If successfully parse authentication from header, save it
+        // If it can't be parsed, it will be included as a normal header
         if name.to_lowercase() == AUTHORIZATION.to_string() {
-            if let Ok(auth) = Authentication::from_header_value(str_val) {
+            if let Ok(auth) = Authentication::from_header(str_val) {
                 authentication = Some(auth);
                 continue;
             }

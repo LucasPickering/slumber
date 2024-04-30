@@ -174,7 +174,7 @@ impl ContentType {
 impl Authentication {
     /// Convert the value of an Authorization header into an authentication struct
     /// Can either be Bearer or Basic
-    pub fn from_header_value(input: &str) -> anyhow::Result<Self> {
+    pub fn from_header(input: &str) -> anyhow::Result<Self> {
         fn bearer(input: &str) -> IResult<&str, &str> {
             tag("Bearer ")(input)
         }
@@ -203,10 +203,12 @@ impl Authentication {
 
             let (username, password) =
                 match username_and_password(decoded) {
+                    // There is a username and password seperated by a colon 
                     Ok((u, p)) => (
                         u.to_string().try_into()?,
                         Some(p.to_string().try_into()?),
                     ),
+                    // There is just a username 
                     Err(_) => (decoded.to_string().try_into()?, None),
                 };
 
@@ -347,7 +349,7 @@ mod tests {
     #[test]
     fn parse_auth_header_test() {
         let example = "Basic Zm9vOmJhcg==";
-        match Authentication::from_header_value(example).unwrap() {
+        match Authentication::from_header(example).unwrap() {
             Authentication::Basic { username, password } => {
                 assert_eq!(username.to_string(), "foo");
                 assert_eq!(password.unwrap().to_string(), "bar");
@@ -356,7 +358,7 @@ mod tests {
         };
 
         let example = "Basic dXNlcm5hbWV3aXRob3V0cGFzc3dvcmQ=";
-        match Authentication::from_header_value(example).unwrap() {
+        match Authentication::from_header(example).unwrap() {
             Authentication::Basic { username, password } => {
                 assert_eq!(username.to_string(), "usernamewithoutpassword");
                 assert!(password.is_none());
@@ -365,7 +367,7 @@ mod tests {
         };
 
         let example = "Bearer eyjlavljhhkjasdjlkhskljdfklasdlkjhf";
-        match Authentication::from_header_value(example).unwrap() {
+        match Authentication::from_header(example).unwrap() {
             Authentication::Bearer(bearer) => {
                 assert_eq!(
                     bearer.to_string(),

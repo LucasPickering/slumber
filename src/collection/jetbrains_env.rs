@@ -10,6 +10,8 @@ use crate::template::Template;
 const JETBRAINS_CLIENT_ENV: &str = "http-client.env.json";
 const JETBRAINS_PRIVATE_CLIENT_ENV: &str = "http-client.private.env.json";
 
+/// Represents the `http-client` and `http-client.private` files
+/// used for the HTTP enviroment
 #[derive(Debug, Clone)]
 pub struct JetbrainsEnv {
     env: ClientEnvJson,
@@ -23,9 +25,10 @@ impl JetbrainsEnv {
 
         // There is a public env file and a private one
         // The private file is optional and merged with the public one
+        // Private just exists so you can git ignore it
         let public = ClientEnvJson::from_public(dir)?;
         let merged = match ClientEnvJson::from_private(dir) {
-            Ok(private) => public.merge(private),
+            Ok(private) => public.merge(private)?,
             _ => public,
         };
 
@@ -59,12 +62,8 @@ struct EnvForProfile {
 }
 
 impl EnvForProfile {
-    fn merge(self, other: Self) -> Self {
-        Self {
-            items: merge_maps(self.items, other.items),
-        }
-    }
-
+    /// Turn the jetbrains env into a map of templates
+    /// Inject any global variables (written in the http file) into each enviroment
     fn to_templates(
         &self,
         globals: IndexMap<String, Template>,
@@ -75,7 +74,7 @@ impl EnvForProfile {
             let template = match value {
                 Value::String(s) => s.to_string().try_into()?,
                 Value::Number(n) => n.to_string().try_into()?,
-                _ => return Err(anyhow!("Only strings and numbers are suppored in Jetbrains HTTP Client Envs!")),
+                _ => return Err(anyhow!("Only strings and numbers are supported in Jetbrains HTTP Client Envs!")),
             };
 
             data.insert(key, template);
@@ -115,14 +114,17 @@ impl ClientEnvJson {
         Self::from_file(dir.join(JETBRAINS_PRIVATE_CLIENT_ENV))
     }
 
-    fn merge(self, other: Self) -> Self {
+    fn merge(self, other: Self) -> anyhow::Result<Self> {
         let mut items = self.items.clone();
         for (profile_name, profile_a) in other.items.into_iter() {
-            let profile_b = items.get(&profile_name).unwrap().to_owned();
-            let both = profile_a.merge(profile_b);
-            items.insert(profile_name, both);
+            let mut current_profile = items.get(&profile_name)
+                .ok_or(anyhow!("The profiles in your public and private file do not match!"))?
+                .to_owned();
+
+            current_profile.items.extend(profile_a.items);
+            items.insert(profile_name, current_profile);
         }
-        Self { items }
+        Ok(Self { items })
     }
 }
 

@@ -2,12 +2,12 @@ profiles:
   development:
     name: development
     data:
-      super-secret-number: '12345'
       host: localhost
       id-value: '12345'
       username: ''
       password: ''
       my-var: my-dev-value
+      super-secret-number: '12345'
       HOST: http://httpbin.org
       endpoint: put
       sort_by: products
@@ -17,12 +17,12 @@ profiles:
   production:
     name: production
     data:
-      super-secret-number: '12345'
       host: example.com
       id-value: '6789'
       username: ''
       password: ''
       my-var: my-prod-value
+      super-secret-number: '12345'
       HOST: http://httpbin.org
       endpoint: put
       sort_by: products

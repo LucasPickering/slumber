@@ -183,7 +183,6 @@ mod tests {
         config::Config,
         http::{ContentType, RequestRecord},
         test_util::*,
-        util::assert_err,
     };
     use chrono::Utc;
     use factori::create;

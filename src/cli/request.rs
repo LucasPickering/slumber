@@ -154,7 +154,7 @@ impl BuildRequestCommand {
         global: GlobalArgs,
         trigger_dependencies: bool,
     ) -> anyhow::Result<(Option<HttpEngine>, Request)> {
-        let collection_path = CollectionFile::try_path(global.file)?;
+        let collection_path = CollectionFile::try_path(None, global.file)?;
         let database = Database::load()?.into_collection(&collection_path)?;
         let collection_file = CollectionFile::load(collection_path).await?;
         let collection = collection_file.collection;

@@ -12,7 +12,7 @@ pub use theme::Theme;
 pub use util::PreviewPrompter;
 
 use crate::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::{CollectionFile, ProfileId, RecipeId},
     tui::{
         context::TuiContext,
         input::Action,
@@ -47,10 +47,15 @@ pub struct View {
 }
 
 impl View {
-    pub fn new(collection: &Collection) -> Self {
-        Self {
-            root: Root::new(collection).into(),
-        }
+    pub fn new(collection_file: &CollectionFile) -> Self {
+        let mut view = Self {
+            root: Root::new(&collection_file.collection).into(),
+        };
+        view.notify(format!(
+            "Loaded collection from {}",
+            collection_file.path().to_string_lossy()
+        ));
+        view
     }
 
     /// Draw the view to screen. This needs access to the input engine in order

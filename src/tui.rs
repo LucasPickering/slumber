@@ -64,7 +64,7 @@ impl Tui {
     /// because they prevent TUI execution.
     pub async fn start(collection_path: Option<PathBuf>) -> anyhow::Result<()> {
         initialize_panic_handler();
-        let collection_path = CollectionFile::try_path(collection_path)?;
+        let collection_path = CollectionFile::try_path(None, collection_path)?;
 
         // ===== Initialize global state =====
         // This stuff only needs to be set up *once per session*
@@ -88,7 +88,7 @@ impl Tui {
                 TuiContext::send_message(Message::Error { error });
                 CollectionFile::with_path(collection_path)
             });
-        let view = View::new(&collection_file.collection);
+        let view = View::new(&collection_file);
 
         // The code to revert the terminal takeover is in `Tui::drop`, so we
         // shouldn't take over the terminal until right before creating the
@@ -338,12 +338,8 @@ impl Tui {
         // old one *first* to make sure UI state is saved before being restored
         self.view.replace(|old| {
             drop(old);
-            View::new(&self.collection_file.collection)
+            View::new(&self.collection_file)
         });
-        self.view.notify(format!(
-            "Reloaded collection from {}",
-            self.collection_file.path().to_string_lossy()
-        ));
     }
 
     /// GOODBYE

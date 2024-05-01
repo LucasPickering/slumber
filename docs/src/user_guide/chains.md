@@ -99,7 +99,8 @@ chains:
       recipe: login
   auth_token:
     source: !command
-      command: [sh, -c, "echo '{{chains.auth_token_raw}}' | cut -d':' -f2"]
+      command: [ "cut", "-d':'", "-f2" ]
+      stdin: "{{chains.auth_token_raw}}"
 
 requests:
   login: !request

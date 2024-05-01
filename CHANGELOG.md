@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+ - Add support for detection of collection files ie `slumber.yml` in parent directories
+
 ### Changed
 
 - Reduce UI latency under certain scenarios

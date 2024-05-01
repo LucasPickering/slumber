@@ -95,7 +95,7 @@ impl Tui {
         // `Tui`.
         let terminal = initialize_terminal()?;
 
-        let app = Tui {
+        let mut app = Tui {
             terminal,
             messages_rx,
 
@@ -104,6 +104,11 @@ impl Tui {
 
             view: Replaceable::new(view),
         };
+
+        app.view.notify(format!(
+            "Loaded collection from {}",
+            app.collection_file.path().to_string_lossy()
+        ));
 
         app.run().await
     }

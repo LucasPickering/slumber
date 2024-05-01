@@ -80,27 +80,38 @@ impl CollectionFile {
     }
 }
 
-/// Search the current directory for a config file matching one of the known
-/// file names, and return it if found
+/// Search the current directory and all parent directories for a config file
+/// matching one of the known file names, and return it if found
 fn detect_path() -> Option<PathBuf> {
-    let paths: Vec<&Path> = CONFIG_FILES
-        .iter()
-        .map(Path::new)
-        // This could be async but I'm being lazy and skipping it for now,
-        // since we only do this at startup anyway (mid-process reloading
-        // reuses the detected path so we don't re-detect)
-        .filter(|p| p.exists())
-        .collect();
-    match paths.as_slice() {
-        [] => None,
-        [path] => Some(path.to_path_buf()),
-        [first, rest @ ..] => {
-            // Print a warning, but don't actually fail
-            warn!(
-                "Multiple config files detected. {first:?} will be used \
-                    and the following will be ignored: {rest:?}"
-            );
-            Some(first.to_path_buf())
+    let mut pwd = std::env::current_dir().ok()?;
+    loop {
+        let mut paths: Vec<PathBuf> = CONFIG_FILES
+            .iter()
+            .map(|fname| {
+                let mut p = pwd.clone();
+                p.push(fname);
+                p
+            })
+            // This could be async but I'm being lazy and skipping it for now,
+            // since we only do this at startup anyway (mid-process reloading
+            // reuses the detected path so we don't re-detect)
+            .filter(|p| p.exists())
+            .collect();
+        match paths.as_slice() {
+            [] => {}
+            [_] => return paths.pop(),
+            [first, rest @ ..] => {
+                // Print a warning, but don't actually fail
+                warn!(
+                    "Multiple config files detected. {first:?} will be used \
+                        and the following will be ignored: {rest:?}"
+                );
+                return paths.into_iter().next();
+            }
+        }
+        // break if we reach the root
+        if !pwd.pop() {
+            return None;
         }
     }
 }

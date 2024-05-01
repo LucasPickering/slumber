@@ -117,6 +117,21 @@ factori!(TemplateContext, {
     }
 });
 
+/// Directory containing static test data
+#[rstest::fixture]
+pub fn test_data_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("test_data")
+}
+
+/// Create a new temporary folder. This will include a random subfolder to
+/// guarantee uniqueness for this test.
+#[rstest::fixture]
+pub fn temp_dir() -> PathBuf {
+    let path = env::temp_dir().join(Uuid::new_v4().to_string());
+    fs::create_dir(&path).unwrap();
+    path
+}
+
 /// Return a static value when prompted, or no value if none is given
 #[derive(Debug, Default)]
 pub struct TestPrompter {
@@ -204,3 +219,8 @@ macro_rules! assert_err {
     }};
 }
 pub(crate) use assert_err;
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
+use uuid::Uuid;

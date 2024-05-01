@@ -6,14 +6,14 @@ Collection files are designed to be sharable, meaning you can commit them to you
 
 ## Format & Loading
 
-A collection is defined as a [YAML](https://yaml.org/) file. When you run `slumber`, it will search the current directory for the following default collection files, in order:
+A collection is defined as a [YAML](https://yaml.org/) file. When you run `slumber`, it will search the current directory _and its parents_ for the following default collection files, in order:
 
 - `slumber.yml`
 - `slumber.yaml`
 - `.slumber.yml`
 - `.slumber.yaml`
 
-Whichever of those files is found _first_ will be used. If you want to use a different file for your collection (e.g. if you want to store multiple collections in the same directory), you can override the auto-search with the `--file` (or `-f`) command line argument. E.g.:
+Whichever of those files is found _first_ will be used. For any given directory, if no collection file is found there, it will recursively go up the directory tree until we find a collection file or hit the root directory. If you want to use a different file for your collection (e.g. if you want to store multiple collections in the same directory), you can override the auto-search with the `--file` (or `-f`) command line argument. E.g.:
 
 ```sh
 slumber -f my-collection.yml

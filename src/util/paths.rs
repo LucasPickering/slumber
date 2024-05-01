@@ -16,11 +16,13 @@ pub struct DataDirectory(PathBuf);
 
 impl DataDirectory {
     /// Root directory for all generated files. The value is contextual:
-    /// - In development, use a directory in the current directory
+    /// - In development, use a directory from the crate root
     /// - In release, use a platform-specific directory in the user's home
     pub fn root() -> Self {
         if cfg!(debug_assertions) {
-            Self("./data/".into())
+            // If env var isn't defined, this will just become ./data/
+            let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("data/");
+            Self(path)
         } else {
             // According to the docs, this dir will be present on all platforms
             // https://docs.rs/dirs/latest/dirs/fn.data_dir.html

@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Reduce UI latency under certain scenarios
   - Previously some actions would feel laggy because of an inherent 250ms delay in processing some events
+- Search parent directories for collection file ([#194](https://github.com/LucasPickering/slumber/issues/194))
 
 ### Fixed
 

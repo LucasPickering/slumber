@@ -461,28 +461,33 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collection::CollectionFile;
+    use crate::{collection::CollectionFile, test_util::*};
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
+    use rstest::rstest;
     use serde::de::DeserializeOwned;
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
-    use std::fmt::Debug;
+    use std::{fmt::Debug, path::PathBuf};
 
-    const INSOMNIA_FILE: &str = "./test_data/insomnia.json";
+    const INSOMNIA_FILE: &str = "insomnia.json";
     /// Assertion expectation is stored in a separate file. This is for a couple
     /// reasons:
     /// - It's huge so it makes code hard to navigate
     /// - Changes don't require a re-compile
-    const INSOMNIA_IMPORTED_FILE: &str = "./test_data/insomnia_imported.yml";
+    const INSOMNIA_IMPORTED_FILE: &str = "insomnia_imported.yml";
 
     /// Catch-all test for insomnia import
+    #[rstest]
     #[tokio::test]
-    async fn test_insomnia_import() {
-        let imported = Collection::from_insomnia(INSOMNIA_FILE).unwrap();
-        let expected = CollectionFile::load(INSOMNIA_IMPORTED_FILE.into())
-            .await
-            .unwrap()
-            .collection;
+    async fn test_insomnia_import(test_data_dir: PathBuf) {
+        let imported =
+            Collection::from_insomnia(test_data_dir.join(INSOMNIA_FILE))
+                .unwrap();
+        let expected =
+            CollectionFile::load(test_data_dir.join(INSOMNIA_IMPORTED_FILE))
+                .await
+                .unwrap()
+                .collection;
         assert_eq!(imported, expected);
     }
 

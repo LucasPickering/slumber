@@ -244,7 +244,10 @@ pub enum ChainSource {
         section: ChainRequestSection,
     },
     /// Run an external command to get a result
-    Command { command: Vec<Template> },
+    Command {
+        command: Vec<Template>,
+        stdin: Option<Template>,
+    },
     /// Load data from a file
     File { path: Template },
     /// Prompt the user for a value

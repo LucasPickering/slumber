@@ -77,7 +77,8 @@ chains:
       recipe: login
   auth_token:
     source: !command
-      command: [sh, -c, "echo '{{chains.auth_token_raw}}' | jq .token"]
+      command: [ "jq", ".token" ]
+      stdin: "{{chains.auth_token_raw}}
 
 requests:
   login: !request

@@ -107,6 +107,7 @@ Execute a command and use its stdout as the rendered value.
 | Field     | Type         | Description                                                 | Default  |
 | --------- | ------------ | ----------------------------------------------------------- | -------- |
 | `command` | `Template[]` | Command to execute, in the format `[program, ...arguments]` | Required |
+| `stdin`   | `Template`   | Standard input which will be piped into the command         | None     |
 
 ### File
 

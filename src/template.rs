@@ -201,6 +201,7 @@ mod tests {
         let profile_data = indexmap! {"field1".into() => "field".into()};
         let source = ChainSource::Command {
             command: vec!["echo".into(), "chain".into()],
+            stdin: None,
         };
         let overrides = indexmap! {
             "field1".into() => "override".into(),
@@ -581,10 +582,20 @@ mod tests {
     }
 
     /// Test success with chained command
+    #[rstest]
+    #[case::with_stdin(&["tail"], Some("hello!"), "hello!")]
+    #[case::raw_command(&["echo", "-n", "hello!"], None, "hello!")]
     #[tokio::test]
-    async fn test_chain_command() {
-        let command = vec!["echo".into(), "-n".into(), "hello!".into()];
-        let chain = create!(Chain, source: ChainSource::Command { command });
+    async fn test_chain_command(
+        #[case] command: &[&str],
+        #[case] stdin: Option<&str>,
+        #[case] expected: &str,
+    ) {
+        let source = ChainSource::Command {
+            command: command.iter().copied().map(Template::from).collect(),
+            stdin: stdin.map(Template::from),
+        };
+        let chain = create!(Chain, source: source);
         let context = create!(
             TemplateContext,
             collection: create!(
@@ -593,21 +604,29 @@ mod tests {
             ),
         );
 
-        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
+        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
     }
 
     /// Test failure with chained command
     #[rstest]
-    #[case::no_command(&[], "No command given")]
-    #[case::unknown_command(&["totally not a program"], "No such file or directory")]
-    #[case::command_error(&["head", "/dev/random"], "invalid utf-8 sequence")]
+    #[case::no_command(&[], None, "No command given")]
+    #[case::unknown_command(&["totally not a program"], None, "No such file or directory")]
+    #[case::command_error(&["head", "/dev/random"], None, "invalid utf-8 sequence")]
+    #[case::stdin_error(
+        &["tail"],
+        Some("{{chains.stdin}}"),
+        "Resolving chain `chain1`: Rendering nested template for field `stdin`: \
+         Resolving chain `stdin`: Unknown chain: stdin"
+    )]
     #[tokio::test]
     async fn test_chain_command_error(
         #[case] command: &[&str],
+        #[case] stdin: Option<&str>,
         #[case] expected_error: &str,
     ) {
         let source = ChainSource::Command {
             command: command.iter().copied().map(Template::from).collect(),
+            stdin: stdin.map(Template::from),
         };
         let chain = create!(Chain, source: source);
         let context = create!(
@@ -767,7 +786,7 @@ mod tests {
         let command_chain = create!(
             Chain,
             id: "command".into(),
-            source: ChainSource::Command { command },
+            source: ChainSource::Command { command, stdin: None},
         );
 
         let context = create!(
@@ -802,7 +821,7 @@ mod tests {
         let command_chain = create!(
             Chain,
             id: "command".into(),
-            source: ChainSource::Command { command },
+            source: ChainSource::Command { command, stdin: None },
         );
 
         let context = create!(

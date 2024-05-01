@@ -37,8 +37,8 @@ struct Args {
 #[derive(Debug, Parser)]
 struct GlobalArgs {
     /// Collection file, which defines profiles, recipes, etc. If omitted,
-    /// check the current directory for the following files (in this order):
-    /// slumber.yml, slumber.yaml, .slumber.yml, .slumber.yaml
+    /// check the current and all parent directories for the following files
+    /// (in this order): slumber.yml, slumber.yaml, .slumber.yml, .slumber.yaml
     #[clap(long, short)]
     file: Option<PathBuf>,
 }

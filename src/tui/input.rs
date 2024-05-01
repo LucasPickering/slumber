@@ -536,7 +536,7 @@ fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::assert_err;
+    use crate::test_util::*;
     use crossterm::event::MediaKeyCode;
     use rstest::rstest;
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};

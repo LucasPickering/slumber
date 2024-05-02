@@ -10,8 +10,8 @@ use crate::{
             common::actions::ActionsModal,
             component::{
                 help::HelpModal,
-                profile::{ProfilePane, ProfilePaneProps},
                 profile_list::{ProfileListPane, ProfileListPaneProps},
+                profile_pane::{ProfilePane, ProfilePaneProps},
                 recipe_list::{RecipeListPane, RecipeListPaneProps},
                 recipe_pane::{RecipePane, RecipePaneProps},
                 request_pane::{RequestPane, RequestPaneProps},

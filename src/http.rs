@@ -256,6 +256,7 @@ pub struct RequestBuilder {
 /// Recipes could be very large so cloning may be expensive, and this options
 /// layer makes the available modifications clear and restricted.
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct RecipeOptions {
     /// Which headers should be excluded? A blacklist allows the default to be
     /// "include all".

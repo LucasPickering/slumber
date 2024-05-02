@@ -128,6 +128,7 @@ pub enum Message {
 
 /// Configuration that defines how to render a request
 #[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct RequestConfig {
     pub profile_id: Option<ProfileId>,
     pub recipe_id: RecipeId,

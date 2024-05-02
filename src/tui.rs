@@ -1,6 +1,6 @@
-mod context;
+pub mod context;
 pub mod input;
-mod message;
+pub mod message;
 mod signal;
 mod view;
 

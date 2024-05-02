@@ -56,11 +56,3 @@ impl TuiContext {
         CONTEXT.get().expect("Global context is not initialized")
     }
 }
-
-/// Test fixture for using context. This will initialize it once for all tests
-#[cfg(test)]
-#[rstest::fixture]
-#[once]
-pub fn tui_context() {
-    TuiContext::init(Config::default(), CollectionDatabase::testing());
-}

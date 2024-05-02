@@ -3,10 +3,23 @@ use crate::{
         Chain, ChainSource, Collection, Folder, Profile, ProfileId, Recipe,
         RecipeId, RecipeNode, RecipeTree,
     },
+    config::Config,
     db::CollectionDatabase,
     http::{Body, Request, RequestId, RequestRecord, Response},
     template::{Prompt, Prompter, Template, TemplateContext},
+    tui::{
+        context::TuiContext,
+        message::{Message, MessageSender},
+    },
 };
+use ratatui::{backend::TestBackend, Terminal};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
+use tokio::sync::{mpsc, mpsc::UnboundedReceiver};
+use uuid::Uuid;
+
 use chrono::Utc;
 use factori::{create, factori};
 use indexmap::IndexMap;
@@ -133,6 +146,49 @@ pub fn temp_dir() -> PathBuf {
     path
 }
 
+/// Create a terminal instance for testing
+#[rstest::fixture]
+pub fn terminal() -> Terminal<TestBackend> {
+    let backend = TestBackend::new(10, 10);
+    Terminal::new(backend).unwrap()
+}
+
+/// Test fixture for using context. This will initialize it once for all tests
+#[rstest::fixture]
+#[once]
+pub fn tui_context() {
+    TuiContext::init(Config::default(), CollectionDatabase::testing());
+}
+
+#[rstest::fixture]
+pub fn messages() -> MessageQueue {
+    let (tx, rx) = mpsc::unbounded_channel();
+    MessageQueue { tx: tx.into(), rx }
+}
+
+/// Test-only wrapper for MPSC receiver, to test what messages have been queued
+pub struct MessageQueue {
+    tx: MessageSender,
+    rx: UnboundedReceiver<Message>,
+}
+
+impl MessageQueue {
+    /// Get the message sender
+    pub fn tx(&self) -> &MessageSender {
+        &self.tx
+    }
+
+    /// Pop the next message off the queue. Panic if the queue is empty
+    pub fn pop(&mut self) -> Message {
+        self.rx.try_recv().expect("Message queue empty")
+    }
+
+    /// Clear all messages in the queue
+    pub fn clear(&mut self) {
+        while self.rx.try_recv().is_ok() {}
+    }
+}
+
 /// Return a static value when prompted, or no value if none is given
 #[derive(Debug, Default)]
 pub struct TestPrompter {
@@ -220,8 +276,3 @@ macro_rules! assert_err {
     }};
 }
 pub(crate) use assert_err;
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-};
-use uuid::Uuid;

@@ -515,3 +515,106 @@ impl PartialEq<RowState> for String {
         self == &other.key
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::*;
+    use factori::create;
+    use ratatui::{backend::TestBackend, Terminal};
+    use rstest::rstest;
+
+    /// Create component to be tested
+    #[rstest::fixture]
+    fn component(
+        _tui_context: (),
+        mut messages: MessageQueue,
+        mut terminal: Terminal<TestBackend>,
+    ) -> RecipePane {
+        let recipe = create!(Recipe, url: "https://test/".into());
+        let component = RecipePane::new(messages.tx().clone());
+
+        // Draw once to initialize state
+        component.draw(
+            &mut terminal.get_frame(),
+            RecipePaneProps {
+                is_selected: true,
+                selected_recipe: Some(&recipe),
+                selected_profile_id: None,
+            },
+            Rect::default(),
+        );
+        // Clear template preview messages so we can test what we want
+        messages.clear();
+        component
+    }
+
+    /// Test "Copy URL" action
+    #[rstest]
+    fn test_copy_url(mut component: RecipePane, mut messages: MessageQueue) {
+        let update =
+            component.update(messages.tx(), Event::other(MenuAction::CopyUrl));
+        // unstable: https://github.com/rust-lang/rust/issues/82775
+        assert!(matches!(update, Update::Consumed));
+
+        let message = messages.pop();
+        let Message::CopyRequestUrl(request_config) = &message else {
+            panic!("Wrong message: {message:?}")
+        };
+        assert_eq!(
+            request_config,
+            &RequestConfig {
+                recipe_id: "recipe1".into(),
+                profile_id: None,
+                options: RecipeOptions::default()
+            }
+        );
+    }
+
+    /// Test "Copy Body" action
+    #[rstest]
+    fn test_copy_body(mut component: RecipePane, mut messages: MessageQueue) {
+        let update =
+            component.update(messages.tx(), Event::other(MenuAction::CopyBody));
+        // unstable: https://github.com/rust-lang/rust/issues/82775
+        assert!(matches!(update, Update::Consumed));
+
+        let message = messages.pop();
+        let Message::CopyRequestBody(request_config) = &message else {
+            panic!("Wrong message: {message:?}")
+        };
+        assert_eq!(
+            request_config,
+            &RequestConfig {
+                recipe_id: "recipe1".into(),
+                profile_id: None,
+                options: RecipeOptions::default()
+            }
+        );
+    }
+
+    /// Test "Copy as cURL" action
+    #[rstest]
+    fn test_copy_as_curl(
+        mut component: RecipePane,
+        mut messages: MessageQueue,
+    ) {
+        let update =
+            component.update(messages.tx(), Event::other(MenuAction::CopyCurl));
+        // unstable: https://github.com/rust-lang/rust/issues/82775
+        assert!(matches!(update, Update::Consumed));
+
+        let message = messages.pop();
+        let Message::CopyRequestCurl(request_config) = &message else {
+            panic!("Wrong message: {message:?}")
+        };
+        assert_eq!(
+            request_config,
+            &RequestConfig {
+                recipe_id: "recipe1".into(),
+                profile_id: None,
+                options: RecipeOptions::default()
+            }
+        );
+    }
+}

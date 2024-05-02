@@ -151,7 +151,7 @@ impl<T: Persistable<Persisted = T>> PersistentContainer for T {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::context::tui_context;
+    use crate::test_util::*;
     use rstest::rstest;
 
     #[rstest]

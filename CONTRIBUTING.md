@@ -27,9 +27,12 @@ cargo +nightly fmt
 
 Generally the nightly version doesn't matter, but if you want to make sure you're using the same version as the CI, you can check which version is used in [test.yml](https://github.com/LucasPickering/slumber/blob/master/.github/workflows/test.yml).
 
-### Use Detailed Commit Messages
+### Git
 
-Commit messages form an important historical log for the repository. In your commit message, please include a description of **all** changes, and a link to the relevant GitHub issue (the issue number is enough, e.g. "Closes #100").
+- Use detailed commit messages. Commit messages form an important historical log for the repository. In your commit message, please include a description of **all** changes, and a link to the relevant GitHub issue (the issue number is enough, e.g. "Closes #100").
+- _Generally_ each PR should be a single commit. If you have a major change (e.g. a rename or refactor) that clutters the diff, consider putting that in a separate PR rather than just a separate commit.
+- Subsequent commits on a PR (e.g. changes made in response to feedback) should be **separate commits**. This makes it much easier to review changes. We'll squash into a single commit before merging.
+- Git history must be linear, meaning you should do `git rebase master` instead of `git merge master` on your branch. If you don't know how to use `rebase`, there are plenty of tutorials online.
 
 ## Implementation Guidelines
 

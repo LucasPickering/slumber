@@ -1,4 +1,5 @@
 use crate::tui::{
+    context::TuiContext,
     input::Action,
     message::MessageSender,
     view::{
@@ -10,7 +11,7 @@ use crate::tui::{
 };
 use ratatui::{
     prelude::{Constraint, Rect},
-    widgets::{Block, BorderType, Borders, Clear},
+    widgets::{Block, Borders, Clear},
     Frame,
 };
 use std::{collections::VecDeque, ops::DerefMut};
@@ -135,6 +136,7 @@ impl EventHandler for ModalQueue {
 impl Draw for ModalQueue {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         if let Some(modal) = self.queue.front() {
+            let theme = &TuiContext::get().theme;
             let (width, height) = modal.dimensions();
 
             // The child gave us the content dimensions, we need to add one cell
@@ -148,7 +150,8 @@ impl Draw for ModalQueue {
             let block = Block::default()
                 .title(modal.title())
                 .borders(Borders::ALL)
-                .border_type(BorderType::Thick);
+                .border_style(theme.modal.border)
+                .border_type(theme.modal.border_type);
             let inner_area = block.inner(area);
 
             // Draw the outline of the modal

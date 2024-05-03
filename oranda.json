@@ -1,5 +1,6 @@
 {
   "styles": {
+    "logo": "./static/slumber.png",
     "favicon": "./static/favicon.ico",
     "theme": "dark"
   },

@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Fix Slumber going into zombie mode and CPU spiking to 100% under certain closure scenarios ([#136](https://github.com/LucasPickering/slumber/issues/136))
+- Fix historical request/response no loading on first render ([#199](https://github.com/LucasPickering/slumber/issues/199))
 
 ## [1.0.1] - 2024-04-27
 

@@ -353,12 +353,16 @@ impl RecipeState {
             ),
             query: Persistent::new(
                 PersistentKey::RecipeSelectedQuery(recipe.id.clone()),
-                SelectState::new(query_items).on_submit(RowState::on_submit),
+                SelectState::builder(query_items)
+                    .on_submit(RowState::on_submit)
+                    .build(),
             )
             .into(),
             headers: Persistent::new(
                 PersistentKey::RecipeSelectedHeader(recipe.id.clone()),
-                SelectState::new(header_items).on_submit(RowState::on_submit),
+                SelectState::builder(header_items)
+                    .on_submit(RowState::on_submit)
+                    .build(),
             )
             .into(),
             body: recipe.body.as_ref().map(|body| {

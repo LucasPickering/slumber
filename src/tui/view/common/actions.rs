@@ -39,7 +39,10 @@ impl<T: FixedSelect> Default for ActionsModal<T> {
         };
 
         Self {
-            actions: FixedSelectState::new().on_submit(wrapper).into(),
+            actions: FixedSelectState::builder()
+                .on_submit(wrapper)
+                .build()
+                .into(),
         }
     }
 }

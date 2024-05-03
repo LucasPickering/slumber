@@ -275,5 +275,5 @@ fn build_select_state(
         .filter(|(lookup_key, _)| collapsed.is_visible(lookup_key))
         .map(|(_, node)| node.clone())
         .collect();
-    SelectState::new(items).on_select(on_select)
+    SelectState::builder(items).on_select(on_select).build()
 }

@@ -1,11 +1,15 @@
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::{
+    style::{Color, Modifier, Style},
+    widgets::BorderType,
+};
 
 /// Configurable visual settings for the UI. Styles are grouped into sub-structs
 /// generally by component.
 #[derive(Debug)]
 pub struct Theme {
-    pub pane: ThemePane,
     pub list: ThemeList,
+    pub modal: ThemeModal,
+    pub pane: ThemePane,
     pub tab: ThemeTab,
     pub table: ThemeTable,
     pub template_preview: ThemeTemplatePreview,
@@ -28,6 +32,13 @@ pub struct ThemeList {
     pub highlight: Style,
 }
 
+/// Styles for the Modal component
+#[derive(Debug)]
+pub struct ThemeModal {
+    pub border: Style,
+    pub border_type: BorderType,
+}
+
 /// Styles for Pane component
 #[derive(Debug)]
 pub struct ThemePane {
@@ -35,6 +46,10 @@ pub struct ThemePane {
     pub border: Style,
     /// Pane border when selected/focused
     pub border_selected: Style,
+    /// Pane border characters used when not selected/focused
+    pub border_type: BorderType,
+    /// Pane border characters used when selected/focused
+    pub border_type_selected: BorderType,
 }
 
 /// Styles for Tab component
@@ -89,17 +104,23 @@ pub struct ThemeTextWindow {
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            pane: ThemePane {
-                border: Style::default(),
-                border_selected: Style::default()
-                    .fg(Self::PRIMARY_COLOR)
-                    .add_modifier(Modifier::BOLD),
-            },
             list: ThemeList {
                 highlight: Style::default()
                     .bg(Self::PRIMARY_COLOR)
                     .fg(Color::Black)
                     .add_modifier(Modifier::BOLD),
+            },
+            modal: ThemeModal {
+                border: Style::default().fg(Self::PRIMARY_COLOR),
+                border_type: BorderType::Double,
+            },
+            pane: ThemePane {
+                border: Style::default(),
+                border_selected: Style::default()
+                    .fg(Self::PRIMARY_COLOR)
+                    .add_modifier(Modifier::BOLD),
+                border_type: BorderType::Plain,
+                border_type_selected: BorderType::Double,
             },
             tab: ThemeTab {
                 highlight: Style::default()
@@ -144,11 +165,12 @@ impl Default for Theme {
 }
 
 impl ThemePane {
-    pub fn border_style(&self, is_focused: bool) -> Style {
+    /// Get the type and style of the border for a pane
+    pub fn border(&self, is_focused: bool) -> (BorderType, Style) {
         if is_focused {
-            self.border_selected
+            (self.border_type_selected, self.border_selected)
         } else {
-            self.border
+            (self.border_type, self.border)
         }
     }
 }

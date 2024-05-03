@@ -179,8 +179,13 @@ impl MessageQueue {
     }
 
     /// Pop the next message off the queue. Panic if the queue is empty
-    pub fn pop(&mut self) -> Message {
+    pub fn pop_now(&mut self) -> Message {
         self.rx.try_recv().expect("Message queue empty")
+    }
+
+    /// Pop the next message off the queue, waiting if empty
+    pub async fn pop_wait(&mut self) -> Message {
+        self.rx.recv().await.expect("Message queue closed")
     }
 
     /// Clear all messages in the queue

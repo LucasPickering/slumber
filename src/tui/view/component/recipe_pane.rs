@@ -557,7 +557,7 @@ mod tests {
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 
-        let message = messages.pop();
+        let message = messages.pop_now();
         let Message::CopyRequestUrl(request_config) = &message else {
             panic!("Wrong message: {message:?}")
         };
@@ -579,7 +579,7 @@ mod tests {
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 
-        let message = messages.pop();
+        let message = messages.pop_now();
         let Message::CopyRequestBody(request_config) = &message else {
             panic!("Wrong message: {message:?}")
         };
@@ -604,7 +604,7 @@ mod tests {
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 
-        let message = messages.pop();
+        let message = messages.pop_now();
         let Message::CopyRequestCurl(request_config) = &message else {
             panic!("Wrong message: {message:?}")
         };

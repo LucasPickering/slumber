@@ -107,6 +107,7 @@ pub async fn save_file(
                     OpenOptions::new()
                         .create(true)
                         .write(true)
+                        .truncate(true)
                         .open(&path)
                         .await
                 } else {
@@ -161,4 +162,80 @@ async fn confirm(messages_tx: &MessageSender, message: impl ToString) -> bool {
     messages_tx.send(Message::ConfirmStart(confirm));
     // Error means we got ghosted :( RUDE!
     rx.await.unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::*;
+    use rstest::rstest;
+    use std::path::PathBuf;
+    use tokio::fs;
+
+    /// Test various cases of save_file
+    #[rstest]
+    #[case::new_file(false, false)]
+    #[case::old_file_remain(true, false)]
+    #[case::old_file_overwrite(true, true)]
+    #[tokio::test]
+    async fn test_save_file(
+        temp_dir: PathBuf,
+        mut messages: MessageQueue,
+        #[case] exists: bool,
+        #[case] overwrite: bool,
+    ) {
+        let expected_path = temp_dir.join("test.txt");
+        if exists {
+            fs::write(&expected_path, b"already here").await.unwrap();
+        }
+
+        // This will run in the background and save the file after prompts
+        let handle = tokio::spawn(save_file(
+            messages.tx().clone(),
+            Some("default.txt".into()),
+            b"hello!".to_vec(),
+        ));
+
+        // First we expect a prompt for the file path
+        let prompt = match messages.pop_wait().await {
+            Message::PromptStart(prompt) => prompt,
+            message => panic!("Wrong message: {message:?}"),
+        };
+        assert_eq!(&prompt.message, "Enter a path for the file");
+        assert_eq!(prompt.default.as_deref(), Some("default.txt"));
+        prompt
+            .channel
+            .respond(expected_path.to_str().unwrap().to_owned());
+
+        if exists {
+            // Now we expect a confirmation prompt
+            let confirm = match messages.pop_wait().await {
+                Message::ConfirmStart(confirm) => confirm,
+                message => panic!("Wrong message: {message:?}"),
+            };
+            assert_eq!(
+                confirm.message,
+                format!(
+                    "`{}` already exists, overwrite?",
+                    expected_path.display()
+                )
+            );
+            confirm.channel.respond(overwrite);
+        }
+
+        // Now the file should be created
+        handle
+            .await
+            .expect("Task dropped")
+            .expect("save_file failed");
+        let expected = if !exists || overwrite {
+            "hello!"
+        } else {
+            "already here"
+        };
+        assert_eq!(
+            &fs::read_to_string(&expected_path).await.unwrap(),
+            expected
+        );
+    }
 }

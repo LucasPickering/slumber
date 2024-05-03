@@ -42,7 +42,7 @@ impl ProfileListPane {
         Self {
             profiles: Persistent::new(
                 PersistentKey::ProfileId,
-                SelectState::new(profiles).on_select(on_select),
+                SelectState::builder(profiles).on_select(on_select).build(),
             )
             .into(),
         }

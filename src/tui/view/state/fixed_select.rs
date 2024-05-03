@@ -4,7 +4,7 @@ use crate::tui::{
         event::{Event, EventHandler, Update},
         state::{
             persistence::{Persistable, PersistentContainer},
-            select::{SelectState, SelectStateData},
+            select::{SelectState, SelectStateBuilder, SelectStateData},
         },
     },
 };
@@ -33,19 +33,45 @@ where
     select: SelectState<Item, State>,
 }
 
+pub struct FixedSelectStateBuilder<Item, State> {
+    /// Defer to SelectStateBuilder for everything
+    select: SelectStateBuilder<Item, State>,
+}
+
+impl<Item, State> FixedSelectStateBuilder<Item, State> {
+    /// Set the callback to be called when the user hits enter on an item
+    pub fn on_submit(
+        mut self,
+        on_submit: impl 'static + Fn(&mut Item),
+    ) -> Self {
+        self.select = self.select.on_submit(on_submit);
+        self
+    }
+
+    pub fn build(self) -> FixedSelectState<Item, State>
+    where
+        Item: FixedSelect,
+        State: SelectStateData,
+    {
+        FixedSelectState {
+            select: self.select.build(),
+        }
+    }
+}
+
 impl<Item, State> FixedSelectState<Item, State>
 where
     Item: FixedSelect,
     State: SelectStateData,
 {
-    /// Create a new fixed-size list, with options derived from a static enum.
+    /// Start a builder for a new fixed-size list, with items derived from a
+    /// static enum.
     ///
     /// ## Panics
     ///
     /// Panics if the enum is empty.
-    pub fn new() -> Self {
+    pub fn builder() -> FixedSelectStateBuilder<Item, State> {
         let items = Item::iter().collect_vec();
-
         if items.is_empty() {
             // Wr run on the assumption that it's not empty, to prevent
             // returning Options
@@ -54,9 +80,8 @@ where
                 Add a variant to your enum."
             );
         }
-
-        Self {
-            select: SelectState::new(items),
+        FixedSelectStateBuilder {
+            select: SelectState::builder(items),
         }
     }
 
@@ -72,15 +97,6 @@ where
         self.select
             .selected()
             .expect("Fixed-size list cannot be empty")
-    }
-
-    /// Set the callback to be called when the user hits enter on an item
-    pub fn on_submit(
-        mut self,
-        on_submit: impl 'static + Fn(&mut Item),
-    ) -> Self {
-        self.select = self.select.on_submit(on_submit);
-        self
     }
 
     /// Get all items in the list
@@ -129,7 +145,7 @@ where
     State: SelectStateData,
 {
     fn default() -> Self {
-        Self::new()
+        Self::builder().build()
     }
 }
 

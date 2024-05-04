@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Add option to chain values from response header rather than body ([#184](https://github.com/LucasPickering/slumber/issues/184))
 - Add action to save response body to file ([#183](https://github.com/LucasPickering/slumber/issues/183))
+- Add option to customize TUI theme ([#193](https://github.com/LucasPickering/slumber/issues/193))
 
 ### Changed
 

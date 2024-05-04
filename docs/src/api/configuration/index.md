@@ -21,8 +21,9 @@ If the root directory doesn't exist yet, you can create it yourself or have Slum
 
 ## Fields
 
-| Field                      | Type                                | Description                                                                                       | Default |
-| -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------- | ------- |
-| `preview_templates`        | `boolean`                           | Render template values in the TUI? If false, the raw template will be shown.                      | `true`  |
-| `ignore_certificate_hosts` | `string[]`                          | Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md) | `[]`    |
-| `input_bindings`           | `mapping[Action, KeyCombination[]]` | Override default input bindings. [More info](./input_bindings.md)                                 | `{}`    |
+| Field                      | Type                                | Description                                                                                                     | Default                                              |
+| -------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `preview_templates`        | `boolean`                           | Render template values in the TUI? If false, the raw template will be shown.                                    | `true`                                               |
+| `ignore_certificate_hosts` | `string[]`                          | Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md)               | `[]`                                                 |
+| `input_bindings`           | `mapping[Action, KeyCombination[]]` | Override default input bindings. [More info](./input_bindings.md)                                               | `{}`                                                 |
+| `theme`                    | `mapping[ThemeElement, Color]`      | Set color theme. Currently supports `primary_color` and `error_color`. Values can be CSS color codes or strings | `{ primary_color: "LightGreen", error_color: "Red" }`|

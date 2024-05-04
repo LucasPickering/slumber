@@ -37,8 +37,10 @@ pub struct Styles {
 
 impl Styles {
     pub fn from_theme(theme: &Theme) -> Self {
-        let primary_color = Color::from_str(&theme.primary_color).unwrap();
-        let error_color = Color::from_str(&theme.error_color).unwrap();
+        let primary_color =
+            Color::from_str(&theme.primary_color).unwrap_or(Color::LightGreen);
+        let error_color =
+            Color::from_str(&theme.error_color).unwrap_or(Color::Red);
 
         Self {
             list: ThemeList {

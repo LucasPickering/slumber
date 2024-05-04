@@ -326,3 +326,7 @@ chains:
 ## [0.3.1] - 2023-10-22
 
 Initial distributed release!
+
+## Added
+
+- Added support for the Rest and HTTP file format used in VSCode and Jetbrains.

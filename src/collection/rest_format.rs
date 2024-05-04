@@ -17,6 +17,7 @@ use nom::{
     sequence::{pair, tuple},
     IResult, Parser,
 };
+use base64::{prelude::BASE64_STANDARD, Engine};
 use reqwest::header::AUTHORIZATION;
 use std::{fs::File, io::Read, path::Path, str};
 use url::Url;
@@ -487,6 +488,53 @@ impl FromStr for RestFormat {
     }
 }
 
+impl Authentication {
+    /// Convert the value of an Authorization header into an authentication
+    /// struct Can either be Bearer or Basic
+    pub fn from_header(input: &str) -> anyhow::Result<Self> {
+        fn bearer(input: &str) -> IResult<&str, &str> {
+            tag("Bearer ")(input)
+        }
+
+        fn basic(input: &str) -> IResult<&str, &str> {
+            tag("Basic ")(input)
+        }
+
+        fn username_and_password(input: &str) -> IResult<&str, &str> {
+            let (password, (username, _)) =
+                pair(take_until(":"), tag(":"))(input)?;
+            Ok((username, password))
+        }
+
+        if let Ok((token, _)) = bearer(input) {
+            let parsed: Template =
+                token.to_string().try_into().map_err(|_| {
+                    anyhow!("Cannot convert auth header to template")
+                })?;
+            return Ok(Self::Bearer(parsed));
+        }
+
+        if let Ok((encoded, _)) = basic(input) {
+            let decoded_bytes = BASE64_STANDARD.decode(encoded)?;
+            let decoded = str::from_utf8(decoded_bytes.as_slice())?;
+
+            let (username, password) = match username_and_password(decoded) {
+                // There is a username and password seperated by a colon
+                Ok((u, p)) => {
+                    (u.to_string().try_into()?, Some(p.to_string().try_into()?))
+                }
+                // There is just a username
+                Err(_) => (decoded.to_string().try_into()?, None),
+            };
+
+            return Ok(Self::Basic { username, password });
+        }
+
+        return Err(anyhow!("Failed to parse auth header"));
+    }
+}
+
+
 #[cfg(test)]
 mod test {
     use crate::collection::CollectionFile;
@@ -644,5 +692,37 @@ X-Http-Method-Override: PUT
                 .replace("\n", "\r\n")
             )
         );
+    }
+
+    #[test]
+    fn parse_auth_header_test() {
+        let example = "Basic Zm9vOmJhcg==";
+        match Authentication::from_header(example).unwrap() {
+            Authentication::Basic { username, password } => {
+                assert_eq!(username.to_string(), "foo");
+                assert_eq!(password.unwrap().to_string(), "bar");
+            }
+            _ => panic!("Should be basic auth!"),
+        };
+
+        let example = "Basic dXNlcm5hbWV3aXRob3V0cGFzc3dvcmQ=";
+        match Authentication::from_header(example).unwrap() {
+            Authentication::Basic { username, password } => {
+                assert_eq!(username.to_string(), "usernamewithoutpassword");
+                assert!(password.is_none());
+            }
+            _ => panic!("Should be basic auth!"),
+        };
+
+        let example = "Bearer eyjlavljhhkjasdjlkhskljdfklasdlkjhf";
+        match Authentication::from_header(example).unwrap() {
+            Authentication::Bearer(bearer) => {
+                assert_eq!(
+                    bearer.to_string(),
+                    "eyjlavljhhkjasdjlkhskljdfklasdlkjhf"
+                )
+            }
+            _ => panic!("Should be bearer auth!"),
+        }
     }
 }

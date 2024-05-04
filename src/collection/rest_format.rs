@@ -1,6 +1,6 @@
 ///! Parses a `.rest` or `.http` file
 ///! These files are used in many IDEs such as Jetbrains, VSCode, and
-/// Visual Studio ! Jetbrains and nvim-rest call it `.http`
+///! Visual Studio Jetbrains and nvim-rest call it `.http`
 ///! VSCode and Visual Studio call it `.rest`
 use anyhow::{anyhow, Context};
 use derive_more::FromStr;

@@ -215,12 +215,12 @@ impl EventHandler for TextBox {
 
 impl Draw for TextBox {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
-        let theme = &TuiContext::get().theme;
+        let styles = &TuiContext::get().styles;
 
         // Hide top secret data
         let text: Text = if self.state.text.is_empty() {
             Line::from(self.placeholder_text.as_str())
-                .style(theme.text_box.placeholder)
+                .style(styles.text_box.placeholder)
                 .into()
         } else if self.sensitive {
             Masked::new(&self.state.text, '•').into()
@@ -230,9 +230,9 @@ impl Draw for TextBox {
 
         // Draw the text
         let style = if self.is_valid() {
-            theme.text_box.text
+            styles.text_box.text
         } else {
-            theme.text_box.invalid
+            styles.text_box.invalid
         };
         frame.render_widget(Paragraph::new(text).style(style), area);
 
@@ -246,7 +246,7 @@ impl Draw for TextBox {
             };
             frame
                 .buffer_mut()
-                .set_style(cursor_area, theme.text_box.cursor);
+                .set_style(cursor_area, styles.text_box.cursor);
         }
     }
 }

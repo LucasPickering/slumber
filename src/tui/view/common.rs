@@ -43,7 +43,7 @@ impl<'a> Generate for Pane<'a> {
         Self: 'this,
     {
         let (border_type, border_style) =
-            TuiContext::get().theme.pane.border(self.is_focused);
+            TuiContext::get().styles.pane.border(self.is_focused);
         Block::default()
             .borders(Borders::ALL)
             .border_type(border_type)

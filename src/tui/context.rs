@@ -2,7 +2,7 @@ use crate::{
     config::Config,
     db::CollectionDatabase,
     http::HttpEngine,
-    tui::{input::InputEngine, view::Theme},
+    tui::{input::InputEngine, view::Styles},
 };
 use std::sync::OnceLock;
 
@@ -23,7 +23,7 @@ pub struct TuiContext {
     /// App-level configuration
     pub config: Config,
     /// Visual theme. Colors!
-    pub theme: Theme,
+    pub styles: Styles,
     /// Input:action bindings
     pub input_engine: InputEngine,
     /// For sending HTTP requests
@@ -38,10 +38,11 @@ impl TuiContext {
     pub fn init(config: Config, database: CollectionDatabase) {
         let input_engine = InputEngine::new(config.input_bindings.clone());
         let http_engine = HttpEngine::new(&config, database.clone());
+        let styles = Styles::from_theme(&config.theme);
         CONTEXT
             .set(Self {
                 config,
-                theme: Theme::default(),
+                styles,
                 input_engine,
                 http_engine,
                 database,

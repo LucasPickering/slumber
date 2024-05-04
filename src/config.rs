@@ -1,5 +1,6 @@
 use crate::{
     tui::input::{Action, InputBinding},
+    tui::view::Theme,
     util::{
         parse_yaml,
         paths::{DataDirectory, FileGuard},
@@ -28,6 +29,9 @@ pub struct Config {
 
     /// Overrides for default key bindings
     pub input_bindings: IndexMap<Action, InputBinding>,
+
+    /// Set colors of the TUI
+    pub theme: Theme,
 }
 
 impl Config {
@@ -70,6 +74,7 @@ impl Default for Config {
             ignore_certificate_hosts: Vec::new(),
             preview_templates: true,
             input_bindings: IndexMap::default(),
+            theme: Theme::default(),
         }
     }
 }

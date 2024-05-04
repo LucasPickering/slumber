@@ -110,7 +110,7 @@ impl<'a> TextStitcher<'a> {
         template: &'a Template,
         chunks: &'a [TemplateChunk],
     ) -> Text<'a> {
-        let theme = &TuiContext::get().theme;
+        let styles = &TuiContext::get().styles;
 
         // Each chunk will get its own styling, but we can't just make each
         // chunk a Span, because one chunk might have multiple lines. And we
@@ -122,8 +122,8 @@ impl<'a> TextStitcher<'a> {
             let chunk_text = Self::get_chunk_text(template, chunk);
             let style = match &chunk {
                 TemplateChunk::Raw(_) => Style::default(),
-                TemplateChunk::Rendered { .. } => theme.template_preview.text,
-                TemplateChunk::Error(_) => theme.template_preview.error,
+                TemplateChunk::Rendered { .. } => styles.template_preview.text,
+                TemplateChunk::Error(_) => styles.template_preview.error,
             };
 
             stitcher.add_chunk(chunk_text, style);

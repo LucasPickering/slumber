@@ -203,7 +203,7 @@ impl Draw<RecipeListPaneProps> for RecipeListPane {
             .collect_vec();
         let list = ratatui::widgets::List::new(items)
             .block(pane.generate())
-            .highlight_style(context.theme.list.highlight);
+            .highlight_style(context.styles.list.highlight);
 
         frame.render_stateful_widget(
             list,

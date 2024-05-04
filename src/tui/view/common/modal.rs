@@ -136,7 +136,7 @@ impl EventHandler for ModalQueue {
 impl Draw for ModalQueue {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         if let Some(modal) = self.queue.front() {
-            let theme = &TuiContext::get().theme;
+            let theme = &TuiContext::get().styles;
             let (width, height) = modal.dimensions();
 
             // The child gave us the content dimensions, we need to add one cell

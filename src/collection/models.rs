@@ -252,6 +252,8 @@ pub enum ChainSource {
         /// When should this request be automatically re-executed?
         #[serde(default)]
         trigger: ChainRequestTrigger,
+        #[serde(default)]
+        section: ChainRequestSection,
     },
     /// Run an external command to get a result
     Command { command: Vec<Template> },
@@ -264,6 +266,16 @@ pub enum ChainSource {
         /// Default value for the shown textbox
         default: Option<Template>,
     },
+}
+
+/// The component of the response to use as the chain source
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum ChainRequestSection {
+    #[default]
+    Body,
+    Header(String),
 }
 
 /// Define when a recipe with a chained request should auto-execute the
@@ -316,7 +328,7 @@ impl TryFrom<String> for Method {
         value.parse().map_err(|_| {
             anyhow!(
                 "Invalid HTTP method `{value}`. Must be one of: {}",
-                Method::iter().map(|method| method.to_string()).join(", ")
+                Method::iter().map(|method| method.to_string()).format(", ")
             )
         })
     }

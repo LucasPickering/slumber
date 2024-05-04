@@ -1,9 +1,9 @@
 use crate::{
-    http::{Request, RequestId, ResponseContent},
+    http::{Request, RequestId},
     tui::{
         context::TuiContext,
         input::Action,
-        message::Message,
+        message::{Message, MessageSender},
         view::{
             common::{
                 actions::ActionsModal, header_table::HeaderTable, tabs::Tabs,
@@ -13,14 +13,14 @@ use crate::{
             draw::{Draw, Generate, ToStringGenerate},
             event::{Event, EventHandler, EventQueue, Update},
             state::{persistence::PersistentKey, RequestState, StateCell},
-            util::layout,
             Component,
         },
     },
 };
 use derive_more::{Debug, Display};
 use ratatui::{
-    prelude::{Alignment, Constraint, Direction, Rect},
+    layout::Layout,
+    prelude::{Alignment, Constraint, Rect},
     widgets::{Paragraph, Wrap},
     Frame,
 };
@@ -75,11 +75,9 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
         // Don't render anything else unless we have a request state
         if let Some(request_state) = props.active_request {
             // Time goes in the top-right,
-            let [time_area, _] = layout(
-                inner_area,
-                Direction::Vertical,
-                [Constraint::Length(1), Constraint::Min(0)],
-            );
+            let [time_area, _] =
+                Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+                    .areas(inner_area);
 
             // Request metadata
             if let Some(metadata) = request_state.metadata() {
@@ -119,9 +117,6 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                     frame,
                     RenderedRequestProps {
                         request: Arc::clone(request),
-                        // For simplicity, don't format body or make it
-                        // queryable
-                        parsed_body: None,
                     },
                     area,
                 )
@@ -157,9 +152,8 @@ impl Default for RenderedRequest {
     }
 }
 
-struct RenderedRequestProps<'a> {
+struct RenderedRequestProps {
     request: Arc<Request>,
-    parsed_body: Option<&'a dyn ResponseContent>,
 }
 
 #[derive(
@@ -181,7 +175,7 @@ enum Tab {
 }
 
 impl EventHandler for RenderedRequest {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::OpenActions),
@@ -192,18 +186,19 @@ impl EventHandler for RenderedRequest {
                 match other.downcast_ref::<MenuAction>() {
                     Some(MenuAction::CopyUrl) => {
                         if let Some(state) = self.state.get() {
-                            TuiContext::send_message(Message::CopyText(
+                            messages_tx.send(Message::CopyText(
                                 state.request.url.to_string(),
                             ))
                         }
                     }
                     Some(MenuAction::CopyBody) => {
-                        // We need to generate the copy text here because it can
-                        // be formatted/queried
+                        // Copy exactly what the user sees. Currently requests
+                        // don't support formatting/querying but that could
+                        // change
                         if let Some(body) =
                             self.state.get().and_then(|state| state.body.text())
                         {
-                            TuiContext::send_message(Message::CopyText(body));
+                            messages_tx.send(Message::CopyText(body));
                         }
                     }
                     None => return Update::Propagate(event),
@@ -231,24 +226,17 @@ impl EventHandler for RenderedRequest {
     }
 }
 
-impl<'a> Draw<RenderedRequestProps<'a>> for RenderedRequest {
-    fn draw(
-        &self,
-        frame: &mut Frame,
-        props: RenderedRequestProps<'a>,
-        area: Rect,
-    ) {
+impl Draw<RenderedRequestProps> for RenderedRequest {
+    fn draw(&self, frame: &mut Frame, props: RenderedRequestProps, area: Rect) {
         let state = self.state.get_or_update(props.request.id, || State {
             request: Arc::clone(&props.request),
             body: Default::default(),
         });
 
         // Split the main area again to allow tabs
-        let [tabs_area, content_area] = layout(
-            area,
-            Direction::Vertical,
-            [Constraint::Length(1), Constraint::Min(0)],
-        );
+        let [tabs_area, content_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+                .areas(area);
 
         // Navigation tabs
         self.tabs.draw(frame, (), tabs_area);
@@ -257,19 +245,16 @@ impl<'a> Draw<RenderedRequestProps<'a>> for RenderedRequest {
         match self.tabs.selected() {
             Tab::Url => {
                 frame.render_widget(
-                    Paragraph::new(state.request.url.to_string())
+                    Paragraph::new(props.request.url.to_string())
                         .wrap(Wrap::default()),
                     content_area,
                 );
             }
             Tab::Body => {
-                if let Some(body) = &state.request.body {
+                if let Some(body) = &props.request.body {
                     state.body.draw(
                         frame,
-                        RecordBodyProps {
-                            raw_body: body,
-                            parsed_body: props.parsed_body,
-                        },
+                        RecordBodyProps { body },
                         content_area,
                     );
                 }

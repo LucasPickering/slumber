@@ -1,5 +1,39 @@
 # Changelog
 
+All user-facing changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased] - ReleaseDate
+
+### Added
+
+- Add option to chain values from response header rather than body ([#184](https://github.com/LucasPickering/slumber/issues/184))
+- Add action to save response body to file ([#183](https://github.com/LucasPickering/slumber/issues/183))
+
+### Changed
+
+- Reduce UI latency under certain scenarios
+  - Previously some actions would feel laggy because of an inherent 250ms delay in processing some events
+- Search parent directories for collection file ([#194](https://github.com/LucasPickering/slumber/issues/194))
+- Use thicker borders for selected pane and modals
+
+### Fixed
+
+- Fix Slumber going into zombie mode and CPU spiking to 100% under certain closure scenarios ([#136](https://github.com/LucasPickering/slumber/issues/136))
+- Fix historical request/response no loading on first render ([#199](https://github.com/LucasPickering/slumber/issues/199))
+
+## [1.0.1] - 2024-04-27
+
+### Added
+
+- Add two new build targets to releases: `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-musl`
+
+### Fixed
+
+- Fix build on Windows ([#180](https://github.com/LucasPickering/slumber/issues/180))
+  - I can't guarantee it _works_ on Windows since I don't have a machine to test on, but it at least compiles now
+
 ## [1.0.0] - 2024-04-25
 
 ### Breaking

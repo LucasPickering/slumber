@@ -3,23 +3,30 @@
 
 use crate::{
     template::{Prompt, PromptChannel},
-    tui::view::{
-        common::{
-            modal::{IntoModal, Modal},
-            text_box::TextBox,
+    tui::{
+        message::MessageSender,
+        view::{
+            common::{
+                button::ButtonGroup,
+                modal::{IntoModal, Modal},
+                text_box::TextBox,
+            },
+            component::Component,
+            draw::{Draw, Generate},
+            event::{Event, EventHandler, EventQueue, Update},
+            state::Notification,
+            Confirm,
         },
-        component::Component,
-        draw::{Draw, Generate},
-        event::{Event, EventHandler, EventQueue},
-        state::Notification,
     },
 };
+use derive_more::Display;
 use ratatui::{
     prelude::{Constraint, Rect},
     widgets::{Paragraph, Wrap},
     Frame,
 };
 use std::{cell::Cell, fmt::Debug, rc::Rc};
+use strum::{EnumCount, EnumIter};
 
 #[derive(Debug)]
 pub struct ErrorModal(anyhow::Error);
@@ -59,7 +66,7 @@ pub struct PromptModal {
     /// Modal title, from the prompt message
     title: String,
     /// Channel used to submit entered value
-    channel: PromptChannel,
+    channel: PromptChannel<String>,
     /// Flag set before closing to indicate if we should submit in our own
     /// `on_close`. This is set from the text box's `on_submit`.
     submit: Rc<Cell<bool>>,
@@ -131,6 +138,90 @@ impl IntoModal for Prompt {
     }
 }
 
+/// Inner state for the prompt modal
+#[derive(Debug)]
+pub struct ConfirmModal {
+    /// Modal title, from the prompt message
+    title: String,
+    /// Channel used to submit yes/no. This is an option so we can take the
+    /// value when a submission is given, and then close the modal. It should
+    /// only ever be taken once.
+    channel: Option<PromptChannel<bool>>,
+    buttons: Component<ButtonGroup<ConfirmButton>>,
+}
+
+/// Buttons in the confirmation modal
+#[derive(
+    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
+)]
+enum ConfirmButton {
+    No,
+    #[default]
+    Yes,
+}
+
+impl ConfirmModal {
+    pub fn new(confirm: Confirm) -> Self {
+        Self {
+            title: confirm.message,
+            channel: Some(confirm.channel),
+            buttons: Default::default(),
+        }
+    }
+}
+
+impl Modal for ConfirmModal {
+    fn title(&self) -> &str {
+        &self.title
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        (
+            // Add some arbitrary padding
+            Constraint::Length((self.title.len() + 4) as u16),
+            Constraint::Length(1),
+        )
+    }
+}
+
+impl EventHandler for ConfirmModal {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+        // When user selects a button, send the response and close
+        let Some(button) = event.other::<ConfirmButton>() else {
+            return Update::Propagate(event);
+        };
+        // Channel *should* always be available here, because after handling
+        // this event for the first time we close the modal. Hypothetically we
+        // could get two submissions in rapid succession though, so ignore
+        // subsequent ones.
+        if let Some(channel) = self.channel.take() {
+            channel.respond(*button == ConfirmButton::Yes);
+        }
+
+        EventQueue::push(Event::CloseModal);
+        Update::Consumed
+    }
+
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        vec![self.buttons.as_child()]
+    }
+}
+
+impl Draw for ConfirmModal {
+    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+        self.buttons.draw(frame, (), area);
+    }
+}
+
+impl IntoModal for Confirm {
+    type Target = ConfirmModal;
+
+    fn into_modal(self) -> Self::Target {
+        ConfirmModal::new(self)
+    }
+}
+
+/// Show most recent notification with timestamp
 #[derive(Debug)]
 pub struct NotificationText {
     notification: Notification,

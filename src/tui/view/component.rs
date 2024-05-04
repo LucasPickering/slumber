@@ -1,10 +1,8 @@
-//! Specific single-use components
-
 mod help;
 mod misc;
 mod primary;
-mod profile;
 mod profile_list;
+mod profile_pane;
 mod recipe_list;
 mod recipe_pane;
 mod record_body;
@@ -14,9 +12,12 @@ mod root;
 
 pub use root::Root;
 
-use crate::tui::view::{
-    draw::Draw,
-    event::{Event, EventHandler, Update},
+use crate::tui::{
+    message::MessageSender,
+    view::{
+        draw::Draw,
+        event::{Event, EventHandler, Update},
+    },
 };
 use crossterm::event::MouseEvent;
 use derive_more::{Deref, DerefMut};
@@ -34,6 +35,10 @@ pub struct Component<T> {
     #[deref]
     #[deref_mut]
     inner: T,
+    /// The area that this component was last rendered to. In most cases this
+    /// is updated automatically by calling `draw`, but in some scenarios (such
+    /// as headless components) we may need to manually set this via
+    /// [Self::set_area].
     area: Cell<Rect>,
 }
 
@@ -94,8 +99,8 @@ impl<T> Component<T> {
 }
 
 impl<T: EventHandler> EventHandler for Component<T> {
-    fn update(&mut self, event: Event) -> Update {
-        self.inner.update(event)
+    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+        self.inner.update(messages_tx, event)
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {

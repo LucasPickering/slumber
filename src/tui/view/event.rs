@@ -5,6 +5,7 @@ use crate::{
     collection::{ProfileId, RecipeId},
     tui::{
         input::Action,
+        message::MessageSender,
         view::{
             common::modal::{Modal, ModalPriority},
             state::{Notification, RequestState},
@@ -12,7 +13,6 @@ use crate::{
         },
     },
 };
-use crossterm::event::{MouseEvent, MouseEventKind};
 use std::{any::Any, cell::RefCell, collections::VecDeque, fmt::Debug};
 use tracing::trace;
 
@@ -21,10 +21,11 @@ use tracing::trace;
 /// children. Events will be propagated bottom-up (i.e. leff-to-root), and each
 /// element has the opportunity to consume the event so it stops bubbling.
 pub trait EventHandler: Debug {
-    /// Update the state of *just* this component according to the message.
-    /// Returned outcome indicates what to do afterwards. Use [EventQueue] to
-    /// queue subsequent events.
-    fn update(&mut self, event: Event) -> Update {
+    /// Update the state of *just* this component according to the event.
+    /// Returned outcome indicates whether the event was consumed, or it should
+    /// be propgated to our parent. Use [EventQueue] to queue subsequent events,
+    /// and the given message sender to queue async messages.
+    fn update(&mut self, _messages_tx: &MessageSender, event: Event) -> Update {
         Update::Propagate(event)
     }
 
@@ -138,33 +139,31 @@ pub enum Event {
 }
 
 impl Event {
-    /// Helper for creating a dynamic "other" variant
-    pub fn other<T: Any>(value: T) -> Event {
+    /// Create a dynamic "other" variant
+    pub fn new_other<T: Any>(value: T) -> Event {
         Event::Other(Box::new(value))
+    }
+
+    /// Get the mapped input action for this event, if any. A lot of components
+    /// only handle mapped input events, so this is shorthand to check if this
+    /// is one of those events.
+    pub fn action(&self) -> Option<Action> {
+        match self {
+            Self::Input { action, .. } => *action,
+            _ => None,
+        }
+    }
+
+    /// Get a dynamic "other" variant, if this event is one
+    pub fn other<T: Any>(&self) -> Option<&T> {
+        match self {
+            Self::Other(other) => other.downcast_ref(),
+            _ => None,
+        }
     }
 }
 
 impl Event {
-    /// Should this event immediately be killed, meaning it will never be
-    /// handled by a component. This is used to filter out junk events that will
-    /// never be handled, mostly to make debug logging cleaner.
-    pub fn should_kill(&self) -> bool {
-        use crossterm::event::Event;
-        matches!(
-            self,
-            Self::Input {
-                event: Event::FocusGained
-                    | Event::FocusLost
-                    | Event::Resize(_, _)
-                    | Event::Mouse(MouseEvent {
-                        kind: MouseEventKind::Moved,
-                        ..
-                    }),
-                ..
-            }
-        )
-    }
-
     /// Is this event pertinent to the component? Most events should be handled,
     /// but some (e.g. cursor events) need to be selectively filtered
     pub fn should_handle<T>(&self, component: &Component<T>) -> bool {

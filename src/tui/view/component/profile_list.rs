@@ -3,6 +3,7 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
+        message::MessageSender,
         view::{
             common::{list::List, Pane},
             draw::{Draw, Generate},
@@ -41,7 +42,7 @@ impl ProfileListPane {
         Self {
             profiles: Persistent::new(
                 PersistentKey::ProfileId,
-                SelectState::new(profiles).on_select(on_select),
+                SelectState::builder(profiles).on_select(on_select).build(),
             )
             .into(),
         }
@@ -53,16 +54,13 @@ impl ProfileListPane {
 }
 
 impl EventHandler for ProfileListPane {
-    fn update(&mut self, event: Event) -> Update {
-        match event {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+        if let Some(Action::Submit) = event.action() {
             // Sending requests from the profile pane is unintuitive, so eat
             // submission events here
-            Event::Input {
-                action: Some(Action::Submit),
-                ..
-            } => Update::Consumed,
-
-            _ => Update::Propagate(event),
+            Update::Consumed
+        } else {
+            Update::Propagate(event)
         }
     }
 

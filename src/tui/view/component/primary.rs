@@ -3,15 +3,14 @@
 use crate::{
     collection::{Collection, Profile, Recipe},
     tui::{
-        context::TuiContext,
         input::Action,
-        message::{Message, RequestConfig},
+        message::{Message, MessageSender, RequestConfig},
         view::{
             common::actions::ActionsModal,
             component::{
                 help::HelpModal,
-                profile::{ProfilePane, ProfilePaneProps},
                 profile_list::{ProfileListPane, ProfileListPaneProps},
+                profile_pane::{ProfilePane, ProfilePaneProps},
                 recipe_list::{RecipeListPane, RecipeListPaneProps},
                 recipe_pane::{RecipePane, RecipePaneProps},
                 request_pane::{RequestPane, RequestPaneProps},
@@ -24,7 +23,6 @@ use crate::{
                 persistence::{Persistent, PersistentKey},
                 RequestState,
             },
-            util::layout,
             Component,
         },
     },
@@ -32,7 +30,8 @@ use crate::{
 use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
-    prelude::{Constraint, Direction, Rect},
+    layout::Layout,
+    prelude::{Constraint, Rect},
     Frame,
 };
 use serde::{Deserialize, Serialize};
@@ -98,7 +97,7 @@ enum FullscreenMode {
 }
 
 impl PrimaryView {
-    pub fn new(collection: &Collection) -> Self {
+    pub fn new(collection: &Collection, messages_tx: MessageSender) -> Self {
         let profile_list_pane = ProfileListPane::new(
             collection.profiles.values().cloned().collect_vec(),
         )
@@ -116,8 +115,8 @@ impl PrimaryView {
 
             profile_list_pane,
             recipe_list_pane,
-            profile_pane: Default::default(),
-            recipe_pane: Default::default(),
+            profile_pane: ProfilePane::new(messages_tx.clone()).into(),
+            recipe_pane: RecipePane::new(messages_tx).into(),
             request_pane: Default::default(),
             response_pane: Default::default(),
         }
@@ -143,11 +142,9 @@ impl PrimaryView {
         area: Rect,
     ) {
         // Split the main pane horizontally
-        let [left_area, right_area] = layout(
-            area,
-            Direction::Horizontal,
-            [Constraint::Max(40), Constraint::Min(40)],
-        );
+        let [left_area, right_area] =
+            Layout::horizontal([Constraint::Max(40), Constraint::Min(40)])
+                .areas(area);
 
         let [profiles_area, recipes_area] =
             self.get_left_column_layout(left_area);
@@ -238,7 +235,7 @@ impl PrimaryView {
         } else {
             Constraint::Max(3)
         };
-        layout(area, Direction::Vertical, [profiles, Constraint::Min(0)])
+        Layout::vertical([profiles, Constraint::Min(0)]).areas(area)
     }
 
     /// Get layout for the right column of panes
@@ -254,25 +251,22 @@ impl PrimaryView {
             (1, 1, 1) // Default to even sizing
         };
         let denominator = top + middle + bottom;
-        layout(
-            area,
-            Direction::Vertical,
-            [
-                Constraint::Ratio(top, denominator),
-                Constraint::Ratio(middle, denominator),
-                Constraint::Ratio(bottom, denominator),
-            ],
-        )
+        Layout::vertical([
+            Constraint::Ratio(top, denominator),
+            Constraint::Ratio(middle, denominator),
+            Constraint::Ratio(bottom, denominator),
+        ])
+        .areas(area)
     }
 }
 
 impl EventHandler for PrimaryView {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
         match &event {
             // Load latest request for selected recipe from database
             Event::HttpLoadRequest => {
                 if let Some(recipe) = self.selected_recipe() {
-                    TuiContext::send_message(Message::RequestLoad {
+                    messages_tx.send(Message::RequestLoad {
                         profile_id: self
                             .selected_profile()
                             .map(|profile| profile.id.clone()),
@@ -283,7 +277,7 @@ impl EventHandler for PrimaryView {
             // Send HTTP request
             Event::HttpSendRequest => {
                 if let Some(recipe) = self.selected_recipe() {
-                    TuiContext::send_message(Message::HttpBeginRequest(
+                    messages_tx.send(Message::HttpBeginRequest(
                         RequestConfig {
                             // Reach into the children to grab state (ugly!)
                             recipe_id: recipe.id.clone(),

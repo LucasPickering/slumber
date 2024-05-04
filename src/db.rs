@@ -143,7 +143,7 @@ impl Database {
     pub fn collections(&self) -> anyhow::Result<Vec<PathBuf>> {
         self.connection()
             .prepare("SELECT path FROM collections")?
-            .query_map([], |row| Ok(row.get::<_, Bytes<_>>("path")?.0))
+            .query_map([], |row| Ok(row.get::<_, ByteEncoded<_>>("path")?.0))
             .context("Error fetching collections")?
             .collect::<rusqlite::Result<Vec<_>>>()
             .context("Error extracting collection data")
@@ -358,8 +358,8 @@ impl CollectionDatabase {
                     ":recipe_id": &record.request.recipe_id,
                     ":start_time": &record.start_time,
                     ":end_time": &record.end_time,
-                    ":request": &Bytes(&*record.request),
-                    ":response": &Bytes(&record.response),
+                    ":request": &ByteEncoded(&*record.request),
+                    ":response": &ByteEncoded(&*record.response),
                     ":status_code": record.response.status.as_u16(),
                 },
             )
@@ -382,10 +382,10 @@ impl CollectionDatabase {
                 WHERE collection_id = :collection_id AND key = :key",
                 named_params! {
                     ":collection_id": self.collection_id,
-                    ":key": Bytes(&key),
+                    ":key": ByteEncoded(&key),
                 },
                 |row| {
-                    let value: Bytes<V> = row.get("value")?;
+                    let value: ByteEncoded<V> = row.get("value")?;
                     Ok(value.0)
                 },
             )
@@ -412,8 +412,8 @@ impl CollectionDatabase {
                 ON CONFLICT DO UPDATE SET value = excluded.value",
                 named_params! {
                     ":collection_id": self.collection_id,
-                    ":key": Bytes(key),
-                    ":value": Bytes(value),
+                    ":key": ByteEncoded(key),
+                    ":value": ByteEncoded(value),
                 },
             )
             .context("Error saving UI state to database")
@@ -498,7 +498,7 @@ impl FromSql for RecipeId {
 /// canonicalized and serialized/deserialized consistently
 #[derive(Debug, Display)]
 #[display("{}", _0.0.display())]
-struct CollectionPath(Bytes<PathBuf>);
+struct CollectionPath(ByteEncoded<PathBuf>);
 
 impl From<CollectionPath> for PathBuf {
     fn from(path: CollectionPath) -> Self {
@@ -513,7 +513,7 @@ impl TryFrom<&Path> for CollectionPath {
         path.canonicalize()
             .context(format!("Error canonicalizing path {path:?}"))
             .traced()
-            .map(|path| Self(Bytes(path)))
+            .map(|path| Self(ByteEncoded(path)))
     }
 }
 
@@ -525,15 +525,15 @@ impl ToSql for CollectionPath {
 
 impl FromSql for CollectionPath {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Bytes::<PathBuf>::column_result(value).map(Self)
+        ByteEncoded::<PathBuf>::column_result(value).map(Self)
     }
 }
 
 /// A wrapper to serialize/deserialize a value as msgpack for DB storage
 #[derive(Debug)]
-struct Bytes<T>(T);
+struct ByteEncoded<T>(T);
 
-impl<T: Serialize> ToSql for Bytes<T> {
+impl<T: Serialize> ToSql for ByteEncoded<T> {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         let bytes = rmp_serde::to_vec_named(&self.0).map_err(|err| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(err))
@@ -542,7 +542,7 @@ impl<T: Serialize> ToSql for Bytes<T> {
     }
 }
 
-impl<T: DeserializeOwned> FromSql for Bytes<T> {
+impl<T: DeserializeOwned> FromSql for ByteEncoded<T> {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         let bytes = value.as_blob()?;
         let value: T = rmp_serde::from_slice(bytes)
@@ -561,8 +561,8 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
             start_time: row.get("start_time")?,
             end_time: row.get("end_time")?,
             // Deserialize from bytes
-            request: Arc::new(row.get::<_, Bytes<_>>("request")?.0),
-            response: row.get::<_, Bytes<_>>("response")?.0,
+            request: Arc::new(row.get::<_, ByteEncoded<_>>("request")?.0),
+            response: Arc::new(row.get::<_, ByteEncoded<_>>("response")?.0),
         })
     }
 }

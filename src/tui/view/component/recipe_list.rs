@@ -3,6 +3,7 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
+        message::MessageSender,
         view::{
             common::Pane,
             draw::{Draw, Generate},
@@ -125,31 +126,24 @@ impl RecipeListPane {
 }
 
 impl EventHandler for RecipeListPane {
-    fn update(&mut self, event: Event) -> Update {
-        if let Event::Input {
-            action: Some(action),
-            ..
-        } = event
-        {
-            match action {
-                Action::Left => {
-                    self.set_selected_collapsed(CollapseState::Collapse);
-                }
-                Action::Right => {
-                    self.set_selected_collapsed(CollapseState::Expand);
-                }
-                Action::Submit => {
-                    if !self.set_selected_collapsed(CollapseState::Toggle) {
-                        // Propgate submit event for recipes, so it launches a
-                        // request
-                        return Update::Propagate(event);
-                    }
-                }
-                _ => return Update::Propagate(event),
-            };
-        } else {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+        let Some(action) = event.action() else {
             return Update::Propagate(event);
+        };
+        match action {
+            Action::Left => {
+                self.set_selected_collapsed(CollapseState::Collapse);
+            }
+            Action::Right => {
+                self.set_selected_collapsed(CollapseState::Expand);
+            }
+            // If this state update does nothing, then we have a recipe
+            // selected. Fall through to propagate the event
+            Action::Submit
+                if self.set_selected_collapsed(CollapseState::Toggle) => {}
+            _ => return Update::Propagate(event),
         }
+
         Update::Consumed
     }
 
@@ -281,5 +275,5 @@ fn build_select_state(
         .filter(|(lookup_key, _)| collapsed.is_visible(lookup_key))
         .map(|(_, node)| node.clone())
         .collect();
-    SelectState::new(items).on_select(on_select)
+    SelectState::builder(items).on_select(on_select).build()
 }

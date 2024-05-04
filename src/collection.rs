@@ -13,14 +13,16 @@ pub use recipe_tree::*;
 
 use crate::util::{parse_yaml, ResultExt};
 use anyhow::{anyhow, Context};
+use itertools::Itertools;
 use std::{
+    env,
     fmt::Debug,
     fs,
     future::Future,
     path::{Path, PathBuf},
 };
 use tokio::task;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
@@ -74,37 +76,68 @@ impl CollectionFile {
 
     /// Get the path to the collection file, returning an error if none is
     /// available. This will use the override if given, otherwise it will fall
-    /// back to searching the current directory for a collection.
-    pub fn try_path(override_path: Option<PathBuf>) -> anyhow::Result<PathBuf> {
-        override_path.or_else(detect_path).ok_or(anyhow!(
-            "No collection file given and none found in current directory"
-        ))
+    /// back to searching the given directory for a collection. If the directory
+    /// to search is not given, default to the current directory. This is
+    /// configurable just for testing.
+    pub fn try_path(
+        dir: Option<PathBuf>,
+        override_path: Option<PathBuf>,
+    ) -> anyhow::Result<PathBuf> {
+        let dir = if let Some(dir) = dir {
+            dir
+        } else {
+            env::current_dir()?
+        };
+        override_path
+            .map(|override_path| dir.join(override_path))
+            .or_else(|| detect_path(&dir)).ok_or_else(|| {
+                anyhow!("No collection file found in current or ancestor directories")
+            })
     }
 }
 
 /// Search the current directory for a config file matching one of the known
 /// file names, and return it if found
-fn detect_path() -> Option<PathBuf> {
-    let paths: Vec<&Path> = CONFIG_FILES
-        .iter()
-        .map(Path::new)
-        // This could be async but I'm being lazy and skipping it for now,
-        // since we only do this at startup anyway (mid-process reloading
-        // reuses the detected path so we don't re-detect)
-        .filter(|p| p.exists())
-        .collect();
-    match paths.as_slice() {
-        [] => None,
-        [path] => Some(path.to_path_buf()),
-        [first, rest @ ..] => {
-            // Print a warning, but don't actually fail
-            warn!(
-                "Multiple config files detected. {first:?} will be used \
-                    and the following will be ignored: {rest:?}"
-            );
-            Some(first.to_path_buf())
+fn detect_path(dir: &Path) -> Option<PathBuf> {
+    /// Search a directory and its parents for the collection file. Return None
+    /// only if we got through the whole tree and couldn't find it
+    fn search_all(dir: &Path) -> Option<PathBuf> {
+        search(dir).or_else(|| {
+            let parent = dir.parent()?;
+            search_all(parent)
+        })
+    }
+
+    /// Search a single directory for a collection file
+    fn search(dir: &Path) -> Option<PathBuf> {
+        trace!("Scanning for collection file in {dir:?}");
+
+        let paths = CONFIG_FILES
+            .iter()
+            .map(|file| dir.join(file))
+            // This could be async but I'm being lazy and skipping it for now,
+            // since we only do this at startup anyway (mid-process reloading
+            // reuses the detected path so we don't re-detect)
+            .filter(|p| p.exists())
+            .collect_vec();
+        match paths.as_slice() {
+            [] => None,
+            [first, rest @ ..] => {
+                if !rest.is_empty() {
+                    warn!(
+                        "Multiple collection files detected. {first:?} will be \
+                            used and the following will be ignored: {rest:?}"
+                    );
+                }
+
+                trace!("Found collection file at {first:?}");
+                Some(first.to_path_buf())
+            }
         }
     }
+
+    // Walk *up* the tree until we've hit the root
+    search_all(dir)
 }
 
 /// Load a collection from the given file. Takes an owned path because it
@@ -132,4 +165,56 @@ async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
     };
 
     result.context(error_context).traced()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::*;
+    use rstest::rstest;
+    use std::fs::File;
+
+    /// Test various cases of try_path
+    #[rstest]
+    #[case::parent_only(None, true, false, "slumber.yml")]
+    #[case::child_only(None, false, true, "child/slumber.yml")]
+    #[case::parent_and_child(None, true, true, "child/slumber.yml")]
+    #[case::overriden(Some("override.yml"), true, true, "child/override.yml")]
+    fn test_try_path(
+        temp_dir: PathBuf,
+        #[case] override_file: Option<&str>,
+        #[case] has_parent: bool,
+        #[case] has_child: bool,
+        #[case] expected: &str,
+    ) {
+        let child_dir = temp_dir.join("child");
+        fs::create_dir(&child_dir).unwrap();
+        let file = "slumber.yml";
+        if has_parent {
+            File::create(temp_dir.join(file)).unwrap();
+        }
+        if has_child {
+            File::create(child_dir.join(file)).unwrap();
+        }
+        if let Some(override_file) = override_file {
+            File::create(temp_dir.join(override_file)).unwrap();
+        }
+        let expected: PathBuf = temp_dir.join(expected);
+
+        let override_file = override_file.map(PathBuf::from);
+        assert_eq!(
+            CollectionFile::try_path(Some(child_dir), override_file).unwrap(),
+            expected
+        );
+    }
+
+    /// Test that try_path fails when no collection file is found and no
+    /// override is given
+    #[rstest]
+    fn test_try_path_error(temp_dir: PathBuf) {
+        assert_err!(
+            CollectionFile::try_path(Some(temp_dir), None),
+            "No collection file found in current or ancestor directories"
+        );
+    }
 }

@@ -33,11 +33,12 @@
 //! | RequestRecord |
 //! +---------------+
 
-mod parse;
+mod cereal;
+mod content_type;
 mod query;
 mod record;
 
-pub use parse::*;
+pub use content_type::*;
 pub use query::*;
 pub use record::*;
 
@@ -50,7 +51,6 @@ use crate::{
 };
 use anyhow::Context;
 use base64::{prelude::BASE64_STANDARD, write::EncoderWriter};
-use bytes::Bytes;
 use chrono::Utc;
 use futures::future;
 use indexmap::IndexMap;
@@ -143,7 +143,7 @@ impl HttpEngine {
                     let record = RequestRecord {
                         id,
                         request,
-                        response,
+                        response: Arc::new(response),
                         start_time,
                         end_time,
                     };
@@ -211,7 +211,7 @@ impl HttpEngine {
 
         // Add body
         if let Some(body) = &request.body {
-            request_builder = request_builder.body(body.clone());
+            request_builder = request_builder.body(body.bytes().to_owned());
         }
 
         request_builder.build()
@@ -257,6 +257,7 @@ pub struct RequestBuilder {
 /// Recipes could be very large so cloning may be expensive, and this options
 /// layer makes the available modifications clear and restricted.
 #[derive(Clone, Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct RecipeOptions {
     /// Which headers should be excluded? A blacklist allows the default to be
     /// "include all".
@@ -311,7 +312,7 @@ impl RequestBuilder {
     pub async fn build_body(
         self,
         template_context: &TemplateContext,
-    ) -> Result<Option<Bytes>, RequestBuildError> {
+    ) -> Result<Option<Body>, RequestBuildError> {
         self.apply_error(self.render_body(template_context)).await
     }
 
@@ -529,12 +530,12 @@ impl RequestBuilder {
     async fn render_body(
         &self,
         template_context: &TemplateContext,
-    ) -> anyhow::Result<Option<Bytes>> {
+    ) -> anyhow::Result<Option<Body>> {
         let body =
             Template::render_opt(self.recipe.body.as_ref(), template_context)
                 .await
                 .context("Error rendering body")?;
-        Ok(body.map(Bytes::from))
+        Ok(body.map(Body::from))
     }
 }
 

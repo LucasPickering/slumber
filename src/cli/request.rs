@@ -154,7 +154,7 @@ impl BuildRequestCommand {
         global: GlobalArgs,
         trigger_dependencies: bool,
     ) -> anyhow::Result<(Option<HttpEngine>, Request)> {
-        let collection_path = CollectionFile::try_path(global.file)?;
+        let collection_path = CollectionFile::try_path(None, global.file)?;
         let database = Database::load()?.into_collection(&collection_path)?;
         let collection_file = CollectionFile::load(collection_path).await?;
         let collection = collection_file.collection;
@@ -172,7 +172,7 @@ impl BuildRequestCommand {
             collection.profiles.get(profile_id).ok_or_else(|| {
                 anyhow!(
                     "No profile with ID `{profile_id}`; options are: {}",
-                    collection.profiles.keys().join(", ")
+                    collection.profiles.keys().format(", ")
                 )
             })?;
         }
@@ -185,7 +185,7 @@ impl BuildRequestCommand {
                 anyhow!(
                     "No recipe with ID `{}`; options are: {}",
                     self.recipe_id,
-                    collection.recipes.recipe_ids().join(", ")
+                    collection.recipes.recipe_ids().format(", ")
                 )
             })?
             .clone();

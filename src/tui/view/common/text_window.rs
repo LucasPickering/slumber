@@ -1,14 +1,15 @@
 use crate::tui::{
     context::TuiContext,
     input::Action,
+    message::MessageSender,
     view::{
         draw::{Draw, Generate},
         event::{Event, EventHandler, Update},
-        util::layout,
     },
 };
 use ratatui::{
-    prelude::{Alignment, Constraint, Direction, Rect},
+    layout::Layout,
+    prelude::{Alignment, Constraint, Rect},
     text::{Line, Text},
     widgets::Paragraph,
     Frame,
@@ -91,22 +92,19 @@ impl<T> TextWindow<T> {
 }
 
 impl<T: Debug> EventHandler for TextWindow<T> {
-    fn update(&mut self, event: Event) -> Update {
-        match event {
-            Event::Input {
-                action: Some(action),
-                ..
-            } => match action {
-                Action::Up | Action::ScrollUp => self.scroll_up(1),
-                Action::Down | Action::ScrollDown => self.scroll_down(1),
-                Action::ScrollLeft => self.scroll_left(1),
-                Action::ScrollRight => self.scroll_right(1),
-                Action::PageUp => self.scroll_up(self.window_height.get()),
-                Action::PageDown => self.scroll_down(self.window_height.get()),
-                Action::Home => self.scroll_to(0),
-                Action::End => self.scroll_to(u16::MAX),
-                _ => return Update::Propagate(event),
-            },
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+        let Some(action) = event.action() else {
+            return Update::Propagate(event);
+        };
+        match action {
+            Action::Up | Action::ScrollUp => self.scroll_up(1),
+            Action::Down | Action::ScrollDown => self.scroll_down(1),
+            Action::ScrollLeft => self.scroll_left(1),
+            Action::ScrollRight => self.scroll_right(1),
+            Action::PageUp => self.scroll_up(self.window_height.get()),
+            Action::PageDown => self.scroll_down(self.window_height.get()),
+            Action::Home => self.scroll_to(0),
+            Action::End => self.scroll_to(u16::MAX),
             _ => return Update::Propagate(event),
         }
         Update::Consumed
@@ -124,18 +122,13 @@ where
         // Assume no line wrapping when calculating line count
         let text_height = text.line_count(u16::MAX) as u16;
 
-        let [gutter_area, _, text_area] = layout(
-            area,
-            Direction::Horizontal,
-            [
-                // Size gutter based on width of max line number
-                Constraint::Length(
-                    (text_height as f32).log10().floor() as u16 + 1,
-                ),
-                Constraint::Length(1), // Spacer
-                Constraint::Min(0),
-            ],
-        );
+        let [gutter_area, _, text_area] = Layout::horizontal([
+            // Size gutter based on width of max line number
+            Constraint::Length((text_height as f32).log10().floor() as u16 + 1),
+            Constraint::Length(1), // Spacer
+            Constraint::Min(0),
+        ])
+        .areas(area);
 
         // Store text and window sizes for calculations in the update code
         self.text_width.set(text.line_width() as u16);

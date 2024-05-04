@@ -1,22 +1,36 @@
 use crate::{
     collection::{Profile, ProfileId},
-    tui::view::{
-        common::{table::Table, template_preview::TemplatePreview, Pane},
-        draw::{Draw, Generate},
-        state::StateCell,
+    tui::{
+        message::MessageSender,
+        view::{
+            common::{table::Table, template_preview::TemplatePreview, Pane},
+            draw::{Draw, Generate},
+            state::StateCell,
+        },
     },
 };
 use itertools::Itertools;
 use ratatui::{layout::Rect, Frame};
 
 /// Display the contents of a profile
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ProfilePane {
+    /// Needed for template preview rendering
+    messages_tx: MessageSender,
     fields: StateCell<ProfileId, Vec<(String, TemplatePreview)>>,
 }
 
 pub struct ProfilePaneProps<'a> {
     pub profile: &'a Profile,
+}
+
+impl ProfilePane {
+    pub fn new(messages_tx: MessageSender) -> Self {
+        Self {
+            messages_tx,
+            fields: Default::default(),
+        }
+    }
 }
 
 impl<'a> Draw<ProfilePaneProps<'a>> for ProfilePane {
@@ -33,6 +47,7 @@ impl<'a> Draw<ProfilePaneProps<'a>> for ProfilePane {
                         (
                             key.clone(),
                             TemplatePreview::new(
+                                &self.messages_tx,
                                 template.clone(),
                                 Some(props.profile.id.clone()),
                             ),

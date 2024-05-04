@@ -1,5 +1,7 @@
 use crate::tui::{
+    context::TuiContext,
     input::Action,
+    message::MessageSender,
     view::{
         draw::Draw,
         event::{Event, EventHandler, Update},
@@ -9,7 +11,7 @@ use crate::tui::{
 };
 use ratatui::{
     prelude::{Constraint, Rect},
-    widgets::{Block, BorderType, Borders, Clear},
+    widgets::{Block, Borders, Clear},
     Frame,
 };
 use std::{collections::VecDeque, ops::DerefMut};
@@ -92,7 +94,7 @@ impl ModalQueue {
 }
 
 impl EventHandler for ModalQueue {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
         match event {
             // Close the active modal. If there's no modal open, we'll propagate
             // the event down
@@ -134,6 +136,7 @@ impl EventHandler for ModalQueue {
 impl Draw for ModalQueue {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         if let Some(modal) = self.queue.front() {
+            let theme = &TuiContext::get().theme;
             let (width, height) = modal.dimensions();
 
             // The child gave us the content dimensions, we need to add one cell
@@ -147,7 +150,8 @@ impl Draw for ModalQueue {
             let block = Block::default()
                 .title(modal.title())
                 .borders(Borders::ALL)
-                .border_type(BorderType::Thick);
+                .border_style(theme.modal.border)
+                .border_type(theme.modal.border_type);
             let inner_area = block.inner(area);
 
             // Draw the outline of the modal
@@ -161,8 +165,8 @@ impl Draw for ModalQueue {
 }
 
 impl EventHandler for Box<dyn Modal> {
-    fn update(&mut self, event: Event) -> Update {
-        self.deref_mut().update(event)
+    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+        self.deref_mut().update(messages_tx, event)
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {

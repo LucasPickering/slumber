@@ -4,6 +4,7 @@ use crate::{
     collection::RecipeId,
     tui::{
         context::TuiContext,
+        message::MessageSender,
         view::{
             component::Component,
             event::{Event, EventHandler, Update},
@@ -47,8 +48,8 @@ impl<T> EventHandler for Persistent<T>
 where
     T: EventHandler + PersistentContainer,
 {
-    fn update(&mut self, event: Event) -> Update {
-        self.container.update(event)
+    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+        self.container.update(messages_tx, event)
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
@@ -150,7 +151,7 @@ impl<T: Persistable<Persisted = T>> PersistentContainer for T {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::context::tui_context;
+    use crate::test_util::*;
     use rstest::rstest;
 
     #[rstest]

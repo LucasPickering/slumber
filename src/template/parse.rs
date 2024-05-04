@@ -151,7 +151,7 @@ fn take_until_or_eof<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::assert_err;
+    use crate::test_util::*;
     use itertools::Itertools;
     use rstest::rstest;
 

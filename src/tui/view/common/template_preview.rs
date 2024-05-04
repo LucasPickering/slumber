@@ -1,7 +1,11 @@
 use crate::{
     collection::ProfileId,
     template::{Template, TemplateChunk},
-    tui::{context::TuiContext, message::Message, view::draw::Generate},
+    tui::{
+        context::TuiContext,
+        message::{Message, MessageSender},
+        view::draw::Generate,
+    },
 };
 use ratatui::{
     buffer::Buffer,
@@ -36,22 +40,21 @@ impl TemplatePreview {
     /// Create a new template preview. This will spawn a background task to
     /// render the template, *if* template preview is enabled. Profile ID
     /// defines which profile to use for the render.
-    pub fn new(template: Template, profile_id: Option<ProfileId>) -> Self {
+    pub fn new(
+        messages_tx: &MessageSender,
+        template: Template,
+        profile_id: Option<ProfileId>,
+    ) -> Self {
         if TuiContext::get().config.preview_templates {
-            // Tell the controller to start rendering the preview, and it'll
-            // store it back here when done
-            let lock = Arc::new(OnceLock::new());
-            TuiContext::send_message(Message::TemplatePreview {
+            let chunks = Arc::new(OnceLock::new());
+            messages_tx.send(Message::TemplatePreview {
                 // If this is a bottleneck we can Arc it
                 template: template.clone(),
-                profile_id,
-                destination: Arc::clone(&lock),
+                profile_id: profile_id.clone(),
+                destination: Arc::clone(&chunks),
             });
 
-            Self::Enabled {
-                template,
-                chunks: lock,
-            }
+            Self::Enabled { template, chunks }
         } else {
             Self::Disabled { template }
         }
@@ -71,8 +74,9 @@ impl Generate for &TemplatePreview {
             TemplatePreview::Disabled { template } => template.as_str().into(),
             // If the preview render is ready, show it. Otherwise fall back
             // to the raw
-            TemplatePreview::Enabled { template, chunks } => match chunks.get()
-            {
+            TemplatePreview::Enabled {
+                template, chunks, ..
+            } => match chunks.get() {
                 Some(chunks) => TextStitcher::stitch_chunks(template, chunks),
                 // Preview still rendering
                 None => template.as_str().into(),
@@ -190,7 +194,7 @@ impl<'a> TextStitcher<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{test_util::*, tui::context::tui_context};
+    use crate::test_util::*;
     use factori::create;
     use indexmap::indexmap;
     use rstest::rstest;

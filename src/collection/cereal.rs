@@ -118,14 +118,34 @@ impl<'de> Deserialize<'de> for Template {
 /// - d
 /// Examples: `30s`, `5m`, `12h`, `3d`
 pub mod serde_duration {
-    use regex::Regex;
+    use derive_more::Display;
+    use itertools::Itertools;
+    use nom::{
+        bytes::complete::take_while,
+        character::complete::digit1,
+        combinator::{all_consuming, map_res},
+        sequence::tuple,
+        IResult,
+    };
     use serde::{de::Error, Deserialize, Deserializer, Serializer};
-    use std::{sync::OnceLock, time::Duration};
+    use std::time::Duration;
+    use strum::{EnumIter, EnumString, IntoEnumIterator};
 
-    const UNIT_SECOND: &str = "s";
-    const UNIT_MINUTE: &str = "m";
-    const UNIT_HOUR: &str = "h";
-    const UNIT_DAY: &str = "d";
+    #[derive(Debug, Display, EnumIter, EnumString)]
+    enum Unit {
+        #[display("s")]
+        #[strum(serialize = "s")]
+        Second,
+        #[display("m")]
+        #[strum(serialize = "m")]
+        Minute,
+        #[display("h")]
+        #[strum(serialize = "h")]
+        Hour,
+        #[display("d")]
+        #[strum(serialize = "d")]
+        Day,
+    }
 
     pub fn serialize<S>(
         duration: &Duration,
@@ -136,47 +156,43 @@ pub mod serde_duration {
     {
         // Always serialize as seconds, because it's easiest. Sub-second
         // precision is lost
-        S::serialize_str(
-            serializer,
-            &format!("{}{}", duration.as_secs(), UNIT_SECOND),
-        )
+        S::serialize_str(serializer, &format!("{}s", duration.as_secs()))
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
     where
         D: Deserializer<'de>,
     {
-        // unstable: use LazyLock https://github.com/rust-lang/rust/pull/121377
-        static REGEX: OnceLock<Regex> = OnceLock::new();
-        let s = String::deserialize(deserializer)?;
-        let regex = REGEX.get_or_init(|| Regex::new("^(\\d+)(\\w+)$").unwrap());
-        if let Some(captures) = regex.captures(&s) {
-            let quantity: u64 = captures
-                .get(1)
-                .expect("No first group")
-                .as_str()
-                .parse()
-                // Error should be impossible because the regex only allows ints
-                .map_err(|_| D::Error::custom("Invalid int"))?;
-            let unit = captures.get(2).expect("No second group").as_str();
-            let seconds = match unit {
-                UNIT_SECOND => quantity,
-                UNIT_MINUTE => quantity * 60,
-                UNIT_HOUR => quantity * 60 * 60,
-                UNIT_DAY => quantity * 60 * 60 * 24,
-                _ => {
-                    return Err(D::Error::custom(format!(
-                        "Unknown duration unit: {unit:?}; must be one of {:?}",
-                        [UNIT_SECOND, UNIT_MINUTE, UNIT_HOUR, UNIT_DAY]
-                    )))
-                }
-            };
-            Ok(Duration::from_secs(seconds))
-        } else {
-            Err(D::Error::custom(
-                "Invalid duration, must be \"<quantity><unit>\" (e.g. \"12d\")",
-            ))
+        fn quantity(input: &str) -> IResult<&str, u64> {
+            map_res(digit1, str::parse)(input)
         }
+
+        fn unit(input: &str) -> IResult<&str, &str> {
+            take_while(char::is_alphabetic)(input)
+        }
+
+        let input = String::deserialize(deserializer)?;
+        let (_, (quantity, unit)) =
+            all_consuming(tuple((quantity, unit)))(&input).map_err(|_| {
+                D::Error::custom(
+                    "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)",
+                )
+            })?;
+
+        let unit = unit.parse().map_err(|_| {
+            D::Error::custom(format!(
+                "Unknown duration unit `{unit}`; must be one of {}",
+                Unit::iter()
+                    .format_with(", ", |unit, f| f(&format_args!("`{unit}`")))
+            ))
+        })?;
+        let seconds = match unit {
+            Unit::Second => quantity,
+            Unit::Minute => quantity * 60,
+            Unit::Hour => quantity * 60 * 60,
+            Unit::Day => quantity * 60 * 60 * 24,
+        };
+        Ok(Duration::from_secs(seconds))
     }
 
     #[cfg(test)]
@@ -224,19 +240,23 @@ pub mod serde_duration {
         #[rstest]
         #[case::negative(
             "-1s",
-            r#"Invalid duration, must be "<quantity><unit>" (e.g. "12d")"#
+            "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
         )]
         #[case::whitespace(
             " 1s ",
-            r#"Invalid duration, must be "<quantity><unit>" (e.g. "12d")"#
+            "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
+        )]
+        #[case::trailing_whitespace(
+            "1s ",
+            "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
         )]
         #[case::decimal(
             "3.5s",
-            r#"Invalid duration, must be "<quantity><unit>" (e.g. "12d")"#
+            "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
         )]
         #[case::invalid_unit(
             "3hr",
-            r#"Unknown duration unit: "hr"; must be one of ["s", "m", "h", "d"]"#
+            "Unknown duration unit `hr`; must be one of `s`, `m`, `h`, `d`"
         )]
         fn test_deserialize_error(
             #[case] s: &'static str,

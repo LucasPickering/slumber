@@ -2,6 +2,7 @@
 //! generic, i.e. usable in more than a single narrow context.
 
 pub mod actions;
+pub mod button;
 pub mod header_table;
 pub mod list;
 pub mod modal;
@@ -24,7 +25,7 @@ use chrono::{DateTime, Duration, Local, Utc};
 use itertools::Itertools;
 use ratatui::{
     text::{Span, Text},
-    widgets::Borders,
+    widgets::{Block, Borders},
 };
 use reqwest::header::HeaderValue;
 
@@ -35,17 +36,18 @@ pub struct Pane<'a> {
 }
 
 impl<'a> Generate for Pane<'a> {
-    type Output<'this> = ratatui::widgets::Block<'this> where Self: 'this;
+    type Output<'this> = Block<'this> where Self: 'this;
 
     fn generate<'this>(self) -> Self::Output<'this>
     where
         Self: 'this,
     {
-        ratatui::widgets::Block::default()
+        let (border_type, border_style) =
+            TuiContext::get().theme.pane.border(self.is_focused);
+        Block::default()
             .borders(Borders::ALL)
-            .border_style(
-                TuiContext::get().theme.pane.border_style(self.is_focused),
-            )
+            .border_type(border_type)
+            .border_style(border_style)
             .title(self.title)
     }
 }

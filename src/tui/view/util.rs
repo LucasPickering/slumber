@@ -1,7 +1,17 @@
 //! Helper structs and functions for building components
 
-use crate::template::{Prompt, Prompter};
+use crate::template::{Prompt, PromptChannel, Prompter};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+
+/// A data structure for representation a yes/no confirmation. This is similar
+/// to [Prompt], but it only asks a yes/no question.
+#[derive(Debug)]
+pub struct Confirm {
+    /// Question to ask the user
+    pub message: String,
+    /// A channel to pass back the user's response
+    pub channel: PromptChannel<bool>,
+}
 
 /// A prompter that returns a static value; used for template previews, where
 /// user interaction isn't possible
@@ -12,22 +22,6 @@ impl Prompter for PreviewPrompter {
     fn prompt(&self, prompt: Prompt) {
         prompt.channel.respond("<prompt>".into())
     }
-}
-
-/// Helper for building a layout with a fixed number of constraints
-pub fn layout<const N: usize>(
-    area: Rect,
-    direction: Direction,
-    constraints: [Constraint; N],
-) -> [Rect; N] {
-    Layout::default()
-        .direction(direction)
-        .constraints(constraints)
-        .split(area)
-        .as_ref()
-        .try_into()
-        // Should be unreachable
-        .expect("Chunk length does not match constraint length")
 }
 
 /// Created a rectangle centered on the given `Rect`.

@@ -1,5 +1,6 @@
 use crate::tui::{
     input::Action,
+    message::MessageSender,
     view::{
         event::{Event, EventHandler, Update},
         state::persistence::{Persistable, PersistentContainer},
@@ -7,7 +8,7 @@ use crate::tui::{
 };
 use itertools::Itertools;
 use ratatui::widgets::{ListState, TableState};
-use std::{cell::RefCell, fmt::Debug, ops::DerefMut};
+use std::{cell::RefCell, fmt::Debug, marker::PhantomData, ops::DerefMut};
 
 /// State manager for a dynamic list of items.
 ///
@@ -33,23 +34,17 @@ where
     on_submit: Option<Callback<Item>>,
 }
 
-type Callback<Item> = Box<dyn Fn(&mut Item)>;
+/// Builder for [SelectState]. The main reason for the builder is to allow
+/// callbacks to be present during state initialization, in case we want to
+/// call on_select for the default item.
+pub struct SelectStateBuilder<Item, State> {
+    items: Vec<Item>,
+    on_select: Option<Callback<Item>>,
+    on_submit: Option<Callback<Item>>,
+    _state: PhantomData<State>,
+}
 
-impl<Item, State: SelectStateData> SelectState<Item, State> {
-    pub fn new(items: Vec<Item>) -> Self {
-        let mut state = State::default();
-        // Pre-select the first item if possible
-        if !items.is_empty() {
-            state.select(0);
-        }
-        Self {
-            state: RefCell::new(state),
-            items,
-            on_select: None,
-            on_submit: None,
-        }
-    }
-
+impl<Item, State> SelectStateBuilder<Item, State> {
     /// Set the callback to be called when the user highlights a new item
     pub fn on_select(
         mut self,
@@ -66,6 +61,38 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     ) -> Self {
         self.on_submit = Some(Box::new(on_submit));
         self
+    }
+
+    pub fn build(self) -> SelectState<Item, State>
+    where
+        State: SelectStateData,
+    {
+        let mut select = SelectState {
+            state: RefCell::new(State::default()),
+            items: self.items,
+            on_select: self.on_select,
+            on_submit: self.on_submit,
+        };
+        // Select the first item if possible. Use select_index so on_select is
+        // called if provided
+        if !select.items.is_empty() {
+            select.select_index(0);
+        }
+        select
+    }
+}
+
+type Callback<Item> = Box<dyn Fn(&mut Item)>;
+
+impl<Item, State: SelectStateData> SelectState<Item, State> {
+    /// Start a new builder
+    pub fn builder(items: Vec<Item>) -> SelectStateBuilder<Item, State> {
+        SelectStateBuilder {
+            items,
+            on_select: None,
+            on_submit: None,
+            _state: PhantomData,
+        }
     }
 
     /// Get all items in the list
@@ -165,7 +192,7 @@ where
     State: SelectStateData,
 {
     fn default() -> Self {
-        Self::new(Vec::new())
+        SelectState::<Item, State>::builder(Vec::new()).build()
     }
 }
 
@@ -175,45 +202,34 @@ where
     Item: Debug,
     State: Debug + SelectStateData,
 {
-    fn update(&mut self, event: Event) -> Update {
-        match event {
-            // Up/down keys/scrolling. Scrolling will only work if .set_area()
-            // is called on the wrapping Component by our parent
-            Event::Input {
-                action: Some(action),
-                ..
-            } => match action {
-                Action::Up | Action::ScrollUp => {
-                    self.previous();
-                    Update::Consumed
-                }
-                Action::Down | Action::ScrollDown => {
-                    self.next();
-                    Update::Consumed
-                }
-                Action::Submit => {
-                    // If we have an on_submit, our parent wants us to handle
-                    // submit events so consume it even if nothing is selected
-                    if let Some(on_submit) = &self.on_submit {
-                        let selected = self
-                            .state
-                            .get_mut()
-                            .selected()
-                            .and_then(|index| self.items.get_mut(index));
-                        if let Some(selected) = selected {
-                            on_submit(selected);
-                        }
-
-                        Update::Consumed
-                    } else {
-                        Update::Propagate(event)
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+        let Some(action) = event.action() else {
+            return Update::Propagate(event);
+        };
+        // Up/down keys and scrolling. Scrolling will only work if .set_area()
+        // is called on the wrapping Component by our parent
+        match action {
+            Action::Up | Action::ScrollUp => self.previous(),
+            Action::Down | Action::ScrollDown => self.next(),
+            Action::Submit => {
+                // If we have an on_submit, our parent wants us to handle
+                // submit events so consume it even if nothing is selected
+                if let Some(on_submit) = &self.on_submit {
+                    let selected = self
+                        .state
+                        .get_mut()
+                        .selected()
+                        .and_then(|index| self.items.get_mut(index));
+                    if let Some(selected) = selected {
+                        on_submit(selected);
                     }
+                } else {
+                    return Update::Propagate(event);
                 }
-                _ => Update::Propagate(event),
-            },
-
-            _ => Update::Propagate(event),
+            }
+            _ => return Update::Propagate(event),
         }
+        Update::Consumed
     }
 }
 

@@ -1,7 +1,10 @@
 //! Template rendering implementation
 
 use crate::{
-    collection::{ChainId, ChainRequestTrigger, ChainSource, RecipeId},
+    collection::{
+        ChainId, ChainRequestSection, ChainRequestTrigger, ChainSource,
+        RecipeId,
+    },
     http::{ContentType, RequestBuilder, RequestRecord, Response},
     template::{
         error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
@@ -264,13 +267,19 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
             // We intentionally throw the content detection error away here,
             // because it isn't that intuitive for users and is hard to plumb
             let (value, content_type) = match &chain.source {
-                ChainSource::Request { recipe, trigger } => {
+                ChainSource::Request {
+                    recipe,
+                    trigger,
+                    section,
+                } => {
                     let response =
                         self.get_response(context, recipe, *trigger).await?;
                     // Guess content type based on HTTP header
                     let content_type =
                         ContentType::from_response(&response).ok();
-                    (response.body.into_bytes(), content_type)
+                    let value =
+                        self.extract_response_value(response, section)?;
+                    (value, content_type)
                 }
                 ChainSource::File { path } => {
                     self.render_file(context, path).await?
@@ -417,7 +426,34 @@ impl<'a> ChainTemplateSource<'a> {
             ChainRequestTrigger::Always => send_request().await?,
         };
 
-        Ok(record.response)
+        // We haven't passed the record around so we can unwrap the Arc safely
+        Ok(Arc::try_unwrap(record.response)
+            .expect("Request Arc should have only one reference"))
+    }
+
+    /// Extract the specified component bytes from the response.
+    /// Returns an error with the missing header if not found.
+    fn extract_response_value(
+        &self,
+        response: Response,
+        component: &ChainRequestSection,
+    ) -> Result<Vec<u8>, ChainError> {
+        Ok(match component {
+            // This will clone the bytes, which is necessary for the subsequent
+            // string conversion anyway
+            ChainRequestSection::Body => response.body.into_bytes().into(),
+            ChainRequestSection::Header(target_header) => {
+                response
+                    .headers
+                    // If header has multiple values, only grab the first
+                    .get(target_header)
+                    .ok_or_else(|| ChainError::MissingHeader {
+                        header: target_header.clone(),
+                    })?
+                    .as_bytes()
+                    .to_vec()
+            }
+        })
     }
 
     /// Render a chained value from a file. Return the files bytes, as well as
@@ -436,7 +472,7 @@ impl<'a> ChainTemplateSource<'a> {
             })?
             .into();
         // Guess content type based on file extension
-        let content_type = ContentType::from_extension(&path).ok();
+        let content_type = ContentType::from_path(&path).ok();
         let content = fs::read(&path)
             .await
             .map_err(|error| ChainError::File { path, error })?;

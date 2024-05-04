@@ -50,7 +50,7 @@ impl JetbrainsEnv {
     }
 
     /// Convert the jetbrains env into slumber profiles
-    /// The globals must be included from the the REST file
+    /// The globals must be included from the REST file
     pub fn to_profiles(
         &self,
         globals: IndexMap<String, Template>,

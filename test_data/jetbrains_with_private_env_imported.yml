@@ -43,7 +43,10 @@ requests:
     name: JsonPost
     method: POST
     url: '{{HOST}}/post'
-    body: "{\r\n\"data\": \"my data\"\r\n}"
+    body: |-
+      {
+      "data": "my data"
+      }
     authentication: !basic
       username: foo
       password: bar
@@ -76,7 +79,10 @@ requests:
     name: CanTemplateVariables
     method: POST
     url: '{{HOST}}/post'
-    body: "{\r\n\"name\": \"{{name}}\"\r\n}"
+    body: |-
+      {
+      "name": "{{name}}"
+      }
     authentication: null
     query: {}
     headers:

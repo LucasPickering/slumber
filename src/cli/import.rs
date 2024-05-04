@@ -47,7 +47,7 @@ impl Subcommand for ImportCommand {
                 Collection::from_jetbrains_with_public_env(&self.input_file)?
             },
             Format::JetbrainsWithPrivateEnv => {
-                Collection::from_jetbrains_with_public_and_private_env(&self.input_file)?
+                Collection::from_jetbrains_with_private_env(&self.input_file)?
             }
         };
 

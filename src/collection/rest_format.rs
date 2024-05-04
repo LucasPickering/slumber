@@ -59,15 +59,15 @@ impl Collection {
 
     /// Convert a jetbrains `.http` file into a slumber a collection
     /// Including the `http-client.env.json` and `http-client.private.env.json` files in the same directory
-    pub fn from_jetbrains_with_public_and_private_env(
+    pub fn from_jetbrains_with_private_env(
         jetbrains_file: impl AsRef<Path>
     ) -> anyhow::Result<Self> {
         Self::from_jetbrains_with_env(jetbrains_file, JetbrainsEnvImport::PublicAndPrivate)
-    } 
+    }
 
     fn from_jetbrains_with_env(
         jetbrains_file: impl AsRef<Path>,
-        import_type: JetbrainsEnvImport 
+        import_type: JetbrainsEnvImport
     ) -> anyhow::Result<Self> {
         let jetbrains_file = jetbrains_file.as_ref();
         has_extension_or_error(jetbrains_file, "http")?;
@@ -186,7 +186,7 @@ impl Recipe {
         let method = Method::from_str(&method_literal)?;
 
         let body: Option<Template> = match body_portion {
-            Some(raw_body) => Some(raw_body.try_into()?),
+            Some(raw_body) => Some(raw_body.replace(REQUEST_NEWLINE, "\n").try_into()?),
             None => None,
         };
 
@@ -384,21 +384,14 @@ fn parse_variable_assignment(input: &str) -> IResult<&str, (&str, &str)> {
     Ok((input, (id.into(), value.into())))
 }
 
-/// Attempt to remove a comment, if one exists
-fn parse_line_without_comment(line: &str) -> StrResult {
-    fn starting_slash_comment(line: &str) -> StrResult {
-        tag("//")(line)
+/// A comment can start with `//` or `#`
+/// A comment cannot be mid line because it messes with URLs
+fn is_comment(line: &str) -> bool {
+    fn starting_comment(line: &str) -> StrResult {
+        alt((tag("//"), tag("#")))(line)
     }
 
-    // A comment can start with `//` but it can't be in the middle
-    // This would prevent you from writing urls: `https://`
-    if let Ok((inp, _)) = starting_slash_comment(line) {
-        return Ok((inp, ""));
-    }
-
-    // Hash comments can appear anywhere
-    // `GET example.com HTTP/v1.1 # Sends a get request`
-    take_until("#")(line)
+    matches!(starting_comment(line), Ok(_))
 }
 
 /// Parse an input string line by line
@@ -421,9 +414,9 @@ fn parse_lines(
 
         // Now that all the things that look like comments have been parsed,
         // we can remove the comments
-        let line = parse_line_without_comment(line)
-            .map(|(_, without_comment)| without_comment)
-            .unwrap_or(line);
+        if is_comment(line) {
+            continue
+        }
 
         if let Ok((_, (key, val))) = parse_variable_assignment(line) {
             let value_template: Template = val.to_string().try_into()?;
@@ -502,8 +495,11 @@ mod test {
 
     const JETBRAINS_FILE: &str = "./test_data/jetbrains.http";
     const JETBRAINS_RESULT: &str = "./test_data/jetbrains_imported.yml";
-    const JETBRAINS_RESULT_WITH_ENV: &str =
-        "./test_data/jetbrains_with_env_imported.yml";
+    const JETBRAINS_RESULT_PUBLIC_ENV: &str =
+        "./test_data/jetbrains_with_public_env_imported.yml";
+
+    const JETBRAINS_RESULT_PRIVATE_ENV: &str =
+        "./test_data/jetbrains_with_private_env_imported.yml";
 
     #[tokio::test]
     async fn test_jetbrains_import() {
@@ -516,10 +512,21 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_jetbrains_with_env_import() {
+    async fn test_jetbrains_with_public_env_import() {
         let imported =
-            Collection::from_jetbrains_with_public_and_private_env(JETBRAINS_FILE).unwrap();
-        let expected = CollectionFile::load(JETBRAINS_RESULT_WITH_ENV.into())
+            Collection::from_jetbrains_with_public_env(JETBRAINS_FILE).unwrap();
+        let expected = CollectionFile::load(JETBRAINS_RESULT_PUBLIC_ENV.into())
+            .await
+            .unwrap()
+            .collection;
+        assert_eq!(imported, expected);
+    }
+
+    #[tokio::test]
+    async fn test_jetbrains_with_private_env_import() {
+        let imported =
+            Collection::from_jetbrains_with_private_env(JETBRAINS_FILE).unwrap();
+        let expected = CollectionFile::load(JETBRAINS_RESULT_PRIVATE_ENV.into())
             .await
             .unwrap()
             .collection;

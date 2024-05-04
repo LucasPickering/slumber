@@ -33,11 +33,11 @@ impl<'a> Generate for Button<'a> {
     where
         Self: 'this,
     {
-        let theme = &TuiContext::get().theme;
+        let styles = &TuiContext::get().styles;
         Span {
             content: self.text.into(),
             style: if self.is_focused {
-                theme.text.highlight
+                styles.text.highlight
             } else {
                 Default::default()
             },

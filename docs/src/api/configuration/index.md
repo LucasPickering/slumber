@@ -26,3 +26,4 @@ If the root directory doesn't exist yet, you can create it yourself or have Slum
 | `preview_templates`        | `boolean`                           | Render template values in the TUI? If false, the raw template will be shown.                      | `true`  |
 | `ignore_certificate_hosts` | `string[]`                          | Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md) | `[]`    |
 | `input_bindings`           | `mapping[Action, KeyCombination[]]` | Override default input bindings. [More info](./input_bindings.md)                                 | `{}`    |
+| `theme`                    | [`Theme`](./theme.md)               | Visual customizations                                                                             | `{}`    |

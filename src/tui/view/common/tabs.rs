@@ -63,7 +63,7 @@ where
         frame.render_widget(
             ratatui::widgets::Tabs::new(T::iter().map(|e| e.to_string()))
                 .select(self.tabs.selected_index())
-                .highlight_style(TuiContext::get().theme.tab.highlight),
+                .highlight_style(TuiContext::get().styles.tab.highlight),
             area,
         )
     }

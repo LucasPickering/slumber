@@ -1,5 +1,8 @@
 use crate::{
-    tui::input::{Action, InputBinding},
+    tui::{
+        input::{Action, InputBinding},
+        view::Theme,
+    },
     util::{
         parse_yaml,
         paths::{DataDirectory, FileGuard},
@@ -25,9 +28,10 @@ pub struct Config {
     /// Should templates be rendered inline in the UI, or should we show the
     /// raw text?
     pub preview_templates: bool,
-
     /// Overrides for default key bindings
     pub input_bindings: IndexMap<Action, InputBinding>,
+    /// Visual configuration for the TUI (e.g. colors)
+    pub theme: Theme,
 }
 
 impl Config {
@@ -70,6 +74,7 @@ impl Default for Config {
             ignore_certificate_hosts: Vec::new(),
             preview_templates: true,
             input_bindings: IndexMap::default(),
+            theme: Theme::default(),
         }
     }
 }

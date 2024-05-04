@@ -2,6 +2,7 @@ Output "static/demo.gif"
 Set Shell sh
 Set Width 1800
 Set Height 1200
+Set Theme "MaterialDark"
 
 Hide
 Type "cargo run"

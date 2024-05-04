@@ -35,6 +35,7 @@
   - [Content Type](./api/request_collection/content_type.md)
 - [Configuration](./api/configuration/index.md)
   - [Input Bindings](./api/configuration/input_bindings.md)
+  - [Theme](./api/configuration/theme.md)
 
 # Troubleshooting
 

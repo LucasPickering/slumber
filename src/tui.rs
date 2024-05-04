@@ -2,7 +2,7 @@ pub mod context;
 pub mod input;
 pub mod message;
 mod util;
-mod view;
+pub mod view;
 
 use crate::{
     collection::{Collection, CollectionFile, ProfileId, RecipeId},

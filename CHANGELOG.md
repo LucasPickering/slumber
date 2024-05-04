@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Add option to chain values from response header rather than body ([#184](https://github.com/LucasPickering/slumber/issues/184))
 - Add action to save response body to file ([#183](https://github.com/LucasPickering/slumber/issues/183))
+- Add `theme` field to the config, to configure colors ([#193](https://github.com/LucasPickering/slumber/issues/193))
+  - [See docs](https://slumber.lucaspickering.me/book/api/configuration/theme.html) for more info
 
 ### Changed
 
@@ -17,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Previously some actions would feel laggy because of an inherent 250ms delay in processing some events
 - Search parent directories for collection file ([#194](https://github.com/LucasPickering/slumber/issues/194))
 - Use thicker borders for selected pane and modals
+- Change default TUI colors to blue and yellow
 
 ### Fixed
 

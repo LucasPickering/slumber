@@ -8,7 +8,7 @@ mod util;
 
 pub use common::modal::{IntoModal, ModalPriority};
 pub use state::RequestState;
-pub use theme::Theme;
+pub use theme::{Styles, Theme};
 pub use util::{Confirm, PreviewPrompter};
 
 use crate::{

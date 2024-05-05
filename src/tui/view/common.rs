@@ -27,7 +27,7 @@ use ratatui::{
     text::{Span, Text},
     widgets::{Block, Borders},
 };
-use reqwest::header::HeaderValue;
+use reqwest::{header::HeaderValue, StatusCode};
 
 /// A container with a title and border
 pub struct Pane<'a> {
@@ -167,6 +167,26 @@ impl Generate for Option<Duration> {
             // For incomplete requests typically
             None => "???".into(),
         }
+    }
+}
+
+impl Generate for StatusCode {
+    type Output<'this> = Span<'this> where Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        let styles = &TuiContext::get().styles.status_code;
+        let is_error = self.is_client_error() || self.is_server_error();
+        Span::styled(
+            self.to_string(),
+            if is_error {
+                styles.error
+            } else {
+                styles.success
+            },
+        )
     }
 }
 

@@ -15,6 +15,7 @@ theme:
 | `primary_color`      | `Color` | Color of most emphasized content                                     |
 | `primary_text_color` | `Color` | Color of text on top of the primary color (generally white or black) |
 | `secondary_color`    | `Color` | Color of secondary notable content                                   |
+| `success_color`      | `Color` | Color representing successful events                                 |
 | `error_color`        | `Color` | Color representing error messages                                    |
 
 ## Color Format

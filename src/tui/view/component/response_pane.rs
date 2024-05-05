@@ -239,10 +239,7 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
         .areas(area);
 
         // Metadata
-        frame.render_widget(
-            Paragraph::new(response.status.to_string()),
-            header_area,
-        );
+        frame.render_widget(response.status.generate(), header_area);
         frame.render_widget(
             Paragraph::new(Line::from(vec![
                 props.record.response.body.size().to_string_as(false).into(),

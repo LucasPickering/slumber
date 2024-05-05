@@ -2,6 +2,10 @@ Output "static/demo.gif"
 Set Shell sh
 Set Width 1800
 Set Height 1200
+Set FontSize 26
+Set Framerate 24
+Set Margin 0
+Set Padding 10
 Set Theme "MaterialDark"
 
 Hide
@@ -10,20 +14,20 @@ Enter
 Sleep 1s
 Show
 
-Sleep 2s
 Type "l"
+Sleep 2s
 Enter
-Sleep 500ms
+Sleep 0.5s
 Type "password"
 Enter
 Sleep 2s
 Down 4
-Sleep 500ms
+Sleep 0.5s
 Enter
 Sleep 2s
 Type "s"
 Sleep 2s
 Type "/$.headers"
 Enter
-Sleep 4s
+Sleep 2s
 

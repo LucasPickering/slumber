@@ -68,6 +68,7 @@ pub struct PrimaryViewProps<'a> {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     EnumCount,
     EnumIter,
@@ -77,6 +78,7 @@ pub struct PrimaryViewProps<'a> {
 )]
 pub enum PrimaryPane {
     ProfileList,
+    #[default]
     RecipeList,
     Recipe,
     Request,

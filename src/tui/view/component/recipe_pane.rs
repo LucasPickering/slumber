@@ -84,6 +84,7 @@ struct RecipeState {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     EnumCount,
     EnumIter,
@@ -92,6 +93,7 @@ struct RecipeState {
     Deserialize,
 )]
 enum Tab {
+    #[default]
     Body,
     Query,
     Headers,

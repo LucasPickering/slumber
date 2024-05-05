@@ -53,9 +53,11 @@ impl<Item, State> FixedSelectStateBuilder<Item, State> {
         Item: FixedSelect,
         State: SelectStateData,
     {
-        FixedSelectState {
-            select: self.select.build(),
-        }
+        // Disable the inner struct's pre-select in favor of our own. It will
+        // just select the first item, which might trigger undesired callbacks
+        let mut select = self.select.preselect(false).build();
+        select.select(&Item::default());
+        FixedSelectState { select }
     }
 }
 
@@ -177,8 +179,11 @@ where
     }
 }
 
-/// Trait alias for a static list of items to be cycled through
-pub trait FixedSelect:
+/// A version of [FixedSelect] without the `Default` bound. This is used for
+/// the action menu, in which individual action menu variants don't need to
+/// implement default because it will always default to one of the global
+/// variants.
+pub trait FixedSelectWithoutDefault:
     'static
     + Copy
     + Clone
@@ -191,7 +196,7 @@ pub trait FixedSelect:
 }
 
 /// Auto-impl for anything we can
-impl<T> FixedSelect for T where
+impl<T> FixedSelectWithoutDefault for T where
     T: 'static
         + Copy
         + Clone
@@ -202,3 +207,9 @@ impl<T> FixedSelect for T where
         + PartialEq
 {
 }
+
+/// Trait alias for a static list of items to be cycled through
+pub trait FixedSelect: FixedSelectWithoutDefault + Default {}
+
+/// Auto-impl for anything we can
+impl<T> FixedSelect for T where T: FixedSelectWithoutDefault + Default {}

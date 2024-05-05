@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Add option to chain values from response header rather than body ([#184](https://github.com/LucasPickering/slumber/issues/184))
+- Add `section` field to `!request` chain values, to allow chaining response headers rather than body ([#184](https://github.com/LucasPickering/slumber/issues/184))
 - Add action to save response body to file ([#183](https://github.com/LucasPickering/slumber/issues/183))
 - Add `theme` field to the config, to configure colors ([#193](https://github.com/LucasPickering/slumber/issues/193))
   - [See docs](https://slumber.lucaspickering.me/book/api/configuration/theme.html) for more info

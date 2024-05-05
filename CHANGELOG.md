@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [1.1.0] - 2024-05-05
+
 ### Added
 
 - Add `section` field to `!request` chain values, to allow chaining response headers rather than body ([#184](https://github.com/LucasPickering/slumber/issues/184))

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- Exit fullscreen mode when changing panes
+
 ## [1.1.0] - 2024-05-05
 
 ### Added

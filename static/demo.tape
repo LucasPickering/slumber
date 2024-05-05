@@ -1,8 +1,8 @@
 Output "static/demo.gif"
 Set Shell sh
-Set Width 1800
-Set Height 1200
-Set FontSize 26
+Set Width 1200
+Set Height 800
+Set FontSize 18
 Set Framerate 24
 Set Margin 0
 Set Padding 10
@@ -11,18 +11,19 @@ Set Theme "MaterialDark"
 Hide
 Type "cargo run"
 Enter
-Sleep 1s
+Sleep 2s
+Type "l"
 Show
 
-Type "l"
-Sleep 2s
+Sleep 1s
 Enter
 Sleep 0.5s
 Type "password"
+Sleep 0.5s
 Enter
 Sleep 2s
 Down 4
-Sleep 0.5s
+Sleep 2s
 Enter
 Sleep 2s
 Type "s"

@@ -160,6 +160,7 @@ struct RenderedRequestProps {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     EnumCount,
     EnumIter,
@@ -168,6 +169,7 @@ struct RenderedRequestProps {
     Deserialize,
 )]
 enum Tab {
+    #[default]
     #[display("URL")]
     Url,
     Body,

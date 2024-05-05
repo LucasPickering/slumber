@@ -39,12 +39,20 @@ where
 /// call on_select for the default item.
 pub struct SelectStateBuilder<Item, State> {
     items: Vec<Item>,
+    preselect: bool,
     on_select: Option<Callback<Item>>,
     on_submit: Option<Callback<Item>>,
     _state: PhantomData<State>,
 }
 
 impl<Item, State> SelectStateBuilder<Item, State> {
+    /// Enable or disable pre-selection, which will select the first item in the
+    /// list upon construction
+    pub fn preselect(mut self, preselect: bool) -> Self {
+        self.preselect = preselect;
+        self
+    }
+
     /// Set the callback to be called when the user highlights a new item
     pub fn on_select(
         mut self,
@@ -73,9 +81,9 @@ impl<Item, State> SelectStateBuilder<Item, State> {
             on_select: self.on_select,
             on_submit: self.on_submit,
         };
-        // Select the first item if possible. Use select_index so on_select is
-        // called if provided
-        if !select.items.is_empty() {
+        // Select the first item if requested and possible. Use select_index so
+        // on_select is called if present
+        if self.preselect && !select.items.is_empty() {
             select.select_index(0);
         }
         select
@@ -89,6 +97,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     pub fn builder(items: Vec<Item>) -> SelectStateBuilder<Item, State> {
         SelectStateBuilder {
             items,
+            preselect: true,
             on_select: None,
             on_submit: None,
             _state: PhantomData,

@@ -137,6 +137,7 @@ struct State {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     EnumCount,
     EnumIter,
@@ -145,6 +146,7 @@ struct State {
     Deserialize,
 )]
 enum Tab {
+    #[default]
     Body,
     Headers,
 }

@@ -98,6 +98,9 @@ enum FullscreenMode {
     Response,
 }
 
+/// Sentinel type for propagating an even that closes fullscreen mode
+struct ExitFullscreen;
+
 impl PrimaryView {
     pub fn new(collection: &Collection, messages_tx: MessageSender) -> Self {
         let profile_list_pane = ProfileListPane::new(
@@ -105,10 +108,15 @@ impl PrimaryView {
         )
         .into();
         let recipe_list_pane = RecipeListPane::new(&collection.recipes).into();
+        let selected_pane = FixedSelectState::builder()
+            // Changing panes kicks us out of fullscreen
+            .on_select(|_| EventQueue::push(Event::new_other(ExitFullscreen)))
+            .build();
+
         Self {
             selected_pane: Persistent::new(
                 PersistentKey::PrimaryPane,
-                Default::default(),
+                selected_pane,
             ),
             fullscreen_mode: Persistent::new(
                 PersistentKey::FullscreenMode,
@@ -315,12 +323,8 @@ impl EventHandler for PrimaryView {
                         self.selected_pane.select(&PrimaryPane::Response);
                     }
                 }
-                Action::PreviousPane if self.fullscreen_mode.is_none() => {
-                    self.selected_pane.previous();
-                }
-                Action::NextPane if self.fullscreen_mode.is_none() => {
-                    self.selected_pane.next();
-                }
+                Action::PreviousPane => self.selected_pane.previous(),
+                Action::NextPane => self.selected_pane.next(),
                 Action::Submit => {
                     // Send a request from anywhere
                     EventQueue::push(Event::HttpSendRequest);
@@ -370,6 +374,12 @@ impl EventHandler for PrimaryView {
                 }
                 _ => return Update::Propagate(event),
             },
+
+            Event::Other(event) => {
+                if let Some(ExitFullscreen) = event.downcast_ref() {
+                    *self.fullscreen_mode = None;
+                }
+            }
 
             _ => return Update::Propagate(event),
         }

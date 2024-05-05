@@ -39,6 +39,15 @@ pub struct FixedSelectStateBuilder<Item, State> {
 }
 
 impl<Item, State> FixedSelectStateBuilder<Item, State> {
+    /// Set the callback to be called when the user highlights a new item
+    pub fn on_select(
+        mut self,
+        on_select: impl 'static + Fn(&mut Item),
+    ) -> Self {
+        self.select = self.select.on_select(on_select);
+        self
+    }
+
     /// Set the callback to be called when the user hits enter on an item
     pub fn on_submit(
         mut self,

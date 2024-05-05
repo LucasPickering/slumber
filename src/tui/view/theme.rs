@@ -16,6 +16,7 @@ pub struct Theme {
     /// fallible to just have the user specify it.
     pub primary_text_color: Color,
     pub secondary_color: Color,
+    pub success_color: Color,
     pub error_color: Color,
 }
 
@@ -25,6 +26,7 @@ impl Default for Theme {
             primary_color: Color::Blue,
             primary_text_color: Color::White,
             secondary_color: Color::Yellow,
+            success_color: Color::Green,
             error_color: Color::Red,
         }
     }
@@ -39,6 +41,7 @@ pub struct Styles {
     pub list: ListStyles,
     pub modal: ModalStyles,
     pub pane: PaneStyles,
+    pub status_code: StatusCodeStyles,
     pub tab: TabStyles,
     pub table: TableStyles,
     pub template_preview: TemplatePreviewStyles,
@@ -67,6 +70,12 @@ impl Styles {
                     .add_modifier(Modifier::BOLD),
                 border_type: BorderType::Plain,
                 border_type_selected: BorderType::Double,
+            },
+            status_code: StatusCodeStyles {
+                success: Style::default()
+                    .fg(Color::Black)
+                    .bg(theme.success_color),
+                error: Style::default().bg(theme.error_color),
             },
             tab: TabStyles {
                 highlight: Style::default()
@@ -146,6 +155,13 @@ impl PaneStyles {
             (self.border_type, self.border)
         }
     }
+}
+
+/// Styles for HTTP status code display
+#[derive(Debug)]
+pub struct StatusCodeStyles {
+    pub success: Style,
+    pub error: Style,
 }
 
 /// Styles for Tab component

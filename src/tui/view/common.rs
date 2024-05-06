@@ -24,7 +24,7 @@ use crate::{
 use chrono::{DateTime, Duration, Local, Utc};
 use itertools::Itertools;
 use ratatui::{
-    text::{Span, Text},
+    text::{Line, Span, Text},
     widgets::{Block, Borders},
 };
 use reqwest::{header::HeaderValue, StatusCode};
@@ -210,7 +210,27 @@ impl Generate for &anyhow::Error {
     where
         Self: 'this,
     {
-        self.chain().map(|err| err.to_string()).join("\n").into()
+        let chain = self.chain();
+        let len = chain.len();
+        chain
+            .enumerate()
+            .map::<Line, _>(|(i, error)| {
+                let icon = if i == 0 {
+                    "" // First
+                } else if i < len - 1 {
+                    "└┬" // Intermediate
+                } else {
+                    "└─" // Last
+                };
+                format!(
+                    "{indent:width$}{icon}{error}",
+                    indent = "",
+                    width = i.saturating_sub(1)
+                )
+                .into()
+            })
+            .collect_vec()
+            .into()
     }
 }
 

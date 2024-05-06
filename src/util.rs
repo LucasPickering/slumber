@@ -1,6 +1,10 @@
 pub mod paths;
 
-use crate::{http::RequestError, template::ChainError};
+use crate::{
+    http::RequestError,
+    template::ChainError,
+    tui::message::{Message, MessageSender},
+};
 use derive_more::{DerefMut, Display};
 use serde::de::DeserializeOwned;
 use std::{
@@ -79,6 +83,10 @@ impl<T> DerefMut for Replaceable<T> {
 pub trait ResultExt<T, E>: Sized {
     /// If this is an error, trace it. Return the same result.
     fn traced(self) -> Self;
+
+    /// If this result is an error, send it over the message channel to be
+    /// shown the user, and return `None`. If it's `Ok`, return `Some`.
+    fn reported(self, messages_tx: &MessageSender) -> Option<T>;
 }
 
 // This is deliberately *not* implemented for non-anyhow errors, because we only
@@ -90,6 +98,16 @@ impl<T> ResultExt<T, anyhow::Error> for anyhow::Result<T> {
         }
         self
     }
+
+    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
+        match self {
+            Ok(value) => Some(value),
+            Err(error) => {
+                messages_tx.send(Message::Error { error });
+                None
+            }
+        }
+    }
 }
 
 impl<T> ResultExt<T, RequestError> for Result<T, RequestError> {
@@ -99,6 +117,10 @@ impl<T> ResultExt<T, RequestError> for Result<T, RequestError> {
         }
         self
     }
+
+    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
+        self.map_err(anyhow::Error::from).reported(messages_tx)
+    }
 }
 
 impl<T> ResultExt<T, ChainError> for Result<T, ChainError> {
@@ -107,6 +129,10 @@ impl<T> ResultExt<T, ChainError> for Result<T, ChainError> {
             error!(error = %err);
         }
         self
+    }
+
+    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
+        self.map_err(anyhow::Error::from).reported(messages_tx)
     }
 }
 

@@ -17,7 +17,7 @@ use crate::{
         util::{save_file, signals},
         view::{ModalPriority, PreviewPrompter, RequestState, View},
     },
-    util::Replaceable,
+    util::{Replaceable, ResultExt},
 };
 use anyhow::{anyhow, Context};
 use crossterm::{
@@ -90,10 +90,8 @@ impl Tui {
         // move along. We'll watch the file and hopefully the user can fix it
         let collection_file = CollectionFile::load(collection_path.clone())
             .await
-            .unwrap_or_else(|error| {
-                messages_tx.send(Message::Error { error });
-                CollectionFile::with_path(collection_path)
-            });
+            .reported(&messages_tx)
+            .unwrap_or_else(|| CollectionFile::with_path(collection_path));
         let view = View::new(&collection_file, messages_tx.clone());
 
         // The code to revert the terminal takeover is in `Tui::drop`, so we
@@ -564,11 +562,7 @@ impl Tui {
         future: impl Future<Output = anyhow::Result<()>> + Send + 'static,
     ) {
         let messages_tx = self.messages_tx();
-        tokio::spawn(async move {
-            if let Err(err) = future.await {
-                messages_tx.send(Message::Error { error: err })
-            }
-        });
+        tokio::spawn(async move { future.await.reported(&messages_tx) });
     }
 
     /// Expose app state to the templater. Most of the data has to be cloned out

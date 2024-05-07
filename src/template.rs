@@ -180,8 +180,8 @@ mod tests {
     use super::*;
     use crate::{
         collection::{
-            Chain, ChainRequestSection, ChainRequestTrigger, ChainSource,
-            RecipeId,
+            Chain, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
+            ChainSource, RecipeId,
         },
         config::Config,
         http::{ContentType, RequestRecord},
@@ -596,6 +596,30 @@ mod tests {
             stdin: stdin.map(Template::from),
         };
         let chain = create!(Chain, source: source);
+        let context = create!(
+            TemplateContext,
+            collection: create!(
+                Collection,
+                chains: indexmap! {chain.id.clone() => chain},
+            ),
+        );
+
+        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
+    }
+
+    /// Test trimmed chained command
+    #[rstest]
+    #[case::no_trim(ChainOutputTrim::None, "   hello!   ")]
+    #[case::trim_start(ChainOutputTrim::Start, "hello!   ")]
+    #[case::trim_end(ChainOutputTrim::End, "   hello!")]
+    #[case::trim_both(ChainOutputTrim::Both, "hello!")]
+    #[tokio::test]
+    async fn test_chain_output_trim(
+        #[case] trim: ChainOutputTrim,
+        #[case] expected: &str,
+    ) {
+        let command = vec!["echo".into(), "-n".into(), "   hello!   ".into()];
+        let chain = create!(Chain, source: ChainSource::Command { command, stdin:None }, trim: trim);
         let context = create!(
             TemplateContext,
             collection: create!(

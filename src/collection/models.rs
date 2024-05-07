@@ -191,6 +191,8 @@ pub struct Chain {
     /// response (e.g. a file) **or** if the response's `Content-Type` header
     /// is incorrect.
     pub content_type: Option<ContentType>,
+    #[serde(default)]
+    pub trim: ChainOutputTrim,
 }
 
 /// Unique ID for a chain. Takes a generic param so we can create these during
@@ -287,6 +289,22 @@ pub enum ChainRequestTrigger {
     Expire(#[serde(with = "cereal::serde_duration")] Duration),
     /// Trigger the request every time the dependent request is rendered
     Always,
+}
+
+/// Trim whitespace from rendered output
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum ChainOutputTrim {
+    /// Do not trim the output
+    #[default]
+    None,
+    /// Trim the start of the output
+    Start,
+    /// Trim the end of the output
+    End,
+    /// Trim the start and end of the output
+    Both,
 }
 
 impl Profile {

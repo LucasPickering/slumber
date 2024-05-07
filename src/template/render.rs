@@ -2,8 +2,8 @@
 
 use crate::{
     collection::{
-        ChainId, ChainRequestSection, ChainRequestTrigger, ChainSource,
-        RecipeId,
+        ChainId, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
+        ChainSource, RecipeId,
     },
     http::{ContentType, RequestBuilder, RequestRecord, Response},
     template::{
@@ -326,7 +326,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
             };
 
             Ok(RenderedChunk {
-                value,
+                value: chain.trim.apply(value),
                 sensitive: chain.sensitive,
             })
         }
@@ -632,5 +632,17 @@ impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
             value,
             sensitive: false,
         })
+    }
+}
+
+impl ChainOutputTrim {
+    /// Apply whitespace trimming
+    fn apply(self, value: String) -> String {
+        match self {
+            Self::None => value,
+            Self::Start => value.trim_start().into(),
+            Self::End => value.trim_end().into(),
+            Self::Both => value.trim().into(),
+        }
     }
 }

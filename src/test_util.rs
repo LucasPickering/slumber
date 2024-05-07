@@ -1,7 +1,7 @@
 use crate::{
     collection::{
-        Chain, ChainSource, Collection, Folder, Profile, ProfileId, Recipe,
-        RecipeId, RecipeNode, RecipeTree,
+        Chain, ChainOutputTrim, ChainSource, Collection, Folder, Profile,
+        ProfileId, Recipe, RecipeId, RecipeNode, RecipeTree,
     },
     config::Config,
     db::CollectionDatabase,
@@ -116,6 +116,7 @@ factori!(Chain, {
         sensitive = false,
         selector = None,
         content_type = None,
+        trim = ChainOutputTrim::default(),
     }
 });
 

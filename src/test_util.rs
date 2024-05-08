@@ -12,21 +12,20 @@ use crate::{
         message::{Message, MessageSender},
     },
 };
+use chrono::Utc;
+use factori::{create, factori};
+use indexmap::IndexMap;
 use ratatui::{backend::TestBackend, Terminal};
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    Method, StatusCode,
+};
 use std::{
     env, fs,
     path::{Path, PathBuf},
 };
 use tokio::sync::{mpsc, mpsc::UnboundedReceiver};
 use uuid::Uuid;
-
-use chrono::Utc;
-use factori::{create, factori};
-use indexmap::IndexMap;
-use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
-    Method, StatusCode,
-};
 
 factori!(Collection, {
     default {

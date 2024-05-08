@@ -32,33 +32,33 @@ The tag for a folder is `!folder` (see examples).
 ## Examples
 
 ```yaml
-login: !request
-  name: Login
-  method: POST
-  url: "{{host}}/anything/login"
-  headers:
-    accept: application/json
-    content-type: application/json
-  query:
-    root_access: yes_please
-  body: |
-    {
-      "username": "{{chains.username}}",
-      "password": "{{chains.password}}"
-    }
----
-fish: !folder
-  name: Users
-  requests:
-    create_fish: !request
-      method: POST
-      url: "{{host}}/fishes"
-      body: >
-        {"kind": "barracuda", "name": "Jimmy"}
+recipes:
+  login: !request
+    name: Login
+    method: POST
+    url: "{{host}}/anything/login"
+    headers:
+      accept: application/json
+      content-type: application/json
+    query:
+      root_access: yes_please
+    body: |
+      {
+        "username": "{{chains.username}}",
+        "password": "{{chains.password}}"
+      }
+  fish: !folder
+    name: Users
+    requests:
+      create_fish: !request
+        method: POST
+        url: "{{host}}/fishes"
+        body: >
+          {"kind": "barracuda", "name": "Jimmy"}
 
-    list_fish: !request
-      method: GET
-      url: "{{host}}/fishes"
-      query:
-        big: true
+      list_fish: !request
+        method: GET
+        url: "{{host}}/fishes"
+        query:
+          big: true
 ```

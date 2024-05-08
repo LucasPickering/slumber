@@ -11,7 +11,7 @@ use crate::{
         },
     },
 };
-use derive_more::{Deref, DerefMut};
+use derive_more::{Deref, DerefMut, From};
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Debug;
 
@@ -66,6 +66,9 @@ impl<T: PersistentContainer> Drop for Persistent<T> {
     }
 }
 
+/// Unique identifier for a single persisted UI value. Some keys are singleton,
+/// meaning there's only one corresponding value in the app. Others are dynamic,
+/// e.g. for toggle state on each row in a table.
 #[derive(Clone, Debug, Serialize)]
 pub enum PersistentKey {
     /// Which pane is selected?
@@ -145,6 +148,36 @@ impl<T: Persistable<Persisted = T>> PersistentContainer for T {
 
     fn set(&mut self, value: <Self::Value as Persistable>::Persisted) {
         *self = value;
+    }
+}
+
+/// A hack to get around the orphan rule when persisting an `Option<T>`. We
+/// can't implement `Persistable` for `Option<T>` because of the blanket impl
+/// above, and Rust is covering the case where `Option` suddenly falls under
+/// that blanket (it can't). This is a shitty solution but it's the best I've
+/// got.
+#[derive(Clone, Debug, Default, Deref, DerefMut, From, PartialEq)]
+pub struct PersistentOption<T>(Option<T>);
+
+impl<T> PersistentContainer for PersistentOption<T>
+where
+    T: Persistable<Persisted = T>,
+{
+    type Value = T;
+
+    fn get(&self) -> Option<&Self::Value> {
+        self.0.as_ref()
+    }
+
+    fn set(&mut self, value: <Self::Value as Persistable>::Persisted) {
+        *self = Some(value).into();
+    }
+}
+
+/// Enable `SelectState` selection by value
+impl<T: PartialEq> PartialEq<Option<T>> for PersistentOption<T> {
+    fn eq(&self, other: &Option<T>) -> bool {
+        &self.0 == other
     }
 }
 

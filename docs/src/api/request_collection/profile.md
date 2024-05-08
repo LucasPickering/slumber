@@ -12,10 +12,11 @@ A profile is a collection of static template values. It's useful for configuring
 ## Examples
 
 ```yaml
-local:
-  name: Local
-  data:
-    host: localhost:5000
-    url: "https://{{host}}"
-    user_guid: abc123
+profiles:
+  local:
+    name: Local
+    data:
+      host: localhost:5000
+      url: "https://{{host}}"
+      user_guid: abc123
 ```

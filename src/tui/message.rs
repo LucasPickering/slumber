@@ -17,8 +17,8 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
 /// Wrapper around a sender for async messages. Cheap to clone and pass around
-#[derive(Clone, Debug, From)]
-pub struct MessageSender(UnboundedSender<Message>);
+#[derive(Clone, derive_more::Debug, From)]
+pub struct MessageSender(#[debug(skip)] UnboundedSender<Message>);
 
 impl MessageSender {
     pub fn new(sender: UnboundedSender<Message>) -> Self {

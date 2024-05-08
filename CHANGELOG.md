@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Use colored background for status codes
   - This includes a new theme field, `success_color`
 - Improve hierarchy presentation of errors
+- Convert profile list into a popup modal
 
 ### Fixed
 

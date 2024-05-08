@@ -111,7 +111,7 @@ pub enum ChainError {
     #[error(
         "Selector cannot be applied; content type not provided and could not \
         be determined from metadata. See docs for supported content types: {}",
-        doc_link("api/content_type")
+        doc_link("api/request_collection/content_type")
     )]
     UnknownContentType,
 

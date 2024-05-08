@@ -27,7 +27,7 @@ pub struct ActionsModal<T: FixedSelectWithoutDefault = EmptyAction> {
 
 impl<T: FixedSelectWithoutDefault> Default for ActionsModal<T> {
     fn default() -> Self {
-        let wrapper = move |action: &mut EnumChain<GlobalAction, T>| {
+        let on_submit = move |action: &mut EnumChain<GlobalAction, T>| {
             // Close the modal *first*, so the parent can handle the
             // callback event. Jank but it works
             EventQueue::push(Event::CloseModal);
@@ -40,7 +40,7 @@ impl<T: FixedSelectWithoutDefault> Default for ActionsModal<T> {
 
         Self {
             actions: FixedSelectState::builder()
-                .on_submit(wrapper)
+                .on_submit(on_submit)
                 .build()
                 .into(),
         }
@@ -79,7 +79,7 @@ where
         self.actions.draw(
             frame,
             List {
-                block: None,
+                pane: None,
                 list: self.actions.data().items(),
             }
             .generate(),

@@ -7,7 +7,7 @@ use ratatui::{text::Span, widgets::ListItem};
 /// A list with optional border and title. Each item has to be convertible to
 /// text
 pub struct List<'a, Item, Iter: 'a + IntoIterator<Item = Item>> {
-    pub block: Option<Pane<'a>>,
+    pub pane: Option<Pane<'a>>,
     pub list: Iter,
 }
 
@@ -22,7 +22,7 @@ where
     where
         Self: 'this,
     {
-        let block = self.block.map(Pane::generate).unwrap_or_default();
+        let block = self.pane.map(Pane::generate).unwrap_or_default();
 
         // Convert each list item into text
         let items: Vec<ListItem<'_>> = self

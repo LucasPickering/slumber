@@ -1,8 +1,7 @@
 mod help;
 mod misc;
 mod primary;
-mod profile_list;
-mod profile_pane;
+mod profile_select;
 mod recipe_list;
 mod recipe_pane;
 mod record_body;

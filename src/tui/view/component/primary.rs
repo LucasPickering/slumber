@@ -9,8 +9,7 @@ use crate::{
             common::actions::ActionsModal,
             component::{
                 help::HelpModal,
-                profile_list::{ProfileListPane, ProfileListPaneProps},
-                profile_pane::{ProfilePane, ProfilePaneProps},
+                profile_select::ProfilePane,
                 recipe_list::{RecipeListPane, RecipeListPaneProps},
                 recipe_pane::{RecipePane, RecipePaneProps},
                 request_pane::{RequestPane, RequestPaneProps},
@@ -46,11 +45,9 @@ pub struct PrimaryView {
 
     // Children
     #[debug(skip)]
-    profile_list_pane: Component<ProfileListPane>,
+    profile_pane: Component<ProfilePane>,
     #[debug(skip)]
     recipe_list_pane: Component<RecipeListPane>,
-    #[debug(skip)]
-    profile_pane: Component<ProfilePane>,
     #[debug(skip)]
     recipe_pane: Component<RecipePane>,
     #[debug(skip)]
@@ -77,7 +74,6 @@ pub struct PrimaryViewProps<'a> {
     Deserialize,
 )]
 pub enum PrimaryPane {
-    ProfileList,
     #[default]
     RecipeList,
     Recipe,
@@ -103,7 +99,7 @@ struct ExitFullscreen;
 
 impl PrimaryView {
     pub fn new(collection: &Collection, messages_tx: MessageSender) -> Self {
-        let profile_list_pane = ProfileListPane::new(
+        let profile_pane = ProfilePane::new(
             collection.profiles.values().cloned().collect_vec(),
         )
         .into();
@@ -123,9 +119,8 @@ impl PrimaryView {
                 None,
             ),
 
-            profile_list_pane,
             recipe_list_pane,
-            profile_pane: ProfilePane::new(messages_tx.clone()).into(),
+            profile_pane,
             recipe_pane: RecipePane::new(messages_tx).into(),
             request_pane: Default::default(),
             response_pane: Default::default(),
@@ -138,10 +133,9 @@ impl PrimaryView {
         self.recipe_list_pane.data().selected_recipe()
     }
 
-    /// Which profile in the list is selected? `None` iff the list is empty.
-    /// Exposing inner state is hacky but it's an easy shortcut
+    /// Which profile in the list is selected? `None` iff the list is empty
     pub fn selected_profile(&self) -> Option<&Profile> {
-        self.profile_list_pane.data().profiles().selected()
+        self.profile_pane.data().selected_profile()
     }
 
     /// Draw the "normal" view, when nothing is full
@@ -156,19 +150,14 @@ impl PrimaryView {
             Layout::horizontal([Constraint::Max(40), Constraint::Min(40)])
                 .areas(area);
 
-        let [profiles_area, recipes_area] =
-            self.get_left_column_layout(left_area);
+        let [profile_area, recipes_area] =
+            Layout::vertical([Constraint::Length(3), Constraint::Min(0)])
+                .areas(left_area);
         let [recipe_area, request_area, response_area] =
             self.get_right_column_layout(right_area);
 
         // Primary panes
-        self.profile_list_pane.draw(
-            frame,
-            ProfileListPaneProps {
-                is_selected: self.is_selected(PrimaryPane::ProfileList),
-            },
-            profiles_area,
-        );
+        self.profile_pane.draw(frame, (), profile_area);
         self.recipe_list_pane.draw(
             frame,
             RecipeListPaneProps {
@@ -177,30 +166,17 @@ impl PrimaryView {
             recipes_area,
         );
 
-        // If profile list is selected, show the profile contents.
-        // Otherwise show the recipe pane
-        if let (PrimaryPane::ProfileList, Some(profile)) =
-            (self.selected_pane.selected(), self.selected_profile())
-        {
-            self.profile_pane.draw(
-                frame,
-                ProfilePaneProps { profile },
-                recipe_area,
-            )
-        } else {
-            self.recipe_pane.draw(
-                frame,
-                RecipePaneProps {
-                    is_selected: self.is_selected(PrimaryPane::Recipe),
-                    selected_recipe: self.selected_recipe(),
-                    selected_profile_id: self
-                        .selected_profile()
-                        .map(|profile| &profile.id),
-                },
-                recipe_area,
-            );
-        }
-
+        self.recipe_pane.draw(
+            frame,
+            RecipePaneProps {
+                is_selected: self.is_selected(PrimaryPane::Recipe),
+                selected_recipe: self.selected_recipe(),
+                selected_profile_id: self
+                    .selected_profile()
+                    .map(|profile| &profile.id),
+            },
+            recipe_area,
+        );
         self.request_pane.draw(
             frame,
             RequestPaneProps {
@@ -231,22 +207,6 @@ impl PrimaryView {
     /// Is the given pane selected?
     fn is_selected(&self, primary_pane: PrimaryPane) -> bool {
         self.selected_pane.is_selected(&primary_pane)
-    }
-
-    /// Get layout for the left column of panes
-    fn get_left_column_layout(&self, area: Rect) -> [Rect; 2] {
-        // Minimize profiles pane if not selected
-        let profiles = if self.is_selected(PrimaryPane::ProfileList) {
-            // Make profile list as small as possible
-            Constraint::Max(
-                // +2 to account for top/bottom border
-                self.profile_list_pane.data().profiles().items().len() as u16
-                    + 2,
-            )
-        } else {
-            Constraint::Max(3)
-        };
-        Layout::vertical([profiles, Constraint::Min(0)]).areas(area)
     }
 
     /// Get layout for the right column of panes
@@ -312,9 +272,7 @@ impl EventHandler for PrimaryView {
                         unreachable!("Mouse action must have mouse event")
                     };
                     // See if any child panes were clicked
-                    if self.profile_list_pane.intersects(mouse) {
-                        self.selected_pane.select(&PrimaryPane::ProfileList);
-                    } else if self.recipe_list_pane.intersects(mouse) {
+                    if self.recipe_list_pane.intersects(mouse) {
                         self.selected_pane.select(&PrimaryPane::RecipeList);
                     } else if self.recipe_pane.intersects(mouse) {
                         self.selected_pane.select(&PrimaryPane::Recipe);
@@ -336,9 +294,6 @@ impl EventHandler for PrimaryView {
                 Action::OpenHelp => {
                     EventQueue::open_modal_default::<HelpModal>();
                 }
-                Action::SelectProfileList => {
-                    self.selected_pane.select(&PrimaryPane::ProfileList)
-                }
                 Action::SelectRecipeList => {
                     self.selected_pane.select(&PrimaryPane::RecipeList)
                 }
@@ -357,7 +312,7 @@ impl EventHandler for PrimaryView {
                     match self.selected_pane.selected() {
                         // These aren't fullscreenable. Still consume the event
                         // though, no one else will need it anyway
-                        PrimaryPane::ProfileList | PrimaryPane::RecipeList => {}
+                        PrimaryPane::RecipeList => {}
                         PrimaryPane::Recipe => {
                             self.toggle_fullscreen(FullscreenMode::Recipe)
                         }
@@ -388,6 +343,9 @@ impl EventHandler for PrimaryView {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        // Profile pane is always accessible because it's not actually
+        // selectable, all it does it open its modal
+        let mut children = vec![self.profile_pane.as_child()];
         let child = if let Some(fullscreen_mode) = *self.fullscreen_mode {
             match fullscreen_mode {
                 FullscreenMode::Recipe => self.recipe_list_pane.as_child(),
@@ -396,14 +354,14 @@ impl EventHandler for PrimaryView {
             }
         } else {
             match self.selected_pane.selected() {
-                PrimaryPane::ProfileList => self.profile_list_pane.as_child(),
                 PrimaryPane::RecipeList => self.recipe_list_pane.as_child(),
                 PrimaryPane::Recipe => self.recipe_pane.as_child(),
                 PrimaryPane::Request => self.request_pane.as_child(),
                 PrimaryPane::Response => self.response_pane.as_child(),
             }
         };
-        vec![child]
+        children.push(child);
+        children
     }
 }
 

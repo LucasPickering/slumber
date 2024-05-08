@@ -289,7 +289,6 @@ impl Default for CompleteResponseContent {
 mod tests {
     use super::*;
     use crate::test_util::*;
-    use factori::create;
     use indexmap::indexmap;
     use ratatui::{backend::TestBackend, Terminal};
     use rstest::rstest;
@@ -297,20 +296,20 @@ mod tests {
     /// Test "Copy Body" menu action
     #[rstest]
     #[case::json_body(
-        create!(
-            Response,
+        Response{
             headers: header_map(indexmap! {"content-type" => "application/json"}),
-            body: br#"{"hello":"world"}"#.to_vec().into()
-        ),
+            body: br#"{"hello":"world"}"#.to_vec().into(),
+            ..Response::factory()
+        },
         // Body gets prettified
         "{\n  \"hello\": \"world\"\n}"
     )]
     #[case::binary_body(
-        create!(
-            Response,
+        Response{
             headers: header_map(indexmap! {"content-type" => "image/png"}),
-            body: b"\x01\x02\x03\xff".to_vec().into()
-        ),
+            body: b"\x01\x02\x03\xff".to_vec().into(),
+            ..Response::factory()
+        },
         "01 02 03 ff"
     )]
     #[tokio::test]
@@ -324,7 +323,10 @@ mod tests {
         // Draw once to initialize state
         let mut component = CompleteResponseContent::default();
         response.parse_body(); // Normally the view does this
-        let record = create!(RequestRecord, response: response.into());
+        let record = RequestRecord {
+            response: response.into(),
+            ..RequestRecord::factory()
+        };
         component.draw(
             &mut terminal.get_frame(),
             CompleteResponseContentProps { record: &record },
@@ -346,33 +348,33 @@ mod tests {
     /// Test "Save Body as File" menu action
     #[rstest]
     #[case::json_body(
-        create!(
-            Response,
+        Response{
             headers: header_map(indexmap! {"content-type" => "application/json"}),
-            body: br#"{"hello":"world"}"#.to_vec().into()
-        ),
+            body: br#"{"hello":"world"}"#.to_vec().into(),
+            ..Response::factory()
+        },
         // Body gets prettified
         b"{\n  \"hello\": \"world\"\n}",
         "data.json"
     )]
     #[case::binary_body(
-        create!(
-            Response,
+        Response{
             headers: header_map(indexmap! {"content-type" => "image/png"}),
-            body: b"\x01\x02\x03".to_vec().into()
-        ),
+            body: b"\x01\x02\x03".to_vec().into(),
+            ..Response::factory()
+        },
         b"\x01\x02\x03",
         "data.png"
     )]
     #[case::content_disposition(
-        create!(
-            Response,
+        Response{
             headers: header_map(indexmap! {
                 "content-type" => "image/png",
                 "content-disposition" => "attachment; filename=\"dogs.png\"",
             }),
-            body: b"\x01\x02\x03".to_vec().into()
-        ),
+            body: b"\x01\x02\x03".to_vec().into(),
+            ..Response::factory()
+        },
         b"\x01\x02\x03",
         "dogs.png"
     )]
@@ -387,7 +389,10 @@ mod tests {
     ) {
         let mut component = CompleteResponseContent::default();
         response.parse_body(); // Normally the view does this
-        let record = create!(RequestRecord, response: response.into());
+        let record = RequestRecord {
+            response: response.into(),
+            ..RequestRecord::factory()
+        };
 
         // Draw once to initialize state
         component.draw(

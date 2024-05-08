@@ -526,7 +526,6 @@ impl PartialEq<RowState> for String {
 mod tests {
     use super::*;
     use crate::test_util::*;
-    use factori::create;
     use ratatui::{backend::TestBackend, Terminal};
     use rstest::rstest;
 
@@ -537,7 +536,7 @@ mod tests {
         mut messages: MessageQueue,
         mut terminal: Terminal<TestBackend>,
     ) -> RecipePane {
-        let recipe = create!(Recipe, url: "https://test/".into());
+        let recipe = Recipe::factory();
         let component = RecipePane::new(messages.tx().clone());
 
         // Draw once to initialize state

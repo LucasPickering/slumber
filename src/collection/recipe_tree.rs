@@ -231,7 +231,6 @@ impl From<&Vec<&RecipeId>> for RecipeLookupKey {
 mod tests {
     use super::*;
     use crate::test_util::*;
-    use factori::create;
     use indexmap::indexmap;
     use itertools::Itertools;
     use rstest::{fixture, rstest};
@@ -275,22 +274,26 @@ mod tests {
     #[fixture]
     fn tree() -> IndexMap<RecipeId, RecipeNode> {
         indexmap! {
-            id("r1") => create!(Recipe, id: id("r1")).into(),
-            id("f1") => create!(
-                Folder,
+            id("r1") => Recipe { id: id("r1"), ..Recipe::factory() }.into(),
+            id("f1") => Folder {
                 id: id("f1"),
                 children: indexmap! {
-                    id("f2") => create!(
-                        Folder,
+                    id("f2") => Folder {
                         id: id("f2"),
                         children: indexmap! {
-                            id("r2") => create!(Recipe, id: id("r2")).into(),
-                        }
-                    ).into(),
-                    id("r3") => create!(Recipe, id: id("r3")).into(),
+                            id("r2") => Recipe {
+                                id: id("r2"),
+                                ..Recipe::factory()
+                            }.into(),
+                        },
+                        ..Folder::factory()
+                    }.into(),
+                    id("r3") => Recipe { id: id("r3"), ..Recipe::factory() }.into(),
                 },
-            ).into(),
-            id("r4") => create!(Recipe, id: id("r4")).into(),
+                ..Folder::factory()
+            }
+            .into(),
+            id("r4") => Recipe { id: id("r4"), ..Recipe::factory() }.into(),
         }
     }
 
@@ -416,7 +419,10 @@ mod tests {
         // Create equivalent YAML
         let recipe_value: Value = tagged_mapping(
             "!request",
-            [("method", "GET".into()), ("url", "http://localhost".into())],
+            [
+                ("method", "GET".into()),
+                ("url", "http://localhost/url".into()),
+            ],
         );
         let yaml = mapping([
             ("r1", recipe_value.clone()),

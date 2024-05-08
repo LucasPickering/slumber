@@ -427,6 +427,7 @@ impl CollectionDatabase {
 impl Database {
     /// Create an in-memory DB, only for testing
     pub fn testing() -> Self {
+        // TODO turn into factory impl
         let mut connection = Connection::open_in_memory().unwrap();
         Self::migrate(&mut connection).unwrap();
         Self {
@@ -440,6 +441,7 @@ impl Database {
 impl CollectionDatabase {
     /// Create an in-memory DB, only for testing
     pub fn testing() -> Self {
+        // TODO turn into factory impl
         Database::testing()
             .into_collection(Path::new("./slumber.yml"))
             .expect("Error initializing DB collection")
@@ -570,8 +572,7 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
-    use factori::create;
+    use crate::{http::Request, test_util::*};
     use std::collections::HashMap;
 
     #[test]
@@ -582,8 +583,8 @@ mod tests {
         let collection1 = database.clone().into_collection(path1).unwrap();
         let collection2 = database.clone().into_collection(path2).unwrap();
 
-        let record1 = create!(RequestRecord);
-        let record2 = create!(RequestRecord);
+        let record1 = RequestRecord::factory();
+        let record2 = RequestRecord::factory();
         let profile_id = record1.request.profile_id.as_ref();
         let recipe_id = &record1.request.recipe_id;
         let ui_key = "key1";
@@ -655,7 +656,7 @@ mod tests {
             .into_collection(Path::new("README.md"))
             .unwrap();
 
-        let record2 = create!(RequestRecord);
+        let record2 = RequestRecord::factory();
         collection2.insert_request(&record2).unwrap();
 
         // We separate requests by 3 columns. Create multiple of each column to
@@ -675,13 +676,15 @@ mod tests {
                 for recipe_id in ["recipe1", "recipe2"] {
                     let recipe_id: RecipeId = recipe_id.into();
                     let profile_id = profile_id.map(ProfileId::from);
-                    let request = create!(
-                        Request,
+                    let request = Request {
                         profile_id: profile_id.clone(),
                         recipe_id: recipe_id.clone(),
-                    );
-                    let record =
-                        create!(RequestRecord, request: request.into());
+                        ..Request::factory()
+                    };
+                    let record = RequestRecord {
+                        request: request.into(),
+                        ..RequestRecord::factory()
+                    };
                     collection.insert_request(&record).unwrap();
                     request_ids.insert(
                         (collection.collection_id(), profile_id, recipe_id),

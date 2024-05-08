@@ -194,8 +194,11 @@ impl<'a> TextStitcher<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
-    use factori::create;
+    use crate::{
+        collection::{Collection, Profile},
+        template::TemplateContext,
+        test_util::*,
+    };
     use indexmap::indexmap;
     use rstest::rstest;
 
@@ -218,17 +221,20 @@ mod tests {
         )
         .unwrap();
         let profile_data = indexmap! { "user_id".into() => "🧡\n💛".into() };
-        let profile = create!(Profile, data: profile_data);
+        let profile = Profile {
+            data: profile_data,
+            ..Profile::factory()
+        };
         let profile_id = profile.id.clone();
-        let collection = create!(
-            Collection,
-            profiles: indexmap!{profile_id.clone() => profile},
-        );
-        let context = create!(
-            TemplateContext,
-            collection: collection,
+        let collection = Collection {
+            profiles: indexmap! {profile_id.clone() => profile},
+            ..Collection::factory()
+        };
+        let context = TemplateContext {
+            collection,
             selected_profile: Some(profile_id),
-        );
+            ..TemplateContext::factory()
+        };
         let chunks = template.render_chunks(&context).await;
         let styles = &TuiContext::get().styles;
 

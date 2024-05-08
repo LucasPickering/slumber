@@ -737,6 +737,8 @@ mod tests {
         let temp_dir = env::temp_dir();
         let path = temp_dir.join("stuff.txt");
         fs::write(&path, "hello!").await.unwrap();
+        // Sanity check to debug race condition
+        assert_eq!(fs::read_to_string(&path).await.unwrap(), "hello!");
         let path: Template = path.to_str().unwrap().into();
 
         let chain = Chain {

@@ -51,9 +51,8 @@ url = {version = "^2.5.0", features = ["serde"]}
 uuid = {version = "^1.4.1", default-features = false, features = ["serde", "v4"]}
 
 [dev-dependencies]
-factori = "1.1.0"
 mockito = {version = "1.4.0", default-features = false}
-rstest = {version = "0.18.2", default-features = false}
+rstest = {version = "0.19.0", default-features = false}
 serde_test = "1.0.176"
 
 # The profile that 'cargo dist' will build with

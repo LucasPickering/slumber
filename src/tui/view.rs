@@ -166,7 +166,7 @@ impl View {
         mut event: Event,
     ) -> Update {
         // If we have a child, send them the event. If not, eat it ourselves
-        for child in component.children() {
+        for child in component.data_mut().children() {
             if event.should_handle(&child) {
                 // RECURSION
                 let update = Self::update_all(messages_tx, child, event);
@@ -189,10 +189,10 @@ impl View {
         // Message is already traced in the parent span, so don't dupe it.
         let span = trace_span!(
             "Component handling",
-            component = ?component.inner(),
+            component = ?component.data(),
         );
         span.in_scope(|| {
-            let update = component.update(messages_tx, event);
+            let update = component.data_mut().update(messages_tx, event);
             trace!(?update);
             update
         })

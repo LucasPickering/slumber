@@ -76,14 +76,14 @@ where
     for<'a> &'a T: Generate<Output<'a> = Span<'a>>,
 {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
-        let list = List {
-            block: None,
-            list: self.actions.items(),
-        };
-        frame.render_stateful_widget(
-            list.generate(),
+        self.actions.draw(
+            frame,
+            List {
+                block: None,
+                list: self.actions.data().items(),
+            }
+            .generate(),
             area,
-            &mut self.actions.state_mut(),
         );
     }
 }

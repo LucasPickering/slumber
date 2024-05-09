@@ -12,15 +12,8 @@ mod root;
 
 pub use root::Root;
 
-use crate::tui::{
-    message::MessageSender,
-    view::{
-        draw::Draw,
-        event::{Event, EventHandler, Update},
-    },
-};
+use crate::tui::view::{draw::Draw, event::EventHandler};
 use crossterm::event::MouseEvent;
-use derive_more::{Deref, DerefMut};
 use ratatui::{layout::Rect, Frame};
 use std::cell::Cell;
 
@@ -30,10 +23,13 @@ use std::cell::Cell;
 /// to have components automatically receive *only the cursor events* that
 /// occurred within the bounds of that component. Generally every layer in the
 /// component tree should be wrapped in one of these.
-#[derive(Debug, Default, Deref, DerefMut)]
+///
+/// This intentionally does *not* implement `Deref` because that has led to bugs
+/// in the past where the inner component is drawn without this pass through
+/// layer, which means the component area isn't tracked. That means cursor
+/// events aren't handled.
+#[derive(Debug, Default)]
 pub struct Component<T> {
-    #[deref]
-    #[deref_mut]
     inner: T,
     /// The area that this component was last rendered to. In most cases this
     /// is updated automatically by calling `draw`, but in some scenarios (such
@@ -53,17 +49,6 @@ impl<T> Component<T> {
     /// Get the visual area that this component was last drawn to.
     pub fn area(&self) -> Rect {
         self.area.get()
-    }
-
-    /// Manually set the area on this component. In most cases you don't need
-    /// to call this, because the area is automatically set in `[Self::draw]`.
-    /// But for components that aren't drawn (i.e. state-only components), we
-    /// may need to manually capture the area so we can still handle mouse
-    /// events.
-    ///
-    /// This isn't a great pattern, but it's easy and works for now.
-    pub fn set_area(&self, area: Rect) {
-        self.area.replace(area);
     }
 
     /// Get a mutable reference to the inner value, but as a trait object.
@@ -88,23 +73,29 @@ impl<T> Component<T> {
         })
     }
 
-    pub fn inner(&self) -> &T {
+    /// Get a reference to the inner component. This should only be used to
+    /// access the contained *data*. Drawing should be routed through the
+    /// wrapping component.
+    pub fn data(&self) -> &T {
         &self.inner
     }
 
+    /// Get a mutable reference to the inner component. This should only be used
+    /// to access the contained *data*. Drawing should be routed through the
+    /// wrapping component.
+    pub fn data_mut(&mut self) -> &mut T {
+        &mut self.inner
+    }
+
     /// Move the inner component out
-    pub fn into_inner(self) -> T {
+    pub fn into_data(self) -> T {
         self.inner
     }
 }
 
-impl<T: EventHandler> EventHandler for Component<T> {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
-        self.inner.update(messages_tx, event)
-    }
-
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        self.inner.children()
+impl<T> From<T> for Component<T> {
+    fn from(inner: T) -> Self {
+        Self::new(inner)
     }
 }
 
@@ -112,11 +103,5 @@ impl<P, T: Draw<P>> Draw<P> for Component<T> {
     fn draw(&self, frame: &mut Frame, props: P, area: Rect) {
         self.area.set(area); // Cache the visual area, for event handling
         self.inner.draw(frame, props, area);
-    }
-}
-
-impl<T> From<T> for Component<T> {
-    fn from(inner: T) -> Self {
-        Self::new(inner)
     }
 }

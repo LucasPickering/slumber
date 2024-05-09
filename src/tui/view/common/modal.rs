@@ -89,7 +89,7 @@ impl ModalQueue {
     /// Close the current modal, and return the closed modal if any
     pub fn close(&mut self) -> Option<Box<dyn Modal>> {
         trace!("Closing modal");
-        self.queue.pop_front().map(Component::into_inner)
+        self.queue.pop_front().map(Component::into_data)
     }
 }
 
@@ -137,7 +137,7 @@ impl Draw for ModalQueue {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
         if let Some(modal) = self.queue.front() {
             let styles = &TuiContext::get().styles;
-            let (width, height) = modal.dimensions();
+            let (width, height) = modal.data().dimensions();
 
             // The child gave us the content dimensions, we need to add one cell
             // of buffer for the border
@@ -148,7 +148,7 @@ impl Draw for ModalQueue {
             area.height += 2;
 
             let block = Block::default()
-                .title(modal.title())
+                .title(modal.data().title())
                 .borders(Borders::ALL)
                 .border_style(styles.modal.border)
                 .border_type(styles.modal.border_type);

@@ -39,7 +39,7 @@ pub struct RecipeListPane {
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
-    select_state: Component<Persistent<SelectState<RecipeNode>>>,
+    select: Component<Persistent<SelectState<RecipeNode>>>,
     /// Set of all folders that are collapsed
     /// Invariant: No recipes, only folders
     collapsed: Persistent<Collapsed>,
@@ -76,7 +76,7 @@ impl RecipeListPane {
         );
         Self {
             recipes: recipes.clone(),
-            select_state: persistent.into(),
+            select: persistent.into(),
             collapsed,
         }
     }
@@ -84,14 +84,15 @@ impl RecipeListPane {
     /// Which recipe in the recipe list is selected? `None` iff the list is
     /// empty OR a folder is selected.
     pub fn selected_recipe(&self) -> Option<&Recipe> {
-        self.select_state.selected().and_then(RecipeNode::recipe)
+        self.select.data().selected().and_then(RecipeNode::recipe)
     }
 
     /// Set the currently selected folder as expanded/collapsed (or toggle it).
     /// If a folder is not selected, do nothing. Returns whether a change was
     /// made.
     fn set_selected_collapsed(&mut self, state: CollapseState) -> bool {
-        let folder = self.select_state.selected().and_then(RecipeNode::folder);
+        let select = self.select.data_mut();
+        let folder = select.selected().and_then(RecipeNode::folder);
         let changed = if let Some(folder) = folder {
             let collapsed = &mut self.collapsed;
             match state {
@@ -115,10 +116,10 @@ impl RecipeListPane {
             let mut new_select_state =
                 build_select_state(&self.recipes, &self.collapsed);
             // Carry over the selection
-            if let Some(selected) = self.select_state.selected() {
+            if let Some(selected) = select.selected() {
                 new_select_state.select(selected.id());
             }
-            **self.select_state = new_select_state;
+            **select = new_select_state;
         }
 
         changed
@@ -148,14 +149,14 @@ impl EventHandler for RecipeListPane {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.select_state.as_child()]
+        vec![self.select.as_child()]
     }
 }
 
 impl Draw<RecipeListPaneProps> for RecipeListPane {
     fn draw(&self, frame: &mut Frame, props: RecipeListPaneProps, area: Rect) {
+        let select = self.select.data();
         let context = TuiContext::get();
-        self.select_state.set_area(area); // Needed for tracking cursor events
 
         let title = context
             .input_engine
@@ -167,8 +168,7 @@ impl Draw<RecipeListPaneProps> for RecipeListPane {
 
         // We have to build this manually instead of using our own List type,
         // because we need outside context during the render
-        let items = self
-            .select_state
+        let items = select
             .items()
             .iter()
             .map(|node| {
@@ -204,12 +204,7 @@ impl Draw<RecipeListPaneProps> for RecipeListPane {
         let list = ratatui::widgets::List::new(items)
             .block(pane.generate())
             .highlight_style(context.styles.list.highlight);
-
-        frame.render_stateful_widget(
-            list,
-            area,
-            &mut self.select_state.state_mut(),
-        );
+        self.select.draw(frame, list, area);
     }
 }
 

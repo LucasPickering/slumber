@@ -162,8 +162,10 @@ impl EventHandler for CompleteResponseContent {
             match action {
                 MenuAction::CopyBody => {
                     // Use whatever text is visible to the user
-                    if let Some(body) =
-                        self.state.get().and_then(|state| state.body.text())
+                    if let Some(body) = self
+                        .state
+                        .get()
+                        .and_then(|state| state.body.data().text())
                     {
                         messages_tx.send(Message::CopyText(body));
                     }
@@ -179,7 +181,12 @@ impl EventHandler for CompleteResponseContent {
                         // all querying to the main data storage, so the main
                         // loop can access it directly to be written.
                         let data = if state.response.body.parsed().is_some() {
-                            state.body.text().unwrap_or_default().into_bytes()
+                            state
+                                .body
+                                .data()
+                                .text()
+                                .unwrap_or_default()
+                                .into_bytes()
                         } else {
                             state.response.body.bytes().to_vec()
                         };
@@ -199,7 +206,7 @@ impl EventHandler for CompleteResponseContent {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        let selected_tab = *self.tabs.selected();
+        let selected_tab = *self.tabs.data().selected();
         let mut children = vec![];
         match selected_tab {
             Tab::Body => {
@@ -254,7 +261,7 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
         self.tabs.draw(frame, (), tabs_area);
 
         // Main content for the response
-        match self.tabs.selected() {
+        match self.tabs.data().selected() {
             Tab::Body => {
                 state.body.draw(
                     frame,

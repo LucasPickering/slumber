@@ -49,7 +49,7 @@ impl ProfileListPane {
     }
 
     pub fn profiles(&self) -> &SelectState<Profile> {
-        &self.profiles
+        self.profiles.data()
     }
 }
 
@@ -71,7 +71,6 @@ impl EventHandler for ProfileListPane {
 
 impl Draw<ProfileListPaneProps> for ProfileListPane {
     fn draw(&self, frame: &mut Frame, props: ProfileListPaneProps, area: Rect) {
-        self.profiles.set_area(area); // Needed for tracking cursor events
         let title = TuiContext::get()
             .input_engine
             .add_hint("Profiles", Action::SelectProfileList);
@@ -85,14 +84,14 @@ impl Draw<ProfileListPaneProps> for ProfileListPane {
 
         if props.is_selected {
             // Only show the full list if selected
-            let list = List {
-                block: None,
-                list: self.profiles.items(),
-            };
-            frame.render_stateful_widget(
-                list.generate(),
+            self.profiles.draw(
+                frame,
+                List {
+                    block: None,
+                    list: self.profiles.data().items(),
+                }
+                .generate(),
                 inner_area,
-                &mut self.profiles.state_mut(),
             );
         } else {
             // Pane is not selected - just show the selected profile

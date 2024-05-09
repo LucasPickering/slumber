@@ -54,7 +54,7 @@ impl RecordBody {
     pub fn text(&self) -> Option<String> {
         self.text_window
             .get()
-            .map(|text_window| text_window.inner().text().to_owned())
+            .map(|text_window| text_window.data().text().to_owned())
     }
 }
 
@@ -85,7 +85,9 @@ impl EventHandler for RecordBody {
             Event::Input {
                 action: Some(Action::Search),
                 ..
-            } if self.query_available.get() => self.query_text_box.focus(),
+            } if self.query_available.get() => {
+                self.query_text_box.data_mut().focus()
+            }
             Event::Other(ref other) => {
                 match other.downcast_ref::<QuerySubmit>() {
                     Some(QuerySubmit(text)) => {
@@ -107,7 +109,7 @@ impl EventHandler for RecordBody {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        if self.query_text_box.is_focused() {
+        if self.query_text_box.data().is_focused() {
             vec![self.query_text_box.as_child()]
         } else if let Some(text_window) = self.text_window.get_mut() {
             vec![text_window.as_child()]

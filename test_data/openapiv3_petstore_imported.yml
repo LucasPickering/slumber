@@ -1,4 +1,9 @@
 # What we expect the OpenAPIv3 example collection to import as
+profiles:
+  profile-/v3:
+    name: "/v3"
+    data:
+      host: "/v3"
 requests:
   tag/pet: !folder
     name: "pet"

@@ -4,7 +4,7 @@ use std::{fs::File, path::Path};
 
 use crate::{
     collection::{
-        Authentication, Collection, Folder, Method, Recipe, RecipeId, RecipeNode, RecipeTree
+        Authentication, Collection, Folder, Method, Profile, ProfileId, Recipe, RecipeId, RecipeNode, RecipeTree
     },
     template::Template,
 };
@@ -12,7 +12,7 @@ use crate::{
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use openapiv3::{
-    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, SecurityScheme, Tag,
+    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, SecurityScheme, Server, Tag
 };
 use thiserror::Error;
 use tracing::{info, warn};
@@ -43,6 +43,7 @@ impl Collection {
             components,
             paths,
             tags,
+            servers,
             ..
         } = serde_yaml::from_reader(file).context(
             format!("Error deserializing OpenAPIv3 collection file {openapiv3_specification_file:?}"),
@@ -145,8 +146,29 @@ impl Collection {
                 anyhow!("Duplicated Recipe ID: {duplicated_recipe_id}")
             })?;
 
+        // Load profiles
+        let mut profiles = IndexMap::default();
+        for server in servers {
+            let Server { url, variables, description: _,  extensions: _ } = server;
+                let mut data = IndexMap::default();
+                if let Some(variables) = variables {
+                    for (var_name, variable) in variables {
+                        let variable = Template::try_from(variable.default).context("Failed to parse variable {variable} as a template")?;
+                        data.insert(var_name, variable);
+                    }
+                }
+                let host = Template::try_from(url.clone()).context("Failed to parse URL {url} as a template")?;
+                data.insert("host".to_string(), host);
+                let profile_id = ProfileId::from(format!("profile-{url}"));
+                profiles.insert(profile_id.clone(), Profile {
+                    id: profile_id,
+                    name: Some(url),
+                    data,
+                });
+            }
+
         Ok(Collection {
-            profiles: IndexMap::new(),
+            profiles,
             recipes,
             chains: IndexMap::new(),
             _ignore: serde::de::IgnoredAny,

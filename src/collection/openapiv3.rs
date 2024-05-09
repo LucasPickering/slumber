@@ -4,7 +4,8 @@ use std::{fs::File, path::Path};
 
 use crate::{
     collection::{
-        Authentication, Collection, Folder, Method, Profile, ProfileId, Recipe, RecipeId, RecipeNode, RecipeTree
+        Authentication, Collection, Folder, Method, Profile, ProfileId, Recipe,
+        RecipeId, RecipeNode, RecipeTree,
     },
     template::Template,
 };
@@ -12,7 +13,8 @@ use crate::{
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use openapiv3::{
-    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, SecurityScheme, Server, Tag
+    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, RequestBody,
+    SecurityScheme, Server, Tag,
 };
 use thiserror::Error;
 use tracing::{info, warn};
@@ -23,6 +25,10 @@ enum OpenAPIResolveError {
     MissingComponentsObject,
     #[error("Could not find the security scheme {_0} inside components.security_schemes")]
     SecuritySchemeNotFound(String),
+    #[error(
+        "Could not find the request body {_0} inside components.request_bodies"
+    )]
+    RequestBodyNotFound(String),
     #[error("Could not resolve the reference {_0}")]
     UnhandledReference(String),
 }
@@ -49,18 +55,20 @@ impl Collection {
             format!("Error deserializing OpenAPIv3 collection file {openapiv3_specification_file:?}"),
         )?;
 
-        let resolve_security_scheme = move |scheme_name: String| -> Result<
+        let resolve_security_scheme = |scheme_name: String| -> Result<
             SecurityScheme,
             OpenAPIResolveError,
         > {
-            let components = components
+            let components = &components
                 .as_ref()
                 .ok_or(OpenAPIResolveError::MissingComponentsObject)?;
             let ref_or_component = components
                 .security_schemes
                 .get(&scheme_name)
                 .ok_or_else(|| {
-                    OpenAPIResolveError::SecuritySchemeNotFound(scheme_name.clone())
+                    OpenAPIResolveError::SecuritySchemeNotFound(
+                        scheme_name.clone(),
+                    )
                 })?;
             match ref_or_component {
                 ReferenceOr::Item(item) => Ok(item.clone()),
@@ -69,18 +77,50 @@ impl Collection {
                 }
             }
         };
+        let resolve_request_body = |request_body_name: String| -> Result<
+            RequestBody,
+            OpenAPIResolveError,
+        > {
+            let components = &components
+                .as_ref()
+                .ok_or(OpenAPIResolveError::MissingComponentsObject)?;
+            let ref_or_component = components
+                .request_bodies
+                .get(&request_body_name)
+                .ok_or_else(|| {
+                    OpenAPIResolveError::RequestBodyNotFound(
+                        request_body_name.clone(),
+                    )
+                })?;
+            match ref_or_component {
+                ReferenceOr::Item(item) => Ok(item.clone()),
+                ReferenceOr::Reference { reference: _ } => Err(
+                    OpenAPIResolveError::UnhandledReference(request_body_name),
+                ),
+            }
+        };
+
         let mut recipes = IndexMap::new();
-        let mut tag_folders: IndexMap<String, Folder> =
-            tags
-                .into_iter()
-                .map(|Tag { name, description: _, external_docs: _, extensions: _ }| {
-                    (name.clone(), Folder {
-                        id: RecipeId::from(format!("tag/{name}")),
-                        name: Some(name),
-                        children: IndexMap::default(),
-                    })
-                })
-                .collect();
+        let mut tag_folders: IndexMap<String, Folder> = tags
+            .into_iter()
+            .map(
+                |Tag {
+                     name,
+                     description: _,
+                     external_docs: _,
+                     extensions: _,
+                 }| {
+                    (
+                        name.clone(),
+                        Folder {
+                            id: RecipeId::from(format!("tag/{name}")),
+                            name: Some(name),
+                            children: IndexMap::default(),
+                        },
+                    )
+                },
+            )
+            .collect();
         for (path_name, item) in paths.paths {
             let mut try_add_recipe_for_method =
                 |maybe_operation: Option<Operation>,
@@ -91,6 +131,7 @@ impl Collection {
                         let recipe = operation_to_recipe(
                             op,
                             &resolve_security_scheme,
+                            &resolve_request_body,
                             &path_name,
                             method,
                         )?;
@@ -101,13 +142,12 @@ impl Collection {
                                 folder.children.insert(recipe_id, recipe_node);
                                 return Ok(());
                             }
-                            warn!("Tag {tag} could not be found in the tags list");
+                            warn!(
+                                "Tag {tag} could not be found in the tags list"
+                            );
                         }
                         info!("Inserting the recipe {recipe_id}");
-                        recipes.insert(
-                            recipe_id,
-                            recipe_node,
-                        );
+                        recipes.insert(recipe_id, recipe_node);
                     }
                     Ok(())
                 };
@@ -149,23 +189,35 @@ impl Collection {
         // Load profiles
         let mut profiles = IndexMap::default();
         for server in servers {
-            let Server { url, variables, description: _,  extensions: _ } = server;
-                let mut data = IndexMap::default();
-                if let Some(variables) = variables {
-                    for (var_name, variable) in variables {
-                        let variable = Template::try_from(variable.default).context("Failed to parse variable {variable} as a template")?;
-                        data.insert(var_name, variable);
-                    }
+            let Server {
+                url,
+                variables,
+                description: _,
+                extensions: _,
+            } = server;
+            let mut data = IndexMap::default();
+            if let Some(variables) = variables {
+                for (var_name, variable) in variables {
+                    let variable = Template::try_from(variable.default)
+                        .context(
+                            "Failed to parse variable {variable} as a template",
+                        )?;
+                    data.insert(var_name, variable);
                 }
-                let host = Template::try_from(url.clone()).context("Failed to parse URL {url} as a template")?;
-                data.insert("host".to_string(), host);
-                let profile_id = ProfileId::from(format!("profile-{url}"));
-                profiles.insert(profile_id.clone(), Profile {
+            }
+            let host = Template::try_from(url.clone())
+                .context("Failed to parse URL {url} as a template")?;
+            data.insert("host".to_string(), host);
+            let profile_id = ProfileId::from(format!("profile-{url}"));
+            profiles.insert(
+                profile_id.clone(),
+                Profile {
                     id: profile_id,
                     name: Some(url),
                     data,
-                });
-            }
+                },
+            );
+        }
 
         Ok(Collection {
             profiles,
@@ -179,9 +231,11 @@ impl Collection {
 /// Translates an OpenAPI Operation into a `Recipe` given the recipe's context
 fn operation_to_recipe<
     FSS: Fn(String) -> Result<SecurityScheme, OpenAPIResolveError>,
+    FRB: Fn(String) -> Result<RequestBody, OpenAPIResolveError>,
 >(
     operation: Operation,
-    resolve_security_schema: &FSS,
+    resolve_security_scheme: &FSS,
+    resolve_request_body: &FRB,
     path_name: &String,
     method: Method,
 ) -> anyhow::Result<Recipe> {
@@ -226,18 +280,19 @@ fn operation_to_recipe<
                         continue;
                     }
                     header => {
-                        headers_params.insert(header.to_string(), Template::empty());
+                        headers_params
+                            .insert(header.to_string(), Template::empty());
                     }
                 }
             }
             // TODO: Support Path parameters
             Parameter::Path { .. } => {
                 warn!("Unsupported parameter type: Path");
-            },
+            }
             // TODO: Support Cookie parameters
             Parameter::Cookie { .. } => {
                 warn!("Unsupported parameter type: Cookie");
-            },
+            }
         }
     }
 
@@ -250,7 +305,7 @@ fn operation_to_recipe<
             // if authorization does not require a specified scope. For other security scheme
             // types, the array MUST be empty.
             for (name, values) in scheme {
-                let security_scheme = resolve_security_schema(name)
+                let security_scheme = resolve_security_scheme(name)
                     .context("Failed to resolve the security scheme")?;
                 match security_scheme {
                     SecurityScheme::HTTP {
@@ -268,17 +323,19 @@ fn operation_to_recipe<
                                     password: None,
                                     username: Template::empty(),
                                 });
-                            },
+                            }
                             "Bearer" | "bearer" => {
                                 let template = match bearer_format {
-                                    Some(format) => Template::parse(format).context("Failed to parse template")?,
+                                    Some(format) => Template::parse(format)
+                                        .context("Failed to parse template")?,
                                     None => Template::empty(),
                                 };
-                                http_auth = Some(Authentication::Bearer(template));
-                            },
+                                http_auth =
+                                    Some(Authentication::Bearer(template));
+                            }
                             unsupported => {
                                 warn!("Unsupported HTTP Authentication scheme {unsupported}");
-                            },
+                            }
                         }
                     }
                     SecurityScheme::APIKey { location, name, .. } => {
@@ -288,32 +345,43 @@ fn operation_to_recipe<
                         }
                         match location {
                             APIKeyLocation::Query => {
-                                query_params.insert(
-                                    name,
-                                    Template::empty(),
-                                );
+                                query_params.insert(name, Template::empty());
                             }
                             APIKeyLocation::Header => {
-                                headers_params.insert(
-                                    name,
-                                    Template::empty(),
-                                );
+                                headers_params.insert(name, Template::empty());
                             }
                             // TODO: Support Cookies
                             APIKeyLocation::Cookie => {
                                 warn!("Unsupported APIKey Location: Cookies");
-                            },
+                            }
                         }
                     }
                     // TODO: Support OAuth2
                     SecurityScheme::OAuth2 { .. } => {
                         warn!("Unsupported Security Scheme OAuth2");
-                    },
+                    }
                     // TODO: Support OpenIDConnect
                     SecurityScheme::OpenIDConnect { .. } => {
                         warn!("Unsupported Security Scheme OAuth2");
-                    },
+                    }
                 }
+            }
+        }
+    }
+
+    let mut body = None;
+    if let Some(request_body) = operation.request_body {
+        let request_body = match request_body {
+            ReferenceOr::Item(body) => Ok(body),
+            ReferenceOr::Reference { reference } => {
+                resolve_request_body(reference)
+            }
+        }?;
+        // We don't support multiple body types, so let's just grab the first.
+        if let Some((content_type, media_type)) = request_body.content.first() {
+            if let Some(example) = &media_type.example {
+                body = maybe_extract_body(content_type, example)
+                    .context("Failed to extract body")?;
             }
         }
     }
@@ -323,11 +391,30 @@ fn operation_to_recipe<
         name: Some(name),
         method,
         url,
-        body: None, // TODO
+        body,
         authentication: http_auth,
         query: query_params,
         headers: headers_params,
     })
+}
+
+fn maybe_extract_body(
+    content_type: &str,
+    media_type: &serde_json::Value,
+) -> Result<Option<Template>, anyhow::Error> {
+    match content_type {
+        "application/json" => {
+            let json_serialized = serde_json::to_string_pretty(media_type)
+                .context("Failed to serialize body")?;
+            let template = Template::try_from(json_serialized)
+                .context("Failed to parse template")?;
+            Ok(Some(template))
+        }
+        content_ty => {
+            warn!("Unsupported content type {content_ty}");
+            Ok(None)
+        }
+    }
 }
 
 #[cfg(test)]

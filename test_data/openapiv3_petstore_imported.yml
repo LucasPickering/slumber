@@ -1,20 +1,23 @@
 # What we expect the OpenAPIv3 example collection to import as
 requests:
-  updatePet: !request
-    name: Update an existing pet
-    method: PUT
-    url: "{{host}}/pet"
-    body: null
-    authentication: null
-    query: {}
-    headers: {}
-  findPetsByStatus: !request
-    name: Finds Pets by status
-    method: GET
-    url: "{{host}}/pet/findByStatus"
-    body: null
-    authentication: null
-    query:
-      status: ""
-    headers: {}
+  tag/pet: !folder
+    name: "pet"
+    requests:
+      updatePet: !request
+        name: Update an existing pet
+        method: PUT
+        url: "{{host}}/pet"
+        body: null
+        authentication: null
+        query: {}
+        headers: {}
+      findPetsByStatus: !request
+        name: Finds Pets by status
+        method: GET
+        url: "{{host}}/pet/findByStatus"
+        body: null
+        authentication: null
+        query:
+          status: ""
+        headers: {}
 

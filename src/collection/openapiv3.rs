@@ -4,8 +4,7 @@ use std::{fs::File, path::Path};
 
 use crate::{
     collection::{
-        Collection, Method, Recipe, RecipeId, RecipeNode, RecipeTree,
-        Authentication,
+        Authentication, Collection, Folder, Method, Recipe, RecipeId, RecipeNode, RecipeTree
     },
     template::Template,
 };
@@ -13,7 +12,7 @@ use crate::{
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use openapiv3::{
-    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, SecurityScheme,
+    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, SecurityScheme, Tag,
 };
 use thiserror::Error;
 use tracing::{info, warn};
@@ -43,6 +42,7 @@ impl Collection {
         let OpenAPI {
             components,
             paths,
+            tags,
             ..
         } = serde_yaml::from_reader(file).context(
             format!("Error deserializing OpenAPIv3 collection file {openapiv3_specification_file:?}"),
@@ -69,21 +69,43 @@ impl Collection {
             }
         };
         let mut recipes = IndexMap::new();
+        let mut tag_folders: IndexMap<String, Folder> =
+            tags
+                .into_iter()
+                .map(|Tag { name, description: _, external_docs: _, extensions: _ }| {
+                    (name.clone(), Folder {
+                        id: RecipeId::from(format!("tag/{name}")),
+                        name: Some(name),
+                        children: IndexMap::default(),
+                    })
+                })
+                .collect();
         for (path_name, item) in paths.paths {
             let mut try_add_recipe_for_method =
                 |maybe_operation: Option<Operation>,
                  method: Method|
                  -> anyhow::Result<()> {
                     if let Some(op) = maybe_operation {
+                        let tags = op.tags.clone();
                         let recipe = operation_to_recipe(
                             op,
                             &resolve_security_scheme,
                             &path_name,
                             method,
                         )?;
+                        let recipe_id = recipe.id.clone();
+                        let recipe_node = RecipeNode::Recipe(recipe);
+                        for tag in tags {
+                            if let Some(folder) = tag_folders.get_mut(&tag) {
+                                folder.children.insert(recipe_id, recipe_node);
+                                return Ok(());
+                            }
+                            warn!("Tag {tag} could not be found in the tags list");
+                        }
+                        info!("Inserting the recipe {recipe_id}");
                         recipes.insert(
-                            recipe.id.clone(),
-                            RecipeNode::Recipe(recipe),
+                            recipe_id,
+                            recipe_node,
                         );
                     }
                     Ok(())
@@ -112,7 +134,12 @@ impl Collection {
                 }
             }
         }
-
+        tag_folders
+            .into_values()
+            .filter(|folder| !folder.children.is_empty())
+            .for_each(|folder| {
+                recipes.insert(folder.id.clone(), RecipeNode::Folder(folder));
+            });
         let recipes =
             RecipeTree::new(recipes).map_err(|duplicated_recipe_id| {
                 anyhow!("Duplicated Recipe ID: {duplicated_recipe_id}")

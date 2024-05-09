@@ -64,11 +64,9 @@ impl<Item, State> FixedSelectStateBuilder<Item, State> {
         Item: FixedSelect,
         State: SelectStateData,
     {
-        // Disable the inner struct's pre-select in favor of our own. It will
-        // just select the first item, which might trigger undesired callbacks
-        let mut select = self.select.preselect(false).build();
-        select.select(&Item::default());
-        FixedSelectState { select }
+        FixedSelectState {
+            select: self.select.preselect(&Item::default()).build(),
+        }
     }
 }
 

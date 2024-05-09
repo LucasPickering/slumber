@@ -7,7 +7,6 @@ use crate::tui::{
         state::persistence::{Persistable, PersistentContainer},
     },
 };
-use itertools::Itertools;
 use ratatui::{
     layout::Rect,
     widgets::{ListState, StatefulWidget, TableState},
@@ -44,18 +43,41 @@ where
 /// call on_select for the default item.
 pub struct SelectStateBuilder<Item, State> {
     items: Vec<Item>,
-    preselect: bool,
+    /// Store preselected value as an index, so we don't need to care about the
+    /// type of the value. Defaults to 0.
+    preselect_index: usize,
     on_select: Option<Callback<Item>>,
     on_submit: Option<Callback<Item>>,
     _state: PhantomData<State>,
 }
 
 impl<Item, State> SelectStateBuilder<Item, State> {
-    /// Enable or disable pre-selection, which will select the first item in the
-    /// list upon construction
-    pub fn preselect(mut self, preselect: bool) -> Self {
-        self.preselect = preselect;
+    /// Set the value that should be initially selected
+    pub fn preselect<T>(mut self, value: &T) -> Self
+    where
+        T: PartialEq<Item>,
+    {
+        // Our list of items is immutable, so we can safely store just the
+        // index. This is useful so we don't need an additional generic on the
+        // struct for the ID type.
+        if let Some(index) = find_index(&self.items, value) {
+            self.preselect_index = index;
+        }
         self
+    }
+
+    /// Set the value that should be initially selected, if any. This is a
+    /// convenience method for when you have an optional value, to avoid an ugly
+    /// conditional in calling code.
+    pub fn preselect_opt<T>(self, value: Option<&T>) -> Self
+    where
+        T: PartialEq<Item>,
+    {
+        if let Some(value) = value {
+            self.preselect(value)
+        } else {
+            self
+        }
     }
 
     /// Set the callback to be called when the user highlights a new item
@@ -86,10 +108,11 @@ impl<Item, State> SelectStateBuilder<Item, State> {
             on_select: self.on_select,
             on_submit: self.on_submit,
         };
-        // Select the first item if requested and possible. Use select_index so
-        // on_select is called if present
-        if self.preselect && !select.items.is_empty() {
-            select.select_index(0);
+        // Set initial value. Generally the index will be valid unless the list
+        // is empty, because it's either the default of 0 or was derived from
+        // a list search. Do a proper bounds check just to be safe though.
+        if select.items.len() > self.preselect_index {
+            select.select_index(self.preselect_index);
         }
         select
     }
@@ -102,7 +125,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     pub fn builder(items: Vec<Item>) -> SelectStateBuilder<Item, State> {
         SelectStateBuilder {
             items,
-            preselect: true,
+            preselect_index: 0,
             on_select: None,
             on_submit: None,
             _state: PhantomData,
@@ -127,13 +150,8 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     /// Select an item by value. Context is required for callbacks. Generally
     /// the given value will be the type `Item`, but it could be anything that
     /// compares to `Item` (e.g. an ID type).
-    pub fn select<T>(&mut self, value: &T)
-    where
-        T: PartialEq<Item>,
-    {
-        if let Some((index, _)) =
-            self.items.iter().find_position(|item| value == *item)
-        {
+    pub fn select<T: PartialEq<Item>>(&mut self, value: &T) {
+        if let Some(index) = find_index(&self.items, value) {
             self.select_index(index);
         }
     }
@@ -197,6 +215,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
 
 impl<Item, State> Default for SelectState<Item, State>
 where
+    Item: PartialEq,
     State: SelectStateData,
 {
     fn default() -> Self {
@@ -312,4 +331,12 @@ impl SelectStateData for usize {
     fn select(&mut self, option: usize) {
         *self = option;
     }
+}
+
+/// Find the index of a value in the list
+fn find_index<Item, T>(items: &[Item], value: &T) -> Option<usize>
+where
+    T: PartialEq<Item>,
+{
+    items.iter().position(|item| value == item)
 }

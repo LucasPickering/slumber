@@ -363,4 +363,4 @@ Initial distributed release!
 
 ## Added
 
-- Added support for the Rest and HTTP file format used in VSCode and Jetbrains.
+- Added support for the REST and HTTP file formats used in VSCode and Jetbrains.

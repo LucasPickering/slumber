@@ -23,14 +23,8 @@ pub struct ImportCommand {
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum Format {
     Insomnia,
-    /// A Jetbrains `.http` file in the REST format
+    /// A Jetbrains `.http` file in the REST format (without Jetbrains env files)
     Jetbrains,
-    /// A Jetbrains `.http` file with an `http-client.env.json` in the same
-    /// directory
-    JetbrainsWithPublicEnv,
-    /// A Jetbrains `.http` file with an `http-client.env.json` and 
-    /// an `http-client.private.env.json` file in the same directory 
-    JetbrainsWithPrivateEnv,
     /// A VSCode `.rest` file in the REST format
     Vscode,
 }
@@ -43,12 +37,6 @@ impl Subcommand for ImportCommand {
             Format::Insomnia => Collection::from_insomnia(&self.input_file)?,
             Format::Vscode => Collection::from_vscode(&self.input_file)?,
             Format::Jetbrains => Collection::from_jetbrains(&self.input_file)?,
-            Format::JetbrainsWithPublicEnv => {
-                Collection::from_jetbrains_with_public_env(&self.input_file)?
-            },
-            Format::JetbrainsWithPrivateEnv => {
-                Collection::from_jetbrains_with_private_env(&self.input_file)?
-            }
         };
 
         // Write the output

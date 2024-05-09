@@ -3,6 +3,7 @@
 ///! Visual Studio Jetbrains and nvim-rest call it `.http`
 ///! VSCode and Visual Studio call it `.rest`
 use anyhow::{anyhow, Context};
+use base64::{prelude::BASE64_STANDARD, Engine};
 use derive_more::FromStr;
 use indexmap::{indexmap, IndexMap};
 use nom::{
@@ -17,7 +18,6 @@ use nom::{
     sequence::{pair, tuple},
     IResult, Parser,
 };
-use base64::{prelude::BASE64_STANDARD, Engine};
 use reqwest::header::AUTHORIZATION;
 use std::{fs::File, io::Read, path::Path, str};
 use url::Url;
@@ -25,8 +25,8 @@ use url::Url;
 use crate::template::Template;
 
 use super::{
-    jetbrains_env::{JetbrainsEnvImport, JetbrainsEnv}, recipe_tree::RecipeTree, Authentication,
-    Collection, Method, Profile, ProfileId, Recipe, RecipeId, RecipeNode,
+    recipe_tree::RecipeTree, Authentication, Collection, Method, Profile,
+    ProfileId, Recipe, RecipeId, RecipeNode,
 };
 
 type StrResult<'a> = Result<(&'a str, &'a str), nom::Err<NomError<&'a str>>>;
@@ -40,59 +40,23 @@ const NAME_ANNOTATION: &str = "@name";
 
 impl Collection {
     /// Convert a jetbrains `.http` file into a slumber a collection
-    /// With an optional `http-client.env.json` file in the same directory
     pub fn from_jetbrains(
         jetbrains_file: impl AsRef<Path>,
     ) -> anyhow::Result<Self> {
         let jetbrains_file = jetbrains_file.as_ref();
         has_extension_or_error(jetbrains_file, "http")?;
-
-        Self::from_rest_file(jetbrains_file, None)
-    }
-
-    /// Convert a jetbrains `.http` file into a slumber a collection
-    /// Including the `http-client.env.json` file in the same directory
-    pub fn from_jetbrains_with_public_env(
-        jetbrains_file: impl AsRef<Path>
-    ) -> anyhow::Result<Self> {
-        Self::from_jetbrains_with_env(jetbrains_file, JetbrainsEnvImport::Public)
-    }
-
-    /// Convert a jetbrains `.http` file into a slumber a collection
-    /// Including the `http-client.env.json` and `http-client.private.env.json` files in the same directory
-    pub fn from_jetbrains_with_private_env(
-        jetbrains_file: impl AsRef<Path>
-    ) -> anyhow::Result<Self> {
-        Self::from_jetbrains_with_env(jetbrains_file, JetbrainsEnvImport::PublicAndPrivate)
-    }
-
-    fn from_jetbrains_with_env(
-        jetbrains_file: impl AsRef<Path>,
-        import_type: JetbrainsEnvImport
-    ) -> anyhow::Result<Self> {
-        let jetbrains_file = jetbrains_file.as_ref();
-        has_extension_or_error(jetbrains_file, "http")?;
-
-        let dir = jetbrains_file
-            .parent()
-            .ok_or(anyhow!("Could not find directory"))?;
-        let env = JetbrainsEnv::from_directory(dir, import_type)?;
-
-        Self::from_rest_file(jetbrains_file, Some(env))
+        Self::from_rest_file(jetbrains_file)
     }
 
     /// Convert a vscode `.rest` file into a slumber a collection
     pub fn from_vscode(vscode_file: impl AsRef<Path>) -> anyhow::Result<Self> {
         let vscode_file = vscode_file.as_ref();
         has_extension_or_error(vscode_file, "rest")?;
-        Self::from_rest_file(vscode_file, None)
+        Self::from_rest_file(vscode_file)
     }
 
     /// Convert an `.http` or a `.rest` file into a slumber collection
-    fn from_rest_file(
-        rest_file: &Path,
-        env_file: Option<JetbrainsEnv>,
-    ) -> anyhow::Result<Self> {
+    fn from_rest_file(rest_file: &Path) -> anyhow::Result<Self> {
         let mut file = File::open(rest_file)
             .context(format!("Error opening REST file {rest_file:?}"))?;
 
@@ -103,10 +67,7 @@ impl Collection {
         let RestFormat { recipes, variables } = RestFormat::from_str(&text)?;
         let tree = build_recipe_tree(recipes)?;
 
-        let profiles = match env_file {
-            Some(env) => env.to_profiles(variables)?,
-            None => build_default_profiles(variables),
-        };
+        let profiles = build_default_profiles(variables);
 
         let collection = Self {
             profiles,
@@ -187,7 +148,9 @@ impl Recipe {
         let method = Method::from_str(&method_literal)?;
 
         let body: Option<Template> = match body_portion {
-            Some(raw_body) => Some(raw_body.replace(REQUEST_NEWLINE, "\n").try_into()?),
+            Some(raw_body) => {
+                Some(raw_body.replace(REQUEST_NEWLINE, "\n").try_into()?)
+            }
             None => None,
         };
 
@@ -416,7 +379,7 @@ fn parse_lines(
         // Now that all the things that look like comments have been parsed,
         // we can remove the comments
         if is_comment(line) {
-            continue
+            continue;
         }
 
         if let Ok((_, (key, val))) = parse_variable_assignment(line) {
@@ -534,7 +497,6 @@ impl Authentication {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use crate::collection::CollectionFile;
@@ -543,38 +505,11 @@ mod test {
 
     const JETBRAINS_FILE: &str = "./test_data/jetbrains.http";
     const JETBRAINS_RESULT: &str = "./test_data/jetbrains_imported.yml";
-    const JETBRAINS_RESULT_PUBLIC_ENV: &str =
-        "./test_data/jetbrains_with_public_env_imported.yml";
-
-    const JETBRAINS_RESULT_PRIVATE_ENV: &str =
-        "./test_data/jetbrains_with_private_env_imported.yml";
 
     #[tokio::test]
     async fn test_jetbrains_import() {
         let imported = Collection::from_jetbrains(JETBRAINS_FILE).unwrap();
         let expected = CollectionFile::load(JETBRAINS_RESULT.into())
-            .await
-            .unwrap()
-            .collection;
-        assert_eq!(imported, expected);
-    }
-
-    #[tokio::test]
-    async fn test_jetbrains_with_public_env_import() {
-        let imported =
-            Collection::from_jetbrains_with_public_env(JETBRAINS_FILE).unwrap();
-        let expected = CollectionFile::load(JETBRAINS_RESULT_PUBLIC_ENV.into())
-            .await
-            .unwrap()
-            .collection;
-        assert_eq!(imported, expected);
-    }
-
-    #[tokio::test]
-    async fn test_jetbrains_with_private_env_import() {
-        let imported =
-            Collection::from_jetbrains_with_private_env(JETBRAINS_FILE).unwrap();
-        let expected = CollectionFile::load(JETBRAINS_RESULT_PRIVATE_ENV.into())
             .await
             .unwrap()
             .collection;

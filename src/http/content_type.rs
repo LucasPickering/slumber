@@ -169,7 +169,6 @@ impl ContentType {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -173,7 +173,6 @@ impl ContentType {
 mod tests {
     use super::*;
     use crate::test_util::*;
-    use factori::create;
     use reqwest::header::{
         HeaderMap, HeaderValue, InvalidHeaderValue, CONTENT_TYPE,
     };
@@ -241,9 +240,11 @@ mod tests {
         #[case] body: String,
         #[case] expected: T,
     ) {
-        let response = create!(
-            Response, headers: headers(content_type), body: body.into()
-        );
+        let response = Response {
+            headers: headers(content_type),
+            body: body.into(),
+            ..Response::factory()
+        };
         assert_eq!(
             ContentType::parse_response(&response)
                 .unwrap()
@@ -281,7 +282,11 @@ mod tests {
             Some(content_type) => headers(content_type),
             None => HeaderMap::new(),
         };
-        let response = create!(Response, headers: headers, body: body.into());
+        let response = Response {
+            headers,
+            body: body.into(),
+            ..Response::factory()
+        };
         assert_err!(ContentType::parse_response(&response), expected_error);
     }
 

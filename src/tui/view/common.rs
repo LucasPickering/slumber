@@ -24,10 +24,10 @@ use crate::{
 use chrono::{DateTime, Duration, Local, Utc};
 use itertools::Itertools;
 use ratatui::{
-    text::{Span, Text},
+    text::{Line, Span, Text},
     widgets::{Block, Borders},
 };
-use reqwest::header::HeaderValue;
+use reqwest::{header::HeaderValue, StatusCode};
 
 /// A container with a title and border
 pub struct Pane<'a> {
@@ -43,7 +43,7 @@ impl<'a> Generate for Pane<'a> {
         Self: 'this,
     {
         let (border_type, border_style) =
-            TuiContext::get().theme.pane.border(self.is_focused);
+            TuiContext::get().styles.pane.border(self.is_focused);
         Block::default()
             .borders(Borders::ALL)
             .border_type(border_type)
@@ -170,6 +170,26 @@ impl Generate for Option<Duration> {
     }
 }
 
+impl Generate for StatusCode {
+    type Output<'this> = Span<'this> where Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        let styles = &TuiContext::get().styles.status_code;
+        let is_error = self.is_client_error() || self.is_server_error();
+        Span::styled(
+            self.to_string(),
+            if is_error {
+                styles.error
+            } else {
+                styles.success
+            },
+        )
+    }
+}
+
 /// Not all header values are UTF-8; use a placeholder if not
 impl Generate for &HeaderValue {
     type Output<'this> = Span<'this> where Self: 'this;
@@ -190,7 +210,27 @@ impl Generate for &anyhow::Error {
     where
         Self: 'this,
     {
-        self.chain().map(|err| err.to_string()).join("\n").into()
+        let chain = self.chain();
+        let len = chain.len();
+        chain
+            .enumerate()
+            .map::<Line, _>(|(i, error)| {
+                let icon = if i == 0 {
+                    "" // First
+                } else if i < len - 1 {
+                    "└┬" // Intermediate
+                } else {
+                    "└─" // Last
+                };
+                format!(
+                    "{indent:width$}{icon}{error}",
+                    indent = "",
+                    width = i.saturating_sub(1)
+                )
+                .into()
+            })
+            .collect_vec()
+            .into()
     }
 }
 

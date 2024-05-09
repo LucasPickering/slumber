@@ -40,7 +40,7 @@ Chain a value from the body of another response. This can reference either
 | `trigger` | [`ChainRequestTrigger`](#chain-request-trigger) | When the upstream recipe should be executed, as opposed to loaded from memory | `!never` |
 | `section` | [`ChainRequestSection`](#chain-request-section) | The section (header or body) of the request from which to chain a value       | `Body`   |
 
-### Chain Request Trigger
+#### Chain Request Trigger
 
 This defines when a chained request should be triggered (i.e. when to execute a new request) versus when to use the most recent from history.
 
@@ -86,11 +86,10 @@ trigger: !always
 
 This defines which section of the response (headers or body) should be used to load the value from.
 
-| Variant      | Type       | Description                                                                                                                  |
-| ------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `body`       | None       | The body of the response                                                                                                     |
-| `header`     | `string`   | A specific header from the response. If the header appears multiple times in the response, only the first value will be used |
-
+| Variant  | Type     | Description                                                                                                                  |
+| -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `body`   | None     | The body of the response                                                                                                     |
+| `header` | `string` | A specific header from the response. If the header appears multiple times in the response, only the first value will be used |
 
 #### Examples
 
@@ -107,6 +106,7 @@ Execute a command and use its stdout as the rendered value.
 | Field     | Type         | Description                                                 | Default  |
 | --------- | ------------ | ----------------------------------------------------------- | -------- |
 | `command` | `Template[]` | Command to execute, in the format `[program, ...arguments]` | Required |
+| `stdin`   | `Template`   | Standard input which will be piped into the command         | None     |
 
 ### File
 

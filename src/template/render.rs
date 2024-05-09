@@ -2,8 +2,8 @@
 
 use crate::{
     collection::{
-        ChainId, ChainRequestSection, ChainRequestTrigger, ChainSource,
-        RecipeId,
+        ChainId, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
+        ChainSource, RecipeId,
     },
     http::{ContentType, RequestBuilder, RequestRecord, Response},
     template::{
@@ -19,9 +19,10 @@ use futures::future;
 use std::{
     env,
     path::PathBuf,
+    process::Stdio,
     sync::{atomic::Ordering, Arc},
 };
-use tokio::{fs, process::Command, sync::oneshot};
+use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
 use tracing::{debug, debug_span, instrument, trace};
 
 /// Outcome of rendering a single chunk. This allows attaching some metadata to
@@ -284,9 +285,13 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                 ChainSource::File { path } => {
                     self.render_file(context, path).await?
                 }
-                ChainSource::Command { command } => {
+                ChainSource::Command { command, stdin } => {
                     // No way to guess content type on this
-                    (self.render_command(context, command).await?, None)
+                    (
+                        self.render_command(context, command, stdin.as_ref())
+                            .await?,
+                        None,
+                    )
                 }
                 ChainSource::Prompt { message, default } => (
                     self.render_prompt(
@@ -321,7 +326,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
             };
 
             Ok(RenderedChunk {
-                value,
+                value: chain.trim.apply(value),
                 sensitive: chain.sensitive,
             })
         }
@@ -484,6 +489,7 @@ impl<'a> ChainTemplateSource<'a> {
         &self,
         context: &TemplateContext,
         command: &[Template],
+        stdin: Option<&Template>,
     ) -> Result<Vec<u8>, ChainError> {
         // Render each arg in the command
         let command = future::try_join_all(command.iter().enumerate().map(
@@ -501,26 +507,69 @@ impl<'a> ChainTemplateSource<'a> {
         let [program, args @ ..] = command.as_slice() else {
             return Err(ChainError::CommandMissing);
         };
-        debug_span!("Executing command", ?command)
-            .in_scope(|| async {
-                let output = Command::new(program)
-                    .args(args)
-                    .output()
-                    .await
-                    .map_err(|error| ChainError::Command {
-                        command: command.to_owned(),
-                        error,
-                    })
-                    .traced()?;
 
-                debug!(
-                    stdout = %String::from_utf8_lossy(&output.stdout),
-                    stderr = %String::from_utf8_lossy(&output.stderr),
-                    "Command success"
-                );
-                Ok(output.stdout)
+        let _ = debug_span!("Executing command", ?command).entered();
+
+        // Render the stdin template, if present
+        let input = if let Some(template) = stdin {
+            let input =
+                template.render_stitched(context).await.map_err(|error| {
+                    ChainError::Nested {
+                        field: "stdin".into(),
+                        error: error.into(),
+                    }
+                })?;
+
+            Some(input)
+        } else {
+            None
+        };
+
+        // Spawn the command process
+        let mut process = Command::new(program)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| ChainError::Command {
+                command: command.to_owned(),
+                error,
             })
+            .traced()?;
+
+        // Write the stdin to the process
+        if let Some(input) = input {
+            process
+                .stdin
+                .as_mut()
+                .expect("Process missing stdin")
+                .write_all(input.as_bytes())
+                .await
+                .map_err(|error| ChainError::Command {
+                    command: command.to_owned(),
+                    error,
+                })
+                .traced()?;
+        }
+
+        // Wait for the process to finish
+        let output = process
+            .wait_with_output()
             .await
+            .map_err(|error| ChainError::Command {
+                command: command.to_owned(),
+                error,
+            })
+            .traced()?;
+
+        debug!(
+            stdout = %String::from_utf8_lossy(&output.stdout),
+            stderr = %String::from_utf8_lossy(&output.stderr),
+            "Command success"
+        );
+
+        Ok(output.stdout)
     }
 
     /// Render a value by asking the user to provide it
@@ -583,5 +632,17 @@ impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
             value,
             sensitive: false,
         })
+    }
+}
+
+impl ChainOutputTrim {
+    /// Apply whitespace trimming
+    fn apply(self, value: String) -> String {
+        match self {
+            Self::None => value,
+            Self::Start => value.trim_start().into(),
+            Self::End => value.trim_end().into(),
+            Self::Both => value.trim().into(),
+        }
     }
 }

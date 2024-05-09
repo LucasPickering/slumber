@@ -137,6 +137,7 @@ struct State {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     EnumCount,
     EnumIter,
@@ -145,6 +146,7 @@ struct State {
     Deserialize,
 )]
 enum Tab {
+    #[default]
     Body,
     Headers,
 }
@@ -160,8 +162,10 @@ impl EventHandler for CompleteResponseContent {
             match action {
                 MenuAction::CopyBody => {
                     // Use whatever text is visible to the user
-                    if let Some(body) =
-                        self.state.get().and_then(|state| state.body.text())
+                    if let Some(body) = self
+                        .state
+                        .get()
+                        .and_then(|state| state.body.data().text())
                     {
                         messages_tx.send(Message::CopyText(body));
                     }
@@ -177,7 +181,12 @@ impl EventHandler for CompleteResponseContent {
                         // all querying to the main data storage, so the main
                         // loop can access it directly to be written.
                         let data = if state.response.body.parsed().is_some() {
-                            state.body.text().unwrap_or_default().into_bytes()
+                            state
+                                .body
+                                .data()
+                                .text()
+                                .unwrap_or_default()
+                                .into_bytes()
                         } else {
                             state.response.body.bytes().to_vec()
                         };
@@ -197,7 +206,7 @@ impl EventHandler for CompleteResponseContent {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        let selected_tab = *self.tabs.selected();
+        let selected_tab = *self.tabs.data().selected();
         let mut children = vec![];
         match selected_tab {
             Tab::Body => {
@@ -237,10 +246,7 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
         .areas(area);
 
         // Metadata
-        frame.render_widget(
-            Paragraph::new(response.status.to_string()),
-            header_area,
-        );
+        frame.render_widget(response.status.generate(), header_area);
         frame.render_widget(
             Paragraph::new(Line::from(vec![
                 props.record.response.body.size().to_string_as(false).into(),
@@ -255,7 +261,7 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
         self.tabs.draw(frame, (), tabs_area);
 
         // Main content for the response
-        match self.tabs.selected() {
+        match self.tabs.data().selected() {
             Tab::Body => {
                 state.body.draw(
                     frame,
@@ -290,7 +296,6 @@ impl Default for CompleteResponseContent {
 mod tests {
     use super::*;
     use crate::test_util::*;
-    use factori::create;
     use indexmap::indexmap;
     use ratatui::{backend::TestBackend, Terminal};
     use rstest::rstest;
@@ -298,20 +303,20 @@ mod tests {
     /// Test "Copy Body" menu action
     #[rstest]
     #[case::json_body(
-        create!(
-            Response,
+        Response{
             headers: header_map(indexmap! {"content-type" => "application/json"}),
-            body: br#"{"hello":"world"}"#.to_vec().into()
-        ),
+            body: br#"{"hello":"world"}"#.to_vec().into(),
+            ..Response::factory()
+        },
         // Body gets prettified
         "{\n  \"hello\": \"world\"\n}"
     )]
     #[case::binary_body(
-        create!(
-            Response,
+        Response{
             headers: header_map(indexmap! {"content-type" => "image/png"}),
-            body: b"\x01\x02\x03\xff".to_vec().into()
-        ),
+            body: b"\x01\x02\x03\xff".to_vec().into(),
+            ..Response::factory()
+        },
         "01 02 03 ff"
     )]
     #[tokio::test]
@@ -325,7 +330,10 @@ mod tests {
         // Draw once to initialize state
         let mut component = CompleteResponseContent::default();
         response.parse_body(); // Normally the view does this
-        let record = create!(RequestRecord, response: response.into());
+        let record = RequestRecord {
+            response: response.into(),
+            ..RequestRecord::factory()
+        };
         component.draw(
             &mut terminal.get_frame(),
             CompleteResponseContentProps { record: &record },
@@ -347,33 +355,33 @@ mod tests {
     /// Test "Save Body as File" menu action
     #[rstest]
     #[case::json_body(
-        create!(
-            Response,
+        Response{
             headers: header_map(indexmap! {"content-type" => "application/json"}),
-            body: br#"{"hello":"world"}"#.to_vec().into()
-        ),
+            body: br#"{"hello":"world"}"#.to_vec().into(),
+            ..Response::factory()
+        },
         // Body gets prettified
         b"{\n  \"hello\": \"world\"\n}",
         "data.json"
     )]
     #[case::binary_body(
-        create!(
-            Response,
+        Response{
             headers: header_map(indexmap! {"content-type" => "image/png"}),
-            body: b"\x01\x02\x03".to_vec().into()
-        ),
+            body: b"\x01\x02\x03".to_vec().into(),
+            ..Response::factory()
+        },
         b"\x01\x02\x03",
         "data.png"
     )]
     #[case::content_disposition(
-        create!(
-            Response,
+        Response{
             headers: header_map(indexmap! {
                 "content-type" => "image/png",
                 "content-disposition" => "attachment; filename=\"dogs.png\"",
             }),
-            body: b"\x01\x02\x03".to_vec().into()
-        ),
+            body: b"\x01\x02\x03".to_vec().into(),
+            ..Response::factory()
+        },
         b"\x01\x02\x03",
         "dogs.png"
     )]
@@ -388,7 +396,10 @@ mod tests {
     ) {
         let mut component = CompleteResponseContent::default();
         response.parse_body(); // Normally the view does this
-        let record = create!(RequestRecord, response: response.into());
+        let record = RequestRecord {
+            response: response.into(),
+            ..RequestRecord::factory()
+        };
 
         // Draw once to initialize state
         component.draw(

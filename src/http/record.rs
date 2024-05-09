@@ -341,36 +341,42 @@ impl PartialEq for Body {
 mod tests {
     use super::*;
     use crate::test_util::*;
-    use factori::create;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
 
     #[rstest]
     #[case::content_disposition(
-        create!(Response, headers: header_map(indexmap! {
-            "content-disposition" => "form-data;name=\"field\"; filename=\"fish.png\"",
-            "content-type" => "image/png",
-        })),
+        Response {
+            headers: header_map(indexmap! {
+                "content-disposition" => "form-data;name=\"field\"; filename=\"fish.png\"",
+                "content-type" => "image/png",
+            }),
+            ..Response::factory()
+        },
         Some("fish.png")
     )]
     #[case::content_type_known(
-        create!(Response, headers: header_map(indexmap! {
-            "content-disposition" => "form-data",
-            "content-type" => "application/json",
-        })),
+        Response {
+            headers: header_map(indexmap! {
+                "content-disposition" => "form-data",
+                "content-type" => "application/json",
+            }),
+            ..Response::factory()
+        },
         Some("data.json")
     )]
     #[case::content_type_unknown(
-        create!(Response, headers: header_map(indexmap! {
-            "content-disposition" => "form-data",
-            "content-type" => "image/jpeg",
-        })),
+        Response {
+            headers: header_map(indexmap! {
+                "content-disposition" => "form-data",
+                "content-type" => "image/jpeg",
+            }),
+            ..Response::factory()
+        },
         Some("data.jpeg")
     )]
-    #[case::none(
-        create!(Response),None
-    )]
+    #[case::none(Response::factory(), None)]
     fn test_file_name(
         #[case] response: Response,
         #[case] expected: Option<&str>,
@@ -385,12 +391,12 @@ mod tests {
             "content-type" => "application/json",
         };
         let body = json!({"data": "value"});
-        let request = create!(
-            Request,
+        let request = Request {
             method: Method::DELETE,
             headers: header_map(headers),
             body: Some(serde_json::to_vec(&body).unwrap().into()),
-        );
+            ..Request::factory()
+        };
 
         assert_eq!(
             request.to_curl().unwrap(),

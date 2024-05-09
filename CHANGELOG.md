@@ -6,10 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- Use colored background for status codes
+  - This includes a new theme field, `success_color`
+- Improve hierarchy presentation of errors
+
+### Fixed
+
+- Exit fullscreen mode when changing panes
+- Support scrolling on more lists/tables
+
+## [1.1.0] - 2024-05-05
+
 ### Added
 
-- Add option to chain values from response header rather than body ([#184](https://github.com/LucasPickering/slumber/issues/184))
+- Add `section` field to `!request` chain values, to allow chaining response headers rather than body ([#184](https://github.com/LucasPickering/slumber/issues/184))
 - Add action to save response body to file ([#183](https://github.com/LucasPickering/slumber/issues/183))
+- Add `theme` field to the config, to configure colors ([#193](https://github.com/LucasPickering/slumber/issues/193))
+  - [See docs](https://slumber.lucaspickering.me/book/api/configuration/theme.html) for more info
+- Add `stdin` option to command chains ([#190](https://github.com/LucasPickering/slumber/issues/190))
 
 ### Changed
 
@@ -17,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Previously some actions would feel laggy because of an inherent 250ms delay in processing some events
 - Search parent directories for collection file ([#194](https://github.com/LucasPickering/slumber/issues/194))
 - Use thicker borders for selected pane and modals
+- Change default TUI colors to blue and yellow
 
 ### Fixed
 

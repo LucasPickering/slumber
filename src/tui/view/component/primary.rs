@@ -68,6 +68,7 @@ pub struct PrimaryViewProps<'a> {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     EnumCount,
     EnumIter,
@@ -77,6 +78,7 @@ pub struct PrimaryViewProps<'a> {
 )]
 pub enum PrimaryPane {
     ProfileList,
+    #[default]
     RecipeList,
     Recipe,
     Request,
@@ -96,6 +98,9 @@ enum FullscreenMode {
     Response,
 }
 
+/// Sentinel type for propagating an even that closes fullscreen mode
+struct ExitFullscreen;
+
 impl PrimaryView {
     pub fn new(collection: &Collection, messages_tx: MessageSender) -> Self {
         let profile_list_pane = ProfileListPane::new(
@@ -103,10 +108,15 @@ impl PrimaryView {
         )
         .into();
         let recipe_list_pane = RecipeListPane::new(&collection.recipes).into();
+        let selected_pane = FixedSelectState::builder()
+            // Changing panes kicks us out of fullscreen
+            .on_select(|_| EventQueue::push(Event::new_other(ExitFullscreen)))
+            .build();
+
         Self {
             selected_pane: Persistent::new(
                 PersistentKey::PrimaryPane,
-                Default::default(),
+                selected_pane,
             ),
             fullscreen_mode: Persistent::new(
                 PersistentKey::FullscreenMode,
@@ -125,13 +135,13 @@ impl PrimaryView {
     /// Which recipe in the recipe list is selected? `None` iff the list is
     /// empty OR a folder is selected.
     pub fn selected_recipe(&self) -> Option<&Recipe> {
-        self.recipe_list_pane.selected_recipe()
+        self.recipe_list_pane.data().selected_recipe()
     }
 
     /// Which profile in the list is selected? `None` iff the list is empty.
     /// Exposing inner state is hacky but it's an easy shortcut
     pub fn selected_profile(&self) -> Option<&Profile> {
-        self.profile_list_pane.profiles().selected()
+        self.profile_list_pane.data().profiles().selected()
     }
 
     /// Draw the "normal" view, when nothing is full
@@ -230,7 +240,8 @@ impl PrimaryView {
             // Make profile list as small as possible
             Constraint::Max(
                 // +2 to account for top/bottom border
-                self.profile_list_pane.profiles().items().len() as u16 + 2,
+                self.profile_list_pane.data().profiles().items().len() as u16
+                    + 2,
             )
         } else {
             Constraint::Max(3)
@@ -284,7 +295,7 @@ impl EventHandler for PrimaryView {
                             profile_id: self
                                 .selected_profile()
                                 .map(|profile| profile.id.clone()),
-                            options: self.recipe_pane.recipe_options(),
+                            options: self.recipe_pane.data().recipe_options(),
                         },
                     ));
                 }
@@ -313,12 +324,8 @@ impl EventHandler for PrimaryView {
                         self.selected_pane.select(&PrimaryPane::Response);
                     }
                 }
-                Action::PreviousPane if self.fullscreen_mode.is_none() => {
-                    self.selected_pane.previous();
-                }
-                Action::NextPane if self.fullscreen_mode.is_none() => {
-                    self.selected_pane.next();
-                }
+                Action::PreviousPane => self.selected_pane.previous(),
+                Action::NextPane => self.selected_pane.next(),
                 Action::Submit => {
                     // Send a request from anywhere
                     EventQueue::push(Event::HttpSendRequest);
@@ -368,6 +375,12 @@ impl EventHandler for PrimaryView {
                 }
                 _ => return Update::Propagate(event),
             },
+
+            Event::Other(event) => {
+                if let Some(ExitFullscreen) = event.downcast_ref() {
+                    *self.fullscreen_mode = None;
+                }
+            }
 
             _ => return Update::Propagate(event),
         }

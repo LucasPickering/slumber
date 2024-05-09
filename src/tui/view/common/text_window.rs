@@ -117,7 +117,7 @@ where
     for<'a> &'a T: Generate<Output<'a> = Text<'a>>,
 {
     fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
-        let theme = &TuiContext::get().theme;
+        let styles = &TuiContext::get().styles;
         let text = Paragraph::new(self.text.generate());
         // Assume no line wrapping when calculating line count
         let text_height = text.line_count(u16::MAX) as u16;
@@ -146,7 +146,7 @@ where
                     .collect::<Vec<Line>>(),
             )
             .alignment(Alignment::Right)
-            .style(theme.text_window.line_number),
+            .style(styles.text_window.line_number),
             gutter_area,
         );
 

@@ -2,7 +2,7 @@ use crate::{
     config::Config,
     db::CollectionDatabase,
     http::HttpEngine,
-    tui::{input::InputEngine, view::Theme},
+    tui::{input::InputEngine, view::Styles},
 };
 use std::sync::OnceLock;
 
@@ -22,8 +22,8 @@ static CONTEXT: OnceLock<TuiContext> = OnceLock::new();
 pub struct TuiContext {
     /// App-level configuration
     pub config: Config,
-    /// Visual theme. Colors!
-    pub theme: Theme,
+    /// Visual styles, derived from the theme
+    pub styles: Styles,
     /// Input:action bindings
     pub input_engine: InputEngine,
     /// For sending HTTP requests
@@ -36,12 +36,13 @@ pub struct TuiContext {
 impl TuiContext {
     /// Initialize global context. Should be called only once, during startup.
     pub fn init(config: Config, database: CollectionDatabase) {
+        let styles = Styles::new(&config.theme);
         let input_engine = InputEngine::new(config.input_bindings.clone());
         let http_engine = HttpEngine::new(&config, database.clone());
         CONTEXT
             .set(Self {
                 config,
-                theme: Theme::default(),
+                styles,
                 input_engine,
                 http_engine,
                 database,

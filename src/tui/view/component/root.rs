@@ -64,12 +64,12 @@ impl Root {
 
     /// Get the request state to be displayed
     fn active_request(&self) -> Option<&RequestState> {
+        let primary_view = self.primary_view.data();
         // "No Profile" _is_ a profile
-        let profile_id = self
-            .primary_view
+        let profile_id = primary_view
             .selected_profile()
             .map(|profile| profile.id.clone());
-        let recipe_id = self.primary_view.selected_recipe()?.id.clone();
+        let recipe_id = primary_view.selected_recipe()?.id.clone();
         self.active_requests.get(&(profile_id, recipe_id))
     }
 
@@ -150,7 +150,7 @@ impl EventHandler for Root {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        let modal_open = self.modal_queue.is_open();
+        let modal_open = self.modal_queue.data().is_open();
         let mut children: Vec<Component<&mut dyn EventHandler>> =
             vec![self.modal_queue.as_child()];
 

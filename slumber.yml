@@ -18,7 +18,8 @@ profiles:
 chains:
   username:
     source: !command
-      command: ["sh", "-c", "whoami | tr -d '\n'"]
+      command: [whoami]
+    trim: both
   password:
     source: !prompt
       message: Password

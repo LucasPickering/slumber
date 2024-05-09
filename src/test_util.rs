@@ -1,7 +1,7 @@
 use crate::{
     collection::{
-        Chain, ChainSource, Collection, Folder, Profile, Recipe, RecipeId,
-        RecipeNode, RecipeTree,
+        self, Chain, ChainOutputTrim, ChainSource, Collection, Folder, Profile,
+        ProfileId, Recipe, RecipeId, RecipeNode, RecipeTree,
     },
     config::Config,
     db::CollectionDatabase,
@@ -12,7 +12,13 @@ use crate::{
         message::{Message, MessageSender},
     },
 };
+use chrono::Utc;
+use indexmap::IndexMap;
 use ratatui::{backend::TestBackend, Terminal};
+use reqwest::{
+    header::{HeaderMap, HeaderName, HeaderValue},
+    StatusCode,
+};
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -20,116 +26,123 @@ use std::{
 use tokio::sync::{mpsc, mpsc::UnboundedReceiver};
 use uuid::Uuid;
 
-use chrono::Utc;
-use factori::{create, factori};
-use indexmap::IndexMap;
-use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
-    Method, StatusCode,
-};
-
-factori!(Collection, {
-    default {
-        profiles = Default::default(),
-        chains = Default::default(),
-        recipes = Default::default(),
-        _ignore = Default::default(),
-    }
-});
-
-factori!(Profile, {
-    default {
-        id = "profile1".into(),
-        name = None,
-        data = Default::default(),
-    }
-});
-
-factori!(Folder, {
-    default {
-        id = "folder1".into(),
-        name = None,
-        children = Default::default(),
-    }
-});
-
-factori!(Recipe, {
-    default {
-        id = "recipe1".into(),
-        name = None,
-        method = "GET".parse().unwrap(),
-        url = "http://localhost".into(),
-        body = None,
-        authentication = None,
-        query = Default::default(),
-        headers = Default::default(),
-    }
-});
-
-factori!(Request, {
-    default {
-        id = RequestId::new(),
-        profile_id = None,
-        recipe_id = "recipe1".into(),
-        method = Method::GET,
-        url = "http://localhost/url".parse().unwrap(),
-        headers = HeaderMap::new(),
-        body = None,
-    }
-});
-
-factori!(Response, {
-    default {
-        status = StatusCode::OK,
-        headers = HeaderMap::new(),
-        body = Body::default(),
-    }
-});
-
-// Apparently you can't use a macro in the factori init expression so we have
-// to hide them behind functions
-fn request() -> Request {
-    create!(Request)
-}
-fn response() -> Response {
-    create!(Response)
+/// Test-only trait to build a placeholder instance of a struct. This is similar
+/// to `Default`, but allows for useful placeholders that may not make sense in
+/// the context of the broader app. It also makes it possible to implement a
+/// factory for a type that already has `Default`.
+pub trait Factory {
+    fn factory() -> Self;
 }
 
-factori!(RequestRecord, {
-    default {
-        id = RequestId::new(),
-        request = request().into(),
-        response = response().into(),
-        start_time = Utc::now(),
-        end_time = Utc::now(),
+impl Factory for Collection {
+    fn factory() -> Self {
+        Self::default()
     }
-});
+}
 
-factori!(Chain, {
-    default {
-        id = "chain1".into(),
-        source = ChainSource::Request {
-            recipe: RecipeId::default(),
-            trigger: Default::default(),
-            section: Default::default(),
-        },
-        sensitive = false,
-        selector = None,
-        content_type = None,
+impl Factory for Profile {
+    fn factory() -> Self {
+        Self {
+            id: "profile1".into(),
+            name: None,
+            data: IndexMap::new(),
+        }
     }
-});
+}
 
-factori!(TemplateContext, {
-    default {
-        selected_profile = None,
-        collection = Default::default(),
-        prompter = Box::<TestPrompter>::default(),
-        http_engine = None,
-        database = CollectionDatabase::testing(),
-        overrides = Default::default(),
-        recursion_count = Default::default(),
+impl Factory for Folder {
+    fn factory() -> Self {
+        Self {
+            id: "folder1".into(),
+            name: None,
+            children: IndexMap::new(),
+        }
     }
-});
+}
+
+impl Factory for Recipe {
+    fn factory() -> Self {
+        Self {
+            id: "recipe1".into(),
+            name: None,
+            method: collection::Method::Get,
+            url: "http://localhost/url".into(),
+            body: None,
+            authentication: None,
+            query: IndexMap::new(),
+            headers: IndexMap::new(),
+        }
+    }
+}
+
+impl Factory for Chain {
+    fn factory() -> Self {
+        Self {
+            id: "chain1".into(),
+            source: ChainSource::Request {
+                recipe: "recipe1".into(),
+                trigger: Default::default(),
+                section: Default::default(),
+            },
+            sensitive: false,
+            selector: None,
+            content_type: None,
+            trim: ChainOutputTrim::default(),
+        }
+    }
+}
+
+impl Factory for Request {
+    fn factory() -> Self {
+        Self {
+            id: RequestId::new(),
+            profile_id: None,
+            recipe_id: "recipe1".into(),
+            method: reqwest::Method::GET,
+            url: "http://localhost/url".parse().unwrap(),
+            headers: HeaderMap::new(),
+            body: None,
+        }
+    }
+}
+
+impl Factory for Response {
+    fn factory() -> Self {
+        Self {
+            status: StatusCode::OK,
+            headers: HeaderMap::new(),
+            body: Body::default(),
+        }
+    }
+}
+
+impl Factory for RequestRecord {
+    fn factory() -> Self {
+        let request = Request::factory();
+        let response = Response::factory();
+        Self {
+            id: request.id,
+            request: request.into(),
+            response: response.into(),
+            start_time: Utc::now(),
+            end_time: Utc::now(),
+        }
+    }
+}
+
+impl Factory for TemplateContext {
+    fn factory() -> Self {
+        Self {
+            collection: Collection::default(),
+            selected_profile: None,
+            http_engine: None,
+            database: CollectionDatabase::testing(),
+            overrides: IndexMap::new(),
+            prompter: Box::<TestPrompter>::default(),
+            recursion_count: 0.into(),
+        }
+    }
+}
 
 /// Directory containing static test data
 #[rstest::fixture]

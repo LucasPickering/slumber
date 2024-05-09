@@ -160,6 +160,7 @@ struct RenderedRequestProps {
     Copy,
     Clone,
     Debug,
+    Default,
     Display,
     EnumCount,
     EnumIter,
@@ -168,6 +169,7 @@ struct RenderedRequestProps {
     Deserialize,
 )]
 enum Tab {
+    #[default]
     #[display("URL")]
     Url,
     Body,
@@ -195,8 +197,10 @@ impl EventHandler for RenderedRequest {
                         // Copy exactly what the user sees. Currently requests
                         // don't support formatting/querying but that could
                         // change
-                        if let Some(body) =
-                            self.state.get().and_then(|state| state.body.text())
+                        if let Some(body) = self
+                            .state
+                            .get()
+                            .and_then(|state| state.body.data().text())
                         {
                             messages_tx.send(Message::CopyText(body));
                         }
@@ -210,7 +214,7 @@ impl EventHandler for RenderedRequest {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        let selected_tab = *self.tabs.selected();
+        let selected_tab = *self.tabs.data().selected();
         let mut children = vec![];
         match selected_tab {
             Tab::Url | Tab::Headers => {}
@@ -242,7 +246,7 @@ impl Draw<RenderedRequestProps> for RenderedRequest {
         self.tabs.draw(frame, (), tabs_area);
 
         // Main content for the response
-        match self.tabs.selected() {
+        match self.tabs.data().selected() {
             Tab::Url => {
                 frame.render_widget(
                     Paragraph::new(props.request.url.to_string())

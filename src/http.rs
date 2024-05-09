@@ -558,8 +558,10 @@ impl From<Method> for reqwest::Method {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{collection::Authentication, test_util::*};
-    use factori::create;
+    use crate::{
+        collection::{Authentication, Collection, Profile},
+        test_util::*,
+    };
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use reqwest::Method;
@@ -575,18 +577,20 @@ mod tests {
             "group_id".into() => "3".into(),
             "token".into() => "hunter2".into(),
         };
-        let profile = create!(Profile, data: profile_data);
+        let profile = Profile {
+            data: profile_data,
+            ..Profile::factory()
+        };
         let profile_id = profile.id.clone();
-        let context = create!(
-            TemplateContext,
-            collection: create!(
-                Collection,
-                profiles: indexmap!{profile_id.clone() => profile},
-            ),
+        let context = TemplateContext {
+            collection: Collection {
+                profiles: indexmap! {profile_id.clone() => profile},
+                ..Collection::factory()
+            },
             selected_profile: Some(profile_id.clone()),
-        );
-        let recipe = create!(
-            Recipe,
+            ..TemplateContext::factory()
+        };
+        let recipe = Recipe {
             method: "POST".parse().unwrap(),
             url: "{{host}}/users/{{user_id}}".into(),
             query: indexmap! {
@@ -598,7 +602,8 @@ mod tests {
                 "Content-Type".into() => "application/json".into(),
             },
             body: Some("{\"group_id\":\"{{group_id}}\"}".into()),
-        );
+            ..Recipe::factory()
+        };
         let recipe_id = recipe.id.clone();
 
         let builder = RequestBuilder::new(recipe, RecipeOptions::default());
@@ -651,17 +656,23 @@ mod tests {
             "password".into() => "hunter2".into(),
             "token".into() => "token!".into(),
         };
-        let profile = create!(Profile, data: profile_data);
+        let profile = Profile {
+            data: profile_data,
+            ..Profile::factory()
+        };
         let profile_id = profile.id.clone();
-        let context = create!(
-            TemplateContext,
-            collection: create!(
-                Collection,
-                profiles: indexmap!{profile_id.clone() => profile},
-            ),
+        let context = TemplateContext {
+            collection: Collection {
+                profiles: indexmap! {profile_id.clone() => profile},
+                ..Collection::factory()
+            },
             selected_profile: Some(profile_id.clone()),
-        );
-        let recipe = create!(Recipe, authentication: Some(authentication));
+            ..TemplateContext::factory()
+        };
+        let recipe = Recipe {
+            authentication: Some(authentication),
+            ..Recipe::factory()
+        };
         let recipe_id = recipe.id.clone();
 
         let builder = RequestBuilder::new(recipe, RecipeOptions::default());
@@ -680,7 +691,7 @@ mod tests {
                 profile_id: Some(profile_id),
                 recipe_id,
                 method: Method::GET,
-                url: "http://localhost".parse().unwrap(),
+                url: "http://localhost/url".parse().unwrap(),
                 headers: (&expected_headers).try_into().unwrap(),
                 body: None,
             }
@@ -689,9 +700,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_disable_headers_and_query_params() {
-        let context = create!(TemplateContext);
-        let recipe = create!(
-            Recipe,
+        let context = TemplateContext::factory();
+        let recipe = Recipe {
             query: indexmap! {
                 "mode".into() => "sudo".into(),
                 "fast".into() => "true".into(),
@@ -700,7 +710,8 @@ mod tests {
                 "Accept".into() => "application/json".into(),
                 "Content-Type".into() => "application/json".into(),
             },
-        );
+            ..Recipe::factory()
+        };
         let recipe_id = recipe.id.clone();
 
         let builder = RequestBuilder::new(
@@ -725,7 +736,7 @@ mod tests {
                 profile_id: None,
                 recipe_id,
                 method: Method::GET,
-                url: "http://localhost?mode=sudo".parse().unwrap(),
+                url: "http://localhost/url?mode=sudo".parse().unwrap(),
                 headers: (&expected_headers).try_into().unwrap(),
                 body: None,
             }

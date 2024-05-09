@@ -1,6 +1,7 @@
 use crate::tui::{
     message::MessageSender,
     view::{
+        draw::Draw,
         event::{Event, EventHandler, Update},
         state::{
             persistence::{Persistable, PersistentContainer},
@@ -9,11 +10,12 @@ use crate::tui::{
     },
 };
 use itertools::Itertools;
-use ratatui::widgets::ListState;
-use std::{
-    fmt::{Debug, Display},
-    ops::DerefMut,
+use ratatui::{
+    layout::Rect,
+    widgets::{ListState, StatefulWidget},
+    Frame,
 };
+use std::fmt::{Debug, Display};
 use strum::{EnumCount, IntoEnumIterator};
 
 /// State manager for a static (AKA fixed) list of items. Fixed lists must be
@@ -39,6 +41,15 @@ pub struct FixedSelectStateBuilder<Item, State> {
 }
 
 impl<Item, State> FixedSelectStateBuilder<Item, State> {
+    /// Set the callback to be called when the user highlights a new item
+    pub fn on_select(
+        mut self,
+        on_select: impl 'static + Fn(&mut Item),
+    ) -> Self {
+        self.select = self.select.on_select(on_select);
+        self
+    }
+
     /// Set the callback to be called when the user hits enter on an item
     pub fn on_submit(
         mut self,
@@ -53,9 +64,11 @@ impl<Item, State> FixedSelectStateBuilder<Item, State> {
         Item: FixedSelect,
         State: SelectStateData,
     {
-        FixedSelectState {
-            select: self.select.build(),
-        }
+        // Disable the inner struct's pre-select in favor of our own. It will
+        // just select the first item, which might trigger undesired callbacks
+        let mut select = self.select.preselect(false).build();
+        select.select(&Item::default());
+        FixedSelectState { select }
     }
 }
 
@@ -112,12 +125,6 @@ where
         self.selected() == item
     }
 
-    /// Get a mutable reference to state. This uses `RefCell` underneath so it
-    /// will panic if aliased. Only call this during the draw phase!
-    pub fn state_mut(&self) -> impl DerefMut<Target = State> + '_ {
-        self.select.state_mut()
-    }
-
     /// Select an item by value. Context is required for callbacks. Generally
     /// the given value will be the type `Item`, but it could be anything that
     /// compares to `Item` (e.g. an ID type).
@@ -160,6 +167,18 @@ where
     }
 }
 
+/// See equivalent impl on [SelectState] for description
+impl<Item, State, W> Draw<W> for FixedSelectState<Item, State>
+where
+    Item: FixedSelect,
+    State: SelectStateData,
+    W: StatefulWidget<State = State>,
+{
+    fn draw(&self, frame: &mut Frame, props: W, area: Rect) {
+        self.select.draw(frame, props, area);
+    }
+}
+
 impl<Item, State> PersistentContainer for FixedSelectState<Item, State>
 where
     Item: FixedSelect + Persistable<Persisted = Item>,
@@ -177,8 +196,11 @@ where
     }
 }
 
-/// Trait alias for a static list of items to be cycled through
-pub trait FixedSelect:
+/// A version of [FixedSelect] without the `Default` bound. This is used for
+/// the action menu, in which individual action menu variants don't need to
+/// implement default because it will always default to one of the global
+/// variants.
+pub trait FixedSelectWithoutDefault:
     'static
     + Copy
     + Clone
@@ -191,7 +213,7 @@ pub trait FixedSelect:
 }
 
 /// Auto-impl for anything we can
-impl<T> FixedSelect for T where
+impl<T> FixedSelectWithoutDefault for T where
     T: 'static
         + Copy
         + Clone
@@ -202,3 +224,9 @@ impl<T> FixedSelect for T where
         + PartialEq
 {
 }
+
+/// Trait alias for a static list of items to be cycled through
+pub trait FixedSelect: FixedSelectWithoutDefault + Default {}
+
+/// Auto-impl for anything we can
+impl<T> FixedSelect for T where T: FixedSelectWithoutDefault + Default {}

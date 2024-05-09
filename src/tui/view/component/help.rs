@@ -41,7 +41,7 @@ impl Draw for HelpFooter {
         frame.render_widget(
             Paragraph::new(text)
                 .alignment(Alignment::Right)
-                .style(tui_context.theme.text.highlight),
+                .style(tui_context.styles.text.highlight),
             area,
         );
     }

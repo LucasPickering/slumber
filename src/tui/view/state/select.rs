@@ -2,13 +2,18 @@ use crate::tui::{
     input::Action,
     message::MessageSender,
     view::{
+        draw::Draw,
         event::{Event, EventHandler, Update},
         state::persistence::{Persistable, PersistentContainer},
     },
 };
 use itertools::Itertools;
-use ratatui::widgets::{ListState, TableState};
-use std::{cell::RefCell, fmt::Debug, marker::PhantomData, ops::DerefMut};
+use ratatui::{
+    layout::Rect,
+    widgets::{ListState, StatefulWidget, TableState},
+    Frame,
+};
+use std::{cell::RefCell, fmt::Debug, marker::PhantomData};
 
 /// State manager for a dynamic list of items.
 ///
@@ -39,12 +44,20 @@ where
 /// call on_select for the default item.
 pub struct SelectStateBuilder<Item, State> {
     items: Vec<Item>,
+    preselect: bool,
     on_select: Option<Callback<Item>>,
     on_submit: Option<Callback<Item>>,
     _state: PhantomData<State>,
 }
 
 impl<Item, State> SelectStateBuilder<Item, State> {
+    /// Enable or disable pre-selection, which will select the first item in the
+    /// list upon construction
+    pub fn preselect(mut self, preselect: bool) -> Self {
+        self.preselect = preselect;
+        self
+    }
+
     /// Set the callback to be called when the user highlights a new item
     pub fn on_select(
         mut self,
@@ -73,9 +86,9 @@ impl<Item, State> SelectStateBuilder<Item, State> {
             on_select: self.on_select,
             on_submit: self.on_submit,
         };
-        // Select the first item if possible. Use select_index so on_select is
-        // called if provided
-        if !select.items.is_empty() {
+        // Select the first item if requested and possible. Use select_index so
+        // on_select is called if present
+        if self.preselect && !select.items.is_empty() {
             select.select_index(0);
         }
         select
@@ -89,6 +102,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     pub fn builder(items: Vec<Item>) -> SelectStateBuilder<Item, State> {
         SelectStateBuilder {
             items,
+            preselect: true,
             on_select: None,
             on_submit: None,
             _state: PhantomData,
@@ -108,12 +122,6 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     /// Get the currently selected item (if any)
     pub fn selected(&self) -> Option<&Item> {
         self.items.get(self.state.borrow().selected()?)
-    }
-
-    /// Get a mutable reference to state. This uses `RefCell` underneath so it
-    /// will panic if aliased. Only call this during the draw phase!
-    pub fn state_mut(&self) -> impl DerefMut<Target = State> + '_ {
-        self.state.borrow_mut()
     }
 
     /// Select an item by value. Context is required for callbacks. Generally
@@ -230,6 +238,20 @@ where
             _ => return Update::Propagate(event),
         }
         Update::Consumed
+    }
+}
+
+/// Support rendering if the parent tells us exactly what to draw. This makes it
+/// easy to track the area that a component is drawn to, so we always receive
+/// the appropriate cursor events. It's impossible to draw the select component
+/// in another way because of the restricted access to the inner state.
+impl<Item, State, W> Draw<W> for SelectState<Item, State>
+where
+    State: SelectStateData,
+    W: StatefulWidget<State = State>,
+{
+    fn draw(&self, frame: &mut Frame, props: W, area: Rect) {
+        frame.render_stateful_widget(props, area, &mut self.state.borrow_mut());
     }
 }
 

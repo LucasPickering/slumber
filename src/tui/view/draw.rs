@@ -2,7 +2,7 @@
 
 use crate::util::EnumChain;
 use ratatui::{layout::Rect, text::Span, Frame};
-use std::fmt::Display;
+use std::{fmt::Display, ops::Deref};
 
 /// Something that can be drawn onto screen as one or more TUI widgets.
 ///
@@ -19,6 +19,17 @@ use std::fmt::Display;
 /// object very difficult (maybe impossible?). This is an easy shortcut.
 pub trait Draw<Props = ()> {
     fn draw(&self, frame: &mut Frame, props: Props, area: Rect);
+}
+
+/// Allow transparenting drawing through Deref impls
+impl<T, Props> Draw<Props> for T
+where
+    T: Deref,
+    T::Target: Draw<Props>,
+{
+    fn draw(&self, frame: &mut Frame, props: Props, area: Rect) {
+        self.deref().draw(frame, props, area)
+    }
 }
 
 /// A helper for building a UI. It can be converted into some UI element to be

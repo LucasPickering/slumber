@@ -135,13 +135,13 @@ impl PrimaryView {
     /// Which recipe in the recipe list is selected? `None` iff the list is
     /// empty OR a folder is selected.
     pub fn selected_recipe(&self) -> Option<&Recipe> {
-        self.recipe_list_pane.selected_recipe()
+        self.recipe_list_pane.data().selected_recipe()
     }
 
     /// Which profile in the list is selected? `None` iff the list is empty.
     /// Exposing inner state is hacky but it's an easy shortcut
     pub fn selected_profile(&self) -> Option<&Profile> {
-        self.profile_list_pane.profiles().selected()
+        self.profile_list_pane.data().profiles().selected()
     }
 
     /// Draw the "normal" view, when nothing is full
@@ -240,7 +240,8 @@ impl PrimaryView {
             // Make profile list as small as possible
             Constraint::Max(
                 // +2 to account for top/bottom border
-                self.profile_list_pane.profiles().items().len() as u16 + 2,
+                self.profile_list_pane.data().profiles().items().len() as u16
+                    + 2,
             )
         } else {
             Constraint::Max(3)
@@ -294,7 +295,7 @@ impl EventHandler for PrimaryView {
                             profile_id: self
                                 .selected_profile()
                                 .map(|profile| profile.id.clone()),
-                            options: self.recipe_pane.recipe_options(),
+                            options: self.recipe_pane.data().recipe_options(),
                         },
                     ));
                 }

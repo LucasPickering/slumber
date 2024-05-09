@@ -140,8 +140,8 @@ impl RecipePane {
             }
 
             RecipeOptions {
-                disabled_headers: to_disabled_set(&state.headers),
-                disabled_query_parameters: to_disabled_set(&state.query),
+                disabled_headers: to_disabled_set(state.headers.data()),
+                disabled_query_parameters: to_disabled_set(state.query.data()),
             }
         } else {
             // Shouldn't be possible, because state is initialized on first
@@ -195,7 +195,7 @@ impl EventHandler for RecipePane {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        let selected_tab = *self.tabs.selected();
+        let selected_tab = *self.tabs.data().selected();
         let mut children = vec![self.tabs.as_child()];
 
         // Send events to the tab pane as well
@@ -274,23 +274,29 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
             self.tabs.draw(frame, (), tabs_area);
 
             // Request content
-            match self.tabs.selected() {
+            match self.tabs.data().selected() {
                 Tab::Body => {
                     if let Some(body) = &recipe_state.body {
                         body.draw(frame, (), content_area);
                     }
                 }
-                Tab::Query => frame.render_stateful_widget(
-                    to_table(&recipe_state.query, ["", "Parameter", "Value"])
-                        .generate(),
+                Tab::Query => recipe_state.query.draw(
+                    frame,
+                    to_table(
+                        recipe_state.query.data(),
+                        ["", "Parameter", "Value"],
+                    )
+                    .generate(),
                     content_area,
-                    &mut recipe_state.query.state_mut(),
                 ),
-                Tab::Headers => frame.render_stateful_widget(
-                    to_table(&recipe_state.headers, ["", "Header", "Value"])
-                        .generate(),
+                Tab::Headers => recipe_state.headers.draw(
+                    frame,
+                    to_table(
+                        recipe_state.headers.data(),
+                        ["", "Header", "Value"],
+                    )
+                    .generate(),
                     content_area,
-                    &mut recipe_state.headers.state_mut(),
                 ),
                 Tab::Authentication => {
                     if let Some(authentication) = &recipe_state.authentication {

@@ -1,6 +1,7 @@
 use crate::tui::{
     message::MessageSender,
     view::{
+        draw::Draw,
         event::{Event, EventHandler, Update},
         state::{
             persistence::{Persistable, PersistentContainer},
@@ -9,11 +10,12 @@ use crate::tui::{
     },
 };
 use itertools::Itertools;
-use ratatui::widgets::ListState;
-use std::{
-    fmt::{Debug, Display},
-    ops::DerefMut,
+use ratatui::{
+    layout::Rect,
+    widgets::{ListState, StatefulWidget},
+    Frame,
 };
+use std::fmt::{Debug, Display};
 use strum::{EnumCount, IntoEnumIterator};
 
 /// State manager for a static (AKA fixed) list of items. Fixed lists must be
@@ -123,12 +125,6 @@ where
         self.selected() == item
     }
 
-    /// Get a mutable reference to state. This uses `RefCell` underneath so it
-    /// will panic if aliased. Only call this during the draw phase!
-    pub fn state_mut(&self) -> impl DerefMut<Target = State> + '_ {
-        self.select.state_mut()
-    }
-
     /// Select an item by value. Context is required for callbacks. Generally
     /// the given value will be the type `Item`, but it could be anything that
     /// compares to `Item` (e.g. an ID type).
@@ -168,6 +164,18 @@ where
 {
     fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
         self.select.update(messages_tx, event)
+    }
+}
+
+/// See equivalent impl on [SelectState] for description
+impl<Item, State, W> Draw<W> for FixedSelectState<Item, State>
+where
+    Item: FixedSelect,
+    State: SelectStateData,
+    W: StatefulWidget<State = State>,
+{
+    fn draw(&self, frame: &mut Frame, props: W, area: Rect) {
+        self.select.draw(frame, props, area);
     }
 }
 

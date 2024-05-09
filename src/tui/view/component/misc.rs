@@ -113,7 +113,7 @@ impl Modal for PromptModal {
     fn on_close(self: Box<Self>) {
         if self.submit.get() {
             // Return the user's value and close the prompt
-            self.channel.respond(self.text_box.into_inner().into_text());
+            self.channel.respond(self.text_box.into_data().into_text());
         }
     }
 }

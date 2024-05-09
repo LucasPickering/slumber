@@ -1,4 +1,46 @@
 //! Import request collections from an OpenAPI v3.0.X specification.
+//!
+//! # Usage
+//!
+//! The importer supports :
+//! * profiles based on the servers defined in the provided OpenAPI specifications.
+//! * recipes based on the paths defined in the provided OpenAPI specifications.
+//!
+//! OpenAPI operations can contain many tags. All recipes with the same tag will be grouped
+//! into a folder, named after the tag.
+//!
+//! Note that only the first tag of an endpoint will be taken into consideration because Slumber
+//! does not support having the same recipe in multiple folders.
+//!
+//! # Profiles
+//!
+//! Profiles are loaded based on the `servers` field at the root of the specifications,
+//! where one `Server` will give one [`Profile`].
+//!
+//! Because the servers in an OpenAPI specification don't have an ID, the URL of the server
+//! is used as the Profile's name for lack of a better default. The URL is also stored in
+//! the data of the profile as a magic variable named `host`.
+//!
+//! All the variables defined in the Server instance are propagated to the data of the profile.
+//!
+//! # Recipes
+//!
+//! Recipes are loaded based on the `paths` field at the root of the specifications,
+//! where each `path` can add one recipe for each kind of supported HTTP Method.
+//!
+//! The recipe's name is the operation's description.
+//!
+//! The Recipe will always try to use the `host` variable from the profile as the base of the URL,
+//! and add the path after it.
+//!
+//! Query parameters and Header parameters are supported.
+//!
+//! Authentication is supported, though Slumber lacks support for some of the authority schemes
+//! that are supported by OpenAPI v3.
+//!
+//! The body of the recipe is loaded from the example field of the FIRST content-type defined in
+//! the specifications of the endpoint.
+//!
 
 use std::{fs::File, path::Path};
 
@@ -34,6 +76,7 @@ enum OpenAPIResolveError {
 }
 
 impl Collection {
+    /// Loads a collection from an OpenAPIv3 specification file
     pub fn from_openapiv3(
         openapiv3_file: impl AsRef<Path>,
     ) -> anyhow::Result<Self> {
@@ -55,6 +98,7 @@ impl Collection {
             format!("Error deserializing OpenAPIv3 collection file {openapiv3_specification_file:?}"),
         )?;
 
+        // TODO: Should be refactored to a trait, then documented.
         let resolve_security_scheme = |scheme_name: String| -> Result<
             SecurityScheme,
             OpenAPIResolveError,
@@ -62,6 +106,8 @@ impl Collection {
             let components = &components
                 .as_ref()
                 .ok_or(OpenAPIResolveError::MissingComponentsObject)?;
+            // TODO: Actually parse scheme_name
+            // TODO: Test this
             let ref_or_component = components
                 .security_schemes
                 .get(&scheme_name)
@@ -77,6 +123,7 @@ impl Collection {
                 }
             }
         };
+        // TODO: Same as above
         let resolve_request_body = |request_body_name: String| -> Result<
             RequestBody,
             OpenAPIResolveError,
@@ -101,6 +148,7 @@ impl Collection {
         };
 
         let mut recipes = IndexMap::new();
+        // TODO: Not all tags that are used by the Operation Object must be declared. The tags that are not declared MAY be organized randomly or based on the tool’s logic.
         let mut tag_folders: IndexMap<String, Folder> = tags
             .into_iter()
             .map(
@@ -121,6 +169,7 @@ impl Collection {
                 },
             )
             .collect();
+        // Load Recipes, built by OpenAPI Operations
         for (path_name, item) in paths.paths {
             let mut try_add_recipe_for_method =
                 |maybe_operation: Option<Operation>,
@@ -198,15 +247,16 @@ impl Collection {
             let mut data = IndexMap::default();
             if let Some(variables) = variables {
                 for (var_name, variable) in variables {
-                    let variable = Template::try_from(variable.default)
+                    let value = variable.default;
+                    let variable = Template::try_from(value.clone())
                         .context(
-                            "Failed to parse variable {variable} as a template",
+                            format!("Failed to parse variable {value} as a template"),
                         )?;
                     data.insert(var_name, variable);
                 }
             }
             let host = Template::try_from(url.clone())
-                .context("Failed to parse URL {url} as a template")?;
+                .context(format!("Failed to parse URL {url} as a template"))?;
             data.insert("host".to_string(), host);
             let profile_id = ProfileId::from(format!("profile-{url}"));
             profiles.insert(
@@ -254,6 +304,7 @@ fn operation_to_recipe<
     // Name of the recipe
     let name = operation.summary.unwrap_or_else(|| path_name.clone());
 
+    // Parameters
     let mut query_params = IndexMap::default();
     let mut headers_params = IndexMap::default();
     for ref_param in operation.parameters {

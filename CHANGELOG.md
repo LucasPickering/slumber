@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add `trim` option to chains, to trim leading/trailing whitespace [#153](https://github.com/LucasPickering/slumber/issues/153)
+  - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/chain.html#chain-output-trim)
+
 ### Changed
 
 - Use colored background for status codes

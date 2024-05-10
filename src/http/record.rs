@@ -40,10 +40,16 @@ pub struct RequestBuildError {
 /// An error that can occur during a request. This does *not* including building
 /// errors.
 #[derive(Debug, Error)]
-#[error("Error executing request {}", .request.id)]
+#[error(
+    "Error executing request for `{}` (request `{}`)",
+    .request.recipe_id,
+    .request.id,
+)]
 pub struct RequestError {
+    /// Underlying error. This will always be a `reqwest::Error`, but wrapping
+    /// it in anyhow makes it easier to render
     #[source]
-    pub error: reqwest::Error,
+    pub error: anyhow::Error,
     /// The request that caused all this ruckus
     pub request: Arc<Request>,
     /// When was the request launched?

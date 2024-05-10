@@ -61,6 +61,7 @@ inherits = "release"
 lto = "thin"
 
 [workspace.metadata.release]
+pre-release-hook = ["./demo.sh", "--check"]
 pre-release-replacements = [
   {file = "CHANGELOG.md", search = "## \\[Unreleased\\] - ReleaseDate", replace = "## [Unreleased] - ReleaseDate\n\n## [{{version}}] - {{date}}"},
 ]

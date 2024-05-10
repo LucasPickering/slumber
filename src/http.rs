@@ -156,7 +156,7 @@ impl HttpEngine {
                     request,
                     start_time,
                     end_time,
-                    error,
+                    error: error.into(),
                 })
                 .traced(),
             }

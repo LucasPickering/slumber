@@ -253,6 +253,7 @@ impl Generate for &RequestError {
     where
         Self: 'this,
     {
-        self.error.to_string().into()
+        // Defer to the underlying anyhow error
+        self.error.generate()
     }
 }

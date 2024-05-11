@@ -47,11 +47,13 @@ pub struct ProfilePane {
 
 impl ProfilePane {
     pub fn new(profiles: Vec<Profile>) -> Self {
+        // If there's no selected profile in the DB, default to the first
+        let selected_profile = profiles.first().map(Profile::id).cloned();
         Self {
             profiles,
             selected_profile: Persistent::new(
                 PersistentKey::ProfileId,
-                Default::default(),
+                selected_profile.into(),
             ),
         }
     }

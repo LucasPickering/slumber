@@ -14,9 +14,7 @@ use crate::{
             draw::{Draw, Generate},
             event::{Event, EventHandler, EventQueue, Update},
             state::{
-                persistence::{
-                    Persistable, Persistent, PersistentKey, PersistentOption,
-                },
+                persistence::{Persistable, Persistent, PersistentKey},
                 select::SelectState,
                 StateCell,
             },
@@ -37,33 +35,47 @@ use ratatui::{
 /// profile list modal
 #[derive(Debug)]
 pub struct ProfilePane {
-    /// Store the full list of profiles so we can build a select state when
-    /// opening the modal. Clone clone clone!!
-    profiles: Vec<Profile>,
-    /// ID of the currently selected profile. `PersistentOption` wrapper gets
-    /// around the orphan rule.
-    selected_profile: Persistent<PersistentOption<ProfileId>>,
+    /// Even though we never use SelectState's event handling or selection
+    /// logic, this is the best way to store the state. We need to hang onto
+    /// the entire list of items so we can pass it down to the modal, and also
+    /// store which is selected. Some alternatives I considered:
+    ///
+    /// - Store a Vec<Profile> and Option<ProfileId> separately. This is
+    /// basically the same as a SelectState, but requires bespoke logic to
+    /// correctly handling select defaults, and handling when the persisted
+    /// value goes missing (i.e. profile is deleted from the collection). It
+    /// also complicates persistence a lot because of annoying orphan rule
+    /// stuff.
+    /// - Share state between this struct and the modal using reference
+    ///   passing.
+    /// This doesn't work because the sel;ect state in this struct and the
+    /// modal can't be the same; when selecting a profile in the modal, we
+    /// *don't* want to select it in the outer app until the user hits
+    /// Enter. In addition, the modal has to be moved out into the modal queue
+    /// in order to achieve the correct render and event handling ordering,
+    /// which is incompatible with shared references.
+    /// - Share state via Rc<RefCell<_>>. This shares the same core problem as
+    /// the previous issue, and also adds a ton of complexity with types and
+    /// whatnot.
+    ///
+    /// In conclusion, this component and the modal *have* to have separate
+    /// state because the selected values shouldn't necessarily be in sync.
+    /// That, combined with the need to have 'static state in order to move it
+    /// into the modal, means duplicating SelectState and cloning the contents
+    /// is the best way to go.
+    profiles: Persistent<SelectState<Profile>>,
 }
 
 impl ProfilePane {
     pub fn new(profiles: Vec<Profile>) -> Self {
-        // If there's no selected profile in the DB, default to the first
-        let selected_profile = profiles.first().map(Profile::id).cloned();
+        let profiles = SelectState::builder(profiles).build();
         Self {
-            profiles,
-            selected_profile: Persistent::new(
-                PersistentKey::ProfileId,
-                selected_profile.into(),
-            ),
+            profiles: Persistent::new(PersistentKey::ProfileId, profiles),
         }
     }
 
     pub fn selected_profile(&self) -> Option<&Profile> {
-        self.selected_profile.as_ref().and_then(|profile_id| {
-            self.profiles
-                .iter()
-                .find(|profile| &profile.id == profile_id)
-        })
+        self.profiles.selected()
     }
 }
 
@@ -74,15 +86,16 @@ impl EventHandler for ProfilePane {
         {
             EventQueue::open_modal(
                 ProfileListModal::new(
+                    // See self.profiles doc comment for why we need to clone
                     messages_tx.clone(),
-                    self.profiles.clone(),
-                    self.selected_profile.as_ref(),
+                    self.profiles.items().to_owned(),
+                    self.profiles.selected().map(|profile| &profile.id),
                 ),
                 ModalPriority::Low,
             );
         } else if let Some(SelectProfile(profile_id)) = event.other() {
             // Handle message from the modal
-            *self.selected_profile = Some(profile_id.clone()).into();
+            self.profiles.select(profile_id);
             EventQueue::push(Event::HttpLoadRequest);
         } else {
             return Update::Propagate(event);
@@ -270,15 +283,15 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
     }
 }
 
-impl Persistable for ProfileId {
-    type Persisted = Self;
+impl Persistable for Profile {
+    type Persisted = ProfileId;
 
     fn get_persistent(&self) -> &Self::Persisted {
-        self
+        &self.id
     }
 }
 
-/// Needed for preselection
+/// Needed for persistence
 impl PartialEq<Profile> for ProfileId {
     fn eq(&self, other: &Profile) -> bool {
         self == &other.id

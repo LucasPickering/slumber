@@ -1,7 +1,7 @@
 use crate::tui::{
     message::MessageSender,
     view::{
-        draw::Draw,
+        draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
         state::{
             persistence::{Persistable, PersistentContainer},
@@ -11,7 +11,6 @@ use crate::tui::{
 };
 use itertools::Itertools;
 use ratatui::{
-    layout::Rect,
     widgets::{ListState, StatefulWidget},
     Frame,
 };
@@ -172,8 +171,8 @@ where
     State: SelectStateData,
     W: StatefulWidget<State = State>,
 {
-    fn draw(&self, frame: &mut Frame, props: W, area: Rect) {
-        self.select.draw(frame, props, area);
+    fn draw(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {
+        self.select.draw(frame, props, metadata);
     }
 }
 

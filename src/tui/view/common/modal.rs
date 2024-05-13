@@ -3,14 +3,14 @@ use crate::tui::{
     input::Action,
     message::MessageSender,
     view::{
-        draw::Draw,
+        draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
         util::centered_rect,
         Component,
     },
 };
 use ratatui::{
-    prelude::{Constraint, Rect},
+    prelude::Constraint,
     widgets::{Block, Borders, Clear},
     Frame,
 };
@@ -101,47 +101,50 @@ impl EventHandler for ModalQueue {
             Event::Input {
                 // Enter to close is a convenience thing, modals may override
                 action: Some(Action::Cancel | Action::Submit),
-                ..
+                event: _,
             }
             | Event::CloseModal => {
                 match self.close() {
-                    Some(modal) => {
-                        // Inform the modal of its terminal status
-                        modal.on_close();
-                        Update::Consumed
-                    }
+                    // Inform the modal of its terminal status
+                    Some(modal) => modal.on_close(),
                     // Modal wasn't open, so don't consume the event
-                    None => Update::Propagate(event),
+                    None => return Update::Propagate(event),
                 }
             }
 
-            // Open a new modal
-            Event::OpenModal { modal, priority } => {
-                self.open(modal, priority);
-                Update::Consumed
-            }
+            // If open, eat all cursor events so they don't get sent to
+            // background components
+            Event::Input {
+                action: _,
+                event: crossterm::event::Event::Mouse(_),
+            } if self.is_open() => {}
 
-            _ => Update::Propagate(event),
+            // Open a new modal
+            Event::OpenModal { modal, priority } => self.open(modal, priority),
+
+            _ => return Update::Propagate(event),
         }
+        Update::Consumed
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        match self.queue.front_mut() {
-            Some(first) => vec![first.as_child()],
-            None => vec![],
-        }
+        self.queue
+            .front_mut()
+            .map(Component::as_child)
+            .into_iter()
+            .collect()
     }
 }
 
 impl Draw for ModalQueue {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         if let Some(modal) = self.queue.front() {
             let styles = &TuiContext::get().styles;
             let (width, height) = modal.data().dimensions();
 
             // The child gave us the content dimensions, we need to add one cell
             // of buffer for the border
-            let mut area = centered_rect(width, height, area);
+            let mut area = centered_rect(width, height, metadata.area());
             area.x -= 1;
             area.y -= 1;
             area.width += 2;
@@ -159,7 +162,7 @@ impl Draw for ModalQueue {
             frame.render_widget(block, area);
 
             // Render the actual content
-            modal.draw(frame, (), inner_area);
+            modal.draw(frame, (), inner_area, true);
         }
     }
 }

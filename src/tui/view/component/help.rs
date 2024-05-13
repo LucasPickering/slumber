@@ -5,16 +5,15 @@ use crate::{
         input::{Action, InputBinding},
         view::{
             common::{modal::Modal, table::Table},
-            draw::{Draw, Generate},
+            draw::{Draw, DrawMetadata, Generate},
             event::EventHandler,
         },
     },
 };
 use itertools::Itertools;
 use ratatui::{
-    layout::{Alignment, Constraint, Layout, Rect},
-    text::Line,
-    widgets::Paragraph,
+    layout::{Alignment, Constraint, Layout},
+    text::{Line, Text},
     Frame,
 };
 
@@ -24,8 +23,15 @@ const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Debug)]
 pub struct HelpFooter;
 
-impl Draw for HelpFooter {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+impl Generate for HelpFooter {
+    type Output<'this> = Text<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
         let actions = [Action::OpenActions, Action::OpenHelp, Action::Quit];
 
         let tui_context = TuiContext::get();
@@ -38,12 +44,7 @@ impl Draw for HelpFooter {
             })
             .join(" / ");
 
-        frame.render_widget(
-            Paragraph::new(text)
-                .alignment(Alignment::Right)
-                .style(tui_context.styles.text.highlight),
-            area,
-        );
+        Text::styled(text, tui_context.styles.text.highlight)
     }
 }
 
@@ -83,7 +84,7 @@ impl Modal for HelpModal {
 impl EventHandler for HelpModal {}
 
 impl Draw for HelpModal {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let tui_context = TuiContext::get();
 
         // Create layout
@@ -92,7 +93,7 @@ impl Draw for HelpModal {
             Constraint::Length(1),
             Constraint::Min(0),
         ])
-        .areas(area);
+        .areas(metadata.area());
 
         // Collection metadata
         let collection_metadata = Table {

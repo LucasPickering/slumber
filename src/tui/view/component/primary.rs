@@ -10,12 +10,12 @@ use crate::{
             component::{
                 help::HelpModal,
                 profile_select::ProfilePane,
-                recipe_list::{RecipeListPane, RecipeListPaneProps},
+                recipe_list::RecipeListPane,
                 recipe_pane::{RecipePane, RecipePaneProps},
                 request_pane::{RequestPane, RequestPaneProps},
                 response_pane::{ResponsePane, ResponsePaneProps},
             },
-            draw::Draw,
+            draw::{Draw, DrawMetadata},
             event::{Event, EventHandler, EventQueue, Update},
             state::{
                 fixed_select::FixedSelectState,
@@ -157,41 +157,40 @@ impl PrimaryView {
             self.get_right_column_layout(right_area);
 
         // Primary panes
-        self.profile_pane.draw(frame, (), profile_area);
+        self.profile_pane.draw(frame, (), profile_area, true);
         self.recipe_list_pane.draw(
             frame,
-            RecipeListPaneProps {
-                is_selected: self.is_selected(PrimaryPane::RecipeList),
-            },
+            (),
             recipes_area,
+            self.is_selected(PrimaryPane::RecipeList),
         );
 
         self.recipe_pane.draw(
             frame,
             RecipePaneProps {
-                is_selected: self.is_selected(PrimaryPane::Recipe),
                 selected_recipe: self.selected_recipe(),
                 selected_profile_id: self
                     .selected_profile()
                     .map(|profile| &profile.id),
             },
             recipe_area,
+            self.is_selected(PrimaryPane::Recipe),
         );
         self.request_pane.draw(
             frame,
             RequestPaneProps {
-                is_selected: self.is_selected(PrimaryPane::Request),
                 active_request: props.active_request,
             },
             request_area,
+            self.is_selected(PrimaryPane::Request),
         );
         self.response_pane.draw(
             frame,
             ResponsePaneProps {
-                is_selected: self.is_selected(PrimaryPane::Response),
                 active_request: props.active_request,
             },
             response_area,
+            self.is_selected(PrimaryPane::Response),
         );
     }
 
@@ -264,24 +263,8 @@ impl EventHandler for PrimaryView {
             // Input messages
             Event::Input {
                 action: Some(action),
-                event: term_event,
+                event: _,
             } => match action {
-                Action::LeftClick => {
-                    let crossterm::event::Event::Mouse(mouse) = term_event
-                    else {
-                        unreachable!("Mouse action must have mouse event")
-                    };
-                    // See if any child panes were clicked
-                    if self.recipe_list_pane.intersects(mouse) {
-                        self.selected_pane.select(&PrimaryPane::RecipeList);
-                    } else if self.recipe_pane.intersects(mouse) {
-                        self.selected_pane.select(&PrimaryPane::Recipe);
-                    } else if self.request_pane.intersects(mouse) {
-                        self.selected_pane.select(&PrimaryPane::Request);
-                    } else if self.response_pane.intersects(mouse) {
-                        self.selected_pane.select(&PrimaryPane::Response);
-                    }
-                }
                 Action::PreviousPane => self.selected_pane.previous(),
                 Action::NextPane => self.selected_pane.next(),
                 Action::Submit => {
@@ -293,6 +276,11 @@ impl EventHandler for PrimaryView {
                 }
                 Action::OpenHelp => {
                     EventQueue::open_modal_default::<HelpModal>();
+                }
+
+                // Pane hotkeys
+                Action::SelectProfileList => {
+                    self.profile_pane.data().open_modal(messages_tx.clone());
                 }
                 Action::SelectRecipeList => {
                     self.selected_pane.select(&PrimaryPane::RecipeList)
@@ -334,6 +322,9 @@ impl EventHandler for PrimaryView {
             Event::Other(event) => {
                 if let Some(ExitFullscreen) = event.downcast_ref() {
                     *self.fullscreen_mode = None;
+                } else if let Some(pane) = event.downcast_ref::<PrimaryPane>() {
+                    // Children can select themselves by sending PrimaryPane
+                    self.selected_pane.select(pane);
                 }
             }
 
@@ -343,58 +334,51 @@ impl EventHandler for PrimaryView {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        // Profile pane is always accessible because it's not actually
-        // selectable, all it does it open its modal
-        let mut children = vec![self.profile_pane.as_child()];
-        let child = if let Some(fullscreen_mode) = *self.fullscreen_mode {
-            match fullscreen_mode {
-                FullscreenMode::Recipe => self.recipe_list_pane.as_child(),
-                FullscreenMode::Request => self.request_pane.as_child(),
-                FullscreenMode::Response => self.response_pane.as_child(),
-            }
-        } else {
-            match self.selected_pane.selected() {
-                PrimaryPane::RecipeList => self.recipe_list_pane.as_child(),
-                PrimaryPane::Recipe => self.recipe_pane.as_child(),
-                PrimaryPane::Request => self.request_pane.as_child(),
-                PrimaryPane::Response => self.response_pane.as_child(),
-            }
-        };
-        children.push(child);
-        children
+        vec![
+            self.profile_pane.as_child(),
+            self.recipe_list_pane.as_child(),
+            self.recipe_pane.as_child(),
+            self.request_pane.as_child(),
+            self.response_pane.as_child(),
+        ]
     }
 }
 
 impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
-    fn draw(&self, frame: &mut Frame, props: PrimaryViewProps<'a>, area: Rect) {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: PrimaryViewProps<'a>,
+        metadata: DrawMetadata,
+    ) {
         match *self.fullscreen_mode {
-            None => self.draw_all_panes(frame, props, area),
+            None => self.draw_all_panes(frame, props, metadata.area()),
             Some(FullscreenMode::Recipe) => self.recipe_pane.draw(
                 frame,
                 RecipePaneProps {
-                    is_selected: true,
                     selected_recipe: self.selected_recipe(),
                     selected_profile_id: self
                         .selected_profile()
                         .map(|profile| &profile.id),
                 },
-                area,
+                metadata.area(),
+                true,
             ),
             Some(FullscreenMode::Request) => self.request_pane.draw(
                 frame,
                 RequestPaneProps {
-                    is_selected: true,
                     active_request: props.active_request,
                 },
-                area,
+                metadata.area(),
+                true,
             ),
             Some(FullscreenMode::Response) => self.response_pane.draw(
                 frame,
                 ResponsePaneProps {
-                    is_selected: true,
                     active_request: props.active_request,
                 },
-                area,
+                metadata.area(),
+                true,
             ),
         }
     }

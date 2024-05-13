@@ -7,7 +7,7 @@ use crate::{
         message::MessageSender,
         view::{
             common::{text_box::TextBox, text_window::TextWindow},
-            draw::Draw,
+            draw::{Draw, DrawMetadata},
             event::{Event, EventHandler, EventQueue, Update},
             state::StateCell,
             Component,
@@ -19,7 +19,6 @@ use anyhow::Context;
 use derive_more::Debug;
 use ratatui::{
     layout::{Constraint, Layout},
-    prelude::Rect,
     Frame,
 };
 use serde_json_path::JsonPath;
@@ -109,18 +108,23 @@ impl EventHandler for RecordBody {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        if self.query_text_box.data().is_focused() {
-            vec![self.query_text_box.as_child()]
-        } else if let Some(text_window) = self.text_window.get_mut() {
-            vec![text_window.as_child()]
-        } else {
-            vec![]
-        }
+        [
+            Some(self.query_text_box.as_child()),
+            self.text_window.get_mut().map(Component::as_child),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
     }
 }
 
 impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
-    fn draw(&self, frame: &mut Frame, props: RecordBodyProps, area: Rect) {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: RecordBodyProps,
+        metadata: DrawMetadata,
+    ) {
         // Body can only be queried if it's been parsed
         let query_available = props.body.parsed().is_some();
         self.query_available.set(query_available);
@@ -129,16 +133,21 @@ impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
             Constraint::Min(0),
             Constraint::Length(if query_available { 1 } else { 0 }),
         ])
-        .areas(area);
+        .areas(metadata.area());
 
         // Draw the body
         let text = self.text_window.get_or_update(self.query.clone(), || {
             init_text_window(props.body, self.query.as_ref())
         });
-        text.draw(frame, (), body_area);
+        text.draw(frame, (), body_area, true);
 
         if query_available {
-            self.query_text_box.draw(frame, (), query_area);
+            self.query_text_box.draw(
+                frame,
+                (),
+                query_area,
+                self.query_text_box.data().has_focus(),
+            );
         }
     }
 }

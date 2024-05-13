@@ -9,8 +9,11 @@ use crate::{
                 actions::ActionsModal, header_table::HeaderTable, tabs::Tabs,
                 Pane,
             },
-            component::record_body::{RecordBody, RecordBodyProps},
-            draw::{Draw, Generate, ToStringGenerate},
+            component::{
+                primary::PrimaryPane,
+                record_body::{RecordBody, RecordBodyProps},
+            },
+            draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, EventQueue, Update},
             state::{persistence::PersistentKey, RequestState, StateCell},
             Component,
@@ -21,7 +24,7 @@ use chrono::Utc;
 use derive_more::{Debug, Display};
 use ratatui::{
     layout::Layout,
-    prelude::{Alignment, Constraint, Rect},
+    prelude::{Alignment, Constraint},
     text::Line,
     widgets::{Paragraph, Wrap},
     Frame,
@@ -38,7 +41,6 @@ pub struct ResponsePane {
 }
 
 pub struct ResponsePaneProps<'a> {
-    pub is_selected: bool,
     pub active_request: Option<&'a RequestState>,
 }
 
@@ -54,6 +56,20 @@ enum MenuAction {
 impl ToStringGenerate for MenuAction {}
 
 impl EventHandler for ResponsePane {
+    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+        let Some(action) = event.action() else {
+            return Update::Propagate(event);
+        };
+        match action {
+            Action::LeftClick => {
+                EventQueue::push(Event::new_other(PrimaryPane::Response));
+            }
+            _ => return Update::Propagate(event),
+        }
+
+        Update::Consumed
+    }
+
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         vec![self.content.as_child()]
     }
@@ -64,7 +80,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
         &self,
         frame: &mut Frame,
         props: ResponsePaneProps<'a>,
-        area: Rect,
+        metadata: DrawMetadata,
     ) {
         // Render outermost block
         let title = TuiContext::get()
@@ -72,11 +88,11 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
             .add_hint("Response", Action::SelectResponse);
         let block = Pane {
             title: &title,
-            is_focused: props.is_selected,
+            has_focus: metadata.has_focus(),
         };
         let block = block.generate();
-        frame.render_widget(&block, area);
-        let area = block.inner(area);
+        frame.render_widget(&block, metadata.area());
+        let area = block.inner(metadata.area());
 
         match props.active_request {
             None | Some(RequestState::BuildError { .. }) => {}
@@ -97,6 +113,7 @@ impl<'a> Draw<ResponsePaneProps<'a>> for ResponsePane {
                 frame,
                 CompleteResponseContentProps { record },
                 area,
+                true,
             ),
 
             // Sadge
@@ -206,19 +223,14 @@ impl EventHandler for CompleteResponseContent {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        let selected_tab = *self.tabs.data().selected();
-        let mut children = vec![];
-        match selected_tab {
-            Tab::Body => {
-                if let Some(state) = self.state.get_mut() {
-                    children.push(state.body.as_child());
-                }
-            }
-            Tab::Headers => {}
-        }
-        // Tabs goes last, because pane content gets priority
-        children.push(self.tabs.as_child());
-        children
+        [
+            self.state.get_mut().map(|state| state.body.as_child()),
+            // Tabs goes last, because pane content gets priority
+            Some(self.tabs.as_child()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
     }
 }
 
@@ -227,7 +239,7 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
         &self,
         frame: &mut Frame,
         props: CompleteResponseContentProps,
-        area: Rect,
+        metadata: DrawMetadata,
     ) {
         let response = &props.record.response;
         // Set response state regardless of what tab we're on, so we always
@@ -243,7 +255,7 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
             Constraint::Length(1),
             Constraint::Min(0),
         ])
-        .areas(area);
+        .areas(metadata.area());
 
         // Metadata
         frame.render_widget(response.status.generate(), header_area);
@@ -258,7 +270,7 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
         );
 
         // Navigation tabs
-        self.tabs.draw(frame, (), tabs_area);
+        self.tabs.draw(frame, (), tabs_area, true);
 
         // Main content for the response
         match self.tabs.data().selected() {
@@ -269,6 +281,7 @@ impl<'a> Draw<CompleteResponseContentProps<'a>> for CompleteResponseContent {
                         body: &response.body,
                     },
                     content_area,
+                    true,
                 );
             }
 
@@ -337,7 +350,7 @@ mod tests {
         component.draw(
             &mut terminal.get_frame(),
             CompleteResponseContentProps { record: &record },
-            Rect::default(),
+            DrawMetadata::default(),
         );
 
         let update = component
@@ -405,7 +418,7 @@ mod tests {
         component.draw(
             &mut terminal.get_frame(),
             CompleteResponseContentProps { record: &record },
-            Rect::default(),
+            DrawMetadata::default(),
         );
 
         let update = component

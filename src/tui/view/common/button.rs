@@ -5,13 +5,13 @@ use crate::tui::{
     input::Action,
     message::MessageSender,
     view::{
-        draw::{Draw, Generate},
+        draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, EventQueue, Update},
         state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
 use ratatui::{
-    layout::{Constraint, Flex, Layout, Rect},
+    layout::{Constraint, Flex, Layout},
     text::Span,
     Frame,
 };
@@ -21,7 +21,7 @@ use ratatui::{
 /// enforce.
 pub struct Button<'a> {
     text: &'a str,
-    is_focused: bool,
+    has_focus: bool,
 }
 
 impl<'a> Generate for Button<'a> {
@@ -36,7 +36,7 @@ impl<'a> Generate for Button<'a> {
         let styles = &TuiContext::get().styles;
         Span {
             content: self.text.into(),
-            style: if self.is_focused {
+            style: if self.has_focus {
                 styles.text.highlight
             } else {
                 Default::default()
@@ -75,7 +75,7 @@ impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
 }
 
 impl<T: FixedSelect> Draw for ButtonGroup<T> {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let items = self.select.items();
         // The button width is based on the longest button
         let width = items
@@ -86,13 +86,13 @@ impl<T: FixedSelect> Draw for ButtonGroup<T> {
         let (areas, _) =
             Layout::horizontal(items.iter().map(|_| Constraint::Length(width)))
                 .flex(Flex::SpaceAround)
-                .split_with_spacers(area);
+                .split_with_spacers(metadata.area());
 
         for (button, area) in items.iter().zip(areas.iter()) {
             frame.render_widget(
                 Button {
                     text: &button.to_string(),
-                    is_focused: self.select.is_selected(button),
+                    has_focus: self.select.is_selected(button),
                 }
                 .generate(),
                 *area,

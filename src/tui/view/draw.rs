@@ -18,7 +18,12 @@ use std::{fmt::Display, ops::Deref};
 /// attaching a lifetime to the associated type makes using this in a trait
 /// object very difficult (maybe impossible?). This is an easy shortcut.
 pub trait Draw<Props = ()> {
-    fn draw(&self, frame: &mut Frame, props: Props, area: Rect);
+    /// Draw the component into the frame. This generally should not be called
+    /// directly. Instead, use
+    /// [Component::draw](crate::tui::view::component::Component::draw), which
+    /// will handle additional metadata management before defering to this
+    /// method for the actual draw.
+    fn draw(&self, frame: &mut Frame, props: Props, metadata: DrawMetadata);
 }
 
 /// Allow transparenting drawing through Deref impls
@@ -27,8 +32,45 @@ where
     T: Deref,
     T::Target: Draw<Props>,
 {
-    fn draw(&self, frame: &mut Frame, props: Props, area: Rect) {
-        self.deref().draw(frame, props, area)
+    fn draw(&self, frame: &mut Frame, props: Props, metadata: DrawMetadata) {
+        self.deref().draw(frame, props, metadata)
+    }
+}
+
+/// Metadata associated with each draw action, which may instruct how the draw
+/// should occur.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct DrawMetadata {
+    /// Which area on the screen should we draw to?
+    area: Rect,
+    /// Does the drawn component have focus? Focus indicates the component
+    /// receives keyboard events. Most of the time, the focused element should
+    /// get some visual indicator that it's in focus.
+    has_focus: bool,
+}
+
+impl DrawMetadata {
+    /// Construct a new metadata. The naming is chosen to discourage calling
+    /// this directly, which in turn discourages calling [Draw::draw] correctly.
+    /// Instead, use
+    /// [Component::draw](crate::tui::view::component::Component::draw).
+    ///
+    /// It should probably be better to restrict this via visibility, but that
+    /// requires refactoring the module layout and I'm not sure the benefit is
+    /// worth it.
+    pub fn new_dangerous(area: Rect, has_focus: bool) -> Self {
+        Self { area, has_focus }
+    }
+
+    /// Which area on the screen should we draw to?
+    pub fn area(self) -> Rect {
+        self.area
+    }
+
+    /// Does the component have focus, i.e. is it the component that should
+    /// receive keyboard events?
+    pub fn has_focus(self) -> bool {
+        self.has_focus
     }
 }
 

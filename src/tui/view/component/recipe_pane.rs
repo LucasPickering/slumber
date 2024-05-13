@@ -14,7 +14,8 @@ use crate::{
                 text_window::TextWindow,
                 Pane,
             },
-            draw::{Draw, Generate, ToStringGenerate},
+            component::primary::PrimaryPane,
+            draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, EventQueue, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
@@ -29,7 +30,7 @@ use derive_more::Display;
 use itertools::Itertools;
 use ratatui::{
     layout::Layout,
-    prelude::{Constraint, Rect},
+    prelude::Constraint,
     widgets::{Paragraph, Row, TableState},
     Frame,
 };
@@ -59,7 +60,6 @@ impl RecipePane {
 }
 
 pub struct RecipePaneProps<'a> {
-    pub is_selected: bool,
     pub selected_recipe: Option<&'a Recipe>,
     pub selected_profile_id: Option<&'a ProfileId>,
 }
@@ -176,40 +176,38 @@ impl RecipePane {
 
 impl EventHandler for RecipePane {
     fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
-        match &event {
-            Event::Input {
-                action: Some(Action::OpenActions),
-                ..
-            } => EventQueue::open_modal_default::<ActionsModal<MenuAction>>(),
-            Event::Other(callback) => {
-                match callback.downcast_ref::<MenuAction>() {
-                    Some(action) => {
-                        self.handle_menu_action(messages_tx, *action);
-                    }
-                    None => return Update::Propagate(event),
+        if let Some(action) = event.action() {
+            match action {
+                Action::LeftClick => {
+                    EventQueue::push(Event::new_other(PrimaryPane::Recipe));
                 }
+                Action::OpenActions => {
+                    EventQueue::open_modal_default::<ActionsModal<MenuAction>>()
+                }
+                _ => return Update::Propagate(event),
             }
-            _ => return Update::Propagate(event),
+        } else if let Some(menu_action) = event.other::<MenuAction>() {
+            self.handle_menu_action(messages_tx, *menu_action);
+        } else {
+            return Update::Propagate(event);
         }
         Update::Consumed
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        let selected_tab = *self.tabs.data().selected();
         let mut children = vec![self.tabs.as_child()];
 
         // Send events to the tab pane as well
         if let Some(state) = self.recipe_state.get_mut() {
-            match selected_tab {
-                Tab::Body => {
-                    if let Some(body) = state.body.as_mut() {
-                        children.push(body.as_child());
-                    }
-                }
-                Tab::Query => children.push(state.query.as_child()),
-                Tab::Headers => children.push(state.headers.as_child()),
-                Tab::Authentication => {}
-            }
+            children.extend(
+                [
+                    state.body.as_mut().map(Component::as_child),
+                    Some(state.query.as_child()),
+                    Some(state.headers.as_child()),
+                ]
+                .into_iter()
+                .flatten(),
+            );
         }
 
         children
@@ -217,18 +215,23 @@ impl EventHandler for RecipePane {
 }
 
 impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
-    fn draw(&self, frame: &mut Frame, props: RecipePaneProps<'a>, area: Rect) {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: RecipePaneProps<'a>,
+        metadata: DrawMetadata,
+    ) {
         // Render outermost block
         let title = TuiContext::get()
             .input_engine
             .add_hint("Recipe", Action::SelectRecipe);
         let block = Pane {
             title: &title,
-            is_focused: props.is_selected,
+            has_focus: metadata.has_focus(),
         };
         let block = block.generate();
-        let inner_area = block.inner(area);
-        frame.render_widget(block, area);
+        let inner_area = block.inner(metadata.area());
+        frame.render_widget(block, metadata.area());
 
         // Render request contents
         if let Some(recipe) = props.selected_recipe {
@@ -271,13 +274,13 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
             frame.render_widget(&recipe_state.url, url_area);
 
             // Navigation tabs
-            self.tabs.draw(frame, (), tabs_area);
+            self.tabs.draw(frame, (), tabs_area, true);
 
             // Request content
             match self.tabs.data().selected() {
                 Tab::Body => {
                     if let Some(body) = &recipe_state.body {
-                        body.draw(frame, (), content_area);
+                        body.draw(frame, (), content_area, true);
                     }
                 }
                 Tab::Query => recipe_state.query.draw(
@@ -288,6 +291,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                     )
                     .generate(),
                     content_area,
+                    true,
                 ),
                 Tab::Headers => recipe_state.headers.draw(
                     frame,
@@ -297,10 +301,11 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                     )
                     .generate(),
                     content_area,
+                    true,
                 ),
                 Tab::Authentication => {
                     if let Some(authentication) = &recipe_state.authentication {
-                        authentication.draw(frame, (), content_area)
+                        authentication.draw(frame, (), content_area, true)
                     }
                 }
             }
@@ -428,7 +433,7 @@ enum AuthenticationDisplay {
 }
 
 impl Draw for AuthenticationDisplay {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         match self {
             AuthenticationDisplay::Basic { username, password } => {
                 let table = Table {
@@ -446,7 +451,7 @@ impl Draw for AuthenticationDisplay {
                     column_widths: &[Constraint::Length(8), Constraint::Min(0)],
                     ..Default::default()
                 };
-                frame.render_widget(table.generate(), area)
+                frame.render_widget(table.generate(), metadata.area())
             }
             AuthenticationDisplay::Bearer(token) => {
                 let table = Table {
@@ -457,7 +462,7 @@ impl Draw for AuthenticationDisplay {
                     column_widths: &[Constraint::Length(5), Constraint::Min(0)],
                     ..Default::default()
                 };
-                frame.render_widget(table.generate(), area)
+                frame.render_widget(table.generate(), metadata.area())
             }
         }
     }
@@ -549,11 +554,10 @@ mod tests {
         component.draw(
             &mut terminal.get_frame(),
             RecipePaneProps {
-                is_selected: true,
                 selected_recipe: Some(&recipe),
                 selected_profile_id: None,
             },
-            Rect::default(),
+            DrawMetadata::default(),
         );
         // Clear template preview messages so we can test what we want
         messages.clear();

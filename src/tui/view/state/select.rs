@@ -2,13 +2,12 @@ use crate::tui::{
     input::Action,
     message::MessageSender,
     view::{
-        draw::Draw,
+        draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
         state::persistence::{Persistable, PersistentContainer},
     },
 };
 use ratatui::{
-    layout::Rect,
     widgets::{ListState, StatefulWidget, TableState},
     Frame,
 };
@@ -269,8 +268,12 @@ where
     State: SelectStateData,
     W: StatefulWidget<State = State>,
 {
-    fn draw(&self, frame: &mut Frame, props: W, area: Rect) {
-        frame.render_stateful_widget(props, area, &mut self.state.borrow_mut());
+    fn draw(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {
+        frame.render_stateful_widget(
+            props,
+            metadata.area(),
+            &mut self.state.borrow_mut(),
+        );
     }
 }
 

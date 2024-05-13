@@ -6,7 +6,8 @@ use crate::{
         message::MessageSender,
         view::{
             common::Pane,
-            draw::{Draw, Generate},
+            component::primary::PrimaryPane,
+            draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, EventQueue, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
@@ -18,7 +19,7 @@ use crate::{
 };
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
-use ratatui::{prelude::Rect, Frame};
+use ratatui::Frame;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -43,10 +44,6 @@ pub struct RecipeListPane {
     /// Set of all folders that are collapsed
     /// Invariant: No recipes, only folders
     collapsed: Persistent<Collapsed>,
-}
-
-pub struct RecipeListPaneProps {
-    pub is_selected: bool,
 }
 
 /// Set of collapsed folders. This newtype is really only necessary so we can
@@ -132,6 +129,9 @@ impl EventHandler for RecipeListPane {
             return Update::Propagate(event);
         };
         match action {
+            Action::LeftClick => {
+                EventQueue::push(Event::new_other(PrimaryPane::RecipeList));
+            }
             Action::Left => {
                 self.set_selected_collapsed(CollapseState::Collapse);
             }
@@ -153,8 +153,8 @@ impl EventHandler for RecipeListPane {
     }
 }
 
-impl Draw<RecipeListPaneProps> for RecipeListPane {
-    fn draw(&self, frame: &mut Frame, props: RecipeListPaneProps, area: Rect) {
+impl Draw for RecipeListPane {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let select = self.select.data();
         let context = TuiContext::get();
 
@@ -163,7 +163,7 @@ impl Draw<RecipeListPaneProps> for RecipeListPane {
             .add_hint("Recipes", Action::SelectRecipeList);
         let pane = Pane {
             title: &title,
-            is_focused: props.is_selected,
+            has_focus: metadata.has_focus(),
         };
 
         // We have to build this manually instead of using our own List type,
@@ -204,7 +204,7 @@ impl Draw<RecipeListPaneProps> for RecipeListPane {
         let list = ratatui::widgets::List::new(items)
             .block(pane.generate())
             .highlight_style(context.styles.list.highlight);
-        self.select.draw(frame, list, area);
+        self.select.draw(frame, list, metadata.area(), true);
     }
 }
 

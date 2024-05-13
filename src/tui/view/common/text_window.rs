@@ -3,13 +3,13 @@ use crate::tui::{
     input::Action,
     message::MessageSender,
     view::{
-        draw::{Draw, Generate},
+        draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, Update},
     },
 };
 use ratatui::{
     layout::Layout,
-    prelude::{Alignment, Constraint, Rect},
+    prelude::{Alignment, Constraint},
     text::{Line, Text},
     widgets::Paragraph,
     Frame,
@@ -116,7 +116,7 @@ where
     T: 'static,
     for<'a> &'a T: Generate<Output<'a> = Text<'a>>,
 {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles;
         let text = Paragraph::new(self.text.generate());
         // Assume no line wrapping when calculating line count
@@ -128,7 +128,7 @@ where
             Constraint::Length(1), // Spacer
             Constraint::Min(0),
         ])
-        .areas(area);
+        .areas(metadata.area());
 
         // Store text and window sizes for calculations in the update code
         self.text_width.set(text.line_width() as u16);

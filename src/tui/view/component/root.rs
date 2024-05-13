@@ -10,18 +10,14 @@ use crate::{
                 misc::NotificationText,
                 primary::{PrimaryView, PrimaryViewProps},
             },
-            draw::Draw,
+            draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
             state::RequestState,
             Component,
         },
     },
 };
-use ratatui::{
-    layout::Layout,
-    prelude::{Constraint, Rect},
-    Frame,
-};
+use ratatui::{layout::Layout, prelude::Constraint, Frame};
 use std::collections::{hash_map::Entry, HashMap};
 
 /// The root view component
@@ -150,27 +146,16 @@ impl EventHandler for Root {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        let modal_open = self.modal_queue.data().is_open();
-        let mut children: Vec<Component<&mut dyn EventHandler>> =
-            vec![self.modal_queue.as_child()];
-
-        // If a modal is open, don't allow *any* input to the background. We'll
-        // still accept input ourselves though, which should only be
-        // high-priority stuff
-        if !modal_open {
-            children.push(self.primary_view.as_child());
-        }
-
-        children
+        vec![self.modal_queue.as_child(), self.primary_view.as_child()]
     }
 }
 
 impl Draw for Root {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         // Create layout
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
-                .areas(area);
+                .areas(metadata.area());
 
         // Main content
         self.primary_view.draw(
@@ -179,18 +164,22 @@ impl Draw for Root {
                 active_request: self.active_request(),
             },
             main_area,
+            !self.modal_queue.data().is_open(),
         );
 
         // Footer
-        let [notification_area, help_area] =
-            Layout::horizontal([Constraint::Min(10), Constraint::Length(29)])
-                .areas(footer_area);
+        let footer = HelpFooter.generate();
+        let [notification_area, help_area] = Layout::horizontal([
+            Constraint::Min(10),
+            Constraint::Length(footer.width() as u16),
+        ])
+        .areas(footer_area);
         if let Some(notification_text) = &self.notification_text {
-            notification_text.draw(frame, (), notification_area);
+            notification_text.draw(frame, (), notification_area, false);
         }
-        HelpFooter.draw(frame, (), help_area);
+        frame.render_widget(footer, help_area);
 
         // Render modals last so they go on top
-        self.modal_queue.draw(frame, (), frame.size());
+        self.modal_queue.draw(frame, (), frame.size(), true);
     }
 }

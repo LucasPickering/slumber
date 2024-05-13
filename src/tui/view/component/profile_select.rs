@@ -11,7 +11,7 @@ use crate::{
                 list::List, modal::Modal, table::Table,
                 template_preview::TemplatePreview, Pane,
             },
-            draw::{Draw, Generate},
+            draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, EventQueue, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
@@ -26,7 +26,6 @@ use crate::{
 use itertools::Itertools;
 use ratatui::{
     layout::{Constraint, Layout},
-    prelude::Rect,
     text::Text,
     Frame,
 };
@@ -77,22 +76,25 @@ impl ProfilePane {
     pub fn selected_profile(&self) -> Option<&Profile> {
         self.profiles.selected()
     }
+
+    /// Open the profile list modal
+    pub fn open_modal(&self, messages_tx: MessageSender) {
+        EventQueue::open_modal(
+            ProfileListModal::new(
+                messages_tx.clone(),
+                // See self.profiles doc comment for why we need to clone
+                self.profiles.items().to_owned(),
+                self.profiles.selected().map(|profile| &profile.id),
+            ),
+            ModalPriority::Low,
+        );
+    }
 }
 
 impl EventHandler for ProfilePane {
     fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
-        if let Some(Action::LeftClick | Action::SelectProfileList) =
-            event.action()
-        {
-            EventQueue::open_modal(
-                ProfileListModal::new(
-                    // See self.profiles doc comment for why we need to clone
-                    messages_tx.clone(),
-                    self.profiles.items().to_owned(),
-                    self.profiles.selected().map(|profile| &profile.id),
-                ),
-                ModalPriority::Low,
-            );
+        if let Some(Action::LeftClick) = event.action() {
+            self.open_modal(messages_tx.clone());
         } else if let Some(SelectProfile(profile_id)) = event.other() {
             // Handle message from the modal
             self.profiles.select(profile_id);
@@ -105,17 +107,17 @@ impl EventHandler for ProfilePane {
 }
 
 impl Draw for ProfilePane {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let title = TuiContext::get()
             .input_engine
             .add_hint("Profile", Action::SelectProfileList);
         let block = Pane {
             title: &title,
-            is_focused: false,
+            has_focus: false,
         }
         .generate();
-        frame.render_widget(&block, area);
-        let area = block.inner(area);
+        frame.render_widget(&block, metadata.area());
+        let area = block.inner(metadata.area());
 
         frame.render_widget(
             if let Some(profile) = self.selected_profile() {
@@ -183,7 +185,7 @@ impl EventHandler for ProfileListModal {
 }
 
 impl Draw for ProfileListModal {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         // Empty state
         let items = self.select.data().items();
         if items.is_empty() {
@@ -192,7 +194,7 @@ impl Draw for ProfileListModal {
                     "No profiles defined; add one to your collection.".into(),
                     doc_link("api/request_collection/profile").into(),
                 ]),
-                area,
+                metadata.area(),
             );
             return;
         }
@@ -202,7 +204,7 @@ impl Draw for ProfileListModal {
             Constraint::Length(1), // Padding
             Constraint::Min(0),
         ])
-        .areas(area);
+        .areas(metadata.area());
 
         self.select.draw(
             frame,
@@ -212,10 +214,15 @@ impl Draw for ProfileListModal {
             }
             .generate(),
             list_area,
+            true,
         );
         if let Some(profile) = self.select.data().selected() {
-            self.detail
-                .draw(frame, ProfileDetailProps { profile }, detail_area)
+            self.detail.draw(
+                frame,
+                ProfileDetailProps { profile },
+                detail_area,
+                false,
+            )
         }
     }
 }
@@ -247,7 +254,7 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
         &self,
         frame: &mut Frame,
         props: ProfileDetailProps<'a>,
-        area: Rect,
+        metadata: DrawMetadata,
     ) {
         // Whenever the selected profile changes, rebuild the internal state.
         // This is needed because the template preview rendering is async.
@@ -279,7 +286,7 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
             alternate_row_style: true,
             ..Default::default()
         };
-        frame.render_widget(table.generate(), area);
+        frame.render_widget(table.generate(), metadata.area());
     }
 }
 

@@ -148,8 +148,8 @@ pub struct PaneStyles {
 
 impl PaneStyles {
     /// Get the type and style of the border for a pane
-    pub fn border(&self, is_focused: bool) -> (BorderType, Style) {
-        if is_focused {
+    pub fn border(&self, has_focus: bool) -> (BorderType, Style) {
+        if has_focus {
             (self.border_type_selected, self.border_selected)
         } else {
             (self.border_type, self.border)

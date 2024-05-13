@@ -5,7 +5,7 @@ use crate::tui::{
     input::Action,
     message::MessageSender,
     view::{
-        draw::Draw,
+        draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
     },
 };
@@ -110,7 +110,7 @@ impl TextBox {
         self
     }
 
-    pub fn is_focused(&self) -> bool {
+    pub fn has_focus(&self) -> bool {
         self.focused
     }
 
@@ -214,7 +214,7 @@ impl EventHandler for TextBox {
 }
 
 impl Draw for TextBox {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles;
 
         // Hide top secret data
@@ -234,13 +234,13 @@ impl Draw for TextBox {
         } else {
             styles.text_box.invalid
         };
-        frame.render_widget(Paragraph::new(text).style(style), area);
+        frame.render_widget(Paragraph::new(text).style(style), metadata.area());
 
         if self.focused {
             // Apply cursor styling on type
             let cursor_area = Rect {
-                x: area.x + self.state.cursor_offset() as u16,
-                y: area.y,
+                x: metadata.area().x + self.state.cursor_offset() as u16,
+                y: metadata.area().y,
                 width: 1,
                 height: 1,
             };

@@ -12,7 +12,7 @@ use crate::{
                 text_box::TextBox,
             },
             component::Component,
-            draw::{Draw, Generate},
+            draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, EventQueue, Update},
             state::Notification,
             Confirm,
@@ -21,7 +21,7 @@ use crate::{
 };
 use derive_more::Display;
 use ratatui::{
-    prelude::{Constraint, Rect},
+    prelude::Constraint,
     widgets::{Paragraph, Wrap},
     Frame,
 };
@@ -44,10 +44,10 @@ impl Modal for ErrorModal {
 impl EventHandler for ErrorModal {}
 
 impl Draw for ErrorModal {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         frame.render_widget(
             Paragraph::new(self.0.generate()).wrap(Wrap::default()),
-            area,
+            metadata.area(),
         );
     }
 }
@@ -125,8 +125,8 @@ impl EventHandler for PromptModal {
 }
 
 impl Draw for PromptModal {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
-        self.text_box.draw(frame, (), area);
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        self.text_box.draw(frame, (), metadata.area(), true);
     }
 }
 
@@ -208,8 +208,8 @@ impl EventHandler for ConfirmModal {
 }
 
 impl Draw for ConfirmModal {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
-        self.buttons.draw(frame, (), area);
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        self.buttons.draw(frame, (), metadata.area(), true);
     }
 }
 
@@ -234,7 +234,10 @@ impl NotificationText {
 }
 
 impl Draw for NotificationText {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
-        frame.render_widget(Paragraph::new(self.notification.generate()), area);
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        frame.render_widget(
+            Paragraph::new(self.notification.generate()),
+            metadata.area(),
+        );
     }
 }

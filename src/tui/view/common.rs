@@ -32,7 +32,7 @@ use reqwest::{header::HeaderValue, StatusCode};
 /// A container with a title and border
 pub struct Pane<'a> {
     pub title: &'a str,
-    pub is_focused: bool,
+    pub has_focus: bool,
 }
 
 impl<'a> Generate for Pane<'a> {
@@ -43,7 +43,7 @@ impl<'a> Generate for Pane<'a> {
         Self: 'this,
     {
         let (border_type, border_style) =
-            TuiContext::get().styles.pane.border(self.is_focused);
+            TuiContext::get().styles.pane.border(self.has_focus);
         Block::default()
             .borders(Borders::ALL)
             .border_type(border_type)

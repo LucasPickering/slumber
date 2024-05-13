@@ -2,19 +2,14 @@ use crate::{
     tui::view::{
         common::{list::List, modal::Modal},
         component::Component,
-        draw::{Draw, Generate, ToStringGenerate},
+        draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Event, EventHandler, EventQueue},
         state::fixed_select::{FixedSelectState, FixedSelectWithoutDefault},
     },
     util::EnumChain,
 };
 use derive_more::Display;
-use ratatui::{
-    layout::{Constraint, Rect},
-    text::Span,
-    widgets::ListState,
-    Frame,
-};
+use ratatui::{layout::Constraint, text::Span, widgets::ListState, Frame};
 use strum::{EnumCount, EnumIter};
 
 /// Modal to list and trigger arbitrary actions. The list of available actions
@@ -75,7 +70,7 @@ where
     T: 'static + FixedSelectWithoutDefault,
     for<'a> &'a T: Generate<Output<'a> = Span<'a>>,
 {
-    fn draw(&self, frame: &mut Frame, _: (), area: Rect) {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         self.actions.draw(
             frame,
             List {
@@ -83,7 +78,8 @@ where
                 list: self.actions.data().items(),
             }
             .generate(),
-            area,
+            metadata.area(),
+            true,
         );
     }
 }

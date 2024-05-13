@@ -29,12 +29,33 @@ pub trait EventHandler: Debug {
         Update::Propagate(event)
     }
 
-    /// Which, if any, of this component's children currently has focus? The
-    /// focused component will receive first dibs on any update messages, in
-    /// the order of the returned list. If none of the children consume the
-    /// message, it will be passed to this component.
+    /// Get **all** children of this component. This includes children that are
+    /// not currently visible, and ones that are out of focus, meaning they
+    /// shouldn't receive keyboard events. The event handling infrastructure is
+    /// responsible for filtering out children that shouldn't receive events.
+    ///
+    /// The event handling sequence goes something like:
+    /// - Get list of children
+    /// - Filter out children that aren't visible
+    /// - For keyboard events, filter out children that aren't in focus (mouse
+    /// events can still be handled by unfocused components)
+    /// - Pass the event to the first child in the list
+    ///     - If it consumes the event, stop
+    ///     - If it propagates, move on to the next child, and so on
+    /// - If none of the children consume the event, go up the tree to the
+    ///   parent and try again.
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         Vec::new()
+    }
+}
+
+impl EventHandler for &mut dyn EventHandler {
+    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+        (*self).update(messages_tx, event)
+    }
+
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        (*self).children()
     }
 }
 
@@ -159,30 +180,6 @@ impl Event {
         match self {
             Self::Other(other) => other.downcast_ref(),
             _ => None,
-        }
-    }
-}
-
-impl Event {
-    /// Is this event pertinent to the component? Most events should be handled,
-    /// but some (e.g. cursor events) need to be selectively filtered
-    pub fn should_handle<T>(&self, component: &Component<T>) -> bool {
-        use crossterm::event::Event;
-        if let Self::Input { event, .. } = self {
-            match event {
-                Event::Key(_) | Event::Paste(_) => true,
-
-                Event::Mouse(mouse_event) => {
-                    // Check if the mouse is over the component
-                    component.intersects(mouse_event)
-                }
-
-                // We expect everything else to have already been killed, but if
-                // it made it through, handle it to be safe
-                _ => true,
-            }
-        } else {
-            true
         }
     }
 }

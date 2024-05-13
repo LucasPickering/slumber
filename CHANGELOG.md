@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- Mouse events (e.g. scrolling) are now sent to unfocused elements
+
 ## [1.2.1] - 2024-05-11
 
 ### Fixed

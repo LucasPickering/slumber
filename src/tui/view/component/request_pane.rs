@@ -9,8 +9,11 @@ use crate::{
                 actions::ActionsModal, header_table::HeaderTable, tabs::Tabs,
                 Pane,
             },
-            component::record_body::{RecordBody, RecordBodyProps},
-            draw::{Draw, Generate, ToStringGenerate},
+            component::{
+                primary::PrimaryPane,
+                record_body::{RecordBody, RecordBodyProps},
+            },
+            draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, EventQueue, Update},
             state::{persistence::PersistentKey, RequestState, StateCell},
             Component,
@@ -20,7 +23,7 @@ use crate::{
 use derive_more::{Debug, Display};
 use ratatui::{
     layout::Layout,
-    prelude::{Alignment, Constraint, Rect},
+    prelude::{Alignment, Constraint},
     widgets::{Paragraph, Wrap},
     Frame,
 };
@@ -36,7 +39,6 @@ pub struct RequestPane {
 }
 
 pub struct RequestPaneProps<'a> {
-    pub is_selected: bool,
     pub active_request: Option<&'a RequestState>,
 }
 
@@ -58,18 +60,23 @@ impl EventHandler for RequestPane {
 }
 
 impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
-    fn draw(&self, frame: &mut Frame, props: RequestPaneProps<'a>, area: Rect) {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: RequestPaneProps<'a>,
+        metadata: DrawMetadata,
+    ) {
         // Render outermost block
         let title = TuiContext::get()
             .input_engine
             .add_hint("Request", Action::SelectRequest);
         let block = Pane {
             title: &title,
-            is_focused: props.is_selected,
+            has_focus: metadata.has_focus(),
         };
         let block = block.generate();
-        let inner_area = block.inner(area);
-        frame.render_widget(block, area);
+        let inner_area = block.inner(metadata.area());
+        frame.render_widget(block, metadata.area());
         let area = inner_area; // Shadow to make sure we use the right area
 
         // Don't render anything else unless we have a request state
@@ -119,6 +126,7 @@ impl<'a> Draw<RequestPaneProps<'a>> for RequestPane {
                         request: Arc::clone(request),
                     },
                     area,
+                    true,
                 )
             }
         }
@@ -178,60 +186,62 @@ enum Tab {
 
 impl EventHandler for RenderedRequest {
     fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
-        match event {
-            Event::Input {
-                action: Some(Action::OpenActions),
-                ..
-            } => EventQueue::open_modal_default::<ActionsModal<MenuAction>>(),
-            Event::Other(ref other) => {
-                // Check for an action menu event
-                match other.downcast_ref::<MenuAction>() {
-                    Some(MenuAction::CopyUrl) => {
-                        if let Some(state) = self.state.get() {
-                            messages_tx.send(Message::CopyText(
-                                state.request.url.to_string(),
-                            ))
-                        }
+        if let Some(action) = event.action() {
+            match action {
+                Action::LeftClick => {
+                    EventQueue::push(Event::new_other(PrimaryPane::Request));
+                }
+                Action::OpenActions => {
+                    EventQueue::open_modal_default::<ActionsModal<MenuAction>>()
+                }
+                _ => return Update::Propagate(event),
+            }
+        } else if let Some(menu_action) = event.other::<MenuAction>() {
+            match menu_action {
+                MenuAction::CopyUrl => {
+                    if let Some(state) = self.state.get() {
+                        messages_tx.send(Message::CopyText(
+                            state.request.url.to_string(),
+                        ))
                     }
-                    Some(MenuAction::CopyBody) => {
-                        // Copy exactly what the user sees. Currently requests
-                        // don't support formatting/querying but that could
-                        // change
-                        if let Some(body) = self
-                            .state
-                            .get()
-                            .and_then(|state| state.body.data().text())
-                        {
-                            messages_tx.send(Message::CopyText(body));
-                        }
+                }
+                MenuAction::CopyBody => {
+                    // Copy exactly what the user sees. Currently requests
+                    // don't support formatting/querying but that could change
+                    if let Some(body) = self
+                        .state
+                        .get()
+                        .and_then(|state| state.body.data().text())
+                    {
+                        messages_tx.send(Message::CopyText(body));
                     }
-                    None => return Update::Propagate(event),
                 }
             }
-            _ => return Update::Propagate(event),
+        } else {
+            return Update::Propagate(event);
         }
         Update::Consumed
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        let selected_tab = *self.tabs.data().selected();
-        let mut children = vec![];
-        match selected_tab {
-            Tab::Url | Tab::Headers => {}
-            Tab::Body => {
-                if let Some(state) = self.state.get_mut() {
-                    children.push(state.body.as_child());
-                }
-            }
-        }
-        // Tabs goes last, because pane content gets priority
-        children.push(self.tabs.as_child());
-        children
+        [
+            self.state.get_mut().map(|state| state.body.as_child()),
+            // Tabs goes last, because pane content gets priority
+            Some(self.tabs.as_child()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
     }
 }
 
 impl Draw<RenderedRequestProps> for RenderedRequest {
-    fn draw(&self, frame: &mut Frame, props: RenderedRequestProps, area: Rect) {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: RenderedRequestProps,
+        metadata: DrawMetadata,
+    ) {
         let state = self.state.get_or_update(props.request.id, || State {
             request: Arc::clone(&props.request),
             body: Default::default(),
@@ -240,10 +250,10 @@ impl Draw<RenderedRequestProps> for RenderedRequest {
         // Split the main area again to allow tabs
         let [tabs_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-                .areas(area);
+                .areas(metadata.area());
 
         // Navigation tabs
-        self.tabs.draw(frame, (), tabs_area);
+        self.tabs.draw(frame, (), tabs_area, true);
 
         // Main content for the response
         match self.tabs.data().selected() {
@@ -260,6 +270,7 @@ impl Draw<RenderedRequestProps> for RenderedRequest {
                         frame,
                         RecordBodyProps { body },
                         content_area,
+                        true,
                     );
                 }
             }

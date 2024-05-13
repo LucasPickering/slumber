@@ -18,8 +18,7 @@ use crate::{
         message::{Message, MessageSender},
         view::{
             component::{Component, Root},
-            draw::Draw,
-            event::{Event, EventHandler, EventQueue, Update},
+            event::{Event, EventQueue, Update},
             state::Notification,
         },
     },
@@ -70,7 +69,7 @@ impl View {
     /// to render input bindings as help messages to the user.
     pub fn draw<'a>(&'a self, frame: &'a mut Frame) {
         let chunk = frame.size();
-        self.root.draw(frame, (), chunk)
+        self.root.draw(frame, (), chunk, true);
     }
 
     /// Queue an event to update the request state for the given profile+recipe.
@@ -126,11 +125,7 @@ impl View {
         // It's possible for components to queue additional events
         while let Some(event) = EventQueue::pop() {
             trace_span!("View event", ?event).in_scope(|| {
-                match Self::update_all(
-                    &self.messages_tx,
-                    self.root.as_child(),
-                    event,
-                ) {
+                match self.root.update_all(&self.messages_tx, event) {
                     Update::Consumed => {
                         trace!("View event consumed")
                     }
@@ -155,46 +150,5 @@ impl View {
                 })
             }
         }
-    }
-
-    /// Update the state of a component *and* its children, starting at the
-    /// lowest descendant. Recursively walk up the tree until a component
-    /// consumes the event.
-    fn update_all(
-        messages_tx: &MessageSender,
-        mut component: Component<&mut dyn EventHandler>,
-        mut event: Event,
-    ) -> Update {
-        // If we have a child, send them the event. If not, eat it ourselves
-        for child in component.data_mut().children() {
-            if event.should_handle(&child) {
-                // RECURSION
-                let update = Self::update_all(messages_tx, child, event);
-                match update {
-                    Update::Propagate(returned) => {
-                        // Keep going to the next child. It's possible the child
-                        // returned something other than the original event,
-                        // which we'll just pass along
-                        // anyway.
-                        event = returned;
-                    }
-                    Update::Consumed => {
-                        return update;
-                    }
-                }
-            }
-        }
-
-        // None of our children handled it, we'll take it ourselves.
-        // Message is already traced in the parent span, so don't dupe it.
-        let span = trace_span!(
-            "Component handling",
-            component = ?component.data(),
-        );
-        span.in_scope(|| {
-            let update = component.data_mut().update(messages_tx, event);
-            trace!(?update);
-            update
-        })
     }
 }

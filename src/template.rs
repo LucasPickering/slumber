@@ -336,7 +336,7 @@ mod tests {
         #[case] expected_value: &str,
     ) {
         let recipe_id: RecipeId = "recipe1".into();
-        let database = CollectionDatabase::testing();
+        let database = CollectionDatabase::factory();
         let response_body = json!({
             "string": "Hello World!",
             "number": 6,
@@ -527,7 +527,7 @@ mod tests {
         #[case] record: Option<RequestRecord>,
         #[case] expected_error: &str,
     ) {
-        let database = CollectionDatabase::testing();
+        let database = CollectionDatabase::factory();
 
         let mut recipes = IndexMap::new();
         if let Some(recipe_id) = recipe_id {
@@ -584,7 +584,7 @@ mod tests {
         // Optional request data to store in the database
         #[case] record: Option<RequestRecord>,
     ) {
-        let database = CollectionDatabase::testing();
+        let database = CollectionDatabase::factory();
 
         // Set up DB
         if let Some(record) = record {

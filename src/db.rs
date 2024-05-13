@@ -422,12 +422,10 @@ impl CollectionDatabase {
     }
 }
 
-/// Test-only helpers
+/// Create an in-memory DB, only for testing
 #[cfg(test)]
-impl Database {
-    /// Create an in-memory DB, only for testing
-    pub fn testing() -> Self {
-        // TODO turn into factory impl
+impl crate::test_util::Factory for Database {
+    fn factory() -> Self {
         let mut connection = Connection::open_in_memory().unwrap();
         Self::migrate(&mut connection).unwrap();
         Self {
@@ -436,13 +434,11 @@ impl Database {
     }
 }
 
-/// Test-only helpers
+/// Create an in-memory DB, only for testing
 #[cfg(test)]
-impl CollectionDatabase {
-    /// Create an in-memory DB, only for testing
-    pub fn testing() -> Self {
-        // TODO turn into factory impl
-        Database::testing()
+impl crate::test_util::Factory for CollectionDatabase {
+    fn factory() -> Self {
+        Database::factory()
             .into_collection(Path::new("./slumber.yml"))
             .expect("Error initializing DB collection")
     }
@@ -577,7 +573,7 @@ mod tests {
 
     #[test]
     fn test_merge() {
-        let database = Database::testing();
+        let database = Database::factory();
         let path1 = Path::new("slumber.yml");
         let path2 = Path::new("README.md"); // Has to be a real file
         let collection1 = database.clone().into_collection(path1).unwrap();
@@ -646,7 +642,7 @@ mod tests {
     /// Test request storage and retrieval
     #[test]
     fn test_request() {
-        let database = Database::testing();
+        let database = Database::factory();
         let collection1 = database
             .clone()
             .into_collection(Path::new("slumber.yml"))
@@ -729,7 +725,7 @@ mod tests {
     /// Test UI state storage and retrieval
     #[test]
     fn test_ui_state() {
-        let database = Database::testing();
+        let database = Database::factory();
         let collection1 = database
             .clone()
             .into_collection(Path::new("slumber.yml"))

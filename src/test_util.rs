@@ -136,7 +136,7 @@ impl Factory for TemplateContext {
             collection: Collection::default(),
             selected_profile: None,
             http_engine: None,
-            database: CollectionDatabase::testing(),
+            database: CollectionDatabase::factory(),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
             recursion_count: 0.into(),
@@ -170,7 +170,7 @@ pub fn terminal() -> Terminal<TestBackend> {
 #[rstest::fixture]
 #[once]
 pub fn tui_context() {
-    TuiContext::init(Config::default(), CollectionDatabase::testing());
+    TuiContext::init(Config::default(), CollectionDatabase::factory());
 }
 
 #[rstest::fixture]

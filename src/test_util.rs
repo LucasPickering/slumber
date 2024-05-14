@@ -11,6 +11,7 @@ use crate::{
         context::TuiContext,
         message::{Message, MessageSender},
     },
+    util::ResultExt,
 };
 use chrono::Utc;
 use indexmap::IndexMap;
@@ -150,15 +151,6 @@ pub fn test_data_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("test_data")
 }
 
-/// Create a new temporary folder. This will include a random subfolder to
-/// guarantee uniqueness for this test.
-#[rstest::fixture]
-pub fn temp_dir() -> PathBuf {
-    let path = env::temp_dir().join(Uuid::new_v4().to_string());
-    fs::create_dir(&path).unwrap();
-    path
-}
-
 /// Create a terminal instance for testing
 #[rstest::fixture]
 pub fn terminal() -> Terminal<TestBackend> {
@@ -171,6 +163,37 @@ pub fn terminal() -> Terminal<TestBackend> {
 #[once]
 pub fn tui_context() {
     TuiContext::init(Config::default(), CollectionDatabase::factory());
+}
+
+/// Create a new temporary folder. This will include a random subfolder to
+/// guarantee uniqueness for this test.
+#[rstest::fixture]
+pub fn temp_dir() -> TempDir {
+    TempDir::new()
+}
+
+/// Guard for a temporary directory. Create the directory on creation, delete
+/// it on drop.
+#[derive(Debug, Deref)]
+pub struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new() -> Self {
+        let path = env::temp_dir().join(Uuid::new_v4().to_string());
+        fs::create_dir(&path).unwrap();
+        Self(path)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        // Clean up
+        let _ = fs::remove_dir_all(&self.0)
+            .with_context(|| {
+                format!("Error deleting temporary directory {:?}", self.0)
+            })
+            .traced();
+    }
 }
 
 #[rstest::fixture]
@@ -293,4 +316,6 @@ macro_rules! assert_err {
         )
     }};
 }
+use anyhow::Context;
 pub(crate) use assert_err;
+use derive_more::Deref;

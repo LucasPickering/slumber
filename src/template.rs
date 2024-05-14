@@ -731,10 +731,10 @@ mod tests {
     }
 
     /// Test success with chained file
+    #[rstest]
     #[tokio::test]
-    async fn test_chain_file() {
+    async fn test_chain_file(temp_dir: TempDir) {
         // Create a temp file that we'll read from
-        let temp_dir = env::temp_dir();
         let path = temp_dir.join("stuff.txt");
         fs::write(&path, "hello!").await.unwrap();
         // Sanity check to debug race condition
@@ -742,7 +742,7 @@ mod tests {
         let path: Template = path.to_str().unwrap().into();
 
         let chain = Chain {
-            source: ChainSource::File { path },
+            source: ChainSource::File { path: path.clone() },
             ..Chain::factory()
         };
         let context = TemplateContext {
@@ -753,7 +753,11 @@ mod tests {
             ..TemplateContext::factory()
         };
 
-        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
+        assert_eq!(
+            render!("{{chains.chain1}}", context).unwrap(),
+            "hello!",
+            "{path:?}"
+        );
     }
 
     /// Test failure with chained file
@@ -866,10 +870,10 @@ mod tests {
     /// Test linking two chains together. This example is contribed because the
     /// command could just read the file itself, but don't worry about it it's
     /// just a test.
+    #[rstest]
     #[tokio::test]
-    async fn test_chain_nested() {
+    async fn test_chain_nested(temp_dir: TempDir) {
         // Chain 1 - file
-        let temp_dir = env::temp_dir();
         let path = temp_dir.join("stuff.txt");
         fs::write(&path, "hello!").await.unwrap();
         let path: Template = path.to_str().unwrap().into();

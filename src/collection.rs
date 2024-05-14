@@ -179,7 +179,7 @@ mod tests {
     #[case::parent_and_child(None, true, true, "child/slumber.yml")]
     #[case::overriden(Some("override.yml"), true, true, "child/override.yml")]
     fn test_try_path(
-        temp_dir: PathBuf,
+        temp_dir: TempDir,
         #[case] override_file: Option<&str>,
         #[case] has_parent: bool,
         #[case] has_child: bool,
@@ -209,10 +209,11 @@ mod tests {
     /// Test that try_path fails when no collection file is found and no
     /// override is given
     #[rstest]
-    fn test_try_path_error(temp_dir: PathBuf) {
+    fn test_try_path_error(temp_dir: TempDir) {
         assert_err!(
-            CollectionFile::try_path(Some(temp_dir), None),
+            CollectionFile::try_path(Some(temp_dir.to_path_buf()), None),
             "No collection file found in current or ancestor directories"
         );
+        drop(temp_dir); // Dropping deletes the directory
     }
 }

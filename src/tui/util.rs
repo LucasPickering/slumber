@@ -118,14 +118,15 @@ pub async fn save_file(
         }
     };
 
-    debug!(?path, bytes = data.len(), "Writing to file");
-    let mut file = result
-        .with_context(|| format!("Error opening file `{path}`"))
-        .traced()?;
-    file.write_all(&data)
-        .await
-        .with_context(|| format!("Error writing to file `{path}`"))
-        .traced()?;
+    debug!(path, bytes = data.len(), "Writing to file");
+    async {
+        let mut file = result?;
+        file.write_all(&data).await?;
+        file.flush().await
+    }
+    .await
+    .with_context(|| format!("Error writing to file `{path}`"))
+    .traced()?;
 
     // It might be nice to show the full path here, but it's not trivial to get
     // that. The stdlib has fs::canonicalize, but it does more than we need
@@ -169,7 +170,6 @@ mod tests {
     use super::*;
     use crate::test_util::*;
     use rstest::rstest;
-    use std::path::PathBuf;
     use tokio::fs;
 
     /// Test various cases of save_file
@@ -179,7 +179,7 @@ mod tests {
     #[case::old_file_overwrite(true, true)]
     #[tokio::test]
     async fn test_save_file(
-        temp_dir: PathBuf,
+        temp_dir: TempDir,
         mut messages: MessageQueue,
         #[case] exists: bool,
         #[case] overwrite: bool,
@@ -235,7 +235,8 @@ mod tests {
         };
         assert_eq!(
             &fs::read_to_string(&expected_path).await.unwrap(),
-            expected
+            expected,
+            "{expected_path:?}"
         );
     }
 }

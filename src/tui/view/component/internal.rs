@@ -148,7 +148,7 @@ impl<T> Component<T> {
     }
 
     /// Was this component drawn to the screen during the previous draw phase?
-    fn is_visible(&self) -> bool {
+    pub fn is_visible(&self) -> bool {
         VISIBLE_COMPONENTS.with_borrow(|tree| tree.contains(&self.id))
     }
 
@@ -214,6 +214,26 @@ impl<T> Component<T> {
 
         self.inner.draw(frame, props, metadata);
         drop(guard); // Make sure guard stays alive until here
+    }
+
+    /// Test-only helper. Drain events from the event queue, and handle them
+    /// one-by-one. We expect each event to be consumed, so panic if it's
+    /// propagated.
+    #[cfg(test)]
+    pub fn drain_events(&mut self, messages_tx: &MessageSender)
+    where
+        T: EventHandler,
+    {
+        use crate::tui::view::event::EventQueue;
+
+        while let Some(event) = EventQueue::pop() {
+            match self.update_all(messages_tx, event) {
+                Update::Consumed => {}
+                Update::Propagate(event) => {
+                    panic!("Event was not consumed: {event:?}")
+                }
+            }
+        }
     }
 }
 

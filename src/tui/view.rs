@@ -122,6 +122,13 @@ impl View {
     /// Drain all view events from the queue. The component three will process
     /// events one by one. This should be called on every TUI loop
     pub fn handle_events(&mut self) {
+        // If we haven't done first render yet, don't drain the queue. This can
+        // happen after a collection reload, because of the structure of the
+        // main loop
+        if !self.root.is_visible() {
+            return;
+        }
+
         // It's possible for components to queue additional events
         while let Some(event) = EventQueue::pop() {
             trace_span!("View event", ?event).in_scope(|| {
@@ -150,5 +157,54 @@ impl View {
                 })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        collection::Collection, test_util::*, tui::context::TuiContext,
+    };
+    use ratatui::{backend::TestBackend, Terminal};
+    use rstest::rstest;
+
+    /// Test view handling and drawing during initial view setup
+    #[rstest]
+    fn test_initial_draw(
+        _tui_context: &TuiContext,
+        mut terminal: Terminal<TestBackend>,
+        messages: MessageQueue,
+    ) {
+        let collection = Collection::factory();
+        let collection_file = CollectionFile::testing(collection);
+        let mut view = View::new(&collection_file, messages.tx().clone());
+
+        // Initial events
+        assert_events!(
+            Event::HttpLoadRequest,
+            Event::Other(_),
+            Event::Notify(_)
+        );
+
+        // Events should *still* be in the queue, because we haven't drawn yet
+        view.handle_events();
+        assert_events!(
+            Event::HttpLoadRequest,
+            Event::Other(_),
+            Event::Notify(_)
+        );
+
+        // Nothing new
+        view.draw(&mut terminal.get_frame());
+        assert_events!(
+            Event::HttpLoadRequest,
+            Event::Other(_),
+            Event::Notify(_)
+        );
+
+        // *Now* the queue is drained
+        view.handle_events();
+        assert_events!();
     }
 }

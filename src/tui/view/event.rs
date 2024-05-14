@@ -105,6 +105,15 @@ impl EventQueue {
     pub fn open_modal_default<T: Modal + Default + 'static>() {
         Self::open_modal(T::default(), ModalPriority::Low);
     }
+
+    /// Execute a function with read-only access to the event queue.
+    #[cfg(test)]
+    pub fn inspect(f: impl FnOnce(&[&Event])) {
+        Self::INSTANCE.with_borrow(|events| {
+            let refs: Vec<_> = events.0.iter().collect();
+            f(refs.as_slice());
+        })
+    }
 }
 
 /// A trigger for state change in the view. Events are handled by

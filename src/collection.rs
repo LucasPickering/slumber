@@ -92,6 +92,15 @@ impl CollectionFile {
                 anyhow!("No collection file found in current or ancestor directories")
             })
     }
+
+    /// Create a new file with a placeholder path for testing
+    #[cfg(test)]
+    pub fn testing(collection: Collection) -> Self {
+        Self {
+            path: PathBuf::default(),
+            collection,
+        }
+    }
 }
 
 /// Search the current directory for a config file matching one of the known

@@ -13,8 +13,10 @@ use crate::{
     },
     util::ResultExt,
 };
+use anyhow::Context;
 use chrono::Utc;
-use indexmap::IndexMap;
+use derive_more::Deref;
+use indexmap::{indexmap, IndexMap};
 use ratatui::{backend::TestBackend, Terminal};
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -37,7 +39,13 @@ pub trait Factory {
 
 impl Factory for Collection {
     fn factory() -> Self {
-        Self::default()
+        let recipe = Recipe::factory();
+        let profile = Profile::factory();
+        Collection {
+            recipes: indexmap! {recipe.id.clone() => recipe}.into(),
+            profiles: indexmap! {profile.id.clone() => profile},
+            ..Collection::default()
+        }
     }
 }
 
@@ -161,8 +169,9 @@ pub fn terminal() -> Terminal<TestBackend> {
 /// Test fixture for using context. This will initialize it once for all tests
 #[rstest::fixture]
 #[once]
-pub fn tui_context() {
+pub fn tui_context() -> &'static TuiContext {
     TuiContext::init(Config::default(), CollectionDatabase::factory());
+    TuiContext::get()
 }
 
 /// Create a new temporary folder. This will include a random subfolder to
@@ -316,6 +325,19 @@ macro_rules! assert_err {
         )
     }};
 }
-use anyhow::Context;
 pub(crate) use assert_err;
-use derive_more::Deref;
+
+/// Assert that the event queue matches the given list of patterns
+macro_rules! assert_events {
+    ($($pattern:pat),* $(,)?) => {
+        EventQueue::inspect(|events| {
+            assert!(
+                matches!(events, &[$($pattern,)*]),
+                "Unexpected events in queue; \
+                {events:?} does not match expected {expected}",
+                expected = stringify!([$($pattern,)*]),
+            );
+        });
+    }
+}
+pub(crate) use assert_events;

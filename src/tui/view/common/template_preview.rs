@@ -214,7 +214,7 @@ mod tests {
     /// offset indexes work correctly
     #[rstest]
     #[tokio::test]
-    async fn test_template_stitch(_tui_context: ()) {
+    async fn test_template_stitch(tui_context: &TuiContext) {
         // Render a template
         let template = Template::parse(
             "intro\n{{user_id}} 💚💙💜 {{unknown}}\noutro\r\nmore outro".into(),
@@ -236,7 +236,7 @@ mod tests {
             ..TemplateContext::factory()
         };
         let chunks = template.render_chunks(&context).await;
-        let styles = &TuiContext::get().styles;
+        let styles = &tui_context.styles;
 
         let text = TextStitcher::stitch_chunks(&template, &chunks);
         let rendered_style = styles.template_preview.text;

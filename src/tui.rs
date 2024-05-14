@@ -5,7 +5,7 @@ mod util;
 pub mod view;
 
 use crate::{
-    collection::{Collection, CollectionFile, ProfileId, RecipeId},
+    collection::{Collection, CollectionFile, ProfileId},
     config::Config,
     db::Database,
     http::{Request, RequestBuilder},
@@ -247,13 +247,6 @@ impl Tui {
                 self.view.handle_input(event, action);
             }
 
-            Message::RequestLoad {
-                profile_id,
-                recipe_id,
-            } => {
-                self.load_request(profile_id.as_ref(), &recipe_id)?;
-            }
-
             Message::Notify(message) => self.view.notify(message),
             Message::PromptStart(prompt) => {
                 self.view.open_modal(prompt, ModalPriority::Low);
@@ -493,26 +486,6 @@ impl Tui {
             Ok::<(), ()>(())
         });
 
-        Ok(())
-    }
-
-    /// Load the most recent request+response for a particular recipe from the
-    /// database, and store it in state.
-    fn load_request(
-        &mut self,
-        profile_id: Option<&ProfileId>,
-        recipe_id: &RecipeId,
-    ) -> anyhow::Result<()> {
-        let database = &TuiContext::get().database;
-        if let Some(record) =
-            database.get_last_request(profile_id, recipe_id)?
-        {
-            self.view.set_request_state(
-                profile_id.cloned(),
-                record.request.recipe_id.clone(),
-                RequestState::response(record),
-            );
-        }
         Ok(())
     }
 

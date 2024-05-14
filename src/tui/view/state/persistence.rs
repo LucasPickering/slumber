@@ -73,6 +73,8 @@ impl<T: PersistentContainer> Drop for Persistent<T> {
 pub enum PersistentKey {
     /// Which pane is selected?
     PrimaryPane,
+    /// Which tab in the record (AKA request/response) pane is selected?
+    RecordTab,
     /// Which pane (if any) is fullscreened?
     FullscreenMode,
     /// Selected profile in the list
@@ -91,10 +93,6 @@ pub enum PersistentKey {
     RecipeSelectedHeader(RecipeId),
     /// Toggle state for a single recipe+header
     RecipeHeader { recipe: RecipeId, header: String },
-    /// Selected tab in Request pane
-    RequestTab,
-    /// Selected tab in Response pane
-    ResponseTab,
 }
 
 /// A value type that can be persisted to the database
@@ -158,7 +156,7 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    fn test_persistent(_tui_context: ()) {
+    fn test_persistent(_tui_context: &TuiContext) {
         let mut persistent = Persistent::new(PersistentKey::RecipeId, 0);
         *persistent = 37;
         // Trigger the save

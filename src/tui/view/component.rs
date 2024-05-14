@@ -6,8 +6,9 @@ mod profile_select;
 mod recipe_list;
 mod recipe_pane;
 mod record_body;
-mod request_pane;
-mod response_pane;
+mod record_pane;
+mod request_view;
+mod response_view;
 mod root;
 
 pub use internal::Component;

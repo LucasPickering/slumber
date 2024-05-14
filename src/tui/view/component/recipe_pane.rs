@@ -543,7 +543,7 @@ mod tests {
     /// Create component to be tested
     #[rstest::fixture]
     fn component(
-        _tui_context: (),
+        _tui_context: &TuiContext,
         mut messages: MessageQueue,
         mut terminal: Terminal<TestBackend>,
     ) -> RecipePane {

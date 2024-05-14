@@ -1,8 +1,9 @@
 use crate::{
     collection::{Collection, ProfileId, RecipeId},
     tui::{
+        context::TuiContext,
         input::Action,
-        message::{Message, MessageSender},
+        message::{Message, MessageSender, RequestConfig},
         view::{
             common::{actions::GlobalAction, modal::ModalQueue},
             component::{
@@ -16,6 +17,7 @@ use crate::{
             Component,
         },
     },
+    util::ResultExt,
 };
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
 use std::collections::{hash_map::Entry, HashMap};
@@ -55,6 +57,29 @@ impl Root {
             primary_view: PrimaryView::new(collection, messages_tx).into(),
             modal_queue: Component::default(),
             notification_text: None,
+        }
+    }
+
+    /// Load the latest request for the currently selected recipe+profile from
+    /// the database. This is a blocking I/O operation but we expect it to be
+    /// very fast.
+    fn load_latest_request(&mut self, messages_tx: &MessageSender) {
+        let primary_view = self.primary_view.data();
+        if let Some(recipe_id) = primary_view.selected_recipe_id() {
+            let profile_id = primary_view.selected_profile_id();
+            let database = &TuiContext::get().database;
+
+            if let Some(record) = database
+                .get_last_request(profile_id, recipe_id)
+                .reported(messages_tx)
+                .flatten()
+            {
+                self.update_request(
+                    profile_id.cloned(),
+                    recipe_id.clone(),
+                    RequestState::response(record),
+                );
+            }
         }
     }
 
@@ -99,7 +124,25 @@ impl Root {
 
 impl EventHandler for Root {
     fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+        let primary_view = self.primary_view.data();
         match event {
+            // Load latest request for selected recipe from database
+            Event::HttpLoadRequest => self.load_latest_request(messages_tx),
+            // Send HTTP request
+            Event::HttpSendRequest => {
+                if let Some(recipe_id) = primary_view.selected_recipe_id() {
+                    messages_tx.send(Message::HttpBeginRequest(
+                        RequestConfig {
+                            recipe_id: recipe_id.clone(),
+                            profile_id: primary_view
+                                .selected_profile_id()
+                                .cloned(),
+                            options: primary_view.recipe_options(),
+                        },
+                    ));
+                }
+            }
+
             // Update state of HTTP request
             Event::HttpSetState {
                 profile_id,
@@ -181,5 +224,89 @@ impl Draw for Root {
 
         // Render modals last so they go on top
         self.modal_queue.draw(frame, (), frame.size(), true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        collection::{Profile, Recipe},
+        http::{Request, RequestRecord},
+        test_util::*,
+        tui::view::event::EventQueue,
+    };
+    use indexmap::indexmap;
+    use ratatui::{backend::TestBackend, Terminal};
+    use rstest::rstest;
+
+    /// Test that, on first render, the view loads the most recent historical
+    /// request for the first recipe+profile
+    #[rstest]
+    fn test_preload_request(
+        tui_context: &TuiContext,
+        mut terminal: Terminal<TestBackend>,
+        messages: MessageQueue,
+    ) {
+        // Add a request into the DB that we expect to preload
+        let recipe = Recipe::factory();
+        let recipe_id = recipe.id.clone();
+        let profile = Profile::factory();
+        let profile_id = profile.id.clone();
+        let collection = Collection {
+            recipes: indexmap! {recipe_id.clone() => recipe}.into(),
+            profiles: indexmap! {profile_id.clone() => profile},
+            ..Collection::factory()
+        };
+        let record = RequestRecord {
+            request: Request {
+                recipe_id: recipe_id.clone(),
+                profile_id: Some(profile_id.clone()),
+                ..Request::factory()
+            }
+            .into(),
+            ..RequestRecord::factory()
+        };
+        tui_context.database.insert_request(&record).unwrap();
+
+        let mut component: Component<Root> =
+            Root::new(&collection, messages.tx().clone()).into();
+        let area = terminal.get_frame().size();
+
+        // Make sure profile+recipe were preselected correctly
+        assert_eq!(
+            component.data().primary_view.data().selected_profile_id(),
+            Some(&profile_id)
+        );
+        assert_eq!(
+            component.data().primary_view.data().selected_recipe_id(),
+            Some(&recipe_id)
+        );
+
+        // Initial draw
+        component.draw(&mut terminal.get_frame(), (), area, true);
+
+        assert_events!(
+            Event::HttpLoadRequest, // From recipe list
+            Event::Other(_),        // Fullscreen exit event
+        );
+        component.drain_events(messages.tx());
+
+        let state = component.data();
+        assert_eq!(
+            state.primary_view.data().selected_recipe_id(),
+            Some(&recipe_id)
+        );
+        assert_eq!(
+            state.primary_view.data().selected_profile_id(),
+            Some(&profile_id)
+        );
+        assert_eq!(
+            component.data().active_request(),
+            Some(&RequestState::Response { record })
+        );
+
+        // It'd be nice to assert on the view but it's just too complicated to
+        // be worth mocking the whole thing out
     }
 }

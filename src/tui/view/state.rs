@@ -7,8 +7,10 @@ pub mod select;
 use crate::http::{
     Request, RequestBuildError, RequestError, RequestId, RequestRecord,
 };
+use bytesize::ByteSize;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::Deref;
+use reqwest::StatusCode;
 use std::{
     cell::{Ref, RefCell},
     sync::Arc,
@@ -94,6 +96,7 @@ impl<K, V> Default for StateCell<K, V> {
 /// completion/failure. Each request *recipe* should have one request state
 /// stored in the view at a time.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum RequestState {
     /// The request is being built. Typically this is very fast, but can be
     /// slow if a chain source takes a while.
@@ -121,6 +124,8 @@ pub enum RequestState {
     RequestError { error: RequestError },
 }
 
+/// Metadata derived from a request. The request can be in progress, completed,
+/// or failed.
 #[derive(Debug)]
 pub struct RequestMetadata {
     /// When was the request launched?
@@ -128,6 +133,15 @@ pub struct RequestMetadata {
     /// Elapsed time for the active request. If pending, this is a running
     /// total. Otherwise end time - start time.
     pub duration: Duration,
+}
+
+/// Metadata derived from a response. This is only available for requests that
+/// have completed successfully.
+#[derive(Debug)]
+pub struct ResponseMetadata {
+    pub status: StatusCode,
+    /// Size of the response *body*
+    pub size: ByteSize,
 }
 
 impl RequestState {
@@ -150,7 +164,7 @@ impl RequestState {
 
     /// Get metadata about a request. Return `None` if the request hasn't been
     /// successfully built (yet)
-    pub fn metadata(&self) -> Option<RequestMetadata> {
+    pub fn request_metadata(&self) -> Option<RequestMetadata> {
         match self {
             Self::Building { .. } | Self::BuildError { .. } => None,
             Self::Loading { start_time, .. } => Some(RequestMetadata {
@@ -165,6 +179,19 @@ impl RequestState {
                 start_time: error.start_time,
                 duration: error.end_time - error.start_time,
             }),
+        }
+    }
+
+    /// Get metadata about the request. Return `None` if the response hasn't
+    /// been received, or the request failed.
+    pub fn response_metadata(&self) -> Option<ResponseMetadata> {
+        if let RequestState::Response { record } = self {
+            Some(ResponseMetadata {
+                status: record.response.status,
+                size: record.response.body.size(),
+            })
+        } else {
+            None
         }
     }
 

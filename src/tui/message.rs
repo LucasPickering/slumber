@@ -111,12 +111,6 @@ pub enum Message {
     /// Exit the program
     Quit,
 
-    /// Load the most recent response for a recipe from the database
-    RequestLoad {
-        profile_id: Option<ProfileId>,
-        recipe_id: RecipeId,
-    },
-
     /// Save data to a file. Could be binary (e.g. image) or encoded text
     SaveFile {
         /// A suggestion for the file name. User will have the opportunity to

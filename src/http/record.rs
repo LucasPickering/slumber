@@ -25,39 +25,6 @@ use tracing::error;
 use url::Url;
 use uuid::Uuid;
 
-/// An error that can occur while *building* a request
-#[derive(Debug, Error)]
-#[error("Error building request {id}")]
-pub struct RequestBuildError {
-    /// ID of the failed request
-    pub id: RequestId,
-    /// There are a lot of different possible error types, so storing an anyhow
-    /// is easiest
-    #[source]
-    pub error: anyhow::Error,
-}
-
-/// An error that can occur during a request. This does *not* including building
-/// errors.
-#[derive(Debug, Error)]
-#[error(
-    "Error executing request for `{}` (request `{}`)",
-    .request.recipe_id,
-    .request.id,
-)]
-pub struct RequestError {
-    /// Underlying error. This will always be a `reqwest::Error`, but wrapping
-    /// it in anyhow makes it easier to render
-    #[source]
-    pub error: anyhow::Error,
-    /// The request that caused all this ruckus
-    pub request: Arc<Request>,
-    /// When was the request launched?
-    pub start_time: DateTime<Utc>,
-    /// When did the error occur?
-    pub end_time: DateTime<Utc>,
-}
-
 /// Unique ID for a single launched request
 #[derive(
     Copy, Clone, Debug, Display, Eq, Hash, PartialEq, Serialize, Deserialize,
@@ -80,6 +47,7 @@ impl Default for RequestId {
 /// [HttpEngine::send](super::HttpEngine::send) when a response is received
 /// successfully for a sent request.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct RequestRecord {
     /// ID to uniquely refer to this record. Useful for historical records.
     pub id: RequestId,
@@ -176,6 +144,7 @@ impl Request {
 /// This intentionally does not implement Clone, because responses could
 /// potentially be very large.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Response {
     #[serde(with = "cereal::serde_status_code")]
     pub status: StatusCode,
@@ -340,6 +309,56 @@ impl PartialEq for Body {
     fn eq(&self, other: &Self) -> bool {
         // Ignore derived data
         self.data == other.data
+    }
+}
+
+/// An error that can occur while *building* a request
+#[derive(Debug, Error)]
+#[error("Error building request {id}")]
+pub struct RequestBuildError {
+    /// ID of the failed request
+    pub id: RequestId,
+    /// There are a lot of different possible error types, so storing an anyhow
+    /// is easiest
+    #[source]
+    pub error: anyhow::Error,
+}
+
+#[cfg(test)]
+impl PartialEq for RequestBuildError {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.error.to_string() == other.error.to_string()
+    }
+}
+
+/// An error that can occur during a request. This does *not* including building
+/// errors.
+#[derive(Debug, Error)]
+#[error(
+    "Error executing request for `{}` (request `{}`)",
+    .request.recipe_id,
+    .request.id,
+)]
+pub struct RequestError {
+    /// Underlying error. This will always be a `reqwest::Error`, but wrapping
+    /// it in anyhow makes it easier to render
+    #[source]
+    pub error: anyhow::Error,
+    /// The request that caused all this ruckus
+    pub request: Arc<Request>,
+    /// When was the request launched?
+    pub start_time: DateTime<Utc>,
+    /// When did the error occur?
+    pub end_time: DateTime<Utc>,
+}
+
+#[cfg(test)]
+impl PartialEq for RequestError {
+    fn eq(&self, other: &Self) -> bool {
+        self.error.to_string() == other.error.to_string()
+            && self.request == other.request
+            && self.start_time == other.start_time
+            && self.end_time == other.end_time
     }
 }
 

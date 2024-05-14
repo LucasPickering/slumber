@@ -1,10 +1,11 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
-    collection::{Collection, Profile, Recipe},
+    collection::{Collection, Profile, ProfileId, Recipe, RecipeId},
+    http::RecipeOptions,
     tui::{
         input::Action,
-        message::{Message, MessageSender, RequestConfig},
+        message::MessageSender,
         view::{
             common::actions::ActionsModal,
             component::{
@@ -12,8 +13,7 @@ use crate::{
                 profile_select::ProfilePane,
                 recipe_list::RecipeListPane,
                 recipe_pane::{RecipePane, RecipePaneProps},
-                request_pane::{RequestPane, RequestPaneProps},
-                response_pane::{ResponsePane, ResponsePaneProps},
+                record_pane::{RecordPane, RecordPaneProps},
             },
             draw::{Draw, DrawMetadata},
             event::{Event, EventHandler, EventQueue, Update},
@@ -51,9 +51,7 @@ pub struct PrimaryView {
     #[debug(skip)]
     recipe_pane: Component<RecipePane>,
     #[debug(skip)]
-    request_pane: Component<RequestPane>,
-    #[debug(skip)]
-    response_pane: Component<ResponsePane>,
+    record_pane: Component<RecordPane>,
 }
 
 pub struct PrimaryViewProps<'a> {
@@ -77,8 +75,7 @@ pub enum PrimaryPane {
     #[default]
     RecipeList,
     Recipe,
-    Request,
-    Response,
+    Record,
 }
 
 /// The various things that can be requested (haha get it, requested) to be
@@ -88,10 +85,8 @@ pub enum PrimaryPane {
 enum FullscreenMode {
     /// Fullscreen the active request recipe
     Recipe,
-    /// Fullscreen the active request
-    Request,
-    /// Fullscreen the active response
-    Response,
+    /// Fullscreen the active request/response
+    Record,
 }
 
 /// Sentinel type for propagating an even that closes fullscreen mode
@@ -122,8 +117,7 @@ impl PrimaryView {
             recipe_list_pane,
             profile_pane,
             recipe_pane: RecipePane::new(messages_tx).into(),
-            request_pane: Default::default(),
-            response_pane: Default::default(),
+            record_pane: Default::default(),
         }
     }
 
@@ -133,9 +127,22 @@ impl PrimaryView {
         self.recipe_list_pane.data().selected_recipe()
     }
 
+    pub fn selected_recipe_id(&self) -> Option<&RecipeId> {
+        self.selected_recipe().map(|recipe| &recipe.id)
+    }
+
     /// Which profile in the list is selected? `None` iff the list is empty
     pub fn selected_profile(&self) -> Option<&Profile> {
         self.profile_pane.data().selected_profile()
+    }
+
+    pub fn selected_profile_id(&self) -> Option<&ProfileId> {
+        self.selected_profile().map(|profile| &profile.id)
+    }
+
+    /// Generate a [RecipeOptions] instance based on current UI state
+    pub fn recipe_options(&self) -> RecipeOptions {
+        self.recipe_pane.data().recipe_options()
     }
 
     /// Draw the "normal" view, when nothing is full
@@ -153,10 +160,9 @@ impl PrimaryView {
         let [profile_area, recipes_area] =
             Layout::vertical([Constraint::Length(3), Constraint::Min(0)])
                 .areas(left_area);
-        let [recipe_area, request_area, response_area] =
+        let [recipe_area, request_response_area] =
             self.get_right_column_layout(right_area);
 
-        // Primary panes
         self.profile_pane.draw(frame, (), profile_area, true);
         self.recipe_list_pane.draw(
             frame,
@@ -176,21 +182,18 @@ impl PrimaryView {
             recipe_area,
             self.is_selected(PrimaryPane::Recipe),
         );
-        self.request_pane.draw(
+
+        self.record_pane.draw(
             frame,
-            RequestPaneProps {
-                active_request: props.active_request,
+            RecordPaneProps {
+                selected_recipe_node: self
+                    .recipe_list_pane
+                    .data()
+                    .selected_node(),
+                request_state: props.active_request,
             },
-            request_area,
-            self.is_selected(PrimaryPane::Request),
-        );
-        self.response_pane.draw(
-            frame,
-            ResponsePaneProps {
-                active_request: props.active_request,
-            },
-            response_area,
-            self.is_selected(PrimaryPane::Response),
+            request_response_area,
+            self.is_selected(PrimaryPane::Record),
         );
     }
 
@@ -209,21 +212,15 @@ impl PrimaryView {
     }
 
     /// Get layout for the right column of panes
-    fn get_right_column_layout(&self, area: Rect) -> [Rect; 3] {
+    fn get_right_column_layout(&self, area: Rect) -> [Rect; 2] {
         // Split right column vertically. Expand the currently selected pane
-        let (top, middle, bottom) = if self.is_selected(PrimaryPane::Recipe) {
-            (3, 1, 1)
-        } else if self.is_selected(PrimaryPane::Request) {
-            (1, 3, 1)
-        } else if self.is_selected(PrimaryPane::Response) {
-            (1, 1, 3)
-        } else {
-            (1, 1, 1) // Default to even sizing
+        let (top, bottom) = match self.selected_pane.selected() {
+            PrimaryPane::Recipe => (2, 1),
+            PrimaryPane::Record | PrimaryPane::RecipeList => (1, 2),
         };
-        let denominator = top + middle + bottom;
+        let denominator = top + bottom;
         Layout::vertical([
             Constraint::Ratio(top, denominator),
-            Constraint::Ratio(middle, denominator),
             Constraint::Ratio(bottom, denominator),
         ])
         .areas(area)
@@ -233,33 +230,6 @@ impl PrimaryView {
 impl EventHandler for PrimaryView {
     fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
         match &event {
-            // Load latest request for selected recipe from database
-            Event::HttpLoadRequest => {
-                if let Some(recipe) = self.selected_recipe() {
-                    messages_tx.send(Message::RequestLoad {
-                        profile_id: self
-                            .selected_profile()
-                            .map(|profile| profile.id.clone()),
-                        recipe_id: recipe.id.clone(),
-                    });
-                }
-            }
-            // Send HTTP request
-            Event::HttpSendRequest => {
-                if let Some(recipe) = self.selected_recipe() {
-                    messages_tx.send(Message::HttpBeginRequest(
-                        RequestConfig {
-                            // Reach into the children to grab state (ugly!)
-                            recipe_id: recipe.id.clone(),
-                            profile_id: self
-                                .selected_profile()
-                                .map(|profile| profile.id.clone()),
-                            options: self.recipe_pane.data().recipe_options(),
-                        },
-                    ));
-                }
-            }
-
             // Input messages
             Event::Input {
                 action: Some(action),
@@ -288,11 +258,8 @@ impl EventHandler for PrimaryView {
                 Action::SelectRecipe => {
                     self.selected_pane.select(&PrimaryPane::Recipe)
                 }
-                Action::SelectRequest => {
-                    self.selected_pane.select(&PrimaryPane::Request)
-                }
                 Action::SelectResponse => {
-                    self.selected_pane.select(&PrimaryPane::Response)
+                    self.selected_pane.select(&PrimaryPane::Record)
                 }
 
                 // Toggle fullscreen
@@ -304,11 +271,8 @@ impl EventHandler for PrimaryView {
                         PrimaryPane::Recipe => {
                             self.toggle_fullscreen(FullscreenMode::Recipe)
                         }
-                        PrimaryPane::Request => {
-                            self.toggle_fullscreen(FullscreenMode::Request)
-                        }
-                        PrimaryPane::Response => {
-                            self.toggle_fullscreen(FullscreenMode::Response)
+                        PrimaryPane::Record => {
+                            self.toggle_fullscreen(FullscreenMode::Record)
                         }
                     }
                 }
@@ -338,8 +302,7 @@ impl EventHandler for PrimaryView {
             self.profile_pane.as_child(),
             self.recipe_list_pane.as_child(),
             self.recipe_pane.as_child(),
-            self.request_pane.as_child(),
-            self.response_pane.as_child(),
+            self.record_pane.as_child(),
         ]
     }
 }
@@ -364,18 +327,14 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 metadata.area(),
                 true,
             ),
-            Some(FullscreenMode::Request) => self.request_pane.draw(
+            Some(FullscreenMode::Record) => self.record_pane.draw(
                 frame,
-                RequestPaneProps {
-                    active_request: props.active_request,
-                },
-                metadata.area(),
-                true,
-            ),
-            Some(FullscreenMode::Response) => self.response_pane.draw(
-                frame,
-                ResponsePaneProps {
-                    active_request: props.active_request,
+                RecordPaneProps {
+                    selected_recipe_node: self
+                        .recipe_list_pane
+                        .data()
+                        .selected_node(),
+                    request_state: props.active_request,
                 },
                 metadata.area(),
                 true,

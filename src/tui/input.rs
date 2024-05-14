@@ -227,8 +227,7 @@ impl Default for InputEngine {
                 Action::SelectProfileList => KeyCode::Char('p').into(),
                 Action::SelectRecipeList => KeyCode::Char('l').into(),
                 Action::SelectRecipe => KeyCode::Char('c').into(),
-                Action::SelectRequest => KeyCode::Char('r').into(),
-                Action::SelectResponse => KeyCode::Char('s').into(),
+                Action::SelectResponse => KeyCode::Char('r').into(),
                 // ^^^^^ If making changes, make sure to update the docs ^^^^^
             },
         }
@@ -311,11 +310,9 @@ pub enum Action {
     SelectRecipeList,
     /// Select recipe pane
     SelectRecipe,
-    /// Select request pane
-    SelectRequest,
     /// Select response pane
+    #[serde(alias = "select_request")] // Backward compatibility
     SelectResponse,
-    //
     // ^^^^^ If making changes, make sure to update the docs ^^^^^
 }
 
@@ -336,7 +333,6 @@ impl Action {
             | Action::SelectProfileList
             | Action::SelectRecipeList
             | Action::SelectRecipe
-            | Action::SelectRequest
             | Action::SelectResponse => false,
             // Most actions should not be hidden
             _ => true,

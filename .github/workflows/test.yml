@@ -64,6 +64,31 @@ jobs:
           command: clippy
           args: --all-targets --all-features -- -D clippy::all'
 
+  doc:
+    name: Check Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Cache Rust files
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Doc
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --no-deps --all-features --document-private-items
+        env:
+          RUSTDOCFLAGS: -D warnings
+
   test:
     name: Test
     runs-on: ubuntu-latest

@@ -4,32 +4,30 @@ use crate::{
     http::{Body, Query},
     tui::{
         input::Action,
-        message::MessageSender,
         view::{
             common::{text_box::TextBox, text_window::TextWindow},
             draw::{Draw, DrawMetadata},
-            event::{Event, EventHandler, EventQueue, Update},
+            event::{Event, EventHandler, Update},
             state::StateCell,
-            Component,
+            Component, ViewContext,
         },
     },
     util::{MaybeStr, ResultExt},
 };
 use anyhow::Context;
-use derive_more::Debug;
 use ratatui::{
     layout::{Constraint, Layout},
     Frame,
 };
 use serde_json_path::JsonPath;
 use std::cell::Cell;
+use Debug;
 
 /// Display text body of a request/response
 #[derive(Debug)]
 pub struct RecordBody {
     /// Body text content. State cell allows us to reset this whenever the
     /// request changes
-    #[debug(skip)]
     text_window: StateCell<Option<Query>, Component<TextWindow<String>>>,
     /// Store whether the body can be queried. True only if it's a recognized
     /// and parsed format
@@ -37,7 +35,6 @@ pub struct RecordBody {
     /// Expression used to filter the content of the body down
     query: Option<Query>,
     /// Where the user enters their body query
-    #[debug(skip)]
     query_text_box: Component<TextBox>,
 }
 
@@ -69,7 +66,7 @@ impl Default for RecordBody {
                 .with_validator(|text| JsonPath::parse(text).is_ok())
                 // Callback triggers an event, so we can modify our own state
                 .with_on_submit(|text_box| {
-                    EventQueue::push(Event::new_other(QuerySubmit(
+                    ViewContext::push_event(Event::new_other(QuerySubmit(
                         text_box.text().to_owned(),
                     )))
                 })
@@ -79,7 +76,7 @@ impl Default for RecordBody {
 }
 
 impl EventHandler for RecordBody {
-    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::Search),

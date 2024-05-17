@@ -3,17 +3,16 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
-        message::MessageSender,
         view::{
             common::Pane,
             component::primary::PrimaryPane,
             draw::{Draw, DrawMetadata, Generate},
-            event::{Event, EventHandler, EventQueue, Update},
+            event::{Event, EventHandler, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
                 select::SelectState,
             },
-            Component,
+            Component, ViewContext,
         },
     },
 };
@@ -130,13 +129,15 @@ impl RecipeListPane {
 }
 
 impl EventHandler for RecipeListPane {
-    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };
         match action {
             Action::LeftClick => {
-                EventQueue::push(Event::new_other(PrimaryPane::RecipeList));
+                ViewContext::push_event(Event::new_other(
+                    PrimaryPane::RecipeList,
+                ));
             }
             Action::Left => {
                 self.set_selected_collapsed(CollapseState::Collapse);
@@ -267,7 +268,7 @@ fn build_select_state(
     // When highlighting a new recipe, load it from the repo
     fn on_select(_: &mut RecipeNode) {
         // If a recipe isn't selected, this will do nothing
-        EventQueue::push(Event::HttpLoadRequest);
+        ViewContext::push_event(Event::HttpSelectRequest(None));
     }
 
     let items = recipes

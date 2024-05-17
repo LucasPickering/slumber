@@ -1,6 +1,5 @@
 use crate::{
     config::Config,
-    db::CollectionDatabase,
     http::HttpEngine,
     tui::{input::InputEngine, view::Styles},
 };
@@ -8,7 +7,7 @@ use std::sync::OnceLock;
 
 /// The singleton value for the context. Initialized once during startup, then
 /// freely available *read only* everywhere.
-static CONTEXT: OnceLock<TuiContext> = OnceLock::new();
+static INSTANCE: OnceLock<TuiContext> = OnceLock::new();
 
 /// Globally available context for the TUI. This is initialized once during
 /// **TUI** creation (not view creation), meaning there is only one per session.
@@ -28,24 +27,20 @@ pub struct TuiContext {
     pub input_engine: InputEngine,
     /// For sending HTTP requests
     pub http_engine: HttpEngine,
-    /// Persistence database. The TUI only ever needs to run DB ops related to
-    /// our collection, so we can use a collection-restricted DB handle
-    pub database: CollectionDatabase,
 }
 
 impl TuiContext {
     /// Initialize global context. Should be called only once, during startup.
-    pub fn init(config: Config, database: CollectionDatabase) {
+    pub fn init(config: Config) {
         let styles = Styles::new(&config.theme);
         let input_engine = InputEngine::new(config.input_bindings.clone());
-        let http_engine = HttpEngine::new(&config, database.clone());
-        CONTEXT
+        let http_engine = HttpEngine::new(&config);
+        INSTANCE
             .set(Self {
                 config,
                 styles,
                 input_engine,
                 http_engine,
-                database,
             })
             .expect("Global context is already initialized");
     }
@@ -54,6 +49,6 @@ impl TuiContext {
     pub fn get() -> &'static Self {
         // Right now the theme isn't configurable so this is fine. To make it
         // configurable we'll need to populate the static value during startup
-        CONTEXT.get().expect("Global context is not initialized")
+        INSTANCE.get().expect("Global context is not initialized")
     }
 }

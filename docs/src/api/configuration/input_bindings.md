@@ -53,6 +53,7 @@ input_bindings:
 | `end`                 | `end`                       |
 | `submit`              | `enter`                     |
 | `cancel`              | `esc`                       |
+| `history`             | `h`                         |
 | `search`              | `/`                         |
 | `reload_collection`   | `f5`                        |
 | `fullscreen`          | `f`                         |

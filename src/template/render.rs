@@ -367,7 +367,7 @@ impl<'a> ChainTemplateSource<'a> {
             || -> Result<Option<RequestRecord>, ChainError> {
                 context
                     .database
-                    .get_last_request(
+                    .get_latest_request(
                         context.selected_profile.as_ref(),
                         recipe_id,
                     )
@@ -399,7 +399,7 @@ impl<'a> ChainTemplateSource<'a> {
                     .http_engine
                     .clone()
                     .ok_or(TriggeredRequestError::NotAllowed)?
-                    .send(Arc::new(request))
+                    .send(&context.database, Arc::new(request))
                     .await
                     .map_err(TriggeredRequestError::Send)
             };

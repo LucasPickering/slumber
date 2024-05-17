@@ -3,11 +3,11 @@
 use crate::tui::{
     context::TuiContext,
     input::Action,
-    message::MessageSender,
     view::{
         draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, EventQueue, Update},
+        event::{Event, EventHandler, Update},
         state::fixed_select::{FixedSelect, FixedSelectState},
+        ViewContext,
     },
 };
 use ratatui::{
@@ -48,13 +48,13 @@ impl<'a> Generate for Button<'a> {
 /// A collection of buttons. User can cycle between buttons and hit enter to
 /// activate one. When a button is activated, it will emit a dynamic event with
 /// type `T`.
-#[derive(derive_more::Debug, Default)]
+#[derive(Debug, Default)]
 pub struct ButtonGroup<T: FixedSelect> {
     select: FixedSelectState<T>,
 }
 
 impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
-    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };
@@ -63,7 +63,9 @@ impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
             Action::Right => self.select.next(),
             Action::Submit => {
                 // Propagate the selected item as a dynamic event
-                EventQueue::push(Event::new_other(*self.select.selected()));
+                ViewContext::push_event(Event::new_other(
+                    *self.select.selected(),
+                ));
             }
             _ => return Update::Propagate(event),
         }

@@ -1,7 +1,6 @@
 use crate::tui::{
     context::TuiContext,
     input::Action,
-    message::MessageSender,
     view::{
         draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, Update},
@@ -22,9 +21,8 @@ use std::{cell::Cell, cmp, fmt::Debug};
 ///
 /// The generic parameter allows for any type that can be converted to ratatui's
 /// `Text`, e.g. `String` or `TemplatePreview`.
-#[derive(derive_more::Debug, Default)]
+#[derive(Debug, Default)]
 pub struct TextWindow<T> {
-    #[debug(skip)]
     text: T,
     offset_x: u16,
     offset_y: u16,
@@ -92,7 +90,7 @@ impl<T> TextWindow<T> {
 }
 
 impl<T: Debug> EventHandler for TextWindow<T> {
-    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };

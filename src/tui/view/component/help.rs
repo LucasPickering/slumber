@@ -5,6 +5,7 @@ use crate::{
         input::{Action, InputBinding},
         view::{
             common::{modal::Modal, table::Table},
+            context::ViewContext,
             draw::{Draw, DrawMetadata, Generate},
             event::EventHandler,
         },
@@ -68,8 +69,8 @@ impl HelpModal {
 }
 
 impl Modal for HelpModal {
-    fn title(&self) -> &str {
-        "Help"
+    fn title(&self) -> Line<'_> {
+        "Help".into()
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
@@ -85,8 +86,6 @@ impl EventHandler for HelpModal {}
 
 impl Draw for HelpModal {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        let tui_context = TuiContext::get();
-
         // Create layout
         let [collection_area, _, keybindings_area] = Layout::vertical([
             Constraint::Length(Self::GENERAL_LENGTH + 1),
@@ -103,13 +102,12 @@ impl Draw for HelpModal {
                 ("Configuration", Line::from(Config::path().to_string())),
                 (
                     "Collection",
-                    Line::from(
-                        tui_context
-                            .database
+                    Line::from(ViewContext::with_database(|database| {
+                        database
                             .collection_path()
                             .map(|path| path.display().to_string())
-                            .unwrap_or_default(),
-                    ),
+                            .unwrap_or_default()
+                    })),
                 ),
             ]
             .into_iter()

@@ -2,7 +2,7 @@ use crate::{
     cli::Subcommand,
     collection::{CollectionFile, ProfileId, RecipeId},
     config::Config,
-    db::Database,
+    db::{CollectionDatabase, Database},
     http::{HttpEngine, RecipeOptions, Request, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext, TemplateError},
     util::{MaybeStr, ResultExt},
@@ -81,7 +81,7 @@ pub struct BuildRequestCommand {
 #[async_trait]
 impl Subcommand for RequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let (http_engine, request) = self
+        let (database, http_engine, request) = self
             .build_request
             // Don't execute sub-requests in a dry run
             .build_request(global, !self.dry_run)
@@ -107,7 +107,7 @@ impl Subcommand for RequestCommand {
             }
 
             // Run the request
-            let record = http_engine.send(request.into()).await?;
+            let record = http_engine.send(&database, request.into()).await?;
             let status = record.response.status;
 
             // Print stuff!
@@ -153,7 +153,7 @@ impl BuildRequestCommand {
         self,
         global: GlobalArgs,
         trigger_dependencies: bool,
-    ) -> anyhow::Result<(Option<HttpEngine>, Request)> {
+    ) -> anyhow::Result<(CollectionDatabase, Option<HttpEngine>, Request)> {
         let collection_path = CollectionFile::try_path(None, global.file)?;
         let database = Database::load()?.into_collection(&collection_path)?;
         let collection_file = CollectionFile::load(collection_path).await?;
@@ -162,7 +162,7 @@ impl BuildRequestCommand {
         // it's ok to execute subrequests during render
         let http_engine = if trigger_dependencies {
             let config = Config::load()?;
-            Some(HttpEngine::new(&config, database.clone()))
+            Some(HttpEngine::new(&config))
         } else {
             None
         };
@@ -196,7 +196,7 @@ impl BuildRequestCommand {
             selected_profile: self.profile,
             collection,
             http_engine: http_engine.clone(),
-            database,
+            database: database.clone(),
             overrides,
             prompter: Box::new(CliPrompter),
             recursion_count: Default::default(),
@@ -204,7 +204,7 @@ impl BuildRequestCommand {
         let request = RequestBuilder::new(recipe, RecipeOptions::default())
             .build(&template_context)
             .await?;
-        Ok((http_engine, request))
+        Ok((database, http_engine, request))
     }
 }
 

@@ -1,12 +1,9 @@
-use crate::tui::{
-    message::MessageSender,
-    view::{
-        draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, Update},
-        state::{
-            persistence::{Persistable, PersistentContainer},
-            select::{SelectState, SelectStateBuilder, SelectStateData},
-        },
+use crate::tui::view::{
+    draw::{Draw, DrawMetadata},
+    event::{Event, EventHandler, Update},
+    state::{
+        persistence::{Persistable, PersistentContainer},
+        select::{SelectState, SelectStateBuilder, SelectStateData},
     },
 };
 use itertools::Itertools;
@@ -159,8 +156,8 @@ where
     Item: FixedSelect,
     State: Debug + SelectStateData,
 {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
-        self.select.update(messages_tx, event)
+    fn update(&mut self, event: Event) -> Update {
+        self.select.update(event)
     }
 }
 

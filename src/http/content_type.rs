@@ -243,7 +243,7 @@ mod tests {
         let response = Response {
             headers: headers(content_type),
             body: body.into(),
-            ..Response::factory()
+            ..Response::factory(())
         };
         assert_eq!(
             ContentType::parse_response(&response)
@@ -285,7 +285,7 @@ mod tests {
         let response = Response {
             headers,
             body: body.into(),
-            ..Response::factory()
+            ..Response::factory(())
         };
         assert_err!(ContentType::parse_response(&response), expected_error);
     }

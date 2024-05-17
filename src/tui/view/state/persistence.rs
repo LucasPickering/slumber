@@ -2,13 +2,10 @@
 
 use crate::{
     collection::RecipeId,
-    tui::{
-        context::TuiContext,
-        message::MessageSender,
-        view::{
-            component::Component,
-            event::{Event, EventHandler, Update},
-        },
+    tui::view::{
+        component::Component,
+        context::ViewContext,
+        event::{Event, EventHandler, Update},
     },
 };
 use derive_more::{Deref, DerefMut};
@@ -18,7 +15,7 @@ use std::fmt::Debug;
 /// A wrapper for any value that will automatically persist it to the state DB.
 /// The value will be loaded from the DB on creation, and saved to the DB on
 /// drop.
-#[derive(derive_more::Debug, Deref, DerefMut)]
+#[derive(Debug, Deref, DerefMut)]
 pub struct Persistent<T: PersistentContainer> {
     key: PersistentKey,
     #[deref]
@@ -31,11 +28,9 @@ impl<T: PersistentContainer> Persistent<T> {
     /// of the container.
     pub fn new(key: PersistentKey, mut container: T) -> Self {
         // Load saved value from the database, and select it if available
-        if let Ok(Some(value)) =
-            TuiContext::get()
-                .database
-                .get_ui::<_, <T::Value as Persistable>::Persisted>(&key)
-        {
+        if let Ok(Some(value)) = ViewContext::with_database(|database| {
+            database.get_ui::<_, <T::Value as Persistable>::Persisted>(&key)
+        }) {
             container.set(value);
         }
 
@@ -48,8 +43,8 @@ impl<T> EventHandler for Persistent<T>
 where
     T: EventHandler + PersistentContainer,
 {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
-        self.container.update(messages_tx, event)
+    fn update(&mut self, event: Event) -> Update {
+        self.container.update(event)
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
@@ -59,10 +54,12 @@ where
 
 impl<T: PersistentContainer> Drop for Persistent<T> {
     fn drop(&mut self) {
-        let _ = TuiContext::get().database.set_ui(
-            &self.key,
-            self.container.get().map(Persistable::get_persistent),
-        );
+        let _ = ViewContext::with_database(|database| {
+            database.set_ui(
+                &self.key,
+                self.container.get().map(Persistable::get_persistent),
+            )
+        });
     }
 }
 
@@ -81,6 +78,8 @@ pub enum PersistentKey {
     ProfileId,
     /// Selected recipe/folder in the tree
     RecipeId,
+    /// Selected request. Should belong to the persisted profile/recipe
+    RequestId,
     /// Set of folders that are collapsed in the recipe tree
     RecipeCollapsed,
     /// Selected tab in the recipe pane
@@ -152,11 +151,12 @@ impl<T: Persistable<Persisted = T>> PersistentContainer for T {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
+    use crate::{db::CollectionDatabase, test_util::*};
     use rstest::rstest;
 
     #[rstest]
-    fn test_persistent(_tui_context: &TuiContext) {
+    fn test_persistent(database: CollectionDatabase, messages: MessageQueue) {
+        ViewContext::init(database, messages.tx().clone());
         let mut persistent = Persistent::new(PersistentKey::RecipeId, 0);
         *persistent = 37;
         // Trigger the save

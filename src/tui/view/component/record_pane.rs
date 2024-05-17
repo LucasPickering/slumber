@@ -4,7 +4,6 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
-        message::MessageSender,
         view::{
             common::{tabs::Tabs, Pane},
             component::{
@@ -17,9 +16,9 @@ use crate::{
                 Component,
             },
             draw::{Draw, DrawMetadata, Generate},
-            event::{Event, EventHandler, EventQueue, Update},
+            event::{Event, EventHandler, Update},
             state::persistence::PersistentKey,
-            RequestState,
+            RequestState, ViewContext,
         },
     },
     util::doc_link,
@@ -28,6 +27,7 @@ use derive_more::Display;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
     text::{Line, Text},
+    widgets::block::Title,
     Frame,
 };
 use serde::{Deserialize, Serialize};
@@ -38,9 +38,8 @@ use strum::{EnumCount, EnumIter};
 /// between request and response. Parent is responsible for switching between
 /// tabs, because switching is done by hotkey and we can't see hotkeys if the
 /// pane isn't selected.
-#[derive(derive_more::Debug)]
+#[derive(Debug)]
 pub struct RecordPane {
-    #[debug(skip)]
     tabs: Component<Tabs<Tab>>,
     request: Component<RequestView>,
     response_headers: Component<ResponseHeadersView>,
@@ -84,10 +83,10 @@ enum Tab {
 }
 
 impl EventHandler for RecordPane {
-    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event.action() {
             Some(Action::LeftClick) => {
-                EventQueue::push(Event::new_other(PrimaryPane::Record));
+                ViewContext::push_event(Event::new_other(PrimaryPane::Record));
             }
             _ => return Update::Propagate(event),
         }
@@ -111,17 +110,23 @@ impl<'a> Draw<RecordPaneProps<'a>> for RecordPane {
         props: RecordPaneProps<'a>,
         metadata: DrawMetadata,
     ) {
-        let title = TuiContext::get()
-            .input_engine
-            .add_hint("Request / Response", Action::SelectResponse);
-        let block = Pane {
+        let input_engine = &TuiContext::get().input_engine;
+        let title =
+            input_engine.add_hint("Request / Response", Action::SelectResponse);
+        let mut block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),
         }
         .generate();
+        // If a recipe is selected, history is available so show the hint
+        if matches!(props.selected_recipe_node, Some(RecipeNode::Recipe(_))) {
+            let text = input_engine.add_hint("History", Action::History);
+            block = block.title(Title::from(text).alignment(Alignment::Right));
+        }
         frame.render_widget(&block, metadata.area());
         let area = block.inner(metadata.area());
 
+        // Empty states
         match props.selected_recipe_node {
             None => {
                 frame.render_widget(
@@ -201,7 +206,7 @@ impl<'a> Draw<RecordPaneProps<'a>> for RecordPane {
             Some(RequestState::Building { .. }) => {
                 frame.render_widget("Initializing request...", area)
             }
-            Some(RequestState::BuildError { error }) => {
+            Some(RequestState::BuildError { error, .. }) => {
                 frame.render_widget(error.generate(), area)
             }
             Some(RequestState::Loading { request, .. }) => {

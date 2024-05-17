@@ -3,7 +3,7 @@
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    http::{RequestId, RequestRecord},
+    http::{RequestId, RequestRecord, RequestRecordSummary},
     util::{
         paths::{DataDirectory, FileGuard},
         ResultExt,
@@ -11,6 +11,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use derive_more::Display;
+use reqwest::StatusCode;
 use rusqlite::{
     named_params,
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
@@ -24,7 +25,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 use uuid::Uuid;
 
 /// A SQLite database for persisting data. Generally speaking, any error that
@@ -261,7 +262,7 @@ impl Database {
 
 /// A collection-specific database handle. This is a wrapper around a [Database]
 /// that restricts all queries to a specific collection ID. Use
-/// [Database::into_collection] to obtain one.
+/// [Database::into_collection] to obtain one. You can freely clone this.
 #[derive(Clone, Debug)]
 pub struct CollectionDatabase {
     collection_id: CollectionId,
@@ -287,14 +288,46 @@ impl CollectionDatabase {
             .map(PathBuf::from)
     }
 
+    /// Get a request by ID, or `None` if it does not exist in history.
+    pub fn get_request(
+        &self,
+        request_id: RequestId,
+    ) -> anyhow::Result<Option<RequestRecord>> {
+        trace!(request_id = %request_id, "Fetching request from database");
+        self.database
+            .connection()
+            .query_row(
+                "SELECT * FROM requests
+                WHERE collection_id = :collection_id
+                    AND id = :request_id
+                ORDER BY start_time DESC LIMIT 1",
+                named_params! {
+                    // Include collection ID just to be extra safe
+                    ":collection_id": self.collection_id,
+                    ":request_id": request_id,
+                },
+                |row| row.try_into(),
+            )
+            .optional()
+            .with_context(|| {
+                format!("Error fetching request {} from database", request_id)
+            })
+            .traced()
+    }
+
     /// Get the most recent request+response for a profile+recipe, or `None` if
     /// there has never been one received. If the given profile is `None`, match
     /// all requests that have no associated profile.
-    pub fn get_last_request(
+    pub fn get_latest_request(
         &self,
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
     ) -> anyhow::Result<Option<RequestRecord>> {
+        trace!(
+            profile_id = ?profile_id,
+            recipe_id = %recipe_id,
+            "Fetching last request from database"
+        );
         self.database
             .connection()
             .query_row(
@@ -368,6 +401,40 @@ impl CollectionDatabase {
         Ok(())
     }
 
+    /// Get a list of all requests for a profile+recipe combo
+    pub fn get_all_requests(
+        &self,
+        profile_id: Option<&ProfileId>,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<Vec<RequestRecordSummary>> {
+        trace!(
+            profile_id = ?profile_id,
+            recipe_id = %recipe_id,
+            "Fetching request history from database"
+        );
+        self.database
+            .connection()
+            .prepare(
+                "SELECT id, start_time, end_time, status_code FROM requests
+                WHERE collection_id = :collection_id
+                    AND profile_id IS :profile_id
+                    AND recipe_id = :recipe_id
+                ORDER BY start_time DESC",
+            )?
+            .query_map(
+                named_params! {
+                    ":collection_id": self.collection_id,
+                    ":profile_id": profile_id,
+                    ":recipe_id": recipe_id,
+                },
+                |row| row.try_into(),
+            )
+            .context("Error fetching request history from database")
+            .traced()?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .context("Error extracting request history")
+    }
+
     /// Get the value of a UI state field
     pub fn get_ui<K, V>(&self, key: K) -> anyhow::Result<Option<V>>
     where
@@ -425,7 +492,7 @@ impl CollectionDatabase {
 /// Create an in-memory DB, only for testing
 #[cfg(test)]
 impl crate::test_util::Factory for Database {
-    fn factory() -> Self {
+    fn factory(_: ()) -> Self {
         let mut connection = Connection::open_in_memory().unwrap();
         Self::migrate(&mut connection).unwrap();
         Self {
@@ -437,8 +504,8 @@ impl crate::test_util::Factory for Database {
 /// Create an in-memory DB, only for testing
 #[cfg(test)]
 impl crate::test_util::Factory for CollectionDatabase {
-    fn factory() -> Self {
-        Database::factory()
+    fn factory(_: ()) -> Self {
+        Database::factory(())
             .into_collection(Path::new("./slumber.yml"))
             .expect("Error initializing DB collection")
     }
@@ -549,11 +616,11 @@ impl<T: DeserializeOwned> FromSql for ByteEncoded<T> {
     }
 }
 
-/// Convert from `SELECT * FROM requests` to `RequestRecord`
+/// Convert from `SELECT * FROM requests`
 impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
     type Error = rusqlite::Error;
 
-    fn try_from(row: &Row<'a>) -> Result<Self, Self::Error> {
+    fn try_from(row: &'a Row<'b>) -> Result<Self, Self::Error> {
         Ok(Self {
             id: row.get("id")?,
             start_time: row.get("start_time")?,
@@ -565,22 +632,53 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
     }
 }
 
+/// Convert from SQL row
+impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecordSummary {
+    type Error = rusqlite::Error;
+
+    fn try_from(row: &'a Row<'b>) -> Result<Self, Self::Error> {
+        // Use a wrapper struct to deserialize the status code from an int
+        struct StatusCodeWrapper(StatusCode);
+        fn other<T>(error: T) -> FromSqlError
+        where
+            T: 'static + std::error::Error + Send + Sync,
+        {
+            FromSqlError::Other(Box::new(error))
+        }
+        impl FromSql for StatusCodeWrapper {
+            fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+                let code: u16 = value.as_i64()?.try_into().map_err(other)?;
+                let code = StatusCode::from_u16(code as u16).map_err(other)?;
+                Ok(Self(code))
+            }
+        }
+
+        Ok(Self {
+            id: row.get("id")?,
+            start_time: row.get("start_time")?,
+            end_time: row.get("end_time")?,
+            status: row.get::<_, StatusCodeWrapper>("status_code")?.0,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{http::Request, test_util::*};
+    use crate::test_util::*;
+    use itertools::Itertools;
     use std::collections::HashMap;
 
     #[test]
     fn test_merge() {
-        let database = Database::factory();
+        let database = Database::factory(());
         let path1 = Path::new("slumber.yml");
         let path2 = Path::new("README.md"); // Has to be a real file
         let collection1 = database.clone().into_collection(path1).unwrap();
         let collection2 = database.clone().into_collection(path2).unwrap();
 
-        let record1 = RequestRecord::factory();
-        let record2 = RequestRecord::factory();
+        let record1 = RequestRecord::factory(());
+        let record2 = RequestRecord::factory(());
         let profile_id = record1.request.profile_id.as_ref();
         let recipe_id = &record1.request.recipe_id;
         let ui_key = "key1";
@@ -592,7 +690,7 @@ mod tests {
         // Sanity checks
         assert_eq!(
             collection1
-                .get_last_request(profile_id, recipe_id)
+                .get_latest_request(profile_id, recipe_id)
                 .unwrap()
                 .unwrap()
                 .id,
@@ -604,7 +702,7 @@ mod tests {
         );
         assert_eq!(
             collection2
-                .get_last_request(profile_id, recipe_id)
+                .get_latest_request(profile_id, recipe_id)
                 .unwrap()
                 .unwrap()
                 .id,
@@ -621,7 +719,7 @@ mod tests {
         // Collection 2 values should've overwritten
         assert_eq!(
             collection1
-                .get_last_request(profile_id, recipe_id)
+                .get_latest_request(profile_id, recipe_id)
                 .unwrap()
                 .unwrap()
                 .id,
@@ -642,7 +740,7 @@ mod tests {
     /// Test request storage and retrieval
     #[test]
     fn test_request() {
-        let database = Database::factory();
+        let database = Database::factory(());
         let collection1 = database
             .clone()
             .into_collection(Path::new("slumber.yml"))
@@ -652,7 +750,7 @@ mod tests {
             .into_collection(Path::new("README.md"))
             .unwrap();
 
-        let record2 = RequestRecord::factory();
+        let record2 = RequestRecord::factory(());
         collection2.insert_request(&record2).unwrap();
 
         // We separate requests by 3 columns. Create multiple of each column to
@@ -672,15 +770,10 @@ mod tests {
                 for recipe_id in ["recipe1", "recipe2"] {
                     let recipe_id: RecipeId = recipe_id.into();
                     let profile_id = profile_id.map(ProfileId::from);
-                    let request = Request {
-                        profile_id: profile_id.clone(),
-                        recipe_id: recipe_id.clone(),
-                        ..Request::factory()
-                    };
-                    let record = RequestRecord {
-                        request: request.into(),
-                        ..RequestRecord::factory()
-                    };
+                    let record = RequestRecord::factory((
+                        profile_id.clone(),
+                        recipe_id.clone(),
+                    ));
                     collection.insert_request(&record).unwrap();
                     request_ids.insert(
                         (collection.collection_id(), profile_id, recipe_id),
@@ -702,7 +795,7 @@ mod tests {
                     // Leave the Option here so a non-match will trigger a handy
                     // assertion error
                     let record_id = collection
-                        .get_last_request(profile_id.as_ref(), &recipe_id)
+                        .get_latest_request(profile_id.as_ref(), &recipe_id)
                         .unwrap()
                         .map(|record| record.id);
                     let expected_id = request_ids.get(&(
@@ -722,10 +815,70 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_load_all_requests() {
+        let database = CollectionDatabase::factory(());
+
+        // Create and insert multiple requests per profile+recipe.
+        // Store the created request ID for each cell in the matrix, so we can
+        // compare to what the DB spits back later
+        let mut request_ids: HashMap<
+            (Option<ProfileId>, RecipeId),
+            Vec<RequestId>,
+        > = Default::default();
+        for profile_id in [None, Some("profile1"), Some("profile2")] {
+            for recipe_id in ["recipe1", "recipe2"] {
+                let recipe_id: RecipeId = recipe_id.into();
+                let profile_id = profile_id.map(ProfileId::from);
+                let mut ids = (0..3)
+                    .map(|_| {
+                        let record = RequestRecord::factory((
+                            profile_id.clone(),
+                            recipe_id.clone(),
+                        ));
+                        database.insert_request(&record).unwrap();
+                        record.id
+                    })
+                    .collect_vec();
+                // Order newest->oldest, that's the response we expect
+                ids.reverse();
+                request_ids.insert((profile_id, recipe_id), ids);
+            }
+        }
+
+        // Try to find each inserted recipe individually. Also try some
+        // expected non-matches
+        for profile_id in [None, Some("profile1"), Some("extra_profile")] {
+            for recipe_id in ["recipe1", "extra_recipe"] {
+                let profile_id = profile_id.map(ProfileId::from);
+                let recipe_id = recipe_id.into();
+
+                // Leave the Option here so a non-match will trigger a handy
+                // assertion error
+                let ids = database
+                    .get_all_requests(profile_id.as_ref(), &recipe_id)
+                    .unwrap()
+                    .into_iter()
+                    .map(|record| record.id)
+                    .collect_vec();
+                let expected_id = request_ids
+                    .get(&(profile_id.clone(), recipe_id.clone()))
+                    .cloned()
+                    .unwrap_or_default();
+
+                assert_eq!(
+                    ids, expected_id,
+                    "Requests mismatch for \
+                    profile = {profile_id:?}, recipe = {recipe_id}"
+                );
+            }
+        }
+    }
+
     /// Test UI state storage and retrieval
     #[test]
     fn test_ui_state() {
-        let database = Database::factory();
+        let database = Database::factory(());
         let collection1 = database
             .clone()
             .into_collection(Path::new("slumber.yml"))

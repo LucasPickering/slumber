@@ -7,7 +7,7 @@ pub mod view;
 use crate::{
     collection::{Collection, CollectionFile, ProfileId},
     config::Config,
-    db::Database,
+    db::{CollectionDatabase, Database},
     http::{Request, RequestBuilder},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
@@ -20,6 +20,7 @@ use crate::{
     util::{Replaceable, ResultExt},
 };
 use anyhow::{anyhow, Context};
+use chrono::Utc;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, EventStream},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
@@ -45,6 +46,8 @@ use tracing::{debug, error, info, trace};
 #[derive(Debug)]
 pub struct Tui {
     terminal: Term,
+    /// Persistence database, for storing request state, UI state, etc.
+    database: CollectionDatabase,
     /// Receiver for the async message queue, which allows background tasks and
     /// the view to pass data and trigger side effects. Nobody else gets to
     /// touch this
@@ -82,7 +85,7 @@ impl Tui {
         // Load a database for this particular collection
         let database = Database::load()?.into_collection(&collection_path)?;
         // Initialize global view context
-        TuiContext::init(config, database.clone());
+        TuiContext::init(config);
 
         // ===== Initialize collection & view =====
 
@@ -92,7 +95,8 @@ impl Tui {
             .await
             .reported(&messages_tx)
             .unwrap_or_else(|| CollectionFile::with_path(collection_path));
-        let view = View::new(&collection_file, messages_tx.clone());
+        let view =
+            View::new(&collection_file, database.clone(), messages_tx.clone());
 
         // The code to revert the terminal takeover is in `Tui::drop`, so we
         // shouldn't take over the terminal until right before creating the
@@ -101,6 +105,7 @@ impl Tui {
 
         let app = Tui {
             terminal,
+            database,
             messages_rx,
             messages_tx,
 
@@ -199,42 +204,19 @@ impl Tui {
             Message::HttpBeginRequest(request_config) => {
                 self.send_request(request_config)?
             }
-            Message::HttpBuildError {
-                profile_id,
-                recipe_id,
-                error,
-            } => {
-                self.view.set_request_state(
-                    profile_id,
-                    recipe_id,
-                    RequestState::BuildError { error },
-                );
+            Message::HttpBuildError { error } => {
+                self.view
+                    .set_request_state(RequestState::BuildError { error });
             }
-            Message::HttpLoading {
-                profile_id,
-                recipe_id,
-                request,
-            } => {
-                self.view.set_request_state(
-                    profile_id,
-                    recipe_id,
-                    RequestState::loading(request),
-                );
+            Message::HttpLoading { request } => {
+                self.view.set_request_state(RequestState::loading(request))
             }
             Message::HttpComplete(result) => {
-                let (profile_id, recipe_id, state) = match result {
-                    Ok(record) => (
-                        record.request.profile_id.clone(),
-                        record.request.recipe_id.clone(),
-                        RequestState::response(record),
-                    ),
-                    Err(error) => (
-                        error.request.profile_id.clone(),
-                        error.request.recipe_id.clone(),
-                        RequestState::RequestError { error },
-                    ),
+                let state = match result {
+                    Ok(record) => RequestState::response(record),
+                    Err(error) => RequestState::RequestError { error },
                 };
-                self.view.set_request_state(profile_id, recipe_id, state);
+                self.view.set_request_state(state);
             }
 
             // Force quit short-circuits the view/message cycle, to make sure
@@ -349,11 +331,12 @@ impl Tui {
 
         // Rebuild the whole view, because tons of things can change. Drop the
         // old one *first* to make sure UI state is saved before being restored
+        let database = self.database.clone();
         let messages_tx = self.messages_tx();
         let collection_file = &self.collection_file;
         self.view.replace(move |old| {
             drop(old);
-            View::new(collection_file, messages_tx)
+            View::new(collection_file, database, messages_tx)
         });
     }
 
@@ -445,14 +428,16 @@ impl Tui {
 
         // Mark request state as building
         let request_id = builder.id();
-        self.view.set_request_state(
-            profile_id.clone(),
-            recipe_id.clone(),
-            RequestState::building(request_id),
-        );
+        self.view.set_request_state(RequestState::Building {
+            id: request_id,
+            start_time: Utc::now(),
+            profile_id,
+            recipe_id,
+        });
 
         // We can't use self.spawn here because HTTP errors are handled
         // differently from all other error types
+        let database = self.database.clone();
         tokio::spawn(async move {
             let context = TuiContext::get();
 
@@ -462,23 +447,18 @@ impl Tui {
                 .await
                 .map_err(|error| {
                     // Report the error, but don't actually return anything
-                    messages_tx.send(Message::HttpBuildError {
-                        profile_id: profile_id.clone(),
-                        recipe_id: recipe_id.clone(),
-                        error,
-                    });
+                    messages_tx.send(Message::HttpBuildError { error });
                 })?
                 .into();
 
             // Report liftoff
             messages_tx.send(Message::HttpLoading {
-                profile_id,
-                recipe_id,
                 request: Arc::clone(&request),
             });
 
             // Send the request and report the result to the main thread
-            let result = context.http_engine.clone().send(request).await;
+            let result =
+                context.http_engine.clone().send(&database, request).await;
             messages_tx.send(Message::HttpComplete(result));
 
             // By returning an empty result, we can use `?` to break out early.
@@ -558,7 +538,7 @@ impl Tui {
             selected_profile: profile_id,
             collection: collection.clone(),
             http_engine: Some(context.http_engine.clone()),
-            database: context.database.clone(),
+            database: self.database.clone(),
             overrides: Default::default(),
             prompter,
             recursion_count: Default::default(),

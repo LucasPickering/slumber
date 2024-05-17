@@ -4,7 +4,7 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
-        message::{Message, MessageSender, RequestConfig},
+        message::{Message, RequestConfig},
         view::{
             common::{
                 actions::ActionsModal,
@@ -16,13 +16,13 @@ use crate::{
             },
             component::primary::PrimaryPane,
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-            event::{Event, EventHandler, EventQueue, Update},
+            event::{Event, EventHandler, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
                 select::SelectState,
                 StateCell,
             },
-            Component,
+            Component, ViewContext,
         },
     },
 };
@@ -42,18 +42,15 @@ use strum::{EnumCount, EnumIter};
 #[derive(Debug)]
 pub struct RecipePane {
     tabs: Component<Tabs<Tab>>,
-    /// Needed for template preview rendering
-    messages_tx: MessageSender,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
     recipe_state: StateCell<RecipeStateKey, RecipeState>,
 }
 
-impl RecipePane {
-    pub fn new(messages_tx: MessageSender) -> Self {
+impl Default for RecipePane {
+    fn default() -> Self {
         Self {
             tabs: Tabs::new(PersistentKey::RecipeTab).into(),
-            messages_tx,
             recipe_state: Default::default(),
         }
     }
@@ -114,7 +111,6 @@ struct RowState {
 enum MenuAction {
     #[display("Copy URL")]
     CopyUrl,
-    // TODO disable this if request doesn't have body
     #[display("Copy Body")]
     CopyBody,
     #[display("Copy as cURL")]
@@ -150,11 +146,7 @@ impl RecipePane {
         }
     }
 
-    fn handle_menu_action(
-        &mut self,
-        messages_tx: &MessageSender,
-        action: MenuAction,
-    ) {
+    fn handle_menu_action(&mut self, action: MenuAction) {
         // Should always be initialized after first render
         let key = self
             .recipe_state
@@ -170,24 +162,26 @@ impl RecipePane {
             MenuAction::CopyBody => Message::CopyRequestBody(request_config),
             MenuAction::CopyCurl => Message::CopyRequestCurl(request_config),
         };
-        messages_tx.send(message);
+        ViewContext::send_message(message);
     }
 }
 
 impl EventHandler for RecipePane {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         if let Some(action) = event.action() {
             match action {
                 Action::LeftClick => {
-                    EventQueue::push(Event::new_other(PrimaryPane::Recipe));
+                    ViewContext::push_event(Event::new_other(
+                        PrimaryPane::Recipe,
+                    ));
                 }
-                Action::OpenActions => {
-                    EventQueue::open_modal_default::<ActionsModal<MenuAction>>()
-                }
+                Action::OpenActions => ViewContext::open_modal_default::<
+                    ActionsModal<MenuAction>,
+                >(),
                 _ => return Update::Propagate(event),
             }
         } else if let Some(menu_action) = event.other::<MenuAction>() {
-            self.handle_menu_action(messages_tx, *menu_action);
+            self.handle_menu_action(*menu_action);
         } else {
             return Update::Propagate(event);
         }
@@ -260,13 +254,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                     selected_profile_id: props.selected_profile_id.cloned(),
                     recipe_id: recipe.id.clone(),
                 },
-                || {
-                    RecipeState::new(
-                        &self.messages_tx,
-                        recipe,
-                        props.selected_profile_id,
-                    )
-                },
+                || RecipeState::new(recipe, props.selected_profile_id),
             );
 
             // First line: Method + URL
@@ -316,11 +304,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
 impl RecipeState {
     /// Initialize new recipe state. Should be called whenever the recipe or
     /// profile changes
-    fn new(
-        messages_tx: &MessageSender,
-        recipe: &Recipe,
-        selected_profile_id: Option<&ProfileId>,
-    ) -> Self {
+    fn new(recipe: &Recipe, selected_profile_id: Option<&ProfileId>) -> Self {
         let query_items = recipe
             .query
             .iter()
@@ -328,7 +312,6 @@ impl RecipeState {
                 RowState::new(
                     param.clone(),
                     TemplatePreview::new(
-                        messages_tx,
                         value.clone(),
                         selected_profile_id.cloned(),
                     ),
@@ -346,7 +329,6 @@ impl RecipeState {
                 RowState::new(
                     header.clone(),
                     TemplatePreview::new(
-                        messages_tx,
                         value.clone(),
                         selected_profile_id.cloned(),
                     ),
@@ -360,7 +342,6 @@ impl RecipeState {
 
         Self {
             url: TemplatePreview::new(
-                messages_tx,
                 recipe.url.clone(),
                 selected_profile_id.cloned(),
             ),
@@ -380,7 +361,6 @@ impl RecipeState {
             .into(),
             body: recipe.body.as_ref().map(|body| {
                 TextWindow::new(TemplatePreview::new(
-                    messages_tx,
                     body.clone(),
                     selected_profile_id.cloned(),
                 ))
@@ -393,13 +373,11 @@ impl RecipeState {
                         Authentication::Basic { username, password } => {
                             AuthenticationDisplay::Basic {
                                 username: TemplatePreview::new(
-                                    messages_tx,
                                     username.clone(),
                                     selected_profile_id.cloned(),
                                 ),
                                 password: password.clone().map(|password| {
                                     TemplatePreview::new(
-                                        messages_tx,
                                         password,
                                         selected_profile_id.cloned(),
                                     )
@@ -408,7 +386,6 @@ impl RecipeState {
                         }
                         Authentication::Bearer(token) => {
                             AuthenticationDisplay::Bearer(TemplatePreview::new(
-                                messages_tx,
                                 token.clone(),
                                 selected_profile_id.cloned(),
                             ))
@@ -536,19 +513,22 @@ impl PartialEq<RowState> for String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
+    use crate::{db::CollectionDatabase, test_util::*};
     use ratatui::{backend::TestBackend, Terminal};
     use rstest::rstest;
 
-    /// Create component to be tested
+    /// Create component to be tested. Return the associated message queue too,
+    /// so it can be tested
     #[rstest::fixture]
     fn component(
         _tui_context: &TuiContext,
+        database: CollectionDatabase,
         mut messages: MessageQueue,
         mut terminal: Terminal<TestBackend>,
-    ) -> RecipePane {
-        let recipe = Recipe::factory();
-        let component = RecipePane::new(messages.tx().clone());
+    ) -> (MessageQueue, RecipePane) {
+        ViewContext::init(database, messages.tx().clone());
+        let recipe = Recipe::factory(());
+        let component = RecipePane::default();
 
         // Draw once to initialize state
         component.draw(
@@ -561,14 +541,14 @@ mod tests {
         );
         // Clear template preview messages so we can test what we want
         messages.clear();
-        component
+        (messages, component)
     }
 
     /// Test "Copy URL" action
     #[rstest]
-    fn test_copy_url(mut component: RecipePane, mut messages: MessageQueue) {
-        let update = component
-            .update(messages.tx(), Event::new_other(MenuAction::CopyUrl));
+    fn test_copy_url(component: (MessageQueue, RecipePane)) {
+        let (mut messages, mut component) = component;
+        let update = component.update(Event::new_other(MenuAction::CopyUrl));
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 
@@ -588,9 +568,9 @@ mod tests {
 
     /// Test "Copy Body" action
     #[rstest]
-    fn test_copy_body(mut component: RecipePane, mut messages: MessageQueue) {
-        let update = component
-            .update(messages.tx(), Event::new_other(MenuAction::CopyBody));
+    fn test_copy_body(component: (MessageQueue, RecipePane)) {
+        let (mut messages, mut component) = component;
+        let update = component.update(Event::new_other(MenuAction::CopyBody));
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 
@@ -610,12 +590,9 @@ mod tests {
 
     /// Test "Copy as cURL" action
     #[rstest]
-    fn test_copy_as_curl(
-        mut component: RecipePane,
-        mut messages: MessageQueue,
-    ) {
-        let update = component
-            .update(messages.tx(), Event::new_other(MenuAction::CopyCurl));
+    fn test_copy_as_curl(component: (MessageQueue, RecipePane)) {
+        let (mut messages, mut component) = component;
+        let update = component.update(Event::new_other(MenuAction::CopyCurl));
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 

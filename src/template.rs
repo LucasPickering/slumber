@@ -210,22 +210,22 @@ mod tests {
         };
         let profile = Profile {
             data: profile_data,
-            ..Profile::factory()
+            ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
         let chain = Chain {
             source,
-            ..Chain::factory()
+            ..Chain::factory(())
         };
         let context = TemplateContext {
             collection: Collection {
                 profiles: indexmap! {profile_id.clone() => profile},
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             selected_profile: Some(profile_id),
             overrides,
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_eq!(
@@ -258,16 +258,16 @@ mod tests {
         };
         let profile = Profile {
             data: profile_data,
-            ..Profile::factory()
+            ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
         let context = TemplateContext {
             collection: Collection {
                 profiles: indexmap! {profile_id.clone() => profile},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             selected_profile: Some(profile_id),
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_eq!(&render!("", context).unwrap(), "");
@@ -302,16 +302,16 @@ mod tests {
         };
         let profile = Profile {
             data: profile_data,
-            ..Profile::factory()
+            ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
         let context = TemplateContext {
             collection: Collection {
                 profiles: indexmap! {profile_id.clone() => profile},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             selected_profile: Some(profile_id),
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
         assert_err!(render!(template, context), expected);
     }
@@ -336,7 +336,7 @@ mod tests {
         #[case] expected_value: &str,
     ) {
         let recipe_id: RecipeId = "recipe1".into();
-        let database = CollectionDatabase::factory();
+        let database = CollectionDatabase::factory(());
         let response_body = json!({
             "string": "Hello World!",
             "number": 6,
@@ -348,24 +348,24 @@ mod tests {
             header_map(indexmap! {"Token" => "Secret Value"});
         let request = Request {
             recipe_id: recipe_id.clone(),
-            ..Request::factory()
+            ..Request::factory(())
         };
         let response = Response {
             body: response_body.to_string().into(),
             headers: response_headers,
-            ..Response::factory()
+            ..Response::factory(())
         };
         database
             .insert_request(&RequestRecord {
                 request: request.into(),
                 response: response.into(),
-                ..RequestRecord::factory()
+                ..RequestRecord::factory(())
             })
             .unwrap();
         let selector = selector.map(|s| s.parse().unwrap());
         let recipe = Recipe {
             id: recipe_id.clone(),
-            ..Recipe::factory()
+            ..Recipe::factory(())
         };
         let chain = Chain {
             source: ChainSource::Request {
@@ -375,16 +375,16 @@ mod tests {
             },
             selector,
             content_type: Some(ContentType::Json),
-            ..Chain::factory()
+            ..Chain::factory(())
         };
         let context = TemplateContext {
             collection: Collection {
                 recipes: indexmap! {recipe.id.clone() => recipe}.into(),
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             database,
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_eq!(
@@ -399,7 +399,7 @@ mod tests {
     // Referenced a chain that doesn't exist
     #[case::unknown_chain(
         "unknown",
-        Chain::factory(),
+        Chain::factory(()),
         None,
         None,
         "Unknown chain"
@@ -413,7 +413,7 @@ mod tests {
                 trigger: Default::default(),
                 section: Default::default(),
             },
-            ..Chain::factory()
+            ..Chain::factory(())
         },
         None,
         None,
@@ -428,7 +428,7 @@ mod tests {
                 trigger: Default::default(),
                 section: Default::default(),
             },
-            ..Chain::factory()
+            ..Chain::factory(())
         },
         Some("recipe1"),
         None,
@@ -443,7 +443,7 @@ mod tests {
                 trigger: ChainRequestTrigger::Always,
                 section: Default::default(),
             },
-            ..Chain::factory()
+            ..Chain::factory(())
         },
         Some("recipe1"),
         None,
@@ -459,15 +459,15 @@ mod tests {
                 section: Default::default(),
             },
             selector: Some("$.message".parse().unwrap()),
-            ..Chain::factory()
+            ..Chain::factory(())
         },
         Some("recipe1"),
         Some(RequestRecord {
             response: Response {
                 body: "not json!".into(),
-                ..Response::factory()
+                ..Response::factory(())
             }.into(),
-            ..RequestRecord::factory()
+            ..RequestRecord::factory(())
         }),
         "content type not provided",
     )]
@@ -482,15 +482,15 @@ mod tests {
             },
             selector: Some("$.message".parse().unwrap()),
             content_type: Some(ContentType::Json),
-            ..Chain::factory()
+            ..Chain::factory(())
         },
         Some("recipe1"),
         Some(RequestRecord {
             response: Response {
                 body: "not json!".into(),
-                ..Response::factory()
+                ..Response::factory(())
             }.into(),
-            ..RequestRecord::factory()
+            ..RequestRecord::factory(())
         }),
         "Parsing response: expected ident at line 1 column 2",
     )]
@@ -505,15 +505,15 @@ mod tests {
             },
             selector: Some("$.*".parse().unwrap()),
             content_type: Some(ContentType::Json),
-            ..Chain::factory()
+            ..Chain::factory(())
         },
         Some("recipe1"),
         Some(RequestRecord {
             response: Response {
                 body: "[1, 2]".into(),
-                ..Response::factory()
+                ..Response::factory(())
             }.into(),
-            ..RequestRecord::factory()
+            ..RequestRecord::factory(())
         }),
         "Expected exactly one result",
     )]
@@ -527,7 +527,7 @@ mod tests {
         #[case] record: Option<RequestRecord>,
         #[case] expected_error: &str,
     ) {
-        let database = CollectionDatabase::factory();
+        let database = CollectionDatabase::factory(());
 
         let mut recipes = IndexMap::new();
         if let Some(recipe_id) = recipe_id {
@@ -536,7 +536,7 @@ mod tests {
                 recipe_id.clone(),
                 Recipe {
                     id: recipe_id,
-                    ..Recipe::factory()
+                    ..Recipe::factory(())
                 },
             );
         }
@@ -551,10 +551,10 @@ mod tests {
             collection: Collection {
                 recipes: recipes.into(),
                 chains,
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             database,
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
@@ -571,12 +571,12 @@ mod tests {
         ChainRequestTrigger::Expire(Duration::from_secs(60)),
         Some(RequestRecord {
             end_time: Utc::now() - Duration::from_secs(100),
-            ..RequestRecord::factory()})
+            ..RequestRecord::factory(())})
     )]
     #[case::always_no_history(ChainRequestTrigger::Always, None)]
     #[case::always_with_history(
         ChainRequestTrigger::Always,
-        Some(RequestRecord::factory())
+        Some(RequestRecord::factory(()))
     )]
     #[tokio::test]
     async fn test_triggered_request(
@@ -584,7 +584,7 @@ mod tests {
         // Optional request data to store in the database
         #[case] record: Option<RequestRecord>,
     ) {
-        let database = CollectionDatabase::factory();
+        let database = CollectionDatabase::factory(());
 
         // Set up DB
         if let Some(record) = record {
@@ -603,7 +603,7 @@ mod tests {
 
         let recipe = Recipe {
             url: format!("{url}/get").as_str().into(),
-            ..Recipe::factory()
+            ..Recipe::factory(())
         };
         let chain = Chain {
             source: ChainSource::Request {
@@ -611,18 +611,18 @@ mod tests {
                 trigger,
                 section: Default::default(),
             },
-            ..Chain::factory()
+            ..Chain::factory(())
         };
-        let http_engine = HttpEngine::new(&Config::default(), database.clone());
+        let http_engine = HttpEngine::new(&Config::default());
         let context = TemplateContext {
             collection: Collection {
                 recipes: indexmap! {recipe.id.clone() => recipe}.into(),
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             http_engine: Some(http_engine),
             database,
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
@@ -646,14 +646,14 @@ mod tests {
         };
         let chain = Chain {
             source,
-            ..Chain::factory()
+            ..Chain::factory(())
         };
         let context = TemplateContext {
             collection: Collection {
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
@@ -677,14 +677,14 @@ mod tests {
                 stdin: None,
             },
             trim,
-            ..Chain::factory()
+            ..Chain::factory(())
         };
         let context = TemplateContext {
             collection: Collection {
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
@@ -717,14 +717,14 @@ mod tests {
         };
         let chain = Chain {
             source,
-            ..Chain::factory()
+            ..Chain::factory(())
         };
         let context = TemplateContext {
             collection: Collection {
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
@@ -743,14 +743,14 @@ mod tests {
 
         let chain = Chain {
             source: ChainSource::File { path: path.clone() },
-            ..Chain::factory()
+            ..Chain::factory(())
         };
         let context = TemplateContext {
             collection: Collection {
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_eq!(
@@ -767,14 +767,14 @@ mod tests {
             source: ChainSource::File {
                 path: "not-real".into(),
             },
-            ..Chain::factory()
+            ..Chain::factory(())
         };
         let context = TemplateContext {
             collection: Collection {
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_err!(
@@ -790,18 +790,18 @@ mod tests {
                 message: Some("password".into()),
                 default: Some("default".into()),
             },
-            ..Chain::factory()
+            ..Chain::factory(())
         };
 
         // Test value from prompter
         let mut context = TemplateContext {
             collection: Collection {
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
 
             prompter: Box::new(TestPrompter::new(Some("hello!"))),
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
 
@@ -818,16 +818,16 @@ mod tests {
                 message: Some("password".into()),
                 default: None,
             },
-            ..Chain::factory()
+            ..Chain::factory(())
         };
         let context = TemplateContext {
             collection: Collection {
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             // Prompter gives no response
             prompter: Box::new(TestPrompter::new::<String>(None)),
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         assert_err!(
@@ -845,16 +845,16 @@ mod tests {
                 default: None,
             },
             sensitive: true,
-            ..Chain::factory()
+            ..Chain::factory(())
         };
         let context = TemplateContext {
             collection: Collection {
                 chains: indexmap! {chain.id.clone() => chain},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             // Prompter gives no response
             prompter: Box::new(TestPrompter::new(Some("hello!"))),
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
         assert_eq!(
             Template::from("{{chains.chain1}}")
@@ -880,7 +880,7 @@ mod tests {
         let file_chain = Chain {
             id: "file".into(),
             source: ChainSource::File { path },
-            ..Chain::factory()
+            ..Chain::factory(())
         };
 
         // Chain 2 - command
@@ -892,7 +892,7 @@ mod tests {
                 command,
                 stdin: None,
             },
-            ..Chain::factory()
+            ..Chain::factory(())
         };
 
         let context = TemplateContext {
@@ -901,9 +901,9 @@ mod tests {
                     file_chain.id.clone() => file_chain,
                     command_chain.id.clone() => command_chain,
                 },
-                ..Collection::factory()
+                ..Collection::factory(())
             },
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
         assert_eq!(
             render!("{{chains.command}}", context).unwrap(),
@@ -921,7 +921,7 @@ mod tests {
                 path: "bogus.txt".into(),
             },
 
-            ..Chain::factory()
+            ..Chain::factory(())
         };
 
         // Chain 2 - command
@@ -933,7 +933,7 @@ mod tests {
                 command,
                 stdin: None,
             },
-            ..Chain::factory()
+            ..Chain::factory(())
         };
 
         let context = TemplateContext {
@@ -942,9 +942,9 @@ mod tests {
                     file_chain.id.clone() => file_chain,
                     command_chain.id.clone() => command_chain,
                 },
-                ..Collection::factory()
+                ..Collection::factory(())
             },
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
         assert_err!(
             render!("{{chains.command}}", context),
@@ -956,14 +956,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_environment_success() {
-        let context = TemplateContext::factory();
+        let context = TemplateContext::factory(());
         env::set_var("TEST", "test!");
         assert_eq!(render!("{{env.TEST}}", context).unwrap(), "test!");
     }
 
     #[tokio::test]
     async fn test_environment_error() {
-        let context = TemplateContext::factory();
+        let context = TemplateContext::factory(());
         assert_err!(
             render!("{{env.UNKNOWN}}", context),
             "Accessing environment variable `UNKNOWN`"
@@ -976,16 +976,16 @@ mod tests {
         let profile_data = indexmap! { "user_id".into() => "🧡💛".into() };
         let profile = Profile {
             data: profile_data,
-            ..Profile::factory()
+            ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
         let context = TemplateContext {
             collection: Collection {
                 profiles: indexmap! {profile_id.clone() => profile},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             selected_profile: Some(profile_id),
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
 
         let chunks =

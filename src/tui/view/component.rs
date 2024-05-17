@@ -1,4 +1,5 @@
 mod help;
+mod history;
 mod internal;
 mod misc;
 mod primary;

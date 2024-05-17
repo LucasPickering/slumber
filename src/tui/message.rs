@@ -17,8 +17,8 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
 /// Wrapper around a sender for async messages. Cheap to clone and pass around
-#[derive(Clone, derive_more::Debug, From)]
-pub struct MessageSender(#[debug(skip)] UnboundedSender<Message>);
+#[derive(Clone, Debug, From)]
+pub struct MessageSender(UnboundedSender<Message>);
 
 impl MessageSender {
     pub fn new(sender: UnboundedSender<Message>) -> Self {
@@ -78,17 +78,9 @@ pub enum Message {
     /// Launch an HTTP request from the given recipe/profile.
     HttpBeginRequest(RequestConfig),
     /// Request failed to build
-    HttpBuildError {
-        profile_id: Option<ProfileId>,
-        recipe_id: RecipeId,
-        error: RequestBuildError,
-    },
+    HttpBuildError { error: RequestBuildError },
     /// We launched the HTTP request
-    HttpLoading {
-        profile_id: Option<ProfileId>,
-        recipe_id: RecipeId,
-        request: Arc<Request>,
-    },
+    HttpLoading { request: Arc<Request> },
     /// The HTTP request either succeeded or failed. We don't need to store the
     /// recipe ID here because it's in the inner container already. Combining
     /// these two cases saves a bit of boilerplate.

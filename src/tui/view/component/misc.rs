@@ -3,25 +3,23 @@
 
 use crate::{
     template::{Prompt, PromptChannel},
-    tui::{
-        message::MessageSender,
-        view::{
-            common::{
-                button::ButtonGroup,
-                modal::{IntoModal, Modal},
-                text_box::TextBox,
-            },
-            component::Component,
-            draw::{Draw, DrawMetadata, Generate},
-            event::{Event, EventHandler, EventQueue, Update},
-            state::Notification,
-            Confirm,
+    tui::view::{
+        common::{
+            button::ButtonGroup,
+            modal::{IntoModal, Modal},
+            text_box::TextBox,
         },
+        component::Component,
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Event, EventHandler, Update},
+        state::Notification,
+        Confirm, ViewContext,
     },
 };
 use derive_more::Display;
 use ratatui::{
     prelude::Constraint,
+    text::Line,
     widgets::{Paragraph, Wrap},
     Frame,
 };
@@ -32,8 +30,8 @@ use strum::{EnumCount, EnumIter};
 pub struct ErrorModal(anyhow::Error);
 
 impl Modal for ErrorModal {
-    fn title(&self) -> &str {
-        "Error"
+    fn title(&self) -> Line<'_> {
+        "Error".into()
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
@@ -82,14 +80,14 @@ impl PromptModal {
             .with_sensitive(prompt.sensitive)
             .with_default(prompt.default.unwrap_or_default())
             // Make sure cancel gets propagated to close the modal
-            .with_on_cancel(|_| EventQueue::push(Event::CloseModal))
+            .with_on_cancel(|_| ViewContext::push_event(Event::CloseModal))
             .with_on_submit(move |_| {
                 // We have to defer submission to on_close, because we need the
                 // owned value of `self.prompt`. We could have just put that in
                 // a refcell, but this felt a bit cleaner because we know this
                 // submitter will only be called once.
                 submit_cell.set(true);
-                EventQueue::push(Event::CloseModal);
+                ViewContext::push_event(Event::CloseModal);
             })
             .into();
         Self {
@@ -102,8 +100,8 @@ impl PromptModal {
 }
 
 impl Modal for PromptModal {
-    fn title(&self) -> &str {
-        &self.title
+    fn title(&self) -> Line<'_> {
+        self.title.as_str().into()
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
@@ -171,8 +169,8 @@ impl ConfirmModal {
 }
 
 impl Modal for ConfirmModal {
-    fn title(&self) -> &str {
-        &self.title
+    fn title(&self) -> Line<'_> {
+        self.title.as_str().into()
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
@@ -185,7 +183,7 @@ impl Modal for ConfirmModal {
 }
 
 impl EventHandler for ConfirmModal {
-    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         // When user selects a button, send the response and close
         let Some(button) = event.other::<ConfirmButton>() else {
             return Update::Propagate(event);
@@ -198,7 +196,7 @@ impl EventHandler for ConfirmModal {
             channel.respond(*button == ConfirmButton::Yes);
         }
 
-        EventQueue::push(Event::CloseModal);
+        ViewContext::push_event(Event::CloseModal);
         Update::Consumed
     }
 

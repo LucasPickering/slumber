@@ -3,13 +3,19 @@ use crate::{
         common::{list::List, modal::Modal},
         component::Component,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Event, EventHandler, EventQueue},
+        event::{Event, EventHandler},
         state::fixed_select::{FixedSelectState, FixedSelectWithoutDefault},
+        ViewContext,
     },
     util::EnumChain,
 };
 use derive_more::Display;
-use ratatui::{layout::Constraint, text::Span, widgets::ListState, Frame};
+use ratatui::{
+    layout::Constraint,
+    text::{Line, Span},
+    widgets::ListState,
+    Frame,
+};
 use strum::{EnumCount, EnumIter};
 
 /// Modal to list and trigger arbitrary actions. The list of available actions
@@ -25,12 +31,12 @@ impl<T: FixedSelectWithoutDefault> Default for ActionsModal<T> {
         let on_submit = move |action: &mut EnumChain<GlobalAction, T>| {
             // Close the modal *first*, so the parent can handle the
             // callback event. Jank but it works
-            EventQueue::push(Event::CloseModal);
+            ViewContext::push_event(Event::CloseModal);
             let event = match action {
                 EnumChain::T(action) => Event::new_other(*action),
                 EnumChain::U(action) => Event::new_other(*action),
             };
-            EventQueue::push(event);
+            ViewContext::push_event(event);
         };
 
         Self {
@@ -47,8 +53,8 @@ where
     T: FixedSelectWithoutDefault,
     ActionsModal<T>: Draw,
 {
-    fn title(&self) -> &str {
-        "Actions"
+    fn title(&self) -> Line<'_> {
+        "Actions".into()
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {

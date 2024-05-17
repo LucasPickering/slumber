@@ -308,11 +308,6 @@ pub enum ChainOutputTrim {
 }
 
 impl Profile {
-    /// For combinators
-    pub fn id(&self) -> &ProfileId {
-        &self.id
-    }
-
     /// Get a presentable name for this profile
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)

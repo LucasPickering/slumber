@@ -50,75 +50,6 @@ pub struct Styles {
     pub text_window: TextWindowStyle,
 }
 
-impl Styles {
-    pub fn new(theme: &Theme) -> Self {
-        Self {
-            list: ListStyles {
-                highlight: Style::default()
-                    .bg(theme.primary_color)
-                    .fg(theme.primary_text_color)
-                    .add_modifier(Modifier::BOLD),
-            },
-            modal: ModalStyles {
-                border: Style::default().fg(theme.primary_color),
-                border_type: BorderType::Double,
-            },
-            pane: PaneStyles {
-                border: Style::default(),
-                border_selected: Style::default()
-                    .fg(theme.primary_color)
-                    .add_modifier(Modifier::BOLD),
-                border_type: BorderType::Plain,
-                border_type_selected: BorderType::Double,
-            },
-            status_code: StatusCodeStyles {
-                success: Style::default()
-                    .fg(Color::Black)
-                    .bg(theme.success_color),
-                error: Style::default().bg(theme.error_color),
-            },
-            tab: TabStyles {
-                highlight: Style::default()
-                    .fg(theme.primary_color)
-                    .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::UNDERLINED),
-            },
-            table: TableStyles {
-                header: Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::UNDERLINED),
-                text: Style::default(),
-                alt: Style::default().bg(Color::DarkGray),
-                disabled: Style::default().add_modifier(Modifier::DIM),
-                highlight: Style::default()
-                    .bg(theme.primary_color)
-                    .fg(theme.primary_text_color)
-                    .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::UNDERLINED),
-                title: Style::default().add_modifier(Modifier::BOLD),
-            },
-            template_preview: TemplatePreviewStyles {
-                text: Style::default().fg(theme.secondary_color),
-                error: Style::default().bg(theme.error_color),
-            },
-            text: TextStyle {
-                highlight: Style::default()
-                    .fg(theme.primary_text_color)
-                    .bg(theme.primary_color),
-            },
-            text_box: TextBoxStyle {
-                text: Style::default().bg(Color::DarkGray),
-                cursor: Style::default().bg(Color::White).fg(Color::Black),
-                placeholder: Style::default().fg(Color::Black),
-                invalid: Style::default().bg(Color::LightRed),
-            },
-            text_window: TextWindowStyle {
-                line_number: Style::default().fg(Color::DarkGray),
-            },
-        }
-    }
-}
-
 /// Styles for List component
 #[derive(Debug)]
 pub struct ListStyles {
@@ -195,6 +126,10 @@ pub struct TemplatePreviewStyles {
 pub struct TextStyle {
     /// Text that needs some visual emphasis/separation
     pub highlight: Style,
+    /// Text in the primary color
+    pub primary: Style,
+    /// Text that means BAD BUSINESS
+    pub error: Style,
 }
 
 /// Styles for TextBox component
@@ -211,4 +146,75 @@ pub struct TextBoxStyle {
 pub struct TextWindowStyle {
     /// Line numbers on large text areas
     pub line_number: Style,
+}
+
+impl Styles {
+    pub fn new(theme: &Theme) -> Self {
+        Self {
+            list: ListStyles {
+                highlight: Style::default()
+                    .bg(theme.primary_color)
+                    .fg(theme.primary_text_color)
+                    .add_modifier(Modifier::BOLD),
+            },
+            modal: ModalStyles {
+                border: Style::default(),
+                border_type: BorderType::Double,
+            },
+            pane: PaneStyles {
+                border: Style::default(),
+                border_selected: Style::default()
+                    .fg(theme.primary_color)
+                    .add_modifier(Modifier::BOLD),
+                border_type: BorderType::Plain,
+                border_type_selected: BorderType::Double,
+            },
+            status_code: StatusCodeStyles {
+                success: Style::default()
+                    .fg(Color::Black)
+                    .bg(theme.success_color),
+                error: Style::default().bg(theme.error_color),
+            },
+            tab: TabStyles {
+                highlight: Style::default()
+                    .fg(theme.primary_color)
+                    .add_modifier(Modifier::BOLD)
+                    .add_modifier(Modifier::UNDERLINED),
+            },
+            table: TableStyles {
+                header: Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .add_modifier(Modifier::UNDERLINED),
+                text: Style::default(),
+                alt: Style::default().bg(Color::DarkGray),
+                disabled: Style::default().add_modifier(Modifier::DIM),
+                highlight: Style::default()
+                    .bg(theme.primary_color)
+                    .fg(theme.primary_text_color)
+                    .add_modifier(Modifier::BOLD)
+                    .add_modifier(Modifier::UNDERLINED),
+                title: Style::default().add_modifier(Modifier::BOLD),
+            },
+            template_preview: TemplatePreviewStyles {
+                text: Style::default().fg(theme.secondary_color),
+                error: Style::default().bg(theme.error_color),
+            },
+            text: TextStyle {
+                highlight: Style::default()
+                    .fg(theme.primary_text_color)
+                    .bg(theme.primary_color),
+                primary: Style::default().fg(theme.primary_color),
+                error: Style::default().bg(theme.error_color),
+            },
+            text_box: TextBoxStyle {
+                text: Style::default().bg(Color::DarkGray),
+                cursor: Style::default().bg(Color::White).fg(Color::Black),
+                placeholder: Style::default().fg(Color::Black),
+                invalid: Style::default().bg(Color::LightRed),
+            },
+            text_window: TextWindowStyle {
+                line_number: Style::default().fg(Color::DarkGray),
+            },
+        }
+    }
 }

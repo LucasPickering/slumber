@@ -68,6 +68,27 @@ impl RequestRecord {
     }
 }
 
+/// Metadata about a request record. Useful in lists where request/response
+/// isn't needed.
+#[derive(Copy, Clone, Debug)]
+pub struct RequestRecordSummary {
+    pub id: RequestId,
+    pub start_time: DateTime<Utc>,
+    pub end_time: DateTime<Utc>,
+    pub status: StatusCode,
+}
+
+impl From<&RequestRecord> for RequestRecordSummary {
+    fn from(record: &RequestRecord) -> Self {
+        Self {
+            id: record.id,
+            start_time: record.start_time,
+            end_time: record.end_time,
+            status: record.response.status,
+        }
+    }
+}
+
 /// A single instance of an HTTP request. There are a few reasons we need this
 /// in addition to [reqwest::Request]:
 /// - It stores additional Slumber-specific metadata
@@ -316,8 +337,14 @@ impl PartialEq for Body {
 #[derive(Debug, Error)]
 #[error("Error building request {id}")]
 pub struct RequestBuildError {
+    /// ID of the profile being rendered under
+    pub profile_id: Option<ProfileId>,
+    /// ID of the recipe being rendered
+    pub recipe_id: RecipeId,
     /// ID of the failed request
     pub id: RequestId,
+    /// When did the error occur?
+    pub time: DateTime<Utc>,
     /// There are a lot of different possible error types, so storing an anyhow
     /// is easiest
     #[source]
@@ -327,7 +354,11 @@ pub struct RequestBuildError {
 #[cfg(test)]
 impl PartialEq for RequestBuildError {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.error.to_string() == other.error.to_string()
+        self.profile_id == other.profile_id
+            && self.recipe_id == other.recipe_id
+            && self.id == other.id
+            && self.time == other.time
+            && self.error.to_string() == other.error.to_string()
     }
 }
 
@@ -377,7 +408,7 @@ mod tests {
                 "content-disposition" => "form-data;name=\"field\"; filename=\"fish.png\"",
                 "content-type" => "image/png",
             }),
-            ..Response::factory()
+            ..Response::factory(())
         },
         Some("fish.png")
     )]
@@ -387,7 +418,7 @@ mod tests {
                 "content-disposition" => "form-data",
                 "content-type" => "application/json",
             }),
-            ..Response::factory()
+            ..Response::factory(())
         },
         Some("data.json")
     )]
@@ -397,11 +428,11 @@ mod tests {
                 "content-disposition" => "form-data",
                 "content-type" => "image/jpeg",
             }),
-            ..Response::factory()
+            ..Response::factory(())
         },
         Some("data.jpeg")
     )]
-    #[case::none(Response::factory(), None)]
+    #[case::none(Response::factory(()), None)]
     fn test_file_name(
         #[case] response: Response,
         #[case] expected: Option<&str>,
@@ -420,7 +451,7 @@ mod tests {
             method: Method::DELETE,
             headers: header_map(headers),
             body: Some(serde_json::to_vec(&body).unwrap().into()),
-            ..Request::factory()
+            ..Request::factory(())
         };
 
         assert_eq!(

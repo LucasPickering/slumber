@@ -2,10 +2,15 @@
 
 pub mod fixed_select;
 pub mod persistence;
+pub mod request_store;
 pub mod select;
 
-use crate::http::{
-    Request, RequestBuildError, RequestError, RequestId, RequestRecord,
+use crate::{
+    collection::{ProfileId, RecipeId},
+    http::{
+        Request, RequestBuildError, RequestError, RequestId, RequestRecord,
+        RequestRecordSummary,
+    },
 };
 use bytesize::ByteSize;
 use chrono::{DateTime, Duration, Utc};
@@ -100,7 +105,12 @@ impl<K, V> Default for StateCell<K, V> {
 pub enum RequestState {
     /// The request is being built. Typically this is very fast, but can be
     /// slow if a chain source takes a while.
-    Building { id: RequestId },
+    Building {
+        id: RequestId,
+        start_time: DateTime<Utc>,
+        profile_id: Option<ProfileId>,
+        recipe_id: RecipeId,
+    },
 
     /// Something went wrong during the build :(
     BuildError { error: RequestBuildError },
@@ -149,17 +159,34 @@ impl RequestState {
     /// cycle
     pub fn id(&self) -> RequestId {
         match self {
-            Self::Building { id } => *id,
-            Self::BuildError { error } => error.id,
+            Self::Building { id, .. } => *id,
+            Self::BuildError { error, .. } => error.id,
             Self::Loading { request, .. } => request.id,
             Self::RequestError { error } => error.request.id,
             Self::Response { record, .. } => record.id,
         }
     }
 
-    /// Is the initial stage in a request life cycle?
-    pub fn is_initial(&self) -> bool {
-        matches!(self, Self::Building { .. })
+    /// The profile that the request was rendered from
+    pub fn profile_id(&self) -> Option<&ProfileId> {
+        match self {
+            Self::Building { profile_id, .. } => profile_id.as_ref(),
+            Self::BuildError { error } => error.profile_id.as_ref(),
+            Self::Loading { request, .. } => request.profile_id.as_ref(),
+            Self::RequestError { error } => error.request.profile_id.as_ref(),
+            Self::Response { record, .. } => record.request.profile_id.as_ref(),
+        }
+    }
+
+    /// The recipe that the request was rendered from
+    pub fn recipe_id(&self) -> &RecipeId {
+        match self {
+            Self::Building { recipe_id, .. } => recipe_id,
+            Self::BuildError { error } => &error.recipe_id,
+            Self::Loading { request, .. } => &request.recipe_id,
+            Self::RequestError { error } => &error.request.recipe_id,
+            Self::Response { record, .. } => &record.request.recipe_id,
+        }
     }
 
     /// Get metadata about a request. Return `None` if the request hasn't been
@@ -195,9 +222,9 @@ impl RequestState {
         }
     }
 
-    /// Initialize a new request in the `Building` state
-    pub fn building(id: RequestId) -> Self {
-        Self::Building { id }
+    /// Is the initial stage in a request life cycle?
+    pub fn is_initial(&self) -> bool {
+        matches!(self, Self::Building { .. })
     }
 
     /// Create a loading state with the current timestamp. This will generally
@@ -219,6 +246,86 @@ impl RequestState {
         // we want to punt this into a separate task?
         record.response.parse_body();
         Self::Response { record }
+    }
+}
+
+/// A simplified version of [RequestState], which only stores metadata. This is
+/// useful when you want to show a list of requests and don't need the entire
+/// request/response data for each one.
+#[derive(Debug)]
+pub enum RequestStateSummary {
+    Building {
+        id: RequestId,
+        start_time: DateTime<Utc>,
+    },
+    BuildError {
+        id: RequestId,
+        time: DateTime<Utc>,
+    },
+    Loading {
+        id: RequestId,
+        start_time: DateTime<Utc>,
+    },
+    Response(RequestRecordSummary),
+    RequestError {
+        id: RequestId,
+        time: DateTime<Utc>,
+    },
+}
+
+impl RequestStateSummary {
+    pub fn id(&self) -> RequestId {
+        match self {
+            Self::Building { id, .. }
+            | Self::BuildError { id, .. }
+            | Self::Loading { id, .. }
+            | Self::RequestError { id, .. } => *id,
+            Self::Response(record) => record.id,
+        }
+    }
+
+    /// Get the time of the request state. For in-flight or completed requests,
+    /// this is when it *started*.
+    pub fn time(&self) -> DateTime<Utc> {
+        match self {
+            Self::Building {
+                start_time: time, ..
+            }
+            | Self::BuildError { time, .. }
+            | Self::Loading {
+                start_time: time, ..
+            }
+            | Self::RequestError { time, .. } => *time,
+            Self::Response(record) => record.start_time,
+        }
+    }
+}
+
+impl From<&RequestState> for RequestStateSummary {
+    fn from(state: &RequestState) -> Self {
+        match state {
+            RequestState::Building { id, start_time, .. } => Self::Building {
+                id: *id,
+                start_time: *start_time,
+            },
+            RequestState::BuildError { error } => Self::BuildError {
+                id: error.id,
+                time: error.time,
+            },
+            RequestState::Loading {
+                request,
+                start_time,
+                ..
+            } => Self::Loading {
+                id: request.id,
+                start_time: *start_time,
+            },
+            RequestState::Response { record } => Self::Response(record.into()),
+            RequestState::RequestError { error } => Self::RequestError {
+                id: error.request.id,
+                time: error.start_time,
+            },
+        }
     }
 }
 

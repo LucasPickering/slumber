@@ -1,7 +1,6 @@
 use crate::tui::{
     context::TuiContext,
     input::Action,
-    message::MessageSender,
     view::{
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
@@ -11,6 +10,7 @@ use crate::tui::{
 };
 use ratatui::{
     prelude::Constraint,
+    text::Line,
     widgets::{Block, Borders, Clear},
     Frame,
 };
@@ -27,7 +27,7 @@ use tracing::trace;
 /// (none).
 pub trait Modal: Draw<()> + EventHandler {
     /// Text at the top of the modal
-    fn title(&self) -> &str;
+    fn title(&self) -> Line<'_>;
 
     /// Dimensions of the modal, relative to the whole screen
     fn dimensions(&self) -> (Constraint, Constraint);
@@ -94,7 +94,7 @@ impl ModalQueue {
 }
 
 impl EventHandler for ModalQueue {
-    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
             // Close the active modal. If there's no modal open, we'll propagate
             // the event down
@@ -168,8 +168,8 @@ impl Draw for ModalQueue {
 }
 
 impl EventHandler for Box<dyn Modal> {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
-        self.deref_mut().update(messages_tx, event)
+    fn update(&mut self, event: Event) -> Update {
+        self.deref_mut().update(event)
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {

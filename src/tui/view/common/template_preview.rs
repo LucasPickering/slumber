@@ -3,8 +3,8 @@ use crate::{
     template::{Template, TemplateChunk},
     tui::{
         context::TuiContext,
-        message::{Message, MessageSender},
-        view::draw::Generate,
+        message::Message,
+        view::{draw::Generate, ViewContext},
     },
 };
 use ratatui::{
@@ -40,14 +40,10 @@ impl TemplatePreview {
     /// Create a new template preview. This will spawn a background task to
     /// render the template, *if* template preview is enabled. Profile ID
     /// defines which profile to use for the render.
-    pub fn new(
-        messages_tx: &MessageSender,
-        template: Template,
-        profile_id: Option<ProfileId>,
-    ) -> Self {
+    pub fn new(template: Template, profile_id: Option<ProfileId>) -> Self {
         if TuiContext::get().config.preview_templates {
             let chunks = Arc::new(OnceLock::new());
-            messages_tx.send(Message::TemplatePreview {
+            ViewContext::send_message(Message::TemplatePreview {
                 // If this is a bottleneck we can Arc it
                 template: template.clone(),
                 profile_id: profile_id.clone(),
@@ -223,17 +219,17 @@ mod tests {
         let profile_data = indexmap! { "user_id".into() => "🧡\n💛".into() };
         let profile = Profile {
             data: profile_data,
-            ..Profile::factory()
+            ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
         let collection = Collection {
             profiles: indexmap! {profile_id.clone() => profile},
-            ..Collection::factory()
+            ..Collection::factory(())
         };
         let context = TemplateContext {
             collection,
             selected_profile: Some(profile_id),
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
         let chunks = template.render_chunks(&context).await;
         let styles = &tui_context.styles;

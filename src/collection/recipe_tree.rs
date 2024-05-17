@@ -1,7 +1,7 @@
 //! Recipe/folder tree structure
 
 use crate::collection::{cereal::deserialize_id_map, Folder, Recipe, RecipeId};
-use derive_more::{Debug, From};
+use derive_more::From;
 use indexmap::{map::Values, IndexMap};
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
 
@@ -11,7 +11,7 @@ use serde::{de::Error, Deserialize, Deserializer, Serialize};
 /// recipes. This is a mild restriction on the user that makes implementing a
 /// lot simpler. In reality it's unlikely they would want to give two things
 /// the same ID anyway.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, derive_more::Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct RecipeTree {
     /// Tree structure storing all the folder/recipe data
@@ -274,7 +274,7 @@ mod tests {
     #[fixture]
     fn tree() -> IndexMap<RecipeId, RecipeNode> {
         indexmap! {
-            id("r1") => Recipe { id: id("r1"), ..Recipe::factory() }.into(),
+            id("r1") => Recipe { id: id("r1"), ..Recipe::factory(()) }.into(),
             id("f1") => Folder {
                 id: id("f1"),
                 children: indexmap! {
@@ -283,17 +283,17 @@ mod tests {
                         children: indexmap! {
                             id("r2") => Recipe {
                                 id: id("r2"),
-                                ..Recipe::factory()
+                                ..Recipe::factory(())
                             }.into(),
                         },
-                        ..Folder::factory()
+                        ..Folder::factory(())
                     }.into(),
-                    id("r3") => Recipe { id: id("r3"), ..Recipe::factory() }.into(),
+                    id("r3") => Recipe { id: id("r3"), ..Recipe::factory(()) }.into(),
                 },
-                ..Folder::factory()
+                ..Folder::factory(())
             }
             .into(),
-            id("r4") => Recipe { id: id("r4"), ..Recipe::factory() }.into(),
+            id("r4") => Recipe { id: id("r4"), ..Recipe::factory(()) }.into(),
         }
     }
 

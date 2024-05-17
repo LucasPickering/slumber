@@ -4,14 +4,14 @@ use crate::{
     http::{RequestId, Response},
     tui::{
         input::Action,
-        message::{Message, MessageSender},
+        message::Message,
         view::{
             common::{actions::ActionsModal, header_table::HeaderTable},
             component::record_body::{RecordBody, RecordBodyProps},
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-            event::{Event, EventHandler, EventQueue, Update},
+            event::{Event, EventHandler, Update},
             state::StateCell,
-            Component,
+            Component, ViewContext,
         },
     },
 };
@@ -21,11 +21,10 @@ use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
 /// Display response body
-#[derive(derive_more::Debug, Default)]
+#[derive(Debug, Default)]
 pub struct ResponseBodyView {
     /// Persist the response body to track view state. Update whenever the
     /// loaded request changes
-    #[debug(skip)]
     state: StateCell<RequestId, State>,
 }
 
@@ -46,6 +45,7 @@ enum BodyMenuAction {
 impl ToStringGenerate for BodyMenuAction {}
 
 /// Internal state
+#[derive(Debug)]
 struct State {
     /// Use Arc so we're not cloning large responses
     response: Arc<Response>,
@@ -56,9 +56,9 @@ struct State {
 }
 
 impl EventHandler for ResponseBodyView {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         if let Some(Action::OpenActions) = event.action() {
-            EventQueue::open_modal_default::<ActionsModal<BodyMenuAction>>();
+            ViewContext::open_modal_default::<ActionsModal<BodyMenuAction>>();
         } else if let Some(action) = event.other::<BodyMenuAction>() {
             match action {
                 BodyMenuAction::CopyBody => {
@@ -68,7 +68,7 @@ impl EventHandler for ResponseBodyView {
                         .get()
                         .and_then(|state| state.body.data().text())
                     {
-                        messages_tx.send(Message::CopyText(body));
+                        ViewContext::send_message(Message::CopyText(body));
                     }
                 }
                 BodyMenuAction::SaveBody => {
@@ -93,7 +93,7 @@ impl EventHandler for ResponseBodyView {
                         };
 
                         // This will trigger a modal to ask the user for a path
-                        messages_tx.send(Message::SaveFile {
+                        ViewContext::send_message(Message::SaveFile {
                             default_path: state.response.file_name(),
                             data,
                         });
@@ -139,7 +139,7 @@ impl Draw<ResponseBodyViewProps> for ResponseBodyView {
     }
 }
 
-#[derive(derive_more::Debug, Default)]
+#[derive(Debug, Default)]
 pub struct ResponseHeadersView;
 
 pub struct ResponseHeadersViewProps<'a> {
@@ -166,7 +166,10 @@ impl<'a> Draw<ResponseHeadersViewProps<'a>> for ResponseHeadersView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{http::RequestRecord, test_util::*, tui::context::TuiContext};
+    use crate::{
+        db::CollectionDatabase, http::RequestRecord, test_util::*,
+        tui::context::TuiContext,
+    };
     use indexmap::indexmap;
     use ratatui::{backend::TestBackend, Terminal};
     use rstest::rstest;
@@ -177,7 +180,7 @@ mod tests {
         Response{
             headers: header_map(indexmap! {"content-type" => "application/json"}),
             body: br#"{"hello":"world"}"#.to_vec().into(),
-            ..Response::factory()
+            ..Response::factory(())
         },
         // Body gets prettified
         "{\n  \"hello\": \"world\"\n}"
@@ -186,24 +189,26 @@ mod tests {
         Response{
             headers: header_map(indexmap! {"content-type" => "image/png"}),
             body: b"\x01\x02\x03\xff".to_vec().into(),
-            ..Response::factory()
+            ..Response::factory(())
         },
         "01 02 03 ff"
     )]
     #[tokio::test]
     async fn test_copy_body(
         _tui_context: &TuiContext,
+        database: CollectionDatabase,
         mut messages: MessageQueue,
         mut terminal: Terminal<TestBackend>,
         #[case] response: Response,
         #[case] expected_body: &str,
     ) {
+        ViewContext::init(database.clone(), messages.tx().clone());
         // Draw once to initialize state
         let mut component = ResponseBodyView::default();
         response.parse_body(); // Normally the view does this
         let record = RequestRecord {
             response: response.into(),
-            ..RequestRecord::factory()
+            ..RequestRecord::factory(())
         };
         component.draw(
             &mut terminal.get_frame(),
@@ -214,8 +219,8 @@ mod tests {
             DrawMetadata::default(),
         );
 
-        let update = component
-            .update(messages.tx(), Event::new_other(BodyMenuAction::CopyBody));
+        let update =
+            component.update(Event::new_other(BodyMenuAction::CopyBody));
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 
@@ -232,7 +237,7 @@ mod tests {
         Response{
             headers: header_map(indexmap! {"content-type" => "application/json"}),
             body: br#"{"hello":"world"}"#.to_vec().into(),
-            ..Response::factory()
+            ..Response::factory(())
         },
         // Body gets prettified
         b"{\n  \"hello\": \"world\"\n}",
@@ -242,7 +247,7 @@ mod tests {
         Response{
             headers: header_map(indexmap! {"content-type" => "image/png"}),
             body: b"\x01\x02\x03".to_vec().into(),
-            ..Response::factory()
+            ..Response::factory(())
         },
         b"\x01\x02\x03",
         "data.png"
@@ -254,7 +259,7 @@ mod tests {
                 "content-disposition" => "attachment; filename=\"dogs.png\"",
             }),
             body: b"\x01\x02\x03".to_vec().into(),
-            ..Response::factory()
+            ..Response::factory(())
         },
         b"\x01\x02\x03",
         "dogs.png"
@@ -262,17 +267,19 @@ mod tests {
     #[tokio::test]
     async fn test_save_file(
         _tui_context: &TuiContext,
+        database: CollectionDatabase,
         mut messages: MessageQueue,
         mut terminal: Terminal<TestBackend>,
         #[case] response: Response,
         #[case] expected_body: &[u8],
         #[case] expected_path: &str,
     ) {
+        ViewContext::init(database.clone(), messages.tx().clone());
         let mut component = ResponseBodyView::default();
         response.parse_body(); // Normally the view does this
         let record = RequestRecord {
             response: response.into(),
-            ..RequestRecord::factory()
+            ..RequestRecord::factory(())
         };
 
         // Draw once to initialize state
@@ -285,8 +292,8 @@ mod tests {
             DrawMetadata::default(),
         );
 
-        let update = component
-            .update(messages.tx(), Event::new_other(BodyMenuAction::SaveBody));
+        let update =
+            component.update(Event::new_other(BodyMenuAction::SaveBody));
         // unstable: https://github.com/rust-lang/rust/issues/82775
         assert!(matches!(update, Update::Consumed));
 

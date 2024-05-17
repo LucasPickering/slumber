@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+The biggest feature in this release is the ability to browse request history. Slumber has already had the ability to _track_ history, meaning all your history since you started using it will already be there! In addition, this release contains some UI improvements, as well as some pretty major internal refactors to enable these UI changes. These will also make future UI improvements easier and faster to implement.
+
 ### Added
 
 - Request history is now browsable! [#55](https://github.com/LucasPickering/slumber/issues/55)

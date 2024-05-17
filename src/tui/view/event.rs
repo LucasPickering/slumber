@@ -86,10 +86,10 @@ impl EventQueue {
 }
 
 /// A trigger for state change in the view. Events are handled by
-/// [Component::update], and each component is responsible for modifying
-/// its own state accordingly. Events can also trigger other events
-/// to propagate state changes, as well as side-effect messages to trigger
-/// app-wide changes (e.g. launch a request).
+/// [EventHandler::update], and each component is responsible for modifying its
+/// own state accordingly. Events can also trigger other events to propagate
+/// state changes, as well as side-effect messages to trigger app-wide changes
+/// (e.g. launch a request).
 ///
 /// This is conceptually different from [crate::tui::Message] in that events are
 /// restricted to the queue and handled in the main thread. Messages can be
@@ -126,8 +126,8 @@ pub enum Event {
 
     /// A dynamically dispatched variant, which can hold any type. This is
     /// useful for passing component-specific action types, e.g. when bubbling
-    /// up a callback. Use [std::any::Any::downcast_ref] to convert into the
-    /// expected type.
+    /// up a callback. Use [Self::other] or `Any::downcast_ref` to convert into
+    /// the expected type.
     Other(Box<dyn Any>),
 }
 
@@ -166,7 +166,8 @@ pub enum Update {
     /// The message was not consumed by this component, and should be passed to
     /// the parent component. While technically possible, this should *not* be
     /// used to trigger additional events. Instead, use
-    /// [ViewContext::push_event] for that. That will ensure the entire tree
-    /// has a chance to respond to the entire event.
+    /// [ViewContext::push_event](crate::tui::view::ViewContext::push_event)
+    /// for that. That will ensure the entire tree has a chance to respond to
+    /// the entire event.
     Propagate(Event),
 }

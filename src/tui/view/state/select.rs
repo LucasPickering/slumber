@@ -295,9 +295,9 @@ where
     }
 }
 
-/// Inner state for [SelectState] and [FixedSelectState]. This is an abstraction
-/// to allow them to support multiple state "backends" from Ratatui, to enable
-/// usage with different stateful widgets.
+/// Inner state for [SelectState]. This is an abstraction to allow it to support
+/// multiple state "backends" from Ratatui, to enable usage with different
+/// stateful widgets.
 pub trait SelectStateData: Default {
     fn selected(&self) -> Option<usize>;
 

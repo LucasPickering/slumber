@@ -38,23 +38,22 @@ pub struct ProfilePane {
     /// the entire list of items so we can pass it down to the modal, and also
     /// store which is selected. Some alternatives I considered:
     ///
-    /// - Store a Vec<Profile> and Option<ProfileId> separately. This is
-    /// basically the same as a SelectState, but requires bespoke logic to
-    /// correctly handling select defaults, and handling when the persisted
-    /// value goes missing (i.e. profile is deleted from the collection). It
-    /// also complicates persistence a lot because of annoying orphan rule
-    /// stuff.
+    /// - Store a `Vec<Profile>` and `Option<ProfileId>` separately. This is
+    ///   basically the same as a SelectState, but requires bespoke logic to
+    ///   correctly handling select defaults, and handling when the persisted
+    ///   value goes missing (i.e. profile is deleted from the collection). It
+    ///   also complicates persistence a lot because of annoying orphan rule
+    ///   stuff.
     /// - Share state between this struct and the modal using reference
-    ///   passing.
-    /// This doesn't work because the sel;ect state in this struct and the
-    /// modal can't be the same; when selecting a profile in the modal, we
-    /// *don't* want to select it in the outer app until the user hits
-    /// Enter. In addition, the modal has to be moved out into the modal queue
-    /// in order to achieve the correct render and event handling ordering,
-    /// which is incompatible with shared references.
-    /// - Share state via Rc<RefCell<_>>. This shares the same core problem as
-    /// the previous issue, and also adds a ton of complexity with types and
-    /// whatnot.
+    ///   passing. This doesn't work because the select state in this struct
+    ///   and the modal can't be the same; when selecting a profile in the
+    ///   modal, we *don't* want to select it in the outer app until the user
+    ///   hits Enter. In addition, the modal has to be moved out into the modal
+    ///   queue in order to achieve the correct render and event handling
+    ///   ordering, which is incompatible with shared references.
+    /// - Share state via `Rc<RefCell<_>>`. This shares the same core problem
+    ///   as the previous issue, and also adds a ton of complexity with types
+    ///   and whatnot.
     ///
     /// In conclusion, this component and the modal *have* to have separate
     /// state because the selected values shouldn't necessarily be in sync.

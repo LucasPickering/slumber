@@ -33,14 +33,19 @@ use uuid::Uuid;
 /// to `Default`, but allows for useful placeholders that may not make sense in
 /// the context of the broader app. It also makes it possible to implement a
 /// factory for a type that already has `Default`.
-pub trait Factory {
-    fn factory() -> Self;
+///
+/// Factories can also be parameterized, meaning the implementor can define
+/// convenient knobs to let the caller customize the generated type. Each type
+/// can have any number of `Factory` implementations, so you can support
+/// multiple param types.
+pub trait Factory<Param = ()> {
+    fn factory(param: Param) -> Self;
 }
 
 impl Factory for Collection {
-    fn factory() -> Self {
-        let recipe = Recipe::factory();
-        let profile = Profile::factory();
+    fn factory(_: ()) -> Self {
+        let recipe = Recipe::factory(());
+        let profile = Profile::factory(());
         Collection {
             recipes: indexmap! {recipe.id.clone() => recipe}.into(),
             profiles: indexmap! {profile.id.clone() => profile},
@@ -49,8 +54,20 @@ impl Factory for Collection {
     }
 }
 
+impl Factory for ProfileId {
+    fn factory(_: ()) -> Self {
+        Uuid::new_v4().to_string().into()
+    }
+}
+
+impl Factory for RecipeId {
+    fn factory(_: ()) -> Self {
+        Uuid::new_v4().to_string().into()
+    }
+}
+
 impl Factory for Profile {
-    fn factory() -> Self {
+    fn factory(_: ()) -> Self {
         Self {
             id: "profile1".into(),
             name: None,
@@ -60,7 +77,7 @@ impl Factory for Profile {
 }
 
 impl Factory for Folder {
-    fn factory() -> Self {
+    fn factory(_: ()) -> Self {
         Self {
             id: "folder1".into(),
             name: None,
@@ -70,7 +87,7 @@ impl Factory for Folder {
 }
 
 impl Factory for Recipe {
-    fn factory() -> Self {
+    fn factory(_: ()) -> Self {
         Self {
             id: "recipe1".into(),
             name: None,
@@ -85,7 +102,7 @@ impl Factory for Recipe {
 }
 
 impl Factory for Chain {
-    fn factory() -> Self {
+    fn factory(_: ()) -> Self {
         Self {
             id: "chain1".into(),
             source: ChainSource::Request {
@@ -102,7 +119,7 @@ impl Factory for Chain {
 }
 
 impl Factory for Request {
-    fn factory() -> Self {
+    fn factory(_: ()) -> Self {
         Self {
             id: RequestId::new(),
             profile_id: None,
@@ -115,8 +132,23 @@ impl Factory for Request {
     }
 }
 
+/// Customize profile and recipe ID
+impl Factory<(Option<ProfileId>, RecipeId)> for Request {
+    fn factory((profile_id, recipe_id): (Option<ProfileId>, RecipeId)) -> Self {
+        Self {
+            id: RequestId::new(),
+            profile_id,
+            recipe_id,
+            method: reqwest::Method::GET,
+            url: "http://localhost/url".parse().unwrap(),
+            headers: HeaderMap::new(),
+            body: None,
+        }
+    }
+}
+
 impl Factory for Response {
-    fn factory() -> Self {
+    fn factory(_: ()) -> Self {
         Self {
             status: StatusCode::OK,
             headers: HeaderMap::new(),
@@ -126,9 +158,24 @@ impl Factory for Response {
 }
 
 impl Factory for RequestRecord {
-    fn factory() -> Self {
-        let request = Request::factory();
-        let response = Response::factory();
+    fn factory(_: ()) -> Self {
+        let request = Request::factory(());
+        let response = Response::factory(());
+        Self {
+            id: request.id,
+            request: request.into(),
+            response: response.into(),
+            start_time: Utc::now(),
+            end_time: Utc::now(),
+        }
+    }
+}
+
+/// Customize profile and recipe ID
+impl Factory<(Option<ProfileId>, RecipeId)> for RequestRecord {
+    fn factory(params: (Option<ProfileId>, RecipeId)) -> Self {
+        let request = Request::factory(params);
+        let response = Response::factory(());
         Self {
             id: request.id,
             request: request.into(),
@@ -140,12 +187,12 @@ impl Factory for RequestRecord {
 }
 
 impl Factory for TemplateContext {
-    fn factory() -> Self {
+    fn factory(_: ()) -> Self {
         Self {
             collection: Collection::default(),
             selected_profile: None,
             http_engine: None,
-            database: CollectionDatabase::factory(),
+            database: CollectionDatabase::factory(()),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
             recursion_count: 0.into(),
@@ -166,11 +213,18 @@ pub fn terminal() -> Terminal<TestBackend> {
     Terminal::new(backend).unwrap()
 }
 
-/// Test fixture for using context. This will initialize it once for all tests
+/// Create an in-memory database for a collection
+#[rstest::fixture]
+pub fn database() -> CollectionDatabase {
+    CollectionDatabase::factory(())
+}
+
+/// Test fixture for using TUI context. The context is a global read-only var,
+/// so this will initialize it once for *all tests*.
 #[rstest::fixture]
 #[once]
 pub fn tui_context() -> &'static TuiContext {
-    TuiContext::init(Config::default(), CollectionDatabase::factory());
+    TuiContext::init(Config::default());
     TuiContext::get()
 }
 
@@ -330,7 +384,7 @@ pub(crate) use assert_err;
 /// Assert that the event queue matches the given list of patterns
 macro_rules! assert_events {
     ($($pattern:pat),* $(,)?) => {
-        EventQueue::inspect(|events| {
+        ViewContext::inspect_event_queue(|events| {
             assert!(
                 matches!(events, &[$($pattern,)*]),
                 "Unexpected events in queue; \

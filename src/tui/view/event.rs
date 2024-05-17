@@ -2,10 +2,9 @@
 //! events (e.g. HTTP responses)
 
 use crate::{
-    collection::{ProfileId, RecipeId},
+    http::RequestId,
     tui::{
         input::Action,
-        message::MessageSender,
         view::{
             common::modal::{Modal, ModalPriority},
             state::{Notification, RequestState},
@@ -13,7 +12,7 @@ use crate::{
         },
     },
 };
-use std::{any::Any, cell::RefCell, collections::VecDeque, fmt::Debug};
+use std::{any::Any, collections::VecDeque, fmt::Debug};
 use tracing::trace;
 
 /// A UI element that can handle user/async input. This trait facilitates an
@@ -25,7 +24,7 @@ pub trait EventHandler: Debug {
     /// Returned outcome indicates whether the event was consumed, or it should
     /// be propgated to our parent. Use [EventQueue] to queue subsequent events,
     /// and the given message sender to queue async messages.
-    fn update(&mut self, _messages_tx: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         Update::Propagate(event)
     }
 
@@ -50,8 +49,8 @@ pub trait EventHandler: Debug {
 }
 
 impl EventHandler for &mut dyn EventHandler {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
-        (*self).update(messages_tx, event)
+    fn update(&mut self, event: Event) -> Update {
+        (*self).update(event)
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
@@ -68,51 +67,21 @@ impl EventHandler for &mut dyn EventHandler {
 pub struct EventQueue(VecDeque<Event>);
 
 impl EventQueue {
-    thread_local! {
-        /// This is used to access the event queue from anywhere in the view
-        /// code. Since the view is all single-threaded, there should only ever
-        /// be one instance of this thread local. All mutable accesses are
-        /// restricted to the methods on the [EventQueue] type, so it's
-        /// impossible for an outside caller to hold the ref cell open.
-        ///
-        /// The advantage of having this in a thread local is it makes it easy
-        /// to queue additional events from anywhere, e.g. in event callbacks
-        /// or during init.
-        static INSTANCE: RefCell<EventQueue> = RefCell::default();
-    }
-
     /// Queue a view event to be handled by the component tree
-    pub fn push(event: Event) {
+    pub fn push(&mut self, event: Event) {
         trace!(?event, "Queueing view event");
-        Self::INSTANCE
-            .with_borrow_mut(move |context| context.0.push_back(event));
+        self.0.push_back(event);
     }
 
     /// Pop an event off the queue
-    pub fn pop() -> Option<Event> {
-        Self::INSTANCE.with_borrow_mut(|context| context.0.pop_front())
+    pub fn pop(&mut self) -> Option<Event> {
+        self.0.pop_front()
     }
 
-    /// Open a modal
-    pub fn open_modal(modal: impl Modal + 'static, priority: ModalPriority) {
-        Self::push(Event::OpenModal {
-            modal: Box::new(modal),
-            priority,
-        });
-    }
-
-    /// Open a modal that implements `Default`, with low priority
-    pub fn open_modal_default<T: Modal + Default + 'static>() {
-        Self::open_modal(T::default(), ModalPriority::Low);
-    }
-
-    /// Execute a function with read-only access to the event queue.
+    /// Collect references to each event into a vector, for asserting on it
     #[cfg(test)]
-    pub fn inspect(f: impl FnOnce(&[&Event])) {
-        Self::INSTANCE.with_borrow(|events| {
-            let refs: Vec<_> = events.0.iter().collect();
-            f(refs.as_slice());
-        })
+    pub fn to_vec(&self) -> Vec<&Event> {
+        self.0.iter().collect()
     }
 }
 
@@ -135,22 +104,16 @@ pub enum Event {
     },
 
     // HTTP
-    /// Load a request from the database. Used to communicate from the recipe
-    /// list to the parent, where more context is available.
-    HttpLoadRequest,
-    /// User wants to send a new request. Used to communicate from the recipe
-    /// list to the parent, where more context is available.
-    HttpSendRequest,
-    /// Update our state based on external HTTP events
-    HttpSetState {
-        profile_id: Option<ProfileId>,
-        recipe_id: RecipeId,
-        #[debug(skip)]
-        state: RequestState,
-    },
+    /// Load a request from the database. If the ID is given, load that
+    /// specific request. If not, get the most recent for the current
+    /// profile+recipe.
+    HttpSelectRequest(Option<RequestId>),
+    /// Update the state of an in-progress HTTP request
+    HttpSetState(RequestState),
 
     /// Show a modal to the user
     OpenModal {
+        #[debug(skip)]
         modal: Box<dyn Modal>,
         priority: ModalPriority,
     },
@@ -203,7 +166,7 @@ pub enum Update {
     /// The message was not consumed by this component, and should be passed to
     /// the parent component. While technically possible, this should *not* be
     /// used to trigger additional events. Instead, use
-    /// [EventQueue::push] for that. That will ensure the entire tree
+    /// [ViewContext::push_event] for that. That will ensure the entire tree
     /// has a chance to respond to the entire event.
     Propagate(Event),
 }

@@ -91,4 +91,4 @@ requests:
     <<: *base
     name: Delay
     method: GET
-    url: "{{host}}/delay/1"
+    url: "{{host}}/delay/5"

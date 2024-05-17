@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Request history is now browsable! [#55](https://github.com/LucasPickering/slumber/issues/55)
+
 ### Changed
 
 - Merge request & response panes

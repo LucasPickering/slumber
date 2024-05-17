@@ -2,17 +2,15 @@
 //! components., and exposes a small API for accessing both local and global
 //! component state.
 
-use crate::tui::{
-    message::MessageSender,
-    view::{
-        draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, Update},
-    },
+use crate::tui::view::{
+    draw::{Draw, DrawMetadata},
+    event::{Event, EventHandler, Update},
 };
 use crossterm::event::MouseEvent;
 use derive_more::Display;
 use ratatui::{layout::Rect, Frame};
 use std::{
+    any,
     cell::{Cell, RefCell},
     collections::HashSet,
 };
@@ -53,6 +51,8 @@ pub struct Component<T> {
     /// Unique random identifier for this component, to reference it in global
     /// state
     id: ComponentId,
+    /// Name of the component type, which is used just for tracing
+    name: &'static str,
     inner: T,
     /// Draw metadata that affects event handling. This is updated on each draw
     /// call, hence the need for interior mutability.
@@ -63,6 +63,7 @@ impl<T> Component<T> {
     pub fn new(inner: T) -> Self {
         Self {
             id: ComponentId::new(),
+            name: any::type_name::<T>(),
             inner,
             metadata: Cell::default(),
         }
@@ -71,11 +72,7 @@ impl<T> Component<T> {
     /// Handle an event for this component *or* its children, starting at the
     /// lowest descendant. Recursively walk up the tree until a component
     /// consumes the event.
-    pub fn update_all(
-        &mut self,
-        messages_tx: &MessageSender,
-        mut event: Event,
-    ) -> Update
+    pub fn update_all(&mut self, mut event: Event) -> Update
     where
         T: EventHandler,
     {
@@ -84,7 +81,7 @@ impl<T> Component<T> {
             // Don't propgate to children that aren't visible or not in focus
             if child.should_handle(&event) {
                 // RECURSION
-                let update = child.update_all(messages_tx, event);
+                let update = child.update_all(event);
                 match update {
                     Update::Propagate(returned) => {
                         // Keep going to the next child. The propgated event
@@ -102,9 +99,9 @@ impl<T> Component<T> {
         // None of our children handled it, we'll take it ourselves. Event is
         // already traced in the root span, so don't dupe it.
         if self.should_handle(&event) {
-            let span = trace_span!("Component handling", component = ?self);
+            let span = trace_span!("Component handling", component = self.name);
             span.in_scope(|| {
-                let update = self.data_mut().update(messages_tx, event);
+                let update = self.data_mut().update(event);
                 trace!(?update);
                 update
             })
@@ -171,6 +168,7 @@ impl<T> Component<T> {
     {
         Component {
             id: self.id,
+            name: self.name,
             inner: &mut self.inner,
             metadata: self.metadata.clone(),
         }
@@ -220,14 +218,14 @@ impl<T> Component<T> {
     /// one-by-one. We expect each event to be consumed, so panic if it's
     /// propagated.
     #[cfg(test)]
-    pub fn drain_events(&mut self, messages_tx: &MessageSender)
+    pub fn drain_events(&mut self)
     where
         T: EventHandler,
     {
-        use crate::tui::view::event::EventQueue;
+        use crate::tui::view::ViewContext;
 
-        while let Some(event) = EventQueue::pop() {
-            match self.update_all(messages_tx, event) {
+        while let Some(event) = ViewContext::pop_event() {
+            match self.update_all(event) {
                 Update::Consumed => {}
                 Update::Propagate(event) => {
                     panic!("Event was not consumed: {event:?}")
@@ -323,7 +321,7 @@ mod tests {
     use super::*;
     use crate::{
         test_util::*,
-        tui::{input::Action, message::MessageSender, view::event::Update},
+        tui::{input::Action, view::event::Update},
     };
     use crossterm::event::{
         KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
@@ -363,7 +361,7 @@ mod tests {
     }
 
     impl EventHandler for Branch {
-        fn update(&mut self, _: &MessageSender, _: Event) -> Update {
+        fn update(&mut self, _: Event) -> Update {
             self.count += 1;
             Update::Consumed
         }
@@ -413,7 +411,7 @@ mod tests {
     }
 
     impl EventHandler for Leaf {
-        fn update(&mut self, _: &MessageSender, _: Event) -> Update {
+        fn update(&mut self, _: Event) -> Update {
             self.count += 1;
             Update::Consumed
         }
@@ -427,7 +425,7 @@ mod tests {
 
     #[rstest]
     fn test_render_component_tree(
-        messages: MessageQueue,
+        _messages: MessageQueue,
         mut terminal: Terminal<TestBackend>,
     ) {
         // One level of nesting
@@ -452,7 +450,7 @@ mod tests {
                 ];
                 // Now visible components get events
                 for event in events {
-                    component.update_all(messages.tx(), event);
+                    component.update_all(event);
                 }
                 let [expected_root, expected_a, expected_b, expected_c] =
                     expected_counts;

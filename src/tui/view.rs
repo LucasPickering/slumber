@@ -1,5 +1,6 @@
 mod common;
 mod component;
+mod context;
 mod draw;
 mod event;
 mod state;
@@ -12,13 +13,15 @@ pub use theme::{Styles, Theme};
 pub use util::{Confirm, PreviewPrompter};
 
 use crate::{
-    collection::{CollectionFile, ProfileId, RecipeId},
+    collection::CollectionFile,
+    db::CollectionDatabase,
     tui::{
         input::Action,
         message::{Message, MessageSender},
         view::{
             component::{Component, Root},
-            event::{Event, EventQueue, Update},
+            context::ViewContext,
+            event::{Event, Update},
             state::Notification,
         },
     },
@@ -42,21 +45,17 @@ use tracing::{error, trace, trace_span};
 #[derive(Debug)]
 pub struct View {
     root: Component<Root>,
-    /// A channel for sending async messages to the main loop
-    messages_tx: MessageSender,
 }
 
 impl View {
     pub fn new(
         collection_file: &CollectionFile,
+        database: CollectionDatabase,
         messages_tx: MessageSender,
     ) -> Self {
+        ViewContext::init(database, messages_tx);
         let mut view = Self {
-            // Forward the message sender so it can be used during component
-            // construction
-            root: Root::new(&collection_file.collection, messages_tx.clone())
-                .into(),
-            messages_tx,
+            root: Root::new(&collection_file.collection).into(),
         };
         view.notify(format!(
             "Loaded collection from {}",
@@ -76,17 +75,8 @@ impl View {
     /// The state will only be updated if this is a new request or it
     /// matches the current request for this recipe. We only store one
     /// request per profile+recipe at a time.
-    pub fn set_request_state(
-        &mut self,
-        profile_id: Option<ProfileId>,
-        recipe_id: RecipeId,
-        state: RequestState,
-    ) {
-        EventQueue::push(Event::HttpSetState {
-            profile_id,
-            recipe_id,
-            state,
-        });
+    pub fn set_request_state(&mut self, state: RequestState) {
+        ViewContext::push_event(Event::HttpSetState(state));
     }
 
     /// Queue an event to open a new modal. The input can be anything that
@@ -96,7 +86,7 @@ impl View {
         modal: impl IntoModal + 'static,
         priority: ModalPriority,
     ) {
-        EventQueue::push(Event::OpenModal {
+        ViewContext::push_event(Event::OpenModal {
             modal: Box::new(modal.into_modal()),
             priority,
         });
@@ -105,7 +95,7 @@ impl View {
     /// Queue an event to send an informational notification to the user
     pub fn notify(&mut self, message: impl ToString) {
         let notification = Notification::new(message.to_string());
-        EventQueue::push(Event::Notify(notification));
+        ViewContext::push_event(Event::Notify(notification));
     }
 
     /// Queue an event to update the view according to an input event from the
@@ -116,7 +106,7 @@ impl View {
         event: crossterm::event::Event,
         action: Option<Action>,
     ) {
-        EventQueue::push(Event::Input { event, action })
+        ViewContext::push_event(Event::Input { event, action })
     }
 
     /// Drain all view events from the queue. The component three will process
@@ -130,9 +120,9 @@ impl View {
         }
 
         // It's possible for components to queue additional events
-        while let Some(event) = EventQueue::pop() {
+        while let Some(event) = ViewContext::pop_event() {
             trace_span!("View event", ?event).in_scope(|| {
-                match self.root.update_all(&self.messages_tx, event) {
+                match self.root.update_all(event) {
                     Update::Consumed => {
                         trace!("View event consumed")
                     }
@@ -152,7 +142,7 @@ impl View {
             Err(error) => {
                 // Returned error doesn't impl 'static so we can't
                 // directly convert it to anyhow
-                self.messages_tx.send(Message::Error {
+                ViewContext::send_message(Message::Error {
                     error: anyhow!("Error copying text: {error}"),
                 })
             }
@@ -174,15 +164,17 @@ mod tests {
     fn test_initial_draw(
         _tui_context: &TuiContext,
         mut terminal: Terminal<TestBackend>,
+        database: CollectionDatabase,
         messages: MessageQueue,
     ) {
-        let collection = Collection::factory();
+        let collection = Collection::factory(());
         let collection_file = CollectionFile::testing(collection);
-        let mut view = View::new(&collection_file, messages.tx().clone());
+        let mut view =
+            View::new(&collection_file, database, messages.tx().clone());
 
         // Initial events
         assert_events!(
-            Event::HttpLoadRequest,
+            Event::HttpSelectRequest(None),
             Event::Other(_),
             Event::Notify(_)
         );
@@ -190,7 +182,7 @@ mod tests {
         // Events should *still* be in the queue, because we haven't drawn yet
         view.handle_events();
         assert_events!(
-            Event::HttpLoadRequest,
+            Event::HttpSelectRequest(None),
             Event::Other(_),
             Event::Notify(_)
         );
@@ -198,7 +190,7 @@ mod tests {
         // Nothing new
         view.draw(&mut terminal.get_frame());
         assert_events!(
-            Event::HttpLoadRequest,
+            Event::HttpSelectRequest(None),
             Event::Other(_),
             Event::Notify(_)
         );

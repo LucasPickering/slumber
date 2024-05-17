@@ -2,7 +2,7 @@ use crate::tui::{
     context::TuiContext,
     view::{common::Pane, draw::Generate},
 };
-use ratatui::{text::Span, widgets::ListItem};
+use ratatui::{text::Text, widgets::ListItem};
 
 /// A list with optional border and title. Each item has to be convertible to
 /// text
@@ -11,9 +11,10 @@ pub struct List<'a, Item, Iter: 'a + IntoIterator<Item = Item>> {
     pub list: Iter,
 }
 
-impl<'a, Item, Iter> Generate for List<'a, Item, Iter>
+impl<'a, T, Item, Iter> Generate for List<'a, Item, Iter>
 where
-    Item: 'a + Generate<Output<'a> = Span<'a>>,
+    T: Into<Text<'a>>,
+    Item: 'a + Generate<Output<'a> = T>,
     Iter: 'a + IntoIterator<Item = Item>,
 {
     type Output<'this> = ratatui::widgets::List<'this> where Self: 'this;

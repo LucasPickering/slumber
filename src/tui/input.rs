@@ -211,6 +211,7 @@ impl Default for InputEngine {
                 Action::OpenHelp => KeyCode::Char('?').into(),
                 Action::Fullscreen => KeyCode::Char('f').into(),
                 Action::ReloadCollection => KeyCode::F(5).into(),
+                Action::History => KeyCode::Char('h').into(),
                 Action::Search => KeyCode::Char('/').into(),
                 Action::PreviousPane => KeyCode::BackTab.into(),
                 Action::NextPane => KeyCode::Tab.into(),
@@ -290,6 +291,8 @@ pub enum Action {
     Submit,
     /// Close the current modal/dialog/etc.
     Cancel,
+    /// Browse request history
+    History,
     /// Start a search/filter operation
     #[display("Search/Filter")]
     Search,

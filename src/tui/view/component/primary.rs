@@ -2,10 +2,9 @@
 
 use crate::{
     collection::{Collection, Profile, ProfileId, Recipe, RecipeId},
-    http::RecipeOptions,
     tui::{
         input::Action,
-        message::MessageSender,
+        message::{Message, RequestConfig},
         view::{
             common::actions::ActionsModal,
             component::{
@@ -16,13 +15,13 @@ use crate::{
                 record_pane::{RecordPane, RecordPaneProps},
             },
             draw::{Draw, DrawMetadata},
-            event::{Event, EventHandler, EventQueue, Update},
+            event::{Event, EventHandler, Update},
             state::{
                 fixed_select::FixedSelectState,
                 persistence::{Persistent, PersistentKey},
                 RequestState,
             },
-            Component,
+            Component, ViewContext,
         },
     },
 };
@@ -37,25 +36,21 @@ use serde::{Deserialize, Serialize};
 use strum::{EnumCount, EnumIter};
 
 /// Primary TUI view, which shows request/response panes
-#[derive(derive_more::Debug)]
+#[derive(Debug)]
 pub struct PrimaryView {
     // Own state
     selected_pane: Persistent<FixedSelectState<PrimaryPane>>,
     fullscreen_mode: Persistent<Option<FullscreenMode>>,
 
     // Children
-    #[debug(skip)]
     profile_pane: Component<ProfilePane>,
-    #[debug(skip)]
     recipe_list_pane: Component<RecipeListPane>,
-    #[debug(skip)]
     recipe_pane: Component<RecipePane>,
-    #[debug(skip)]
     record_pane: Component<RecordPane>,
 }
 
 pub struct PrimaryViewProps<'a> {
-    pub active_request: Option<&'a RequestState>,
+    pub selected_request: Option<&'a RequestState>,
 }
 
 /// Selectable panes in the primary view mode
@@ -93,7 +88,7 @@ enum FullscreenMode {
 struct ExitFullscreen;
 
 impl PrimaryView {
-    pub fn new(collection: &Collection, messages_tx: MessageSender) -> Self {
+    pub fn new(collection: &Collection) -> Self {
         let profile_pane = ProfilePane::new(
             collection.profiles.values().cloned().collect_vec(),
         )
@@ -101,7 +96,9 @@ impl PrimaryView {
         let recipe_list_pane = RecipeListPane::new(&collection.recipes).into();
         let selected_pane = FixedSelectState::builder()
             // Changing panes kicks us out of fullscreen
-            .on_select(|_| EventQueue::push(Event::new_other(ExitFullscreen)))
+            .on_select(|_| {
+                ViewContext::push_event(Event::new_other(ExitFullscreen))
+            })
             .build();
 
         Self {
@@ -116,7 +113,7 @@ impl PrimaryView {
 
             recipe_list_pane,
             profile_pane,
-            recipe_pane: RecipePane::new(messages_tx).into(),
+            recipe_pane: Default::default(),
             record_pane: Default::default(),
         }
     }
@@ -135,14 +132,9 @@ impl PrimaryView {
     pub fn selected_profile(&self) -> Option<&Profile> {
         self.profile_pane.data().selected_profile()
     }
-
+    /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
         self.selected_profile().map(|profile| &profile.id)
-    }
-
-    /// Generate a [RecipeOptions] instance based on current UI state
-    pub fn recipe_options(&self) -> RecipeOptions {
-        self.recipe_pane.data().recipe_options()
     }
 
     /// Draw the "normal" view, when nothing is full
@@ -175,9 +167,7 @@ impl PrimaryView {
             frame,
             RecipePaneProps {
                 selected_recipe: self.selected_recipe(),
-                selected_profile_id: self
-                    .selected_profile()
-                    .map(|profile| &profile.id),
+                selected_profile_id: self.selected_profile_id(),
             },
             recipe_area,
             self.is_selected(PrimaryPane::Recipe),
@@ -190,7 +180,7 @@ impl PrimaryView {
                     .recipe_list_pane
                     .data()
                     .selected_node(),
-                request_state: props.active_request,
+                request_state: props.selected_request,
             },
             request_response_area,
             self.is_selected(PrimaryPane::Record),
@@ -228,7 +218,7 @@ impl PrimaryView {
 }
 
 impl EventHandler for PrimaryView {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match &event {
             // Input messages
             Event::Input {
@@ -239,18 +229,29 @@ impl EventHandler for PrimaryView {
                 Action::NextPane => self.selected_pane.next(),
                 Action::Submit => {
                     // Send a request from anywhere
-                    EventQueue::push(Event::HttpSendRequest);
+                    if let Some(recipe_id) = self.selected_recipe_id() {
+                        ViewContext::send_message(Message::HttpBeginRequest(
+                            RequestConfig {
+                                recipe_id: recipe_id.clone(),
+                                profile_id: self.selected_profile_id().cloned(),
+                                options: self
+                                    .recipe_pane
+                                    .data()
+                                    .recipe_options(),
+                            },
+                        ));
+                    }
                 }
                 Action::OpenActions => {
-                    EventQueue::open_modal_default::<ActionsModal>();
+                    ViewContext::open_modal_default::<ActionsModal>();
                 }
                 Action::OpenHelp => {
-                    EventQueue::open_modal_default::<HelpModal>();
+                    ViewContext::open_modal_default::<HelpModal>();
                 }
 
                 // Pane hotkeys
                 Action::SelectProfileList => {
-                    self.profile_pane.data().open_modal(messages_tx.clone());
+                    self.profile_pane.data().open_modal()
                 }
                 Action::SelectRecipeList => {
                     self.selected_pane.select(&PrimaryPane::RecipeList)
@@ -320,9 +321,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 frame,
                 RecipePaneProps {
                     selected_recipe: self.selected_recipe(),
-                    selected_profile_id: self
-                        .selected_profile()
-                        .map(|profile| &profile.id),
+                    selected_profile_id: self.selected_profile_id(),
                 },
                 metadata.area(),
                 true,
@@ -334,7 +333,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                         .recipe_list_pane
                         .data()
                         .selected_node(),
-                    request_state: props.active_request,
+                    request_state: props.selected_request,
                 },
                 metadata.area(),
                 true,

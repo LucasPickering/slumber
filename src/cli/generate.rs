@@ -29,7 +29,7 @@ pub enum GenerateFormat {
 #[async_trait]
 impl Subcommand for GenerateCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let (_, request) = self
+        let (_, _, request) = self
             .build_request
             // User has to explicitly opt into executing triggered requests
             .build_request(global, self.execute_triggers)

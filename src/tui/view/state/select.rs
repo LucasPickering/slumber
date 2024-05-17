@@ -1,6 +1,5 @@
 use crate::tui::{
     input::Action,
-    message::MessageSender,
     view::{
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
@@ -27,7 +26,6 @@ where
     /// draw phase, by [ratatui::Frame::render_stateful_widget]. This allows
     /// rendering without a mutable reference.
     state: RefCell<State>,
-    #[debug(skip)]
     items: Vec<Item>,
     /// Callback when an item is highlighted
     #[debug(skip)]
@@ -228,7 +226,7 @@ where
     Item: Debug,
     State: Debug + SelectStateData,
 {
-    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };

@@ -2,18 +2,18 @@ use crate::{
     http::{Request, RequestId},
     tui::{
         input::Action,
-        message::{Message, MessageSender},
+        message::Message,
         view::{
             common::{actions::ActionsModal, header_table::HeaderTable},
             component::record_body::{RecordBody, RecordBodyProps},
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-            event::{Event, EventHandler, EventQueue, Update},
+            event::{Event, EventHandler, Update},
             state::StateCell,
-            Component,
+            Component, ViewContext,
         },
     },
 };
-use derive_more::{Debug, Display};
+use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
@@ -22,7 +22,6 @@ use strum::{EnumCount, EnumIter};
 /// it just needs to have been built successfully.
 #[derive(Debug, Default)]
 pub struct RequestView {
-    #[debug(skip)]
     state: StateCell<RequestId, State>,
 }
 
@@ -31,6 +30,7 @@ pub struct RequestViewProps {
 }
 
 /// Inner state, which should be reset when request changes
+#[derive(Debug)]
 struct State {
     /// Store pointer to the request, so we can access it in the update step
     request: Arc<Request>,
@@ -51,18 +51,18 @@ enum MenuAction {
 impl ToStringGenerate for MenuAction {}
 
 impl EventHandler for RequestView {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::OpenActions),
                 ..
-            } => EventQueue::open_modal_default::<ActionsModal<MenuAction>>(),
+            } => ViewContext::open_modal_default::<ActionsModal<MenuAction>>(),
             Event::Other(ref other) => {
                 // Check for an action menu event
                 match other.downcast_ref::<MenuAction>() {
                     Some(MenuAction::CopyUrl) => {
                         if let Some(state) = self.state.get() {
-                            messages_tx.send(Message::CopyText(
+                            ViewContext::send_message(Message::CopyText(
                                 state.request.url.to_string(),
                             ))
                         }
@@ -76,7 +76,7 @@ impl EventHandler for RequestView {
                             .get()
                             .and_then(|state| state.body.data().text())
                         {
-                            messages_tx.send(Message::CopyText(body));
+                            ViewContext::send_message(Message::CopyText(body));
                         }
                     }
                     None => return Update::Propagate(event),

@@ -1,182 +1,167 @@
 use crate::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::Collection,
+    http::RequestId,
     tui::{
-        context::TuiContext,
         input::Action,
-        message::{Message, MessageSender, RequestConfig},
+        message::Message,
         view::{
             common::{actions::GlobalAction, modal::ModalQueue},
             component::{
                 help::HelpFooter,
+                history::History,
                 misc::NotificationText,
                 primary::{PrimaryView, PrimaryViewProps},
             },
             draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
-            state::RequestState,
-            Component,
+            state::{
+                persistence::{
+                    Persistable, Persistent, PersistentContainer, PersistentKey,
+                },
+                request_store::RequestStore,
+                RequestState, RequestStateSummary,
+            },
+            Component, ModalPriority, ViewContext,
         },
     },
     util::ResultExt,
 };
+use derive_more::{Deref, DerefMut};
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
-use std::collections::{hash_map::Entry, HashMap};
 
 /// The root view component
-#[derive(derive_more::Debug)]
+#[derive(Debug)]
 pub struct Root {
     // ===== Own State =====
-    /// Cached request state. Request history is specific to both a recipe
-    /// **and** a profile, so we must key on both. A profile+recipe pair will
-    /// appear in this map if two conditions are met:
-    /// - It has at least one *successful* request in history
-    /// - It has beed focused by the user during this process
-    /// This will be populated on-demand when a user selects a recipe in the
-    /// list.
-    #[debug(skip)]
-    active_requests: HashMap<(Option<ProfileId>, RecipeId), RequestState>,
+    /// Track and cache in-progress and completed requests
+    request_store: RequestStore,
+    /// Which request are we showing in the request/response panel?
+    selected_request: Persistent<SelectedRequestId>,
 
     // ==== Children =====
     /// We hold onto the primary view even when it's not visible, because we
     /// don't want the state to reset when changing views
-    #[debug(skip)]
     primary_view: Component<PrimaryView>,
-    #[debug(skip)]
     modal_queue: Component<ModalQueue>,
-    #[debug(skip)]
     notification_text: Option<Component<NotificationText>>,
 }
 
 impl Root {
-    pub fn new(collection: &Collection, messages_tx: MessageSender) -> Self {
+    pub fn new(collection: &Collection) -> Self {
+        // Load the selected request *second*, so it will take precedence over
+        // the event that attempts to load the latest request for the recipe
+        let primary_view = PrimaryView::new(collection);
+        let selected_request = Persistent::new(
+            PersistentKey::RequestId,
+            SelectedRequestId::default(),
+        );
         Self {
             // State
-            active_requests: HashMap::new(),
+            request_store: RequestStore::default(),
+            selected_request,
 
             // Children
-            primary_view: PrimaryView::new(collection, messages_tx).into(),
+            primary_view: primary_view.into(),
             modal_queue: Component::default(),
             notification_text: None,
         }
     }
 
-    /// Load the latest request for the currently selected recipe+profile from
-    /// the database. This is a blocking I/O operation but we expect it to be
-    /// very fast.
-    fn load_latest_request(&mut self, messages_tx: &MessageSender) {
-        let primary_view = self.primary_view.data();
-        if let Some(recipe_id) = primary_view.selected_recipe_id() {
-            let profile_id = primary_view.selected_profile_id();
-            let database = &TuiContext::get().database;
-
-            if let Some(record) = database
-                .get_last_request(profile_id, recipe_id)
-                .reported(messages_tx)
-                .flatten()
-            {
-                self.update_request(
-                    profile_id.cloned(),
-                    recipe_id.clone(),
-                    RequestState::response(record),
-                );
-            }
-        }
-    }
-
-    /// Get the request state to be displayed
-    fn active_request(&self) -> Option<&RequestState> {
-        let primary_view = self.primary_view.data();
-        // "No Profile" _is_ a profile
-        let profile_id = primary_view
-            .selected_profile()
-            .map(|profile| profile.id.clone());
-        let recipe_id = primary_view.selected_recipe()?.id.clone();
-        self.active_requests.get(&(profile_id, recipe_id))
-    }
-
-    /// Update the active HTTP request state
-    fn update_request(
+    /// Select the given request. This will ensure the request data is loaded
+    /// in memory.
+    fn select_request(
         &mut self,
-        profile_id: Option<ProfileId>,
-        recipe_id: RecipeId,
-        state: RequestState,
-    ) {
-        // Update the state if any of these conditions match:
-        // - There's nothing there yet
-        // - This is a new request
-        // - This is an update to the request already in place
-        match self.active_requests.entry((profile_id, recipe_id)) {
-            Entry::Vacant(entry) => {
-                entry.insert(state);
-            }
-            Entry::Occupied(mut entry)
-                if state.is_initial() || entry.get().id() == state.id() =>
-            {
-                entry.insert(state);
-            }
-            Entry::Occupied(_) => {
-                // State is already holding a different request, throw
-                // this update away
-            }
+        request_id: Option<RequestId>,
+    ) -> anyhow::Result<()> {
+        let primary_view = self.primary_view.data();
+        **self.selected_request = if let Some(request_id) = request_id {
+            // Make sure the given ID is valid, and the request is loaded
+            self.request_store.load(request_id)?;
+            Some(request_id)
+        } else if let Some(recipe_id) = primary_view.selected_recipe_id() {
+            // Find the most recent request by recipe+profile
+            let profile_id = primary_view.selected_profile_id();
+            self.request_store
+                .load_latest(profile_id, recipe_id)?
+                .map(RequestState::id)
+        } else {
+            None
+        };
+        Ok(())
+    }
+
+    /// What request should be shown in the request/response pane right now?
+    fn selected_request(&self) -> Option<&RequestState> {
+        self.selected_request
+            .and_then(|request_id| self.request_store.get(request_id))
+    }
+
+    /// Open the history modal for current recipe+profile. Return an error if
+    /// the database load failed.
+    fn open_history(&mut self) -> anyhow::Result<()> {
+        let primary_view = self.primary_view.data();
+        if let Some(recipe) = primary_view.selected_recipe() {
+            // Make sure all requests for this profile+recipe are loaded
+            let requests = self
+                .request_store
+                .load_summaries(primary_view.selected_profile_id(), &recipe.id)?
+                .map(RequestStateSummary::from)
+                .collect();
+
+            ViewContext::open_modal(
+                History::new(recipe, requests, **self.selected_request),
+                ModalPriority::Low,
+            );
         }
+        Ok(())
     }
 }
 
 impl EventHandler for Root {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
-        let primary_view = self.primary_view.data();
+    fn update(&mut self, event: Event) -> Update {
         match event {
-            // Load latest request for selected recipe from database
-            Event::HttpLoadRequest => self.load_latest_request(messages_tx),
-            // Send HTTP request
-            Event::HttpSendRequest => {
-                if let Some(recipe_id) = primary_view.selected_recipe_id() {
-                    messages_tx.send(Message::HttpBeginRequest(
-                        RequestConfig {
-                            recipe_id: recipe_id.clone(),
-                            profile_id: primary_view
-                                .selected_profile_id()
-                                .cloned(),
-                            options: primary_view.recipe_options(),
-                        },
-                    ));
+            // Set selected request, and load it from the DB if needed
+            Event::HttpSelectRequest(request_id) => {
+                self.select_request(request_id)
+                    .reported(&ViewContext::messages_tx());
+            }
+            // Update state of in-progress HTTP request
+            Event::HttpSetState(state) => {
+                let id = state.id();
+                // If this request is *new*, select it
+                if self.request_store.update(state) {
+                    **self.selected_request = Some(id);
                 }
             }
-
-            // Update state of HTTP request
-            Event::HttpSetState {
-                profile_id,
-                recipe_id,
-                state,
-            } => self.update_request(profile_id, recipe_id, state),
 
             Event::Notify(notification) => {
                 self.notification_text =
                     Some(NotificationText::new(notification).into())
             }
 
-            // Any input here should be handled regardless of current screen
-            // context (barring any focused text element, which will eat all
-            // input)
             Event::Input {
                 action: Some(action),
                 ..
             } => match action {
-                Action::Quit => messages_tx.send(Message::Quit),
+                // Handle history here because we have stored request state
+                Action::History => {
+                    self.open_history().reported(&ViewContext::messages_tx());
+                }
+                Action::Quit => ViewContext::send_message(Message::Quit),
                 Action::ReloadCollection => {
-                    messages_tx.send(Message::CollectionStartReload)
+                    ViewContext::send_message(Message::CollectionStartReload)
                 }
                 _ => return Update::Propagate(event),
             },
 
             // Any other unhandled input event should *not* log an error,
-            // because it is probably just unmapped input
+            // because it is probably just unmapped input, and not a bug
             Event::Input { .. } => {}
 
             Event::Other(ref callback) => {
                 match callback.downcast_ref::<GlobalAction>() {
                     Some(GlobalAction::EditCollection) => {
-                        messages_tx.send(Message::CollectionEdit)
+                        ViewContext::send_message(Message::CollectionEdit)
                     }
                     None => return Update::Propagate(event),
                 }
@@ -204,7 +189,7 @@ impl Draw for Root {
         self.primary_view.draw(
             frame,
             PrimaryViewProps {
-                active_request: self.active_request(),
+                selected_request: self.selected_request(),
             },
             main_area,
             !self.modal_queue.data().is_open(),
@@ -227,14 +212,34 @@ impl Draw for Root {
     }
 }
 
+/// A wrapper for the selected request ID. This is needed to customize
+/// persistence loading. We have to load the persisted value via an event so it
+/// can be loaded into the DB.
+#[derive(Debug, Default, Deref, DerefMut)]
+struct SelectedRequestId(Option<RequestId>);
+
+impl PersistentContainer for SelectedRequestId {
+    type Value = RequestId;
+
+    fn get(&self) -> Option<&Self::Value> {
+        self.0.as_ref()
+    }
+
+    fn set(&mut self, value: <Self::Value as Persistable>::Persisted) {
+        // We can't just set the value directly, because then the request won't
+        // be loaded from the DB
+        ViewContext::push_event(Event::HttpSelectRequest(Some(value)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         collection::{Profile, Recipe},
-        http::{Request, RequestRecord},
+        db::CollectionDatabase,
+        http::RequestRecord,
         test_util::*,
-        tui::view::event::EventQueue,
     };
     use indexmap::indexmap;
     use ratatui::{backend::TestBackend, Terminal};
@@ -244,33 +249,85 @@ mod tests {
     /// request for the first recipe+profile
     #[rstest]
     fn test_preload_request(
-        tui_context: &TuiContext,
-        mut terminal: Terminal<TestBackend>,
+        database: CollectionDatabase,
         messages: MessageQueue,
+        mut terminal: Terminal<TestBackend>,
     ) {
+        ViewContext::init(database.clone(), messages.tx().clone());
         // Add a request into the DB that we expect to preload
-        let recipe = Recipe::factory();
+        let recipe = Recipe::factory(());
         let recipe_id = recipe.id.clone();
-        let profile = Profile::factory();
+        let profile = Profile::factory(());
         let profile_id = profile.id.clone();
         let collection = Collection {
             recipes: indexmap! {recipe_id.clone() => recipe}.into(),
             profiles: indexmap! {profile_id.clone() => profile},
-            ..Collection::factory()
+            ..Collection::factory(())
         };
-        let record = RequestRecord {
-            request: Request {
-                recipe_id: recipe_id.clone(),
-                profile_id: Some(profile_id.clone()),
-                ..Request::factory()
-            }
-            .into(),
-            ..RequestRecord::factory()
-        };
-        tui_context.database.insert_request(&record).unwrap();
+        let record = RequestRecord::factory((
+            Some(profile_id.clone()),
+            recipe_id.clone(),
+        ));
+        database.insert_request(&record).unwrap();
 
-        let mut component: Component<Root> =
-            Root::new(&collection, messages.tx().clone()).into();
+        let mut component: Component<Root> = Root::new(&collection).into();
+        let area = terminal.get_frame().size();
+
+        // Make sure profile+recipe were preselected correctly
+        let primary_view = component.data().primary_view.data();
+        assert_eq!(primary_view.selected_profile_id(), Some(&profile_id));
+        assert_eq!(primary_view.selected_recipe_id(), Some(&recipe_id));
+
+        // Initial draw
+        component.draw(&mut terminal.get_frame(), (), area, true);
+
+        assert_events!(
+            Event::HttpSelectRequest(None), // From recipe list
+            Event::Other(_),                // Fullscreen exit event
+        );
+        component.drain_events();
+
+        let primary_view = component.data().primary_view.data();
+        assert_eq!(primary_view.selected_recipe_id(), Some(&recipe_id));
+        assert_eq!(primary_view.selected_profile_id(), Some(&profile_id));
+        assert_eq!(
+            component.data().selected_request(),
+            Some(&RequestState::Response { record })
+        );
+
+        // It'd be nice to assert on the view but it's just too complicated to
+        // be worth mocking the whole thing out
+    }
+
+    /// Test that, on first render, if there's a persisted request ID, we load
+    /// up to that instead of selecting the first in the list
+    #[rstest]
+    fn test_load_persistent_request(
+        database: CollectionDatabase,
+        messages: MessageQueue,
+        mut terminal: Terminal<TestBackend>,
+    ) {
+        ViewContext::init(database.clone(), messages.tx().clone());
+        let collection = Collection::factory(());
+        let recipe_id =
+            collection.recipes.iter().next().unwrap().1.id().clone();
+        let profile_id = collection.profiles.first().unwrap().0.clone();
+        // This is the older one, but it should be loaded because of persistence
+        let old_record = RequestRecord::factory((
+            Some(profile_id.clone()),
+            recipe_id.clone(),
+        ));
+        let new_record = RequestRecord::factory((
+            Some(profile_id.clone()),
+            recipe_id.clone(),
+        ));
+        database.insert_request(&old_record).unwrap();
+        database.insert_request(&new_record).unwrap();
+        database
+            .set_ui(PersistentKey::RequestId, old_record.id)
+            .unwrap();
+
+        let mut component: Component<Root> = Root::new(&collection).into();
         let area = terminal.get_frame().size();
 
         // Make sure profile+recipe were preselected correctly
@@ -287,26 +344,16 @@ mod tests {
         component.draw(&mut terminal.get_frame(), (), area, true);
 
         assert_events!(
-            Event::HttpLoadRequest, // From recipe list
-            Event::Other(_),        // Fullscreen exit event
+            Event::HttpSelectRequest(None), // From recipe list
+            Event::Other(_),
+            // From persisted value - this comes later so it overrides
+            Event::HttpSelectRequest(Some(_)),
         );
-        component.drain_events(messages.tx());
+        component.drain_events();
 
-        let state = component.data();
         assert_eq!(
-            state.primary_view.data().selected_recipe_id(),
-            Some(&recipe_id)
+            component.data().selected_request(),
+            Some(&RequestState::Response { record: old_record })
         );
-        assert_eq!(
-            state.primary_view.data().selected_profile_id(),
-            Some(&profile_id)
-        );
-        assert_eq!(
-            component.data().active_request(),
-            Some(&RequestState::Response { record })
-        );
-
-        // It'd be nice to assert on the view but it's just too complicated to
-        // be worth mocking the whole thing out
     }
 }

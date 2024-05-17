@@ -78,13 +78,12 @@ pub struct HttpEngine {
     /// This client ignores TLS cert errors. Only use it if the user
     /// specifically wants to ignore errors for the request!
     danger_client: Client,
-    database: CollectionDatabase,
     danger_hostnames: HashSet<String>,
 }
 
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
-    pub fn new(config: &Config, database: CollectionDatabase) -> Self {
+    pub fn new(config: &Config) -> Self {
         Self {
             client: Client::builder()
                 .user_agent(USER_AGENT)
@@ -95,7 +94,6 @@ impl HttpEngine {
                 .danger_accept_invalid_certs(true)
                 .build()
                 .expect("Error building reqwest client"),
-            database,
             danger_hostnames: config
                 .ignore_certificate_hosts
                 .iter()
@@ -119,6 +117,7 @@ impl HttpEngine {
     /// sending the request.
     pub async fn send(
         self,
+        database: &CollectionDatabase,
         request: Arc<Request>,
     ) -> Result<RequestRecord, RequestError> {
         let id = request.id;
@@ -149,7 +148,7 @@ impl HttpEngine {
                     };
 
                     // Error here should *not* kill the request
-                    let _ = self.database.insert_request(&record);
+                    let _ = database.insert_request(&record);
                     Ok(record)
                 }
                 Err(error) => Err(RequestError {
@@ -296,8 +295,11 @@ impl RequestBuilder {
         self,
         template_context: &TemplateContext,
     ) -> Result<Request, RequestBuildError> {
-        self.apply_error(self.render_request(template_context))
-            .await
+        self.apply_error(
+            self.render_request(template_context),
+            template_context,
+        )
+        .await
     }
 
     /// Build just a request's URL
@@ -305,7 +307,8 @@ impl RequestBuilder {
         self,
         template_context: &TemplateContext,
     ) -> Result<Url, RequestBuildError> {
-        self.apply_error(self.render_url(template_context)).await
+        self.apply_error(self.render_url(template_context), template_context)
+            .await
     }
 
     /// Build just a request's body
@@ -313,18 +316,23 @@ impl RequestBuilder {
         self,
         template_context: &TemplateContext,
     ) -> Result<Option<Body>, RequestBuildError> {
-        self.apply_error(self.render_body(template_context)).await
+        self.apply_error(self.render_body(template_context), template_context)
+            .await
     }
 
     /// Wrapper to apply a helpful error around some request build step
     async fn apply_error<T>(
         &self,
         future: impl Future<Output = anyhow::Result<T>>,
+        template_context: &TemplateContext,
     ) -> Result<T, RequestBuildError> {
-        future
-            .await
-            .traced()
-            .map_err(|error| RequestBuildError { id: self.id, error })
+        future.await.traced().map_err(|error| RequestBuildError {
+            profile_id: template_context.selected_profile.clone(),
+            recipe_id: self.recipe.id.clone(),
+            id: self.id,
+            time: Utc::now(),
+            error,
+        })
     }
 
     /// Render the entire request
@@ -579,16 +587,16 @@ mod tests {
         };
         let profile = Profile {
             data: profile_data,
-            ..Profile::factory()
+            ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
         let context = TemplateContext {
             collection: Collection {
                 profiles: indexmap! {profile_id.clone() => profile},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             selected_profile: Some(profile_id.clone()),
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
         let recipe = Recipe {
             method: "POST".parse().unwrap(),
@@ -602,7 +610,7 @@ mod tests {
                 "Content-Type".into() => "application/json".into(),
             },
             body: Some("{\"group_id\":\"{{group_id}}\"}".into()),
-            ..Recipe::factory()
+            ..Recipe::factory(())
         };
         let recipe_id = recipe.id.clone();
 
@@ -658,20 +666,20 @@ mod tests {
         };
         let profile = Profile {
             data: profile_data,
-            ..Profile::factory()
+            ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
         let context = TemplateContext {
             collection: Collection {
                 profiles: indexmap! {profile_id.clone() => profile},
-                ..Collection::factory()
+                ..Collection::factory(())
             },
             selected_profile: Some(profile_id.clone()),
-            ..TemplateContext::factory()
+            ..TemplateContext::factory(())
         };
         let recipe = Recipe {
             authentication: Some(authentication),
-            ..Recipe::factory()
+            ..Recipe::factory(())
         };
         let recipe_id = recipe.id.clone();
 
@@ -700,7 +708,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_disable_headers_and_query_params() {
-        let context = TemplateContext::factory();
+        let context = TemplateContext::factory(());
         let recipe = Recipe {
             query: indexmap! {
                 "mode".into() => "sudo".into(),
@@ -710,7 +718,7 @@ mod tests {
                 "Accept".into() => "application/json".into(),
                 "Content-Type".into() => "application/json".into(),
             },
-            ..Recipe::factory()
+            ..Recipe::factory(())
         };
         let recipe_id = recipe.id.clone();
 

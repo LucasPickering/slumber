@@ -1,7 +1,6 @@
 use crate::tui::{
     context::TuiContext,
     input::Action,
-    message::MessageSender,
     view::{
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
@@ -42,7 +41,7 @@ impl<T> EventHandler for Tabs<T>
 where
     T: FixedSelect + Persistable<Persisted = T>,
 {
-    fn update(&mut self, _: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };

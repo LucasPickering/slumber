@@ -5,20 +5,19 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
-        message::MessageSender,
         view::{
             common::{
                 list::List, modal::Modal, table::Table,
                 template_preview::TemplatePreview, Pane,
             },
             draw::{Draw, DrawMetadata, Generate},
-            event::{Event, EventHandler, EventQueue, Update},
+            event::{Event, EventHandler, Update},
             state::{
                 persistence::{Persistable, Persistent, PersistentKey},
                 select::SelectState,
                 StateCell,
             },
-            Component, ModalPriority,
+            Component, ModalPriority, ViewContext,
         },
     },
     util::doc_link,
@@ -26,7 +25,7 @@ use crate::{
 use itertools::Itertools;
 use ratatui::{
     layout::{Constraint, Layout},
-    text::Text,
+    text::{Line, Text},
     Frame,
 };
 
@@ -78,10 +77,9 @@ impl ProfilePane {
     }
 
     /// Open the profile list modal
-    pub fn open_modal(&self, messages_tx: MessageSender) {
-        EventQueue::open_modal(
+    pub fn open_modal(&self) {
+        ViewContext::open_modal(
             ProfileListModal::new(
-                messages_tx.clone(),
                 // See self.profiles doc comment for why we need to clone
                 self.profiles.items().to_owned(),
                 self.profiles.selected().map(|profile| &profile.id),
@@ -92,13 +90,13 @@ impl ProfilePane {
 }
 
 impl EventHandler for ProfilePane {
-    fn update(&mut self, messages_tx: &MessageSender, event: Event) -> Update {
+    fn update(&mut self, event: Event) -> Update {
         if let Some(Action::LeftClick) = event.action() {
-            self.open_modal(messages_tx.clone());
+            self.open_modal();
         } else if let Some(SelectProfile(profile_id)) = event.other() {
             // Handle message from the modal
             self.profiles.select(profile_id);
-            EventQueue::push(Event::HttpLoadRequest);
+            ViewContext::push_event(Event::HttpSelectRequest(None));
         } else {
             return Update::Propagate(event);
         }
@@ -143,7 +141,6 @@ pub struct ProfileListModal {
 
 impl ProfileListModal {
     pub fn new(
-        messages_tx: MessageSender,
         profiles: Vec<Profile>,
         selected_profile: Option<&ProfileId>,
     ) -> Self {
@@ -151,8 +148,8 @@ impl ProfileListModal {
         fn on_submit(profile: &mut Profile) {
             // Close the modal *first*, so the parent can handle the
             // callback event. Jank but it works
-            EventQueue::push(Event::CloseModal);
-            EventQueue::push(Event::new_other(SelectProfile(
+            ViewContext::push_event(Event::CloseModal);
+            ViewContext::push_event(Event::new_other(SelectProfile(
                 profile.id.clone(),
             )));
         }
@@ -163,14 +160,14 @@ impl ProfileListModal {
             .build();
         Self {
             select: select.into(),
-            detail: ProfileDetail::new(messages_tx).into(),
+            detail: Default::default(),
         }
     }
 }
 
 impl Modal for ProfileListModal {
-    fn title(&self) -> &str {
-        "Profiles"
+    fn title(&self) -> Line<'_> {
+        "Profiles".into()
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
@@ -228,25 +225,13 @@ impl Draw for ProfileListModal {
 }
 
 /// Display the contents of a profile
-#[derive(derive_more::Debug)]
+#[derive(Debug, Default)]
 pub struct ProfileDetail {
-    /// Needed for template preview rendering
-    messages_tx: MessageSender,
-    #[debug(skip)]
     fields: StateCell<ProfileId, Vec<(String, TemplatePreview)>>,
 }
 
 pub struct ProfileDetailProps<'a> {
     pub profile: &'a Profile,
-}
-
-impl ProfileDetail {
-    pub fn new(messages_tx: MessageSender) -> Self {
-        Self {
-            messages_tx,
-            fields: Default::default(),
-        }
-    }
 }
 
 impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
@@ -268,7 +253,6 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
                         (
                             key.clone(),
                             TemplatePreview::new(
-                                &self.messages_tx,
                                 template.clone(),
                                 Some(props.profile.id.clone()),
                             ),

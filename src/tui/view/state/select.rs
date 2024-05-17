@@ -100,7 +100,7 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         State: SelectStateData,
     {
         let mut select = SelectState {
-            state: RefCell::new(State::default()),
+            state: RefCell::default(),
             items: self.items,
             on_select: self.on_select,
             on_submit: self.on_submit,
@@ -299,9 +299,14 @@ where
 /// multiple state "backends" from Ratatui, to enable usage with different
 /// stateful widgets.
 pub trait SelectStateData: Default {
+    /// Index of the selected element
     fn selected(&self) -> Option<usize>;
 
-    fn select(&mut self, option: usize);
+    /// Select an element by index
+    fn select(&mut self, index: usize);
+
+    /// Visual offset into the list, for scrolling
+    fn offset(&self) -> usize;
 }
 
 impl SelectStateData for ListState {
@@ -309,8 +314,12 @@ impl SelectStateData for ListState {
         self.selected()
     }
 
-    fn select(&mut self, option: usize) {
-        self.select(Some(option))
+    fn select(&mut self, index: usize) {
+        self.select(Some(index))
+    }
+
+    fn offset(&self) -> usize {
+        self.offset()
     }
 }
 
@@ -319,8 +328,12 @@ impl SelectStateData for TableState {
         self.selected()
     }
 
-    fn select(&mut self, option: usize) {
-        self.select(Some(option))
+    fn select(&mut self, index: usize) {
+        self.select(Some(index))
+    }
+
+    fn offset(&self) -> usize {
+        self.offset()
     }
 }
 
@@ -329,8 +342,12 @@ impl SelectStateData for usize {
         Some(*self)
     }
 
-    fn select(&mut self, option: usize) {
-        *self = option;
+    fn select(&mut self, index: usize) {
+        *self = index;
+    }
+
+    fn offset(&self) -> usize {
+        0 // Assume all elements are always visible
     }
 }
 

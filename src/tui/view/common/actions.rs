@@ -79,11 +79,7 @@ where
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         self.actions.draw(
             frame,
-            List {
-                pane: None,
-                list: self.actions.data().items(),
-            }
-            .generate(),
+            List::new(self.actions.data().items()),
             metadata.area(),
             true,
         );

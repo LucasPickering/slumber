@@ -2,6 +2,7 @@ use crate::tui::{
     context::TuiContext,
     input::Action,
     view::{
+        common::scrollbar::Scrollbar,
         draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, Update},
     },
@@ -10,7 +11,7 @@ use ratatui::{
     layout::Layout,
     prelude::{Alignment, Constraint},
     text::{Line, Text},
-    widgets::Paragraph,
+    widgets::{Paragraph, ScrollbarOrientation},
     Frame,
 };
 use std::{cell::Cell, cmp, fmt::Debug};
@@ -30,6 +31,12 @@ pub struct TextWindow<T> {
     text_height: Cell<u16>,
     window_width: Cell<u16>,
     window_height: Cell<u16>,
+}
+
+pub struct TextWindowProps {
+    /// Is there a search box below the content? This tells us if we need to
+    /// offset the horizontal scroll box an extra row.
+    pub has_search_box: bool,
 }
 
 impl<T> TextWindow<T> {
@@ -109,12 +116,17 @@ impl<T: Debug> EventHandler for TextWindow<T> {
     }
 }
 
-impl<T> Draw for TextWindow<T>
+impl<T> Draw<TextWindowProps> for TextWindow<T>
 where
     T: 'static,
     for<'a> &'a T: Generate<Output<'a> = Text<'a>>,
 {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: TextWindowProps,
+        metadata: DrawMetadata,
+    ) {
         let styles = &TuiContext::get().styles;
         let text = Paragraph::new(self.text.generate());
         // Assume no line wrapping when calculating line count
@@ -148,9 +160,28 @@ where
             gutter_area,
         );
 
-        // Darw the text content
+        // Draw the text content
         frame.render_widget(
             text.scroll((self.offset_y, self.offset_x)),
+            text_area,
+        );
+
+        // Scrollbars
+        frame.render_widget(
+            Scrollbar {
+                content_length: self.text_height.get() as usize,
+                offset: self.offset_y as usize,
+                ..Default::default()
+            },
+            text_area,
+        );
+        frame.render_widget(
+            Scrollbar {
+                content_length: self.text_width.get() as usize,
+                offset: self.offset_x as usize,
+                orientation: ScrollbarOrientation::HorizontalBottom,
+                margin: if props.has_search_box { 2 } else { 1 },
+            },
             text_area,
         );
     }

@@ -11,7 +11,7 @@ use crate::{
                 table::{Table, ToggleRow},
                 tabs::Tabs,
                 template_preview::TemplatePreview,
-                text_window::TextWindow,
+                text_window::{TextWindow, TextWindowProps},
                 Pane,
             },
             component::primary::PrimaryPane,
@@ -268,7 +268,14 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
             match self.tabs.data().selected() {
                 Tab::Body => {
                     if let Some(body) = &recipe_state.body {
-                        body.draw(frame, (), content_area, true);
+                        body.draw(
+                            frame,
+                            TextWindowProps {
+                                has_search_box: false,
+                            },
+                            content_area,
+                            true,
+                        );
                     }
                 }
                 Tab::Query => recipe_state.query.draw(

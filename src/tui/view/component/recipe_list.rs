@@ -4,7 +4,7 @@ use crate::{
         context::TuiContext,
         input::Action,
         view::{
-            common::Pane,
+            common::{list::List, Pane},
             component::primary::PrimaryPane,
             draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
@@ -168,10 +168,13 @@ impl Draw for RecipeListPane {
         let title = context
             .input_engine
             .add_hint("Recipes", Action::SelectRecipeList);
-        let pane = Pane {
+        let block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),
-        };
+        }
+        .generate();
+        let area = block.inner(metadata.area());
+        frame.render_widget(block, metadata.area());
 
         // We have to build this manually instead of using our own List type,
         // because we need outside context during the render
@@ -208,10 +211,8 @@ impl Draw for RecipeListPane {
                 )
             })
             .collect_vec();
-        let list = ratatui::widgets::List::new(items)
-            .block(pane.generate())
-            .highlight_style(context.styles.list.highlight);
-        self.select.draw(frame, list, metadata.area(), true);
+
+        self.select.draw(frame, List::new(items), area, true);
     }
 }
 

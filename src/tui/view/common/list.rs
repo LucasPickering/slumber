@@ -1,39 +1,56 @@
 use crate::tui::{
     context::TuiContext,
-    view::{common::Pane, draw::Generate},
+    view::{common::scrollbar::Scrollbar, draw::Generate},
 };
-use ratatui::{text::Text, widgets::ListItem};
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    text::Text,
+    widgets::{ListItem, ListState, StatefulWidget, Widget},
+};
+use std::marker::PhantomData;
 
-/// A list with optional border and title. Each item has to be convertible to
-/// text
+/// A sequence of items, with a scrollbar and optional surrounding pane
 pub struct List<'a, Item, Iter: 'a + IntoIterator<Item = Item>> {
-    pub pane: Option<Pane<'a>>,
-    pub list: Iter,
+    items: Iter,
+    _phantom: PhantomData<&'a ()>,
 }
 
-impl<'a, T, Item, Iter> Generate for List<'a, Item, Iter>
+impl<'a, Item, Iter: 'a + IntoIterator<Item = Item>> List<'a, Item, Iter> {
+    pub fn new(items: Iter) -> Self {
+        Self {
+            items,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, T, Item, Iter> StatefulWidget for List<'a, Item, Iter>
 where
     T: Into<Text<'a>>,
     Item: 'a + Generate<Output<'a> = T>,
     Iter: 'a + IntoIterator<Item = Item>,
 {
-    type Output<'this> = ratatui::widgets::List<'this> where Self: 'this;
+    type State = ListState;
 
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
-        let block = self.pane.map(Pane::generate).unwrap_or_default();
-
-        // Convert each list item into text
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut ListState) {
+        // Draw list
         let items: Vec<ListItem<'_>> = self
-            .list
+            .items
             .into_iter()
             .map(|i| ListItem::new(i.generate()))
             .collect();
+        let num_items = items.len();
+        let list = ratatui::widgets::List::new(items)
+            .highlight_style(TuiContext::get().styles.list.highlight);
+        StatefulWidget::render(list, area, buf, state);
 
-        ratatui::widgets::List::new(items)
-            .block(block)
-            .highlight_style(TuiContext::get().styles.list.highlight)
+        // Draw scrollbar
+        Scrollbar {
+            content_length: num_items,
+            offset: state.offset(),
+            ..Default::default()
+        }
+        .render(area, buf);
     }
 }

@@ -36,7 +36,7 @@ pub fn centered_rect(
                 Constraint::Percentage((100 - percent) / 2)
             }
             Constraint::Length(length) => {
-                Constraint::Length((full_size - length) / 2)
+                Constraint::Length((full_size.saturating_sub(length)) / 2)
             }
             // Implement these as needed
             _ => unimplemented!("Other center constraints unsupported"),

@@ -6,6 +6,7 @@ pub mod button;
 pub mod header_table;
 pub mod list;
 pub mod modal;
+pub mod scrollbar;
 pub mod table;
 pub mod tabs;
 pub mod template_preview;
@@ -74,7 +75,7 @@ impl Generate for Checkbox {
 
 impl Generate for String {
     /// Use `Text` because a string can be multiple lines
-    type Output<'this> = Text<'static>;
+    type Output<'this> = Text<'this>;
 
     fn generate<'this>(self) -> Self::Output<'this>
     where

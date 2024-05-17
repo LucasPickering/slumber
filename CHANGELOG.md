@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Request history is now browsable! [#55](https://github.com/LucasPickering/slumber/issues/55)
+- Add scrollbars to lists and text windows [#220](https://github.com/LucasPickering/slumber/issues/220)
 
 ### Changed
 

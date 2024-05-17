@@ -79,12 +79,12 @@ impl EventHandler for History {
 
 impl Draw for History {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        let list = List {
-            pane: None,
-            list: self.select.data().items(),
-        };
-        self.select
-            .draw(frame, list.generate(), metadata.area(), true);
+        self.select.draw(
+            frame,
+            List::new(self.select.data().items()),
+            metadata.area(),
+            true,
+        );
     }
 }
 

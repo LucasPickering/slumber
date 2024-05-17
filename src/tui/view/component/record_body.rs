@@ -5,7 +5,10 @@ use crate::{
     tui::{
         input::Action,
         view::{
-            common::{text_box::TextBox, text_window::TextWindow},
+            common::{
+                text_box::TextBox,
+                text_window::{TextWindow, TextWindowProps},
+            },
             draw::{Draw, DrawMetadata},
             event::{Event, EventHandler, Update},
             state::StateCell,
@@ -136,7 +139,14 @@ impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
         let text = self.text_window.get_or_update(self.query.clone(), || {
             init_text_window(props.body, self.query.as_ref())
         });
-        text.draw(frame, (), body_area, true);
+        text.draw(
+            frame,
+            TextWindowProps {
+                has_search_box: query_available,
+            },
+            body_area,
+            true,
+        );
 
         if query_available {
             self.query_text_box.draw(

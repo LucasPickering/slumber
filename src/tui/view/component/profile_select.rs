@@ -183,8 +183,8 @@ impl EventHandler for ProfileListModal {
 impl Draw for ProfileListModal {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         // Empty state
-        let items = self.select.data().items();
-        if items.is_empty() {
+        let select = self.select.data();
+        if select.items().is_empty() {
             frame.render_widget(
                 Text::from(vec![
                     "No profiles defined; add one to your collection.".into(),
@@ -196,23 +196,15 @@ impl Draw for ProfileListModal {
         }
 
         let [list_area, _, detail_area] = Layout::vertical([
-            Constraint::Length(items.len().min(5) as u16),
+            Constraint::Length(select.items().len().min(5) as u16),
             Constraint::Length(1), // Padding
             Constraint::Min(0),
         ])
         .areas(metadata.area());
 
-        self.select.draw(
-            frame,
-            List {
-                pane: None,
-                list: items,
-            }
-            .generate(),
-            list_area,
-            true,
-        );
-        if let Some(profile) = self.select.data().selected() {
+        self.select
+            .draw(frame, List::new(select.items()), list_area, true);
+        if let Some(profile) = select.selected() {
             self.detail.draw(
                 frame,
                 ProfileDetailProps { profile },

@@ -1,12 +1,16 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use crate::util::Mapping;
+use crate::{
+    tui::message::{Message, MessageSender},
+    util::Mapping,
+};
 use anyhow::{anyhow, bail};
 use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MediaKeyCode,
-    MouseButton, MouseEvent, MouseEventKind,
+    Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+    MediaKeyCode, MouseButton, MouseEvent, MouseEventKind,
 };
 use derive_more::Display;
+use futures::StreamExt;
 use indexmap::{indexmap, IndexMap};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -102,27 +106,23 @@ impl InputEngine {
         // ^^^^^ If making changes, make sure to update the docs ^^^^^
     ]);
 
-    /// Should this event immediately be killed? This means it will never be
-    /// handled by a component. This is used to filter out junk events that we
-    /// don't care about, to prevent clogging up the message queue
-    pub fn should_kill(event: &Event) -> bool {
-        matches!(
-            event,
-            Event::FocusGained
-                | Event::FocusLost
-                | Event::Resize(_, _)
-                | Event::Mouse(MouseEvent {
-                    kind: MouseEventKind::Moved,
-                    ..
-                })
-        )
-    }
-
     pub fn new(user_bindings: IndexMap<Action, InputBinding>) -> Self {
         let mut new = Self::default();
         // User bindings should overwrite any default ones
         new.bindings.extend(user_bindings);
         new
+    }
+
+    /// Listen for input from the terminal, and forward relevant events to the
+    /// message queue. This future will run indefinitely, so it should be
+    /// spawned in its own task.
+    pub async fn input_loop(&self, messages_tx: MessageSender) {
+        let mut stream = EventStream::new();
+        while let Some(result) = stream.next().await {
+            // Failure to read input is both weird and fatal, so panic
+            let event = result.expect("Error reading terminal input");
+            self.handle_event(&messages_tx, event);
+        }
     }
 
     /// Get a map of all available bindings
@@ -166,12 +166,7 @@ impl InputEngine {
                 _ => None,
             },
 
-            Event::Key(
-                key @ KeyEvent {
-                    kind: KeyEventKind::Press,
-                    ..
-                },
-            ) => {
+            Event::Key(key) => {
                 // Scan all bindings for a match
                 self.bindings
                     .iter()
@@ -186,6 +181,34 @@ impl InputEngine {
         }
 
         action
+    }
+
+    /// Given an input event, generate and queue a corresponding message. Some
+    /// events will *not* generate a message, because they shouldn't get
+    /// handled by components. This could be because they're just useless and
+    /// noisy, or because they actually cause bugs (e.g. double key presses).
+    fn handle_event(&self, messages_tx: &MessageSender, event: Event) {
+        if !matches!(
+            event,
+            Event::FocusGained
+                | Event::FocusLost
+                | Event::Resize(_, _)
+                // Windows sends a release event that causes double triggers
+                // https://github.com/LucasPickering/slumber/issues/226
+                | Event::Key(KeyEvent {
+                    kind: KeyEventKind::Release,
+                    ..
+                })
+                | Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Down(_)
+                    | MouseEventKind::Drag(_)
+                    | MouseEventKind::Moved,
+                    ..
+                })
+        ) {
+            let action = self.action(&event);
+            messages_tx.send(Message::Input { event, action });
+        }
     }
 }
 
@@ -536,9 +559,105 @@ fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
 mod tests {
     use super::*;
     use crate::test_util::*;
-    use crossterm::event::MediaKeyCode;
+    use crossterm::event::{KeyEventState, MediaKeyCode};
     use rstest::rstest;
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
+
+    /// Helper to create a key event
+    fn key_event(kind: KeyEventKind, code: KeyCode) -> Event {
+        Event::Key(KeyEvent {
+            kind,
+            code,
+            modifiers: KeyModifiers::NONE,
+            state: KeyEventState::empty(),
+        })
+    }
+
+    /// Helper to create a mouse event
+    fn mouse_event(kind: MouseEventKind) -> Event {
+        Event::Mouse(MouseEvent {
+            kind,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        })
+    }
+
+    /// Test that each event queues a corresponding message
+    #[rstest]
+    #[case::key_down_mapped(
+        key_event(KeyEventKind::Press, KeyCode::Enter),
+        Some(Action::Submit)
+    )]
+    #[case::key_down_unmapped(
+        key_event(KeyEventKind::Press, KeyCode::Char('k')),
+        None
+    )]
+    #[case::key_repeat_mapped(
+        key_event(KeyEventKind::Repeat, KeyCode::Enter),
+        Some(Action::Submit)
+    )]
+    #[case::key_repeat_unmapped(
+        key_event(KeyEventKind::Repeat, KeyCode::Char('k')),
+        None
+    )]
+    #[case::mouse_up_left(
+        mouse_event(MouseEventKind::Up(MouseButton::Left)),
+        Some(Action::LeftClick)
+    )]
+    #[case::mouse_up_right(
+        mouse_event(MouseEventKind::Up(MouseButton::Right)),
+        Some(Action::RightClick)
+    )]
+    #[case::mouse_scroll_up(
+        mouse_event(MouseEventKind::ScrollUp),
+        Some(Action::ScrollUp)
+    )]
+    #[case::mouse_scroll_down(
+        mouse_event(MouseEventKind::ScrollDown),
+        Some(Action::ScrollDown)
+    )]
+    #[case::mouse_scroll_left(
+        mouse_event(MouseEventKind::ScrollLeft),
+        Some(Action::ScrollLeft)
+    )]
+    #[case::mouse_scroll_right(
+        mouse_event(MouseEventKind::ScrollRight),
+        Some(Action::ScrollRight)
+    )]
+    #[case::paste(Event::Paste("hello!".into()), None)]
+    fn test_handle_event_queued(
+        mut messages: MessageQueue,
+        #[case] event: Event,
+        #[case] expected_action: Option<Action>,
+    ) {
+        let engine = InputEngine::new(IndexMap::default());
+        engine.handle_event(messages.tx(), event.clone());
+        let (queued_event, queued_action) = assert_matches!(
+            messages.pop_now(),
+            Message::Input { event, action } => (event, action),
+        );
+        assert_eq!(queued_event, event);
+        assert_eq!(queued_action, expected_action);
+    }
+
+    /// Test that these events get thrown out, and never queue any messages
+    #[rstest]
+    #[case::focus_gained(Event::FocusGained)]
+    #[case::focus_lost(Event::FocusLost)]
+    #[case::resize(Event::Resize(10, 10))]
+    #[case::key_release(key_event(KeyEventKind::Release, KeyCode::Enter))]
+    #[case::mouse_down(mouse_event(MouseEventKind::Down(MouseButton::Left)))]
+    #[case::mouse_drag(mouse_event(MouseEventKind::Drag(MouseButton::Left)))]
+    #[case::mouse_move(mouse_event(MouseEventKind::Moved))]
+    fn test_handle_event_killed(
+        mut messages: MessageQueue,
+        #[case] event: Event,
+    ) {
+        let engine = InputEngine::new(IndexMap::default());
+        engine.handle_event(messages.tx(), event);
+        messages.assert_empty();
+    }
 
     #[rstest]
     #[case::whitespace_stripped(" w ", KeyCode::Char('w'))]

@@ -12,7 +12,7 @@ use crate::{
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
         context::TuiContext,
-        input::{Action, InputEngine},
+        input::Action,
         message::{Message, MessageSender, RequestConfig},
         util::{save_file, signals},
         view::{ModalPriority, PreviewPrompter, RequestState, View},
@@ -22,10 +22,10 @@ use crate::{
 use anyhow::{anyhow, Context};
 use chrono::Utc;
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture, EventStream},
+    event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use futures::{Future, StreamExt};
+use futures::Future;
 use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use std::{
@@ -124,7 +124,11 @@ impl Tui {
     async fn run(mut self) -> anyhow::Result<()> {
         // Spawn background tasks
         self.listen_for_signals();
-        self.listen_for_input();
+        tokio::spawn(
+            TuiContext::get()
+                .input_engine
+                .input_loop(self.messages_tx.clone()),
+        );
         // Hang onto this because it stops running when dropped
         let _watcher = self.watch_collection()?;
 
@@ -257,28 +261,6 @@ impl Tui {
     /// Get a cheap clone of the message queue transmitter
     fn messages_tx(&self) -> MessageSender {
         self.messages_tx.clone()
-    }
-
-    /// Spawn a task to read input from the terminal. Each event is pushed
-    /// into the message queue for handling by the main loop.
-    fn listen_for_input(&self) {
-        let messages_tx = self.messages_tx();
-
-        tokio::spawn(async move {
-            let mut stream = EventStream::new();
-            while let Some(result) = stream.next().await {
-                // Failure to read input is both weird and fatal, so panic
-                let event = result.expect("Error reading terminal input");
-
-                // Filter out junk events so we don't clog the message queue
-                if InputEngine::should_kill(&event) {
-                    continue;
-                }
-
-                let action = TuiContext::get().input_engine.action(&event);
-                messages_tx.send(Message::Input { event, action });
-            }
-        });
     }
 
     /// Spawn a task to listen in the backgrouns for quit signals

@@ -152,16 +152,16 @@ mod tests {
             profile_id: record.request.profile_id.clone(),
             recipe_id: record.request.recipe_id.clone()
         }));
-        assert!(matches!(store.get(id), Some(RequestState::Building { .. })));
+        assert_matches!(store.get(id), Some(RequestState::Building { .. }));
 
         assert!(!store.update(RequestState::Loading {
             request: Arc::clone(&record.request),
             start_time: record.start_time,
         }));
-        assert!(matches!(store.get(id), Some(RequestState::Loading { .. })));
+        assert_matches!(store.get(id), Some(RequestState::Loading { .. }));
 
         assert!(!store.update(RequestState::response(record)));
-        assert!(matches!(store.get(id), Some(RequestState::Response { .. })));
+        assert_matches!(store.get(id), Some(RequestState::Response { .. }));
 
         // Insert a new request, just to make sure it's independent
         let record2 = RequestRecord::factory(());
@@ -172,11 +172,8 @@ mod tests {
             profile_id: record2.request.profile_id.clone(),
             recipe_id: record2.request.recipe_id.clone()
         }));
-        assert!(matches!(store.get(id), Some(RequestState::Response { .. })));
-        assert!(matches!(
-            store.get(id2),
-            Some(RequestState::Building { .. })
-        ));
+        assert_matches!(store.get(id), Some(RequestState::Response { .. }));
+        assert_matches!(store.get(id2), Some(RequestState::Building { .. }));
     }
 
     #[rstest]
@@ -197,23 +194,23 @@ mod tests {
         store
             .requests
             .insert(present_id, RequestState::response(present_record));
-        assert!(matches!(
+        assert_matches!(
             store.get(present_id),
             Some(RequestState::Response { .. })
-        ));
+        );
         store.load(present_id).expect("Expected success");
-        assert!(matches!(
+        assert_matches!(
             store.get(present_id),
             Some(RequestState::Response { .. })
-        ));
+        );
 
         // Not in store, fetch successfully
         assert!(store.get(missing_id).is_none());
         store.load(missing_id).expect("Expected success");
-        assert!(matches!(
+        assert_matches!(
             store.get(missing_id),
             Some(RequestState::Response { .. })
-        ));
+        );
 
         // Not in store and not in DB, return error
         assert_err!(store.load(RequestId::new()), "Unknown request ID");
@@ -239,10 +236,10 @@ mod tests {
         );
 
         // Non-match
-        assert!(matches!(
+        assert_matches!(
             store.load_latest(Some(&profile_id), &("other".into())),
             Ok(None)
-        ));
+        );
     }
 
     #[rstest]
@@ -331,7 +328,7 @@ mod tests {
             .load_summaries(Some(&profile_id), &recipe_id)
             .unwrap()
             .collect_vec();
-        assert!(matches!(
+        assert_matches!(
             loaded.as_slice(),
             &[
                 RequestStateSummary::RequestError { .. },
@@ -344,7 +341,7 @@ mod tests {
                 RequestStateSummary::Response { .. },
                 RequestStateSummary::Response { .. },
             ]
-        ));
+        );
 
         let ids = loaded.iter().map(RequestStateSummary::id).collect_vec();
         // These should be sorted descending by start time, with dupes removed

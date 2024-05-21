@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [1.3.1] - 2024-05-21
+
 ### Fixed
 
 - Fix double key events on Windows [#226](https://github.com/LucasPickering/slumber/issues/226)

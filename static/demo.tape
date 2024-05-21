@@ -26,7 +26,7 @@ Down 4
 Sleep 2s
 Enter
 Sleep 2s
-Type "s"
+Type "r"
 Sleep 2s
 Type "/$.headers"
 Enter

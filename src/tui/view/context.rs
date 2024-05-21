@@ -144,8 +144,8 @@ mod tests {
         ViewContext::push_event(Event::CloseModal);
         assert_events!(Event::Other(_), Event::CloseModal);
 
-        assert!(matches!(ViewContext::pop_event(), Some(Event::Other(_))));
-        assert!(matches!(ViewContext::pop_event(), Some(Event::CloseModal)));
+        assert_matches!(ViewContext::pop_event(), Some(Event::Other(_)));
+        assert_matches!(ViewContext::pop_event(), Some(Event::CloseModal));
         assert_events!(); // Empty again
     }
 
@@ -157,7 +157,7 @@ mod tests {
         ViewContext::init(database, messages.tx().clone());
         ViewContext::send_message(Message::CollectionStartReload);
         ViewContext::send_message(Message::CollectionEdit);
-        assert!(matches!(messages.pop_now(), Message::CollectionStartReload));
-        assert!(matches!(messages.pop_now(), Message::CollectionEdit));
+        assert_matches!(messages.pop_now(), Message::CollectionStartReload);
+        assert_matches!(messages.pop_now(), Message::CollectionEdit);
     }
 }

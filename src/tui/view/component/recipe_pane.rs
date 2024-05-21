@@ -556,8 +556,7 @@ mod tests {
     fn test_copy_url(component: (MessageQueue, RecipePane)) {
         let (mut messages, mut component) = component;
         let update = component.update(Event::new_other(MenuAction::CopyUrl));
-        // unstable: https://github.com/rust-lang/rust/issues/82775
-        assert!(matches!(update, Update::Consumed));
+        assert_matches!(update, Update::Consumed);
 
         let message = messages.pop_now();
         let Message::CopyRequestUrl(request_config) = &message else {
@@ -578,8 +577,7 @@ mod tests {
     fn test_copy_body(component: (MessageQueue, RecipePane)) {
         let (mut messages, mut component) = component;
         let update = component.update(Event::new_other(MenuAction::CopyBody));
-        // unstable: https://github.com/rust-lang/rust/issues/82775
-        assert!(matches!(update, Update::Consumed));
+        assert_matches!(update, Update::Consumed);
 
         let message = messages.pop_now();
         let Message::CopyRequestBody(request_config) = &message else {
@@ -600,8 +598,7 @@ mod tests {
     fn test_copy_as_curl(component: (MessageQueue, RecipePane)) {
         let (mut messages, mut component) = component;
         let update = component.update(Event::new_other(MenuAction::CopyCurl));
-        // unstable: https://github.com/rust-lang/rust/issues/82775
-        assert!(matches!(update, Update::Consumed));
+        assert_matches!(update, Update::Consumed);
 
         let message = messages.pop_now();
         let Message::CopyRequestCurl(request_config) = &message else {

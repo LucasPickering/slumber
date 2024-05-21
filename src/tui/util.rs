@@ -197,10 +197,10 @@ mod tests {
         ));
 
         // First we expect a prompt for the file path
-        let prompt = match messages.pop_wait().await {
+        let prompt = assert_matches!(
+            messages.pop_wait().await,
             Message::PromptStart(prompt) => prompt,
-            message => panic!("Wrong message: {message:?}"),
-        };
+        );
         assert_eq!(&prompt.message, "Enter a path for the file");
         assert_eq!(prompt.default.as_deref(), Some("default.txt"));
         prompt
@@ -209,10 +209,10 @@ mod tests {
 
         if exists {
             // Now we expect a confirmation prompt
-            let confirm = match messages.pop_wait().await {
+            let confirm = assert_matches!(
+                messages.pop_wait().await,
                 Message::ConfirmStart(confirm) => confirm,
-                message => panic!("Wrong message: {message:?}"),
-            };
+            );
             assert_eq!(
                 confirm.message,
                 format!(

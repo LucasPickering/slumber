@@ -221,8 +221,7 @@ mod tests {
 
         let update =
             component.update(Event::new_other(BodyMenuAction::CopyBody));
-        // unstable: https://github.com/rust-lang/rust/issues/82775
-        assert!(matches!(update, Update::Consumed));
+        assert_matches!(update, Update::Consumed);
 
         let message = messages.pop_now();
         let Message::CopyText(body) = &message else {
@@ -294,8 +293,7 @@ mod tests {
 
         let update =
             component.update(Event::new_other(BodyMenuAction::SaveBody));
-        // unstable: https://github.com/rust-lang/rust/issues/82775
-        assert!(matches!(update, Update::Consumed));
+        assert_matches!(update, Update::Consumed);
 
         let message = messages.pop_now();
         let Message::SaveFile { data, default_path } = &message else {

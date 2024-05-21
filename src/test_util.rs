@@ -277,6 +277,14 @@ impl MessageQueue {
         &self.tx
     }
 
+    pub fn assert_empty(&mut self) {
+        let message = self.rx.try_recv().ok();
+        assert!(
+            message.is_none(),
+            "Expected empty queue, but had message {message:?}"
+        );
+    }
+
     /// Pop the next message off the queue. Panic if the queue is empty
     pub fn pop_now(&mut self) -> Message {
         self.rx.try_recv().expect("Message queue empty")
@@ -381,16 +389,30 @@ macro_rules! assert_err {
 }
 pub(crate) use assert_err;
 
+/// Assert the given expression matches a pattern. Optionally extract bound
+/// values from the pattern using the `=>` syntax.
+macro_rules! assert_matches {
+    ($expr:expr, $pattern:pat $(,)?) => {
+        assert_matches!($expr, $pattern => ());
+    };
+    ($expr:expr, $pattern:pat => $bindings:expr $(,)?) => {
+        match $expr {
+            $pattern => $bindings,
+            value => panic!(
+                "Unexpected value; \
+                {value:?} does not match expected {expected}",
+                expected = stringify!($pattern)
+            ),
+        }
+    };
+}
+pub(crate) use assert_matches;
+
 /// Assert that the event queue matches the given list of patterns
 macro_rules! assert_events {
     ($($pattern:pat),* $(,)?) => {
         ViewContext::inspect_event_queue(|events| {
-            assert!(
-                matches!(events, &[$($pattern,)*]),
-                "Unexpected events in queue; \
-                {events:?} does not match expected {expected}",
-                expected = stringify!([$($pattern,)*]),
-            );
+            assert_matches!(events, &[$($pattern,)*]);
         });
     }
 }

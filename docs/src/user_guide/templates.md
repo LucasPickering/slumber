@@ -129,3 +129,7 @@ And let's see it in action:
 # http://localhost:5000/fishes/fish_2
 {"id": "fish_2", "kind": "barracuda", "name": "Jimmy"}
 ```
+
+## YAML String Syntax
+
+One of the advantages (and disadvantages) of YAML is that it has a number of different string syntaxes. This enables you to customize your templates according to your specific needs around the behavior of whitespace and newlines. [yaml-multiline.info](https://yaml-multiline.info/) does a great job of demonstrating the differences.

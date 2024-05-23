@@ -39,7 +39,6 @@ where
 
 /// Metadata associated with each draw action, which may instruct how the draw
 /// should occur.
-/// TODO remove default impl
 #[derive(Copy, Clone, Debug, Default)]
 pub struct DrawMetadata {
     /// Which area on the screen should we draw to?

@@ -209,25 +209,25 @@ mod tests {
     ) {
         ViewContext::init(database.clone(), messages.tx().clone());
         // Draw once to initialize state
-        let mut component = ResponseBodyView::default();
+        let mut component: Component<ResponseBodyView> = Component::default();
         response.parse_body(); // Normally the view does this
         let record = RequestRecord {
             response: response.into(),
             ..RequestRecord::factory(())
         };
-        component.draw(
-            &mut terminal.get_frame(),
+        component.draw_term(
+            &mut terminal,
             ResponseBodyViewProps {
                 request_id: record.id,
                 recipe_id: &record.request.recipe_id,
                 response: record.response,
             },
-            DrawMetadata::default(),
         );
 
-        let update =
-            component.update(Event::new_other(BodyMenuAction::CopyBody));
-        assert_matches!(update, Update::Consumed);
+        assert_matches!(
+            component.update_all(Event::new_other(BodyMenuAction::CopyBody)),
+            Update::Consumed
+        );
 
         let message = messages.pop_now();
         let Message::CopyText(body) = &message else {
@@ -280,7 +280,7 @@ mod tests {
         #[case] expected_path: &str,
     ) {
         ViewContext::init(database.clone(), messages.tx().clone());
-        let mut component = ResponseBodyView::default();
+        let mut component: Component<ResponseBodyView> = Component::default();
         response.parse_body(); // Normally the view does this
         let record = RequestRecord {
             response: response.into(),
@@ -288,19 +288,19 @@ mod tests {
         };
 
         // Draw once to initialize state
-        component.draw(
-            &mut terminal.get_frame(),
+        component.draw_term(
+            &mut terminal,
             ResponseBodyViewProps {
                 request_id: record.id,
                 recipe_id: &record.request.recipe_id,
                 response: record.response,
             },
-            DrawMetadata::default(),
         );
 
-        let update =
-            component.update(Event::new_other(BodyMenuAction::SaveBody));
-        assert_matches!(update, Update::Consumed);
+        assert_matches!(
+            component.update_all(Event::new_other(BodyMenuAction::SaveBody)),
+            Update::Consumed
+        );
 
         let message = messages.pop_now();
         let Message::SaveFile { data, default_path } = &message else {

@@ -534,19 +534,18 @@ mod tests {
         database: CollectionDatabase,
         mut messages: MessageQueue,
         mut terminal: Terminal<TestBackend>,
-    ) -> (MessageQueue, RecipePane) {
+    ) -> (MessageQueue, Component<RecipePane>) {
         ViewContext::init(database, messages.tx().clone());
         let recipe = Recipe::factory(());
-        let component = RecipePane::default();
+        let component: Component<RecipePane> = Component::default();
 
         // Draw once to initialize state
-        component.draw(
-            &mut terminal.get_frame(),
+        component.draw_term(
+            &mut terminal,
             RecipePaneProps {
                 selected_recipe: Some(&recipe),
                 selected_profile_id: None,
             },
-            DrawMetadata::default(),
         );
         // Clear template preview messages so we can test what we want
         messages.clear();
@@ -555,10 +554,12 @@ mod tests {
 
     /// Test "Copy URL" action
     #[rstest]
-    fn test_copy_url(component: (MessageQueue, RecipePane)) {
+    fn test_copy_url(component: (MessageQueue, Component<RecipePane>)) {
         let (mut messages, mut component) = component;
-        let update = component.update(Event::new_other(MenuAction::CopyUrl));
-        assert_matches!(update, Update::Consumed);
+        assert_matches!(
+            component.update_all(Event::new_other(MenuAction::CopyUrl)),
+            Update::Consumed
+        );
 
         let message = messages.pop_now();
         let Message::CopyRequestUrl(request_config) = &message else {
@@ -576,10 +577,12 @@ mod tests {
 
     /// Test "Copy Body" action
     #[rstest]
-    fn test_copy_body(component: (MessageQueue, RecipePane)) {
+    fn test_copy_body(component: (MessageQueue, Component<RecipePane>)) {
         let (mut messages, mut component) = component;
-        let update = component.update(Event::new_other(MenuAction::CopyBody));
-        assert_matches!(update, Update::Consumed);
+        assert_matches!(
+            component.update_all(Event::new_other(MenuAction::CopyBody)),
+            Update::Consumed
+        );
 
         let message = messages.pop_now();
         let Message::CopyRequestBody(request_config) = &message else {
@@ -597,10 +600,12 @@ mod tests {
 
     /// Test "Copy as cURL" action
     #[rstest]
-    fn test_copy_as_curl(component: (MessageQueue, RecipePane)) {
+    fn test_copy_as_curl(component: (MessageQueue, Component<RecipePane>)) {
         let (mut messages, mut component) = component;
-        let update = component.update(Event::new_other(MenuAction::CopyCurl));
-        assert_matches!(update, Update::Consumed);
+        assert_matches!(
+            component.update_all(Event::new_other(MenuAction::CopyCurl)),
+            Update::Consumed
+        );
 
         let message = messages.pop_now();
         let Message::CopyRequestCurl(request_config) = &message else {

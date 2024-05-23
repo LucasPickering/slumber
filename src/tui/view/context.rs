@@ -117,14 +117,65 @@ impl ViewContext {
     pub fn send_message(message: Message) {
         Self::with(|context| context.messages_tx.send(message));
     }
+}
 
+/// Test-only utils
+#[cfg(test)]
+impl ViewContext {
     /// Execute a function with read-only access to the event queue
-    #[cfg(test)]
     pub fn inspect_event_queue(f: impl FnOnce(&[&Event])) {
         Self::with(|context| {
             let refs: Vec<_> = context.event_queue.to_vec();
             f(refs.as_slice());
         })
+    }
+
+    /// Push a terminal input event onto the event queue. This will include the
+    /// bound action for the event, based on the key code or mouse button.
+    pub fn send_input(crossterm_event: crossterm::event::Event) {
+        use crate::tui::context::TuiContext;
+        let action = TuiContext::get().input_engine.action(&crossterm_event);
+        let event = Event::Input {
+            event: crossterm_event,
+            action,
+        };
+        ViewContext::push_event(event);
+    }
+
+    /// Push a left click at the given location onto the event queue
+    pub fn click(x: u16, y: u16) {
+        use crossterm::event::{
+            KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+        };
+        let crossterm_event = crossterm::event::Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Up(MouseButton::Left),
+            column: x,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        });
+        Self::send_input(crossterm_event);
+    }
+
+    /// Generate an event for a keypress, and push it onto the event queue.
+    /// This will include the bound action for the key press.
+    pub fn send_key(code: crossterm::event::KeyCode) {
+        use crossterm::event::{
+            KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
+        };
+        let crossterm_event = crossterm::event::Event::Key(KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        });
+        Self::send_input(crossterm_event);
+    }
+
+    /// Send some text as a series of key events
+    pub fn send_text(text: &str) {
+        for c in text.chars() {
+            Self::send_key(crossterm::event::KeyCode::Char(c));
+        }
     }
 }
 

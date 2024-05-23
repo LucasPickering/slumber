@@ -38,6 +38,8 @@ pub struct RecordBody {
     /// Store whether the body can be queried. True only if it's a recognized
     /// and parsed format
     query_available: Cell<bool>,
+    /// Are we currently typing in the query box?
+    query_focused: bool,
     /// Expression used to filter the content of the body down
     query: Option<Query>,
     /// Where the user enters their body query
@@ -48,8 +50,18 @@ pub struct RecordBodyProps<'a> {
     pub body: &'a Body,
 }
 
-/// Callback event from the query text box when user hits Enter
-struct QuerySubmit(String);
+/// All callback events from the query text box
+enum QueryCallback {
+    Focus,
+    Cancel,
+    Submit(String),
+}
+
+impl QueryCallback {
+    fn push(self) {
+        ViewContext::push_event(Event::new_other(self))
+    }
+}
 
 impl RecordBody {
     /// Create a new body, optionally loading the query text from the
@@ -57,18 +69,18 @@ impl RecordBody {
     /// box, or want to persist the value.
     pub fn new(query_persistent_key: Option<PersistentKey>) -> Self {
         let text_box = TextBox::default()
-            .with_focus(false)
             .with_placeholder("'/' to filter body with JSONPath")
             .with_validator(|text| JsonPath::parse(text).is_ok())
+            .with_on_click(|_| QueryCallback::Focus.push())
+            .with_on_cancel(|_| QueryCallback::Cancel.push())
             // Callback triggers an event, so we can modify our own state
             .with_on_submit(|text_box| {
-                ViewContext::push_event(Event::new_other(QuerySubmit(
-                    text_box.text().to_owned(),
-                )))
+                QueryCallback::Submit(text_box.text().to_owned()).push()
             });
         Self {
             text_window: Default::default(),
             query_available: Cell::new(false),
+            query_focused: false,
             query: Default::default(),
             query_text_box: Persistent::optional(
                 query_persistent_key,
@@ -88,29 +100,37 @@ impl RecordBody {
 
 impl EventHandler for RecordBody {
     fn update(&mut self, event: Event) -> Update {
-        match event {
-            Event::Input {
-                action: Some(Action::Search),
-                ..
-            } if self.query_available.get() => {
-                self.query_text_box.data_mut().focus()
+        if let Some(Action::Search) = event.action() {
+            if self.query_available.get() {
+                self.query_focused = true;
             }
-            Event::Other(ref other) => {
-                match other.downcast_ref::<QuerySubmit>() {
-                    Some(QuerySubmit(text)) => {
-                        self.query = text
-                            .parse()
-                            // Log the error, then throw it away
-                            .with_context(|| {
-                                format!("Error parsing query {text:?}")
-                            })
-                            .traced()
-                            .ok();
-                    }
-                    None => return Update::Propagate(event),
+        } else if let Some(callback) = event.other::<QueryCallback>() {
+            match callback {
+                QueryCallback::Focus => self.query_focused = true,
+                QueryCallback::Cancel => {
+                    // Reset text to whatever was submitted last
+                    self.query_text_box.data_mut().set_text(
+                        self.query
+                            .as_ref()
+                            .map(Query::to_string)
+                            .unwrap_or_default(),
+                    );
+                    self.query_focused = false;
+                }
+                QueryCallback::Submit(text) => {
+                    self.query = text
+                        .parse()
+                        // Log the error, then throw it away
+                        .with_context(|| {
+                            format!("Error parsing query {text:?}")
+                        })
+                        .traced()
+                        .ok();
+                    self.query_focused = false;
                 }
             }
-            _ => return Update::Propagate(event),
+        } else {
+            return Update::Propagate(event);
         }
         Update::Consumed
     }
@@ -157,12 +177,8 @@ impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
         );
 
         if query_available {
-            self.query_text_box.draw(
-                frame,
-                (),
-                query_area,
-                self.query_text_box.data().has_focus(),
-            );
+            self.query_text_box
+                .draw(frame, (), query_area, self.query_focused);
         }
     }
 }
@@ -197,56 +213,12 @@ mod tests {
         collection::RecipeId, db::CollectionDatabase, http::Response,
         test_util::*, tui::context::TuiContext,
     };
-    use crossterm::event::{
-        KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
-    };
-    use ratatui::{backend::TestBackend, buffer::Buffer, text::Span, Terminal};
+    use crossterm::event::KeyCode;
+    use ratatui::{backend::TestBackend, text::Span, Terminal};
     use reqwest::StatusCode;
     use rstest::{fixture, rstest};
 
     const TEXT: &[u8] = b"{\"greeting\":\"hello\"}";
-
-    /// Draw a component onto the terminal. Prefer this over calling
-    /// [Component::draw] directly, because that won't update Ratatui's internal
-    /// buffers correctly.
-    /// TODO move somewhere else
-    fn draw<Props, T: Draw<Props>>(
-        terminal: &mut Terminal<TestBackend>,
-        component: &Component<T>,
-        props: Props,
-    ) {
-        terminal
-            .draw(|frame| component.draw(frame, props, frame.size(), true))
-            .unwrap();
-    }
-
-    /// Generate an event for a keypress, and push it onto the event queue
-    /// TODO move
-    fn send_key(
-        code: KeyCode,
-        modifiers: KeyModifiers,
-        action: Option<Action>,
-    ) {
-        let crossterm_event = crossterm::event::Event::Key(KeyEvent {
-            code,
-            modifiers,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::empty(),
-        });
-        let event = Event::Input {
-            event: crossterm_event,
-            action,
-        };
-        ViewContext::push_event(event);
-    }
-
-    /// Send some text as a series of key events
-    /// TODO move
-    fn send_text(text: &str) {
-        for c in text.chars() {
-            send_key(KeyCode::Char(c), KeyModifiers::NONE, None);
-        }
-    }
 
     /// Style text to match the text window gutter
     fn gutter(text: &str) -> Span {
@@ -274,9 +246,9 @@ mod tests {
         #[with(30, 2)] mut terminal: Terminal<TestBackend>,
     ) {
         ViewContext::init(database.clone(), messages.tx().clone());
-        let component = RecordBody::new(None).into();
+        let component: Component<_> = RecordBody::new(None).into();
         let body = Body::new(TEXT.into());
-        draw(&mut terminal, &component, RecordBodyProps { body: &body });
+        component.draw_term(&mut terminal, RecordBodyProps { body: &body });
 
         // Assert state
         let data = component.data();
@@ -288,11 +260,10 @@ mod tests {
         assert_eq!(data.query, None);
 
         // Assert view
-        // TODO use assert_buffer_lines
-        terminal.backend().assert_buffer(&Buffer::with_lines([
+        terminal.backend().assert_buffer_lines([
             vec![gutter("1"), " {\"greeting\":\"hello\"}    ".into()],
             vec![gutter(" "), "                             ".into()],
-        ]));
+        ]);
     }
 
     /// Render a parsed body with query text box
@@ -305,13 +276,13 @@ mod tests {
         #[with(32, 5)] mut terminal: Terminal<TestBackend>,
     ) {
         ViewContext::init(database.clone(), messages.tx().clone());
-        let mut component = RecordBody::new(None).into();
+        let mut component: Component<_> = RecordBody::new(None).into();
         let props = || RecordBodyProps {
             body: &json_response.body,
         };
-        draw(&mut terminal, &component, props());
+        component.draw_term(&mut terminal, props());
 
-        // Assert state
+        // Assert initial state/view
         let data = component.data();
         assert!(data.query_available.get());
         assert_eq!(data.query, None);
@@ -319,10 +290,8 @@ mod tests {
             data.text().as_deref(),
             Some("{\n  \"greeting\": \"hello\"\n}")
         );
-
-        // Assert view
         let styles = &tui_context.styles.text_box;
-        terminal.backend().assert_buffer(&Buffer::with_lines([
+        terminal.backend().assert_buffer_lines([
             vec![gutter("1"), " {                        ".into()],
             vec![gutter("2"), "   \"greeting\": \"hello\"".into()],
             vec![gutter("3"), " }                        ".into()],
@@ -331,18 +300,18 @@ mod tests {
                 "'/' to filter body with JSONPath",
                 styles.text.patch(styles.placeholder),
             )],
-        ]));
+        ]);
 
         // Type something into the query box
-        send_key(KeyCode::Char('/'), KeyModifiers::NONE, Some(Action::Search));
+        ViewContext::send_key(KeyCode::Char('/'));
         component.drain_events();
         // Re-draw to update focus for text box
-        draw(&mut terminal, &component, props());
-        send_text("$.greeting");
-        send_key(KeyCode::Enter, KeyModifiers::NONE, Some(Action::Submit));
+        component.draw_term(&mut terminal, props());
+        ViewContext::send_text("$.greeting");
+        ViewContext::send_key(KeyCode::Enter);
         component.drain_events();
         // Re-draw again to apply query to body
-        draw(&mut terminal, &component, props());
+        component.draw_term(&mut terminal, props());
 
         // Make sure state updated correctly
         let data = component.data();
@@ -350,7 +319,7 @@ mod tests {
         assert_eq!(data.text().as_deref(), Some("[\n  \"hello\"\n]"));
 
         // Check the view again too
-        terminal.backend().assert_buffer(&Buffer::with_lines([
+        terminal.backend().assert_buffer_lines([
             vec![gutter("1"), " [                        ".into()],
             vec![gutter("2"), "   \"hello\"              ".into()],
             vec![gutter("3"), " ]                        ".into()],
@@ -359,7 +328,18 @@ mod tests {
                 "$.greeting                      ",
                 styles.text,
             )],
-        ]));
+        ]);
+
+        // Cancelling out of the text box should reset the query value
+        ViewContext::send_key(KeyCode::Char('/'));
+        component.drain_events();
+        component.draw_term(&mut terminal, props());
+        ViewContext::send_text("more text");
+        ViewContext::send_key(KeyCode::Esc);
+        component.drain_events();
+        let data = component.data();
+        assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
+        assert_eq!(data.query_text_box.data().text(), "$.greeting");
     }
 
     /// Render a parsed body with query text box, and initial query from the DB
@@ -384,9 +364,8 @@ mod tests {
         // correctly here
         let mut component: Component<_> =
             RecordBody::new(Some(persistent_key)).into();
-        draw(
+        component.draw_term(
             &mut terminal,
-            &component,
             RecordBodyProps {
                 body: &json_response.body,
             },

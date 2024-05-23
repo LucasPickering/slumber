@@ -19,11 +19,10 @@ use ratatui::{
 };
 
 /// Single line text submission component
-#[derive(derive_more::Debug)]
+#[derive(derive_more::Debug, Default)]
 pub struct TextBox {
     // Parameters
     sensitive: bool,
-    focused: bool,
     placeholder_text: String,
     /// Predicate function to apply visual validation effect
     #[debug(skip)]
@@ -32,8 +31,13 @@ pub struct TextBox {
     state: TextState,
 
     // Callbacks
+    /// Called when user clicks to start editing
+    #[debug(skip)]
+    on_click: Option<Callback>,
+    /// Called when user exits with submission (e.g. Enter)
     #[debug(skip)]
     on_submit: Option<Callback>,
+    /// Called when user exits without saving (e.g. Escape)
     #[debug(skip)]
     on_cancel: Option<Callback>,
 }
@@ -42,28 +46,7 @@ type Callback = Box<dyn Fn(&TextBox)>;
 
 type Validator = Box<dyn Fn(&str) -> bool>;
 
-impl Default for TextBox {
-    fn default() -> Self {
-        Self {
-            sensitive: false,
-            focused: true,
-            placeholder_text: Default::default(),
-            validator: None,
-
-            state: Default::default(),
-            on_submit: Default::default(),
-            on_cancel: Default::default(),
-        }
-    }
-}
-
 impl TextBox {
-    /// Set focus state on initialization
-    pub fn with_focus(mut self, focused: bool) -> Self {
-        self.focused = focused;
-        self
-    }
-
     /// Set initialize value for the text box
     pub fn with_default(mut self, default: String) -> Self {
         self.state.text = default;
@@ -83,12 +66,18 @@ impl TextBox {
         self
     }
 
-    /// Set validation function
+    /// Set validation function. If input is invalid, the submission callback
+    /// will be blocked, meaning the user must fix the error or cancel.
     pub fn with_validator(
         mut self,
         validator: impl 'static + Fn(&str) -> bool,
     ) -> Self {
         self.validator = Some(Box::new(validator));
+        self
+    }
+    /// Set the callback to be called when the user clicks the textbox
+    pub fn with_on_click(mut self, on_click: impl 'static + Fn(&Self)) -> Self {
+        self.on_click = Some(Box::new(on_click));
         self
     }
 
@@ -108,20 +97,6 @@ impl TextBox {
     ) -> Self {
         self.on_submit = Some(Box::new(on_submit));
         self
-    }
-
-    pub fn has_focus(&self) -> bool {
-        self.focused
-    }
-
-    /// Style this text box to look active
-    pub fn focus(&mut self) {
-        self.focused = true;
-    }
-
-    /// Style this text box to look inactive
-    pub fn unfocus(&mut self) {
-        self.focused = false;
     }
 
     /// Get current text
@@ -154,10 +129,11 @@ impl TextBox {
 
     /// Call parent's submission callback
     fn submit(&mut self) {
-        if let Some(on_submit) = &self.on_submit {
-            on_submit(self);
+        if self.is_valid() {
+            if let Some(on_submit) = &self.on_submit {
+                on_submit(self);
+            }
         }
-        self.unfocus();
     }
 
     /// Call parent's cancel callback
@@ -165,7 +141,13 @@ impl TextBox {
         if let Some(on_cancel) = &self.on_cancel {
             on_cancel(self);
         }
-        self.unfocus();
+    }
+
+    /// Call parent's on_click callback
+    fn click(&mut self) {
+        if let Some(on_click) = &self.on_click {
+            on_click(self);
+        }
     }
 
     /// Handle input key event to modify text/cursor state
@@ -209,7 +191,7 @@ impl EventHandler for TextBox {
             Event::Input {
                 action: Some(Action::LeftClick),
                 ..
-            } => self.focus(),
+            } => self.click(),
             Event::Input {
                 event: crossterm::event::Event::Key(key_event),
                 ..
@@ -243,7 +225,7 @@ impl Draw for TextBox {
         };
         frame.render_widget(Paragraph::new(text).style(style), metadata.area());
 
-        if self.focused {
+        if metadata.has_focus() {
             // Apply cursor styling on type
             let cursor_area = Rect {
                 x: metadata.area().x + self.state.cursor_offset() as u16,
@@ -261,6 +243,7 @@ impl Draw for TextBox {
 /// Encapsulation of text/cursor state. Encapsulating this makes reading and
 /// testing the functionality easier.
 #[derive(Debug, Default)]
+#[cfg_attr(test, derive(PartialEq))]
 struct TextState {
     text: String,
     /// **Byte** (not character) index in the text. Must be in the range `[0,
@@ -367,8 +350,228 @@ impl PersistentContainer for TextBox {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        db::CollectionDatabase,
+        test_util::*,
+        tui::view::{component::Component, context::ViewContext},
+    };
+    use ratatui::{backend::TestBackend, text::Span, Terminal};
+    use rstest::rstest;
+    use std::{cell::Cell, rc::Rc};
 
-    // TODO component tests
+    /// Create a span styled as the cursor
+    fn cursor(text: &str) -> Span {
+        Span::styled(text, TuiContext::get().styles.text_box.cursor)
+    }
+
+    /// Create a span styled as text in the box
+    fn text(text: &str) -> Span {
+        Span::styled(text, TuiContext::get().styles.text_box.text)
+    }
+
+    /// Assert that text state matches text/cursor location. Cursor location is
+    /// a *character* offset, not byte offset
+    fn assert_state(state: &TextState, text: &str, cursor: usize) {
+        assert_eq!(state.text, text, "Text does not match");
+        assert_eq!(
+            state.cursor_offset(),
+            cursor,
+            "Cursor character offset does not match"
+        )
+    }
+
+    /// Helper for counting calls to a closure
+    #[derive(Clone, Debug, Default)]
+    struct Counter(Rc<Cell<usize>>);
+
+    impl Counter {
+        fn increment(&self) {
+            self.0.set(self.0.get() + 1);
+        }
+
+        /// Create a callback that just calls the counter
+        fn callback(&self) -> impl Fn(&TextBox) {
+            let counter = self.clone();
+            move |_| {
+                counter.increment();
+            }
+        }
+    }
+
+    impl PartialEq<usize> for Counter {
+        fn eq(&self, other: &usize) -> bool {
+            self.0.get() == *other
+        }
+    }
+
+    /// Test the basic interaction loop on the text box
+    #[rstest]
+    fn test_interaction(
+        _tui_context: &TuiContext,
+        database: CollectionDatabase,
+        messages: MessageQueue,
+        #[with(10, 1)] mut terminal: Terminal<TestBackend>,
+    ) {
+        ViewContext::init(database.clone(), messages.tx().clone());
+        let click_count = Counter::default();
+        let submit_count = Counter::default();
+        let cancel_count = Counter::default();
+        let mut component: Component<_> = TextBox::default()
+            .with_on_click(click_count.callback())
+            .with_on_submit(submit_count.callback())
+            .with_on_cancel(cancel_count.callback())
+            .into();
+        component.draw_term(&mut terminal, ());
+
+        // Assert initial state/view
+        assert_state(&component.data().state, "", 0);
+        terminal
+            .backend()
+            .assert_buffer_lines([vec![cursor(" "), text("         ")]]);
+
+        // Type some text
+        ViewContext::send_text("hello!");
+        component.drain_events();
+        component.draw_term(&mut terminal, ());
+        assert_state(&component.data().state, "hello!", 6);
+        terminal.backend().assert_buffer_lines([vec![
+            text("hello!"),
+            cursor(" "),
+            text("   "),
+        ]]);
+
+        // Test callbacks
+        ViewContext::click(0, 0);
+        component.drain_events();
+        assert_eq!(click_count, 1);
+
+        ViewContext::send_key(KeyCode::Enter);
+        component.drain_events();
+        assert_eq!(submit_count, 1);
+
+        ViewContext::send_key(KeyCode::Esc);
+        component.drain_events();
+        assert_eq!(cancel_count, 1);
+    }
+
+    /// Test text navigation and deleting. [TextState] has its own tests so
+    /// we're mostly just testing that keys are mapped correctly
+    #[rstest]
+    fn test_navigation(
+        _tui_context: &TuiContext,
+        database: CollectionDatabase,
+        messages: MessageQueue,
+        #[with(10, 1)] mut terminal: Terminal<TestBackend>,
+    ) {
+        ViewContext::init(database.clone(), messages.tx().clone());
+        let mut component: Component<_> = TextBox::default().into();
+        component.draw_term(&mut terminal, ());
+
+        // Type some text
+        ViewContext::send_text("hello!");
+        component.drain_events();
+        assert_state(&component.data().state, "hello!", 6);
+
+        // Move around, delete some text.
+        ViewContext::send_key(KeyCode::Left);
+        component.drain_events();
+        assert_state(&component.data().state, "hello!", 5);
+
+        ViewContext::send_key(KeyCode::Backspace);
+        component.drain_events();
+        assert_state(&component.data().state, "hell!", 4);
+
+        ViewContext::send_key(KeyCode::Delete);
+        component.drain_events();
+        assert_state(&component.data().state, "hell", 4);
+
+        ViewContext::send_key(KeyCode::Home);
+        component.drain_events();
+        assert_state(&component.data().state, "hell", 0);
+
+        ViewContext::send_key(KeyCode::Right);
+        component.drain_events();
+        assert_state(&component.data().state, "hell", 1);
+
+        ViewContext::send_key(KeyCode::End);
+        component.drain_events();
+        assert_state(&component.data().state, "hell", 4);
+    }
+
+    #[rstest]
+    fn test_sensitive(
+        _tui_context: &TuiContext,
+        database: CollectionDatabase,
+        messages: MessageQueue,
+        #[with(6, 1)] mut terminal: Terminal<TestBackend>,
+    ) {
+        ViewContext::init(database.clone(), messages.tx().clone());
+        let mut component: Component<_> =
+            TextBox::default().with_sensitive(true).into();
+        component.draw_term(&mut terminal, ());
+        ViewContext::send_text("hello");
+        component.drain_events();
+        component.draw_term(&mut terminal, ());
+
+        assert_state(&component.data().state, "hello", 5);
+        terminal
+            .backend()
+            .assert_buffer_lines([vec![text("•••••"), cursor(" ")]]);
+    }
+
+    #[rstest]
+    fn test_placeholder(
+        tui_context: &TuiContext,
+        database: CollectionDatabase,
+        messages: MessageQueue,
+        #[with(6, 1)] mut terminal: Terminal<TestBackend>,
+    ) {
+        ViewContext::init(database.clone(), messages.tx().clone());
+        let component: Component<_> =
+            TextBox::default().with_placeholder("hello").into();
+        component.draw_term(&mut terminal, ());
+
+        assert_state(&component.data().state, "", 0);
+        let styles = &tui_context.styles.text_box;
+        terminal.backend().assert_buffer_lines([vec![
+            cursor("h"),
+            Span::styled("ello", styles.text.patch(styles.placeholder)),
+            text(" "),
+        ]]);
+    }
+
+    #[rstest]
+    fn test_validator(
+        tui_context: &TuiContext,
+        database: CollectionDatabase,
+        messages: MessageQueue,
+        #[with(6, 1)] mut terminal: Terminal<TestBackend>,
+    ) {
+        ViewContext::init(database.clone(), messages.tx().clone());
+        let mut component: Component<_> = TextBox::default()
+            .with_validator(|text| text.len() <= 2)
+            .into();
+        component.draw_term(&mut terminal, ());
+
+        // Valid text, everything is normal
+        ViewContext::send_text("he");
+        component.drain_events();
+        component.draw_term(&mut terminal, ());
+        terminal.backend().assert_buffer_lines([vec![
+            text("he"),
+            cursor(" "),
+            text("   "),
+        ]]);
+
+        // Invalid text, styling changes
+        ViewContext::send_text("llo");
+        component.drain_events();
+        component.draw_term(&mut terminal, ());
+        terminal.backend().assert_buffer_lines([vec![
+            Span::styled("hello", tui_context.styles.text_box.invalid),
+            cursor(" "),
+        ]]);
+    }
 
     #[test]
     fn test_state_insert() {
@@ -377,13 +580,13 @@ mod tests {
         state.insert('b');
         state.left();
         state.insert('c');
-        assert_eq!(state.text, "acb");
+        assert_state(&state, "acb", 2);
 
         state.home();
         state.insert('h');
         state.end();
         state.insert('e');
-        assert_eq!(state.text, "hacbe")
+        assert_state(&state, "hacbe", 5);
     }
 
     #[test]
@@ -395,22 +598,22 @@ mod tests {
 
         // does nothing
         state.delete_left();
-        assert_eq!(state.text, "abcde");
+        assert_state(&state, "abcde", 0);
 
         state.delete_right();
-        assert_eq!(state.text, "bcde");
+        assert_state(&state, "bcde", 0);
 
         state.right();
         state.delete_left();
-        assert_eq!(state.text, "cde");
+        assert_state(&state, "cde", 0);
 
         // does nothing
         state.end();
         state.delete_right();
-        assert_eq!(state.text, "cde");
+        assert_state(&state, "cde", 3);
 
         state.delete_left();
-        assert_eq!(state.text, "cd");
+        assert_state(&state, "cd", 2);
     }
 
     /// Test characters that contain multiple bytes
@@ -423,12 +626,10 @@ mod tests {
         state.delete_right();
         state.end();
         state.delete_left();
-        assert_eq!(state.text, "ëõ");
+        assert_state(&state, "ëõ", 2);
 
         state.left();
         state.insert('ü');
-        assert_eq!(state.text, "ëüõ");
-
-        assert_eq!(state.cursor_offset(), 2);
+        assert_state(&state, "ëüõ", 2);
     }
 }

@@ -219,7 +219,7 @@ pub fn terminal(
 /// For injection to [terminal] fixture
 #[fixture]
 fn terminal_width() -> u16 {
-    10
+    20
 }
 
 /// For injection to [terminal] fixture

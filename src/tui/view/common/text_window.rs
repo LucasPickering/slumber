@@ -156,7 +156,7 @@ where
                     .collect::<Vec<Line>>(),
             )
             .alignment(Alignment::Right)
-            .style(styles.text_window.line_number),
+            .style(styles.text_window.gutter),
             gutter_area,
         );
 

@@ -17,8 +17,10 @@ use crate::{
             draw::{Draw, DrawMetadata},
             event::{Event, EventHandler, Update},
             state::{
-                fixed_select::FixedSelectState,
-                persistence::{Persistent, PersistentKey},
+                fixed_select::{FixedSelect, FixedSelectState},
+                persistence::{
+                    impl_persistable, Persistable, Persistent, PersistentKey,
+                },
                 RequestState,
             },
             Component, ViewContext,
@@ -72,6 +74,7 @@ pub enum PrimaryPane {
     Recipe,
     Record,
 }
+impl FixedSelect for PrimaryPane {}
 
 /// The various things that can be requested (haha get it, requested) to be
 /// shown in fullscreen. If one of these is requested while not available, we
@@ -83,6 +86,7 @@ enum FullscreenMode {
     /// Fullscreen the active request/response
     Record,
 }
+impl_persistable!(Option<FullscreenMode>);
 
 /// Sentinel type for propagating an even that closes fullscreen mode
 struct ExitFullscreen;

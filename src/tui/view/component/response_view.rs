@@ -1,6 +1,7 @@
 //! Display for HTTP responses
 
 use crate::{
+    collection::RecipeId,
     http::{RequestId, Response},
     tui::{
         input::Action,
@@ -10,7 +11,7 @@ use crate::{
             component::record_body::{RecordBody, RecordBodyProps},
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update},
-            state::StateCell,
+            state::{persistence::PersistentKey, StateCell},
             Component, ViewContext,
         },
     },
@@ -28,8 +29,9 @@ pub struct ResponseBodyView {
     state: StateCell<RequestId, State>,
 }
 
-pub struct ResponseBodyViewProps {
+pub struct ResponseBodyViewProps<'a> {
     pub request_id: RequestId,
+    pub recipe_id: &'a RecipeId,
     pub response: Arc<Response>,
 }
 
@@ -115,7 +117,7 @@ impl EventHandler for ResponseBodyView {
     }
 }
 
-impl Draw<ResponseBodyViewProps> for ResponseBodyView {
+impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
     fn draw(
         &self,
         frame: &mut Frame,
@@ -125,7 +127,10 @@ impl Draw<ResponseBodyViewProps> for ResponseBodyView {
         let response = &props.response;
         let state = self.state.get_or_update(props.request_id, || State {
             response: Arc::clone(&props.response),
-            body: Default::default(),
+            body: RecordBody::new(Some(PersistentKey::ResponseBodyQuery(
+                props.recipe_id.clone(),
+            )))
+            .into(),
         });
 
         state.body.draw(
@@ -214,6 +219,7 @@ mod tests {
             &mut terminal.get_frame(),
             ResponseBodyViewProps {
                 request_id: record.id,
+                recipe_id: &record.request.recipe_id,
                 response: record.response,
             },
             DrawMetadata::default(),
@@ -286,6 +292,7 @@ mod tests {
             &mut terminal.get_frame(),
             ResponseBodyViewProps {
                 request_id: record.id,
+                recipe_id: &record.request.recipe_id,
                 response: record.response,
             },
             DrawMetadata::default(),

@@ -18,6 +18,7 @@ use crate::{
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update},
             state::{
+                fixed_select::FixedSelect,
                 persistence::{Persistable, Persistent, PersistentKey},
                 select::SelectState,
                 StateCell,
@@ -96,6 +97,7 @@ enum Tab {
     Headers,
     Authentication,
 }
+impl FixedSelect for Tab {}
 
 /// One row in the query/header table
 #[derive(Debug)]
@@ -522,11 +524,11 @@ mod tests {
     use super::*;
     use crate::{db::CollectionDatabase, test_util::*};
     use ratatui::{backend::TestBackend, Terminal};
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
 
     /// Create component to be tested. Return the associated message queue too,
     /// so it can be tested
-    #[rstest::fixture]
+    #[fixture]
     fn component(
         _tui_context: &TuiContext,
         database: CollectionDatabase,

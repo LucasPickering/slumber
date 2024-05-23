@@ -201,27 +201,42 @@ impl Factory for TemplateContext {
 }
 
 /// Directory containing static test data
-#[rstest::fixture]
+#[fixture]
 pub fn test_data_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("test_data")
 }
 
 /// Create a terminal instance for testing
-#[rstest::fixture]
-pub fn terminal() -> Terminal<TestBackend> {
-    let backend = TestBackend::new(10, 10);
+#[fixture]
+pub fn terminal(
+    terminal_width: u16,
+    terminal_height: u16,
+) -> Terminal<TestBackend> {
+    let backend = TestBackend::new(terminal_width, terminal_height);
     Terminal::new(backend).unwrap()
 }
 
+/// For injection to [terminal] fixture
+#[fixture]
+fn terminal_width() -> u16 {
+    10
+}
+
+/// For injection to [terminal] fixture
+#[fixture]
+fn terminal_height() -> u16 {
+    10
+}
+
 /// Create an in-memory database for a collection
-#[rstest::fixture]
+#[fixture]
 pub fn database() -> CollectionDatabase {
     CollectionDatabase::factory(())
 }
 
 /// Test fixture for using TUI context. The context is a global read-only var,
 /// so this will initialize it once for *all tests*.
-#[rstest::fixture]
+#[fixture]
 #[once]
 pub fn tui_context() -> &'static TuiContext {
     TuiContext::init(Config::default());
@@ -230,7 +245,7 @@ pub fn tui_context() -> &'static TuiContext {
 
 /// Create a new temporary folder. This will include a random subfolder to
 /// guarantee uniqueness for this test.
-#[rstest::fixture]
+#[fixture]
 pub fn temp_dir() -> TempDir {
     TempDir::new()
 }
@@ -259,7 +274,7 @@ impl Drop for TempDir {
     }
 }
 
-#[rstest::fixture]
+#[fixture]
 pub fn messages() -> MessageQueue {
     let (tx, rx) = mpsc::unbounded_channel();
     MessageQueue { tx: tx.into(), rx }
@@ -417,3 +432,4 @@ macro_rules! assert_events {
     }
 }
 pub(crate) use assert_events;
+use rstest::fixture;

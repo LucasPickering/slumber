@@ -105,7 +105,7 @@ impl Draw<RequestViewProps> for RequestView {
     ) {
         let state = self.state.get_or_update(props.request.id, || State {
             request: Arc::clone(&props.request),
-            body: Default::default(),
+            body: RecordBody::new(None).into(),
         });
 
         let [url_area, headers_area, body_area] = Layout::vertical([

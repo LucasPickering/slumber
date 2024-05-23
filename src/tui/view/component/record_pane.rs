@@ -17,7 +17,7 @@ use crate::{
             },
             draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
-            state::persistence::PersistentKey,
+            state::{fixed_select::FixedSelect, persistence::PersistentKey},
             RequestState, ViewContext,
         },
     },
@@ -81,6 +81,7 @@ enum Tab {
     Body,
     Headers,
 }
+impl FixedSelect for Tab {}
 
 impl EventHandler for RecordPane {
     fn update(&mut self, event: Event) -> Update {
@@ -230,6 +231,7 @@ impl<'a> Draw<RecordPaneProps<'a>> for RecordPane {
                                 frame,
                                 ResponseBodyViewProps {
                                     request_id: record.id,
+                                    recipe_id: &record.request.recipe_id,
                                     response: Arc::clone(&record.response),
                                 },
                                 content_area,

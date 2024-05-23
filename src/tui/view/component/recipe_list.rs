@@ -9,7 +9,9 @@ use crate::{
             draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
             state::{
-                persistence::{Persistable, Persistent, PersistentKey},
+                persistence::{
+                    impl_persistable, Persistable, Persistent, PersistentKey,
+                },
                 select::SelectState,
             },
             Component, ViewContext,
@@ -249,17 +251,11 @@ impl PartialEq<RecipeNode> for RecipeId {
     }
 }
 
-/// Persistence for collapsed set of folders. Technically this can accrue
-/// removed folders over time (if they were collapsed at the time of deletion).
-/// That isn't really an issue though, it just means it'll be pre-collapsed if
-/// the user ever adds the folder back. Not worth working around.
-impl Persistable for Collapsed {
-    type Persisted = Self;
-
-    fn get_persistent(&self) -> &Self::Persisted {
-        self
-    }
-}
+// Persistence for collapsed set of folders. Technically this can accrue
+// removed folders over time (if they were collapsed at the time of deletion).
+// That isn't really an issue though, it just means it'll be pre-collapsed if
+// the user ever adds the folder back. Not worth working around.
+impl_persistable!(Collapsed);
 
 /// Construct select list based on which nodes are currently visible
 fn build_select_state(

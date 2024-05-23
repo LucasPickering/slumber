@@ -214,7 +214,7 @@ impl Draw for Root {
 
 /// A wrapper for the selected request ID. This is needed to customize
 /// persistence loading. We have to load the persisted value via an event so it
-/// can be loaded into the DB.
+/// can be loaded from the DB.
 #[derive(Debug, Default, Deref, DerefMut)]
 struct SelectedRequestId(Option<RequestId>);
 

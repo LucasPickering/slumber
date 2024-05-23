@@ -234,9 +234,8 @@ pub struct Body {
     /// Raw body
     data: Bytes,
     /// For responses of a known content type, we can parse the body into a
-    /// real data structure. This is populated *lazily*, i.e. on first request.
-    /// Useful for filtering and prettification. We store `None` here if we
-    /// tried and failed to parse, so that we know not to try again.
+    /// real data structure. This is populated *eagerly*. Call
+    /// [Response::parse_body] to set the parsed body.
     #[serde(skip)]
     parsed: OnceLock<Option<Box<dyn ResponseContent>>>,
 }

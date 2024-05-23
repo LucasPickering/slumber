@@ -4,7 +4,9 @@ use crate::{
         component::Component,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Event, EventHandler},
-        state::fixed_select::{FixedSelectState, FixedSelectWithoutDefault},
+        state::fixed_select::{
+            FixedSelect, FixedSelectState, FixedSelectWithoutDefault,
+        },
         ViewContext,
     },
     util::EnumChain,
@@ -95,7 +97,7 @@ pub enum GlobalAction {
     #[display("Edit Collection")]
     EditCollection,
 }
-
+impl FixedSelect for GlobalAction {}
 impl ToStringGenerate for GlobalAction {}
 
 /// Empty action list. Used when only the default global actions should be shown

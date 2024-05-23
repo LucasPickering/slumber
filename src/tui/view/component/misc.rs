@@ -12,7 +12,7 @@ use crate::{
         component::Component,
         draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, Update},
-        state::Notification,
+        state::{fixed_select::FixedSelect, Notification},
         Confirm, ViewContext,
     },
 };
@@ -157,6 +157,7 @@ enum ConfirmButton {
     #[default]
     Yes,
 }
+impl FixedSelect for ConfirmButton {}
 
 impl ConfirmModal {
     pub fn new(confirm: Confirm) -> Self {

@@ -1,10 +1,13 @@
-use crate::tui::view::{
-    draw::{Draw, DrawMetadata},
-    event::{Event, EventHandler, Update},
-    state::{
-        persistence::{Persistable, PersistentContainer},
-        select::{SelectState, SelectStateBuilder, SelectStateData},
+use crate::{
+    tui::view::{
+        draw::{Draw, DrawMetadata},
+        event::{Event, EventHandler, Update},
+        state::{
+            persistence::{Persistable, PersistentContainer},
+            select::{SelectState, SelectStateBuilder, SelectStateData},
+        },
     },
+    util::EnumChain,
 };
 use itertools::Itertools;
 use ratatui::{
@@ -175,7 +178,8 @@ where
 
 impl<Item, State> PersistentContainer for FixedSelectState<Item, State>
 where
-    Item: FixedSelect + Persistable<Persisted = Item>,
+    Item: FixedSelect + Persistable,
+    Item::Persisted: PartialEq<Item>,
     State: SelectStateData,
 {
     type Value = Item;
@@ -222,5 +226,12 @@ impl<T> FixedSelectWithoutDefault for T where
 /// Trait alias for a static list of items to be cycled through
 pub trait FixedSelect: FixedSelectWithoutDefault + Default {}
 
-/// Auto-impl for anything we can
-impl<T> FixedSelect for T where T: FixedSelectWithoutDefault + Default {}
+// / Auto-impl for anything we can
+// impl<T> FixedSelect for T where T: FixedSelectWithoutDefault + Default {}
+
+impl<T, U> FixedSelect for EnumChain<T, U>
+where
+    T: FixedSelect,
+    U: FixedSelectWithoutDefault,
+{
+}

@@ -6,6 +6,7 @@ use crate::tui::{
     view::{
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
+        state::persistence::{Persistable, PersistentContainer},
     },
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -133,6 +134,13 @@ impl TextBox {
         self.state.text
     }
 
+    /// Set text, and move the cursor to the end
+    pub fn set_text(&mut self, text: String) {
+        self.state.text = text;
+        self.state.end();
+        self.submit();
+    }
+
     /// Check if the current input text is valid. Always returns true if there
     /// is no validator
     fn is_valid(&self) -> bool {
@@ -144,7 +152,7 @@ impl TextBox {
                 .unwrap_or(true)
     }
 
-    /// Call parent's submissionc callback
+    /// Call parent's submission callback
     fn submit(&mut self) {
         if let Some(on_submit) = &self.on_submit {
             on_submit(self);
@@ -344,12 +352,26 @@ impl TextState {
     }
 }
 
+impl PersistentContainer for TextBox {
+    type Value = String;
+
+    fn get(&self) -> Option<&Self::Value> {
+        Some(&self.state.text)
+    }
+
+    fn set(&mut self, value: <Self::Value as Persistable>::Persisted) {
+        self.set_text(value);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // TODO component tests
+
     #[test]
-    fn test_insert() {
+    fn test_state_insert() {
         let mut state = TextState::default();
         state.insert('a');
         state.insert('b');
@@ -365,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn test_delete() {
+    fn test_state_delete() {
         let mut state = TextState {
             text: "abcde".into(),
             cursor: 0,
@@ -391,8 +413,9 @@ mod tests {
         assert_eq!(state.text, "cd");
     }
 
+    /// Test characters that contain multiple bytes
     #[test]
-    fn test_multi_char() {
+    fn test_state_multibyte_char() {
         let mut state = TextState {
             text: "äëõß".into(),
             cursor: 0,

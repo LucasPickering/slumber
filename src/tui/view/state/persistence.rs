@@ -2,10 +2,12 @@
 
 use crate::{
     collection::RecipeId,
+    http::RequestId,
     tui::view::{
         component::Component,
         context::ViewContext,
         event::{Event, EventHandler, Update},
+        state::fixed_select::FixedSelect,
     },
 };
 use derive_more::{Deref, DerefMut};
@@ -17,7 +19,7 @@ use std::fmt::Debug;
 /// drop.
 #[derive(Debug, Deref, DerefMut)]
 pub struct Persistent<T: PersistentContainer> {
-    key: PersistentKey,
+    key: Option<PersistentKey>,
     #[deref]
     #[deref_mut]
     container: T,
@@ -26,12 +28,22 @@ pub struct Persistent<T: PersistentContainer> {
 impl<T: PersistentContainer> Persistent<T> {
     /// Load the latest persisted value from the DB. If present, set the value
     /// of the container.
-    pub fn new(key: PersistentKey, mut container: T) -> Self {
-        // Load saved value from the database, and select it if available
-        if let Ok(Some(value)) = ViewContext::with_database(|database| {
-            database.get_ui::<_, <T::Value as Persistable>::Persisted>(&key)
-        }) {
-            container.set(value);
+    pub fn new(key: PersistentKey, container: T) -> Self {
+        Self::optional(Some(key), container)
+    }
+
+    /// Create a new persistent cell, with an optional key. If the key is not
+    /// defined, this does not do any persistence loading/saving. This is
+    /// helpful for usages that should only be persistent sometimes.
+    pub fn optional(key: Option<PersistentKey>, mut container: T) -> Self {
+        if let Some(key) = &key {
+            // Load saved value from the database, and select it if available
+            let loaded = ViewContext::with_database(|database| {
+                database.get_ui::<_, <T::Value as Persistable>::Persisted>(key)
+            });
+            if let Ok(Some(value)) = loaded {
+                container.set(value);
+            }
         }
 
         Self { key, container }
@@ -54,12 +66,14 @@ where
 
 impl<T: PersistentContainer> Drop for Persistent<T> {
     fn drop(&mut self) {
-        let _ = ViewContext::with_database(|database| {
-            database.set_ui(
-                &self.key,
-                self.container.get().map(Persistable::get_persistent),
-            )
-        });
+        if let Some(key) = &self.key {
+            let _ = ViewContext::with_database(|database| {
+                database.set_ui(
+                    key,
+                    self.container.get().map(Persistable::get_persistent),
+                )
+            });
+        }
     }
 }
 
@@ -92,6 +106,8 @@ pub enum PersistentKey {
     RecipeSelectedHeader(RecipeId),
     /// Toggle state for a single recipe+header
     RecipeHeader { recipe: RecipeId, header: String },
+    /// Response body JSONPath query (**not** related to query params)
+    ResponseBodyQuery(RecipeId),
 }
 
 /// A value type that can be persisted to the database
@@ -104,18 +120,17 @@ pub trait Persistable {
     fn get_persistent(&self) -> &Self::Persisted;
 }
 
-/// Any simple type can be persisted. The `Copy` bound isn't strictly necessary,
-/// but it restricts the blanket to only simple types.
-impl<T> Persistable for T
-where
-    T: Copy + Debug + PartialEq + Serialize + DeserializeOwned,
-{
+impl<T: FixedSelect + Serialize + DeserializeOwned> Persistable for T {
     type Persisted = Self;
 
     fn get_persistent(&self) -> &Self::Persisted {
         self
     }
 }
+
+impl_persistable!(bool);
+impl_persistable!(String);
+impl_persistable!(RequestId);
 
 /// A container that holds a persisted value. The container has to tell us how
 /// to get and set the value, and [Persistent] will handle the actual DB
@@ -148,6 +163,22 @@ impl<T: Persistable<Persisted = T>> PersistentContainer for T {
     }
 }
 
+/// Implement [Persistable] for a type that can be persisted as itself. It'd be
+/// great if this was just a derive macro, but that requires a whole separate
+/// crate.
+macro_rules! impl_persistable {
+    ($type:ty) => {
+        impl Persistable for $type {
+            type Persisted = Self;
+
+            fn get_persistent(&self) -> &Self::Persisted {
+                self
+            }
+        }
+    };
+}
+pub(crate) use impl_persistable;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,12 +188,14 @@ mod tests {
     #[rstest]
     fn test_persistent(database: CollectionDatabase, messages: MessageQueue) {
         ViewContext::init(database, messages.tx().clone());
-        let mut persistent = Persistent::new(PersistentKey::RecipeId, 0);
-        *persistent = 37;
+        let mut persistent =
+            Persistent::new(PersistentKey::RecipeId, "".to_owned());
+        *persistent = "hello!".to_owned();
         // Trigger the save
         drop(persistent);
 
-        let persistent = Persistent::new(PersistentKey::RecipeId, 0);
-        assert_eq!(*persistent, 37);
+        let persistent =
+            Persistent::new(PersistentKey::RecipeId, "".to_owned());
+        assert_eq!(*persistent, "hello!".to_owned());
     }
 }

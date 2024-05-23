@@ -145,7 +145,7 @@ pub struct TextBoxStyle {
 #[derive(Debug)]
 pub struct TextWindowStyle {
     /// Line numbers on large text areas
-    pub line_number: Style,
+    pub gutter: Style,
 }
 
 impl Styles {
@@ -213,7 +213,7 @@ impl Styles {
                 invalid: Style::default().bg(Color::LightRed),
             },
             text_window: TextWindowStyle {
-                line_number: Style::default().fg(Color::DarkGray),
+                gutter: Style::default().fg(Color::DarkGray),
             },
         }
     }

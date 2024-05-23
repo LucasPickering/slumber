@@ -76,6 +76,8 @@ impl<T> Component<T> {
     where
         T: EventHandler,
     {
+        // TODO short-circuit should_handle? add test for that too
+
         // If we have a child, send them the event. If not, eat it ourselves
         for mut child in self.data_mut().children() {
             // Don't propgate to children that aren't visible or not in focus
@@ -223,6 +225,13 @@ impl<T> Component<T> {
         T: EventHandler,
     {
         use crate::tui::view::ViewContext;
+
+        // Safety check, prevent annoying bugs
+        assert!(
+            self.is_visible(),
+            "Component {} is not visible, it can't handle events",
+            self.name
+        );
 
         while let Some(event) = ViewContext::pop_event() {
             match self.update_all(event) {

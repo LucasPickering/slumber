@@ -219,13 +219,13 @@ pub fn terminal(
 /// For injection to [terminal] fixture
 #[fixture]
 fn terminal_width() -> u16 {
-    20
+    40
 }
 
 /// For injection to [terminal] fixture
 #[fixture]
 fn terminal_height() -> u16 {
-    10
+    20
 }
 
 /// Create an in-memory database for a collection

@@ -11,7 +11,7 @@ use crate::{
                 help::HelpModal,
                 profile_select::ProfilePane,
                 recipe_list::RecipeListPane,
-                recipe_pane::{RecipePane, RecipePaneProps},
+                recipe_pane::{RecipeMenuAction, RecipePane, RecipePaneProps},
                 record_pane::{RecordPane, RecordPaneProps},
             },
             draw::{Draw, DrawMetadata},
@@ -219,6 +219,34 @@ impl PrimaryView {
         ])
         .areas(area)
     }
+
+    /// Handle menu actions for recipe list or detail panes. We handle this here
+    /// for code de-duplication, and because we have access to all the needed
+    /// context.
+    fn handle_recipe_menu_action(&self, action: RecipeMenuAction) {
+        // If no recipes are available, we can't do anything
+        let Some(recipe_id) = self.selected_recipe_id().cloned() else {
+            return;
+        };
+
+        let request_config = RequestConfig {
+            profile_id: self.selected_profile_id().cloned(),
+            recipe_id,
+            options: self.recipe_pane.data().recipe_options(),
+        };
+        let message = match action {
+            RecipeMenuAction::CopyUrl => {
+                Message::CopyRequestUrl(request_config)
+            }
+            RecipeMenuAction::CopyBody => {
+                Message::CopyRequestBody(request_config)
+            }
+            RecipeMenuAction::CopyCurl => {
+                Message::CopyRequestCurl(request_config)
+            }
+        };
+        ViewContext::send_message(message);
+    }
 }
 
 impl EventHandler for PrimaryView {
@@ -288,12 +316,18 @@ impl EventHandler for PrimaryView {
                 _ => return Update::Propagate(event),
             },
 
-            Event::Other(event) => {
-                if let Some(ExitFullscreen) = event.downcast_ref() {
+            Event::Other(other) => {
+                if let Some(ExitFullscreen) = other.downcast_ref() {
                     *self.fullscreen_mode = None;
-                } else if let Some(pane) = event.downcast_ref::<PrimaryPane>() {
+                } else if let Some(pane) = other.downcast_ref::<PrimaryPane>() {
                     // Children can select themselves by sending PrimaryPane
                     self.selected_pane.select(pane);
+                } else if let Some(action) =
+                    other.downcast_ref::<RecipeMenuAction>()
+                {
+                    self.handle_recipe_menu_action(*action);
+                } else {
+                    return Update::Propagate(event);
                 }
             }
 
@@ -343,5 +377,119 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 true,
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        db::CollectionDatabase,
+        http::RecipeOptions,
+        test_util::*,
+        tui::{
+            context::TuiContext,
+            message::{Message, RequestConfig},
+        },
+    };
+    use ratatui::{backend::TestBackend, Terminal};
+    use rstest::{fixture, rstest};
+
+    /// Create component to be tested. Return the associated message queue too,
+    /// so it can be tested
+    #[fixture]
+    fn component(
+        _tui_context: &TuiContext,
+        database: CollectionDatabase,
+        mut messages: MessageQueue,
+        mut terminal: Terminal<TestBackend>,
+    ) -> (MessageQueue, Component<PrimaryView>) {
+        ViewContext::init(database, messages.tx().clone());
+        let collection = Collection::factory(());
+        let component: Component<PrimaryView> =
+            PrimaryView::new(&collection).into();
+
+        // Draw once to initialize state
+        component.draw_term(
+            &mut terminal,
+            PrimaryViewProps {
+                selected_request: None,
+            },
+        );
+        // Clear template preview messages so we can test what we want
+        messages.clear();
+        (messages, component)
+    }
+
+    /// Test "Copy URL" action, which is available via the Recipe List or Recipe
+    /// panes
+    #[rstest]
+    fn test_copy_url(component: (MessageQueue, Component<PrimaryView>)) {
+        let (mut messages, mut component) = component;
+        assert_matches!(
+            component.update_all(Event::new_other(RecipeMenuAction::CopyUrl)),
+            Update::Consumed
+        );
+
+        let message = messages.pop_now();
+        let Message::CopyRequestUrl(request_config) = &message else {
+            panic!("Wrong message: {message:?}")
+        };
+        assert_eq!(
+            request_config,
+            &RequestConfig {
+                recipe_id: "recipe1".into(),
+                profile_id: Some("profile1".into()),
+                options: RecipeOptions::default()
+            }
+        );
+    }
+
+    /// Test "Copy Body" action, which is available via the Recipe List or
+    /// Recipe panes
+    #[rstest]
+    fn test_copy_body(component: (MessageQueue, Component<PrimaryView>)) {
+        let (mut messages, mut component) = component;
+        assert_matches!(
+            component.update_all(Event::new_other(RecipeMenuAction::CopyBody)),
+            Update::Consumed
+        );
+
+        let message = messages.pop_now();
+        let Message::CopyRequestBody(request_config) = &message else {
+            panic!("Wrong message: {message:?}")
+        };
+        assert_eq!(
+            request_config,
+            &RequestConfig {
+                recipe_id: "recipe1".into(),
+                profile_id: Some("profile1".into()),
+                options: RecipeOptions::default()
+            }
+        );
+    }
+
+    /// Test "Copy as cURL" action, which is available via the Recipe List or
+    /// Recipe panes
+    #[rstest]
+    fn test_copy_as_curl(component: (MessageQueue, Component<PrimaryView>)) {
+        let (mut messages, mut component) = component;
+        assert_matches!(
+            component.update_all(Event::new_other(RecipeMenuAction::CopyCurl)),
+            Update::Consumed
+        );
+
+        let message = messages.pop_now();
+        let Message::CopyRequestCurl(request_config) = &message else {
+            panic!("Wrong message: {message:?}")
+        };
+        assert_eq!(
+            request_config,
+            &RequestConfig {
+                recipe_id: "recipe1".into(),
+                profile_id: Some("profile1".into()),
+                options: RecipeOptions::default()
+            }
+        );
     }
 }

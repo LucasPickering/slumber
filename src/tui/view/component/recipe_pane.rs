@@ -4,7 +4,6 @@ use crate::{
     tui::{
         context::TuiContext,
         input::Action,
-        message::{Message, RequestConfig},
         view::{
             common::{
                 actions::ActionsModal,
@@ -107,10 +106,11 @@ struct RowState {
     enabled: Persistent<bool>,
 }
 
-/// Items in the actions popup menu
+/// Items in the actions popup menu. This is also used by the recipe list
+/// component, so the action is handled in the parent.
 #[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
 #[allow(clippy::enum_variant_names)]
-enum MenuAction {
+pub enum RecipeMenuAction {
     #[display("Copy URL")]
     CopyUrl,
     #[display("Copy Body")]
@@ -119,7 +119,7 @@ enum MenuAction {
     CopyCurl,
 }
 
-impl ToStringGenerate for MenuAction {}
+impl ToStringGenerate for RecipeMenuAction {}
 
 impl RecipePane {
     /// Generate a [RecipeOptions] instance based on current UI state
@@ -147,25 +147,6 @@ impl RecipePane {
             RecipeOptions::default()
         }
     }
-
-    fn handle_menu_action(&mut self, action: MenuAction) {
-        // Should always be initialized after first render
-        let key = self
-            .recipe_state
-            .key()
-            .expect("Request state not initialized");
-        let request_config = RequestConfig {
-            profile_id: key.selected_profile_id.clone(),
-            recipe_id: key.recipe_id.clone(),
-            options: self.recipe_options(),
-        };
-        let message = match action {
-            MenuAction::CopyUrl => Message::CopyRequestUrl(request_config),
-            MenuAction::CopyBody => Message::CopyRequestBody(request_config),
-            MenuAction::CopyCurl => Message::CopyRequestCurl(request_config),
-        };
-        ViewContext::send_message(message);
-    }
 }
 
 impl EventHandler for RecipePane {
@@ -178,12 +159,10 @@ impl EventHandler for RecipePane {
                     ));
                 }
                 Action::OpenActions => ViewContext::open_modal_default::<
-                    ActionsModal<MenuAction>,
+                    ActionsModal<RecipeMenuAction>,
                 >(),
                 _ => return Update::Propagate(event),
             }
-        } else if let Some(menu_action) = event.other::<MenuAction>() {
-            self.handle_menu_action(*menu_action);
         } else {
             return Update::Propagate(event);
         }
@@ -516,108 +495,5 @@ impl Persistable for RowState {
 impl PartialEq<RowState> for String {
     fn eq(&self, other: &RowState) -> bool {
         self == &other.key
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{db::CollectionDatabase, test_util::*};
-    use ratatui::{backend::TestBackend, Terminal};
-    use rstest::{fixture, rstest};
-
-    /// Create component to be tested. Return the associated message queue too,
-    /// so it can be tested
-    #[fixture]
-    fn component(
-        _tui_context: &TuiContext,
-        database: CollectionDatabase,
-        mut messages: MessageQueue,
-        mut terminal: Terminal<TestBackend>,
-    ) -> (MessageQueue, Component<RecipePane>) {
-        ViewContext::init(database, messages.tx().clone());
-        let recipe = Recipe::factory(());
-        let component: Component<RecipePane> = Component::default();
-
-        // Draw once to initialize state
-        component.draw_term(
-            &mut terminal,
-            RecipePaneProps {
-                selected_recipe: Some(&recipe),
-                selected_profile_id: None,
-            },
-        );
-        // Clear template preview messages so we can test what we want
-        messages.clear();
-        (messages, component)
-    }
-
-    /// Test "Copy URL" action
-    #[rstest]
-    fn test_copy_url(component: (MessageQueue, Component<RecipePane>)) {
-        let (mut messages, mut component) = component;
-        assert_matches!(
-            component.update_all(Event::new_other(MenuAction::CopyUrl)),
-            Update::Consumed
-        );
-
-        let message = messages.pop_now();
-        let Message::CopyRequestUrl(request_config) = &message else {
-            panic!("Wrong message: {message:?}")
-        };
-        assert_eq!(
-            request_config,
-            &RequestConfig {
-                recipe_id: "recipe1".into(),
-                profile_id: None,
-                options: RecipeOptions::default()
-            }
-        );
-    }
-
-    /// Test "Copy Body" action
-    #[rstest]
-    fn test_copy_body(component: (MessageQueue, Component<RecipePane>)) {
-        let (mut messages, mut component) = component;
-        assert_matches!(
-            component.update_all(Event::new_other(MenuAction::CopyBody)),
-            Update::Consumed
-        );
-
-        let message = messages.pop_now();
-        let Message::CopyRequestBody(request_config) = &message else {
-            panic!("Wrong message: {message:?}")
-        };
-        assert_eq!(
-            request_config,
-            &RequestConfig {
-                recipe_id: "recipe1".into(),
-                profile_id: None,
-                options: RecipeOptions::default()
-            }
-        );
-    }
-
-    /// Test "Copy as cURL" action
-    #[rstest]
-    fn test_copy_as_curl(component: (MessageQueue, Component<RecipePane>)) {
-        let (mut messages, mut component) = component;
-        assert_matches!(
-            component.update_all(Event::new_other(MenuAction::CopyCurl)),
-            Update::Consumed
-        );
-
-        let message = messages.pop_now();
-        let Message::CopyRequestCurl(request_config) = &message else {
-            panic!("Wrong message: {message:?}")
-        };
-        assert_eq!(
-            request_config,
-            &RequestConfig {
-                recipe_id: "recipe1".into(),
-                profile_id: None,
-                options: RecipeOptions::default()
-            }
-        );
     }
 }

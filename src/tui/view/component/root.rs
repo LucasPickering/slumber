@@ -235,13 +235,8 @@ impl PersistentContainer for SelectedRequestId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        collection::{Profile, Recipe},
-        db::CollectionDatabase,
-        http::RequestRecord,
-        test_util::*,
-    };
-    use indexmap::indexmap;
+    use crate::{db::CollectionDatabase, http::RequestRecord, test_util::*};
+    use crossterm::event::KeyCode;
     use ratatui::{backend::TestBackend, Terminal};
     use rstest::rstest;
 
@@ -255,15 +250,9 @@ mod tests {
     ) {
         ViewContext::init(database.clone(), messages.tx().clone());
         // Add a request into the DB that we expect to preload
-        let recipe = Recipe::factory(());
-        let recipe_id = recipe.id.clone();
-        let profile = Profile::factory(());
-        let profile_id = profile.id.clone();
-        let collection = Collection {
-            recipes: indexmap! {recipe_id.clone() => recipe}.into(),
-            profiles: indexmap! {profile_id.clone() => profile},
-            ..Collection::factory(())
-        };
+        let collection = Collection::factory(());
+        let profile_id = collection.first_profile_id();
+        let recipe_id = collection.first_recipe_id();
         let record = RequestRecord::factory((
             Some(profile_id.clone()),
             recipe_id.clone(),
@@ -271,15 +260,14 @@ mod tests {
         database.insert_request(&record).unwrap();
 
         let mut component: Component<Root> = Root::new(&collection).into();
-        let area = terminal.get_frame().size();
 
         // Make sure profile+recipe were preselected correctly
         let primary_view = component.data().primary_view.data();
-        assert_eq!(primary_view.selected_profile_id(), Some(&profile_id));
-        assert_eq!(primary_view.selected_recipe_id(), Some(&recipe_id));
+        assert_eq!(primary_view.selected_profile_id(), Some(profile_id));
+        assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
 
         // Initial draw
-        component.draw(&mut terminal.get_frame(), (), area, true);
+        component.draw_term(&mut terminal, ());
 
         assert_events!(
             Event::HttpSelectRequest(None), // From recipe list
@@ -288,8 +276,8 @@ mod tests {
         component.drain_events();
 
         let primary_view = component.data().primary_view.data();
-        assert_eq!(primary_view.selected_recipe_id(), Some(&recipe_id));
-        assert_eq!(primary_view.selected_profile_id(), Some(&profile_id));
+        assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
+        assert_eq!(primary_view.selected_profile_id(), Some(profile_id));
         assert_eq!(
             component.data().selected_request(),
             Some(&RequestState::Response { record })
@@ -309,9 +297,8 @@ mod tests {
     ) {
         ViewContext::init(database.clone(), messages.tx().clone());
         let collection = Collection::factory(());
-        let recipe_id =
-            collection.recipes.iter().next().unwrap().1.id().clone();
-        let profile_id = collection.profiles.first().unwrap().0.clone();
+        let recipe_id = collection.first_recipe_id();
+        let profile_id = collection.first_profile_id();
         // This is the older one, but it should be loaded because of persistence
         let old_record = RequestRecord::factory((
             Some(profile_id.clone()),
@@ -328,20 +315,19 @@ mod tests {
             .unwrap();
 
         let mut component: Component<Root> = Root::new(&collection).into();
-        let area = terminal.get_frame().size();
 
         // Make sure profile+recipe were preselected correctly
         assert_eq!(
             component.data().primary_view.data().selected_profile_id(),
-            Some(&profile_id)
+            Some(profile_id)
         );
         assert_eq!(
             component.data().primary_view.data().selected_recipe_id(),
-            Some(&recipe_id)
+            Some(recipe_id)
         );
 
         // Initial draw
-        component.draw(&mut terminal.get_frame(), (), area, true);
+        component.draw_term(&mut terminal, ());
 
         assert_events!(
             Event::HttpSelectRequest(None), // From recipe list
@@ -355,5 +341,29 @@ mod tests {
             component.data().selected_request(),
             Some(&RequestState::Response { record: old_record })
         );
+    }
+
+    #[rstest]
+    fn test_edit_collection(
+        database: CollectionDatabase,
+        mut messages: MessageQueue,
+        mut terminal: Terminal<TestBackend>,
+    ) {
+        ViewContext::init(database.clone(), messages.tx().clone());
+        let collection = Collection::factory(());
+        let mut component: Component<Root> = Root::new(&collection).into();
+        component.draw_term(&mut terminal, ());
+        component.drain_events();
+        messages.clear(); // Clear init junk
+
+        // Event should be converted into a message appropriately
+        // Open action menu
+        ViewContext::send_key(KeyCode::Char('x'));
+        component.drain_events();
+        component.draw_term(&mut terminal, ());
+        // Select first action - Edit Collection
+        ViewContext::send_key(KeyCode::Enter);
+        component.drain_events();
+        assert_matches!(messages.pop_now(), Message::CollectionEdit);
     }
 }

@@ -4,8 +4,8 @@ use crate::{
         context::TuiContext,
         input::Action,
         view::{
-            common::{list::List, Pane},
-            component::primary::PrimaryPane,
+            common::{actions::ActionsModal, list::List, Pane},
+            component::{primary::PrimaryPane, recipe_pane::RecipeMenuAction},
             draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
             state::{
@@ -151,6 +151,9 @@ impl EventHandler for RecipeListPane {
             // selected. Fall through to propagate the event
             Action::Submit
                 if self.set_selected_collapsed(CollapseState::Toggle) => {}
+            Action::OpenActions => ViewContext::open_modal_default::<
+                ActionsModal<RecipeMenuAction>,
+            >(),
             _ => return Update::Propagate(event),
         }
 

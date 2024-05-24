@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Show "Copy URL", "Copy Body" and "Copy as cURL" actions from the Recipe list [#224](https://github.com/LucasPickering/slumber/issues/224)
+  - Previously this was only available in the Recipe detail pane
+- Fix Edit Collection action in menu
 - Persist response body query text box contents
   - Previously it would reset whenever you made a new request or changed recipes
 

@@ -307,6 +307,26 @@ pub enum ChainOutputTrim {
     Both,
 }
 
+/// Test-only helpers
+#[cfg(test)]
+impl Collection {
+    /// Get the ID of the first **recipe** (not recipe node) in the list. Panic
+    /// if empty. This is useful because the default collection factory includes
+    /// one recipe.
+    pub fn first_recipe_id(&self) -> &RecipeId {
+        self.recipes
+            .recipe_ids()
+            .next()
+            .expect("Collection has no recipes")
+    }
+
+    /// Get the ID of the first profile in the list. Panic if empty. This is
+    /// useful because the default collection factory includes one profile.
+    pub fn first_profile_id(&self) -> &ProfileId {
+        self.profiles.first().expect("Collection has no profiles").0
+    }
+}
+
 impl Profile {
     /// Get a presentable name for this profile
     pub fn name(&self) -> &str {

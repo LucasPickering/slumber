@@ -60,16 +60,6 @@ impl<K, V> StateCell<K, V> {
         Ref::map(self.state.borrow(), |state| &state.as_ref().unwrap().1)
     }
 
-    /// Get a reference to the state key. This can panic, if the state key/value
-    /// is already borrowed elsewhere. Returns `None` iff the setate cell is
-    /// uninitialized.
-    pub fn key(&self) -> Option<Ref<'_, K>> {
-        Ref::filter_map(self.state.borrow(), |state| {
-            state.as_ref().map(|(k, _)| k)
-        })
-        .ok()
-    }
-
     /// Get a reference to the state value. This can panic, if the state value
     /// is already borrowed elsewhere. Returns `None` iff the state cell is
     /// uninitialized.

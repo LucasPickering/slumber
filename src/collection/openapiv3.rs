@@ -76,7 +76,7 @@ enum OpenAPIResolveError {
     UnhandledComponentKind(String),
 }
 
-struct ReferenceResolver(Components);
+struct OpenApiReferenceResolver(Option<Components>);
 
 struct OpenApiComponentReference<'a> {
     component_kind: OpenApiResolvableComponentKind,
@@ -87,6 +87,19 @@ enum OpenApiResolvableComponentKind {
     SecurityScheme,
     RequestBody,
     Schema,
+}
+
+impl<'a> TryFrom<&'a str> for OpenApiResolvableComponentKind {
+    type Error = OpenAPIResolveError;
+
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        match value {
+            "securitySchemes" => Ok(OpenApiResolvableComponentKind::SecurityScheme),
+            "requestBodies" => Ok(OpenApiResolvableComponentKind::RequestBody),
+            "schema" => Ok(OpenApiResolvableComponentKind::Schema),
+            _ => Err(OpenAPIResolveError::UnhandledComponentKind(value.to_string())),
+        }
+    }
 }
 
 const REFERENCE_PREFIX: &str = "#/components/";
@@ -100,42 +113,77 @@ impl<'a> TryFrom<&'a String> for OpenApiComponentReference<'a> {
         }
         let (_, component) = value.split_once(REFERENCE_PREFIX).ok_or_else(|| OpenAPIResolveError::UnhandledReference(value.clone()))?;
         let (component_kind, value) = component.split_once('/').ok_or_else(|| OpenAPIResolveError::UnhandledReference(value.clone()))?;
-        let component_kind = match component_kind {
-            "securitySchemas" => Ok(OpenApiResolvableComponentKind::SecurityScheme),
-            "requestBodies" => Ok(OpenApiResolvableComponentKind::RequestBody),
-            "schema" => Ok(OpenApiResolvableComponentKind::Schema),
-            _ => Err(OpenAPIResolveError::UnhandledComponentKind(component_kind.to_string())),
-        }?;
+        let component_kind = OpenApiResolvableComponentKind::try_from(component_kind)?;
         Ok(OpenApiComponentReference {
             component_kind, value
         })
     }
 }
 
-impl ReferenceResolver {
-    fn get_security_scheme(&self, reference: &String) -> Result<&SecurityScheme, OpenAPIResolveError> {
-        let parsed_reference = OpenApiComponentReference::try_from(reference)?;
-        let value = match parsed_reference.component_kind {
-            OpenApiResolvableComponentKind::SecurityScheme => Ok(parsed_reference.value),
-            // The parsed reference's kind did not match the type that the caller was expecting.
-            _ => Err(OpenAPIResolveError::UnhandledReference(reference.clone())),
-        }?;
-        let ref_or_component = self
-            .0
-            .security_schemes
-            .get(value)
-            .ok_or_else(|| {
-                OpenAPIResolveError::SecuritySchemeNotFound(
-                    value.to_string(),
-                )
-            })?;
-        match ref_or_component {
-            ReferenceOr::Item(item) => Ok(item),
-            ReferenceOr::Reference { reference: _ } => {
-                Err(OpenAPIResolveError::UnhandledReference(reference.clone()))
+macro_rules! impl_resolver_direct_lookup {
+    ($func_name:ident, $openapi_ty:ident, $component_lookup_ident:ident, $resolve_error_variant:ident) => {
+        fn $func_name(&self, reference: &String) -> Result<&$openapi_ty, OpenAPIResolveError> {
+            let ref_or_component = self
+                .get_components()
+                .and_then(|components| {
+                    components
+                    .$component_lookup_ident
+                    .get(reference)
+                    .ok_or_else(|| {
+                        OpenAPIResolveError::$resolve_error_variant (
+                            reference.to_string(),
+                        )
+                    })
+                })?;
+            match ref_or_component {
+                ReferenceOr::Item(item) => Ok(item),
+                ReferenceOr::Reference { reference: _ } => {
+                    Err(OpenAPIResolveError::UnhandledReference(reference.clone()))
+                }
             }
         }
     }
+}
+
+
+macro_rules! impl_resolver_parsing_reference {
+    ($func_name:ident, $openapi_ty:ident, $component_lookup_ident:ident, $resolve_error_variant:ident) => {
+        fn $func_name(&self, reference: &String) -> Result<&$openapi_ty, OpenAPIResolveError> {
+            let parsed_reference = OpenApiComponentReference::try_from(reference)?;
+            let value = match parsed_reference.component_kind {
+                OpenApiResolvableComponentKind::$openapi_ty => Ok(parsed_reference.value),
+                // The parsed reference's kind did not match the type that the caller was expecting.
+                _ => Err(OpenAPIResolveError::UnhandledReference(reference.clone())),
+            }?;
+            let ref_or_component = self
+                .get_components()
+                .and_then(|components| {
+                    components
+                    .$component_lookup_ident
+                    .get(value)
+                    .ok_or_else(|| {
+                        OpenAPIResolveError::$resolve_error_variant (
+                            value.to_string(),
+                        )
+                    })
+                })?;
+            match ref_or_component {
+                ReferenceOr::Item(item) => Ok(item),
+                ReferenceOr::Reference { reference: _ } => {
+                    Err(OpenAPIResolveError::UnhandledReference(reference.clone()))
+                }
+            }
+        }
+    }
+}
+
+impl OpenApiReferenceResolver {
+    fn get_components(&self) -> Result<&Components, OpenAPIResolveError> {
+        self.0.as_ref().ok_or(OpenAPIResolveError::MissingComponentsObject)
+    }
+
+    impl_resolver_direct_lookup!(get_security_scheme, SecurityScheme, security_schemes, SecuritySchemeNotFound);
+    impl_resolver_parsing_reference!(get_request_body, RequestBody, request_bodies, RequestBodyNotFound);
 }
 
 
@@ -161,55 +209,7 @@ impl Collection {
         } = serde_yaml::from_reader(file).context(
             format!("Error deserializing OpenAPIv3 collection file {openapiv3_specification_file:?}"),
         )?;
-
-        // TODO: Should be refactored to a trait, then documented.
-        let resolve_security_scheme = |scheme_name: String| -> Result<
-            SecurityScheme,
-            OpenAPIResolveError,
-        > {
-            let components = &components
-                .as_ref()
-                .ok_or(OpenAPIResolveError::MissingComponentsObject)?;
-            // TODO: Actually parse scheme_name
-            // TODO: Test this
-            let ref_or_component = components
-                .security_schemes
-                .get(&scheme_name)
-                .ok_or_else(|| {
-                    OpenAPIResolveError::SecuritySchemeNotFound(
-                        scheme_name.clone(),
-                    )
-                })?;
-            match ref_or_component {
-                ReferenceOr::Item(item) => Ok(item.clone()),
-                ReferenceOr::Reference { reference: _ } => {
-                    Err(OpenAPIResolveError::UnhandledReference(scheme_name))
-                }
-            }
-        };
-        // TODO: Same as above
-        let resolve_request_body = |request_body_name: String| -> Result<
-            RequestBody,
-            OpenAPIResolveError,
-        > {
-            let components = &components
-                .as_ref()
-                .ok_or(OpenAPIResolveError::MissingComponentsObject)?;
-            let ref_or_component = components
-                .request_bodies
-                .get(&request_body_name)
-                .ok_or_else(|| {
-                    OpenAPIResolveError::RequestBodyNotFound(
-                        request_body_name.clone(),
-                    )
-                })?;
-            match ref_or_component {
-                ReferenceOr::Item(item) => Ok(item.clone()),
-                ReferenceOr::Reference { reference: _ } => Err(
-                    OpenAPIResolveError::UnhandledReference(request_body_name),
-                ),
-            }
-        };
+        let reference_resolver = OpenApiReferenceResolver(components);
 
         let mut recipes = IndexMap::new();
         // TODO: Not all tags that are used by the Operation Object must be declared. The tags that are not declared MAY be organized randomly or based on the tool’s logic.
@@ -243,8 +243,7 @@ impl Collection {
                         let tags = op.tags.clone();
                         let recipe = operation_to_recipe(
                             op,
-                            &resolve_security_scheme,
-                            &resolve_request_body,
+                            &reference_resolver,
                             &path_name,
                             method,
                         )?;
@@ -343,13 +342,9 @@ impl Collection {
 }
 
 /// Translates an OpenAPI Operation into a `Recipe` given the recipe's context
-fn operation_to_recipe<
-    FSS: Fn(String) -> Result<SecurityScheme, OpenAPIResolveError>,
-    FRB: Fn(String) -> Result<RequestBody, OpenAPIResolveError>,
->(
+fn operation_to_recipe(
     operation: Operation,
-    resolve_security_scheme: &FSS,
-    resolve_request_body: &FRB,
+    reference_resolver: &OpenApiReferenceResolver,
     path_name: &String,
     method: Method,
 ) -> anyhow::Result<Recipe> {
@@ -420,8 +415,9 @@ fn operation_to_recipe<
             // if authorization does not require a specified scope. For other security scheme
             // types, the array MUST be empty.
             for (name, values) in scheme {
-                let security_scheme = resolve_security_scheme(name)
-                    .context("Failed to resolve the security scheme")?;
+                let security_scheme = reference_resolver.get_security_scheme(&name)
+                    .context("Failed to resolve the security scheme")?
+                    .clone();
                 match security_scheme {
                     SecurityScheme::HTTP {
                         scheme,
@@ -488,9 +484,7 @@ fn operation_to_recipe<
     if let Some(request_body) = operation.request_body {
         let request_body = match request_body {
             ReferenceOr::Item(body) => Ok(body),
-            ReferenceOr::Reference { reference } => {
-                resolve_request_body(reference)
-            }
+            ReferenceOr::Reference { reference } => reference_resolver.get_request_body(&reference).context("Failed to resolve RequestBody reference").cloned(),
         }?;
         // We don't support multiple body types, so let's just grab the first.
         if let Some((content_type, media_type)) = request_body.content.first() {

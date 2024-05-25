@@ -42,12 +42,15 @@
 //! the specifications of the endpoint.
 //!
 
+mod resolve;
+
 use std::{fs::File, path::Path};
 
 use crate::{
     collection::{
         Authentication, Collection, Folder, Method, Profile, ProfileId, Recipe,
         RecipeId, RecipeNode, RecipeTree,
+        openapiv3::resolve::OpenApiReferenceResolver,
     },
     template::Template,
 };
@@ -55,137 +58,9 @@ use crate::{
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use openapiv3::{
-    APIKeyLocation, Components, OpenAPI, Operation, Parameter, ReferenceOr, RequestBody, SecurityScheme, Server, Tag
+    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, SecurityScheme, Server, Tag
 };
-use thiserror::Error;
 use tracing::{info, warn};
-
-#[derive(Debug, Error)]
-enum OpenAPIResolveError {
-    #[error("The given OpenAPIv3 specs do not contain the `components` field")]
-    MissingComponentsObject,
-    #[error("Could not find the security scheme {_0} inside components.security_schemes")]
-    SecuritySchemeNotFound(String),
-    #[error(
-        "Could not find the request body {_0} inside components.request_bodies"
-    )]
-    RequestBodyNotFound(String),
-    #[error("Could not resolve the reference {_0}")]
-    UnhandledReference(String),
-    #[error("Tried to resolve an unsupported component {_0}. This is a bug, please open an issue.")]
-    UnhandledComponentKind(String),
-}
-
-struct OpenApiReferenceResolver(Option<Components>);
-
-struct OpenApiComponentReference<'a> {
-    component_kind: OpenApiResolvableComponentKind,
-    value: &'a str,
-}
-
-enum OpenApiResolvableComponentKind {
-    SecurityScheme,
-    RequestBody,
-    Schema,
-}
-
-impl<'a> TryFrom<&'a str> for OpenApiResolvableComponentKind {
-    type Error = OpenAPIResolveError;
-
-    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
-        match value {
-            "securitySchemes" => Ok(OpenApiResolvableComponentKind::SecurityScheme),
-            "requestBodies" => Ok(OpenApiResolvableComponentKind::RequestBody),
-            "schema" => Ok(OpenApiResolvableComponentKind::Schema),
-            _ => Err(OpenAPIResolveError::UnhandledComponentKind(value.to_string())),
-        }
-    }
-}
-
-const REFERENCE_PREFIX: &str = "#/components/";
-impl<'a> TryFrom<&'a String> for OpenApiComponentReference<'a> {
-    type Error = OpenAPIResolveError;
-
-    fn try_from(value: &'a String) -> Result<Self, Self::Error> {
-        // We currently do not support parsing references that aren't internal to the provided OpenAPI spec
-        if !value.starts_with(REFERENCE_PREFIX) {
-            return Err(OpenAPIResolveError::UnhandledReference(value.to_string()));
-        }
-        let (_, component) = value.split_once(REFERENCE_PREFIX).ok_or_else(|| OpenAPIResolveError::UnhandledReference(value.clone()))?;
-        let (component_kind, value) = component.split_once('/').ok_or_else(|| OpenAPIResolveError::UnhandledReference(value.clone()))?;
-        let component_kind = OpenApiResolvableComponentKind::try_from(component_kind)?;
-        Ok(OpenApiComponentReference {
-            component_kind, value
-        })
-    }
-}
-
-macro_rules! impl_resolver_direct_lookup {
-    ($func_name:ident, $openapi_ty:ident, $component_lookup_ident:ident, $resolve_error_variant:ident) => {
-        fn $func_name(&self, reference: &String) -> Result<&$openapi_ty, OpenAPIResolveError> {
-            let ref_or_component = self
-                .get_components()
-                .and_then(|components| {
-                    components
-                    .$component_lookup_ident
-                    .get(reference)
-                    .ok_or_else(|| {
-                        OpenAPIResolveError::$resolve_error_variant (
-                            reference.to_string(),
-                        )
-                    })
-                })?;
-            match ref_or_component {
-                ReferenceOr::Item(item) => Ok(item),
-                ReferenceOr::Reference { reference: _ } => {
-                    Err(OpenAPIResolveError::UnhandledReference(reference.clone()))
-                }
-            }
-        }
-    }
-}
-
-
-macro_rules! impl_resolver_parsing_reference {
-    ($func_name:ident, $openapi_ty:ident, $component_lookup_ident:ident, $resolve_error_variant:ident) => {
-        fn $func_name(&self, reference: &String) -> Result<&$openapi_ty, OpenAPIResolveError> {
-            let parsed_reference = OpenApiComponentReference::try_from(reference)?;
-            let value = match parsed_reference.component_kind {
-                OpenApiResolvableComponentKind::$openapi_ty => Ok(parsed_reference.value),
-                // The parsed reference's kind did not match the type that the caller was expecting.
-                _ => Err(OpenAPIResolveError::UnhandledReference(reference.clone())),
-            }?;
-            let ref_or_component = self
-                .get_components()
-                .and_then(|components| {
-                    components
-                    .$component_lookup_ident
-                    .get(value)
-                    .ok_or_else(|| {
-                        OpenAPIResolveError::$resolve_error_variant (
-                            value.to_string(),
-                        )
-                    })
-                })?;
-            match ref_or_component {
-                ReferenceOr::Item(item) => Ok(item),
-                ReferenceOr::Reference { reference: _ } => {
-                    Err(OpenAPIResolveError::UnhandledReference(reference.clone()))
-                }
-            }
-        }
-    }
-}
-
-impl OpenApiReferenceResolver {
-    fn get_components(&self) -> Result<&Components, OpenAPIResolveError> {
-        self.0.as_ref().ok_or(OpenAPIResolveError::MissingComponentsObject)
-    }
-
-    impl_resolver_direct_lookup!(get_security_scheme, SecurityScheme, security_schemes, SecuritySchemeNotFound);
-    impl_resolver_parsing_reference!(get_request_body, RequestBody, request_bodies, RequestBodyNotFound);
-}
-
 
 impl Collection {
     /// Loads a collection from an OpenAPIv3 specification file
@@ -209,7 +84,7 @@ impl Collection {
         } = serde_yaml::from_reader(file).context(
             format!("Error deserializing OpenAPIv3 collection file {openapiv3_specification_file:?}"),
         )?;
-        let reference_resolver = OpenApiReferenceResolver(components);
+        let reference_resolver = OpenApiReferenceResolver::new(components);
 
         let mut recipes = IndexMap::new();
         // TODO: Not all tags that are used by the Operation Object must be declared. The tags that are not declared MAY be organized randomly or based on the tool’s logic.

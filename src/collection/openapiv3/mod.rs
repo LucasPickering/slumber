@@ -56,9 +56,9 @@ use crate::{
 };
 
 use anyhow::{anyhow, Context};
-use indexmap::IndexMap;
+use indexmap::{map::Entry, IndexMap};
 use openapiv3::{
-    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, SecurityScheme, Server, Tag
+    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, SecurityScheme, Server
 };
 use tracing::{info, warn};
 
@@ -78,7 +78,6 @@ impl Collection {
         let OpenAPI {
             components,
             paths,
-            tags,
             servers,
             ..
         } = serde_yaml::from_reader(file).context(
@@ -87,27 +86,8 @@ impl Collection {
         let reference_resolver = OpenApiReferenceResolver::new(components);
 
         let mut recipes = IndexMap::new();
-        // TODO: Not all tags that are used by the Operation Object must be declared. The tags that are not declared MAY be organized randomly or based on the tool’s logic.
-        let mut tag_folders: IndexMap<String, Folder> = tags
-            .into_iter()
-            .map(
-                |Tag {
-                     name,
-                     description: _,
-                     external_docs: _,
-                     extensions: _,
-                 }| {
-                    (
-                        name.clone(),
-                        Folder {
-                            id: RecipeId::from(format!("tag/{name}")),
-                            name: Some(name),
-                            children: IndexMap::default(),
-                        },
-                    )
-                },
-            )
-            .collect();
+        let mut tag_folders: IndexMap<String, Folder> = IndexMap::default();
+
         // Load Recipes, built by OpenAPI Operations
         for (path_name, item) in paths.paths {
             let mut try_add_recipe_for_method =
@@ -124,17 +104,32 @@ impl Collection {
                         )?;
                         let recipe_id = recipe.id.clone();
                         let recipe_node = RecipeNode::Recipe(recipe);
-                        for tag in tags {
-                            if let Some(folder) = tag_folders.get_mut(&tag) {
-                                folder.children.insert(recipe_id, recipe_node);
-                                return Ok(());
+                        // OpenAPI supports using tags for your endpoints. Slumber will group
+                        // recipes with the same tags in one folders.
+                        //
+                        // We do not support having the same recipe in multiple folders though,
+                        // because duplicating recipes would make the slumber config harder to
+                        // maintain. Let's grab the first tag instead, and that will be our folder
+                        if let Some(tag) = tags.first() {
+                            info!("Inserting the recipe {recipe_id} in folder {tag}");
+                            match tag_folders.entry(tag.to_string()) {
+                                Entry::Vacant(entry) => {
+                                    let mut children = IndexMap::default();
+                                    children.insert(recipe_id, recipe_node);
+                                    entry.insert(Folder {
+                                        id: RecipeId::from(format!("tag/{tag}")),
+                                        name: Some(tag.clone()),
+                                        children,
+                                    });
+                                }
+                                Entry::Occupied(mut folder) => {
+                                    folder.get_mut().children.insert(recipe_id, recipe_node);
+                                }
                             }
-                            warn!(
-                                "Tag {tag} could not be found in the tags list"
-                            );
+                        } else {
+                            info!("Inserting the recipe {recipe_id}");
+                            recipes.insert(recipe_id, recipe_node);
                         }
-                        info!("Inserting the recipe {recipe_id}");
-                        recipes.insert(recipe_id, recipe_node);
                     }
                     Ok(())
                 };

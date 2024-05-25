@@ -8,7 +8,7 @@
 use openapiv3::{Components, ReferenceOr, RequestBody, SecurityScheme};
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub(super) enum OpenAPIResolveError {
     #[error("The given OpenAPIv3 specs do not contain the `components` field")]
     MissingComponentsObject,
@@ -53,10 +53,10 @@ impl<'a> TryFrom<&'a str> for OpenApiResolvableComponentKind {
 }
 
 const REFERENCE_PREFIX: &str = "#/components/";
-impl<'a> TryFrom<&'a String> for OpenApiComponentReference<'a> {
+impl<'a> TryFrom<&'a str> for OpenApiComponentReference<'a> {
     type Error = OpenAPIResolveError;
 
-    fn try_from(value: &'a String) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
         // We currently do not support parsing references that aren't internal to the provided OpenAPI spec
         if !value.starts_with(REFERENCE_PREFIX) {
             return Err(OpenAPIResolveError::UnhandledReference(
@@ -65,11 +65,11 @@ impl<'a> TryFrom<&'a String> for OpenApiComponentReference<'a> {
         }
         let (_, component) =
             value.split_once(REFERENCE_PREFIX).ok_or_else(|| {
-                OpenAPIResolveError::UnhandledReference(value.clone())
+                OpenAPIResolveError::UnhandledReference(value.to_string())
             })?;
         let (component_kind, value) =
             component.split_once('/').ok_or_else(|| {
-                OpenAPIResolveError::UnhandledReference(value.clone())
+                OpenAPIResolveError::UnhandledReference(value.to_string())
             })?;
         let component_kind =
             OpenApiResolvableComponentKind::try_from(component_kind)?;
@@ -89,7 +89,7 @@ macro_rules! impl_resolver_direct_lookup {
         /// lookup in the map.
         pub fn $func_name(
             &self,
-            reference: &String,
+            reference: &str,
         ) -> Result<&$openapi_ty, OpenAPIResolveError> {
             let ref_or_component =
                 self.get_components().and_then(|components| {
@@ -104,9 +104,11 @@ macro_rules! impl_resolver_direct_lookup {
                 })?;
             match ref_or_component {
                 ReferenceOr::Item(item) => Ok(item),
-                ReferenceOr::Reference { reference: _ } => Err(
-                    OpenAPIResolveError::UnhandledReference(reference.clone()),
-                ),
+                ReferenceOr::Reference { reference: _ } => {
+                    Err(OpenAPIResolveError::UnhandledReference(
+                        reference.to_string(),
+                    ))
+                }
             }
         }
     };
@@ -118,7 +120,7 @@ macro_rules! impl_resolver_parsing_reference {
         // lookup to find the relevant component.
         pub fn $func_name(
             &self,
-            reference: &String,
+            reference: &str,
         ) -> Result<&$openapi_ty, OpenAPIResolveError> {
             let parsed_reference =
                 OpenApiComponentReference::try_from(reference)?;
@@ -128,7 +130,7 @@ macro_rules! impl_resolver_parsing_reference {
                 }
                 // The parsed reference's kind did not match the type that the caller was expecting.
                 _ => Err(OpenAPIResolveError::UnhandledReference(
-                    reference.clone(),
+                    reference.to_string(),
                 )),
             }?;
             let ref_or_component =
@@ -143,9 +145,11 @@ macro_rules! impl_resolver_parsing_reference {
                 })?;
             match ref_or_component {
                 ReferenceOr::Item(item) => Ok(item),
-                ReferenceOr::Reference { reference: _ } => Err(
-                    OpenAPIResolveError::UnhandledReference(reference.clone()),
-                ),
+                ReferenceOr::Reference { reference: _ } => {
+                    Err(OpenAPIResolveError::UnhandledReference(
+                        reference.to_string(),
+                    ))
+                }
             }
         }
     };
@@ -174,4 +178,94 @@ impl OpenApiReferenceResolver {
         request_bodies,
         RequestBodyNotFound
     );
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use indexmap::IndexMap;
+    use openapiv3::{Components, OAuth2Flows};
+
+    #[test]
+    fn test_resolve_security_scheme() {
+        let mut security_schemes = IndexMap::default();
+        let petstore_auth = SecurityScheme::OAuth2 {
+            flows: OAuth2Flows {
+                implicit: None,
+                password: None,
+                client_credentials: None,
+                authorization_code: None,
+                extensions: IndexMap::default(),
+            },
+            description: None,
+            extensions: IndexMap::default(),
+        };
+        security_schemes.insert(
+            "petstore_auth".to_string(),
+            ReferenceOr::Item(petstore_auth.clone()),
+        );
+        let components = Components {
+            security_schemes,
+            ..Default::default()
+        };
+        let components = OpenApiReferenceResolver::new(Some(components));
+
+        let resolved = components.get_security_scheme("petstore_auth");
+        assert_eq!(resolved, Ok(&petstore_auth));
+    }
+
+    #[test]
+    fn test_do_not_resolve_security_scheme_that_does_not_exist() {
+        let components = Components::default();
+        let components = OpenApiReferenceResolver::new(Some(components));
+
+        let not_resolved =
+            components.get_security_scheme("auth_that_does_not_exist");
+        assert_eq!(
+            not_resolved,
+            Err(OpenAPIResolveError::SecuritySchemeNotFound(
+                "auth_that_does_not_exist".to_string()
+            ))
+        )
+    }
+
+    #[test]
+    fn test_resolve_request_body() {
+        let pet_request_body = RequestBody {
+            description: None,
+            content: IndexMap::default(),
+            required: true,
+            extensions: IndexMap::default(),
+        };
+        let mut request_bodies = IndexMap::default();
+        request_bodies.insert(
+            "Pet".to_string(),
+            ReferenceOr::Item(pet_request_body.clone()),
+        );
+        let components = Components {
+            request_bodies,
+            ..Default::default()
+        };
+        let components = OpenApiReferenceResolver::new(Some(components));
+
+        let resolved =
+            components.get_request_body("#/components/requestBodies/Pet");
+        assert_eq!(resolved, Ok(&pet_request_body));
+    }
+
+    #[test]
+    fn test_do_not_resolve_request_body_that_does_not_exist() {
+        let components = Components::default();
+        let components = OpenApiReferenceResolver::new(Some(components));
+
+        let not_resolved = components.get_request_body(
+            "#/components/requestBodies/request_body_that_does_not_exist",
+        );
+        assert_eq!(
+            not_resolved,
+            Err(OpenAPIResolveError::RequestBodyNotFound(
+                "request_body_that_does_not_exist".to_string()
+            ))
+        )
+    }
 }

@@ -5,19 +5,23 @@
 //! This module is an implementation of an easily-extendable resolver for components stored inside
 //! an OpenAPI specifications.
 
-use openapiv3::{Components, ReferenceOr, RequestBody, SecurityScheme};
+use openapiv3::{
+    Components, Parameter, ReferenceOr, RequestBody, SecurityScheme,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub(super) enum OpenAPIResolveError {
     #[error("The given OpenAPIv3 specs do not contain the `components` field")]
     MissingComponentsObject,
-    #[error("Could not find the security scheme {_0} inside components.security_schemes")]
+    #[error("Could not find the security scheme {_0} inside components.securitySchemes")]
     SecuritySchemeNotFound(String),
     #[error(
-        "Could not find the request body {_0} inside components.request_bodies"
+        "Could not find the request body {_0} inside components.requestBodies"
     )]
     RequestBodyNotFound(String),
+    #[error("Could not find the parameter {_0} inside components.parameters")]
+    ParameterNotFound(String),
     #[error("Could not resolve the reference {_0}")]
     UnhandledReference(String),
     #[error("Tried to resolve an unsupported component {_0}. This is a bug, please open an issue.")]
@@ -34,6 +38,7 @@ pub(super) struct OpenApiComponentReference<'a> {
 enum OpenApiResolvableComponentKind {
     SecurityScheme,
     RequestBody,
+    Parameter,
 }
 
 impl<'a> TryFrom<&'a str> for OpenApiResolvableComponentKind {
@@ -45,6 +50,7 @@ impl<'a> TryFrom<&'a str> for OpenApiResolvableComponentKind {
                 Ok(OpenApiResolvableComponentKind::SecurityScheme)
             }
             "requestBodies" => Ok(OpenApiResolvableComponentKind::RequestBody),
+            "parameters" => Ok(OpenApiResolvableComponentKind::Parameter),
             _ => Err(OpenAPIResolveError::UnhandledComponentKind(
                 value.to_string(),
             )),
@@ -177,6 +183,12 @@ impl OpenApiReferenceResolver {
         RequestBody,
         request_bodies,
         RequestBodyNotFound
+    );
+    impl_resolver_parsing_reference!(
+        get_parameter,
+        Parameter,
+        parameters,
+        ParameterNotFound
     );
 }
 

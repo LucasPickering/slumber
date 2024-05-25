@@ -48,9 +48,9 @@ use std::{fs::File, path::Path};
 
 use crate::{
     collection::{
-        Authentication, Collection, Folder, Method, Profile, ProfileId, Recipe,
-        RecipeId, RecipeNode, RecipeTree,
-        openapiv3::resolve::OpenApiReferenceResolver,
+        openapiv3::resolve::OpenApiReferenceResolver, Authentication,
+        Collection, Folder, Method, Profile, ProfileId, Recipe, RecipeId,
+        RecipeNode, RecipeTree,
     },
     template::Template,
 };
@@ -58,7 +58,8 @@ use crate::{
 use anyhow::{anyhow, Context};
 use indexmap::{map::Entry, IndexMap};
 use openapiv3::{
-    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, SecurityScheme, Server
+    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, SecurityScheme,
+    Server,
 };
 use tracing::{info, warn};
 
@@ -117,13 +118,18 @@ impl Collection {
                                     let mut children = IndexMap::default();
                                     children.insert(recipe_id, recipe_node);
                                     entry.insert(Folder {
-                                        id: RecipeId::from(format!("tag/{tag}")),
+                                        id: RecipeId::from(format!(
+                                            "tag/{tag}"
+                                        )),
                                         name: Some(tag.clone()),
                                         children,
                                     });
                                 }
                                 Entry::Occupied(mut folder) => {
-                                    folder.get_mut().children.insert(recipe_id, recipe_node);
+                                    folder
+                                        .get_mut()
+                                        .children
+                                        .insert(recipe_id, recipe_node);
                                 }
                             }
                         } else {
@@ -181,10 +187,10 @@ impl Collection {
             if let Some(variables) = variables {
                 for (var_name, variable) in variables {
                     let value = variable.default;
-                    let variable = Template::try_from(value.clone())
-                        .context(
-                            format!("Failed to parse variable {value} as a template"),
-                        )?;
+                    let variable =
+                        Template::try_from(value.clone()).context(format!(
+                            "Failed to parse variable {value} as a template"
+                        ))?;
                     data.insert(var_name, variable);
                 }
             }
@@ -239,10 +245,10 @@ fn operation_to_recipe(
     for ref_param in operation.parameters {
         let param = match ref_param {
             ReferenceOr::Item(item) => Ok(item),
-            ReferenceOr::Reference { reference } => {
-                // TODO: Resolve parameter
-                Err(anyhow!("Could not resolve reference {reference}"))
-            }
+            ReferenceOr::Reference { reference } => reference_resolver
+                .get_parameter(&reference)
+                .context("Failed to resolve reference to Parameter")
+                .cloned(),
         }?;
         // The following is quoted directly from the specifications of parameter objets
         // see: https://spec.openapis.org/oas/v3.0.3#parameter-object
@@ -265,11 +271,11 @@ fn operation_to_recipe(
                     }
                 }
             }
-            // TODO: Support Path parameters
+            // TODO(path_parameters): Slumber does not support Path parameters
             Parameter::Path { .. } => {
                 warn!("Unsupported parameter type: Path");
             }
-            // TODO: Support Cookie parameters
+            // TODO(cookies): Slumber does not support Cookie parameters
             Parameter::Cookie { .. } => {
                 warn!("Unsupported parameter type: Cookie");
             }
@@ -285,7 +291,8 @@ fn operation_to_recipe(
             // if authorization does not require a specified scope. For other security scheme
             // types, the array MUST be empty.
             for (name, values) in scheme {
-                let security_scheme = reference_resolver.get_security_scheme(&name)
+                let security_scheme = reference_resolver
+                    .get_security_scheme(&name)
                     .context("Failed to resolve the security scheme")?
                     .clone();
                 match security_scheme {
@@ -331,19 +338,19 @@ fn operation_to_recipe(
                             APIKeyLocation::Header => {
                                 headers_params.insert(name, Template::empty());
                             }
-                            // TODO: Support Cookies
+                            // TODO(cookies): Slumber does not support Cookies
                             APIKeyLocation::Cookie => {
                                 warn!("Unsupported APIKey Location: Cookies");
                             }
                         }
                     }
-                    // TODO: Support OAuth2
+                    // TODO(oauth2): Slumber does not support OAuth2
                     SecurityScheme::OAuth2 { .. } => {
                         warn!("Unsupported Security Scheme OAuth2");
                     }
-                    // TODO: Support OpenIDConnect
+                    // TODO(openid): Slumber does not support OpenIDConnect
                     SecurityScheme::OpenIDConnect { .. } => {
-                        warn!("Unsupported Security Scheme OAuth2");
+                        warn!("Unsupported Security Scheme OpenIDConnect");
                     }
                 }
             }
@@ -354,7 +361,10 @@ fn operation_to_recipe(
     if let Some(request_body) = operation.request_body {
         let request_body = match request_body {
             ReferenceOr::Item(body) => Ok(body),
-            ReferenceOr::Reference { reference } => reference_resolver.get_request_body(&reference).context("Failed to resolve RequestBody reference").cloned(),
+            ReferenceOr::Reference { reference } => reference_resolver
+                .get_request_body(&reference)
+                .context("Failed to resolve RequestBody reference")
+                .cloned(),
         }?;
         // We don't support multiple body types, so let's just grab the first.
         if let Some((content_type, media_type)) = request_body.content.first() {

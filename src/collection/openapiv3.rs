@@ -55,8 +55,7 @@ use crate::{
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use openapiv3::{
-    APIKeyLocation, OpenAPI, Operation, Parameter, ReferenceOr, RequestBody,
-    SecurityScheme, Server, Tag,
+    APIKeyLocation, Components, OpenAPI, Operation, Parameter, ReferenceOr, RequestBody, SecurityScheme, Server, Tag
 };
 use thiserror::Error;
 use tracing::{info, warn};
@@ -73,7 +72,72 @@ enum OpenAPIResolveError {
     RequestBodyNotFound(String),
     #[error("Could not resolve the reference {_0}")]
     UnhandledReference(String),
+    #[error("Tried to resolve an unsupported component {_0}. This is a bug, please open an issue.")]
+    UnhandledComponentKind(String),
 }
+
+struct ReferenceResolver(Components);
+
+struct OpenApiComponentReference<'a> {
+    component_kind: OpenApiResolvableComponentKind,
+    value: &'a str,
+}
+
+enum OpenApiResolvableComponentKind {
+    SecurityScheme,
+    RequestBody,
+    Schema,
+}
+
+const REFERENCE_PREFIX: &str = "#/components/";
+impl<'a> TryFrom<&'a String> for OpenApiComponentReference<'a> {
+    type Error = OpenAPIResolveError;
+
+    fn try_from(value: &'a String) -> Result<Self, Self::Error> {
+        // We currently do not support parsing references that aren't internal to the provided OpenAPI spec
+        if !value.starts_with(REFERENCE_PREFIX) {
+            return Err(OpenAPIResolveError::UnhandledReference(value.to_string()));
+        }
+        let (_, component) = value.split_once(REFERENCE_PREFIX).ok_or_else(|| OpenAPIResolveError::UnhandledReference(value.clone()))?;
+        let (component_kind, value) = component.split_once('/').ok_or_else(|| OpenAPIResolveError::UnhandledReference(value.clone()))?;
+        let component_kind = match component_kind {
+            "securitySchemas" => Ok(OpenApiResolvableComponentKind::SecurityScheme),
+            "requestBodies" => Ok(OpenApiResolvableComponentKind::RequestBody),
+            "schema" => Ok(OpenApiResolvableComponentKind::Schema),
+            _ => Err(OpenAPIResolveError::UnhandledComponentKind(component_kind.to_string())),
+        }?;
+        Ok(OpenApiComponentReference {
+            component_kind, value
+        })
+    }
+}
+
+impl ReferenceResolver {
+    fn get_security_scheme(&self, reference: &String) -> Result<&SecurityScheme, OpenAPIResolveError> {
+        let parsed_reference = OpenApiComponentReference::try_from(reference)?;
+        let value = match parsed_reference.component_kind {
+            OpenApiResolvableComponentKind::SecurityScheme => Ok(parsed_reference.value),
+            // The parsed reference's kind did not match the type that the caller was expecting.
+            _ => Err(OpenAPIResolveError::UnhandledReference(reference.clone())),
+        }?;
+        let ref_or_component = self
+            .0
+            .security_schemes
+            .get(value)
+            .ok_or_else(|| {
+                OpenAPIResolveError::SecuritySchemeNotFound(
+                    value.to_string(),
+                )
+            })?;
+        match ref_or_component {
+            ReferenceOr::Item(item) => Ok(item),
+            ReferenceOr::Reference { reference: _ } => {
+                Err(OpenAPIResolveError::UnhandledReference(reference.clone()))
+            }
+        }
+    }
+}
+
 
 impl Collection {
     /// Loads a collection from an OpenAPIv3 specification file

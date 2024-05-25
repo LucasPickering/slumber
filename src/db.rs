@@ -665,7 +665,7 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecordSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
+    use crate::test_util::Factory;
     use itertools::Itertools;
     use std::collections::HashMap;
 

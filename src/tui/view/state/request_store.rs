@@ -116,9 +116,9 @@ impl RequestStore {
 mod tests {
     use super::*;
     use crate::{
-        db::CollectionDatabase,
         http::{Request, RequestBuildError, RequestError, RequestRecord},
-        test_util::*,
+        test_util::{assert_err, assert_matches, Factory},
+        tui::test_util::{harness, TestHarness},
     };
     use chrono::Utc;
     use rstest::rstest;
@@ -177,8 +177,7 @@ mod tests {
     }
 
     #[rstest]
-    fn test_load(database: CollectionDatabase, messages: MessageQueue) {
-        ViewContext::init(database.clone(), messages.tx().clone());
+    fn test_load(harness: TestHarness) {
         let mut store = RequestStore::default();
 
         // Generally we would expect this to be in the DB, but in this case omit
@@ -188,7 +187,7 @@ mod tests {
 
         let missing_record = RequestRecord::factory(());
         let missing_id = missing_record.id;
-        database.insert_request(&missing_record).unwrap();
+        harness.database.insert_request(&missing_record).unwrap();
 
         // Already in store, don't fetch
         store
@@ -217,17 +216,16 @@ mod tests {
     }
 
     #[rstest]
-    fn test_load_latest(database: CollectionDatabase, messages: MessageQueue) {
-        ViewContext::init(database.clone(), messages.tx().clone());
+    fn test_load_latest(harness: TestHarness) {
         let profile_id = ProfileId::factory(());
         let recipe_id = RecipeId::factory(());
 
         // Create some confounding records, that we don't expected to load
-        create_record(&database, Some(&profile_id), Some(&recipe_id));
-        create_record(&database, Some(&profile_id), None);
-        create_record(&database, None, Some(&recipe_id));
+        create_record(&harness, Some(&profile_id), Some(&recipe_id));
+        create_record(&harness, Some(&profile_id), None);
+        create_record(&harness, None, Some(&recipe_id));
         let expected_record =
-            create_record(&database, Some(&profile_id), Some(&recipe_id));
+            create_record(&harness, Some(&profile_id), Some(&recipe_id));
 
         let mut store = RequestStore::default();
         assert_eq!(
@@ -243,22 +241,18 @@ mod tests {
     }
 
     #[rstest]
-    fn test_load_summaries(
-        database: CollectionDatabase,
-        messages: MessageQueue,
-    ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
+    fn test_load_summaries(harness: TestHarness) {
         let profile_id = ProfileId::factory(());
         let recipe_id = RecipeId::factory(());
 
         let mut records = (0..5)
             .map(|_| {
-                create_record(&database, Some(&profile_id), Some(&recipe_id))
+                create_record(&harness, Some(&profile_id), Some(&recipe_id))
             })
             .collect_vec();
         // Create some confounders
-        create_record(&database, None, Some(&recipe_id));
-        create_record(&database, Some(&profile_id), None);
+        create_record(&harness, None, Some(&recipe_id));
+        create_record(&harness, Some(&profile_id), None);
 
         // Add one request of each possible state. We expect to get em all back
         let mut store = RequestStore::default();
@@ -364,7 +358,7 @@ mod tests {
     /// Create a record with the given profile+recipe ID (or random if
     /// None), and insert it into the DB
     fn create_record(
-        database: &CollectionDatabase,
+        harness: &TestHarness,
         profile_id: Option<&ProfileId>,
         recipe_id: Option<&RecipeId>,
     ) -> RequestRecord {
@@ -376,7 +370,7 @@ mod tests {
             ),
             recipe_id.cloned().unwrap_or_else(|| RecipeId::factory(())),
         ));
-        database.insert_request(&record).unwrap();
+        harness.database.insert_request(&record).unwrap();
         record
     }
 }

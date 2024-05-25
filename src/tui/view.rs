@@ -4,10 +4,13 @@ mod context;
 mod draw;
 mod event;
 mod state;
+#[cfg(test)]
+pub mod test_util;
 mod theme;
 mod util;
 
 pub use common::modal::{IntoModal, ModalPriority};
+pub use context::ViewContext;
 pub use state::RequestState;
 pub use theme::{Styles, Theme};
 pub use util::{Confirm, PreviewPrompter};
@@ -20,7 +23,6 @@ use crate::{
         message::{Message, MessageSender},
         view::{
             component::{Component, Root},
-            context::ViewContext,
             event::{Event, Update},
             state::Notification,
         },
@@ -154,23 +156,22 @@ impl View {
 mod tests {
     use super::*;
     use crate::{
-        collection::Collection, test_util::*, tui::context::TuiContext,
+        collection::Collection,
+        test_util::Factory,
+        tui::test_util::{assert_events, harness, TestHarness},
     };
-    use ratatui::{backend::TestBackend, Terminal};
     use rstest::rstest;
 
     /// Test view handling and drawing during initial view setup
     #[rstest]
-    fn test_initial_draw(
-        _tui_context: &TuiContext,
-        mut terminal: Terminal<TestBackend>,
-        database: CollectionDatabase,
-        messages: MessageQueue,
-    ) {
+    fn test_initial_draw(mut harness: TestHarness) {
         let collection = Collection::factory(());
         let collection_file = CollectionFile::testing(collection);
-        let mut view =
-            View::new(&collection_file, database, messages.tx().clone());
+        let mut view = View::new(
+            &collection_file,
+            harness.database.clone(),
+            harness.messages_tx().clone(),
+        );
 
         // Initial events
         assert_events!(
@@ -188,7 +189,7 @@ mod tests {
         );
 
         // Nothing new
-        view.draw(&mut terminal.get_frame());
+        view.draw(&mut harness.terminal.get_frame());
         assert_events!(
             Event::HttpSelectRequest(None),
             Event::Other(_),

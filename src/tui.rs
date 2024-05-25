@@ -1,6 +1,8 @@
 pub mod context;
 pub mod input;
 pub mod message;
+#[cfg(test)]
+pub mod test_util;
 mod util;
 pub mod view;
 

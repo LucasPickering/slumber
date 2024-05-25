@@ -177,7 +177,7 @@ async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
+    use crate::test_util::{assert_err, temp_dir, TempDir};
     use rstest::rstest;
     use std::fs::File;
 

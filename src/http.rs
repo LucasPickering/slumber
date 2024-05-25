@@ -568,7 +568,7 @@ mod tests {
     use super::*;
     use crate::{
         collection::{Authentication, Collection, Profile},
-        test_util::*,
+        test_util::{header_map, Factory},
     };
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;

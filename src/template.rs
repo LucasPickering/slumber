@@ -176,6 +176,22 @@ impl<T> TemplateKey<T> {
 }
 
 #[cfg(test)]
+impl crate::test_util::Factory for TemplateContext {
+    fn factory(_: ()) -> Self {
+        use crate::test_util::TestPrompter;
+        Self {
+            collection: Collection::default(),
+            selected_profile: None,
+            http_engine: None,
+            database: CollectionDatabase::factory(()),
+            overrides: IndexMap::new(),
+            prompter: Box::<TestPrompter>::default(),
+            recursion_count: 0.into(),
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
@@ -185,7 +201,9 @@ mod tests {
         },
         config::Config,
         http::{ContentType, Request, RequestRecord, Response},
-        test_util::*,
+        test_util::{
+            assert_err, header_map, temp_dir, Factory, TempDir, TestPrompter,
+        },
     };
     use chrono::Utc;
     use indexmap::indexmap;

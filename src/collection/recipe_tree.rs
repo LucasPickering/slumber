@@ -230,7 +230,7 @@ impl From<&Vec<&RecipeId>> for RecipeLookupKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
+    use crate::test_util::{assert_err, Factory};
     use indexmap::indexmap;
     use itertools::Itertools;
     use rstest::{fixture, rstest};

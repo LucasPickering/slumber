@@ -182,12 +182,11 @@ pub(crate) use impl_persistable;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{db::CollectionDatabase, test_util::*};
+    use crate::tui::test_util::{harness, TestHarness};
     use rstest::rstest;
 
     #[rstest]
-    fn test_persistent(database: CollectionDatabase, messages: MessageQueue) {
-        ViewContext::init(database, messages.tx().clone());
+    fn test_persistent(_harness: TestHarness) {
         let mut persistent =
             Persistent::new(PersistentKey::RecipeId, "".to_owned());
         *persistent = "hello!".to_owned();

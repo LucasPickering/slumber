@@ -97,7 +97,7 @@ impl Root {
     }
 
     /// Open the history modal for current recipe+profile. Return an error if
-    /// the database load failed.
+    /// the harness.database load failed.
     fn open_history(&mut self) -> anyhow::Result<()> {
         let primary_view = self.primary_view.data();
         if let Some(recipe) = primary_view.selected_recipe() {
@@ -235,20 +235,21 @@ impl PersistentContainer for SelectedRequestId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{db::CollectionDatabase, http::RequestRecord, test_util::*};
+    use crate::{
+        http::RequestRecord,
+        test_util::{assert_matches, Factory},
+        tui::{
+            test_util::{harness, TestHarness},
+            view::test_util::TestComponent,
+        },
+    };
     use crossterm::event::KeyCode;
-    use ratatui::{backend::TestBackend, Terminal};
     use rstest::rstest;
 
     /// Test that, on first render, the view loads the most recent historical
     /// request for the first recipe+profile
     #[rstest]
-    fn test_preload_request(
-        database: CollectionDatabase,
-        messages: MessageQueue,
-        mut terminal: Terminal<TestBackend>,
-    ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
+    fn test_preload_request(harness: TestHarness) {
         // Add a request into the DB that we expect to preload
         let collection = Collection::factory(());
         let profile_id = collection.first_profile_id();
@@ -257,27 +258,14 @@ mod tests {
             Some(profile_id.clone()),
             recipe_id.clone(),
         ));
-        database.insert_request(&record).unwrap();
+        harness.database.insert_request(&record).unwrap();
 
-        let mut component: Component<Root> = Root::new(&collection).into();
+        let component = TestComponent::new(harness, Root::new(&collection), ());
 
         // Make sure profile+recipe were preselected correctly
         let primary_view = component.data().primary_view.data();
         assert_eq!(primary_view.selected_profile_id(), Some(profile_id));
         assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
-
-        // Initial draw
-        component.draw_term(&mut terminal, ());
-
-        assert_events!(
-            Event::HttpSelectRequest(None), // From recipe list
-            Event::Other(_),                // Fullscreen exit event
-        );
-        component.drain_events();
-
-        let primary_view = component.data().primary_view.data();
-        assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
-        assert_eq!(primary_view.selected_profile_id(), Some(profile_id));
         assert_eq!(
             component.data().selected_request(),
             Some(&RequestState::Response { record })
@@ -290,12 +278,7 @@ mod tests {
     /// Test that, on first render, if there's a persisted request ID, we load
     /// up to that instead of selecting the first in the list
     #[rstest]
-    fn test_load_persistent_request(
-        database: CollectionDatabase,
-        messages: MessageQueue,
-        mut terminal: Terminal<TestBackend>,
-    ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
+    fn test_load_persistent_request(harness: TestHarness) {
         let collection = Collection::factory(());
         let recipe_id = collection.first_recipe_id();
         let profile_id = collection.first_profile_id();
@@ -308,15 +291,16 @@ mod tests {
             Some(profile_id.clone()),
             recipe_id.clone(),
         ));
-        database.insert_request(&old_record).unwrap();
-        database.insert_request(&new_record).unwrap();
-        database
+        harness.database.insert_request(&old_record).unwrap();
+        harness.database.insert_request(&new_record).unwrap();
+        harness
+            .database
             .set_ui(PersistentKey::RequestId, old_record.id)
             .unwrap();
 
-        let mut component: Component<Root> = Root::new(&collection).into();
+        let component = TestComponent::new(harness, Root::new(&collection), ());
 
-        // Make sure profile+recipe were preselected correctly
+        // Make sure everything was preselected correctly
         assert_eq!(
             component.data().primary_view.data().selected_profile_id(),
             Some(profile_id)
@@ -325,18 +309,6 @@ mod tests {
             component.data().primary_view.data().selected_recipe_id(),
             Some(recipe_id)
         );
-
-        // Initial draw
-        component.draw_term(&mut terminal, ());
-
-        assert_events!(
-            Event::HttpSelectRequest(None), // From recipe list
-            Event::Other(_),
-            // From persisted value - this comes later so it overrides
-            Event::HttpSelectRequest(Some(_)),
-        );
-        component.drain_events();
-
         assert_eq!(
             component.data().selected_request(),
             Some(&RequestState::Response { record: old_record })
@@ -344,26 +316,21 @@ mod tests {
     }
 
     #[rstest]
-    fn test_edit_collection(
-        database: CollectionDatabase,
-        mut messages: MessageQueue,
-        mut terminal: Terminal<TestBackend>,
-    ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
+    fn test_edit_collection(harness: TestHarness) {
         let collection = Collection::factory(());
-        let mut component: Component<Root> = Root::new(&collection).into();
-        component.draw_term(&mut terminal, ());
-        component.drain_events();
-        messages.clear(); // Clear init junk
+        let mut component =
+            TestComponent::new(harness, Root::new(&collection), ());
+
+        component.harness_mut().clear_messages(); // Clear init junk
 
         // Event should be converted into a message appropriately
         // Open action menu
-        ViewContext::send_key(KeyCode::Char('x'));
-        component.drain_events();
-        component.draw_term(&mut terminal, ());
+        component.send_key(KeyCode::Char('x')).assert_empty();
         // Select first action - Edit Collection
-        ViewContext::send_key(KeyCode::Enter);
-        component.drain_events();
-        assert_matches!(messages.pop_now(), Message::CollectionEdit);
+        component.send_key(KeyCode::Enter).assert_empty();
+        assert_matches!(
+            component.harness_mut().pop_message_now(),
+            Message::CollectionEdit
+        );
     }
 }

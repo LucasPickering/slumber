@@ -350,12 +350,11 @@ impl PersistentContainer for TextBox {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        db::CollectionDatabase,
-        test_util::*,
-        tui::view::{component::Component, context::ViewContext},
+    use crate::tui::{
+        test_util::{harness, TestHarness},
+        view::test_util::TestComponent,
     };
-    use ratatui::{backend::TestBackend, text::Span, Terminal};
+    use ratatui::text::Span;
     use rstest::rstest;
     use std::{cell::Cell, rc::Rc};
 
@@ -406,134 +405,98 @@ mod tests {
 
     /// Test the basic interaction loop on the text box
     #[rstest]
-    fn test_interaction(
-        _tui_context: &TuiContext,
-        database: CollectionDatabase,
-        messages: MessageQueue,
-        #[with(10, 1)] mut terminal: Terminal<TestBackend>,
-    ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
+    fn test_interaction(#[with(10, 1)] harness: TestHarness) {
         let click_count = Counter::default();
         let submit_count = Counter::default();
         let cancel_count = Counter::default();
-        let mut component: Component<_> = TextBox::default()
-            .with_on_click(click_count.callback())
-            .with_on_submit(submit_count.callback())
-            .with_on_cancel(cancel_count.callback())
-            .into();
-        component.draw_term(&mut terminal, ());
+        let mut component = TestComponent::new(
+            harness,
+            TextBox::default()
+                .with_on_click(click_count.callback())
+                .with_on_submit(submit_count.callback())
+                .with_on_cancel(cancel_count.callback()),
+            (),
+        );
 
         // Assert initial state/view
         assert_state(&component.data().state, "", 0);
-        terminal
-            .backend()
-            .assert_buffer_lines([vec![cursor(" "), text("         ")]]);
+        component.assert_buffer_lines([vec![cursor(" "), text("         ")]]);
 
         // Type some text
-        ViewContext::send_text("hello!");
-        component.drain_events();
-        component.draw_term(&mut terminal, ());
+        component.send_text("hello!").assert_empty();
         assert_state(&component.data().state, "hello!", 6);
-        terminal.backend().assert_buffer_lines([vec![
+        component.assert_buffer_lines([vec![
             text("hello!"),
             cursor(" "),
             text("   "),
         ]]);
 
         // Test callbacks
-        ViewContext::click(0, 0);
-        component.drain_events();
+        component.click(0, 0).assert_empty();
         assert_eq!(click_count, 1);
 
-        ViewContext::send_key(KeyCode::Enter);
-        component.drain_events();
+        component.send_key(KeyCode::Enter).assert_empty();
         assert_eq!(submit_count, 1);
 
-        ViewContext::send_key(KeyCode::Esc);
-        component.drain_events();
+        component.send_key(KeyCode::Esc).assert_empty();
         assert_eq!(cancel_count, 1);
     }
 
     /// Test text navigation and deleting. [TextState] has its own tests so
     /// we're mostly just testing that keys are mapped correctly
     #[rstest]
-    fn test_navigation(
-        _tui_context: &TuiContext,
-        database: CollectionDatabase,
-        messages: MessageQueue,
-        #[with(10, 1)] mut terminal: Terminal<TestBackend>,
-    ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
-        let mut component: Component<_> = TextBox::default().into();
-        component.draw_term(&mut terminal, ());
+    fn test_navigation(#[with(10, 1)] harness: TestHarness) {
+        let mut component = TestComponent::new(harness, TextBox::default(), ());
 
         // Type some text
-        ViewContext::send_text("hello!");
-        component.drain_events();
+        component.send_text("hello!").assert_empty();
         assert_state(&component.data().state, "hello!", 6);
 
         // Move around, delete some text.
-        ViewContext::send_key(KeyCode::Left);
-        component.drain_events();
+        component.send_key(KeyCode::Left).assert_empty();
         assert_state(&component.data().state, "hello!", 5);
 
-        ViewContext::send_key(KeyCode::Backspace);
-        component.drain_events();
+        component.send_key(KeyCode::Backspace).assert_empty();
         assert_state(&component.data().state, "hell!", 4);
 
-        ViewContext::send_key(KeyCode::Delete);
-        component.drain_events();
+        component.send_key(KeyCode::Delete).assert_empty();
         assert_state(&component.data().state, "hell", 4);
 
-        ViewContext::send_key(KeyCode::Home);
-        component.drain_events();
+        component.send_key(KeyCode::Home).assert_empty();
         assert_state(&component.data().state, "hell", 0);
 
-        ViewContext::send_key(KeyCode::Right);
-        component.drain_events();
+        component.send_key(KeyCode::Right).assert_empty();
         assert_state(&component.data().state, "hell", 1);
 
-        ViewContext::send_key(KeyCode::End);
-        component.drain_events();
+        component.send_key(KeyCode::End).assert_empty();
         assert_state(&component.data().state, "hell", 4);
     }
 
     #[rstest]
-    fn test_sensitive(
-        _tui_context: &TuiContext,
-        database: CollectionDatabase,
-        messages: MessageQueue,
-        #[with(6, 1)] mut terminal: Terminal<TestBackend>,
-    ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
-        let mut component: Component<_> =
-            TextBox::default().with_sensitive(true).into();
-        component.draw_term(&mut terminal, ());
-        ViewContext::send_text("hello");
-        component.drain_events();
-        component.draw_term(&mut terminal, ());
+    fn test_sensitive(#[with(6, 1)] harness: TestHarness) {
+        let mut component = TestComponent::new(
+            harness,
+            TextBox::default().with_sensitive(true),
+            (),
+        );
+
+        component.send_text("hello").assert_empty();
 
         assert_state(&component.data().state, "hello", 5);
-        terminal
-            .backend()
-            .assert_buffer_lines([vec![text("•••••"), cursor(" ")]]);
+        component.assert_buffer_lines([vec![text("•••••"), cursor(" ")]]);
     }
 
     #[rstest]
-    fn test_placeholder(
-        tui_context: &TuiContext,
-        database: CollectionDatabase,
-        messages: MessageQueue,
-        #[with(6, 1)] mut terminal: Terminal<TestBackend>,
-    ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
-        let component: Component<_> =
-            TextBox::default().with_placeholder("hello").into();
-        component.draw_term(&mut terminal, ());
+    fn test_placeholder(#[with(6, 1)] harness: TestHarness) {
+        let component = TestComponent::new(
+            harness,
+            TextBox::default().with_placeholder("hello"),
+            (),
+        );
 
         assert_state(&component.data().state, "", 0);
-        let styles = &tui_context.styles.text_box;
-        terminal.backend().assert_buffer_lines([vec![
+        let styles = &TuiContext::get().styles.text_box;
+        component.assert_buffer_lines([vec![
             cursor("h"),
             Span::styled("ello", styles.text.patch(styles.placeholder)),
             text(" "),
@@ -541,34 +504,25 @@ mod tests {
     }
 
     #[rstest]
-    fn test_validator(
-        tui_context: &TuiContext,
-        database: CollectionDatabase,
-        messages: MessageQueue,
-        #[with(6, 1)] mut terminal: Terminal<TestBackend>,
-    ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
-        let mut component: Component<_> = TextBox::default()
-            .with_validator(|text| text.len() <= 2)
-            .into();
-        component.draw_term(&mut terminal, ());
+    fn test_validator(#[with(6, 1)] harness: TestHarness) {
+        let mut component = TestComponent::new(
+            harness,
+            TextBox::default().with_validator(|text| text.len() <= 2),
+            (),
+        );
 
         // Valid text, everything is normal
-        ViewContext::send_text("he");
-        component.drain_events();
-        component.draw_term(&mut terminal, ());
-        terminal.backend().assert_buffer_lines([vec![
+        component.send_text("he").assert_empty();
+        component.assert_buffer_lines([vec![
             text("he"),
             cursor(" "),
             text("   "),
         ]]);
 
         // Invalid text, styling changes
-        ViewContext::send_text("llo");
-        component.drain_events();
-        component.draw_term(&mut terminal, ());
-        terminal.backend().assert_buffer_lines([vec![
-            Span::styled("hello", tui_context.styles.text_box.invalid),
+        component.send_text("llo").assert_empty();
+        component.assert_buffer_lines([vec![
+            Span::styled("hello", TuiContext::get().styles.text_box.invalid),
             cursor(" "),
         ]]);
     }

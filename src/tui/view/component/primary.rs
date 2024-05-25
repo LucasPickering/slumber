@@ -51,6 +51,7 @@ pub struct PrimaryView {
     record_pane: Component<RecordPane>,
 }
 
+#[cfg_attr(test, derive(Clone))]
 pub struct PrimaryViewProps<'a> {
     pub selected_request: Option<&'a RequestState>,
 }
@@ -384,60 +385,51 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
 mod tests {
     use super::*;
     use crate::{
-        db::CollectionDatabase,
         http::RecipeOptions,
-        test_util::*,
+        test_util::{assert_matches, Factory},
         tui::{
-            context::TuiContext,
             message::{Message, RequestConfig},
+            test_util::{harness, TestHarness},
+            view::test_util::TestComponent,
         },
     };
-    use ratatui::{backend::TestBackend, Terminal};
     use rstest::{fixture, rstest};
 
-    /// Create component to be tested. Return the associated message queue too,
-    /// so it can be tested
+    /// Create component to be tested
     #[fixture]
     fn component(
-        _tui_context: &TuiContext,
-        database: CollectionDatabase,
-        mut messages: MessageQueue,
-        mut terminal: Terminal<TestBackend>,
-    ) -> (MessageQueue, Component<PrimaryView>) {
-        ViewContext::init(database, messages.tx().clone());
+        harness: TestHarness,
+    ) -> TestComponent<PrimaryView, PrimaryViewProps<'static>> {
         let collection = Collection::factory(());
-        let component: Component<PrimaryView> =
-            PrimaryView::new(&collection).into();
-
-        // Draw once to initialize state
-        component.draw_term(
-            &mut terminal,
+        let mut component = TestComponent::new(
+            harness,
+            PrimaryView::new(&collection),
             PrimaryViewProps {
                 selected_request: None,
             },
         );
         // Clear template preview messages so we can test what we want
-        messages.clear();
-        (messages, component)
+        component.harness_mut().clear_messages();
+        component
     }
 
     /// Test "Copy URL" action, which is available via the Recipe List or Recipe
     /// panes
     #[rstest]
-    fn test_copy_url(component: (MessageQueue, Component<PrimaryView>)) {
-        let (mut messages, mut component) = component;
-        assert_matches!(
-            component.update_all(Event::new_other(RecipeMenuAction::CopyUrl)),
-            Update::Consumed
-        );
+    fn test_copy_url(
+        mut component: TestComponent<PrimaryView, PrimaryViewProps<'static>>,
+    ) {
+        component
+            .update_draw(Event::new_other(RecipeMenuAction::CopyUrl))
+            .assert_empty();
 
-        let message = messages.pop_now();
-        let Message::CopyRequestUrl(request_config) = &message else {
-            panic!("Wrong message: {message:?}")
-        };
+        let request_config = assert_matches!(
+            component.harness_mut().pop_message_now(),
+            Message::CopyRequestUrl(request_config) => request_config,
+        );
         assert_eq!(
             request_config,
-            &RequestConfig {
+            RequestConfig {
                 recipe_id: "recipe1".into(),
                 profile_id: Some("profile1".into()),
                 options: RecipeOptions::default()
@@ -448,20 +440,20 @@ mod tests {
     /// Test "Copy Body" action, which is available via the Recipe List or
     /// Recipe panes
     #[rstest]
-    fn test_copy_body(component: (MessageQueue, Component<PrimaryView>)) {
-        let (mut messages, mut component) = component;
-        assert_matches!(
-            component.update_all(Event::new_other(RecipeMenuAction::CopyBody)),
-            Update::Consumed
-        );
+    fn test_copy_body(
+        mut component: TestComponent<PrimaryView, PrimaryViewProps<'static>>,
+    ) {
+        component
+            .update_draw(Event::new_other(RecipeMenuAction::CopyBody))
+            .assert_empty();
 
-        let message = messages.pop_now();
-        let Message::CopyRequestBody(request_config) = &message else {
-            panic!("Wrong message: {message:?}")
-        };
+        let request_config = assert_matches!(
+            component.harness_mut().pop_message_now(),
+            Message::CopyRequestBody(request_config) => request_config,
+        );
         assert_eq!(
             request_config,
-            &RequestConfig {
+            RequestConfig {
                 recipe_id: "recipe1".into(),
                 profile_id: Some("profile1".into()),
                 options: RecipeOptions::default()
@@ -472,20 +464,20 @@ mod tests {
     /// Test "Copy as cURL" action, which is available via the Recipe List or
     /// Recipe panes
     #[rstest]
-    fn test_copy_as_curl(component: (MessageQueue, Component<PrimaryView>)) {
-        let (mut messages, mut component) = component;
-        assert_matches!(
-            component.update_all(Event::new_other(RecipeMenuAction::CopyCurl)),
-            Update::Consumed
-        );
+    fn test_copy_as_curl(
+        mut component: TestComponent<PrimaryView, PrimaryViewProps<'static>>,
+    ) {
+        component
+            .update_draw(Event::new_other(RecipeMenuAction::CopyCurl))
+            .assert_empty();
 
-        let message = messages.pop_now();
-        let Message::CopyRequestCurl(request_config) = &message else {
-            panic!("Wrong message: {message:?}")
-        };
+        let request_config = assert_matches!(
+            component.harness_mut().pop_message_now(),
+            Message::CopyRequestCurl(request_config) => request_config,
+        );
         assert_eq!(
             request_config,
-            &RequestConfig {
+            RequestConfig {
                 recipe_id: "recipe1".into(),
                 profile_id: Some("profile1".into()),
                 options: RecipeOptions::default()

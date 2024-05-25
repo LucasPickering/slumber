@@ -461,7 +461,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{collection::CollectionFile, test_util::*};
+    use crate::{collection::CollectionFile, test_util::test_data_dir};
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;

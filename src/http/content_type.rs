@@ -172,7 +172,7 @@ impl ContentType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
+    use crate::test_util::{assert_err, Factory};
     use reqwest::header::{
         HeaderMap, HeaderValue, InvalidHeaderValue, CONTENT_TYPE,
     };

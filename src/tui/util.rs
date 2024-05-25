@@ -168,7 +168,10 @@ async fn confirm(messages_tx: &MessageSender, message: impl ToString) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
+    use crate::{
+        test_util::{assert_matches, temp_dir, TempDir},
+        tui::test_util::{harness, TestHarness},
+    };
     use rstest::rstest;
     use tokio::fs;
 
@@ -179,8 +182,8 @@ mod tests {
     #[case::old_file_overwrite(true, true)]
     #[tokio::test]
     async fn test_save_file(
+        mut harness: TestHarness,
         temp_dir: TempDir,
-        mut messages: MessageQueue,
         #[case] exists: bool,
         #[case] overwrite: bool,
     ) {
@@ -191,14 +194,14 @@ mod tests {
 
         // This will run in the background and save the file after prompts
         let handle = tokio::spawn(save_file(
-            messages.tx().clone(),
+            harness.messages_tx().clone(),
             Some("default.txt".into()),
             b"hello!".to_vec(),
         ));
 
         // First we expect a prompt for the file path
         let prompt = assert_matches!(
-            messages.pop_wait().await,
+            harness.pop_message_wait().await,
             Message::PromptStart(prompt) => prompt,
         );
         assert_eq!(&prompt.message, "Enter a path for the file");
@@ -210,7 +213,7 @@ mod tests {
         if exists {
             // Now we expect a confirmation prompt
             let confirm = assert_matches!(
-                messages.pop_wait().await,
+                harness.pop_message_wait().await,
                 Message::ConfirmStart(confirm) => confirm,
             );
             assert_eq!(

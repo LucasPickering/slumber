@@ -29,6 +29,7 @@ pub struct ResponseBodyView {
     state: StateCell<RequestId, State>,
 }
 
+#[derive(Clone)]
 pub struct ResponseBodyViewProps<'a> {
     pub request_id: RequestId,
     pub recipe_id: &'a RecipeId,
@@ -172,11 +173,14 @@ impl<'a> Draw<ResponseHeadersViewProps<'a>> for ResponseHeadersView {
 mod tests {
     use super::*;
     use crate::{
-        db::CollectionDatabase, http::RequestRecord, test_util::*,
-        tui::context::TuiContext,
+        http::RequestRecord,
+        test_util::{assert_matches, header_map, Factory},
+        tui::{
+            test_util::{harness, TestHarness},
+            view::test_util::TestComponent,
+        },
     };
     use indexmap::indexmap;
-    use ratatui::{backend::TestBackend, Terminal};
     use rstest::rstest;
 
     /// Test "Copy Body" menu action
@@ -200,23 +204,18 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_copy_body(
-        _tui_context: &TuiContext,
-        database: CollectionDatabase,
-        mut messages: MessageQueue,
-        mut terminal: Terminal<TestBackend>,
+        harness: TestHarness,
         #[case] response: Response,
         #[case] expected_body: &str,
     ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
-        // Draw once to initialize state
-        let mut component: Component<ResponseBodyView> = Component::default();
         response.parse_body(); // Normally the view does this
         let record = RequestRecord {
             response: response.into(),
             ..RequestRecord::factory(())
         };
-        component.draw_term(
-            &mut terminal,
+        let mut component = TestComponent::new(
+            harness,
+            ResponseBodyView::default(),
             ResponseBodyViewProps {
                 request_id: record.id,
                 recipe_id: &record.request.recipe_id,
@@ -224,15 +223,14 @@ mod tests {
             },
         );
 
-        assert_matches!(
-            component.update_all(Event::new_other(BodyMenuAction::CopyBody)),
-            Update::Consumed
-        );
+        component
+            .update_draw(Event::new_other(BodyMenuAction::CopyBody))
+            .assert_empty();
 
-        let message = messages.pop_now();
-        let Message::CopyText(body) = &message else {
-            panic!("Wrong message: {message:?}")
-        };
+        let body = assert_matches!(
+            component.harness_mut().pop_message_now(),
+            Message::CopyText(body) => body,
+        );
         assert_eq!(body, expected_body);
     }
 
@@ -271,25 +269,19 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_save_file(
-        _tui_context: &TuiContext,
-        database: CollectionDatabase,
-        mut messages: MessageQueue,
-        mut terminal: Terminal<TestBackend>,
+        harness: TestHarness,
         #[case] response: Response,
         #[case] expected_body: &[u8],
         #[case] expected_path: &str,
     ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
-        let mut component: Component<ResponseBodyView> = Component::default();
         response.parse_body(); // Normally the view does this
         let record = RequestRecord {
             response: response.into(),
             ..RequestRecord::factory(())
         };
-
-        // Draw once to initialize state
-        component.draw_term(
-            &mut terminal,
+        let mut component = TestComponent::new(
+            harness,
+            ResponseBodyView::default(),
             ResponseBodyViewProps {
                 request_id: record.id,
                 recipe_id: &record.request.recipe_id,
@@ -297,15 +289,14 @@ mod tests {
             },
         );
 
-        assert_matches!(
-            component.update_all(Event::new_other(BodyMenuAction::SaveBody)),
-            Update::Consumed
-        );
+        component
+            .update_draw(Event::new_other(BodyMenuAction::SaveBody))
+            .assert_empty();
 
-        let message = messages.pop_now();
-        let Message::SaveFile { data, default_path } = &message else {
-            panic!("Wrong message: {message:?}")
-        };
+        let (data, default_path) = assert_matches!(
+            component.harness_mut().pop_message_now(),
+            Message::SaveFile { data, default_path } => (data, default_path),
+        );
         assert_eq!(data, expected_body);
         assert_eq!(default_path.as_deref(), Some(expected_path));
     }

@@ -69,6 +69,11 @@ impl<T> Component<T> {
         }
     }
 
+    /// Name of the component type, which is used just for debugging/tracing
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+
     /// Handle an event for this component *or* its children, starting at the
     /// lowest descendant. Recursively walk up the tree until a component
     /// consumes the event.
@@ -103,7 +108,7 @@ impl<T> Component<T> {
 
         // None of our children handled it, we'll take it ourselves. Event is
         // already traced in the root span, so don't dupe it.
-        let span = trace_span!("Component handling", component = self.name);
+        let span = trace_span!("Component handling", component = self.name());
         span.in_scope(|| {
             let update = self.data_mut().update(event);
             trace!(?update);
@@ -216,51 +221,6 @@ impl<T> Component<T> {
     }
 }
 
-/// Test-only helpers
-#[cfg(test)]
-impl<T> Component<T> {
-    /// Draw this component onto the terminal. Prefer this over calling
-    /// [Component::draw] directly, because that won't update Ratatui's internal
-    /// buffers correctly. The entire frame area will be used to draw the
-    /// component.
-    pub fn draw_term<Props>(
-        &self,
-        terminal: &mut ratatui::Terminal<ratatui::backend::TestBackend>,
-        props: Props,
-    ) where
-        T: Draw<Props>,
-    {
-        terminal
-            .draw(|frame| self.draw(frame, props, frame.size(), true))
-            .unwrap();
-    }
-
-    /// Drain events from the event queue, and handle them one-by-one. We expect
-    /// each event to be consumed, so panic if it's propagated.
-    pub fn drain_events(&mut self)
-    where
-        T: EventHandler,
-    {
-        use crate::tui::view::ViewContext;
-
-        // Safety check, prevent annoying bugs
-        assert!(
-            self.is_visible(),
-            "Component {} is not visible, it can't handle events",
-            self.name
-        );
-
-        while let Some(event) = ViewContext::pop_event() {
-            match self.update_all(event) {
-                Update::Consumed => {}
-                Update::Propagate(event) => {
-                    panic!("Event was not consumed: {event:?}")
-                }
-            }
-        }
-    }
-}
-
 impl<T> From<T> for Component<T> {
     fn from(inner: T) -> Self {
         Self::new(inner)
@@ -346,14 +306,18 @@ impl Drop for DrawGuard {
 mod tests {
     use super::*;
     use crate::{
-        test_util::*,
-        tui::{input::Action, view::event::Update},
+        test_util::assert_matches,
+        tui::{
+            input::Action,
+            test_util::{harness, TestHarness},
+            view::event::Update,
+        },
     };
     use crossterm::event::{
         KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
         MouseButton, MouseEventKind,
     };
-    use ratatui::{backend::TestBackend, layout::Layout, Terminal};
+    use ratatui::layout::Layout;
     use rstest::{fixture, rstest};
 
     #[derive(Debug, Default)]
@@ -449,11 +413,6 @@ mod tests {
         }
     }
 
-    #[fixture]
-    fn component() -> Component<Branch> {
-        Component::default()
-    }
-
     fn keyboard_event() -> Event {
         Event::Input {
             event: crossterm::event::Event::Key(KeyEvent {
@@ -478,13 +437,21 @@ mod tests {
         }
     }
 
+    /// Get a testing component. This *doesn't* use `TestComponent` because
+    /// we want to test logic internal to the component, so we need to do some
+    /// wonky things unique to these tests that require calling the component
+    /// methods directly.
+    #[fixture]
+    fn component() -> Component<Branch> {
+        Component::default()
+    }
+
     /// Render a simple component tree and test that events are propagated as
     /// expected, and that state updates as the visible and focused components
     /// change.
     #[rstest]
     fn test_render_component_tree(
-        _messages: MessageQueue,
-        mut terminal: Terminal<TestBackend>,
+        mut harness: TestHarness,
         mut component: Component<Branch>,
     ) {
         // One level of nesting
@@ -541,8 +508,9 @@ mod tests {
         assert_events(&mut component, [0, 0, 0, 0]);
 
         // Visible components get events
+        let mut frame = harness.terminal.get_frame();
         component.draw(
-            &mut terminal.get_frame(),
+            &mut frame,
             Props {
                 a: Mode::Focused,
                 b: Mode::Visible,
@@ -559,7 +527,7 @@ mod tests {
 
         // Switch things up, make sure new state is reflected
         component.draw(
-            &mut terminal.get_frame(),
+            &mut frame,
             Props {
                 a: Mode::Visible,
                 b: Mode::Hidden,
@@ -576,7 +544,7 @@ mod tests {
 
         // Hide all children, root should eat everything
         component.draw(
-            &mut terminal.get_frame(),
+            &mut frame,
             Props {
                 a: Mode::Hidden,
                 b: Mode::Hidden,
@@ -593,12 +561,14 @@ mod tests {
     /// happen in the wild, but it's good to have it be well-defined.
     #[rstest]
     fn test_parent_hidden(
-        mut terminal: Terminal<TestBackend>,
+        mut harness: TestHarness,
         mut component: Component<Branch>,
     ) {
-        component.data().a.draw_term(&mut terminal, ());
-        component.data().b.draw_term(&mut terminal, ());
-        component.data().c.draw_term(&mut terminal, ());
+        let mut frame = harness.terminal.get_frame();
+        let area = frame.size();
+        component.data().a.draw(&mut frame, (), area, true);
+        component.data().b.draw(&mut frame, (), area, true);
+        component.data().c.draw(&mut frame, (), area, true);
         // Event should *not* be handled because the parent is hidden
         assert_matches!(
             component.update_all(keyboard_event()),
@@ -610,24 +580,22 @@ mod tests {
     /// *not* receive focus-only events.
     #[rstest]
     fn test_parent_unfocused(
-        mut terminal: Terminal<TestBackend>,
+        mut harness: TestHarness,
         mut component: Component<Branch>,
     ) {
         // We are visible but *not* in focus
-        terminal
-            .draw(|frame| {
-                component.draw(
-                    frame,
-                    Props {
-                        a: Mode::Focused,
-                        b: Mode::Visible,
-                        c: Mode::Visible,
-                    },
-                    frame.size(),
-                    false,
-                )
-            })
-            .unwrap();
+        let mut frame = harness.terminal.get_frame();
+        let area = frame.size();
+        component.draw(
+            &mut frame,
+            Props {
+                a: Mode::Focused,
+                b: Mode::Visible,
+                c: Mode::Visible,
+            },
+            area,
+            false,
+        );
         // Event should *not* be handled because the parent is unfocused
         assert_matches!(
             component.update_all(keyboard_event()),

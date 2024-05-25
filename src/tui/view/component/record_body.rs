@@ -46,6 +46,7 @@ pub struct RecordBody {
     query_text_box: Component<Persistent<TextBox>>,
 }
 
+#[derive(Clone)]
 pub struct RecordBodyProps<'a> {
     pub body: &'a Body,
 }
@@ -210,11 +211,17 @@ fn init_text_window(
 mod tests {
     use super::*;
     use crate::{
-        collection::RecipeId, db::CollectionDatabase, http::Response,
-        test_util::*, tui::context::TuiContext,
+        collection::RecipeId,
+        http::Response,
+        test_util::{header_map, Factory},
+        tui::{
+            context::TuiContext,
+            test_util::{harness, TestHarness},
+            view::test_util::TestComponent,
+        },
     };
     use crossterm::event::KeyCode;
-    use ratatui::{backend::TestBackend, text::Span, Terminal};
+    use ratatui::text::Span;
     use reqwest::StatusCode;
     use rstest::{fixture, rstest};
 
@@ -239,16 +246,13 @@ mod tests {
 
     /// Render an unparsed body with no query box
     #[rstest]
-    fn test_unparsed(
-        _tui_context: &TuiContext,
-        database: CollectionDatabase,
-        messages: MessageQueue,
-        #[with(30, 2)] mut terminal: Terminal<TestBackend>,
-    ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
-        let component: Component<_> = RecordBody::new(None).into();
+    fn test_unparsed(#[with(30, 2)] harness: TestHarness) {
         let body = Body::new(TEXT.into());
-        component.draw_term(&mut terminal, RecordBodyProps { body: &body });
+        let component = TestComponent::new(
+            harness,
+            RecordBody::new(None),
+            RecordBodyProps { body: &body },
+        );
 
         // Assert state
         let data = component.data();
@@ -260,7 +264,7 @@ mod tests {
         assert_eq!(data.query, None);
 
         // Assert view
-        terminal.backend().assert_buffer_lines([
+        component.assert_buffer_lines([
             vec![gutter("1"), " {\"greeting\":\"hello\"}    ".into()],
             vec![gutter(" "), "                             ".into()],
         ]);
@@ -269,18 +273,16 @@ mod tests {
     /// Render a parsed body with query text box
     #[rstest]
     fn test_parsed(
-        tui_context: &TuiContext,
-        database: CollectionDatabase,
-        messages: MessageQueue,
+        #[with(32, 5)] harness: TestHarness,
         json_response: Response,
-        #[with(32, 5)] mut terminal: Terminal<TestBackend>,
     ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
-        let mut component: Component<_> = RecordBody::new(None).into();
-        let props = || RecordBodyProps {
-            body: &json_response.body,
-        };
-        component.draw_term(&mut terminal, props());
+        let mut component = TestComponent::new(
+            harness,
+            RecordBody::new(None),
+            RecordBodyProps {
+                body: &json_response.body,
+            },
+        );
 
         // Assert initial state/view
         let data = component.data();
@@ -290,8 +292,8 @@ mod tests {
             data.text().as_deref(),
             Some("{\n  \"greeting\": \"hello\"\n}")
         );
-        let styles = &tui_context.styles.text_box;
-        terminal.backend().assert_buffer_lines([
+        let styles = &TuiContext::get().styles.text_box;
+        component.assert_buffer_lines([
             vec![gutter("1"), " {                        ".into()],
             vec![gutter("2"), "   \"greeting\": \"hello\"".into()],
             vec![gutter("3"), " }                        ".into()],
@@ -303,15 +305,9 @@ mod tests {
         ]);
 
         // Type something into the query box
-        ViewContext::send_key(KeyCode::Char('/'));
-        component.drain_events();
-        // Re-draw to update focus for text box
-        component.draw_term(&mut terminal, props());
-        ViewContext::send_text("$.greeting");
-        ViewContext::send_key(KeyCode::Enter);
-        component.drain_events();
-        // Re-draw again to apply query to body
-        component.draw_term(&mut terminal, props());
+        component.send_key(KeyCode::Char('/')).assert_empty();
+        component.send_text("$.greeting").assert_empty();
+        component.send_key(KeyCode::Enter).assert_empty();
 
         // Make sure state updated correctly
         let data = component.data();
@@ -319,7 +315,7 @@ mod tests {
         assert_eq!(data.text().as_deref(), Some("[\n  \"hello\"\n]"));
 
         // Check the view again too
-        terminal.backend().assert_buffer_lines([
+        component.assert_buffer_lines([
             vec![gutter("1"), " [                        ".into()],
             vec![gutter("2"), "   \"hello\"              ".into()],
             vec![gutter("3"), " ]                        ".into()],
@@ -331,12 +327,9 @@ mod tests {
         ]);
 
         // Cancelling out of the text box should reset the query value
-        ViewContext::send_key(KeyCode::Char('/'));
-        component.drain_events();
-        component.draw_term(&mut terminal, props());
-        ViewContext::send_text("more text");
-        ViewContext::send_key(KeyCode::Esc);
-        component.drain_events();
+        component.send_key(KeyCode::Char('/')).assert_empty();
+        component.send_text("more text").assert_empty();
+        component.send_key(KeyCode::Esc).assert_empty();
         let data = component.data();
         assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
         assert_eq!(data.query_text_box.data().text(), "$.greeting");
@@ -345,32 +338,29 @@ mod tests {
     /// Render a parsed body with query text box, and initial query from the DB
     #[rstest]
     fn test_initial_query(
-        _tui_context: &TuiContext,
-        database: CollectionDatabase,
-        messages: MessageQueue,
+        #[with(30, 4)] harness: TestHarness,
         json_response: Response,
-        #[with(30, 4)] mut terminal: Terminal<TestBackend>,
     ) {
-        ViewContext::init(database.clone(), messages.tx().clone());
         let recipe_id = RecipeId::factory(());
 
         // Add initial query to the DB
         let persistent_key =
             PersistentKey::ResponseBodyQuery(recipe_id.clone());
-        database.set_ui(&persistent_key, "$.greeting").unwrap();
+        harness
+            .database
+            .set_ui(&persistent_key, "$.greeting")
+            .unwrap();
 
         // We already have another test to check that querying works via typing
         // in the box, so we just need to make sure state is initialized
         // correctly here
-        let mut component: Component<_> =
-            RecordBody::new(Some(persistent_key)).into();
-        component.draw_term(
-            &mut terminal,
+        let component = TestComponent::new(
+            harness,
+            RecordBody::new(Some(persistent_key)),
             RecordBodyProps {
                 body: &json_response.body,
             },
         );
-        component.drain_events(); // Events are triggered during init
         assert_eq!(component.data().query, Some("$.greeting".parse().unwrap()));
     }
 }

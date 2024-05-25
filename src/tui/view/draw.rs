@@ -12,11 +12,11 @@ use std::{fmt::Display, ops::Deref};
 ///
 /// Props are additional temporary values that a struct may need in order
 /// to render. Useful for passing down state values that are managed by
-/// the parent, to avoid duplicating that state in the child. `Props` probably
-/// would make more sense as an associated type, because you generally wouldn't
-/// implement `Draw` for a single type with more than one value of `Props`. But
-/// attaching a lifetime to the associated type makes using this in a trait
-/// object very difficult (maybe impossible?). This is an easy shortcut.
+/// the parent, to avoid duplicating that state in the child. In most
+/// cases, `Props` would make more sense as an associated type, but there are
+/// some component types (e.g. `SelectState`) that have multiple `Draw` impls.
+/// Using an associated type also makes prop types with lifetimes much less
+/// ergonomic.
 pub trait Draw<Props = ()> {
     /// Draw the component into the frame. This generally should not be called
     /// directly. Instead, use

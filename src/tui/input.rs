@@ -558,7 +558,10 @@ fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
+    use crate::{
+        test_util::{assert_err, assert_matches},
+        tui::test_util::{harness, TestHarness},
+    };
     use crossterm::event::{KeyEventState, MediaKeyCode};
     use rstest::rstest;
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
@@ -627,14 +630,14 @@ mod tests {
     )]
     #[case::paste(Event::Paste("hello!".into()), None)]
     fn test_handle_event_queued(
-        mut messages: MessageQueue,
+        mut harness: TestHarness,
         #[case] event: Event,
         #[case] expected_action: Option<Action>,
     ) {
         let engine = InputEngine::new(IndexMap::default());
-        engine.handle_event(messages.tx(), event.clone());
+        engine.handle_event(harness.messages_tx(), event.clone());
         let (queued_event, queued_action) = assert_matches!(
-            messages.pop_now(),
+            harness.pop_message_now(),
             Message::Input { event, action } => (event, action),
         );
         assert_eq!(queued_event, event);
@@ -651,12 +654,12 @@ mod tests {
     #[case::mouse_drag(mouse_event(MouseEventKind::Drag(MouseButton::Left)))]
     #[case::mouse_move(mouse_event(MouseEventKind::Moved))]
     fn test_handle_event_killed(
-        mut messages: MessageQueue,
+        mut harness: TestHarness,
         #[case] event: Event,
     ) {
         let engine = InputEngine::new(IndexMap::default());
-        engine.handle_event(messages.tx(), event);
-        messages.assert_empty();
+        engine.handle_event(harness.messages_tx(), event);
+        harness.assert_messages_empty();
     }
 
     #[rstest]

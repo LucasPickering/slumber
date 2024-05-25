@@ -1,32 +1,19 @@
+//! General test utilities, that apply to all parts of the program
+
 use crate::{
-    collection::{
-        self, Chain, ChainOutputTrim, ChainSource, Collection, Folder, Profile,
-        ProfileId, Recipe, RecipeId, RecipeNode, RecipeTree,
-    },
-    config::Config,
-    db::CollectionDatabase,
-    http::{Body, Request, RequestId, RequestRecord, Response},
-    template::{Prompt, Prompter, Template, TemplateContext},
-    tui::{
-        context::TuiContext,
-        message::{Message, MessageSender},
-    },
+    collection::{ProfileId, Recipe, RecipeId, RecipeNode, RecipeTree},
+    template::{Prompt, Prompter, Template},
     util::ResultExt,
 };
 use anyhow::Context;
-use chrono::Utc;
 use derive_more::Deref;
-use indexmap::{indexmap, IndexMap};
-use ratatui::{backend::TestBackend, Terminal};
-use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
-    StatusCode,
-};
+use indexmap::IndexMap;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use rstest::fixture;
 use std::{
     env, fs,
     path::{Path, PathBuf},
 };
-use tokio::sync::{mpsc, mpsc::UnboundedReceiver};
 use uuid::Uuid;
 
 /// Test-only trait to build a placeholder instance of a struct. This is similar
@@ -42,205 +29,10 @@ pub trait Factory<Param = ()> {
     fn factory(param: Param) -> Self;
 }
 
-impl Factory for Collection {
-    fn factory(_: ()) -> Self {
-        let recipe = Recipe::factory(());
-        let profile = Profile::factory(());
-        Collection {
-            recipes: indexmap! {recipe.id.clone() => recipe}.into(),
-            profiles: indexmap! {profile.id.clone() => profile},
-            ..Collection::default()
-        }
-    }
-}
-
-impl Factory for ProfileId {
-    fn factory(_: ()) -> Self {
-        Uuid::new_v4().to_string().into()
-    }
-}
-
-impl Factory for RecipeId {
-    fn factory(_: ()) -> Self {
-        Uuid::new_v4().to_string().into()
-    }
-}
-
-impl Factory for Profile {
-    fn factory(_: ()) -> Self {
-        Self {
-            id: "profile1".into(),
-            name: None,
-            data: IndexMap::new(),
-        }
-    }
-}
-
-impl Factory for Folder {
-    fn factory(_: ()) -> Self {
-        Self {
-            id: "folder1".into(),
-            name: None,
-            children: IndexMap::new(),
-        }
-    }
-}
-
-impl Factory for Recipe {
-    fn factory(_: ()) -> Self {
-        Self {
-            id: "recipe1".into(),
-            name: None,
-            method: collection::Method::Get,
-            url: "http://localhost/url".into(),
-            body: None,
-            authentication: None,
-            query: IndexMap::new(),
-            headers: IndexMap::new(),
-        }
-    }
-}
-
-impl Factory for Chain {
-    fn factory(_: ()) -> Self {
-        Self {
-            id: "chain1".into(),
-            source: ChainSource::Request {
-                recipe: "recipe1".into(),
-                trigger: Default::default(),
-                section: Default::default(),
-            },
-            sensitive: false,
-            selector: None,
-            content_type: None,
-            trim: ChainOutputTrim::default(),
-        }
-    }
-}
-
-impl Factory for Request {
-    fn factory(_: ()) -> Self {
-        Self {
-            id: RequestId::new(),
-            profile_id: None,
-            recipe_id: "recipe1".into(),
-            method: reqwest::Method::GET,
-            url: "http://localhost/url".parse().unwrap(),
-            headers: HeaderMap::new(),
-            body: None,
-        }
-    }
-}
-
-/// Customize profile and recipe ID
-impl Factory<(Option<ProfileId>, RecipeId)> for Request {
-    fn factory((profile_id, recipe_id): (Option<ProfileId>, RecipeId)) -> Self {
-        Self {
-            id: RequestId::new(),
-            profile_id,
-            recipe_id,
-            method: reqwest::Method::GET,
-            url: "http://localhost/url".parse().unwrap(),
-            headers: HeaderMap::new(),
-            body: None,
-        }
-    }
-}
-
-impl Factory for Response {
-    fn factory(_: ()) -> Self {
-        Self {
-            status: StatusCode::OK,
-            headers: HeaderMap::new(),
-            body: Body::default(),
-        }
-    }
-}
-
-impl Factory for RequestRecord {
-    fn factory(_: ()) -> Self {
-        let request = Request::factory(());
-        let response = Response::factory(());
-        Self {
-            id: request.id,
-            request: request.into(),
-            response: response.into(),
-            start_time: Utc::now(),
-            end_time: Utc::now(),
-        }
-    }
-}
-
-/// Customize profile and recipe ID
-impl Factory<(Option<ProfileId>, RecipeId)> for RequestRecord {
-    fn factory(params: (Option<ProfileId>, RecipeId)) -> Self {
-        let request = Request::factory(params);
-        let response = Response::factory(());
-        Self {
-            id: request.id,
-            request: request.into(),
-            response: response.into(),
-            start_time: Utc::now(),
-            end_time: Utc::now(),
-        }
-    }
-}
-
-impl Factory for TemplateContext {
-    fn factory(_: ()) -> Self {
-        Self {
-            collection: Collection::default(),
-            selected_profile: None,
-            http_engine: None,
-            database: CollectionDatabase::factory(()),
-            overrides: IndexMap::new(),
-            prompter: Box::<TestPrompter>::default(),
-            recursion_count: 0.into(),
-        }
-    }
-}
-
 /// Directory containing static test data
 #[fixture]
 pub fn test_data_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("test_data")
-}
-
-/// Create a terminal instance for testing
-#[fixture]
-pub fn terminal(
-    terminal_width: u16,
-    terminal_height: u16,
-) -> Terminal<TestBackend> {
-    let backend = TestBackend::new(terminal_width, terminal_height);
-    Terminal::new(backend).unwrap()
-}
-
-/// For injection to [terminal] fixture
-#[fixture]
-fn terminal_width() -> u16 {
-    40
-}
-
-/// For injection to [terminal] fixture
-#[fixture]
-fn terminal_height() -> u16 {
-    20
-}
-
-/// Create an in-memory database for a collection
-#[fixture]
-pub fn database() -> CollectionDatabase {
-    CollectionDatabase::factory(())
-}
-
-/// Test fixture for using TUI context. The context is a global read-only var,
-/// so this will initialize it once for *all tests*.
-#[fixture]
-#[once]
-pub fn tui_context() -> &'static TuiContext {
-    TuiContext::init(Config::default());
-    TuiContext::get()
 }
 
 /// Create a new temporary folder. This will include a random subfolder to
@@ -271,48 +63,6 @@ impl Drop for TempDir {
                 format!("Error deleting temporary directory {:?}", self.0)
             })
             .traced();
-    }
-}
-
-#[fixture]
-pub fn messages() -> MessageQueue {
-    let (tx, rx) = mpsc::unbounded_channel();
-    MessageQueue { tx: tx.into(), rx }
-}
-
-/// Test-only wrapper for MPSC receiver, to test what messages have been queued
-pub struct MessageQueue {
-    tx: MessageSender,
-    rx: UnboundedReceiver<Message>,
-}
-
-impl MessageQueue {
-    /// Get the message sender
-    pub fn tx(&self) -> &MessageSender {
-        &self.tx
-    }
-
-    pub fn assert_empty(&mut self) {
-        let message = self.rx.try_recv().ok();
-        assert!(
-            message.is_none(),
-            "Expected empty queue, but had message {message:?}"
-        );
-    }
-
-    /// Pop the next message off the queue. Panic if the queue is empty
-    pub fn pop_now(&mut self) -> Message {
-        self.rx.try_recv().expect("Message queue empty")
-    }
-
-    /// Pop the next message off the queue, waiting if empty
-    pub async fn pop_wait(&mut self) -> Message {
-        self.rx.recv().await.expect("Message queue closed")
-    }
-
-    /// Clear all messages in the queue
-    pub fn clear(&mut self) {
-        while self.rx.try_recv().is_ok() {}
     }
 }
 
@@ -408,7 +158,7 @@ pub(crate) use assert_err;
 /// values from the pattern using the `=>` syntax.
 macro_rules! assert_matches {
     ($expr:expr, $pattern:pat $(,)?) => {
-        assert_matches!($expr, $pattern => ());
+        crate::test_util::assert_matches!($expr, $pattern => ());
     };
     ($expr:expr, $pattern:pat => $bindings:expr $(,)?) => {
         match $expr {
@@ -422,14 +172,3 @@ macro_rules! assert_matches {
     };
 }
 pub(crate) use assert_matches;
-
-/// Assert that the event queue matches the given list of patterns
-macro_rules! assert_events {
-    ($($pattern:pat),* $(,)?) => {
-        ViewContext::inspect_event_queue(|events| {
-            assert_matches!(events, &[$($pattern,)*]);
-        });
-    }
-}
-pub(crate) use assert_events;
-use rstest::fixture;

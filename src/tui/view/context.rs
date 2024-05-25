@@ -129,66 +129,19 @@ impl ViewContext {
             f(refs.as_slice());
         })
     }
-
-    /// Push a terminal input event onto the event queue. This will include the
-    /// bound action for the event, based on the key code or mouse button.
-    pub fn send_input(crossterm_event: crossterm::event::Event) {
-        use crate::tui::context::TuiContext;
-        let action = TuiContext::get().input_engine.action(&crossterm_event);
-        let event = Event::Input {
-            event: crossterm_event,
-            action,
-        };
-        ViewContext::push_event(event);
-    }
-
-    /// Push a left click at the given location onto the event queue
-    pub fn click(x: u16, y: u16) {
-        use crossterm::event::{
-            KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-        };
-        let crossterm_event = crossterm::event::Event::Mouse(MouseEvent {
-            kind: MouseEventKind::Up(MouseButton::Left),
-            column: x,
-            row: y,
-            modifiers: KeyModifiers::NONE,
-        });
-        Self::send_input(crossterm_event);
-    }
-
-    /// Generate an event for a keypress, and push it onto the event queue.
-    /// This will include the bound action for the key press.
-    pub fn send_key(code: crossterm::event::KeyCode) {
-        use crossterm::event::{
-            KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
-        };
-        let crossterm_event = crossterm::event::Event::Key(KeyEvent {
-            code,
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::empty(),
-        });
-        Self::send_input(crossterm_event);
-    }
-
-    /// Send some text as a series of key events
-    pub fn send_text(text: &str) {
-        for c in text.chars() {
-            Self::send_key(crossterm::event::KeyCode::Char(c));
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
+    use crate::{
+        test_util::assert_matches,
+        tui::test_util::{assert_events, harness, TestHarness},
+    };
     use rstest::rstest;
 
     #[rstest]
-    fn test_event_queue(database: CollectionDatabase, messages: MessageQueue) {
-        ViewContext::init(database, messages.tx().clone());
-
+    fn test_event_queue(_harness: TestHarness) {
         assert_events!(); // Start empty
 
         ViewContext::push_event(Event::new_other(3));
@@ -201,14 +154,13 @@ mod tests {
     }
 
     #[rstest]
-    fn test_send_message(
-        database: CollectionDatabase,
-        mut messages: MessageQueue,
-    ) {
-        ViewContext::init(database, messages.tx().clone());
+    fn test_send_message(mut harness: TestHarness) {
         ViewContext::send_message(Message::CollectionStartReload);
         ViewContext::send_message(Message::CollectionEdit);
-        assert_matches!(messages.pop_now(), Message::CollectionStartReload);
-        assert_matches!(messages.pop_now(), Message::CollectionEdit);
+        assert_matches!(
+            harness.pop_message_now(),
+            Message::CollectionStartReload
+        );
+        assert_matches!(harness.pop_message_now(), Message::CollectionEdit);
     }
 }

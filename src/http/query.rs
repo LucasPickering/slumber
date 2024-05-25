@@ -75,7 +75,7 @@ impl Query {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{http::Json, test_util::*};
+    use crate::{http::Json, test_util::assert_err};
     use rstest::rstest;
     use serde_json::json;
 

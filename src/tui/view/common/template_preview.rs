@@ -193,7 +193,8 @@ mod tests {
     use crate::{
         collection::{Collection, Profile},
         template::TemplateContext,
-        test_util::*,
+        test_util::Factory,
+        tui::test_util::{harness, TestHarness},
     };
     use indexmap::indexmap;
     use rstest::rstest;
@@ -210,7 +211,7 @@ mod tests {
     /// offset indexes work correctly
     #[rstest]
     #[tokio::test]
-    async fn test_template_stitch(tui_context: &TuiContext) {
+    async fn test_template_stitch(_harness: TestHarness) {
         // Render a template
         let template = Template::parse(
             "intro\n{{user_id}} 💚💙💜 {{unknown}}\noutro\r\nmore outro".into(),
@@ -232,7 +233,7 @@ mod tests {
             ..TemplateContext::factory(())
         };
         let chunks = template.render_chunks(&context).await;
-        let styles = &tui_context.styles;
+        let styles = &TuiContext::get().styles;
 
         let text = TextStitcher::stitch_chunks(&template, &chunks);
         let rendered_style = styles.template_preview.text;

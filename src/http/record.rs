@@ -157,6 +157,81 @@ impl Request {
     }
 }
 
+#[cfg(test)]
+impl crate::test_util::Factory for Request {
+    fn factory(_: ()) -> Self {
+        Self {
+            id: RequestId::new(),
+            profile_id: None,
+            recipe_id: "recipe1".into(),
+            method: reqwest::Method::GET,
+            url: "http://localhost/url".parse().unwrap(),
+            headers: HeaderMap::new(),
+            body: None,
+        }
+    }
+}
+
+/// Customize profile and recipe ID
+#[cfg(test)]
+impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Request {
+    fn factory((profile_id, recipe_id): (Option<ProfileId>, RecipeId)) -> Self {
+        Self {
+            id: RequestId::new(),
+            profile_id,
+            recipe_id,
+            method: reqwest::Method::GET,
+            url: "http://localhost/url".parse().unwrap(),
+            headers: HeaderMap::new(),
+            body: None,
+        }
+    }
+}
+
+#[cfg(test)]
+impl crate::test_util::Factory for Response {
+    fn factory(_: ()) -> Self {
+        Self {
+            status: StatusCode::OK,
+            headers: HeaderMap::new(),
+            body: Body::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl crate::test_util::Factory for RequestRecord {
+    fn factory(_: ()) -> Self {
+        let request = Request::factory(());
+        let response = Response::factory(());
+        Self {
+            id: request.id,
+            request: request.into(),
+            response: response.into(),
+            start_time: Utc::now(),
+            end_time: Utc::now(),
+        }
+    }
+}
+
+/// Customize profile and recipe ID
+#[cfg(test)]
+impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
+    for RequestRecord
+{
+    fn factory(params: (Option<ProfileId>, RecipeId)) -> Self {
+        let request = Request::factory(params);
+        let response = Response::factory(());
+        Self {
+            id: request.id,
+            request: request.into(),
+            response: response.into(),
+            start_time: Utc::now(),
+            end_time: Utc::now(),
+        }
+    }
+}
+
 /// A resolved HTTP response, with all content loaded and ready to be displayed
 /// to the user. A simpler alternative to [reqwest::Response], because there's
 /// no way to access all resolved data on that type at once. Resolving the
@@ -395,7 +470,7 @@ impl PartialEq for RequestError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::*;
+    use crate::test_util::{header_map, Factory};
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;

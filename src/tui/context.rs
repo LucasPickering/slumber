@@ -32,17 +32,28 @@ pub struct TuiContext {
 impl TuiContext {
     /// Initialize global context. Should be called only once, during startup.
     pub fn init(config: Config) {
+        INSTANCE
+            .set(Self::new(config))
+            .expect("Global context is already initialized");
+    }
+
+    /// Initialize the global context for tests. This will use a default config,
+    /// and if the context is already initialized, do nothing.
+    #[cfg(test)]
+    pub fn init_test() {
+        INSTANCE.get_or_init(|| Self::new(Config::default()));
+    }
+
+    fn new(config: Config) -> Self {
         let styles = Styles::new(&config.theme);
         let input_engine = InputEngine::new(config.input_bindings.clone());
         let http_engine = HttpEngine::new(&config);
-        INSTANCE
-            .set(Self {
-                config,
-                styles,
-                input_engine,
-                http_engine,
-            })
-            .expect("Global context is already initialized");
+        Self {
+            config,
+            styles,
+            input_engine,
+            http_engine,
+        }
     }
 
     /// Get a reference to the global context

@@ -1,6 +1,6 @@
 # `slumber import`
 
-Generate a Slumber collection file based on an external format. Currently the only supported format is Insomnia, but more are planned.
+Generate a Slumber collection file based on an external format.
 
 See `slumber import --help` for more options.
 
@@ -27,10 +27,10 @@ slumber import insomnia insomnia.json slumber.yml
 Supported formats:
 
 - Insomnia
+- OpenAPI v3
 
 Requested formats:
 
-- [OpenAPI](https://github.com/LucasPickering/slumber/issues/106)
 - [JetBrains HTTP](https://github.com/LucasPickering/slumber/issues/122)
 
 If you'd like another format supported, please [open an issue](https://github.com/LucasPickering/slumber/issues/new).

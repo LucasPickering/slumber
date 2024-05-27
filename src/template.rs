@@ -83,6 +83,14 @@ impl Template {
         &self.template[span.start()..span.end()]
     }
 
+    /// Create a new empty template using the empty string `""`.
+    pub(crate) fn empty() -> Self {
+        Self {
+            template: "".to_string(),
+            chunks: vec![],
+        }
+    }
+
     /// Create a new template **without parsing**. The created template should
     /// *never* be rendered. This is only useful when creating templates purely
     /// for the purpose of being serialized, e.g. when importing an external

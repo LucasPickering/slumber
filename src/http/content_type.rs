@@ -237,7 +237,7 @@ mod tests {
     )]
     fn test_parse_body<T: ResponseContent + PartialEq + 'static>(
         #[case] content_type: &str,
-        #[case] body: String,
+        #[case] body: &str,
         #[case] expected: T,
     ) {
         let response = Response {
@@ -275,7 +275,7 @@ mod tests {
         T: TryInto<HeaderValue, Error = InvalidHeaderValue>,
     >(
         #[case] content_type: Option<T>,
-        #[case] body: String,
+        #[case] body: &str,
         #[case] expected_error: &str,
     ) {
         let headers = match content_type {

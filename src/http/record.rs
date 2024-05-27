@@ -379,15 +379,8 @@ impl Serialize for Body {
     }
 }
 
-#[cfg(test)]
 impl From<Vec<u8>> for Body {
     fn from(value: Vec<u8>) -> Self {
-        Self::new(value.into())
-    }
-}
-
-impl From<String> for Body {
-    fn from(value: String) -> Self {
         Self::new(value.into())
     }
 }

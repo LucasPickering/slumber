@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Templates can now render binary values in certain contexts
+  - [See docs](https://slumber.lucaspickering.me/book/user_guide/templates.html#binary-templates) for more info
+
 ### Changed
 
 - Upgrade to Rust 1.76

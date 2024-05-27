@@ -16,6 +16,7 @@ use crate::{
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::future;
+use itertools::Itertools;
 use std::{
     env,
     path::PathBuf,
@@ -29,37 +30,57 @@ use tracing::{debug, debug_span, instrument, trace};
 /// the render.
 #[derive(Debug)]
 struct RenderedChunk {
-    value: String,
+    value: Vec<u8>,
     sensitive: bool,
 }
 
 type TemplateResult = Result<RenderedChunk, TemplateError>;
 
 impl Template {
-    /// Render the template string using values from the given context. If an
-    /// error occurs, it is returned as general `anyhow` error. If you need a
-    /// more specific error, use [Self::render_stitched].
+    /// Render the template using values from the given context. If any chunk
+    /// failed to render, return an error. The template is rendered as bytes.
+    /// Use [Self::render_string] if you want the bytes converted to a string.
     pub async fn render(
         &self,
         context: &TemplateContext,
-    ) -> anyhow::Result<String> {
-        self.render_stitched(context)
-            .await
-            .map_err(anyhow::Error::from)
-            .traced()
+    ) -> Result<Vec<u8>, TemplateError> {
+        debug!(template = self.template, "Rendering template");
+
+        if context.recursion_count.load(Ordering::Relaxed) >= RECURSION_LIMIT {
+            return Err(TemplateError::RecursionLimit);
+        }
+
+        // Render each individual template chunk in the string
+        let chunks = self.render_chunks(context).await;
+
+        let unwrap_chunk = |chunk| match chunk {
+            TemplateChunk::Raw(span) => {
+                Ok(self.substring(span).as_bytes().to_owned())
+            }
+            TemplateChunk::Rendered { value, .. } => Ok(value),
+            TemplateChunk::Error(error) => Err(error),
+        };
+
+        // Stitch the rendered chunks together into one string. It's possible
+        // this is suboptimal for single-chunk templates, but until that's
+        // a demonstrated bottleneck this is good enough.
+        chunks
+            .into_iter()
+            .map(unwrap_chunk)
+            .flatten_ok()
+            .try_collect()
     }
 
-    /// Render an optional template. This is useful because `Option::map`
-    /// doesn't work with an async operation in the closure
-    pub async fn render_opt(
-        template: Option<&Self>,
+    /// Render the template using values from the given context. If any chunk
+    /// failed to render, return an error. The rendered template will be
+    /// converted from raw bytes to UTF-8. If it is not valid UTF-8, return an
+    /// error.
+    pub async fn render_string(
+        &self,
         context: &TemplateContext,
-    ) -> anyhow::Result<Option<String>> {
-        if let Some(template) = template {
-            Ok(Some(template.render(context).await?))
-        } else {
-            Ok(None)
-        }
+    ) -> Result<String, TemplateError> {
+        let bytes = self.render(context).await?;
+        String::from_utf8(bytes).map_err(TemplateError::InvalidUtf8)
     }
 
     /// Render the template string using values from the given context,
@@ -94,7 +115,7 @@ impl Template {
                                 "Rendered template key from override"
                             );
                             Ok(RenderedChunk {
-                                value: value.clone(),
+                                value: value.clone().into_bytes(),
                                 // The overriden value *could* be marked
                                 // sensitive, but we're taking a shortcut and
                                 // assuming it isn't
@@ -122,37 +143,6 @@ impl Template {
 
         // Parallelization!
         future::join_all(futures).await
-    }
-
-    /// Helper for stitching chunks together into a single string. If any chunk
-    /// failed to render, return an error.
-    pub(super) async fn render_stitched(
-        &self,
-        context: &TemplateContext,
-    ) -> Result<String, TemplateError> {
-        debug!(template = self.template, "Rendering template");
-
-        if context.recursion_count.load(Ordering::Relaxed) >= RECURSION_LIMIT {
-            return Err(TemplateError::RecursionLimit);
-        }
-
-        // Render each individual template chunk in the string
-        let chunks = self.render_chunks(context).await;
-
-        // Stitch the rendered chunks together into one string
-        let mut buffer = String::with_capacity(self.template.len());
-        for chunk in chunks {
-            match chunk {
-                TemplateChunk::Raw(span) => {
-                    buffer.push_str(self.substring(span));
-                }
-                TemplateChunk::Rendered { value, .. } => {
-                    buffer.push_str(&value)
-                }
-                TemplateChunk::Error(error) => return Err(error),
-            }
-        }
-        Ok(buffer)
     }
 }
 
@@ -230,13 +220,12 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
         // recursion!
         trace!(%field, %template, "Rendering recursive template");
         context.recursion_count.fetch_add(1, Ordering::Relaxed);
-        let rendered =
-            template.render_stitched(context).await.map_err(|error| {
-                TemplateError::FieldNested {
-                    field: field.to_owned(),
-                    error: Box::new(error),
-                }
-            })?;
+        let rendered = template.render(context).await.map_err(|error| {
+            TemplateError::FieldNested {
+                field: field.to_owned(),
+                error: Box::new(error),
+            }
+        })?;
         Ok(RenderedChunk {
             value: rendered,
             sensitive: false,
@@ -318,11 +307,9 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                 let value = content_type
                     .parse_content(&value)
                     .map_err(|err| ChainError::ParseResponse { error: err })?;
-                selector.query_to_string(&*value)?
+                selector.query_to_string(&*value)?.into_bytes()
             } else {
-                // We just want raw text - decode as UTF-8
-                String::from_utf8(value)
-                    .map_err(|error| ChainError::InvalidUtf8 { error })?
+                value
             };
 
             Ok(RenderedChunk {
@@ -469,7 +456,7 @@ impl<'a> ChainTemplateSource<'a> {
         path: &Template,
     ) -> Result<(Vec<u8>, Option<ContentType>), ChainError> {
         let path: PathBuf = path
-            .render_stitched(context)
+            .render_string(context)
             .await
             .map_err(|error| ChainError::Nested {
                 field: "path".into(),
@@ -494,7 +481,7 @@ impl<'a> ChainTemplateSource<'a> {
         // Render each arg in the command
         let command = future::try_join_all(command.iter().enumerate().map(
             |(i, template)| async move {
-                template.render_stitched(context).await.map_err(|error| {
+                template.render_string(context).await.map_err(|error| {
                     ChainError::Nested {
                         field: format!("command[{i}]"),
                         error: error.into(),
@@ -513,7 +500,7 @@ impl<'a> ChainTemplateSource<'a> {
         // Render the stdin template, if present
         let input = if let Some(template) = stdin {
             let input =
-                template.render_stitched(context).await.map_err(|error| {
+                template.render_string(context).await.map_err(|error| {
                     ChainError::Nested {
                         field: "stdin".into(),
                         error: error.into(),
@@ -584,7 +571,7 @@ impl<'a> ChainTemplateSource<'a> {
         // on the prompt channel
         let (tx, rx) = oneshot::channel();
         let message = if let Some(template) = message {
-            template.render_stitched(context).await.map_err(|error| {
+            template.render_string(context).await.map_err(|error| {
                 ChainError::Nested {
                     field: "message".into(),
                     error: error.into(),
@@ -594,7 +581,7 @@ impl<'a> ChainTemplateSource<'a> {
             self.chain_id.to_string()
         };
         let default = if let Some(template) = default {
-            Some(template.render_stitched(context).await.map_err(|error| {
+            Some(template.render_string(context).await.map_err(|error| {
                 ChainError::Nested {
                     field: "default".into(),
                     error: error.into(),
@@ -622,12 +609,12 @@ struct EnvironmentTemplateSource<'a> {
 #[async_trait]
 impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
     async fn render(&self, _: &'a TemplateContext) -> TemplateResult {
-        let value = env::var(self.variable).map_err(|err| {
-            TemplateError::EnvironmentVariable {
-                variable: self.variable.to_owned(),
-                error: err,
-            }
-        })?;
+        let value = env::var_os(self.variable)
+            // If the variable is missing or otherwise inaccessible, use an
+            // empty string. This models standard shell behavior, so it should
+            // be intuitive for users.
+            .unwrap_or_default()
+            .into_encoded_bytes();
         Ok(RenderedChunk {
             value,
             sensitive: false,
@@ -636,13 +623,20 @@ impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
 }
 
 impl ChainOutputTrim {
-    /// Apply whitespace trimming
-    fn apply(self, value: String) -> String {
+    /// Apply whitespace trimming to string values. If the value is not a valid
+    /// string, no trimming is applied
+    fn apply(self, value: Vec<u8>) -> Vec<u8> {
+        // Theoretically we could strip whitespace-looking characters from
+        // binary data, but if the whole thing isn't a valid string it doesn't
+        // really make any sense to.
+        let Ok(s) = std::str::from_utf8(&value) else {
+            return value;
+        };
         match self {
             Self::None => value,
-            Self::Start => value.trim_start().into(),
-            Self::End => value.trim_end().into(),
-            Self::Both => value.trim().into(),
+            Self::Start => s.trim_start().into(),
+            Self::End => s.trim_end().into(),
+            Self::Both => s.trim().into(),
         }
     }
 }

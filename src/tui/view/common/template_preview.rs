@@ -158,7 +158,11 @@ impl<'a> TextStitcher<'a> {
                     // exposes the length of the sensitive text
                     "<sensitive>"
                 } else {
-                    value.as_str()
+                    // We could potentially use MaybeStr to show binary data as
+                    // hex, but that could get weird if there's text data in the
+                    // template as well. This is simpler and prevents giant
+                    // binary blobs from getting rendered in.
+                    std::str::from_utf8(value).unwrap_or("<binary>")
                 }
             }
             // There's no good way to render the entire error inline
@@ -191,7 +195,7 @@ impl<'a> TextStitcher<'a> {
 mod tests {
     use super::*;
     use crate::{
-        collection::{Collection, Profile},
+        collection::{Chain, ChainSource, Collection, Profile},
         template::TemplateContext,
         test_util::Factory,
         tui::test_util::{harness, TestHarness},
@@ -199,32 +203,51 @@ mod tests {
     use indexmap::indexmap;
     use rstest::rstest;
 
-    /// Test these cases related to line breaks:
-    /// - Line break within a raw chunk
-    /// - Line break within a rendered chunk
-    /// - Line break at chunk boundary
-    /// - NO line break at chunk boundary
-    /// Ratatui is fucky with how it handles line breaks in text, so we need
-    /// to make sure our output reflects the input
-    ///
-    /// Additionally, test multi-byte unicode characters to make sure string
-    /// offset indexes work correctly
+    /// Test line breaks, multi-byte characters, and binary data
     #[rstest]
+    #[case::line_breaks(
+        // Test these cases related to line breaks:
+        // - Line break within a raw chunk
+        // - Line break within a rendered chunk
+        // - Line break at chunk boundary
+        // - NO line break at chunk boundary
+        "intro\n{{user_id}} 💚💙💜 {{unknown}}\noutro\r\nmore outro",
+        vec![
+            Line::from("intro"),
+            Line::from(rendered("🧡")),
+            Line::from(vec![
+                rendered("💛"),
+                Span::raw(" 💚💙💜 "),
+                error("Error"),
+            ]),
+            Line::from("outro\r"), // \r shouldn't create any issues
+            Line::from("more outro"),
+        ]
+    )]
+    #[case::binary(
+        "binary data: {{chains.binary}}",
+        vec![Line::from(vec![Span::raw("binary data: "), rendered("<binary>")])]
+    )]
     #[tokio::test]
-    async fn test_template_stitch(_harness: TestHarness) {
-        // Render a template
-        let template = Template::parse(
-            "intro\n{{user_id}} 💚💙💜 {{unknown}}\noutro\r\nmore outro".into(),
-        )
-        .unwrap();
+    async fn test_template_stitch(
+        _harness: TestHarness,
+        #[case] template: Template,
+        #[case] expected: Vec<Line<'static>>,
+    ) {
         let profile_data = indexmap! { "user_id".into() => "🧡\n💛".into() };
         let profile = Profile {
             data: profile_data,
             ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
+        let chain = Chain {
+            id: "binary".into(),
+            source: ChainSource::command(["echo", "-n", "-e", r#"\xc3\x28"#]),
+            ..Chain::factory(())
+        };
         let collection = Collection {
-            profiles: indexmap! {profile_id.clone() => profile},
+            profiles: indexmap! { profile_id.clone() => profile },
+            chains: indexmap! { chain.id.clone() => chain },
             ..Collection::factory(())
         };
         let context = TemplateContext {
@@ -232,23 +255,19 @@ mod tests {
             selected_profile: Some(profile_id),
             ..TemplateContext::factory(())
         };
-        let chunks = template.render_chunks(&context).await;
-        let styles = &TuiContext::get().styles;
 
+        let chunks = template.render_chunks(&context).await;
         let text = TextStitcher::stitch_chunks(&template, &chunks);
-        let rendered_style = styles.template_preview.text;
-        let error_style = styles.template_preview.error;
-        let expected = Text::from(vec![
-            Line::from("intro"),
-            Line::from(Span::styled("🧡", rendered_style)),
-            Line::from(vec![
-                Span::styled("💛", rendered_style),
-                Span::raw(" 💚💙💜 "),
-                Span::styled("Error", error_style),
-            ]),
-            Line::from("outro\r"), // \r shouldn't create any issues
-            Line::from("more outro"),
-        ]);
-        assert_eq!(text, expected);
+        assert_eq!(text, Text::from(expected));
+    }
+
+    /// Style some text as rendered
+    fn rendered(text: &str) -> Span {
+        Span::styled(text, TuiContext::get().styles.template_preview.text)
+    }
+
+    /// Style some text as an error
+    fn error(text: &str) -> Span {
+        Span::styled(text, TuiContext::get().styles.template_preview.error)
     }
 }

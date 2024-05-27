@@ -119,6 +119,16 @@ impl From<Template> for String {
     }
 }
 
+/// For rstest magic conversion
+#[cfg(test)]
+impl std::str::FromStr for Template {
+    type Err = TemplateParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s.to_owned())
+    }
+}
+
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string, and those chunks should be contiguous.
 #[derive(Debug)]
@@ -131,7 +141,7 @@ pub enum TemplateChunk {
     /// large block of text.
     Raw(Span),
     /// Outcome of rendering a template key
-    Rendered { value: String, sensitive: bool },
+    Rendered { value: Vec<u8>, sensitive: bool },
     /// An error occurred while rendering a template key
     Error(TemplateError),
 }
@@ -216,10 +226,6 @@ mod tests {
     #[tokio::test]
     async fn test_override() {
         let profile_data = indexmap! {"field1".into() => "field".into()};
-        let source = ChainSource::Command {
-            command: vec!["echo".into(), "chain".into()],
-            stdin: None,
-        };
         let overrides = indexmap! {
             "field1".into() => "override".into(),
             "chains.chain1".into() => "override".into(),
@@ -232,7 +238,7 @@ mod tests {
         };
         let profile_id = profile.id.clone();
         let chain = Chain {
-            source,
+            source: ChainSource::command(["echo", "chain"]),
             ..Chain::factory(())
         };
         let context = TemplateContext {
@@ -369,7 +375,7 @@ mod tests {
             ..Request::factory(())
         };
         let response = Response {
-            body: response_body.to_string().into(),
+            body: response_body.to_string().into_bytes().into(),
             headers: response_headers,
             ..Response::factory(())
         };
@@ -688,12 +694,8 @@ mod tests {
         #[case] trim: ChainOutputTrim,
         #[case] expected: &str,
     ) {
-        let command = vec!["echo".into(), "-n".into(), "   hello!   ".into()];
         let chain = Chain {
-            source: ChainSource::Command {
-                command,
-                stdin: None,
-            },
+            source: ChainSource::command(["echo", "-n", "   hello!   "]),
             trim,
             ..Chain::factory(())
         };
@@ -902,14 +904,13 @@ mod tests {
         };
 
         // Chain 2 - command
-        let command =
-            vec!["echo".into(), "-n".into(), "answer: {{chains.file}}".into()];
         let command_chain = Chain {
             id: "command".into(),
-            source: ChainSource::Command {
-                command,
-                stdin: None,
-            },
+            source: ChainSource::command([
+                "echo",
+                "-n",
+                "answer: {{chains.file}}",
+            ]),
             ..Chain::factory(())
         };
 
@@ -943,14 +944,13 @@ mod tests {
         };
 
         // Chain 2 - command
-        let command =
-            vec!["echo".into(), "-n".into(), "answer: {{chains.file}}".into()];
         let command_chain = Chain {
             id: "command".into(),
-            source: ChainSource::Command {
-                command,
-                stdin: None,
-            },
+            source: ChainSource::command([
+                "echo",
+                "-n",
+                "answer: {{chains.file}}",
+            ]),
             ..Chain::factory(())
         };
 
@@ -977,15 +977,50 @@ mod tests {
         let context = TemplateContext::factory(());
         env::set_var("TEST", "test!");
         assert_eq!(render!("{{env.TEST}}", context).unwrap(), "test!");
+        // Unknown gets replaced with empty string
+        assert_eq!(render!("{{env.UNKNOWN}}", context).unwrap(), "");
     }
 
+    /// Test rendering non-UTF-8 data
     #[tokio::test]
-    async fn test_environment_error() {
-        let context = TemplateContext::factory(());
-        assert_err!(
-            render!("{{env.UNKNOWN}}", context),
-            "Accessing environment variable `UNKNOWN`"
+    async fn test_render_binary() {
+        let chain = Chain {
+            source: ChainSource::command(["echo", "-n", "-e", r#"\xc3\x28"#]),
+            ..Chain::factory(())
+        };
+        let context = TemplateContext {
+            collection: Collection {
+                chains: indexmap! {chain.id.clone() => chain},
+                ..Collection::factory(())
+            },
+            ..TemplateContext::factory(())
+        };
+
+        assert_eq!(
+            Template::from("{{chains.chain1}}")
+                .render(&context)
+                .await
+                .unwrap(),
+            b"\xc3\x28"
         );
+    }
+
+    /// Test rendering non-UTF-8 data to string returns an error
+    #[tokio::test]
+    async fn test_render_invalid_utf8() {
+        let chain = Chain {
+            source: ChainSource::command(["echo", "-n", "-e", r#"\xc3\x28"#]),
+            ..Chain::factory(())
+        };
+        let context = TemplateContext {
+            collection: Collection {
+                chains: indexmap! {chain.id.clone() => chain},
+                ..Collection::factory(())
+            },
+            ..TemplateContext::factory(())
+        };
+
+        assert_err!(render!("{{chains.chain1}}", context), "invalid utf-8");
     }
 
     /// Test rendering into individual chunks with complex unicode
@@ -1028,12 +1063,11 @@ mod tests {
         );
     }
 
-    /// Helper for rendering a string
+    /// Helper for rendering a template to a string
     macro_rules! render {
         ($template:expr, $context:expr) => {
-            Template::from($template).render_stitched(&$context).await
+            Template::from($template).render_string(&$context).await
         };
     }
-
     use render;
 }

@@ -1,6 +1,5 @@
 use crate::{cli::Subcommand, collection::Collection, GlobalArgs};
 use anyhow::Context;
-use async_trait::async_trait;
 use clap::{Parser, ValueEnum};
 use std::{
     fs::File,
@@ -25,7 +24,6 @@ enum Format {
     Insomnia,
 }
 
-#[async_trait]
 impl Subcommand for ImportCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
         // Load the input

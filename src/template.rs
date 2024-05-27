@@ -3,7 +3,7 @@ mod parse;
 mod prompt;
 mod render;
 
-pub use error::{ChainError, TemplateError, TriggeredRequestError};
+pub use error::{ChainError, TemplateError};
 pub use parse::Span;
 pub use prompt::{Prompt, PromptChannel, Prompter};
 

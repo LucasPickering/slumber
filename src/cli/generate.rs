@@ -3,7 +3,6 @@ use crate::{
     template::TemplateError,
     GlobalArgs,
 };
-use async_trait::async_trait;
 use clap::{Parser, ValueEnum};
 use std::process::ExitCode;
 
@@ -26,7 +25,6 @@ pub enum GenerateFormat {
     Curl,
 }
 
-#[async_trait]
 impl Subcommand for GenerateCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         let (_, _, request) = self

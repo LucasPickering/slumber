@@ -1,5 +1,4 @@
 use crate::{cli::Subcommand, db::Database, GlobalArgs};
-use async_trait::async_trait;
 use clap::Parser;
 use std::{path::PathBuf, process::ExitCode};
 
@@ -27,7 +26,6 @@ enum CollectionsSubcommand {
     },
 }
 
-#[async_trait]
 impl Subcommand for CollectionsCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
         let database = Database::load()?;

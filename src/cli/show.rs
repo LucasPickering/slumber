@@ -2,7 +2,6 @@ use crate::{
     cli::Subcommand, collection::CollectionFile, config::Config, db::Database,
     util::paths::DataDirectory, GlobalArgs,
 };
-use async_trait::async_trait;
 use clap::Parser;
 use serde::Serialize;
 use std::{borrow::Cow, path::Path, process::ExitCode};
@@ -24,7 +23,6 @@ enum ShowTarget {
     Collection,
 }
 
-#[async_trait]
 impl Subcommand for ShowCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.target {

@@ -87,7 +87,7 @@ impl EventHandler for RecordPane {
     fn update(&mut self, event: Event) -> Update {
         match event.action() {
             Some(Action::LeftClick) => {
-                ViewContext::push_event(Event::new_other(PrimaryPane::Record));
+                ViewContext::push_event(Event::new_local(PrimaryPane::Record));
             }
             _ => return Update::Propagate(event),
         }

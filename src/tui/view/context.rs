@@ -144,11 +144,11 @@ mod tests {
     fn test_event_queue(_harness: TestHarness) {
         assert_events!(); // Start empty
 
-        ViewContext::push_event(Event::new_other(3));
+        ViewContext::push_event(Event::new_local(3));
         ViewContext::push_event(Event::CloseModal);
-        assert_events!(Event::Other(_), Event::CloseModal);
+        assert_events!(Event::Local(_), Event::CloseModal);
 
-        assert_matches!(ViewContext::pop_event(), Some(Event::Other(_)));
+        assert_matches!(ViewContext::pop_event(), Some(Event::Local(_)));
         assert_matches!(ViewContext::pop_event(), Some(Event::CloseModal));
         assert_events!(); // Empty again
     }

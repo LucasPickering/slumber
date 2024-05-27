@@ -62,7 +62,7 @@ impl EventHandler for ResponseBodyView {
     fn update(&mut self, event: Event) -> Update {
         if let Some(Action::OpenActions) = event.action() {
             ViewContext::open_modal_default::<ActionsModal<BodyMenuAction>>();
-        } else if let Some(action) = event.other::<BodyMenuAction>() {
+        } else if let Some(action) = event.local::<BodyMenuAction>() {
             match action {
                 BodyMenuAction::CopyBody => {
                     // Use whatever text is visible to the user
@@ -224,7 +224,7 @@ mod tests {
         );
 
         component
-            .update_draw(Event::new_other(BodyMenuAction::CopyBody))
+            .update_draw(Event::new_local(BodyMenuAction::CopyBody))
             .assert_empty();
 
         let body = assert_matches!(
@@ -290,7 +290,7 @@ mod tests {
         );
 
         component
-            .update_draw(Event::new_other(BodyMenuAction::SaveBody))
+            .update_draw(Event::new_local(BodyMenuAction::SaveBody))
             .assert_empty();
 
         let (data, default_path) = assert_matches!(

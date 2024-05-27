@@ -124,17 +124,19 @@ pub enum Event {
     /// Tell the user something informational
     Notify(Notification),
 
-    /// A dynamically dispatched variant, which can hold any type. This is
-    /// useful for passing component-specific action types, e.g. when bubbling
-    /// up a callback. Use [Self::other] or `Any::downcast_ref` to convert into
-    /// the expected type.
-    Other(Box<dyn Any>),
+    /// A dynamically dispatched variant, which can hold any type. The name
+    /// `Local` indicates that this event type is local to a specific
+    /// branch of the component tree. This is useful for passing
+    /// component-specific action types, e.g. when bubbling up a callback. Use
+    /// [Self::local] or [LocalEvent::downcast_ref] to convert into the
+    /// expected type.
+    Local(Box<dyn LocalEvent>),
 }
 
 impl Event {
-    /// Create a dynamic "other" variant
-    pub fn new_other<T: Any>(value: T) -> Event {
-        Event::Other(Box::new(value))
+    /// Create a localized event of a dynamic type. See [Event::Local]
+    pub fn new_local<T: LocalEvent>(value: T) -> Event {
+        Event::Local(Box::new(value))
     }
 
     /// Get the mapped input action for this event, if any. A lot of components
@@ -147,12 +149,37 @@ impl Event {
         }
     }
 
-    /// Get a dynamic "other" variant, if this event is one
-    pub fn other<T: Any>(&self) -> Option<&T> {
+    /// If this is a local event (see [Event::Local]) of a specific type, return
+    /// it. Otherwise return `None`.
+    pub fn local<T: Any>(&self) -> Option<&T> {
         match self {
-            Self::Other(other) => other.downcast_ref(),
+            Self::Local(local) => local.downcast_ref(),
             _ => None,
         }
+    }
+}
+
+/// A wrapper trait for [Any] that also gives us access to the type's [Debug]
+/// impl. This makes testing and logging much more effective, because we get the
+/// value's underlying debug representation, rather than just `Event::Local(Any
+/// {..})`.
+pub trait LocalEvent: Any + Debug {
+    /// Workaround for trait upcasting
+    /// unstable: Delete this once we get trait upcasting
+    /// https://github.com/rust-lang/rust/issues/65991
+    fn any(&self) -> &dyn Any;
+}
+
+impl<T: Any + Debug> LocalEvent for T {
+    fn any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl dyn LocalEvent {
+    /// Alias for `Any::downcast_ref`, to downcast into a concrete type
+    pub fn downcast_ref<'a, T: Any>(self: &'a dyn LocalEvent) -> Option<&'a T> {
+        self.any().downcast_ref()
     }
 }
 

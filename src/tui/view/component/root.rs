@@ -158,7 +158,7 @@ impl EventHandler for Root {
             // because it is probably just unmapped input, and not a bug
             Event::Input { .. } => {}
 
-            Event::Other(ref callback) => {
+            Event::Local(ref callback) => {
                 match callback.downcast_ref::<GlobalAction>() {
                     Some(GlobalAction::EditCollection) => {
                         ViewContext::send_message(Message::CollectionEdit)

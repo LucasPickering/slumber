@@ -63,7 +63,7 @@ impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
             Action::Right => self.select.next(),
             Action::Submit => {
                 // Propagate the selected item as a dynamic event
-                ViewContext::push_event(Event::new_other(
+                ViewContext::push_event(Event::new_local(
                     *self.select.selected(),
                 ));
             }

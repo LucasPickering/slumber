@@ -90,6 +90,7 @@ enum FullscreenMode {
 impl_persistable!(Option<FullscreenMode>);
 
 /// Sentinel type for propagating an even that closes fullscreen mode
+#[derive(Debug)]
 struct ExitFullscreen;
 
 impl PrimaryView {
@@ -102,7 +103,7 @@ impl PrimaryView {
         let selected_pane = FixedSelectState::builder()
             // Changing panes kicks us out of fullscreen
             .on_select(|_| {
-                ViewContext::push_event(Event::new_other(ExitFullscreen))
+                ViewContext::push_event(Event::new_local(ExitFullscreen))
             })
             .build();
 
@@ -317,14 +318,14 @@ impl EventHandler for PrimaryView {
                 _ => return Update::Propagate(event),
             },
 
-            Event::Other(other) => {
-                if let Some(ExitFullscreen) = other.downcast_ref() {
+            Event::Local(local) => {
+                if let Some(ExitFullscreen) = local.downcast_ref() {
                     *self.fullscreen_mode = None;
-                } else if let Some(pane) = other.downcast_ref::<PrimaryPane>() {
+                } else if let Some(pane) = local.downcast_ref::<PrimaryPane>() {
                     // Children can select themselves by sending PrimaryPane
                     self.selected_pane.select(pane);
                 } else if let Some(action) =
-                    other.downcast_ref::<RecipeMenuAction>()
+                    local.downcast_ref::<RecipeMenuAction>()
                 {
                     self.handle_recipe_menu_action(*action);
                 } else {
@@ -420,7 +421,7 @@ mod tests {
         mut component: TestComponent<PrimaryView, PrimaryViewProps<'static>>,
     ) {
         component
-            .update_draw(Event::new_other(RecipeMenuAction::CopyUrl))
+            .update_draw(Event::new_local(RecipeMenuAction::CopyUrl))
             .assert_empty();
 
         let request_config = assert_matches!(
@@ -444,7 +445,7 @@ mod tests {
         mut component: TestComponent<PrimaryView, PrimaryViewProps<'static>>,
     ) {
         component
-            .update_draw(Event::new_other(RecipeMenuAction::CopyBody))
+            .update_draw(Event::new_local(RecipeMenuAction::CopyBody))
             .assert_empty();
 
         let request_config = assert_matches!(
@@ -468,7 +469,7 @@ mod tests {
         mut component: TestComponent<PrimaryView, PrimaryViewProps<'static>>,
     ) {
         component
-            .update_draw(Event::new_other(RecipeMenuAction::CopyCurl))
+            .update_draw(Event::new_local(RecipeMenuAction::CopyCurl))
             .assert_empty();
 
         let request_config = assert_matches!(

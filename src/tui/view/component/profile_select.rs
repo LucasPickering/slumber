@@ -92,7 +92,7 @@ impl EventHandler for ProfilePane {
     fn update(&mut self, event: Event) -> Update {
         if let Some(Action::LeftClick) = event.action() {
             self.open_modal();
-        } else if let Some(SelectProfile(profile_id)) = event.other() {
+        } else if let Some(SelectProfile(profile_id)) = event.local() {
             // Handle message from the modal
             self.profiles.select(profile_id);
             ViewContext::push_event(Event::HttpSelectRequest(None));
@@ -128,6 +128,7 @@ impl Draw for ProfilePane {
 }
 
 /// Local event to pass selected profile ID from modal back to the parent
+#[derive(Debug)]
 struct SelectProfile(ProfileId);
 
 /// Modal to allow user to select a profile from a list and preview profile
@@ -148,7 +149,7 @@ impl ProfileListModal {
             // Close the modal *first*, so the parent can handle the
             // callback event. Jank but it works
             ViewContext::push_event(Event::CloseModal);
-            ViewContext::push_event(Event::new_other(SelectProfile(
+            ViewContext::push_event(Event::new_local(SelectProfile(
                 profile.id.clone(),
             )));
         }

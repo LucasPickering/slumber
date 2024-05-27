@@ -52,16 +52,11 @@ pub struct RecordBodyProps<'a> {
 }
 
 /// All callback events from the query text box
+#[derive(Debug)]
 enum QueryCallback {
     Focus,
     Cancel,
     Submit(String),
-}
-
-impl QueryCallback {
-    fn push(self) {
-        ViewContext::push_event(Event::new_other(self))
-    }
 }
 
 impl RecordBody {
@@ -72,11 +67,17 @@ impl RecordBody {
         let text_box = TextBox::default()
             .with_placeholder("'/' to filter body with JSONPath")
             .with_validator(|text| JsonPath::parse(text).is_ok())
-            .with_on_click(|_| QueryCallback::Focus.push())
-            .with_on_cancel(|_| QueryCallback::Cancel.push())
-            // Callback triggers an event, so we can modify our own state
+            // Callback trigger an events, so we can modify our own state
+            .with_on_click(|_| {
+                ViewContext::push_event(Event::new_local(QueryCallback::Focus))
+            })
+            .with_on_cancel(|_| {
+                ViewContext::push_event(Event::new_local(QueryCallback::Cancel))
+            })
             .with_on_submit(|text_box| {
-                QueryCallback::Submit(text_box.text().to_owned()).push()
+                ViewContext::push_event(Event::new_local(
+                    QueryCallback::Submit(text_box.text().to_owned()),
+                ))
             });
         Self {
             text_window: Default::default(),
@@ -105,7 +106,7 @@ impl EventHandler for RecordBody {
             if self.query_available.get() {
                 self.query_focused = true;
             }
-        } else if let Some(callback) = event.other::<QueryCallback>() {
+        } else if let Some(callback) = event.local::<QueryCallback>() {
             match callback {
                 QueryCallback::Focus => self.query_focused = true,
                 QueryCallback::Cancel => {

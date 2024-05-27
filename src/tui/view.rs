@@ -176,7 +176,7 @@ mod tests {
         // Initial events
         assert_events!(
             Event::HttpSelectRequest(None),
-            Event::Other(_),
+            Event::Local(_),
             Event::Notify(_)
         );
 
@@ -184,7 +184,7 @@ mod tests {
         view.handle_events();
         assert_events!(
             Event::HttpSelectRequest(None),
-            Event::Other(_),
+            Event::Local(_),
             Event::Notify(_)
         );
 
@@ -192,7 +192,7 @@ mod tests {
         view.draw(&mut harness.terminal.get_frame());
         assert_events!(
             Event::HttpSelectRequest(None),
-            Event::Other(_),
+            Event::Local(_),
             Event::Notify(_)
         );
 

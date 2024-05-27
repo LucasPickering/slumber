@@ -137,7 +137,7 @@ impl EventHandler for RecipeListPane {
         };
         match action {
             Action::LeftClick => {
-                ViewContext::push_event(Event::new_other(
+                ViewContext::push_event(Event::new_local(
                     PrimaryPane::RecipeList,
                 ));
             }

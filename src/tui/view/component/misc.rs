@@ -186,7 +186,7 @@ impl Modal for ConfirmModal {
 impl EventHandler for ConfirmModal {
     fn update(&mut self, event: Event) -> Update {
         // When user selects a button, send the response and close
-        let Some(button) = event.other::<ConfirmButton>() else {
+        let Some(button) = event.local::<ConfirmButton>() else {
             return Update::Propagate(event);
         };
         // Channel *should* always be available here, because after handling

@@ -52,37 +52,32 @@ impl ToStringGenerate for MenuAction {}
 
 impl EventHandler for RequestView {
     fn update(&mut self, event: Event) -> Update {
-        match event {
-            Event::Input {
-                action: Some(Action::OpenActions),
-                ..
-            } => ViewContext::open_modal_default::<ActionsModal<MenuAction>>(),
-            Event::Other(ref other) => {
-                // Check for an action menu event
-                match other.downcast_ref::<MenuAction>() {
-                    Some(MenuAction::CopyUrl) => {
-                        if let Some(state) = self.state.get() {
-                            ViewContext::send_message(Message::CopyText(
-                                state.request.url.to_string(),
-                            ))
-                        }
+        if let Some(Action::OpenActions) = event.action() {
+            ViewContext::open_modal_default::<ActionsModal<MenuAction>>()
+        } else if let Some(action) = event.local::<MenuAction>() {
+            match action {
+                MenuAction::CopyUrl => {
+                    if let Some(state) = self.state.get() {
+                        ViewContext::send_message(Message::CopyText(
+                            state.request.url.to_string(),
+                        ))
                     }
-                    Some(MenuAction::CopyBody) => {
-                        // Copy exactly what the user sees. Currently requests
-                        // don't support formatting/querying but that could
-                        // change
-                        if let Some(body) = self
-                            .state
-                            .get()
-                            .and_then(|state| state.body.data().text())
-                        {
-                            ViewContext::send_message(Message::CopyText(body));
-                        }
+                }
+                MenuAction::CopyBody => {
+                    // Copy exactly what the user sees. Currently requests
+                    // don't support formatting/querying but that could
+                    // change
+                    if let Some(body) = self
+                        .state
+                        .get()
+                        .and_then(|state| state.body.data().text())
+                    {
+                        ViewContext::send_message(Message::CopyText(body));
                     }
-                    None => return Update::Propagate(event),
                 }
             }
-            _ => return Update::Propagate(event),
+        } else {
+            return Update::Propagate(event);
         }
         Update::Consumed
     }

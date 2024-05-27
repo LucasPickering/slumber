@@ -35,8 +35,8 @@ impl<T: FixedSelectWithoutDefault> Default for ActionsModal<T> {
             // callback event. Jank but it works
             ViewContext::push_event(Event::CloseModal);
             let event = match action {
-                EnumChain::T(action) => Event::new_other(*action),
-                EnumChain::U(action) => Event::new_other(*action),
+                EnumChain::T(action) => Event::new_local(*action),
+                EnumChain::U(action) => Event::new_local(*action),
             };
             ViewContext::push_event(event);
         };

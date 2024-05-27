@@ -154,7 +154,7 @@ impl EventHandler for RecipePane {
         if let Some(action) = event.action() {
             match action {
                 Action::LeftClick => {
-                    ViewContext::push_event(Event::new_other(
+                    ViewContext::push_event(Event::new_local(
                         PrimaryPane::Recipe,
                     ));
                 }

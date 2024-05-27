@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [1.3.2] - 2024-05-27
+
 ### Changed
 
 - Show "Copy URL", "Copy Body" and "Copy as cURL" actions from the Recipe list [#224](https://github.com/LucasPickering/slumber/issues/224)

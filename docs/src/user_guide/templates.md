@@ -1,10 +1,16 @@
 # Templates
 
-Templates enable dynamic string construction. Slumber's template language is relatively simple, compared to complex HTML templating languages like Handlebars or Jinja. The goal is to be intuitive and unsurprising. It doesn't support complex features like loops, conditionals, etc.
+Templates enable dynamic string/binary construction. Slumber's template language is relatively simple, compared to complex HTML templating languages like Handlebars or Jinja. The goal is to be intuitive and unsurprising. It doesn't support complex features like loops, conditionals, etc.
 
-Most string _values_ (i.e. _not_ keys) in a request collection are templates, meaning they support templating. The syntax for templating a value into a string is double curly braces `{{...}}`. The contents inside the braces tell Slumber how to retrieve the dynamic value.
+Most string values in a request collection (e.g. URL, request body, etc.) are templates. Map keys (e.g. recipe ID, profile ID) are _not_ templates; they must be static strings.
+
+The syntax for injecting a dynamic value into a template is double curly braces `{{...}}`. The contents inside the braces tell Slumber how to retrieve the dynamic value.
 
 This guide serves as a functional example of how to use templates. For detailed information on options available, see [the API reference](../api/request_collection/template.md).
+
+> **A note on YAML string syntax**
+>
+> One of the advantages (and disadvantages) of YAML is that it has a number of different string syntaxes. This enables you to customize your templates according to your specific needs around the behavior of whitespace and newlines. See [YAML's string syntaxes](https://www.educative.io/answers/how-to-represent-strings-in-yaml) and [yaml-multiline.info](https://yaml-multiline.info/) for more info on YAML strings.
 
 ## A Basic Example
 
@@ -47,49 +53,6 @@ Now you can easily select which host to hit. In the TUI, this is done via the Pr
 ]
 ```
 
-## Chaining Requests
-
-Profile values are helpful when you want to switch between statically known values, but what if you need a value from a different response? Let's say you want to create a fish, then use its ID in a subsequent request. Then you want [**chains**](../api/request_collection/chain.md).
-
-```yaml
-profiles:
-  local:
-    data:
-      host: http://localhost:5000
-
-chains:
-  fish_id:
-    source: !request
-      recipe: create_fish
-    # This uses JSONPath to get a single value from the response body
-    # https://jsonpath.com/
-    selector: $.id
-
-requests:
-  create_fish: !request
-    method: POST
-    url: "{{host}}/fishes"
-    body: >
-      {"kind": "barracuda", "name": "Jimmy"}
-
-  get_fish: !request
-    method: GET
-    url: "{{host}}/fishes/{{chains.fish_id}}"
-```
-
-Now we can make our requests back-to-back:
-
-```sh
-> slumber request -p local create_fish
-# http://localhost:5000/fishes
-{"id": 2, "kind": "barracuda", "name": "Jimmy"}
-# http://localhost:5000/fishes/2
-> slumber request -p local get_fish
-{"id": 2, "kind": "barracuda", "name": "Jimmy"}
-```
-
-This demonstrates how to use chains to link responses to requests. Chains can link to other value sources though, including user-provided values (via a prompt) and shell commands. For a full list of chain types, see [the Chain API reference](../api/request_collection/chain.md).
-
 ## Nested Templates
 
 What if you need a more complex chained value? Let's say the endpoint to get a fish requires the fish ID to be in the format `fish_{id}`. Why? Don't worry about it. Fish are particular. Templates support nesting implicitly. You can use this to compose template values into more complex strings. Just be careful not to trigger infinite recursion!
@@ -130,6 +93,29 @@ And let's see it in action:
 {"id": "fish_2", "kind": "barracuda", "name": "Jimmy"}
 ```
 
-## YAML String Syntax
+## Binary Templates
 
-One of the advantages (and disadvantages) of YAML is that it has a number of different string syntaxes. This enables you to customize your templates according to your specific needs around the behavior of whitespace and newlines. [yaml-multiline.info](https://yaml-multiline.info/) does a great job of demonstrating the differences.
+While templates are mostly useful for generating strings, they can also generate binary data. This is most useful for sending binary request bodies. Some fields (e.g. URL) do _not_ support binary templates because they need valid text; in those cases, if the template renders to non-UTF-8 data, an error will be returned. In general, if binary data _can_ be supported, it is.
+
+> Note: Support for binary form data is currently incomplete. You can render binary data from templates, but forms must be constructed manually. See [#235](https://github.com/LucasPickering/slumber/discussions/235) for more info.
+
+```yaml
+profiles:
+  local:
+    data:
+      host: http://localhost:5000
+      fish_id: "cod_father"
+
+chains:
+  fish_image:
+    source: !file
+      path: ./cod_father.jpg
+
+requests:
+  set_fish_image: !request
+    method: POST
+    url: "{{host}}/fishes/{{fish_id}}/image"
+    headers:
+      Content-Type: image/jpg
+    body: "{{chains.fish_image}}"
+```

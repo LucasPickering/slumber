@@ -52,7 +52,10 @@ use crate::{
 use anyhow::Context;
 use base64::{prelude::BASE64_STANDARD, write::EncoderWriter};
 use chrono::Utc;
-use futures::future;
+use futures::{
+    future::{self, OptionFuture},
+    TryFutureExt,
+};
 use indexmap::IndexMap;
 use reqwest::{
     header::{self, HeaderMap, HeaderName, HeaderValue},
@@ -374,7 +377,7 @@ impl RequestBuilder {
                 let url = self
                     .recipe
                     .url
-                    .render(template_context)
+                    .render_string(template_context)
                     .await
                     .context("Error rendering URL")?;
                 url.parse::<Url>()
@@ -407,9 +410,9 @@ impl RequestBuilder {
             .map(|(k, v)| async move {
                 Ok::<_, anyhow::Error>((
                     k.clone(),
-                    v.render(template_context).await.context(format!(
-                        "Error rendering query parameter `{k}`"
-                    ))?,
+                    v.render_string(template_context).await.context(
+                        format!("Error rendering query parameter `{k}`"),
+                    )?,
                 ))
             });
         Ok(future::try_join_all(iter)
@@ -463,30 +466,33 @@ impl RequestBuilder {
             collection::Authentication::Basic { username, password } => {
                 // Encode as `username:password | base64`
                 // https://swagger.io/docs/specification/authentication/basic-authentication/
-                let (username, password) = try_join!(
-                    async {
-                        username
-                            .render(template_context)
+                let (username, password) =
+                    try_join!(
+                        async {
+                            username
+                                .render(template_context)
+                                .await
+                                .context("Error rendering username")
+                        },
+                        async {
+                            OptionFuture::from(password.as_ref().map(
+                                |password| password.render(template_context),
+                            ))
                             .await
-                            .context("Error rendering username")
-                    },
-                    async {
-                        Template::render_opt(
-                            password.as_ref(),
-                            template_context,
-                        )
-                        .await
-                        .context("Error rendering password")
-                    },
-                )?;
+                            .transpose()
+                            .context("Error rendering password")
+                        },
+                    )?;
 
                 let mut buf = b"Basic ".to_vec();
                 {
                     let mut encoder =
                         EncoderWriter::new(&mut buf, &BASE64_STANDARD);
-                    let _ = write!(encoder, "{username}:");
+                    // These writes are infallible because they're in-memory
+                    encoder.write_all(&username)?;
+                    encoder.write_all(b":")?;
                     if let Some(password) = password {
-                        let _ = write!(encoder, "{password}");
+                        encoder.write_all(&password)?;
                     }
                 }
                 HeaderValue::from_bytes(&buf)
@@ -498,9 +504,9 @@ impl RequestBuilder {
                     .render(template_context)
                     .await
                     .context("Error rendering bearer token")?;
-                format!("Bearer {token}")
-                    .try_into()
-                    .context("Error encoding bearer token")
+                let mut value: Vec<u8> = b"Bearer ".into();
+                value.extend(token);
+                value.try_into().context("Error encoding bearer token")
             }
         }?;
         header_value.set_sensitive(true);
@@ -514,15 +520,18 @@ impl RequestBuilder {
         header: &str,
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
-        let value = value_template
+        let mut value = value_template
             .render(template_context)
             .await
             .context(format!("Error rendering header `{header}`"))?;
-        // Strip leading/trailing line breaks because they're going to
-        // trigger a validation error and are probably a mistake. This
-        // is a balance between convenience and
-        // explicitness
-        let value = value.trim_matches(|c| c == '\n' || c == '\r');
+
+        // Strip leading/trailing line breaks because they're going to trigger a
+        // validation error and are probably a mistake. We're trading
+        // explicitness for convenience here. This is maybe redundant now with
+        // the Chain::trim field, but this behavior predates that field so it's
+        // left in for backward compatibility.
+        trim_bytes(&mut value, |c| c == b'\n' || c == b'\r');
+
         // String -> header conversions are fallible, if headers
         // are invalid
         Ok::<(HeaderName, HeaderValue), anyhow::Error>((
@@ -539,11 +548,15 @@ impl RequestBuilder {
         &self,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Option<Body>> {
-        let body =
-            Template::render_opt(self.recipe.body.as_ref(), template_context)
-                .await
-                .context("Error rendering body")?;
-        Ok(body.map(Body::from))
+        OptionFuture::from(
+            self.recipe
+                .body
+                .as_ref()
+                .map(|body| body.render(template_context).map_ok(Body::from)),
+        )
+        .await
+        .transpose()
+        .context("Error rendering body")
     }
 }
 
@@ -563,6 +576,27 @@ impl From<Method> for reqwest::Method {
     }
 }
 
+/// Trim the bytes from the beginning and end of a vector that match the given
+/// predicate. This will mutate the input vector. If bytes are trimmed off the
+/// start, it will be done with a single shift.
+fn trim_bytes(bytes: &mut Vec<u8>, f: impl Fn(u8) -> bool) {
+    // Trim start
+    for i in 0..bytes.len() {
+        if !f(bytes[i]) {
+            bytes.drain(0..i);
+            break;
+        }
+    }
+
+    // Trim end
+    for i in (0..bytes.len()).rev() {
+        if !f(bytes[i]) {
+            bytes.drain((i + 1)..bytes.len());
+            break;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -573,11 +607,11 @@ mod tests {
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use reqwest::Method;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use std::collections::HashMap;
 
-    #[tokio::test]
-    async fn test_build_request() {
+    #[fixture]
+    fn template_context() -> TemplateContext {
         let profile_data = indexmap! {
             "host".into() => "http://localhost".into(),
             "mode".into() => "sudo".into(),
@@ -590,14 +624,19 @@ mod tests {
             ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
-        let context = TemplateContext {
+        TemplateContext {
             collection: Collection {
                 profiles: indexmap! {profile_id.clone() => profile},
                 ..Collection::factory(())
             },
             selected_profile: Some(profile_id.clone()),
             ..TemplateContext::factory(())
-        };
+        }
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_build_request(template_context: TemplateContext) {
         let recipe = Recipe {
             method: "POST".parse().unwrap(),
             url: "{{host}}/users/{{user_id}}".into(),
@@ -606,6 +645,7 @@ mod tests {
                 "fast".into() => "true".into(),
             },
             headers: indexmap! {
+                // Leading/trailing newlines should be stripped
                 "Accept".into() => "application/json".into(),
                 "Content-Type".into() => "application/json".into(),
             },
@@ -615,7 +655,7 @@ mod tests {
         let recipe_id = recipe.id.clone();
 
         let builder = RequestBuilder::new(recipe, RecipeOptions::default());
-        let request = builder.build(&context).await.unwrap();
+        let request = builder.build(&template_context).await.unwrap();
 
         let expected_headers = indexmap! {
             "content-type" => "application/json",
@@ -626,7 +666,9 @@ mod tests {
             request,
             Request {
                 id: request.id,
-                profile_id: Some(profile_id),
+                profile_id: Some(
+                    template_context.collection.first_profile_id().clone()
+                ),
                 recipe_id,
                 method: Method::POST,
                 url: "http://localhost/users/1?mode=sudo&fast=true"
@@ -635,6 +677,33 @@ mod tests {
                 body: Some(Vec::from(b"{\"group_id\":\"3\"}").into()),
                 headers: header_map(expected_headers),
             }
+        );
+    }
+
+    /// Leading/trailing newlines should be stripped from rendered header
+    /// values. These characters are invalid and trigger an error, so we assume
+    /// they're unintentional and the user won't miss them.
+    #[rstest]
+    #[tokio::test]
+    async fn test_render_headers_strip(template_context: TemplateContext) {
+        let recipe = Recipe {
+            // Leading/trailing newlines should be stripped
+            headers: indexmap! {
+                "Accept".into() => "application/json".into(),
+                "Host".into() => "\n{{host}}\n".into(),
+            },
+            ..Recipe::factory(())
+        };
+        let builder = RequestBuilder::new(recipe, RecipeOptions::default());
+        let rendered = builder.render_headers(&template_context).await.unwrap();
+
+        assert_eq!(
+            rendered,
+            header_map([
+                ("Accept", "application/json"),
+                // This is a non-sensical value, but it's good enough
+                ("Host", "http://localhost"),
+            ])
         );
     }
 
@@ -749,5 +818,16 @@ mod tests {
                 body: None,
             }
         );
+    }
+
+    #[rstest]
+    #[case::empty(&[], &[])]
+    #[case::start(&[0, 0, 1, 1], &[1, 1])]
+    #[case::end(&[1, 1, 0, 0], &[1, 1])]
+    #[case::both(&[0, 1, 0, 1, 0, 0], &[1, 0, 1])]
+    fn test_trim_bytes(#[case] bytes: &[u8], #[case] expected: &[u8]) {
+        let mut bytes = bytes.to_owned();
+        trim_bytes(&mut bytes, |b| b == 0);
+        assert_eq!(&bytes, expected);
     }
 }

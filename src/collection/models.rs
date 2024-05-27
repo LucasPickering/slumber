@@ -452,3 +452,15 @@ impl crate::test_util::Factory for Chain {
         }
     }
 }
+
+/// Test-only helpers
+#[cfg(test)]
+impl ChainSource {
+    /// Build a new [Self::Command] variant from [command, ...args]
+    pub fn command<const N: usize>(cmd: [&str; N]) -> ChainSource {
+        ChainSource::Command {
+            command: cmd.into_iter().map(Template::from).collect(),
+            stdin: None,
+        }
+    }
+}

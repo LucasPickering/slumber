@@ -136,8 +136,8 @@ impl<T> ResultExt<T, ChainError> for Result<T, ChainError> {
     }
 }
 
-/// Helper to printing bytes. If the bytes aren't valid UTF-8, a message about
-/// them being invalid will be printed instead.
+/// Helper to printing bytes. If the bytes aren't valid UTF-8, they'll be
+/// printed in hex representation instead
 pub struct MaybeStr<'a>(pub &'a [u8]);
 
 impl<'a> Display for MaybeStr<'a> {

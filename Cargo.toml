@@ -9,7 +9,7 @@ name = "slumber"
 repository = "https://github.com/LucasPickering/slumber"
 version = "1.3.2"
 # Keep in sync w/ rust-toolchain.toml
-rust-version = "1.74.0"
+rust-version = "1.76.0"
 
 [dependencies]
 anyhow = {version = "^1.0.75", features = ["backtrace"]}

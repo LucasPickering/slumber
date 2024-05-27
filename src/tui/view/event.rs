@@ -128,7 +128,7 @@ pub enum Event {
     /// `Local` indicates that this event type is local to a specific
     /// branch of the component tree. This is useful for passing
     /// component-specific action types, e.g. when bubbling up a callback. Use
-    /// [Self::local] or [LocalEvent::downcast_ref] to convert into the
+    /// [Self::local] or `LocalEvent::downcast_ref` to convert into the
     /// expected type.
     Local(Box<dyn LocalEvent>),
 }
@@ -164,9 +164,9 @@ impl Event {
 /// value's underlying debug representation, rather than just `Event::Local(Any
 /// {..})`.
 pub trait LocalEvent: Any + Debug {
-    /// Workaround for trait upcasting
-    /// unstable: Delete this once we get trait upcasting
-    /// https://github.com/rust-lang/rust/issues/65991
+    // Workaround for trait upcasting
+    // unstable: Delete this once we get trait upcasting
+    // https://github.com/rust-lang/rust/issues/65991
     fn any(&self) -> &dyn Any;
 }
 

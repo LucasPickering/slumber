@@ -9,7 +9,6 @@ use crate::{
     GlobalArgs,
 };
 use anyhow::{anyhow, Context};
-use async_trait::async_trait;
 use clap::Parser;
 use dialoguer::{console::Style, Input, Password};
 use indexmap::IndexMap;
@@ -78,7 +77,6 @@ pub struct BuildRequestCommand {
     overrides: Vec<(String, String)>,
 }
 
-#[async_trait]
 impl Subcommand for RequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         let (database, http_engine, request) = self

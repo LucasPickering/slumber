@@ -12,7 +12,6 @@ use crate::{
     },
     GlobalArgs,
 };
-use async_trait::async_trait;
 use std::process::ExitCode;
 
 /// A CLI subcommand
@@ -28,7 +27,6 @@ pub enum CliCommand {
 /// An executable subcommand. This trait isn't strictly necessary because we do
 /// static dispatch via the command enum, but it's helpful to enforce a
 /// consistent interface for each subcommand.
-#[async_trait]
 pub trait Subcommand {
     /// Execute the subcommand
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode>;

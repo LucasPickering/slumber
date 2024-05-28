@@ -5,6 +5,7 @@ mod cereal;
 mod insomnia;
 mod models;
 mod recipe_tree;
+mod rest_format;
 
 pub use models::*;
 pub use recipe_tree::*;

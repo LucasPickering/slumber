@@ -210,7 +210,7 @@ mod tests {
             ChainSource, Profile, Recipe, RecipeId,
         },
         config::Config,
-        http::{ContentType, Exchange, Request, Response},
+        http::{ContentType, Exchange, RequestRecord, Response},
         test_util::{
             assert_err, header_map, temp_dir, Factory, TempDir, TestPrompter,
         },
@@ -370,9 +370,9 @@ mod tests {
         });
         let response_headers =
             header_map(indexmap! {"Token" => "Secret Value"});
-        let request = Request {
+        let request = RequestRecord {
             recipe_id: recipe_id.clone(),
-            ..Request::factory(())
+            ..RequestRecord::factory(())
         };
         let response = Response {
             body: response_body.to_string().into_bytes().into(),

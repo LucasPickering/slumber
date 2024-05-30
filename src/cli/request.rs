@@ -3,7 +3,7 @@ use crate::{
     collection::{CollectionFile, ProfileId, RecipeId},
     config::Config,
     db::{CollectionDatabase, Database},
-    http::{HttpEngine, RecipeOptions, Request, RequestBuilder},
+    http::{HttpEngine, RecipeOptions, RequestRecord, RequestBuilder},
     template::{Prompt, Prompter, TemplateContext, TemplateError},
     util::{MaybeStr, ResultExt},
     GlobalArgs,
@@ -151,7 +151,7 @@ impl BuildRequestCommand {
         self,
         global: GlobalArgs,
         trigger_dependencies: bool,
-    ) -> anyhow::Result<(CollectionDatabase, Option<HttpEngine>, Request)> {
+    ) -> anyhow::Result<(CollectionDatabase, Option<HttpEngine>, RequestRecord)> {
         let collection_path = CollectionFile::try_path(None, global.file)?;
         let database = Database::load()?.into_collection(&collection_path)?;
         let collection_file = CollectionFile::load(collection_path).await?;

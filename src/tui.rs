@@ -10,7 +10,7 @@ use crate::{
     collection::{Collection, CollectionFile, ProfileId},
     config::Config,
     db::{CollectionDatabase, Database},
-    http::{Request, RequestBuilder},
+    http::{RequestBuilder, RequestRecord},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
         context::TuiContext,
@@ -426,7 +426,7 @@ impl Tui {
             let context = TuiContext::get();
 
             // Build the request
-            let request: Arc<Request> = builder
+            let request: Arc<RequestRecord> = builder
                 .build(&template_context)
                 .await
                 .map_err(|error| {

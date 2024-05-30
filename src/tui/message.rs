@@ -4,7 +4,7 @@
 use crate::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
-        RecipeOptions, Request, RequestBuildError, RequestError, Exchange,
+        Exchange, RecipeOptions, RequestBuildError, RequestError, RequestRecord,
     },
     template::{Prompt, Prompter, Template, TemplateChunk},
     tui::{input::Action, view::Confirm},
@@ -80,7 +80,7 @@ pub enum Message {
     /// Request failed to build
     HttpBuildError { error: RequestBuildError },
     /// We launched the HTTP request
-    HttpLoading { request: Arc<Request> },
+    HttpLoading { request: Arc<RequestRecord> },
     /// The HTTP request either succeeded or failed. We don't need to store the
     /// recipe ID here because it's in the inner container already. Combining
     /// these two cases saves a bit of boilerplate.

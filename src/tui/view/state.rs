@@ -8,7 +8,7 @@ pub mod select;
 use crate::{
     collection::{ProfileId, RecipeId},
     http::{
-        Exchange, ExchangeId, ExchangeSummary, Request, RequestBuildError,
+        Exchange, ExchangeId, ExchangeSummary, RequestRecord, RequestBuildError,
         RequestError,
     },
 };
@@ -111,7 +111,7 @@ pub enum RequestState {
     Loading {
         /// This needs an Arc so the success/failure state can maintain a
         /// pointer to the request as well
-        request: Arc<Request>,
+        request: Arc<RequestRecord>,
         start_time: DateTime<Utc>,
     },
 
@@ -223,7 +223,7 @@ impl RequestState {
     /// be slightly off from when the request was actually launched, but it
     /// shouldn't matter. See [crate::http::HttpEngine::send] for why it can't
     /// report a start time back to us.
-    pub fn loading(request: Arc<Request>) -> Self {
+    pub fn loading(request: Arc<RequestRecord>) -> Self {
         Self::Loading {
             request,
             start_time: Utc::now(),

@@ -116,7 +116,7 @@ impl RequestStore {
 mod tests {
     use super::*;
     use crate::{
-        http::{Exchange, Request, RequestBuildError, RequestError},
+        http::{Exchange, RequestBuildError, RequestError, RequestRecord},
         test_util::{assert_err, assert_matches, Factory},
         tui::test_util::{harness, TestHarness},
     };
@@ -281,16 +281,20 @@ mod tests {
             },
         });
 
-        let request =
-            Request::factory((Some(profile_id.clone()), recipe_id.clone()));
+        let request = RequestRecord::factory((
+            Some(profile_id.clone()),
+            recipe_id.clone(),
+        ));
         let loading_id = request.id;
         store.update(RequestState::Loading {
             request: request.into(),
             start_time: Utc::now(),
         });
 
-        let request =
-            Request::factory((Some(profile_id.clone()), recipe_id.clone()));
+        let request = RequestRecord::factory((
+            Some(profile_id.clone()),
+            recipe_id.clone(),
+        ));
         let request_error_id = request.id;
         store.update(RequestState::RequestError {
             error: RequestError {

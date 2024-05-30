@@ -55,7 +55,7 @@ pub struct Exchange {
     /// ID to uniquely refer to this exchange
     pub id: ExchangeId,
     /// What we said. Use an Arc so the view can hang onto it.
-    pub request: Arc<Request>,
+    pub request: Arc<RequestRecord>,
     /// What we heard. Use an Arc so the view can hang onto it.
     pub response: Arc<Response>,
     /// When was the request sent to the server?
@@ -92,16 +92,19 @@ impl From<&Exchange> for ExchangeSummary {
     }
 }
 
-/// A single instance of an HTTP request. There are a few reasons we need this
-/// in addition to [reqwest::Request]:
-/// - It stores additional Slumber-specific metadata
-/// - It is serializable/deserializable, for database access
+/// Data for an HTTP request. This is similar to [reqwest::Request], but differs
+/// in some key ways:
+/// - Each [reqwest::Request] can only exist once (from creation to sending),
+/// whereas a request record can repeatedly be serialized and deserialized, to
+/// represent historical requests.
+/// - This stores additional Slumber-specific metadata
 ///
-/// This intentionally does *not* implement `Clone`, because each request is
-/// unique.
+/// This intentionally does *not* implement `Clone`, because request data could
+/// potentially be large so we want to be intentional about duplicating it only
+/// when necessary.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Request {
+pub struct RequestRecord {
     /// Unique ID for this request. Private to prevent mutation
     pub id: ExchangeId,
     /// The profile used to render this request (for historical context)
@@ -119,7 +122,7 @@ pub struct Request {
     pub body: Option<Body>,
 }
 
-impl Request {
+impl RequestRecord {
     /// Generate a cURL command equivalent to this request
     ///
     /// This only fails if one of the headers or body is binary and can't be
@@ -161,7 +164,7 @@ impl Request {
 }
 
 #[cfg(test)]
-impl crate::test_util::Factory for Request {
+impl crate::test_util::Factory for RequestRecord {
     fn factory(_: ()) -> Self {
         Self {
             id: ExchangeId::new(),
@@ -177,7 +180,9 @@ impl crate::test_util::Factory for Request {
 
 /// Customize profile and recipe ID
 #[cfg(test)]
-impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Request {
+impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
+    for RequestRecord
+{
     fn factory((profile_id, recipe_id): (Option<ProfileId>, RecipeId)) -> Self {
         Self {
             id: ExchangeId::new(),
@@ -205,7 +210,7 @@ impl crate::test_util::Factory for Response {
 #[cfg(test)]
 impl crate::test_util::Factory for Exchange {
     fn factory(_: ()) -> Self {
-        let request = Request::factory(());
+        let request = RequestRecord::factory(());
         let response = Response::factory(());
         Self {
             id: request.id,
@@ -221,7 +226,7 @@ impl crate::test_util::Factory for Exchange {
 #[cfg(test)]
 impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
     fn factory(params: (Option<ProfileId>, RecipeId)) -> Self {
-        let request = Request::factory(params);
+        let request = RequestRecord::factory(params);
         let response = Response::factory(());
         Self {
             id: request.id,
@@ -444,7 +449,7 @@ pub struct RequestError {
     #[source]
     pub error: anyhow::Error,
     /// The request that caused all this ruckus
-    pub request: Arc<Request>,
+    pub request: Arc<RequestRecord>,
     /// When was the request launched?
     pub start_time: DateTime<Utc>,
     /// When did the error occur?
@@ -515,11 +520,11 @@ mod tests {
             "content-type" => "application/json",
         };
         let body = json!({"data": "value"});
-        let request = Request {
+        let request = RequestRecord {
             method: Method::DELETE,
             headers: header_map(headers),
             body: Some(serde_json::to_vec(&body).unwrap().into()),
-            ..Request::factory(())
+            ..RequestRecord::factory(())
         };
 
         assert_eq!(

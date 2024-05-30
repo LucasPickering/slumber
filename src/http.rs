@@ -15,9 +15,9 @@
 //!    build
 //!      |
 //!      v
-//! +---------+
-//! | Request |
-//! +---------+
+//! +---------------+
+//! | RequestRecord |
+//! +---------------+
 //!      |
 //!    send
 //!      |
@@ -121,7 +121,7 @@ impl HttpEngine {
     pub async fn send(
         self,
         database: &CollectionDatabase,
-        request: Arc<Request>,
+        request: Arc<RequestRecord>,
     ) -> Result<Exchange, RequestError> {
         let id = request.id;
 
@@ -170,7 +170,7 @@ impl HttpEngine {
     /// is synonymous with a request's elapsed time.
     async fn send_request_helper(
         &self,
-        request: &Request,
+        request: &RequestRecord,
     ) -> reqwest::Result<Response> {
         // Convert to reqwest format as part of the execution. This means
         // certain builder errors will show up as "request" errors which is
@@ -203,7 +203,7 @@ impl HttpEngine {
     /// need to retain ownership for the UI.
     fn convert_request(
         &self,
-        request: &Request,
+        request: &RequestRecord,
     ) -> reqwest::Result<reqwest::Request> {
         // Convert to reqwest's request format
         let mut request_builder = self
@@ -297,7 +297,7 @@ impl RequestBuilder {
     pub async fn build(
         self,
         template_context: &TemplateContext,
-    ) -> Result<Request, RequestBuildError> {
+    ) -> Result<RequestRecord, RequestBuildError> {
         self.apply_error(
             self.render_request(template_context),
             template_context,
@@ -342,7 +342,7 @@ impl RequestBuilder {
     async fn render_request(
         &self,
         template_context: &TemplateContext,
-    ) -> anyhow::Result<Request> {
+    ) -> anyhow::Result<RequestRecord> {
         // Render everything in parallel
         let (url, headers, body) = try_join!(
             self.render_url(template_context),
@@ -355,7 +355,7 @@ impl RequestBuilder {
             "Built request from recipe",
         );
 
-        Ok(Request {
+        Ok(RequestRecord {
             id: self.id,
             profile_id: template_context.selected_profile.clone(),
             recipe_id: self.recipe.id.clone(),
@@ -664,7 +664,7 @@ mod tests {
 
         assert_eq!(
             request,
-            Request {
+            RequestRecord {
                 id: request.id,
                 profile_id: Some(
                     template_context.collection.first_profile_id().clone()
@@ -763,7 +763,7 @@ mod tests {
 
         assert_eq!(
             request,
-            Request {
+            RequestRecord {
                 id: request.id,
                 profile_id: Some(profile_id),
                 recipe_id,
@@ -808,7 +808,7 @@ mod tests {
 
         assert_eq!(
             request,
-            Request {
+            RequestRecord {
                 id: request.id,
                 profile_id: None,
                 recipe_id,

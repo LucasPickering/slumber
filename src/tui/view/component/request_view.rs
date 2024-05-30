@@ -1,5 +1,5 @@
 use crate::{
-    http::{ExchangeId, Request},
+    http::{ExchangeId, RequestRecord},
     tui::{
         input::Action,
         message::Message,
@@ -26,14 +26,14 @@ pub struct RequestView {
 }
 
 pub struct RequestViewProps {
-    pub request: Arc<Request>,
+    pub request: Arc<RequestRecord>,
 }
 
 /// Inner state, which should be reset when request changes
 #[derive(Debug)]
 struct State {
     /// Store pointer to the request, so we can access it in the update step
-    request: Arc<Request>,
+    request: Arc<RequestRecord>,
     /// Persist the request body to track view state. Update whenever the
     /// loaded request changes
     body: Component<ExchangeBody>,

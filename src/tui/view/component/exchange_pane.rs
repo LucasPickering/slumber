@@ -1,6 +1,6 @@
 use crate::{
     collection::RecipeNode,
-    http::Request,
+    http::RequestRecord,
     tui::{
         context::TuiContext,
         input::Action,
@@ -191,7 +191,7 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
         // Render request/response based on state. Lambas help with code dupe
         let selected_tab = self.tabs.data().selected();
         let render_tabs = |frame| self.tabs.draw(frame, (), tabs_area, true);
-        let render_request = |frame, request: &Arc<Request>| {
+        let render_request = |frame, request: &Arc<RequestRecord>| {
             self.request.draw(
                 frame,
                 RequestViewProps {

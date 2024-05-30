@@ -210,7 +210,7 @@ mod tests {
             ChainSource, Profile, Recipe, RecipeId,
         },
         config::Config,
-        http::{ContentType, Request, RequestRecord, Response},
+        http::{ContentType, Exchange, Request, Response},
         test_util::{
             assert_err, header_map, temp_dir, Factory, TempDir, TestPrompter,
         },
@@ -380,10 +380,10 @@ mod tests {
             ..Response::factory(())
         };
         database
-            .insert_request(&RequestRecord {
+            .insert_exchange(&Exchange {
                 request: request.into(),
                 response: response.into(),
-                ..RequestRecord::factory(())
+                ..Exchange::factory(())
             })
             .unwrap();
         let selector = selector.map(|s| s.parse().unwrap());
@@ -486,12 +486,12 @@ mod tests {
             ..Chain::factory(())
         },
         Some("recipe1"),
-        Some(RequestRecord {
+        Some(Exchange {
             response: Response {
                 body: "not json!".into(),
                 ..Response::factory(())
             }.into(),
-            ..RequestRecord::factory(())
+            ..Exchange::factory(())
         }),
         "content type not provided",
     )]
@@ -509,12 +509,12 @@ mod tests {
             ..Chain::factory(())
         },
         Some("recipe1"),
-        Some(RequestRecord {
+        Some(Exchange {
             response: Response {
                 body: "not json!".into(),
                 ..Response::factory(())
             }.into(),
-            ..RequestRecord::factory(())
+            ..Exchange::factory(())
         }),
         "Parsing response: expected ident at line 1 column 2",
     )]
@@ -532,12 +532,12 @@ mod tests {
             ..Chain::factory(())
         },
         Some("recipe1"),
-        Some(RequestRecord {
+        Some(Exchange {
             response: Response {
                 body: "[1, 2]".into(),
                 ..Response::factory(())
             }.into(),
-            ..RequestRecord::factory(())
+            ..Exchange::factory(())
         }),
         "Expected exactly one result",
     )]
@@ -548,7 +548,7 @@ mod tests {
         // ID of a recipe to add to the collection
         #[case] recipe_id: Option<&str>,
         // Optional request/response data to store in the database
-        #[case] record: Option<RequestRecord>,
+        #[case] exchange: Option<Exchange>,
         #[case] expected_error: &str,
     ) {
         let database = CollectionDatabase::factory(());
@@ -565,9 +565,9 @@ mod tests {
             );
         }
 
-        // Insert record into DB
-        if let Some(record) = record {
-            database.insert_request(&record).unwrap();
+        // Insert exchange into DB
+        if let Some(exchange) = exchange {
+            database.insert_exchange(&exchange).unwrap();
         }
 
         let chains = indexmap! {chain_id.into() => chain};
@@ -593,26 +593,26 @@ mod tests {
     )]
     #[case::expire_with_duration(
         ChainRequestTrigger::Expire(Duration::from_secs(60)),
-        Some(RequestRecord {
+        Some(Exchange {
             end_time: Utc::now() - Duration::from_secs(100),
-            ..RequestRecord::factory(())})
+            ..Exchange::factory(())})
     )]
     #[case::always_no_history(ChainRequestTrigger::Always, None)]
     #[case::always_with_history(
         ChainRequestTrigger::Always,
-        Some(RequestRecord::factory(()))
+        Some(Exchange::factory(()))
     )]
     #[tokio::test]
     async fn test_triggered_request(
         #[case] trigger: ChainRequestTrigger,
         // Optional request data to store in the database
-        #[case] record: Option<RequestRecord>,
+        #[case] exchange: Option<Exchange>,
     ) {
         let database = CollectionDatabase::factory(());
 
         // Set up DB
-        if let Some(record) = record {
-            database.insert_request(&record).unwrap();
+        if let Some(exchange) = exchange {
+            database.insert_exchange(&exchange).unwrap();
         }
 
         // Mock HTTP response

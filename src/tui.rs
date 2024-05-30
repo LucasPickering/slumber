@@ -219,7 +219,7 @@ impl Tui {
             }
             Message::HttpComplete(result) => {
                 let state = match result {
-                    Ok(record) => RequestState::response(record),
+                    Ok(exchange) => RequestState::response(exchange),
                     Err(error) => RequestState::RequestError { error },
                 };
                 self.view.set_request_state(state);

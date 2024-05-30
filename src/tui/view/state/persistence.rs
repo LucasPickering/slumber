@@ -2,7 +2,7 @@
 
 use crate::{
     collection::RecipeId,
-    http::RequestId,
+    http::ExchangeId,
     tui::view::{
         component::Component,
         context::ViewContext,
@@ -84,8 +84,8 @@ impl<T: PersistentContainer> Drop for Persistent<T> {
 pub enum PersistentKey {
     /// Which pane is selected?
     PrimaryPane,
-    /// Which tab in the record (AKA request/response) pane is selected?
-    RecordTab,
+    /// Which tab in the exchange (AKA request/response) pane is selected?
+    ExchangeTab,
     /// Which pane (if any) is fullscreened?
     FullscreenMode,
     /// Selected profile in the list
@@ -130,7 +130,7 @@ impl<T: FixedSelect + Serialize + DeserializeOwned> Persistable for T {
 
 impl_persistable!(bool);
 impl_persistable!(String);
-impl_persistable!(RequestId);
+impl_persistable!(ExchangeId);
 
 /// A container that holds a persisted value. The container has to tell us how
 /// to get and set the value, and [Persistent] will handle the actual DB

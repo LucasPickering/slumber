@@ -2,7 +2,7 @@
 //! events (e.g. HTTP responses)
 
 use crate::{
-    http::RequestId,
+    http::ExchangeId,
     tui::{
         input::Action,
         view::{
@@ -107,7 +107,7 @@ pub enum Event {
     /// Load a request from the database. If the ID is given, load that
     /// specific request. If not, get the most recent for the current
     /// profile+recipe.
-    HttpSelectRequest(Option<RequestId>),
+    HttpSelectRequest(Option<ExchangeId>),
     /// Update the state of an in-progress HTTP request
     HttpSetState(RequestState),
 

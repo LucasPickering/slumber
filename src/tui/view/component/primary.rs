@@ -8,11 +8,11 @@ use crate::{
         view::{
             common::actions::ActionsModal,
             component::{
+                exchange_pane::{ExchangePane, ExchangePaneProps},
                 help::HelpModal,
                 profile_select::ProfilePane,
                 recipe_list::RecipeListPane,
                 recipe_pane::{RecipeMenuAction, RecipePane, RecipePaneProps},
-                record_pane::{RecordPane, RecordPaneProps},
             },
             draw::{Draw, DrawMetadata},
             event::{Event, EventHandler, Update},
@@ -48,7 +48,7 @@ pub struct PrimaryView {
     profile_pane: Component<ProfilePane>,
     recipe_list_pane: Component<RecipeListPane>,
     recipe_pane: Component<RecipePane>,
-    record_pane: Component<RecordPane>,
+    exchange_pane: Component<ExchangePane>,
 }
 
 #[cfg_attr(test, derive(Clone))]
@@ -73,7 +73,7 @@ pub enum PrimaryPane {
     #[default]
     RecipeList,
     Recipe,
-    Record,
+    Exchange,
 }
 impl FixedSelect for PrimaryPane {}
 
@@ -84,8 +84,8 @@ impl FixedSelect for PrimaryPane {}
 enum FullscreenMode {
     /// Fullscreen the active request recipe
     Recipe,
-    /// Fullscreen the active request/response
-    Record,
+    /// Fullscreen the active request/response exchange
+    Exchange,
 }
 impl_persistable!(Option<FullscreenMode>);
 
@@ -120,7 +120,7 @@ impl PrimaryView {
             recipe_list_pane,
             profile_pane,
             recipe_pane: Default::default(),
-            record_pane: Default::default(),
+            exchange_pane: Default::default(),
         }
     }
 
@@ -179,9 +179,9 @@ impl PrimaryView {
             self.is_selected(PrimaryPane::Recipe),
         );
 
-        self.record_pane.draw(
+        self.exchange_pane.draw(
             frame,
-            RecordPaneProps {
+            ExchangePaneProps {
                 selected_recipe_node: self
                     .recipe_list_pane
                     .data()
@@ -189,7 +189,7 @@ impl PrimaryView {
                 request_state: props.selected_request,
             },
             request_response_area,
-            self.is_selected(PrimaryPane::Record),
+            self.is_selected(PrimaryPane::Exchange),
         );
     }
 
@@ -212,7 +212,7 @@ impl PrimaryView {
         // Split right column vertically. Expand the currently selected pane
         let (top, bottom) = match self.selected_pane.selected() {
             PrimaryPane::Recipe => (2, 1),
-            PrimaryPane::Record | PrimaryPane::RecipeList => (1, 2),
+            PrimaryPane::Exchange | PrimaryPane::RecipeList => (1, 2),
         };
         let denominator = top + bottom;
         Layout::vertical([
@@ -294,7 +294,7 @@ impl EventHandler for PrimaryView {
                     self.selected_pane.select(&PrimaryPane::Recipe)
                 }
                 Action::SelectResponse => {
-                    self.selected_pane.select(&PrimaryPane::Record)
+                    self.selected_pane.select(&PrimaryPane::Exchange)
                 }
 
                 // Toggle fullscreen
@@ -306,8 +306,8 @@ impl EventHandler for PrimaryView {
                         PrimaryPane::Recipe => {
                             self.toggle_fullscreen(FullscreenMode::Recipe)
                         }
-                        PrimaryPane::Record => {
-                            self.toggle_fullscreen(FullscreenMode::Record)
+                        PrimaryPane::Exchange => {
+                            self.toggle_fullscreen(FullscreenMode::Exchange)
                         }
                     }
                 }
@@ -343,7 +343,7 @@ impl EventHandler for PrimaryView {
             self.profile_pane.as_child(),
             self.recipe_list_pane.as_child(),
             self.recipe_pane.as_child(),
-            self.record_pane.as_child(),
+            self.exchange_pane.as_child(),
         ]
     }
 }
@@ -366,9 +366,9 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
                 metadata.area(),
                 true,
             ),
-            Some(FullscreenMode::Record) => self.record_pane.draw(
+            Some(FullscreenMode::Exchange) => self.exchange_pane.draw(
                 frame,
-                RecordPaneProps {
+                ExchangePaneProps {
                     selected_recipe_node: self
                         .recipe_list_pane
                         .data()

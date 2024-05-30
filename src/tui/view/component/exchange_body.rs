@@ -29,9 +29,9 @@ use serde_json_path::JsonPath;
 use std::cell::Cell;
 use Debug;
 
-/// Display text body of a request/response
+/// Display text body of a request OR response
 #[derive(Debug)]
-pub struct RecordBody {
+pub struct ExchangeBody {
     /// Body text content. State cell allows us to reset this whenever the
     /// request changes
     text_window: StateCell<Option<Query>, Component<TextWindow<String>>>,
@@ -47,7 +47,7 @@ pub struct RecordBody {
 }
 
 #[derive(Clone)]
-pub struct RecordBodyProps<'a> {
+pub struct ExchangeBodyProps<'a> {
     pub body: &'a Body,
 }
 
@@ -59,7 +59,7 @@ enum QueryCallback {
     Submit(String),
 }
 
-impl RecordBody {
+impl ExchangeBody {
     /// Create a new body, optionally loading the query text from the
     /// persistence DB. This is optional because not all callers use the query
     /// box, or want to persist the value.
@@ -100,7 +100,7 @@ impl RecordBody {
     }
 }
 
-impl EventHandler for RecordBody {
+impl EventHandler for ExchangeBody {
     fn update(&mut self, event: Event) -> Update {
         if let Some(Action::Search) = event.action() {
             if self.query_available.get() {
@@ -148,11 +148,11 @@ impl EventHandler for RecordBody {
     }
 }
 
-impl<'a> Draw<RecordBodyProps<'a>> for RecordBody {
+impl<'a> Draw<ExchangeBodyProps<'a>> for ExchangeBody {
     fn draw(
         &self,
         frame: &mut Frame,
-        props: RecordBodyProps,
+        props: ExchangeBodyProps,
         metadata: DrawMetadata,
     ) {
         // Body can only be queried if it's been parsed
@@ -251,8 +251,8 @@ mod tests {
         let body = Body::new(TEXT.into());
         let component = TestComponent::new(
             harness,
-            RecordBody::new(None),
-            RecordBodyProps { body: &body },
+            ExchangeBody::new(None),
+            ExchangeBodyProps { body: &body },
         );
 
         // Assert state
@@ -279,8 +279,8 @@ mod tests {
     ) {
         let mut component = TestComponent::new(
             harness,
-            RecordBody::new(None),
-            RecordBodyProps {
+            ExchangeBody::new(None),
+            ExchangeBodyProps {
                 body: &json_response.body,
             },
         );
@@ -357,8 +357,8 @@ mod tests {
         // correctly here
         let component = TestComponent::new(
             harness,
-            RecordBody::new(Some(persistent_key)),
-            RecordBodyProps {
+            ExchangeBody::new(Some(persistent_key)),
+            ExchangeBodyProps {
                 body: &json_response.body,
             },
         );

@@ -8,8 +8,8 @@ pub mod select;
 use crate::{
     collection::{ProfileId, RecipeId},
     http::{
-        Request, RequestBuildError, RequestError, RequestId, RequestRecord,
-        RequestRecordSummary,
+        Exchange, ExchangeId, ExchangeSummary, Request, RequestBuildError,
+        RequestError,
     },
 };
 use bytesize::ByteSize;
@@ -96,7 +96,7 @@ pub enum RequestState {
     /// The request is being built. Typically this is very fast, but can be
     /// slow if a chain source takes a while.
     Building {
-        id: RequestId,
+        id: ExchangeId,
         start_time: DateTime<Utc>,
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
@@ -118,7 +118,7 @@ pub enum RequestState {
     /// A resolved HTTP response, with all content loaded and ready to be
     /// displayed. This does *not necessarily* have a 2xx/3xx status code, any
     /// received response is considered a "success".
-    Response { record: RequestRecord },
+    Response { exchange: Exchange },
 
     /// Error occurred sending the request or receiving the response.
     RequestError { error: RequestError },
@@ -147,13 +147,13 @@ pub struct ResponseMetadata {
 impl RequestState {
     /// Unique ID for this request, which will be retained throughout its life
     /// cycle
-    pub fn id(&self) -> RequestId {
+    pub fn id(&self) -> ExchangeId {
         match self {
             Self::Building { id, .. } => *id,
             Self::BuildError { error, .. } => error.id,
             Self::Loading { request, .. } => request.id,
             Self::RequestError { error } => error.request.id,
-            Self::Response { record, .. } => record.id,
+            Self::Response { exchange, .. } => exchange.id,
         }
     }
 
@@ -164,7 +164,9 @@ impl RequestState {
             Self::BuildError { error } => error.profile_id.as_ref(),
             Self::Loading { request, .. } => request.profile_id.as_ref(),
             Self::RequestError { error } => error.request.profile_id.as_ref(),
-            Self::Response { record, .. } => record.request.profile_id.as_ref(),
+            Self::Response { exchange, .. } => {
+                exchange.request.profile_id.as_ref()
+            }
         }
     }
 
@@ -175,7 +177,7 @@ impl RequestState {
             Self::BuildError { error } => &error.recipe_id,
             Self::Loading { request, .. } => &request.recipe_id,
             Self::RequestError { error } => &error.request.recipe_id,
-            Self::Response { record, .. } => &record.request.recipe_id,
+            Self::Response { exchange, .. } => &exchange.request.recipe_id,
         }
     }
 
@@ -188,9 +190,9 @@ impl RequestState {
                 start_time: *start_time,
                 duration: Utc::now() - start_time,
             }),
-            Self::Response { record, .. } => Some(RequestMetadata {
-                start_time: record.start_time,
-                duration: record.duration(),
+            Self::Response { exchange, .. } => Some(RequestMetadata {
+                start_time: exchange.start_time,
+                duration: exchange.duration(),
             }),
             Self::RequestError { error } => Some(RequestMetadata {
                 start_time: error.start_time,
@@ -202,10 +204,10 @@ impl RequestState {
     /// Get metadata about the request. Return `None` if the response hasn't
     /// been received, or the request failed.
     pub fn response_metadata(&self) -> Option<ResponseMetadata> {
-        if let RequestState::Response { record } = self {
+        if let RequestState::Response { exchange } = self {
             Some(ResponseMetadata {
-                status: record.response.status,
-                size: record.response.body.size(),
+                status: exchange.response.status,
+                size: exchange.response.body.size(),
             })
         } else {
             None
@@ -230,12 +232,12 @@ impl RequestState {
 
     /// Create a request state from a completed response. This is **expensive**,
     /// don't call it unless you need the value.
-    pub fn response(record: RequestRecord) -> Self {
+    pub fn response(exchange: Exchange) -> Self {
         // Pre-parse the body so the view doesn't have to do it. We're in the
         // main thread still here though so large bodies may take a while. Maybe
         // we want to punt this into a separate task?
-        record.response.parse_body();
-        Self::Response { record }
+        exchange.response.parse_body();
+        Self::Response { exchange }
     }
 }
 
@@ -245,32 +247,32 @@ impl RequestState {
 #[derive(Debug)]
 pub enum RequestStateSummary {
     Building {
-        id: RequestId,
+        id: ExchangeId,
         start_time: DateTime<Utc>,
     },
     BuildError {
-        id: RequestId,
+        id: ExchangeId,
         time: DateTime<Utc>,
     },
     Loading {
-        id: RequestId,
+        id: ExchangeId,
         start_time: DateTime<Utc>,
     },
-    Response(RequestRecordSummary),
+    Response(ExchangeSummary),
     RequestError {
-        id: RequestId,
+        id: ExchangeId,
         time: DateTime<Utc>,
     },
 }
 
 impl RequestStateSummary {
-    pub fn id(&self) -> RequestId {
+    pub fn id(&self) -> ExchangeId {
         match self {
             Self::Building { id, .. }
             | Self::BuildError { id, .. }
             | Self::Loading { id, .. }
             | Self::RequestError { id, .. } => *id,
-            Self::Response(record) => record.id,
+            Self::Response(exchange) => exchange.id,
         }
     }
 
@@ -286,7 +288,7 @@ impl RequestStateSummary {
                 start_time: time, ..
             }
             | Self::RequestError { time, .. } => *time,
-            Self::Response(record) => record.start_time,
+            Self::Response(exchange) => exchange.start_time,
         }
     }
 }
@@ -310,7 +312,9 @@ impl From<&RequestState> for RequestStateSummary {
                 id: request.id,
                 start_time: *start_time,
             },
-            RequestState::Response { record } => Self::Response(record.into()),
+            RequestState::Response { exchange } => {
+                Self::Response(exchange.into())
+            }
             RequestState::RequestError { error } => Self::RequestError {
                 id: error.request.id,
                 time: error.start_time,

@@ -3,7 +3,7 @@
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    http::{RequestId, RequestRecord, RequestRecordSummary},
+    http::{Exchange, ExchangeId, ExchangeSummary},
     util::{
         paths::{DataDirectory, FileGuard},
         ResultExt,
@@ -291,8 +291,8 @@ impl CollectionDatabase {
     /// Get a request by ID, or `None` if it does not exist in history.
     pub fn get_request(
         &self,
-        request_id: RequestId,
-    ) -> anyhow::Result<Option<RequestRecord>> {
+        request_id: ExchangeId,
+    ) -> anyhow::Result<Option<Exchange>> {
         trace!(request_id = %request_id, "Fetching request from database");
         self.database
             .connection()
@@ -322,7 +322,7 @@ impl CollectionDatabase {
         &self,
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
-    ) -> anyhow::Result<Option<RequestRecord>> {
+    ) -> anyhow::Result<Option<Exchange>> {
         trace!(
             profile_id = ?profile_id,
             recipe_id = %recipe_id,
@@ -356,16 +356,16 @@ impl CollectionDatabase {
             .traced()
     }
 
-    /// Add a new request to history. The HTTP engine is responsible for
-    /// inserting its own requests. Only requests that received a valid HTTP
+    /// Add a new exchange to history. The HTTP engine is responsible for
+    /// inserting its own exchanges. Only requests that received a valid HTTP
     /// response should be stored. In-flight requests, invalid requests, and
     /// requests that failed to complete (e.g. because of a network error)
     /// should not (and cannot) be stored.
-    pub fn insert_request(&self, record: &RequestRecord) -> anyhow::Result<()> {
+    pub fn insert_exchange(&self, exchange: &Exchange) -> anyhow::Result<()> {
         debug!(
-            id = %record.id,
-            url = %record.request.url,
-            "Adding request record to database",
+            id = %exchange.id,
+            url = %exchange.request.url,
+            "Adding exchange to database",
         );
         self.database
             .connection()
@@ -385,18 +385,21 @@ impl CollectionDatabase {
                 VALUES (:id, :collection_id, :profile_id, :recipe_id,
                     :start_time, :end_time, :request, :response, :status_code)",
                 named_params! {
-                    ":id": record.id,
+                    ":id": exchange.id,
                     ":collection_id": self.collection_id,
-                    ":profile_id": &record.request.profile_id,
-                    ":recipe_id": &record.request.recipe_id,
-                    ":start_time": &record.start_time,
-                    ":end_time": &record.end_time,
-                    ":request": &ByteEncoded(&*record.request),
-                    ":response": &ByteEncoded(&*record.response),
-                    ":status_code": record.response.status.as_u16(),
+                    ":profile_id": &exchange.request.profile_id,
+                    ":recipe_id": &exchange.request.recipe_id,
+                    ":start_time": &exchange.start_time,
+                    ":end_time": &exchange.end_time,
+                    ":request": &ByteEncoded(&*exchange.request),
+                    ":response": &ByteEncoded(&*exchange.response),
+                    ":status_code": exchange.response.status.as_u16(),
                 },
             )
-            .context(format!("Error saving request {} to database", record.id))
+            .context(format!(
+                "Error saving request {} to database",
+                exchange.id
+            ))
             .traced()?;
         Ok(())
     }
@@ -406,7 +409,7 @@ impl CollectionDatabase {
         &self,
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
-    ) -> anyhow::Result<Vec<RequestRecordSummary>> {
+    ) -> anyhow::Result<Vec<ExchangeSummary>> {
         trace!(
             profile_id = ?profile_id,
             recipe_id = %recipe_id,
@@ -535,13 +538,13 @@ impl FromSql for ProfileId {
     }
 }
 
-impl ToSql for RequestId {
+impl ToSql for ExchangeId {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         self.0.to_sql()
     }
 }
 
-impl FromSql for RequestId {
+impl FromSql for ExchangeId {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         Ok(Self(Uuid::column_result(value)?))
     }
@@ -617,7 +620,7 @@ impl<T: DeserializeOwned> FromSql for ByteEncoded<T> {
 }
 
 /// Convert from `SELECT * FROM requests`
-impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
+impl<'a, 'b> TryFrom<&'a Row<'b>> for Exchange {
     type Error = rusqlite::Error;
 
     fn try_from(row: &'a Row<'b>) -> Result<Self, Self::Error> {
@@ -633,7 +636,7 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecord {
 }
 
 /// Convert from SQL row
-impl<'a, 'b> TryFrom<&'a Row<'b>> for RequestRecordSummary {
+impl<'a, 'b> TryFrom<&'a Row<'b>> for ExchangeSummary {
     type Error = rusqlite::Error;
 
     fn try_from(row: &'a Row<'b>) -> Result<Self, Self::Error> {
@@ -677,14 +680,14 @@ mod tests {
         let collection1 = database.clone().into_collection(path1).unwrap();
         let collection2 = database.clone().into_collection(path2).unwrap();
 
-        let record1 = RequestRecord::factory(());
-        let record2 = RequestRecord::factory(());
-        let profile_id = record1.request.profile_id.as_ref();
-        let recipe_id = &record1.request.recipe_id;
+        let exchange1 = Exchange::factory(());
+        let exchange2 = Exchange::factory(());
+        let profile_id = exchange1.request.profile_id.as_ref();
+        let recipe_id = &exchange1.request.recipe_id;
         let ui_key = "key1";
-        collection1.insert_request(&record1).unwrap();
+        collection1.insert_exchange(&exchange1).unwrap();
         collection1.set_ui(ui_key, "value1").unwrap();
-        collection2.insert_request(&record2).unwrap();
+        collection2.insert_exchange(&exchange2).unwrap();
         collection2.set_ui(ui_key, "value2").unwrap();
 
         // Sanity checks
@@ -694,7 +697,7 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .id,
-            record1.id
+            exchange1.id
         );
         assert_eq!(
             collection1.get_ui::<_, String>(ui_key).unwrap(),
@@ -706,7 +709,7 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .id,
-            record2.id
+            exchange2.id
         );
         assert_eq!(
             collection2.get_ui::<_, String>(ui_key).unwrap(),
@@ -723,7 +726,7 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .id,
-            record2.id
+            exchange2.id
         );
         assert_eq!(
             collection1.get_ui::<_, String>(ui_key).unwrap(),
@@ -750,8 +753,8 @@ mod tests {
             .into_collection(Path::new("README.md"))
             .unwrap();
 
-        let record2 = RequestRecord::factory(());
-        collection2.insert_request(&record2).unwrap();
+        let exchange2 = Exchange::factory(());
+        collection2.insert_exchange(&exchange2).unwrap();
 
         // We separate requests by 3 columns. Create multiple of each column to
         // make sure we filter by each column correctly
@@ -761,7 +764,7 @@ mod tests {
         // compare to what the DB spits back later
         let mut request_ids: HashMap<
             (CollectionId, Option<ProfileId>, RecipeId),
-            RequestId,
+            ExchangeId,
         > = Default::default();
 
         // Create and insert each request
@@ -770,14 +773,14 @@ mod tests {
                 for recipe_id in ["recipe1", "recipe2"] {
                     let recipe_id: RecipeId = recipe_id.into();
                     let profile_id = profile_id.map(ProfileId::from);
-                    let record = RequestRecord::factory((
+                    let exchange = Exchange::factory((
                         profile_id.clone(),
                         recipe_id.clone(),
                     ));
-                    collection.insert_request(&record).unwrap();
+                    collection.insert_exchange(&exchange).unwrap();
                     request_ids.insert(
                         (collection.collection_id(), profile_id, recipe_id),
-                        record.id,
+                        exchange.id,
                     );
                 }
             }
@@ -794,10 +797,10 @@ mod tests {
 
                     // Leave the Option here so a non-match will trigger a handy
                     // assertion error
-                    let record_id = collection
+                    let exchange_id = collection
                         .get_latest_request(profile_id.as_ref(), &recipe_id)
                         .unwrap()
-                        .map(|record| record.id);
+                        .map(|exchange| exchange.id);
                     let expected_id = request_ids.get(&(
                         collection_id,
                         profile_id.clone(),
@@ -805,7 +808,7 @@ mod tests {
                     ));
 
                     assert_eq!(
-                        record_id.as_ref(),
+                        exchange_id.as_ref(),
                         expected_id,
                         "Request mismatch for collection = {collection_id}, \
                         profile = {profile_id:?}, recipe = {recipe_id}"
@@ -824,7 +827,7 @@ mod tests {
         // compare to what the DB spits back later
         let mut request_ids: HashMap<
             (Option<ProfileId>, RecipeId),
-            Vec<RequestId>,
+            Vec<ExchangeId>,
         > = Default::default();
         for profile_id in [None, Some("profile1"), Some("profile2")] {
             for recipe_id in ["recipe1", "recipe2"] {
@@ -832,12 +835,12 @@ mod tests {
                 let profile_id = profile_id.map(ProfileId::from);
                 let mut ids = (0..3)
                     .map(|_| {
-                        let record = RequestRecord::factory((
+                        let exchange = Exchange::factory((
                             profile_id.clone(),
                             recipe_id.clone(),
                         ));
-                        database.insert_request(&record).unwrap();
-                        record.id
+                        database.insert_exchange(&exchange).unwrap();
+                        exchange.id
                     })
                     .collect_vec();
                 // Order newest->oldest, that's the response we expect
@@ -859,7 +862,7 @@ mod tests {
                     .get_all_requests(profile_id.as_ref(), &recipe_id)
                     .unwrap()
                     .into_iter()
-                    .map(|record| record.id)
+                    .map(|exchange| exchange.id)
                     .collect_vec();
                 let expected_id = request_ids
                     .get(&(profile_id.clone(), recipe_id.clone()))

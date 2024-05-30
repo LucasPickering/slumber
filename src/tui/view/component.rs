@@ -1,3 +1,5 @@
+mod exchange_body;
+mod exchange_pane;
 mod help;
 mod history;
 mod internal;
@@ -6,8 +8,6 @@ mod primary;
 mod profile_select;
 mod recipe_list;
 mod recipe_pane;
-mod record_body;
-mod record_pane;
 mod request_view;
 mod response_view;
 mod root;

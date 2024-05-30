@@ -1,6 +1,6 @@
 use crate::{
     collection::{ProfileId, RecipeId},
-    http::RequestId,
+    http::ExchangeId,
     tui::view::{
         context::ViewContext, state::RequestStateSummary, RequestState,
     },
@@ -23,12 +23,12 @@ use std::collections::{hash_map::Entry, HashMap};
 /// operation fails.
 #[derive(Debug, Default)]
 pub struct RequestStore {
-    requests: HashMap<RequestId, RequestState>,
+    requests: HashMap<ExchangeId, RequestState>,
 }
 
 impl RequestStore {
     /// Get request state by ID
-    pub fn get(&self, id: RequestId) -> Option<&RequestState> {
+    pub fn get(&self, id: ExchangeId) -> Option<&RequestState> {
         self.requests.get(&id)
     }
 
@@ -40,14 +40,14 @@ impl RequestStore {
 
     /// Load a request from the database by ID. If already present in the store,
     /// do *not* update it. Only go to the DB if it's missing.
-    pub fn load(&mut self, id: RequestId) -> anyhow::Result<()> {
+    pub fn load(&mut self, id: ExchangeId) -> anyhow::Result<()> {
         if let Entry::Vacant(entry) = self.requests.entry(id) {
-            let record = ViewContext::with_database(|database| {
+            let exchange = ViewContext::with_database(|database| {
                 database
                     .get_request(id)?
                     .ok_or_else(|| anyhow!("Unknown request ID `{id}`"))
             })?;
-            entry.insert(RequestState::response(record));
+            entry.insert(RequestState::response(exchange));
         }
         Ok(())
     }
@@ -58,11 +58,11 @@ impl RequestStore {
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
     ) -> anyhow::Result<Option<&RequestState>> {
-        let record = ViewContext::with_database(|database| {
+        let exchange = ViewContext::with_database(|database| {
             database.get_latest_request(profile_id, recipe_id)
         })?;
-        let state = record.map(|record| {
-            let state = RequestState::response(record);
+        let state = exchange.map(|exchange| {
+            let state = RequestState::response(exchange);
             // Insert into the map, get a reference back
             // unstable: https://doc.rust-lang.org/std/collections/hash_map/enum.Entry.html#method.insert_entry
             match self.requests.entry(state.id()) {
@@ -116,7 +116,7 @@ impl RequestStore {
 mod tests {
     use super::*;
     use crate::{
-        http::{Request, RequestBuildError, RequestError, RequestRecord},
+        http::{Exchange, Request, RequestBuildError, RequestError},
         test_util::{assert_err, assert_matches, Factory},
         tui::test_util::{harness, TestHarness},
     };
@@ -126,51 +126,51 @@ mod tests {
 
     #[test]
     fn test_get() {
-        let record = RequestRecord::factory(());
-        let id = record.id;
+        let exchange = Exchange::factory(());
+        let id = exchange.id;
         let mut store = RequestStore::default();
         store
             .requests
-            .insert(record.id, RequestState::response(record));
+            .insert(exchange.id, RequestState::response(exchange));
 
-        // This is a bit jank, but since we can't clone records, the only way
+        // This is a bit jank, but since we can't clone exchanges, the only way
         // to get the value back for comparison is to access the map directly
         assert_eq!(store.get(id), Some(store.requests.get(&id).unwrap()));
-        assert_eq!(store.get(RequestId::new()), None);
+        assert_eq!(store.get(ExchangeId::new()), None);
     }
 
     #[test]
     fn test_update() {
-        let record = RequestRecord::factory(());
-        let id = record.id;
+        let exchange = Exchange::factory(());
+        let id = exchange.id;
         let mut store = RequestStore::default();
 
         // Update for each state in the life cycle
         assert!(store.update(RequestState::Building {
             id,
-            start_time: record.start_time,
-            profile_id: record.request.profile_id.clone(),
-            recipe_id: record.request.recipe_id.clone()
+            start_time: exchange.start_time,
+            profile_id: exchange.request.profile_id.clone(),
+            recipe_id: exchange.request.recipe_id.clone()
         }));
         assert_matches!(store.get(id), Some(RequestState::Building { .. }));
 
         assert!(!store.update(RequestState::Loading {
-            request: Arc::clone(&record.request),
-            start_time: record.start_time,
+            request: Arc::clone(&exchange.request),
+            start_time: exchange.start_time,
         }));
         assert_matches!(store.get(id), Some(RequestState::Loading { .. }));
 
-        assert!(!store.update(RequestState::response(record)));
+        assert!(!store.update(RequestState::response(exchange)));
         assert_matches!(store.get(id), Some(RequestState::Response { .. }));
 
         // Insert a new request, just to make sure it's independent
-        let record2 = RequestRecord::factory(());
-        let id2 = record2.id;
+        let exchange2 = Exchange::factory(());
+        let id2 = exchange2.id;
         assert!(store.update(RequestState::Building {
             id: id2,
-            start_time: record2.start_time,
-            profile_id: record2.request.profile_id.clone(),
-            recipe_id: record2.request.recipe_id.clone()
+            start_time: exchange2.start_time,
+            profile_id: exchange2.request.profile_id.clone(),
+            recipe_id: exchange2.request.recipe_id.clone()
         }));
         assert_matches!(store.get(id), Some(RequestState::Response { .. }));
         assert_matches!(store.get(id2), Some(RequestState::Building { .. }));
@@ -182,17 +182,17 @@ mod tests {
 
         // Generally we would expect this to be in the DB, but in this case omit
         // it so we can ensure the store *isn't* going to the DB for it
-        let present_record = RequestRecord::factory(());
-        let present_id = present_record.id;
+        let present_exchange = Exchange::factory(());
+        let present_id = present_exchange.id;
 
-        let missing_record = RequestRecord::factory(());
-        let missing_id = missing_record.id;
-        harness.database.insert_request(&missing_record).unwrap();
+        let missing_exchange = Exchange::factory(());
+        let missing_id = missing_exchange.id;
+        harness.database.insert_exchange(&missing_exchange).unwrap();
 
         // Already in store, don't fetch
         store
             .requests
-            .insert(present_id, RequestState::response(present_record));
+            .insert(present_id, RequestState::response(present_exchange));
         assert_matches!(
             store.get(present_id),
             Some(RequestState::Response { .. })
@@ -212,7 +212,7 @@ mod tests {
         );
 
         // Not in store and not in DB, return error
-        assert_err!(store.load(RequestId::new()), "Unknown request ID");
+        assert_err!(store.load(ExchangeId::new()), "Unknown request ID");
     }
 
     #[rstest]
@@ -220,17 +220,17 @@ mod tests {
         let profile_id = ProfileId::factory(());
         let recipe_id = RecipeId::factory(());
 
-        // Create some confounding records, that we don't expected to load
-        create_record(&harness, Some(&profile_id), Some(&recipe_id));
-        create_record(&harness, Some(&profile_id), None);
-        create_record(&harness, None, Some(&recipe_id));
-        let expected_record =
-            create_record(&harness, Some(&profile_id), Some(&recipe_id));
+        // Create some confounding exchanges, that we don't expected to load
+        create_exchange(&harness, Some(&profile_id), Some(&recipe_id));
+        create_exchange(&harness, Some(&profile_id), None);
+        create_exchange(&harness, None, Some(&recipe_id));
+        let expected_exchange =
+            create_exchange(&harness, Some(&profile_id), Some(&recipe_id));
 
         let mut store = RequestStore::default();
         assert_eq!(
             store.load_latest(Some(&profile_id), &recipe_id).unwrap(),
-            Some(&RequestState::response(expected_record))
+            Some(&RequestState::response(expected_exchange))
         );
 
         // Non-match
@@ -245,24 +245,24 @@ mod tests {
         let profile_id = ProfileId::factory(());
         let recipe_id = RecipeId::factory(());
 
-        let mut records = (0..5)
+        let mut exchanges = (0..5)
             .map(|_| {
-                create_record(&harness, Some(&profile_id), Some(&recipe_id))
+                create_exchange(&harness, Some(&profile_id), Some(&recipe_id))
             })
             .collect_vec();
         // Create some confounders
-        create_record(&harness, None, Some(&recipe_id));
-        create_record(&harness, Some(&profile_id), None);
+        create_exchange(&harness, None, Some(&recipe_id));
+        create_exchange(&harness, Some(&profile_id), None);
 
         // Add one request of each possible state. We expect to get em all back
         let mut store = RequestStore::default();
 
         // Pre-load one from the DB, to make sure it gets de-duped
-        let record = records.pop().unwrap();
-        let response_id = record.id;
-        store.update(RequestState::response(record));
+        let exchange = exchanges.pop().unwrap();
+        let response_id = exchange.id;
+        store.update(RequestState::response(exchange));
 
-        let building_id = RequestId::new();
+        let building_id = ExchangeId::new();
         store.update(RequestState::Building {
             id: building_id,
             start_time: Utc::now(),
@@ -270,7 +270,7 @@ mod tests {
             recipe_id: recipe_id.clone(),
         });
 
-        let build_error_id = RequestId::new();
+        let build_error_id = ExchangeId::new();
         store.update(RequestState::BuildError {
             error: RequestBuildError {
                 profile_id: Some(profile_id.clone()),
@@ -303,13 +303,13 @@ mod tests {
 
         // Neither of these should appear
         store.update(RequestState::Building {
-            id: RequestId::new(),
+            id: ExchangeId::new(),
             start_time: Utc::now(),
             profile_id: Some(ProfileId::factory(())),
             recipe_id: recipe_id.clone(),
         });
         store.update(RequestState::Building {
-            id: RequestId::new(),
+            id: ExchangeId::new(),
             start_time: Utc::now(),
             profile_id: Some(profile_id.clone()),
             recipe_id: RecipeId::factory(()),
@@ -347,22 +347,22 @@ mod tests {
                 build_error_id,
                 building_id,
                 response_id, // This one got de-duped
-                records[3].id,
-                records[2].id,
-                records[1].id,
-                records[0].id,
+                exchanges[3].id,
+                exchanges[2].id,
+                exchanges[1].id,
+                exchanges[0].id,
             ]
         );
     }
 
-    /// Create a record with the given profile+recipe ID (or random if
+    /// Create a exchange with the given profile+recipe ID (or random if
     /// None), and insert it into the DB
-    fn create_record(
+    fn create_exchange(
         harness: &TestHarness,
         profile_id: Option<&ProfileId>,
         recipe_id: Option<&RecipeId>,
-    ) -> RequestRecord {
-        let record = RequestRecord::factory((
+    ) -> Exchange {
+        let exchange = Exchange::factory((
             Some(
                 profile_id
                     .cloned()
@@ -370,7 +370,7 @@ mod tests {
             ),
             recipe_id.cloned().unwrap_or_else(|| RecipeId::factory(())),
         ));
-        harness.database.insert_request(&record).unwrap();
-        record
+        harness.database.insert_exchange(&exchange).unwrap();
+        exchange
     }
 }

@@ -1,4 +1,7 @@
-//! HTTP-related data types
+//! HTTP-related data types. The primary term here to know is "exchange". An
+//! exchange is a single HTTP request-response pair. It can be in various
+//! stages, meaning the request or response may not actually be present, if the
+//! exchange is incomplete or failed.
 
 use crate::{
     collection::{ProfileId, RecipeId},
@@ -25,19 +28,19 @@ use tracing::error;
 use url::Url;
 use uuid::Uuid;
 
-/// Unique ID for a single launched request
+/// Unique ID for a single request
 #[derive(
     Copy, Clone, Debug, Display, Eq, Hash, PartialEq, Serialize, Deserialize,
 )]
-pub struct RequestId(pub Uuid);
+pub struct ExchangeId(pub Uuid);
 
-impl RequestId {
+impl ExchangeId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
 }
 
-impl Default for RequestId {
+impl Default for ExchangeId {
     fn default() -> Self {
         Self::new()
     }
@@ -48,9 +51,9 @@ impl Default for RequestId {
 /// successfully for a sent request.
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct RequestRecord {
-    /// ID to uniquely refer to this record. Useful for historical records.
-    pub id: RequestId,
+pub struct Exchange {
+    /// ID to uniquely refer to this exchange
+    pub id: ExchangeId,
     /// What we said. Use an Arc so the view can hang onto it.
     pub request: Arc<Request>,
     /// What we heard. Use an Arc so the view can hang onto it.
@@ -61,30 +64,30 @@ pub struct RequestRecord {
     pub end_time: DateTime<Utc>,
 }
 
-impl RequestRecord {
+impl Exchange {
     /// Get the elapsed time for this request
     pub fn duration(&self) -> Duration {
         self.end_time - self.start_time
     }
 }
 
-/// Metadata about a request record. Useful in lists where request/response
+/// Metadata about an exchange. Useful in lists where request/response content
 /// isn't needed.
 #[derive(Copy, Clone, Debug)]
-pub struct RequestRecordSummary {
-    pub id: RequestId,
+pub struct ExchangeSummary {
+    pub id: ExchangeId,
     pub start_time: DateTime<Utc>,
     pub end_time: DateTime<Utc>,
     pub status: StatusCode,
 }
 
-impl From<&RequestRecord> for RequestRecordSummary {
-    fn from(record: &RequestRecord) -> Self {
+impl From<&Exchange> for ExchangeSummary {
+    fn from(exchange: &Exchange) -> Self {
         Self {
-            id: record.id,
-            start_time: record.start_time,
-            end_time: record.end_time,
-            status: record.response.status,
+            id: exchange.id,
+            start_time: exchange.start_time,
+            end_time: exchange.end_time,
+            status: exchange.response.status,
         }
     }
 }
@@ -100,7 +103,7 @@ impl From<&RequestRecord> for RequestRecordSummary {
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Request {
     /// Unique ID for this request. Private to prevent mutation
-    pub id: RequestId,
+    pub id: ExchangeId,
     /// The profile used to render this request (for historical context)
     pub profile_id: Option<ProfileId>,
     /// The recipe used to generate this request (for historical context)
@@ -161,7 +164,7 @@ impl Request {
 impl crate::test_util::Factory for Request {
     fn factory(_: ()) -> Self {
         Self {
-            id: RequestId::new(),
+            id: ExchangeId::new(),
             profile_id: None,
             recipe_id: "recipe1".into(),
             method: reqwest::Method::GET,
@@ -177,7 +180,7 @@ impl crate::test_util::Factory for Request {
 impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Request {
     fn factory((profile_id, recipe_id): (Option<ProfileId>, RecipeId)) -> Self {
         Self {
-            id: RequestId::new(),
+            id: ExchangeId::new(),
             profile_id,
             recipe_id,
             method: reqwest::Method::GET,
@@ -200,7 +203,7 @@ impl crate::test_util::Factory for Response {
 }
 
 #[cfg(test)]
-impl crate::test_util::Factory for RequestRecord {
+impl crate::test_util::Factory for Exchange {
     fn factory(_: ()) -> Self {
         let request = Request::factory(());
         let response = Response::factory(());
@@ -216,9 +219,7 @@ impl crate::test_util::Factory for RequestRecord {
 
 /// Customize profile and recipe ID
 #[cfg(test)]
-impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
-    for RequestRecord
-{
+impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
     fn factory(params: (Option<ProfileId>, RecipeId)) -> Self {
         let request = Request::factory(params);
         let response = Response::factory(());
@@ -409,7 +410,7 @@ pub struct RequestBuildError {
     /// ID of the recipe being rendered
     pub recipe_id: RecipeId,
     /// ID of the failed request
-    pub id: RequestId,
+    pub id: ExchangeId,
     /// When did the error occur?
     pub time: DateTime<Utc>,
     /// There are a lot of different possible error types, so storing an anyhow

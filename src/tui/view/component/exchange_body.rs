@@ -213,7 +213,7 @@ mod tests {
     use super::*;
     use crate::{
         collection::RecipeId,
-        http::Response,
+        http::ResponseRecord,
         test_util::{header_map, Factory},
         tui::{
             context::TuiContext,
@@ -235,8 +235,8 @@ mod tests {
     }
 
     #[fixture]
-    fn json_response() -> Response {
-        let response = Response {
+    fn json_response() -> ResponseRecord {
+        let response = ResponseRecord {
             status: StatusCode::OK,
             headers: header_map([("Content-Type", "application/json")]),
             body: Body::new(TEXT.into()),
@@ -275,7 +275,7 @@ mod tests {
     #[rstest]
     fn test_parsed(
         #[with(32, 5)] harness: TestHarness,
-        json_response: Response,
+        json_response: ResponseRecord,
     ) {
         let mut component = TestComponent::new(
             harness,
@@ -340,7 +340,7 @@ mod tests {
     #[rstest]
     fn test_initial_query(
         #[with(30, 4)] harness: TestHarness,
-        json_response: Response,
+        json_response: ResponseRecord,
     ) {
         let recipe_id = RecipeId::factory(());
 

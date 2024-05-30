@@ -5,7 +5,7 @@ use crate::{
         ChainId, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
         ChainSource, RecipeId,
     },
-    http::{ContentType, Exchange, RequestBuilder, Response},
+    http::{ContentType, Exchange, RequestBuilder, ResponseRecord},
     template::{
         error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
         Prompt, Template, TemplateChunk, TemplateContext, TemplateError,
@@ -336,7 +336,7 @@ impl<'a> ChainTemplateSource<'a> {
         context: &'a TemplateContext,
         recipe_id: &RecipeId,
         trigger: ChainRequestTrigger,
-    ) -> Result<Response, ChainError> {
+    ) -> Result<ResponseRecord, ChainError> {
         // Get the referenced recipe. We actually only need the whole recipe if
         // we're executing the request, but we want this to error out if the
         // recipe doesn't exist regardless. It's possible the recipe isn't in
@@ -428,7 +428,7 @@ impl<'a> ChainTemplateSource<'a> {
     /// Returns an error with the missing header if not found.
     fn extract_response_value(
         &self,
-        response: Response,
+        response: ResponseRecord,
         component: &ChainRequestSection,
     ) -> Result<Vec<u8>, ChainError> {
         Ok(match component {

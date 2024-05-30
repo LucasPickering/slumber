@@ -210,7 +210,7 @@ mod tests {
             ChainSource, Profile, Recipe, RecipeId,
         },
         config::Config,
-        http::{ContentType, Exchange, RequestRecord, Response},
+        http::{ContentType, Exchange, RequestRecord, ResponseRecord},
         test_util::{
             assert_err, header_map, temp_dir, Factory, TempDir, TestPrompter,
         },
@@ -374,10 +374,10 @@ mod tests {
             recipe_id: recipe_id.clone(),
             ..RequestRecord::factory(())
         };
-        let response = Response {
+        let response = ResponseRecord {
             body: response_body.to_string().into_bytes().into(),
             headers: response_headers,
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         };
         database
             .insert_exchange(&Exchange {
@@ -487,9 +487,9 @@ mod tests {
         },
         Some("recipe1"),
         Some(Exchange {
-            response: Response {
+            response: ResponseRecord {
                 body: "not json!".into(),
-                ..Response::factory(())
+                ..ResponseRecord::factory(())
             }.into(),
             ..Exchange::factory(())
         }),
@@ -510,9 +510,9 @@ mod tests {
         },
         Some("recipe1"),
         Some(Exchange {
-            response: Response {
+            response: ResponseRecord {
                 body: "not json!".into(),
-                ..Response::factory(())
+                ..ResponseRecord::factory(())
             }.into(),
             ..Exchange::factory(())
         }),
@@ -533,9 +533,9 @@ mod tests {
         },
         Some("recipe1"),
         Some(Exchange {
-            response: Response {
+            response: ResponseRecord {
                 body: "[1, 2]".into(),
-                ..Response::factory(())
+                ..ResponseRecord::factory(())
             }.into(),
             ..Exchange::factory(())
         }),

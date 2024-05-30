@@ -5,7 +5,7 @@
 //! not a value, use [ContentType]. If you want to parse dynamically based on
 //! the response's metadata, use [ContentType::parse_response].
 
-use crate::{http::Response, util::Mapping};
+use crate::{http::ResponseRecord, util::Mapping};
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
 use mime::{Mime, APPLICATION, JSON};
@@ -106,7 +106,7 @@ impl ContentType {
     }
 
     /// Parse the content type from a response's `Content-Type` header
-    pub fn from_response(response: &Response) -> anyhow::Result<Self> {
+    pub fn from_response(response: &ResponseRecord) -> anyhow::Result<Self> {
         let header_value = response
             .headers
             .get(header::CONTENT_TYPE)
@@ -141,10 +141,10 @@ impl ContentType {
         }
     }
 
-    /// Helper for parsing the body of a response. Use [Response::parse_body]
-    /// for external usage.
+    /// Helper for parsing the body of a response. Use
+    /// [ResponseRecord::parse_body] for external usage.
     pub(super) fn parse_response(
-        response: &Response,
+        response: &ResponseRecord,
     ) -> anyhow::Result<Box<dyn ResponseContent>> {
         let content_type = Self::from_response(response)?;
         content_type.parse_content(response.body.bytes())
@@ -240,10 +240,10 @@ mod tests {
         #[case] body: &str,
         #[case] expected: T,
     ) {
-        let response = Response {
+        let response = ResponseRecord {
             headers: headers(content_type),
             body: body.into(),
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         };
         assert_eq!(
             ContentType::parse_response(&response)
@@ -282,10 +282,10 @@ mod tests {
             Some(content_type) => headers(content_type),
             None => HeaderMap::new(),
         };
-        let response = Response {
+        let response = ResponseRecord {
             headers,
             body: body.into(),
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         };
         assert_err!(ContentType::parse_response(&response), expected_error);
     }

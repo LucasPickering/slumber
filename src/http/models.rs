@@ -57,7 +57,7 @@ pub struct Exchange {
     /// What we said. Use an Arc so the view can hang onto it.
     pub request: Arc<RequestRecord>,
     /// What we heard. Use an Arc so the view can hang onto it.
-    pub response: Arc<Response>,
+    pub response: Arc<ResponseRecord>,
     /// When was the request sent to the server?
     pub start_time: DateTime<Utc>,
     /// When did we finish receiving the *entire* response?
@@ -197,7 +197,7 @@ impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
 }
 
 #[cfg(test)]
-impl crate::test_util::Factory for Response {
+impl crate::test_util::Factory for ResponseRecord {
     fn factory(_: ()) -> Self {
         Self {
             status: StatusCode::OK,
@@ -211,7 +211,7 @@ impl crate::test_util::Factory for Response {
 impl crate::test_util::Factory for Exchange {
     fn factory(_: ()) -> Self {
         let request = RequestRecord::factory(());
-        let response = Response::factory(());
+        let response = ResponseRecord::factory(());
         Self {
             id: request.id,
             request: request.into(),
@@ -227,7 +227,7 @@ impl crate::test_util::Factory for Exchange {
 impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
     fn factory(params: (Option<ProfileId>, RecipeId)) -> Self {
         let request = RequestRecord::factory(params);
-        let response = Response::factory(());
+        let response = ResponseRecord::factory(());
         Self {
             id: request.id,
             request: request.into(),
@@ -241,13 +241,14 @@ impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
 /// A resolved HTTP response, with all content loaded and ready to be displayed
 /// to the user. A simpler alternative to [reqwest::Response], because there's
 /// no way to access all resolved data on that type at once. Resolving the
-/// response body requires moving the response.
+/// response body requires moving the response. This also provides serialization
+/// and deserialization so responses can be persisted and re-accessed later.
 ///
 /// This intentionally does not implement Clone, because responses could
 /// potentially be very large.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Response {
+pub struct ResponseRecord {
     #[serde(with = "cereal::serde_status_code")]
     pub status: StatusCode,
     #[serde(with = "cereal::serde_header_map")]
@@ -255,7 +256,7 @@ pub struct Response {
     pub body: Body,
 }
 
-impl Response {
+impl ResponseRecord {
     /// Attempt to parse the body of this response, and store it in the body
     /// struct. If parsing fails, we'll store `None` instead.
     pub fn parse_body(&self) {
@@ -316,7 +317,7 @@ pub struct Body {
     data: Bytes,
     /// For responses of a known content type, we can parse the body into a
     /// real data structure. This is populated *eagerly*. Call
-    /// [Response::parse_body] to set the parsed body.
+    /// [ResponseRecord::parse_body] to set the parsed body.
     #[serde(skip)]
     parsed: OnceLock<Option<Box<dyn ResponseContent>>>,
 }
@@ -350,9 +351,9 @@ impl Body {
     }
 
     /// Get the parsed version of this body. Must haved call
-    /// [Response::parse_body] first to actually do the parse. Parsing has to
-    /// be done on the parent because we don't have access to the `Content-Type`
-    /// header here, which tells us how to parse.
+    /// [ResponseRecord::parse_body] first to actually do the parse. Parsing has
+    /// to be done on the parent because we don't have access to the
+    /// `Content-Type` header here, which tells us how to parse.
     ///
     /// Return `None` if parsing either hasn't happened yet, or failed.
     pub fn parsed(&self) -> Option<&dyn ResponseContent> {
@@ -476,38 +477,38 @@ mod tests {
 
     #[rstest]
     #[case::content_disposition(
-        Response {
+        ResponseRecord {
             headers: header_map(indexmap! {
                 "content-disposition" => "form-data;name=\"field\"; filename=\"fish.png\"",
                 "content-type" => "image/png",
             }),
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         },
         Some("fish.png")
     )]
     #[case::content_type_known(
-        Response {
+        ResponseRecord {
             headers: header_map(indexmap! {
                 "content-disposition" => "form-data",
                 "content-type" => "application/json",
             }),
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         },
         Some("data.json")
     )]
     #[case::content_type_unknown(
-        Response {
+        ResponseRecord {
             headers: header_map(indexmap! {
                 "content-disposition" => "form-data",
                 "content-type" => "image/jpeg",
             }),
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         },
         Some("data.jpeg")
     )]
-    #[case::none(Response::factory(()), None)]
+    #[case::none(ResponseRecord::factory(()), None)]
     fn test_file_name(
-        #[case] response: Response,
+        #[case] response: ResponseRecord,
         #[case] expected: Option<&str>,
     ) {
         assert_eq!(response.file_name().as_deref(), expected);

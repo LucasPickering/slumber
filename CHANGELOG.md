@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- When a modal/dialog is open `q` now exits the dialog instead of the entire app
 - Upgrade to Rust 1.76
 
 ## [1.3.2] - 2024-05-27

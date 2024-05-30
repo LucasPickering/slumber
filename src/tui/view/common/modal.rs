@@ -99,8 +99,10 @@ impl EventHandler for ModalQueue {
             // Close the active modal. If there's no modal open, we'll propagate
             // the event down
             Event::Input {
-                // Enter to close is a convenience thing, modals may override
-                action: Some(Action::Cancel | Action::Submit),
+                // Enter to close is a convenience thing, modals may override.
+                // We eat the Quit action here because it's (hopefully)
+                // intuitive and consistent with other TUIs
+                action: Some(Action::Cancel | Action::Quit | Action::Submit),
                 event: _,
             }
             | Event::CloseModal => {

@@ -2,7 +2,7 @@
 
 use crate::{
     collection::RecipeId,
-    http::{ExchangeId, Response},
+    http::{ExchangeId, ResponseRecord},
     tui::{
         input::Action,
         message::Message,
@@ -33,7 +33,7 @@ pub struct ResponseBodyView {
 pub struct ResponseBodyViewProps<'a> {
     pub request_id: ExchangeId,
     pub recipe_id: &'a RecipeId,
-    pub response: Arc<Response>,
+    pub response: Arc<ResponseRecord>,
 }
 
 /// Items in the actions popup menu for the Body
@@ -51,7 +51,7 @@ impl ToStringGenerate for BodyMenuAction {}
 #[derive(Debug)]
 struct State {
     /// Use Arc so we're not cloning large responses
-    response: Arc<Response>,
+    response: Arc<ResponseRecord>,
     /// The presentable version of the response body, which may or may not
     /// match the response body. We apply transformations such as filter,
     /// prettification, or in the case of binary responses, a hex dump.
@@ -149,7 +149,7 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
 pub struct ResponseHeadersView;
 
 pub struct ResponseHeadersViewProps<'a> {
-    pub response: &'a Response,
+    pub response: &'a ResponseRecord,
 }
 
 impl<'a> Draw<ResponseHeadersViewProps<'a>> for ResponseHeadersView {
@@ -186,26 +186,26 @@ mod tests {
     /// Test "Copy Body" menu action
     #[rstest]
     #[case::json_body(
-        Response{
+        ResponseRecord{
             headers: header_map(indexmap! {"content-type" => "application/json"}),
             body: br#"{"hello":"world"}"#.to_vec().into(),
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         },
         // Body gets prettified
         "{\n  \"hello\": \"world\"\n}"
     )]
     #[case::binary_body(
-        Response{
+        ResponseRecord{
             headers: header_map(indexmap! {"content-type" => "image/png"}),
             body: b"\x01\x02\x03\xff".to_vec().into(),
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         },
         "01 02 03 ff"
     )]
     #[tokio::test]
     async fn test_copy_body(
         harness: TestHarness,
-        #[case] response: Response,
+        #[case] response: ResponseRecord,
         #[case] expected_body: &str,
     ) {
         response.parse_body(); // Normally the view does this
@@ -237,32 +237,32 @@ mod tests {
     /// Test "Save Body as File" menu action
     #[rstest]
     #[case::json_body(
-        Response{
+        ResponseRecord{
             headers: header_map(indexmap! {"content-type" => "application/json"}),
             body: br#"{"hello":"world"}"#.to_vec().into(),
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         },
         // Body gets prettified
         b"{\n  \"hello\": \"world\"\n}",
         "data.json"
     )]
     #[case::binary_body(
-        Response{
+        ResponseRecord{
             headers: header_map(indexmap! {"content-type" => "image/png"}),
             body: b"\x01\x02\x03".to_vec().into(),
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         },
         b"\x01\x02\x03",
         "data.png"
     )]
     #[case::content_disposition(
-        Response{
+        ResponseRecord{
             headers: header_map(indexmap! {
                 "content-type" => "image/png",
                 "content-disposition" => "attachment; filename=\"dogs.png\"",
             }),
             body: b"\x01\x02\x03".to_vec().into(),
-            ..Response::factory(())
+            ..ResponseRecord::factory(())
         },
         b"\x01\x02\x03",
         "dogs.png"
@@ -270,7 +270,7 @@ mod tests {
     #[tokio::test]
     async fn test_save_file(
         harness: TestHarness,
-        #[case] response: Response,
+        #[case] response: ResponseRecord,
         #[case] expected_body: &[u8],
         #[case] expected_path: &str,
     ) {

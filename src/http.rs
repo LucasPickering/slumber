@@ -59,7 +59,7 @@ use futures::{
 use indexmap::IndexMap;
 use reqwest::{
     header::{self, HeaderMap, HeaderName, HeaderValue},
-    Client,
+    Client, Request, Response,
 };
 use std::{collections::HashSet, future::Future, io::Write, sync::Arc};
 use tokio::try_join;
@@ -171,7 +171,7 @@ impl HttpEngine {
     async fn send_request_helper(
         &self,
         request: &RequestRecord,
-    ) -> reqwest::Result<Response> {
+    ) -> reqwest::Result<ResponseRecord> {
         // Convert to reqwest format as part of the execution. This means
         // certain builder errors will show up as "request" errors which is
         // janky, but reqwest already doesn't report some builder erorrs until
@@ -204,7 +204,7 @@ impl HttpEngine {
     fn convert_request(
         &self,
         request: &RequestRecord,
-    ) -> reqwest::Result<reqwest::Request> {
+    ) -> reqwest::Result<Request> {
         // Convert to reqwest's request format
         let mut request_builder = self
             .client
@@ -224,8 +224,8 @@ impl HttpEngine {
     /// response. Only fallible if the response content fails to load.
     async fn convert_response(
         &self,
-        response: reqwest::Response,
-    ) -> reqwest::Result<Response> {
+        response: Response,
+    ) -> reqwest::Result<ResponseRecord> {
         // Copy response metadata out first, because we need to move the
         // response to resolve content (not sure why...)
         let status = response.status();
@@ -234,7 +234,7 @@ impl HttpEngine {
         // Pre-resolve the content, so we get all the async work done
         let body = response.bytes().await?.into();
 
-        Ok(Response {
+        Ok(ResponseRecord {
             status,
             headers,
             body,

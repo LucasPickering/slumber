@@ -5,7 +5,7 @@ use crate::{
         ChainId, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
         ChainSource, RecipeId,
     },
-    http::{ContentType, RequestBuilder, RequestRecord, Response},
+    http::{ContentType, Exchange, RequestBuilder, Response},
     template::{
         error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
         Prompt, Template, TemplateChunk, TemplateContext, TemplateError,
@@ -349,17 +349,16 @@ impl<'a> ChainTemplateSource<'a> {
             .get_recipe(recipe_id)
             .ok_or_else(|| ChainError::RecipeUnknown(recipe_id.clone()))?;
 
-        // Defer loading the most recent record until we know we'll need it
-        let get_most_recent =
-            || -> Result<Option<RequestRecord>, ChainError> {
-                context
-                    .database
-                    .get_latest_request(
-                        context.selected_profile.as_ref(),
-                        recipe_id,
-                    )
-                    .map_err(ChainError::Database)
-            };
+        // Defer loading the most recent exchange until we know we'll need it
+        let get_most_recent = || -> Result<Option<Exchange>, ChainError> {
+            context
+                .database
+                .get_latest_request(
+                    context.selected_profile.as_ref(),
+                    recipe_id,
+                )
+                .map_err(ChainError::Database)
+        };
         // Helper to execute the request, if triggered
         let send_request = || async {
             // There are 3 different ways we can generate the request config:
@@ -397,29 +396,31 @@ impl<'a> ChainTemplateSource<'a> {
         };
 
         // Grab the most recent request in history, or send a new request
-        let record = match trigger {
+        let exchange = match trigger {
             ChainRequestTrigger::Never => {
                 get_most_recent()?.ok_or(ChainError::NoResponse)?
             }
             ChainRequestTrigger::NoHistory => {
-                // If a record is present in history, use that. If not, fetch
-                if let Some(record) = get_most_recent()? {
-                    record
+                // If a exchange is present in history, use that. If not, fetch
+                if let Some(exchange) = get_most_recent()? {
+                    exchange
                 } else {
                     send_request().await?
                 }
             }
             ChainRequestTrigger::Expire(duration) => match get_most_recent()? {
-                Some(record) if record.end_time + duration >= Utc::now() => {
-                    record
+                Some(exchange)
+                    if exchange.end_time + duration >= Utc::now() =>
+                {
+                    exchange
                 }
                 _ => send_request().await?,
             },
             ChainRequestTrigger::Always => send_request().await?,
         };
 
-        // We haven't passed the record around so we can unwrap the Arc safely
-        Ok(Arc::try_unwrap(record.response)
+        // We haven't passed the exchange around so we can unwrap the Arc safely
+        Ok(Arc::try_unwrap(exchange.response)
             .expect("Request Arc should have only one reference"))
     }
 

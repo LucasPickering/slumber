@@ -29,18 +29,18 @@
 //!   success
 //!      |
 //!      v
-//! +---------------+
-//! | RequestRecord |
-//! +---------------+
+//! +----------+
+//! | Exchange |
+//! +----------+
 
 mod cereal;
 mod content_type;
+mod models;
 mod query;
-mod record;
 
 pub use content_type::*;
+pub use models::*;
 pub use query::*;
-pub use record::*;
 
 use crate::{
     collection::{self, Authentication, Method, Recipe},
@@ -112,9 +112,9 @@ impl HttpEngine {
     /// that created the future. This allows the future to be created outside
     /// the task that will resolve it.
     ///
-    /// Returns a full HTTP record, which includes the originating request, the
-    /// response, and the start/end timestamps. We can't report a reliable start
-    /// time until after the future is resolved, because the request isn't
+    /// Returns a full HTTP exchange, which includes the originating request,
+    /// the response, and the start/end timestamps. We can't report a reliable
+    /// start time until after the future is resolved, because the request isn't
     /// launched until the consumer starts awaiting the future. For in-flight
     /// time tracking, track your own start time immediately before/after
     /// sending the request.
@@ -122,7 +122,7 @@ impl HttpEngine {
         self,
         database: &CollectionDatabase,
         request: Arc<Request>,
-    ) -> Result<RequestRecord, RequestError> {
+    ) -> Result<Exchange, RequestError> {
         let id = request.id;
 
         let span = info_span!("HTTP request", request_id = %id);
@@ -142,7 +142,7 @@ impl HttpEngine {
                 // the request
                 Ok(response) => {
                     info!(status = response.status.as_u16(), "Response");
-                    let record = RequestRecord {
+                    let exchange = Exchange {
                         id,
                         request,
                         response: Arc::new(response),
@@ -151,8 +151,8 @@ impl HttpEngine {
                     };
 
                     // Error here should *not* kill the request
-                    let _ = database.insert_request(&record);
-                    Ok(record)
+                    let _ = database.insert_exchange(&exchange);
+                    Ok(exchange)
                 }
                 Err(error) => Err(RequestError {
                     request,
@@ -247,7 +247,7 @@ impl HttpEngine {
 pub struct RequestBuilder {
     // Don't store start_time here because we don't need to track build time,
     // only in-flight time
-    id: RequestId,
+    id: ExchangeId,
     // We need this during the build
     recipe: Recipe,
     options: RecipeOptions,
@@ -277,7 +277,7 @@ impl RequestBuilder {
     /// subtask for the build.
     pub fn new(recipe: Recipe, options: RecipeOptions) -> Self {
         debug!(recipe_id = %recipe.id, "Building request from recipe");
-        let request_id = RequestId::new();
+        let request_id = ExchangeId::new();
 
         Self {
             id: request_id,
@@ -288,7 +288,7 @@ impl RequestBuilder {
 
     /// The unique ID generated for this request, which can be used to track it
     /// throughout its life cycle
-    pub fn id(&self) -> RequestId {
+    pub fn id(&self) -> ExchangeId {
         self.id
     }
 

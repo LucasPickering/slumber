@@ -4,7 +4,7 @@
 use crate::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
-        RecipeOptions, Request, RequestBuildError, RequestError, RequestRecord,
+        RecipeOptions, Request, RequestBuildError, RequestError, Exchange,
     },
     template::{Prompt, Prompter, Template, TemplateChunk},
     tui::{input::Action, view::Confirm},
@@ -84,7 +84,7 @@ pub enum Message {
     /// The HTTP request either succeeded or failed. We don't need to store the
     /// recipe ID here because it's in the inner container already. Combining
     /// these two cases saves a bit of boilerplate.
-    HttpComplete(Result<RequestRecord, RequestError>),
+    HttpComplete(Result<Exchange, RequestError>),
 
     /// User input from the terminal
     Input {

@@ -2,13 +2,13 @@
 
 use crate::{
     collection::RecipeId,
-    http::{RequestId, Response},
+    http::{ExchangeId, Response},
     tui::{
         input::Action,
         message::Message,
         view::{
             common::{actions::ActionsModal, header_table::HeaderTable},
-            component::record_body::{RecordBody, RecordBodyProps},
+            component::exchange_body::{ExchangeBody, ExchangeBodyProps},
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update},
             state::{persistence::PersistentKey, StateCell},
@@ -26,12 +26,12 @@ use strum::{EnumCount, EnumIter};
 pub struct ResponseBodyView {
     /// Persist the response body to track view state. Update whenever the
     /// loaded request changes
-    state: StateCell<RequestId, State>,
+    state: StateCell<ExchangeId, State>,
 }
 
 #[derive(Clone)]
 pub struct ResponseBodyViewProps<'a> {
-    pub request_id: RequestId,
+    pub request_id: ExchangeId,
     pub recipe_id: &'a RecipeId,
     pub response: Arc<Response>,
 }
@@ -55,7 +55,7 @@ struct State {
     /// The presentable version of the response body, which may or may not
     /// match the response body. We apply transformations such as filter,
     /// prettification, or in the case of binary responses, a hex dump.
-    body: Component<RecordBody>,
+    body: Component<ExchangeBody>,
 }
 
 impl EventHandler for ResponseBodyView {
@@ -128,7 +128,7 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
         let response = &props.response;
         let state = self.state.get_or_update(props.request_id, || State {
             response: Arc::clone(&props.response),
-            body: RecordBody::new(Some(PersistentKey::ResponseBodyQuery(
+            body: ExchangeBody::new(Some(PersistentKey::ResponseBodyQuery(
                 props.recipe_id.clone(),
             )))
             .into(),
@@ -136,7 +136,7 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
 
         state.body.draw(
             frame,
-            RecordBodyProps {
+            ExchangeBodyProps {
                 body: &response.body,
             },
             metadata.area(),
@@ -173,7 +173,7 @@ impl<'a> Draw<ResponseHeadersViewProps<'a>> for ResponseHeadersView {
 mod tests {
     use super::*;
     use crate::{
-        http::RequestRecord,
+        http::Exchange,
         test_util::{assert_matches, header_map, Factory},
         tui::{
             test_util::{harness, TestHarness},
@@ -209,17 +209,17 @@ mod tests {
         #[case] expected_body: &str,
     ) {
         response.parse_body(); // Normally the view does this
-        let record = RequestRecord {
+        let exchange = Exchange {
             response: response.into(),
-            ..RequestRecord::factory(())
+            ..Exchange::factory(())
         };
         let mut component = TestComponent::new(
             harness,
             ResponseBodyView::default(),
             ResponseBodyViewProps {
-                request_id: record.id,
-                recipe_id: &record.request.recipe_id,
-                response: record.response,
+                request_id: exchange.id,
+                recipe_id: &exchange.request.recipe_id,
+                response: exchange.response,
             },
         );
 
@@ -275,17 +275,17 @@ mod tests {
         #[case] expected_path: &str,
     ) {
         response.parse_body(); // Normally the view does this
-        let record = RequestRecord {
+        let exchange = Exchange {
             response: response.into(),
-            ..RequestRecord::factory(())
+            ..Exchange::factory(())
         };
         let mut component = TestComponent::new(
             harness,
             ResponseBodyView::default(),
             ResponseBodyViewProps {
-                request_id: record.id,
-                recipe_id: &record.request.recipe_id,
-                response: record.response,
+                request_id: exchange.id,
+                recipe_id: &exchange.request.recipe_id,
+                response: exchange.response,
             },
         );
 

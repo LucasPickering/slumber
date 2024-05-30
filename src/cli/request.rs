@@ -105,20 +105,20 @@ impl Subcommand for RequestCommand {
             }
 
             // Run the request
-            let record = http_engine.send(&database, request.into()).await?;
-            let status = record.response.status;
+            let exchange = http_engine.send(&database, request.into()).await?;
+            let status = exchange.response.status;
 
             // Print stuff!
             if self.status {
                 eprintln!("{}", status.as_u16());
             }
             if self.headers {
-                eprintln!("{}", HeaderDisplay(&record.response.headers));
+                eprintln!("{}", HeaderDisplay(&exchange.response.headers));
             }
             if !self.no_body {
                 // If body is not UTF-8, write the raw bytes instead (e.g if
                 // downloading an image)
-                let body = &record.response.body;
+                let body = &exchange.response.body;
                 if let Some(text) = body.text() {
                     print!("{}", text);
                 } else {

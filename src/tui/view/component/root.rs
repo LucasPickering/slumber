@@ -1,6 +1,6 @@
 use crate::{
     collection::Collection,
-    http::RequestId,
+    http::ExchangeId,
     tui::{
         input::Action,
         message::Message,
@@ -71,7 +71,7 @@ impl Root {
     /// in memory.
     fn select_request(
         &mut self,
-        request_id: Option<RequestId>,
+        request_id: Option<ExchangeId>,
     ) -> anyhow::Result<()> {
         let primary_view = self.primary_view.data();
         **self.selected_request = if let Some(request_id) = request_id {
@@ -216,10 +216,10 @@ impl Draw for Root {
 /// persistence loading. We have to load the persisted value via an event so it
 /// can be loaded from the DB.
 #[derive(Debug, Default, Deref, DerefMut)]
-struct SelectedRequestId(Option<RequestId>);
+struct SelectedRequestId(Option<ExchangeId>);
 
 impl PersistentContainer for SelectedRequestId {
-    type Value = RequestId;
+    type Value = ExchangeId;
 
     fn get(&self) -> Option<&Self::Value> {
         self.0.as_ref()
@@ -236,7 +236,7 @@ impl PersistentContainer for SelectedRequestId {
 mod tests {
     use super::*;
     use crate::{
-        http::RequestRecord,
+        http::Exchange,
         test_util::{assert_matches, Factory},
         tui::{
             test_util::{harness, TestHarness},
@@ -254,11 +254,9 @@ mod tests {
         let collection = Collection::factory(());
         let profile_id = collection.first_profile_id();
         let recipe_id = collection.first_recipe_id();
-        let record = RequestRecord::factory((
-            Some(profile_id.clone()),
-            recipe_id.clone(),
-        ));
-        harness.database.insert_request(&record).unwrap();
+        let exchange =
+            Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
+        harness.database.insert_exchange(&exchange).unwrap();
 
         let component = TestComponent::new(harness, Root::new(&collection), ());
 
@@ -268,7 +266,7 @@ mod tests {
         assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
         assert_eq!(
             component.data().selected_request(),
-            Some(&RequestState::Response { record })
+            Some(&RequestState::Response { exchange })
         );
 
         // It'd be nice to assert on the view but it's just too complicated to
@@ -283,19 +281,15 @@ mod tests {
         let recipe_id = collection.first_recipe_id();
         let profile_id = collection.first_profile_id();
         // This is the older one, but it should be loaded because of persistence
-        let old_record = RequestRecord::factory((
-            Some(profile_id.clone()),
-            recipe_id.clone(),
-        ));
-        let new_record = RequestRecord::factory((
-            Some(profile_id.clone()),
-            recipe_id.clone(),
-        ));
-        harness.database.insert_request(&old_record).unwrap();
-        harness.database.insert_request(&new_record).unwrap();
+        let old_exchange =
+            Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
+        let new_exchange =
+            Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
+        harness.database.insert_exchange(&old_exchange).unwrap();
+        harness.database.insert_exchange(&new_exchange).unwrap();
         harness
             .database
-            .set_ui(PersistentKey::RequestId, old_record.id)
+            .set_ui(PersistentKey::RequestId, old_exchange.id)
             .unwrap();
 
         let component = TestComponent::new(harness, Root::new(&collection), ());
@@ -311,7 +305,9 @@ mod tests {
         );
         assert_eq!(
             component.data().selected_request(),
-            Some(&RequestState::Response { record: old_record })
+            Some(&RequestState::Response {
+                exchange: old_exchange
+            })
         );
     }
 

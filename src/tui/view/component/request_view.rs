@@ -1,11 +1,11 @@
 use crate::{
-    http::{Request, RequestId},
+    http::{ExchangeId, Request},
     tui::{
         input::Action,
         message::Message,
         view::{
             common::{actions::ActionsModal, header_table::HeaderTable},
-            component::record_body::{RecordBody, RecordBodyProps},
+            component::exchange_body::{ExchangeBody, ExchangeBodyProps},
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update},
             state::StateCell,
@@ -22,7 +22,7 @@ use strum::{EnumCount, EnumIter};
 /// it just needs to have been built successfully.
 #[derive(Debug, Default)]
 pub struct RequestView {
-    state: StateCell<RequestId, State>,
+    state: StateCell<ExchangeId, State>,
 }
 
 pub struct RequestViewProps {
@@ -36,7 +36,7 @@ struct State {
     request: Arc<Request>,
     /// Persist the request body to track view state. Update whenever the
     /// loaded request changes
-    body: Component<RecordBody>,
+    body: Component<ExchangeBody>,
 }
 
 /// Items in the actions popup menu
@@ -100,7 +100,7 @@ impl Draw<RequestViewProps> for RequestView {
     ) {
         let state = self.state.get_or_update(props.request.id, || State {
             request: Arc::clone(&props.request),
-            body: RecordBody::new(None).into(),
+            body: ExchangeBody::new(None).into(),
         });
 
         let [url_area, headers_area, body_area] = Layout::vertical([
@@ -123,7 +123,7 @@ impl Draw<RequestViewProps> for RequestView {
         if let Some(body) = &state.request.body {
             state
                 .body
-                .draw(frame, RecordBodyProps { body }, body_area, true);
+                .draw(frame, ExchangeBodyProps { body }, body_area, true);
         }
     }
 }

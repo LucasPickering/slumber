@@ -1,6 +1,6 @@
 use crate::{
     collection::Recipe,
-    http::RequestId,
+    http::ExchangeId,
     tui::{
         context::TuiContext,
         view::{
@@ -32,14 +32,14 @@ impl History {
     pub fn new(
         recipe: &Recipe,
         requests: Vec<RequestStateSummary>,
-        selected_request_id: Option<RequestId>,
+        selected_request_id: Option<ExchangeId>,
     ) -> Self {
         let select = SelectState::builder(requests)
             .preselect_opt(selected_request_id.as_ref())
             // When an item is selected, load it up
-            .on_select(|record| {
+            .on_select(|exchange| {
                 ViewContext::push_event(Event::HttpSelectRequest(Some(
-                    record.id(),
+                    exchange.id(),
                 )))
             })
             .build();
@@ -102,7 +102,9 @@ impl Generate for &RequestStateSummary {
                 Span::styled("Build error", styles.text.error)
             }
             RequestStateSummary::Loading { .. } => "Loading...".into(),
-            RequestStateSummary::Response(record) => record.status.generate(),
+            RequestStateSummary::Response(exchange) => {
+                exchange.status.generate()
+            }
             RequestStateSummary::RequestError { .. } => {
                 Span::styled("Request error", styles.text.error)
             }
@@ -112,7 +114,7 @@ impl Generate for &RequestStateSummary {
 }
 
 /// Allow selection by ID
-impl PartialEq<RequestStateSummary> for RequestId {
+impl PartialEq<RequestStateSummary> for ExchangeId {
     fn eq(&self, other: &RequestStateSummary) -> bool {
         self == &other.id()
     }

@@ -34,28 +34,28 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
-/// Display for a request/response record. This allows the user to switch
+/// Display for a request/response exchange. This allows the user to switch
 /// between request and response. Parent is responsible for switching between
 /// tabs, because switching is done by hotkey and we can't see hotkeys if the
 /// pane isn't selected.
 #[derive(Debug)]
-pub struct RecordPane {
+pub struct ExchangePane {
     tabs: Component<Tabs<Tab>>,
     request: Component<RequestView>,
     response_headers: Component<ResponseHeadersView>,
     response_body: Component<ResponseBodyView>,
 }
 
-pub struct RecordPaneProps<'a> {
+pub struct ExchangePaneProps<'a> {
     /// Selected recipe OR folder. Used to decide what placeholder to show
     pub selected_recipe_node: Option<&'a RecipeNode>,
     pub request_state: Option<&'a RequestState>,
 }
 
-impl Default for RecordPane {
+impl Default for ExchangePane {
     fn default() -> Self {
         Self {
-            tabs: Tabs::new(PersistentKey::RecordTab).into(),
+            tabs: Tabs::new(PersistentKey::ExchangeTab).into(),
             request: Default::default(),
             response_headers: Default::default(),
             response_body: Default::default(),
@@ -83,11 +83,13 @@ enum Tab {
 }
 impl FixedSelect for Tab {}
 
-impl EventHandler for RecordPane {
+impl EventHandler for ExchangePane {
     fn update(&mut self, event: Event) -> Update {
         match event.action() {
             Some(Action::LeftClick) => {
-                ViewContext::push_event(Event::new_local(PrimaryPane::Record));
+                ViewContext::push_event(Event::new_local(
+                    PrimaryPane::Exchange,
+                ));
             }
             _ => return Update::Propagate(event),
         }
@@ -104,11 +106,11 @@ impl EventHandler for RecordPane {
     }
 }
 
-impl<'a> Draw<RecordPaneProps<'a>> for RecordPane {
+impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
     fn draw(
         &self,
         frame: &mut Frame,
-        props: RecordPaneProps<'a>,
+        props: ExchangePaneProps<'a>,
         metadata: DrawMetadata,
     ) {
         let input_engine = &TuiContext::get().input_engine;
@@ -219,20 +221,20 @@ impl<'a> Draw<RecordPaneProps<'a>> for RecordPane {
                     }
                 }
             }
-            Some(RequestState::Response { record }) => {
+            Some(RequestState::Response { exchange }) => {
                 render_tabs(frame);
                 match selected_tab {
-                    Tab::Request => render_request(frame, &record.request),
+                    Tab::Request => render_request(frame, &exchange.request),
                     Tab::Body => {
                         // Don't draw body if empty, so we don't have to set
                         // up state, and don't offer impossible actions
-                        if !record.response.body.bytes().is_empty() {
+                        if !exchange.response.body.bytes().is_empty() {
                             self.response_body.draw(
                                 frame,
                                 ResponseBodyViewProps {
-                                    request_id: record.id,
-                                    recipe_id: &record.request.recipe_id,
-                                    response: Arc::clone(&record.response),
+                                    request_id: exchange.id,
+                                    recipe_id: &exchange.request.recipe_id,
+                                    response: Arc::clone(&exchange.response),
                                 },
                                 content_area,
                                 true,
@@ -247,7 +249,7 @@ impl<'a> Draw<RecordPaneProps<'a>> for RecordPane {
                     Tab::Headers => self.response_headers.draw(
                         frame,
                         ResponseHeadersViewProps {
-                            response: &record.response,
+                            response: &exchange.response,
                         },
                         content_area,
                         true,

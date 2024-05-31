@@ -2,7 +2,7 @@
 
 use crate::{
     collection::RecipeId,
-    http::{ExchangeId, ResponseRecord},
+    http::{RequestId, ResponseRecord},
     tui::{
         input::Action,
         message::Message,
@@ -26,12 +26,12 @@ use strum::{EnumCount, EnumIter};
 pub struct ResponseBodyView {
     /// Persist the response body to track view state. Update whenever the
     /// loaded request changes
-    state: StateCell<ExchangeId, State>,
+    state: StateCell<RequestId, State>,
 }
 
 #[derive(Clone)]
 pub struct ResponseBodyViewProps<'a> {
-    pub request_id: ExchangeId,
+    pub request_id: RequestId,
     pub recipe_id: &'a RecipeId,
     pub response: Arc<ResponseRecord>,
 }

@@ -154,7 +154,8 @@ async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
     // A bit pessimistic, huh... This gets around some lifetime struggles
     let error_context = format!("Error loading data from {path:?}");
 
-    // This async block is really just a try block
+    // YAML parsing is blocking so do it in a different thread. We could use
+    // tokio::fs for this but that just uses std::fs underneath anyway.
     let result =
         task::spawn_blocking::<_, anyhow::Result<Collection>>(move || {
             let bytes = fs::read(path)?;

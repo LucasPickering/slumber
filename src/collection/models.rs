@@ -155,17 +155,17 @@ pub enum Method {
 /// Shortcut for defining authentication method. If this is defined in addition
 /// to the `Authorization` header, that header will end up being included in the
 /// request twice.
+///
+/// Type parameter allows this to be re-used for post-render purposes (with
+/// `T=String`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum Authentication {
+pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`
-    Basic {
-        username: Template,
-        password: Option<Template>,
-    },
+    Basic { username: T, password: Option<T> },
     /// `Authorization: Bearer {token}`
-    Bearer(Template),
+    Bearer(T),
 }
 
 /// A chain is a means to data from one response in another request. The chain

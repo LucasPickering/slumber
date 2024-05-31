@@ -3,7 +3,7 @@ use crate::{
     collection::{CollectionFile, ProfileId, RecipeId},
     config::Config,
     db::{CollectionDatabase, Database},
-    http::{HttpEngine, RecipeOptions, RequestRecord, RequestBuilder},
+    http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
     template::{Prompt, Prompter, TemplateContext, TemplateError},
     util::{MaybeStr, ResultExt},
     GlobalArgs,
@@ -79,7 +79,7 @@ pub struct BuildRequestCommand {
 
 impl Subcommand for RequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let (database, http_engine, request) = self
+        let (database, ticket) = self
             .build_request
             // Don't execute sub-requests in a dry run
             .build_request(global, !self.dry_run)
@@ -96,16 +96,18 @@ impl Subcommand for RequestCommand {
                 }
             })?;
 
-        // HTTP engine will be defined iff dry_run was not enabled
-        if let Some(http_engine) = http_engine {
+        if self.dry_run {
+            println!("{:#?}", ticket.record());
+            Ok(ExitCode::SUCCESS)
+        } else {
             // Everything other than the body prints to stderr, to make it easy
             // to pipe the body to a file
             if self.headers {
-                eprintln!("{}", HeaderDisplay(&request.headers));
+                eprintln!("{}", HeaderDisplay(&ticket.record().headers));
             }
 
             // Run the request
-            let exchange = http_engine.send(&database, request.into()).await?;
+            let exchange = ticket.send(&database).await?;
             let status = exchange.response.status;
 
             // Print stuff!
@@ -133,9 +135,6 @@ impl Subcommand for RequestCommand {
             } else {
                 Ok(ExitCode::SUCCESS)
             }
-        } else {
-            println!("{:#?}", request);
-            Ok(ExitCode::SUCCESS)
         }
     }
 }
@@ -151,19 +150,13 @@ impl BuildRequestCommand {
         self,
         global: GlobalArgs,
         trigger_dependencies: bool,
-    ) -> anyhow::Result<(CollectionDatabase, Option<HttpEngine>, RequestRecord)> {
+    ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
         let collection_path = CollectionFile::try_path(None, global.file)?;
         let database = Database::load()?.into_collection(&collection_path)?;
         let collection_file = CollectionFile::load(collection_path).await?;
         let collection = collection_file.collection;
-        // Passing the HTTP engine is how we tell the template renderer that
-        // it's ok to execute subrequests during render
-        let http_engine = if trigger_dependencies {
-            let config = Config::load()?;
-            Some(HttpEngine::new(&config))
-        } else {
-            None
-        };
+        let config = Config::load()?;
+        let http_engine = HttpEngine::new(&config);
 
         // Validate profile ID, so we can provide a good error if it's invalid
         if let Some(profile_id) = &self.profile {
@@ -191,18 +184,23 @@ impl BuildRequestCommand {
         // Build the request
         let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
         let template_context = TemplateContext {
-            selected_profile: self.profile,
+            selected_profile: self.profile.clone(),
             collection,
-            http_engine: http_engine.clone(),
+            // Passing the HTTP engine is how we tell the template renderer that
+            // it's ok to execute subrequests during render
+            http_engine: if trigger_dependencies {
+                Some(http_engine.clone())
+            } else {
+                None
+            },
             database: database.clone(),
             overrides,
             prompter: Box::new(CliPrompter),
             recursion_count: Default::default(),
         };
-        let request = RequestBuilder::new(recipe, RecipeOptions::default())
-            .build(&template_context)
-            .await?;
-        Ok((database, http_engine, request))
+        let seed = RequestSeed::new(recipe, BuildOptions::default());
+        let request = http_engine.build(seed, &template_context).await?;
+        Ok((database, request))
     }
 }
 

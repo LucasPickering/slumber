@@ -1,6 +1,6 @@
 use crate::{
     collection::Collection,
-    http::ExchangeId,
+    http::RequestId,
     tui::{
         input::Action,
         message::Message,
@@ -71,7 +71,7 @@ impl Root {
     /// in memory.
     fn select_request(
         &mut self,
-        request_id: Option<ExchangeId>,
+        request_id: Option<RequestId>,
     ) -> anyhow::Result<()> {
         let primary_view = self.primary_view.data();
         **self.selected_request = if let Some(request_id) = request_id {
@@ -216,10 +216,10 @@ impl Draw for Root {
 /// persistence loading. We have to load the persisted value via an event so it
 /// can be loaded from the DB.
 #[derive(Debug, Default, Deref, DerefMut)]
-struct SelectedRequestId(Option<ExchangeId>);
+struct SelectedRequestId(Option<RequestId>);
 
 impl PersistentContainer for SelectedRequestId {
-    type Value = ExchangeId;
+    type Value = RequestId;
 
     fn get(&self) -> Option<&Self::Value> {
         self.0.as_ref()

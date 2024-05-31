@@ -1,6 +1,6 @@
 use crate::{
     collection::Recipe,
-    http::ExchangeId,
+    http::RequestId,
     tui::{
         context::TuiContext,
         view::{
@@ -32,7 +32,7 @@ impl History {
     pub fn new(
         recipe: &Recipe,
         requests: Vec<RequestStateSummary>,
-        selected_request_id: Option<ExchangeId>,
+        selected_request_id: Option<RequestId>,
     ) -> Self {
         let select = SelectState::builder(requests)
             .preselect_opt(selected_request_id.as_ref())
@@ -114,7 +114,7 @@ impl Generate for &RequestStateSummary {
 }
 
 /// Allow selection by ID
-impl PartialEq<RequestStateSummary> for ExchangeId {
+impl PartialEq<RequestStateSummary> for RequestId {
     fn eq(&self, other: &RequestStateSummary) -> bool {
         self == &other.id()
     }

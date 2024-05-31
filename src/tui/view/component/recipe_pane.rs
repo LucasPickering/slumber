@@ -1,6 +1,6 @@
 use crate::{
     collection::{Authentication, ProfileId, Recipe, RecipeId},
-    http::RecipeOptions,
+    http::BuildOptions,
     tui::{
         context::TuiContext,
         input::Action,
@@ -122,8 +122,8 @@ pub enum RecipeMenuAction {
 impl ToStringGenerate for RecipeMenuAction {}
 
 impl RecipePane {
-    /// Generate a [RecipeOptions] instance based on current UI state
-    pub fn recipe_options(&self) -> RecipeOptions {
+    /// Generate a [BuildOptions] instance based on current UI state
+    pub fn build_options(&self) -> BuildOptions {
         if let Some(state) = self.recipe_state.get() {
             /// Convert select state into the set of disabled keys
             fn to_disabled_set(
@@ -137,14 +137,14 @@ impl RecipePane {
                     .collect()
             }
 
-            RecipeOptions {
+            BuildOptions {
                 disabled_headers: to_disabled_set(state.headers.data()),
                 disabled_query_parameters: to_disabled_set(state.query.data()),
             }
         } else {
             // Shouldn't be possible, because state is initialized on first
             // render
-            RecipeOptions::default()
+            BuildOptions::default()
         }
     }
 }

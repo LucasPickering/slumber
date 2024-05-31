@@ -4,7 +4,7 @@
 use crate::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
-        Exchange, RecipeOptions, RequestBuildError, RequestError, RequestRecord,
+        BuildOptions, Exchange, RequestBuildError, RequestError, RequestRecord,
     },
     template::{Prompt, Prompter, Template, TemplateChunk},
     tui::{input::Action, view::Confirm},
@@ -133,5 +133,5 @@ pub enum Message {
 pub struct RequestConfig {
     pub profile_id: Option<ProfileId>,
     pub recipe_id: RecipeId,
-    pub options: RecipeOptions,
+    pub options: BuildOptions,
 }

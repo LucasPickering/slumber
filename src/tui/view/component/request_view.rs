@@ -1,5 +1,5 @@
 use crate::{
-    http::{ExchangeId, RequestRecord},
+    http::{RequestId, RequestRecord},
     tui::{
         input::Action,
         message::Message,
@@ -22,7 +22,7 @@ use strum::{EnumCount, EnumIter};
 /// it just needs to have been built successfully.
 #[derive(Debug, Default)]
 pub struct RequestView {
-    state: StateCell<ExchangeId, State>,
+    state: StateCell<RequestId, State>,
 }
 
 pub struct RequestViewProps {

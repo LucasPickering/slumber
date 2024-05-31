@@ -3,7 +3,7 @@
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    http::{Exchange, ExchangeId, ExchangeSummary},
+    http::{Exchange, ExchangeSummary, RequestId},
     util::{
         paths::{DataDirectory, FileGuard},
         ResultExt,
@@ -291,7 +291,7 @@ impl CollectionDatabase {
     /// Get a request by ID, or `None` if it does not exist in history.
     pub fn get_request(
         &self,
-        request_id: ExchangeId,
+        request_id: RequestId,
     ) -> anyhow::Result<Option<Exchange>> {
         trace!(request_id = %request_id, "Fetching request from database");
         self.database
@@ -538,13 +538,13 @@ impl FromSql for ProfileId {
     }
 }
 
-impl ToSql for ExchangeId {
+impl ToSql for RequestId {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         self.0.to_sql()
     }
 }
 
-impl FromSql for ExchangeId {
+impl FromSql for RequestId {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         Ok(Self(Uuid::column_result(value)?))
     }
@@ -764,7 +764,7 @@ mod tests {
         // compare to what the DB spits back later
         let mut request_ids: HashMap<
             (CollectionId, Option<ProfileId>, RecipeId),
-            ExchangeId,
+            RequestId,
         > = Default::default();
 
         // Create and insert each request
@@ -827,7 +827,7 @@ mod tests {
         // compare to what the DB spits back later
         let mut request_ids: HashMap<
             (Option<ProfileId>, RecipeId),
-            Vec<ExchangeId>,
+            Vec<RequestId>,
         > = Default::default();
         for profile_id in [None, Some("profile1"), Some("profile2")] {
             for recipe_id in ["recipe1", "recipe2"] {

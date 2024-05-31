@@ -27,7 +27,7 @@ pub enum GenerateFormat {
 
 impl Subcommand for GenerateCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let (_, _, request) = self
+        let (_, ticket) = self
             .build_request
             // User has to explicitly opt into executing triggered requests
             .build_request(global, self.execute_triggers)
@@ -44,7 +44,7 @@ impl Subcommand for GenerateCommand {
                     error
                 }
             })?;
-        println!("{}", request.to_curl()?);
+        println!("{}", ticket.record().to_curl()?);
         Ok(ExitCode::SUCCESS)
     }
 }

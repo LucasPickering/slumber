@@ -7,10 +7,10 @@ mod util;
 pub mod view;
 
 use crate::{
-    collection::{Collection, CollectionFile, ProfileId},
+    collection::{Collection, CollectionFile, ProfileId, Recipe, RecipeId},
     config::Config,
     db::{CollectionDatabase, Database},
-    http::{RequestBuilder, RequestRecord},
+    http::RequestSeed,
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
         context::TuiContext,
@@ -335,13 +335,19 @@ impl Tui {
         &self,
         request_config: RequestConfig,
     ) -> anyhow::Result<()> {
-        let builder = self.get_request_builder(request_config.clone())?;
+        let seed = RequestSeed::new(
+            self.get_recipe(&request_config.recipe_id)?,
+            request_config.options,
+        );
         let template_context =
             self.template_context(request_config.profile_id, true)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
-            let url = builder.build_url(&template_context).await?;
+            let url = TuiContext::get()
+                .http_engine
+                .build_url(seed, &template_context)
+                .await?;
             messages_tx.send(Message::CopyText(url.to_string()));
             Ok(())
         });
@@ -353,18 +359,22 @@ impl Tui {
         &self,
         request_config: RequestConfig,
     ) -> anyhow::Result<()> {
-        let builder = self.get_request_builder(request_config.clone())?;
+        let seed = RequestSeed::new(
+            self.get_recipe(&request_config.recipe_id)?,
+            request_config.options,
+        );
         let template_context =
             self.template_context(request_config.profile_id, true)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
-            let body = builder
-                .build_body(&template_context)
+            let body = TuiContext::get()
+                .http_engine
+                .build_body(seed, &template_context)
                 .await?
                 .ok_or(anyhow!("Request has no body"))?;
             // Clone the bytes :(
-            let body = String::from_utf8(body.into_bytes().into())
+            let body = String::from_utf8(body.into())
                 .context("Cannot copy request body")?;
             messages_tx.send(Message::CopyText(body));
             Ok(())
@@ -377,14 +387,20 @@ impl Tui {
         &self,
         request_config: RequestConfig,
     ) -> anyhow::Result<()> {
-        let builder = self.get_request_builder(request_config.clone())?;
+        let seed = RequestSeed::new(
+            self.get_recipe(&request_config.recipe_id)?,
+            request_config.options,
+        );
         let template_context =
             self.template_context(request_config.profile_id, true)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
-            let request = builder.build(&template_context).await?;
-            let command = request.to_curl()?;
+            let ticket = TuiContext::get()
+                .http_engine
+                .build(seed, &template_context)
+                .await?;
+            let command = ticket.record().to_curl()?;
             messages_tx.send(Message::CopyText(command));
             Ok(())
         });
@@ -394,26 +410,24 @@ impl Tui {
     /// Launch an HTTP request in a separate task
     fn send_request(
         &mut self,
-        request_config: RequestConfig,
+        RequestConfig {
+            profile_id,
+            recipe_id,
+            options,
+        }: RequestConfig,
     ) -> anyhow::Result<()> {
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
 
-        let builder = self.get_request_builder(request_config.clone())?;
-
         let template_context =
-            self.template_context(request_config.profile_id.clone(), true)?;
+            self.template_context(profile_id.clone(), true)?;
         let messages_tx = self.messages_tx();
-        let RequestConfig {
-            profile_id,
-            recipe_id,
-            ..
-        } = request_config;
 
         // Mark request state as building
-        let request_id = builder.id();
+        let initialized =
+            RequestSeed::new(self.get_recipe(&recipe_id)?, options);
         self.view.set_request_state(RequestState::Building {
-            id: request_id,
+            id: initialized.id,
             start_time: Utc::now(),
             profile_id,
             recipe_id,
@@ -423,26 +437,23 @@ impl Tui {
         // differently from all other error types
         let database = self.database.clone();
         tokio::spawn(async move {
-            let context = TuiContext::get();
-
             // Build the request
-            let request: Arc<RequestRecord> = builder
-                .build(&template_context)
+            let ticket = TuiContext::get()
+                .http_engine
+                .build(initialized, &template_context)
                 .await
                 .map_err(|error| {
                     // Report the error, but don't actually return anything
                     messages_tx.send(Message::HttpBuildError { error });
-                })?
-                .into();
+                })?;
 
             // Report liftoff
             messages_tx.send(Message::HttpLoading {
-                request: Arc::clone(&request),
+                request: Arc::clone(ticket.record()),
             });
 
             // Send the request and report the result to the main thread
-            let result =
-                context.http_engine.clone().send(&database, request).await;
+            let result = ticket.send(&database).await;
             messages_tx.send(Message::HttpComplete(result));
 
             // By returning an empty result, we can use `?` to break out early.
@@ -453,21 +464,18 @@ impl Tui {
         Ok(())
     }
 
-    /// Helper to create a [RequestBuilder] based on request parameters
-    fn get_request_builder(
-        &self,
-        RequestConfig {
-            recipe_id, options, ..
-        }: RequestConfig,
-    ) -> anyhow::Result<RequestBuilder> {
+    /// Get a recipe by ID. This will clone the recipe, so use it sparingly.
+    /// Return an error if the recipe doesn't exist. Generally if this is called
+    /// with an unknown ID that indicates a logic error elsewhere, but it
+    /// shouldn't be considered fatal.
+    fn get_recipe(&self, recipe_id: &RecipeId) -> anyhow::Result<Recipe> {
         let recipe = self
             .collection_file
             .collection
             .recipes
-            .get_recipe(&recipe_id)
-            .ok_or_else(|| anyhow!("No recipe with ID `{recipe_id}`"))?
-            .clone();
-        Ok(RequestBuilder::new(recipe, options))
+            .get_recipe(recipe_id)
+            .ok_or_else(|| anyhow!("No recipe with ID `{recipe_id}`"))?;
+        Ok(recipe.clone())
     }
 
     /// Spawn a task to render a template, storing the result in a pre-defined

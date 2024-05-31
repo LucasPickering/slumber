@@ -234,7 +234,7 @@ impl PrimaryView {
         let request_config = RequestConfig {
             profile_id: self.selected_profile_id().cloned(),
             recipe_id,
-            options: self.recipe_pane.data().recipe_options(),
+            options: self.recipe_pane.data().build_options(),
         };
         let message = match action {
             RecipeMenuAction::CopyUrl => {
@@ -271,7 +271,7 @@ impl EventHandler for PrimaryView {
                                 options: self
                                     .recipe_pane
                                     .data()
-                                    .recipe_options(),
+                                    .build_options(),
                             },
                         ));
                     }
@@ -386,7 +386,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
 mod tests {
     use super::*;
     use crate::{
-        http::RecipeOptions,
+        http::BuildOptions,
         test_util::{assert_matches, Factory},
         tui::{
             message::{Message, RequestConfig},
@@ -433,7 +433,7 @@ mod tests {
             RequestConfig {
                 recipe_id: "recipe1".into(),
                 profile_id: Some("profile1".into()),
-                options: RecipeOptions::default()
+                options: BuildOptions::default()
             }
         );
     }
@@ -457,7 +457,7 @@ mod tests {
             RequestConfig {
                 recipe_id: "recipe1".into(),
                 profile_id: Some("profile1".into()),
-                options: RecipeOptions::default()
+                options: BuildOptions::default()
             }
         );
     }
@@ -481,7 +481,7 @@ mod tests {
             RequestConfig {
                 recipe_id: "recipe1".into(),
                 profile_id: Some("profile1".into()),
-                options: RecipeOptions::default()
+                options: BuildOptions::default()
             }
         );
     }

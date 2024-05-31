@@ -2,7 +2,7 @@
 
 use crate::{
     collection::RecipeId,
-    http::ExchangeId,
+    http::RequestId,
     tui::view::{
         component::Component,
         context::ViewContext,
@@ -130,7 +130,7 @@ impl<T: FixedSelect + Serialize + DeserializeOwned> Persistable for T {
 
 impl_persistable!(bool);
 impl_persistable!(String);
-impl_persistable!(ExchangeId);
+impl_persistable!(RequestId);
 
 /// A container that holds a persisted value. The container has to tell us how
 /// to get and set the value, and [Persistent] will handle the actual DB

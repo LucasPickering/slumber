@@ -8,8 +8,8 @@ pub mod select;
 use crate::{
     collection::{ProfileId, RecipeId},
     http::{
-        Exchange, ExchangeId, ExchangeSummary, RequestRecord, RequestBuildError,
-        RequestError,
+        Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
+        RequestRecord,
     },
 };
 use bytesize::ByteSize;
@@ -96,7 +96,7 @@ pub enum RequestState {
     /// The request is being built. Typically this is very fast, but can be
     /// slow if a chain source takes a while.
     Building {
-        id: ExchangeId,
+        id: RequestId,
         start_time: DateTime<Utc>,
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
@@ -147,7 +147,7 @@ pub struct ResponseMetadata {
 impl RequestState {
     /// Unique ID for this request, which will be retained throughout its life
     /// cycle
-    pub fn id(&self) -> ExchangeId {
+    pub fn id(&self) -> RequestId {
         match self {
             Self::Building { id, .. } => *id,
             Self::BuildError { error, .. } => error.id,
@@ -221,8 +221,8 @@ impl RequestState {
 
     /// Create a loading state with the current timestamp. This will generally
     /// be slightly off from when the request was actually launched, but it
-    /// shouldn't matter. See [crate::http::HttpEngine::send] for why it can't
-    /// report a start time back to us.
+    /// shouldn't matter. See [crate::http::RequestTicket::send] for why it
+    /// can't report a start time back to us.
     pub fn loading(request: Arc<RequestRecord>) -> Self {
         Self::Loading {
             request,
@@ -247,26 +247,26 @@ impl RequestState {
 #[derive(Debug)]
 pub enum RequestStateSummary {
     Building {
-        id: ExchangeId,
+        id: RequestId,
         start_time: DateTime<Utc>,
     },
     BuildError {
-        id: ExchangeId,
+        id: RequestId,
         time: DateTime<Utc>,
     },
     Loading {
-        id: ExchangeId,
+        id: RequestId,
         start_time: DateTime<Utc>,
     },
     Response(ExchangeSummary),
     RequestError {
-        id: ExchangeId,
+        id: RequestId,
         time: DateTime<Utc>,
     },
 }
 
 impl RequestStateSummary {
-    pub fn id(&self) -> ExchangeId {
+    pub fn id(&self) -> RequestId {
         match self {
             Self::Building { id, .. }
             | Self::BuildError { id, .. }

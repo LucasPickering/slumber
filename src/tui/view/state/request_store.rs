@@ -1,6 +1,6 @@
 use crate::{
     collection::{ProfileId, RecipeId},
-    http::ExchangeId,
+    http::RequestId,
     tui::view::{
         context::ViewContext, state::RequestStateSummary, RequestState,
     },
@@ -23,12 +23,12 @@ use std::collections::{hash_map::Entry, HashMap};
 /// operation fails.
 #[derive(Debug, Default)]
 pub struct RequestStore {
-    requests: HashMap<ExchangeId, RequestState>,
+    requests: HashMap<RequestId, RequestState>,
 }
 
 impl RequestStore {
     /// Get request state by ID
-    pub fn get(&self, id: ExchangeId) -> Option<&RequestState> {
+    pub fn get(&self, id: RequestId) -> Option<&RequestState> {
         self.requests.get(&id)
     }
 
@@ -40,7 +40,7 @@ impl RequestStore {
 
     /// Load a request from the database by ID. If already present in the store,
     /// do *not* update it. Only go to the DB if it's missing.
-    pub fn load(&mut self, id: ExchangeId) -> anyhow::Result<()> {
+    pub fn load(&mut self, id: RequestId) -> anyhow::Result<()> {
         if let Entry::Vacant(entry) = self.requests.entry(id) {
             let exchange = ViewContext::with_database(|database| {
                 database
@@ -136,7 +136,7 @@ mod tests {
         // This is a bit jank, but since we can't clone exchanges, the only way
         // to get the value back for comparison is to access the map directly
         assert_eq!(store.get(id), Some(store.requests.get(&id).unwrap()));
-        assert_eq!(store.get(ExchangeId::new()), None);
+        assert_eq!(store.get(RequestId::new()), None);
     }
 
     #[test]
@@ -212,7 +212,7 @@ mod tests {
         );
 
         // Not in store and not in DB, return error
-        assert_err!(store.load(ExchangeId::new()), "Unknown request ID");
+        assert_err!(store.load(RequestId::new()), "Unknown request ID");
     }
 
     #[rstest]
@@ -262,7 +262,7 @@ mod tests {
         let response_id = exchange.id;
         store.update(RequestState::response(exchange));
 
-        let building_id = ExchangeId::new();
+        let building_id = RequestId::new();
         store.update(RequestState::Building {
             id: building_id,
             start_time: Utc::now(),
@@ -270,7 +270,7 @@ mod tests {
             recipe_id: recipe_id.clone(),
         });
 
-        let build_error_id = ExchangeId::new();
+        let build_error_id = RequestId::new();
         store.update(RequestState::BuildError {
             error: RequestBuildError {
                 profile_id: Some(profile_id.clone()),
@@ -307,13 +307,13 @@ mod tests {
 
         // Neither of these should appear
         store.update(RequestState::Building {
-            id: ExchangeId::new(),
+            id: RequestId::new(),
             start_time: Utc::now(),
             profile_id: Some(ProfileId::factory(())),
             recipe_id: recipe_id.clone(),
         });
         store.update(RequestState::Building {
-            id: ExchangeId::new(),
+            id: RequestId::new(),
             start_time: Utc::now(),
             profile_id: Some(profile_id.clone()),
             recipe_id: RecipeId::factory(()),

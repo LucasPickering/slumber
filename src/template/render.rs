@@ -5,7 +5,7 @@ use crate::{
         ChainId, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
         ChainSource, RecipeId,
     },
-    http::{ContentType, Exchange, RequestBuilder, ResponseRecord},
+    http::{ContentType, Exchange, RequestSeed, ResponseRecord},
     template::{
         error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
         Prompt, Template, TemplateChunk, TemplateContext, TemplateError,
@@ -372,20 +372,23 @@ impl<'a> ChainTemplateSource<'a> {
             // 3. TUI and CLI behavior may not match
             // All 3 options are unintuitive in some way, but 1 is the easiest
             // to implement so I'm going with that for now.
-            let recipe_options = Default::default();
+            let build_options = Default::default();
 
-            let builder = RequestBuilder::new(recipe.clone(), recipe_options);
             // Shitty try block
             let result = async {
-                let request = builder
-                    .build(context)
+                let http_engine = context
+                    .http_engine
+                    .as_ref()
+                    .ok_or(TriggeredRequestError::NotAllowed)?;
+                let ticket = http_engine
+                    .build(
+                        RequestSeed::new(recipe.clone(), build_options),
+                        context,
+                    )
                     .await
                     .map_err(TriggeredRequestError::Build)?;
-                context
-                    .http_engine
-                    .clone()
-                    .ok_or(TriggeredRequestError::NotAllowed)?
-                    .send(&context.database, Arc::new(request))
+                ticket
+                    .send(&context.database)
                     .await
                     .map_err(TriggeredRequestError::Send)
             };

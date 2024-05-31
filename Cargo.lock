@@ -2001,7 +2001,6 @@ version = "1.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64",
  "bytes",
  "bytesize",
  "chrono",

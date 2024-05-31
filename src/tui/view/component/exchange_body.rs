@@ -1,7 +1,7 @@
 //! Request/response body display component
 
 use crate::{
-    http::{Body, Query},
+    http::{Query, ResponseBody},
     tui::{
         input::Action,
         view::{
@@ -48,7 +48,7 @@ pub struct ExchangeBody {
 
 #[derive(Clone)]
 pub struct ExchangeBodyProps<'a> {
-    pub body: &'a Body,
+    pub body: &'a ResponseBody,
 }
 
 /// All callback events from the query text box
@@ -186,7 +186,7 @@ impl<'a> Draw<ExchangeBodyProps<'a>> for ExchangeBody {
 }
 
 fn init_text_window(
-    body: &Body,
+    body: &ResponseBody,
     query: Option<&Query>,
 ) -> Component<TextWindow<String>> {
     // Query and prettify text if possible. This involves a lot of cloning
@@ -239,7 +239,7 @@ mod tests {
         let response = ResponseRecord {
             status: StatusCode::OK,
             headers: header_map([("Content-Type", "application/json")]),
-            body: Body::new(TEXT.into()),
+            body: ResponseBody::new(TEXT.into()),
         };
         response.parse_body();
         response
@@ -248,7 +248,7 @@ mod tests {
     /// Render an unparsed body with no query box
     #[rstest]
     fn test_unparsed(#[with(30, 2)] harness: TestHarness) {
-        let body = Body::new(TEXT.into());
+        let body = ResponseBody::new(TEXT.into());
         let component = TestComponent::new(
             harness,
             ExchangeBody::new(None),

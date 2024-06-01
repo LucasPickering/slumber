@@ -50,6 +50,24 @@ pub struct Profile {
     pub data: IndexMap<String, Template>,
 }
 
+impl Profile {
+    /// Get a presentable name for this profile
+    pub fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.id)
+    }
+}
+
+#[cfg(test)]
+impl crate::test_util::Factory for Profile {
+    fn factory(_: ()) -> Self {
+        Self {
+            id: "profile1".into(),
+            name: None,
+            data: IndexMap::new(),
+        }
+    }
+}
+
 #[derive(
     Clone,
     Debug,
@@ -64,6 +82,20 @@ pub struct Profile {
     Deserialize,
 )]
 pub struct ProfileId(String);
+
+#[cfg(test)]
+impl From<&str> for ProfileId {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+
+#[cfg(test)]
+impl crate::test_util::Factory for ProfileId {
+    fn factory(_: ()) -> Self {
+        uuid::Uuid::new_v4().to_string().into()
+    }
+}
 
 /// A gathering of like-minded recipes and/or folders
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -80,6 +112,47 @@ pub struct Folder {
         rename = "requests"
     )]
     pub children: IndexMap<RecipeId, RecipeNode>,
+}
+
+impl Folder {
+    /// Get a presentable name for this folder
+    pub fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.id)
+    }
+}
+
+#[cfg(test)]
+impl crate::test_util::Factory for Folder {
+    fn factory(_: ()) -> Self {
+        Self {
+            id: "folder1".into(),
+            name: None,
+            children: IndexMap::new(),
+        }
+    }
+}
+
+impl Recipe {
+    /// Get a presentable name for this recipe
+    pub fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.id)
+    }
+}
+
+#[cfg(test)]
+impl crate::test_util::Factory for Recipe {
+    fn factory(_: ()) -> Self {
+        Self {
+            id: "recipe1".into(),
+            name: None,
+            method: Method::Get,
+            url: "http://localhost/url".into(),
+            body: None,
+            authentication: None,
+            query: IndexMap::new(),
+            headers: IndexMap::new(),
+        }
+    }
 }
 
 /// A definition of how to make a request. This is *not* called `Request` in
@@ -121,6 +194,20 @@ pub struct Recipe {
 )]
 pub struct RecipeId(String);
 
+#[cfg(test)]
+impl From<&str> for RecipeId {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+
+#[cfg(test)]
+impl crate::test_util::Factory for RecipeId {
+    fn factory(_: ()) -> Self {
+        uuid::Uuid::new_v4().to_string().into()
+    }
+}
+
 /// HTTP method. This is duplicated from reqwest's Method so we can enforce
 /// the method is valid during deserialization. This is also generally more
 /// ergonomic at the cost of some flexibility.
@@ -150,6 +237,31 @@ pub enum Method {
     Put,
     #[display("TRACE")]
     Trace,
+}
+
+/// For serialization
+impl From<Method> for String {
+    fn from(method: Method) -> Self {
+        method.to_string()
+    }
+}
+
+#[cfg(test)]
+impl crate::test_util::Factory for Chain {
+    fn factory(_: ()) -> Self {
+        Self {
+            id: "chain1".into(),
+            source: ChainSource::Request {
+                recipe: "recipe1".into(),
+                trigger: Default::default(),
+                section: Default::default(),
+            },
+            sensitive: false,
+            selector: None,
+            content_type: None,
+            trim: ChainOutputTrim::default(),
+        }
+    }
 }
 
 /// Shortcut for defining authentication method. If this is defined in addition
@@ -261,6 +373,18 @@ pub enum ChainSource {
     },
 }
 
+/// Test-only helpers
+#[cfg(test)]
+impl ChainSource {
+    /// Build a new [Self::Command] variant from [command, ...args]
+    pub fn command<const N: usize>(cmd: [&str; N]) -> ChainSource {
+        ChainSource::Command {
+            command: cmd.into_iter().map(Template::from).collect(),
+            stdin: None,
+        }
+    }
+}
+
 /// The component of the response to use as the chain source
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -341,79 +465,6 @@ impl crate::test_util::Factory for Collection {
     }
 }
 
-#[cfg(test)]
-impl crate::test_util::Factory for ProfileId {
-    fn factory(_: ()) -> Self {
-        uuid::Uuid::new_v4().to_string().into()
-    }
-}
-
-#[cfg(test)]
-impl crate::test_util::Factory for RecipeId {
-    fn factory(_: ()) -> Self {
-        uuid::Uuid::new_v4().to_string().into()
-    }
-}
-
-impl Profile {
-    /// Get a presentable name for this profile
-    pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or(&self.id)
-    }
-}
-
-#[cfg(test)]
-impl crate::test_util::Factory for Profile {
-    fn factory(_: ()) -> Self {
-        Self {
-            id: "profile1".into(),
-            name: None,
-            data: IndexMap::new(),
-        }
-    }
-}
-
-impl Folder {
-    /// Get a presentable name for this folder
-    pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or(&self.id)
-    }
-}
-
-#[cfg(test)]
-impl crate::test_util::Factory for Folder {
-    fn factory(_: ()) -> Self {
-        Self {
-            id: "folder1".into(),
-            name: None,
-            children: IndexMap::new(),
-        }
-    }
-}
-
-impl Recipe {
-    /// Get a presentable name for this recipe
-    pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or(&self.id)
-    }
-}
-
-#[cfg(test)]
-impl crate::test_util::Factory for Recipe {
-    fn factory(_: ()) -> Self {
-        Self {
-            id: "recipe1".into(),
-            name: None,
-            method: Method::Get,
-            url: "http://localhost/url".into(),
-            body: None,
-            authentication: None,
-            query: IndexMap::new(),
-            headers: IndexMap::new(),
-        }
-    }
-}
-
 /// For deserialization
 impl TryFrom<String> for Method {
     type Error = anyhow::Error;
@@ -426,42 +477,5 @@ impl TryFrom<String> for Method {
                 Method::iter().map(|method| method.to_string()).format(", ")
             )
         })
-    }
-}
-
-/// For serialization
-impl From<Method> for String {
-    fn from(method: Method) -> Self {
-        method.to_string()
-    }
-}
-
-#[cfg(test)]
-impl crate::test_util::Factory for Chain {
-    fn factory(_: ()) -> Self {
-        Self {
-            id: "chain1".into(),
-            source: ChainSource::Request {
-                recipe: "recipe1".into(),
-                trigger: Default::default(),
-                section: Default::default(),
-            },
-            sensitive: false,
-            selector: None,
-            content_type: None,
-            trim: ChainOutputTrim::default(),
-        }
-    }
-}
-
-/// Test-only helpers
-#[cfg(test)]
-impl ChainSource {
-    /// Build a new [Self::Command] variant from [command, ...args]
-    pub fn command<const N: usize>(cmd: [&str; N]) -> ChainSource {
-        ChainSource::Command {
-            command: cmd.into_iter().map(Template::from).collect(),
-            stdin: None,
-        }
     }
 }

@@ -21,9 +21,27 @@ Basic authentication contains a username and optional password.
 ## Examples
 
 ```yaml
-!basic
-username: user
-password: pass
+# Basic auth
+requests:
+  create_fish: !request
+    method: POST
+    url: "{{host}}/fishes"
+    body: >
+      {"kind": "barracuda", "name": "Jimmy"}
+    authentication: !basic
+      username: user
+      password: pass
 ---
-!bearer 4J2e0TYqKA3gFllfTu17OF7n8g1CeAxZyi/MK5g40/o=
+# Bearer token auth
+chains:
+  token:
+    source: !file
+      path: ./token.txt
+requests:
+  create_fish: !request
+    method: POST
+    url: "{{host}}/fishes"
+    body: >
+      {"kind": "barracuda", "name": "Jimmy"}
+    authentication: !bearer "{{chains.token}}"
 ```

@@ -197,7 +197,7 @@ mod tests {
     use crate::{
         collection::{Chain, ChainSource, Collection, Profile},
         template::TemplateContext,
-        test_util::Factory,
+        test_util::{by_id, Factory},
         tui::test_util::{harness, TestHarness},
     };
     use indexmap::indexmap;
@@ -246,8 +246,8 @@ mod tests {
             ..Chain::factory(())
         };
         let collection = Collection {
-            profiles: indexmap! { profile_id.clone() => profile },
-            chains: indexmap! { chain.id.clone() => chain },
+            profiles: by_id([profile]),
+            chains: by_id([chain]),
             ..Collection::factory(())
         };
         let context = TemplateContext {

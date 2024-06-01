@@ -6,6 +6,8 @@ mod insomnia;
 mod models;
 mod recipe_tree;
 
+#[cfg(test)]
+pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 

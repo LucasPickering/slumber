@@ -2,7 +2,8 @@
 
 use crate::{
     collection::{
-        recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, RecipeId,
+        recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, Recipe,
+        RecipeId,
     },
     template::Template,
 };
@@ -17,11 +18,17 @@ use std::hash::Hash;
 pub trait HasId {
     type Id: Clone + Eq + Hash;
 
+    fn id(&self) -> &Self::Id;
+
     fn set_id(&mut self, id: Self::Id);
 }
 
 impl HasId for Profile {
     type Id = ProfileId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
 
     fn set_id(&mut self, id: Self::Id) {
         self.id = id;
@@ -31,6 +38,10 @@ impl HasId for Profile {
 impl HasId for RecipeNode {
     type Id = RecipeId;
 
+    fn id(&self) -> &Self::Id {
+        self.id()
+    }
+
     fn set_id(&mut self, id: Self::Id) {
         match self {
             RecipeNode::Folder(folder) => folder.id = id,
@@ -39,8 +50,24 @@ impl HasId for RecipeNode {
     }
 }
 
+impl HasId for Recipe {
+    type Id = RecipeId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+
+    fn set_id(&mut self, id: Self::Id) {
+        self.id = id;
+    }
+}
+
 impl HasId for Chain {
     type Id = ChainId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
 
     fn set_id(&mut self, id: Self::Id) {
         self.id = id;

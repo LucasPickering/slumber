@@ -14,7 +14,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear},
     Frame,
 };
-use std::{collections::VecDeque, ops::DerefMut};
+use std::{collections::VecDeque, fmt::Debug, ops::DerefMut};
 use tracing::trace;
 
 /// A modal (AKA popup or dialog) is a high-priority element to be shown to the
@@ -25,7 +25,7 @@ use tracing::trace;
 /// Modals cannot take props because they are rendered by the root component
 /// with dynamic dispatch, and therefore all modals must take the same props
 /// (none).
-pub trait Modal: Draw<()> + EventHandler {
+pub trait Modal: Debug + Draw<()> + EventHandler {
     /// Text at the top of the modal
     fn title(&self) -> Line<'_>;
 

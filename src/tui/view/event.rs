@@ -19,7 +19,7 @@ use tracing::trace;
 /// on-demand tree structure, where each element can furnish its list of
 /// children. Events will be propagated bottom-up (i.e. leff-to-root), and each
 /// element has the opportunity to consume the event so it stops bubbling.
-pub trait EventHandler: Debug {
+pub trait EventHandler {
     /// Update the state of *just* this component according to the event.
     /// Returned outcome indicates whether the event was consumed, or it should
     /// be propgated to our parent. Use [EventQueue] to queue subsequent events,

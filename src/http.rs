@@ -532,7 +532,7 @@ mod tests {
     use super::*;
     use crate::{
         collection::{self, Authentication, Collection, Profile},
-        test_util::{header_map, Factory},
+        test_util::{by_id, header_map, Factory},
     };
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
@@ -561,7 +561,7 @@ mod tests {
         let profile_id = profile.id.clone();
         TemplateContext {
             collection: Collection {
-                profiles: indexmap! {profile_id.clone() => profile},
+                profiles: by_id([profile]),
                 ..Collection::factory(())
             },
             selected_profile: Some(profile_id.clone()),
@@ -755,7 +755,7 @@ mod tests {
         let profile_id = profile.id.clone();
         let template_context = TemplateContext {
             collection: Collection {
-                profiles: indexmap! {profile_id.clone() => profile},
+                profiles: by_id([profile]),
                 ..Collection::factory(())
             },
             selected_profile: Some(profile_id.clone()),

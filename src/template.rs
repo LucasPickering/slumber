@@ -212,7 +212,8 @@ mod tests {
         config::Config,
         http::{ContentType, Exchange, RequestRecord, ResponseRecord},
         test_util::{
-            assert_err, header_map, temp_dir, Factory, TempDir, TestPrompter,
+            assert_err, by_id, header_map, temp_dir, Factory, TempDir,
+            TestPrompter,
         },
     };
     use chrono::Utc;
@@ -243,8 +244,8 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                profiles: indexmap! {profile_id.clone() => profile},
-                chains: indexmap! {chain.id.clone() => chain},
+                profiles: by_id([profile]),
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             selected_profile: Some(profile_id),
@@ -287,7 +288,7 @@ mod tests {
         let profile_id = profile.id.clone();
         let context = TemplateContext {
             collection: Collection {
-                profiles: indexmap! {profile_id.clone() => profile},
+                profiles: by_id([profile]),
                 ..Collection::factory(())
             },
             selected_profile: Some(profile_id),
@@ -331,7 +332,7 @@ mod tests {
         let profile_id = profile.id.clone();
         let context = TemplateContext {
             collection: Collection {
-                profiles: indexmap! {profile_id.clone() => profile},
+                profiles: by_id([profile]),
                 ..Collection::factory(())
             },
             selected_profile: Some(profile_id),
@@ -403,8 +404,8 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                recipes: indexmap! {recipe.id.clone() => recipe}.into(),
-                chains: indexmap! {chain.id.clone() => chain},
+                recipes: by_id([recipe]).into(),
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             database,
@@ -422,15 +423,16 @@ mod tests {
     #[rstest]
     // Referenced a chain that doesn't exist
     #[case::unknown_chain(
-        "unknown",
-        Chain::factory(()),
+        Chain {
+            id: "unknown".into(),
+            ..Chain::factory(())
+        },
         None,
         None,
         "Unknown chain"
     )]
     // Chain references a recipe that's not in the collection
     #[case::unknown_recipe(
-        "chain1",
         Chain {
             source: ChainSource::Request {
                 recipe: "unknown".into(),
@@ -445,7 +447,6 @@ mod tests {
     )]
     // Recipe exists but has no history in the DB
     #[case::no_response(
-        "chain1",
         Chain {
             source: ChainSource::Request {
                 recipe: "recipe1".into(),
@@ -460,7 +461,6 @@ mod tests {
     )]
     // Subrequest can't be executed because triggers are disabled
     #[case::trigger_disabled(
-        "chain1",
         Chain {
             source: ChainSource::Request {
                 recipe: "recipe1".into(),
@@ -475,7 +475,6 @@ mod tests {
     )]
     // Response doesn't include a hint to its content type
     #[case::no_content_type(
-        "chain1",
         Chain {
             source: ChainSource::Request {
                 recipe: "recipe1".into(),
@@ -497,7 +496,6 @@ mod tests {
     )]
     // Response can't be parsed according to the content type we gave
     #[case::parse_response(
-        "chain1",
         Chain {
             source: ChainSource::Request {
                 recipe: "recipe1".into(),
@@ -520,7 +518,6 @@ mod tests {
     )]
     // Query returned multiple results
     #[case::query_multiple_results(
-        "chain1",
         Chain {
             source: ChainSource::Request {
                 recipe: "recipe1".into(),
@@ -543,7 +540,6 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_chain_request_error(
-        #[case] chain_id: &str,
         #[case] chain: Chain,
         // ID of a recipe to add to the collection
         #[case] recipe_id: Option<&str>,
@@ -570,11 +566,10 @@ mod tests {
             database.insert_exchange(&exchange).unwrap();
         }
 
-        let chains = indexmap! {chain_id.into() => chain};
         let context = TemplateContext {
             collection: Collection {
                 recipes: recipes.into(),
-                chains,
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             database,
@@ -640,8 +635,8 @@ mod tests {
         let http_engine = HttpEngine::new(&Config::default());
         let context = TemplateContext {
             collection: Collection {
-                recipes: indexmap! {recipe.id.clone() => recipe}.into(),
-                chains: indexmap! {chain.id.clone() => chain},
+                recipes: by_id([recipe]).into(),
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             http_engine: Some(http_engine),
@@ -674,7 +669,7 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {chain.id.clone() => chain},
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             ..TemplateContext::factory(())
@@ -701,7 +696,7 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {chain.id.clone() => chain},
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             ..TemplateContext::factory(())
@@ -741,7 +736,7 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {chain.id.clone() => chain},
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             ..TemplateContext::factory(())
@@ -767,7 +762,7 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {chain.id.clone() => chain},
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             ..TemplateContext::factory(())
@@ -791,7 +786,7 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {chain.id.clone() => chain},
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             ..TemplateContext::factory(())
@@ -816,7 +811,7 @@ mod tests {
         // Test value from prompter
         let mut context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {chain.id.clone() => chain},
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
 
@@ -842,7 +837,7 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {chain.id.clone() => chain},
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             // Prompter gives no response
@@ -869,7 +864,7 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {chain.id.clone() => chain},
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             // Prompter gives no response
@@ -916,10 +911,7 @@ mod tests {
 
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {
-                    file_chain.id.clone() => file_chain,
-                    command_chain.id.clone() => command_chain,
-                },
+                chains: by_id([file_chain, command_chain]),
                 ..Collection::factory(())
             },
             ..TemplateContext::factory(())
@@ -956,10 +948,7 @@ mod tests {
 
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {
-                    file_chain.id.clone() => file_chain,
-                    command_chain.id.clone() => command_chain,
-                },
+                chains: by_id([file_chain, command_chain]),
                 ..Collection::factory(())
             },
             ..TemplateContext::factory(())
@@ -990,7 +979,7 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {chain.id.clone() => chain},
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             ..TemplateContext::factory(())
@@ -1014,7 +1003,7 @@ mod tests {
         };
         let context = TemplateContext {
             collection: Collection {
-                chains: indexmap! {chain.id.clone() => chain},
+                chains: by_id([chain]),
                 ..Collection::factory(())
             },
             ..TemplateContext::factory(())
@@ -1034,7 +1023,7 @@ mod tests {
         let profile_id = profile.id.clone();
         let context = TemplateContext {
             collection: Collection {
-                profiles: indexmap! {profile_id.clone() => profile},
+                profiles: by_id([profile]),
                 ..Collection::factory(())
             },
             selected_profile: Some(profile_id),

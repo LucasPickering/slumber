@@ -1,7 +1,7 @@
 //! General test utilities, that apply to all parts of the program
 
 use crate::{
-    collection::{ProfileId, Recipe, RecipeId, RecipeNode, RecipeTree},
+    collection::{HasId, ProfileId, Recipe, RecipeId, RecipeNode, RecipeTree},
     template::{Prompt, Prompter, Template},
     util::ResultExt,
 };
@@ -120,6 +120,16 @@ impl From<&str> for Template {
     }
 }
 // Can't implement this for From<String> because it conflicts with TryFrom
+
+/// Construct a map of values keyed by their ID
+pub fn by_id<T: HasId>(
+    values: impl IntoIterator<Item = T>,
+) -> IndexMap<T::Id, T> {
+    values
+        .into_iter()
+        .map(|value| (value.id().clone(), value))
+        .collect()
+}
 
 /// Helper for creating a header map
 pub fn header_map<'a>(

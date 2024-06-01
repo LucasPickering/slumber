@@ -330,11 +330,12 @@ impl Collection {
 #[cfg(test)]
 impl crate::test_util::Factory for Collection {
     fn factory(_: ()) -> Self {
+        use crate::test_util::by_id;
         let recipe = Recipe::factory(());
         let profile = Profile::factory(());
         Collection {
-            recipes: indexmap::indexmap! {recipe.id.clone() => recipe}.into(),
-            profiles: indexmap::indexmap! {profile.id.clone() => profile},
+            recipes: by_id([recipe]).into(),
+            profiles: by_id([profile]),
             ..Collection::default()
         }
     }

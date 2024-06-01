@@ -230,7 +230,7 @@ impl From<&Vec<&RecipeId>> for RecipeLookupKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{assert_err, Factory};
+    use crate::test_util::{assert_err, by_id, Factory};
     use indexmap::indexmap;
     use itertools::Itertools;
     use rstest::{fixture, rstest};
@@ -273,28 +273,40 @@ mod tests {
 
     #[fixture]
     fn tree() -> IndexMap<RecipeId, RecipeNode> {
-        indexmap! {
-            id("r1") => Recipe { id: id("r1"), ..Recipe::factory(()) }.into(),
-            id("f1") => Folder {
+        by_id([
+            Recipe {
+                id: id("r1"),
+                ..Recipe::factory(())
+            }
+            .into(),
+            Folder {
                 id: id("f1"),
-                children: indexmap! {
-                    id("f2") => Folder {
+                children: by_id([
+                    Folder {
                         id: id("f2"),
-                        children: indexmap! {
-                            id("r2") => Recipe {
-                                id: id("r2"),
-                                ..Recipe::factory(())
-                            }.into(),
-                        },
+                        children: by_id([Recipe {
+                            id: id("r2"),
+                            ..Recipe::factory(())
+                        }
+                        .into()]),
                         ..Folder::factory(())
-                    }.into(),
-                    id("r3") => Recipe { id: id("r3"), ..Recipe::factory(()) }.into(),
-                },
+                    }
+                    .into(),
+                    Recipe {
+                        id: id("r3"),
+                        ..Recipe::factory(())
+                    }
+                    .into(),
+                ]),
                 ..Folder::factory(())
             }
             .into(),
-            id("r4") => Recipe { id: id("r4"), ..Recipe::factory(()) }.into(),
-        }
+            Recipe {
+                id: id("r4"),
+                ..Recipe::factory(())
+            }
+            .into(),
+        ])
     }
 
     /// Test flat iteration over the tree

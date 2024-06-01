@@ -1,7 +1,7 @@
 //! General test utilities, that apply to all parts of the program
 
 use crate::{
-    collection::{HasId, ProfileId, Recipe, RecipeId, RecipeNode, RecipeTree},
+    collection::HasId,
     template::{Prompt, Prompter, Template},
     util::ResultExt,
 };
@@ -88,29 +88,6 @@ impl Prompter for TestPrompter {
         } else if let Some(default) = prompt.default {
             prompt.channel.respond(default);
         }
-    }
-}
-
-// Some helpful conversion implementations
-impl From<&str> for ProfileId {
-    fn from(value: &str) -> Self {
-        value.to_owned().into()
-    }
-}
-
-impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
-    fn from(value: IndexMap<RecipeId, Recipe>) -> Self {
-        let tree = value
-            .into_iter()
-            .map(|(id, recipe)| (id, RecipeNode::Recipe(recipe)))
-            .collect();
-        Self::new(tree).expect("Duplicate recipe ID")
-    }
-}
-
-impl From<&str> for RecipeId {
-    fn from(value: &str) -> Self {
-        value.to_owned().into()
     }
 }
 

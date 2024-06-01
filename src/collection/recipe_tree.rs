@@ -181,6 +181,24 @@ impl<'de> Deserialize<'de> for RecipeTree {
     }
 }
 
+#[cfg(test)]
+impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
+    fn from(value: IndexMap<RecipeId, Recipe>) -> Self {
+        value
+            .into_iter()
+            .map(|(id, recipe)| (id, RecipeNode::Recipe(recipe)))
+            .collect::<IndexMap<_, _>>()
+            .into()
+    }
+}
+
+#[cfg(test)]
+impl From<IndexMap<RecipeId, RecipeNode>> for RecipeTree {
+    fn from(tree: IndexMap<RecipeId, RecipeNode>) -> Self {
+        Self::new(tree).expect("Duplicate recipe ID")
+    }
+}
+
 impl RecipeNode {
     /// Get the ID of the inner folder or recipe
     pub fn id(&self) -> &RecipeId {

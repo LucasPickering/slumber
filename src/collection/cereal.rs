@@ -7,8 +7,9 @@ use crate::{
     },
     template::Template,
 };
+use indexmap::IndexMap;
 use serde::{
-    de::{EnumAccess, Error, VariantAccess, Visitor},
+    de::{EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::{fmt::Display, hash::Hash, str::FromStr};
@@ -104,6 +105,67 @@ where
 {
     let s = String::deserialize(deserializer)?;
     s.parse().map_err(D::Error::custom)
+}
+
+/// Custom deserializer for query parameters.
+pub fn deserialize_query_parameters<'de, D>(
+    deserializer: D,
+) -> Result<Vec<(String, Template)>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct QueryParametersVisitor;
+
+    impl<'de> Visitor<'de> for QueryParametersVisitor {
+        type Value = Vec<(String, Template)>;
+
+        fn expecting(
+            &self,
+            formatter: &mut std::fmt::Formatter,
+        ) -> std::fmt::Result {
+            formatter.write_str("sequence of <param>=<value> or map")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut query: Vec<(String, Template)> = vec![];
+            while let Some(value) = seq.next_element::<String>()? {
+                let (key, value) = value.split_once('=').ok_or_else(|| {
+                    Error::custom("Query parameters must be in the form `<param>=<value>`")
+                })?;
+
+                if key.is_empty() {
+                    return Err(Error::custom(
+                        "Query parameter key cannot be empty",
+                    ));
+                }
+
+                let key = key.to_string();
+                let value = Template::try_from(value.to_string())
+                    .map_err(Error::custom)?;
+
+                query.push((key, value));
+            }
+
+            Ok(query.into_iter().collect())
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let mut query: IndexMap<String, Template> = IndexMap::new();
+            while let Some((key, value)) = map.next_entry()? {
+                query.insert(key, value);
+            }
+
+            Ok(query.into_iter().collect())
+        }
+    }
+
+    deserializer.deserialize_any(QueryParametersVisitor)
 }
 
 // Custom deserializer for `Template`. This is useful for deserializing values

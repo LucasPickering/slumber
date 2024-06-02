@@ -150,7 +150,7 @@ impl crate::test_util::Factory for Recipe {
             url: "http://localhost/url".into(),
             body: None,
             authentication: None,
-            query: IndexMap::new(),
+            query: Vec::new(),
             headers: IndexMap::new(),
         }
     }
@@ -174,8 +174,11 @@ pub struct Recipe {
     pub url: Template,
     pub body: Option<RecipeBody>,
     pub authentication: Option<Authentication>,
-    #[serde(default)]
-    pub query: IndexMap<String, Template>,
+    #[serde(
+        default,
+        deserialize_with = "cereal::deserialize_query_parameters"
+    )]
+    pub query: Vec<(String, Template)>,
     #[serde(default)]
     pub headers: IndexMap<String, Template>,
 }

@@ -391,7 +391,7 @@ impl Recipe {
             .iter()
             // Filter out disabled params
             .filter(|(param, _)| {
-                !options.disabled_query_parameters.contains(*param)
+                !options.disabled_query_parameters.contains(param)
             })
             .map(|(k, v)| async move {
                 Ok::<_, anyhow::Error>((
@@ -731,10 +731,10 @@ mod tests {
         let recipe = Recipe {
             method: collection::Method::Post,
             url: "{{host}}/users/{{user_id}}".into(),
-            query: indexmap! {
-                "mode".into() => "{{mode}}".into(),
-                "fast".into() => "true".into(),
-            },
+            query: vec![
+                ("mode".into(), "{{mode}}".into()),
+                ("fast".into(), "true".into()),
+            ],
             headers: indexmap! {
                 // Leading/trailing newlines should be stripped
                 "Accept".into() => "application/json".into(),
@@ -779,10 +779,12 @@ mod tests {
     ) {
         let recipe = Recipe {
             url: "{{host}}/users/{{user_id}}".into(),
-            query: indexmap! {
-                "mode".into() => "{{mode}}".into(),
-                "fast".into() => "true".into(),
-            },
+            query: vec![
+                ("mode".into(), "{{mode}}".into()),
+                ("fast".into(), "true".into()),
+                ("fast".into(), "false".into()),
+                ("mode".into(), "user".into()),
+            ],
             ..Recipe::factory(())
         };
 
@@ -794,7 +796,7 @@ mod tests {
 
         assert_eq!(
             url.as_str(),
-            "http://localhost/users/1?mode=sudo&fast=true"
+            "http://localhost/users/1?mode=sudo&fast=true&fast=false&mode=user"
         );
     }
 
@@ -983,12 +985,12 @@ mod tests {
         template_context: TemplateContext,
     ) {
         let recipe = Recipe {
-            query: indexmap! {
+            query: vec![
                 // Included
-                "mode".into() => "sudo".into(),
+                ("mode".into(), "sudo".into()),
                 // Excluded
-                "fast".into() => "true".into(),
-            },
+                ("fast".into(), "true".into()),
+            ],
             headers: indexmap! {
                 // Included
                 "Accept".into() => "application/json".into(),

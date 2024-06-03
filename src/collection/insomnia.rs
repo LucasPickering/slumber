@@ -3,14 +3,16 @@
 
 use crate::{
     collection::{
-        self, Collection, Folder, Method, Profile, ProfileId, Recipe, RecipeId,
-        RecipeNode, RecipeTree,
+        self, cereal::deserialize_from_str, Collection, Folder, JsonBody,
+        Method, Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
+        RecipeTree,
     },
     template::Template,
 };
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Deserializer};
 use std::{collections::HashMap, fs::File, path::Path};
@@ -87,6 +89,7 @@ struct Grouped {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "_type", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 enum Resource {
     /// Maps to a folder
     RequestGroup(RequestGroup),
@@ -181,8 +184,11 @@ struct Parameter {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Body {
-    mime_type: String,
-    text: Template,
+    #[serde(deserialize_with = "deserialize_from_str")]
+    mime_type: Mime,
+    /// This field is only present for text-like bodies (e.g. *not* forms)
+    #[serde(default)]
+    text: Option<Template>,
 }
 
 impl Grouped {
@@ -272,7 +278,7 @@ impl From<Request> for RecipeNode {
         if let Some(Body { mime_type, .. }) = &request.body {
             headers.insert(
                 header::CONTENT_TYPE.as_str().into(),
-                Template::dangerous(mime_type.clone()),
+                Template::dangerous(mime_type.to_string()),
             );
         }
         // Load explicit headers *after* so we can override the implicit stuff
@@ -280,6 +286,19 @@ impl From<Request> for RecipeNode {
             headers.insert(header.name.to_lowercase(), header.value);
         }
         headers.shift_remove(header::USER_AGENT.as_str());
+
+        let body = request
+            .body
+            .map(RecipeBody::try_from)
+            .transpose()
+            .inspect_err(|error| {
+                warn!(
+                    "Error importing body for request `{id}`: {error}",
+                    id = request.id
+                )
+            })
+            .ok()
+            .flatten();
 
         // Load authentication scheme
         let authentication =
@@ -300,7 +319,7 @@ impl From<Request> for RecipeNode {
             name: Some(request.name),
             method: request.method,
             url: request.url,
-            body: request.body.map(|body| body.text),
+            body,
             query: request
                 .parameters
                 .into_iter()
@@ -309,6 +328,27 @@ impl From<Request> for RecipeNode {
             headers,
             authentication,
         })
+    }
+}
+
+impl TryFrom<Body> for RecipeBody {
+    type Error = anyhow::Error;
+
+    fn try_from(body: Body) -> anyhow::Result<Self> {
+        let text = body.text.ok_or_else(|| anyhow!("Missing `text` field"))?;
+
+        let body = if body.mime_type == mime::APPLICATION_JSON {
+            // Parse JSON to our own JSON equivalent
+            let json: JsonBody<String> =
+                serde_json::from_str::<serde_json::Value>(text.as_str())
+                    .context("Error parsing body as JSON")?
+                    .into();
+            // Convert each string into a template *without* parsing
+            RecipeBody::Json(json.map(Template::dangerous))
+        } else {
+            RecipeBody::Raw(text)
+        };
+        Ok(body)
     }
 }
 

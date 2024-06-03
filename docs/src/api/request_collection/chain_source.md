@@ -23,12 +23,12 @@ message: Enter Password
 
 ## Variants
 
-| Variant   | Type                               | Description                                                     |
-| --------- | ---------------------------------- | --------------------------------------------------------------- |
-| `request` | [`ChainSource::Request`](#request) | Body of the most recent response for a specific request recipe. |
-| `command` | [`ChainSource::Command`](#command) | Stdout of the executed command                                  |
-| `file`    | [`ChainSource::File`](#file)       | Contents of the file                                            |
-| `prompt`  | [`ChainSource::Prompt`](#prompt)   | Value entered by the user                                       |
+| Variant    | Type                               | Description                                                     |
+| ---------- | ---------------------------------- | --------------------------------------------------------------- |
+| `!request` | [`ChainSource::Request`](#request) | Body of the most recent response for a specific request recipe. |
+| `!command` | [`ChainSource::Command`](#command) | Stdout of the executed command                                  |
+| `!file`    | [`ChainSource::File`](#file)       | Contents of the file                                            |
+| `!prompt`  | [`ChainSource::Prompt`](#prompt)   | Value entered by the user                                       |
 
 ### Request
 

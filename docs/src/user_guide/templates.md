@@ -74,8 +74,7 @@ requests:
   create_fish: !request
     method: POST
     url: "{{host}}/fishes"
-    body: >
-      {"kind": "barracuda", "name": "Jimmy"}
+    body: !json { "kind": "barracuda", "name": "Jimmy" }
 
   get_fish: !request
     method: GET

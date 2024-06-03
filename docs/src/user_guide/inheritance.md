@@ -116,6 +116,5 @@ requests:
     headers:
       <<: *headers_base
       Content-Type: application/json
-    body: >
-      {"kind": "barracuda", "name": "Jimmy"}
+    body: !json { "kind": "barracuda", "name": "Jimmy" }
 ```

@@ -28,7 +28,7 @@ chains:
     source: !request
       recipe: login
       trigger: !expire 12h
-    selector: $.headers["X-Amzn-Trace-Id"]
+    selector: $.data
 
 .ignore:
   base: &base
@@ -46,12 +46,8 @@ requests:
       fast: no_thanks
     headers:
       Accept: application/json
-      Content-Type: application/json
-    body: |
-      {
-        "username": "{{username}}",
-        "password": "{{chains.password}}"
-      }
+    body:
+      !json { "username": "{{username}}", "password": "{{chains.password}}" }
 
   users: !folder
     name: Users
@@ -75,10 +71,7 @@ requests:
         name: Modify User
         method: PUT
         url: "{{host}}/anything/{{user_guid}}"
-        body: |
-          {
-            "username": "new username"
-          }
+        body: !json { "username": "new username" }
 
   get_image: !request
     headers:

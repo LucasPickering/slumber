@@ -1,0 +1,131 @@
+# This collection contains one of everything. This is a regression test for
+# deserialization, to make sure we don't accidentally introduce breaking changes
+# to the format
+
+.ignore:
+  base_profile_data: &base_profile_data
+    host: https://httpbin.org
+  base_recipe: &base_recipe
+    headers:
+      Accept: application/json
+
+profiles:
+  profile1:
+    name: Profile 1
+    data:
+      <<: *base_profile_data
+      username: xX{{chains.username}}Xx
+      user_guid: abc123
+  profile2:
+    name: Profile 2
+    data:
+      <<: *base_profile_data
+
+chains:
+  command:
+    source: !command
+      command: [whoami]
+  command_stdin:
+    source: !command
+      command: [head -c 1]
+      stdin: abcdef
+  command_trim_none:
+    source: !command
+      command: [whoami]
+    trim: none
+  command_trim_start:
+    source: !command
+      command: [whoami]
+    trim: start
+  command_trim_end:
+    source: !command
+      command: [whoami]
+    trim: end
+  command_trim_both:
+    source: !command
+      command: [whoami]
+    trim: both
+
+  prompt_sensitive:
+    source: !prompt
+      message: Password
+    sensitive: true
+  prompt_default:
+    source: !prompt
+      message: User GUID
+      default: "{{user_guid}}"
+
+  file:
+    source: !file
+      path: ./README.md
+  file_content_type:
+    source: !file
+      path: ./data.json
+    content_type: json
+
+  request_selector:
+    source: !request
+      recipe: login
+    selector: $.data
+  request_trigger_never:
+    source: !request
+      recipe: login
+  request_trigger_no_history:
+    source: !request
+      recipe: login
+  request_trigger_expire:
+    source: !request
+      recipe: login
+      trigger: !expire 12h
+  request_trigger_always:
+    source: !request
+      recipe: login
+  request_section_body:
+    source: !request
+      recipe: login
+      section: !body
+  request_section_header:
+    source: !request
+      recipe: login
+      section: !header content-type
+
+requests:
+  text_body: !request
+    method: POST
+    # Missing name
+    url: "{{host}}/anything/login"
+    query:
+      sudo: yes_please
+      fast: no_thanks
+    headers:
+      Accept: application/json
+    # Text body
+    body: '{"username": "{{username}}", "password": "{{chains.password}}"}'
+
+  users: !folder
+    name: Users
+    requests:
+      simple: !request
+        name: Get User
+        method: GET
+        # No headers or authentication
+        url: "{{host}}/anything/{{user_guid}}"
+
+      json_body: !request
+        <<: *base_recipe
+        name: Modify User
+        method: PUT
+        url: "{{host}}/anything/{{user_guid}}"
+        authentication: !bearer "{{chains.auth_token}}"
+        body: !json { "username": "new username" }
+
+      json_body_but_not: !request
+        <<: *base_recipe
+        name: Modify User
+        method: PUT
+        url: "{{host}}/anything/{{user_guid}}"
+        authentication: !basic
+          username: "{{username}}"
+          password: "{{password}}"
+        # Nested JSON is *not* parsed
+        body: !json '{"warning": "NOT an object"}'

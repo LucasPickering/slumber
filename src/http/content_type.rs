@@ -35,13 +35,6 @@ impl ContentType {
     const EXTENSIONS: Mapping<'static, ContentType> =
         Mapping::new(&[(Self::Json, &["json"])]);
 
-    /// Get the file extension associated with this content type. For content
-    /// types that have multiple common extensions (e.g. `image/jpeg` has `jpeg`
-    /// and `jpg`), return whichever is defined first in the mapping.
-    pub fn extension(&self) -> &'static str {
-        Self::EXTENSIONS.get_label(*self)
-    }
-
     /// Get MIME corresponding to this content type. Each content type maps to a
     /// single MIME (although the reverse is not true)
     pub fn mime(&self) -> Mime {

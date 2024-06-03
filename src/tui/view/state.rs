@@ -214,11 +214,6 @@ impl RequestState {
         }
     }
 
-    /// Is the initial stage in a request life cycle?
-    pub fn is_initial(&self) -> bool {
-        matches!(self, Self::Building { .. })
-    }
-
     /// Create a loading state with the current timestamp. This will generally
     /// be slightly off from when the request was actually launched, but it
     /// shouldn't matter. See [crate::http::RequestTicket::send] for why it

@@ -208,14 +208,6 @@ impl RecipeNode {
         }
     }
 
-    /// Get a presentable name for this folder/recipe
-    pub fn name(&self) -> &str {
-        match self {
-            RecipeNode::Folder(folder) => folder.name(),
-            RecipeNode::Recipe(recipe) => recipe.name(),
-        }
-    }
-
     /// If this node is a recipe, return it. Otherwise return `None`
     pub fn recipe(&self) -> Option<&Recipe> {
         match self {

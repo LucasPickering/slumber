@@ -270,10 +270,6 @@ pub struct CollectionDatabase {
 }
 
 impl CollectionDatabase {
-    pub fn collection_id(&self) -> CollectionId {
-        self.collection_id
-    }
-
     /// Get the full path for the collection file associated with this DB handle
     pub fn collection_path(&self) -> anyhow::Result<PathBuf> {
         self.database
@@ -489,6 +485,11 @@ impl CollectionDatabase {
             .context("Error saving UI state to database")
             .traced()?;
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub fn collection_id(&self) -> CollectionId {
+        self.collection_id
     }
 }
 

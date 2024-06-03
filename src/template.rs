@@ -93,7 +93,7 @@ impl Template {
     /// impossible (either type state or a runtime check), but it's not worth
     /// the extra code for something that is very unlikely to happen. It says
     /// "dangerous", don't be stupid.
-    pub(crate) fn dangerous(template: String) -> Self {
+    pub fn dangerous(template: String) -> Self {
         // Create one raw chunk for everything
         let chunk = TemplateInputChunk::Raw(Span::new(0, template.len()));
         Self {

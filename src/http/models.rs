@@ -395,12 +395,6 @@ impl ResponseRecord {
                 Some(format!("data.{}", mime.subtype()))
             })
     }
-
-    /// Get the content type of this response, based on the `Content-Type`
-    /// header. Return `None` if the header is missing or an unknown type.
-    pub fn content_type(&self) -> Option<ContentType> {
-        ContentType::from_response(self).ok()
-    }
 }
 
 /// HTTP response body. Content is stored as bytes because it may not

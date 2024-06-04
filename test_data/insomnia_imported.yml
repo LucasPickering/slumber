@@ -82,7 +82,9 @@ requests:
     name: Login
     method: POST
     url: https://httpbin.org/anything/login
-    body: null
+    body: !form_urlencoded
+      username: user
+      password: pass
     authentication: null
     query: {}
     headers:

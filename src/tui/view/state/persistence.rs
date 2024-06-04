@@ -98,14 +98,22 @@ pub enum PersistentKey {
     RecipeCollapsed,
     /// Selected tab in the recipe pane
     RecipeTab,
+
     /// Selected query param, per recipe. Value is the query param name
     RecipeSelectedQuery(RecipeId),
     /// Toggle state for a single recipe+query param
     RecipeQuery { recipe: RecipeId, param: String },
+
     /// Selected header, per recipe. Value is the header name
     RecipeSelectedHeader(RecipeId),
     /// Toggle state for a single recipe+header
     RecipeHeader { recipe: RecipeId, header: String },
+
+    /// Selected form field, per recipe. Value is the field name
+    RecipeSelectedFormField(RecipeId),
+    /// Toggle state for a single recipe+form field
+    RecipeFormField { recipe: RecipeId, field: String },
+
     /// Response body JSONPath query (**not** related to query params)
     ResponseBodyQuery(RecipeId),
 }

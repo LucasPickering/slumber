@@ -1,7 +1,7 @@
 {
   "_type": "export",
   "__export_format": 4,
-  "__export_date": "2024-06-02T00:00:08.951Z",
+  "__export_date": "2024-06-04T21:09:14.812Z",
   "__export_source": "insomnia.desktop.app:v9.2.0",
   "resources": [
     {
@@ -37,13 +37,10 @@
           "name": "Content-Type",
           "value": "application/x-www-form-urlencoded"
         },
-        {
-          "name": "User-Agent",
-          "value": "insomnia/8.6.1"
-        }
+        { "name": "User-Agent", "value": "insomnia/8.6.1" }
       ],
       "authentication": {},
-      "metaSortKey": -1712668704494,
+      "metaSortKey": -1712668704594,
       "isPrivate": false,
       "pathParameters": [],
       "settingStoreCookies": true,
@@ -73,21 +70,12 @@
       "name": "With Text Body",
       "description": "",
       "method": "POST",
-      "body": {
-        "mimeType": "text/plain",
-        "text": "hello!"
-      },
+      "body": { "mimeType": "text/plain", "text": "hello!" },
       "preRequestScript": "",
       "parameters": [],
       "headers": [
-        {
-          "name": "Content-Type",
-          "value": "text/plain"
-        },
-        {
-          "name": "User-Agent",
-          "value": "insomnia/8.6.1"
-        }
+        { "name": "Content-Type", "value": "text/plain" },
+        { "name": "User-Agent", "value": "insomnia/8.6.1" }
       ],
       "authentication": {},
       "metaSortKey": -1712668712522,
@@ -110,7 +98,7 @@
       "description": "",
       "environment": {},
       "environmentPropertyOrder": null,
-      "metaSortKey": -1712668700000,
+      "metaSortKey": -1712668704494,
       "_type": "request_group"
     },
     {
@@ -129,14 +117,8 @@
       "preRequestScript": "",
       "parameters": [],
       "headers": [
-        {
-          "name": "Content-Type",
-          "value": "application/json"
-        },
-        {
-          "name": "User-Agent",
-          "value": "insomnia/8.6.1"
-        }
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "User-Agent", "value": "insomnia/8.6.1" }
       ],
       "authentication": {},
       "metaSortKey": -1712668712422,
@@ -162,12 +144,7 @@
       "body": {},
       "preRequestScript": "",
       "parameters": [],
-      "headers": [
-        {
-          "name": "User-Agent",
-          "value": "insomnia/8.6.1"
-        }
-      ],
+      "headers": [{ "name": "User-Agent", "value": "insomnia/8.6.1" }],
       "authentication": {
         "type": "bearer",
         "token": " {% response 'body', 'req_3bc2de939f1a4d1ebc00835cbefd6b5d', 'b64::JC5oZWFkZXJzLkhvc3Q=::46b', 'when-expired', 60 %}"
@@ -207,12 +184,7 @@
       "body": {},
       "preRequestScript": "",
       "parameters": [],
-      "headers": [
-        {
-          "name": "User-Agent",
-          "value": "insomnia/8.6.1"
-        }
-      ],
+      "headers": [{ "name": "User-Agent", "value": "insomnia/8.6.1" }],
       "authentication": {
         "type": "digest",
         "disabled": false,
@@ -242,12 +214,7 @@
       "body": {},
       "preRequestScript": "",
       "parameters": [],
-      "headers": [
-        {
-          "name": "User-Agent",
-          "value": "insomnia/8.6.1"
-        }
-      ],
+      "headers": [{ "name": "User-Agent", "value": "insomnia/8.6.1" }],
       "authentication": {
         "type": "basic",
         "useISO88591": false,
@@ -278,12 +245,7 @@
       "body": {},
       "preRequestScript": "",
       "parameters": [],
-      "headers": [
-        {
-          "name": "User-Agent",
-          "value": "insomnia/8.6.1"
-        }
-      ],
+      "headers": [{ "name": "User-Agent", "value": "insomnia/8.6.1" }],
       "authentication": {},
       "metaSortKey": -1712668873967,
       "isPrivate": false,
@@ -329,11 +291,9 @@
         "greeting": "hello!"
       },
       "dataPropertyOrder": {
-        "&": [
-          "host",
-          "greeting"
-        ]
+        "&": ["host", "greeting"]
       },
+      "dataPropertyOrder": { "&": ["host"] },
       "color": null,
       "isPrivate": false,
       "metaSortKey": 1710624684621,
@@ -345,16 +305,8 @@
       "modified": 1713480842495,
       "created": 1710624689589,
       "name": "Remote",
-      "data": {
-        "host": "https://httpbin.org",
-        "greeting": "howdy"
-      },
-      "dataPropertyOrder": {
-        "&": [
-          "host",
-          "greeting"
-        ]
-      },
+      "data": { "host": "https://httpbin.org", "greeting": "howdy" },
+      "dataPropertyOrder": { "&": ["host", "greeting"] },
       "color": null,
       "isPrivate": false,
       "metaSortKey": 1710624689589,

@@ -45,8 +45,9 @@ requests:
       fast: no_thanks
     headers:
       Accept: application/json
-    body:
-      !json { "username": "{{username}}", "password": "{{chains.password}}" }
+    body: !form_urlencoded
+      username: "{{username}}"
+      password: "{{chains.password}}"
 
   users: !folder
     name: Users

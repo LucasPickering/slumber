@@ -74,7 +74,7 @@ struct RecipeState {
     url: TemplatePreview,
     query: Component<Persistent<SelectState<RowState, TableState>>>,
     headers: Component<Persistent<SelectState<RowState, TableState>>>,
-    body: Option<Component<TextWindow<TemplatePreview>>>,
+    body: Option<Component<RecipeBodyDisplay>>,
     authentication: Option<Component<AuthenticationDisplay>>,
 }
 
@@ -98,14 +98,6 @@ enum Tab {
     Authentication,
 }
 impl FixedSelect for Tab {}
-
-/// One row in the query/header table
-#[derive(Debug)]
-struct RowState {
-    key: String,
-    value: TemplatePreview,
-    enabled: Persistent<bool>,
-}
 
 /// Items in the actions popup menu. This is also used by the recipe list
 /// component, so the action is handled in the parent.
@@ -138,9 +130,21 @@ impl RecipePane {
                     .collect()
             }
 
+            let disabled_form_fields = state
+                .body
+                .as_ref()
+                .and_then(|body| match body.data() {
+                    RecipeBodyDisplay::Raw(_) => None,
+                    RecipeBodyDisplay::Form(form) => {
+                        Some(to_disabled_set(form.data()))
+                    }
+                })
+                .unwrap_or_default();
+
             BuildOptions {
                 disabled_headers: to_disabled_set(state.headers.data()),
                 disabled_query_parameters: to_disabled_set(state.query.data()),
+                disabled_form_fields,
             }
         } else {
             // Shouldn't be possible, because state is initialized on first
@@ -250,12 +254,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
             match self.tabs.data().selected() {
                 Tab::Body => {
                     if let Some(body) = &recipe_state.body {
-                        body.draw(
-                            frame,
-                            TextWindowProps::default(),
-                            content_area,
-                            true,
-                        );
+                        body.draw(frame, (), content_area, true);
                     }
                 }
                 Tab::Query => recipe_state.query.draw(
@@ -347,10 +346,11 @@ impl RecipeState {
             )
             .into(),
             body: recipe.body.as_ref().map(|body| {
-                TextWindow::new(preview_body(
+                RecipeBodyDisplay::new(
                     body,
                     selected_profile_id.cloned(),
-                ))
+                    &recipe.id,
+                )
                 .into()
             }),
             // Map authentication type
@@ -436,31 +436,119 @@ impl Draw for AuthenticationDisplay {
     }
 }
 
-/// Generate [TemplatePreview] for a body
-fn preview_body(
-    body: &RecipeBody,
-    profile_id: Option<ProfileId>,
-) -> TemplatePreview {
-    let template = match body {
-        RecipeBody::Raw(body) => body.clone(),
-        RecipeBody::Json(value) => {
-            // We want to pretty-print the JSON body. We *could* map from
-            // JsonBody<Template> -> JsonBody<TemplatePreview> then stringify
-            // that on every render, but then we'd have to implement JSON pretty
-            // printing ourselves. The easier method is to just turn this whole
-            // JSON struct into a single string (with unrendered templates),
-            // then parse that back as one big template. If it's stupid but it
-            // works, it's not stupid.
-            let value: serde_json::Value =
-                value.map_ref(|template| template.to_string()).into();
-            let stringified = format!("{value:#}");
-            // This template is composed valid templates, surrounded by JSON
-            // syntax. In no world should that result in an invalid template
-            Template::parse(stringified)
-                .expect("Unexpected template parse failure")
+/// Render recipe body. The variant is based on the incoming body type, and
+/// determines the representation
+#[derive(Debug)]
+enum RecipeBodyDisplay {
+    Raw(Component<TextWindow<TemplatePreview>>),
+    Form(Component<Persistent<SelectState<RowState, TableState>>>),
+}
+
+impl RecipeBodyDisplay {
+    fn new(
+        body: &RecipeBody,
+        selected_profile_id: Option<ProfileId>,
+        recipe_id: &RecipeId,
+    ) -> Self {
+        match body {
+            RecipeBody::Raw(body) => Self::Raw(
+                TextWindow::new(TemplatePreview::new(
+                    body.clone(),
+                    selected_profile_id,
+                ))
+                .into(),
+            ),
+            RecipeBody::Json(value) => {
+                // We want to pretty-print the JSON body. We *could* map from
+                // JsonBody<Template> -> JsonBody<TemplatePreview> then
+                // stringify that on every render, but then we'd have to
+                // implement JSON pretty printing ourselves. The easier method
+                // is to just turn this whole JSON struct into a single string
+                // (with unrendered templates), then parse that back as one big
+                // template. If it's stupid but it works, it's not stupid.
+                let value: serde_json::Value =
+                    value.map_ref(|template| template.to_string()).into();
+                let stringified = format!("{value:#}");
+                // This template is composed valid templates, surrounded by JSON
+                // syntax. In no world should that result in an invalid template
+                let template = Template::parse(stringified)
+                    .expect("Unexpected template parse failure");
+                Self::Raw(
+                    TextWindow::new(TemplatePreview::new(
+                        template,
+                        selected_profile_id,
+                    ))
+                    .into(),
+                )
+            }
+            RecipeBody::FormUrlencoded(fields) => {
+                let form_items = fields
+                    .iter()
+                    .map(|(field, value)| {
+                        RowState::new(
+                            field.clone(),
+                            TemplatePreview::new(
+                                value.clone(),
+                                selected_profile_id.clone(),
+                            ),
+                            PersistentKey::RecipeFormField {
+                                recipe: recipe_id.clone(),
+                                field: field.clone(),
+                            },
+                        )
+                    })
+                    .collect();
+                let select = SelectState::builder(form_items)
+                    .on_submit(RowState::on_submit)
+                    .build();
+                Self::Form(
+                    Persistent::new(
+                        PersistentKey::RecipeSelectedFormField(
+                            recipe_id.clone(),
+                        ),
+                        select,
+                    )
+                    .into(),
+                )
+            }
         }
-    };
-    TemplatePreview::new(template, profile_id)
+    }
+}
+
+impl EventHandler for RecipeBodyDisplay {
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        match self {
+            RecipeBodyDisplay::Raw(preview) => vec![preview.as_child()],
+            RecipeBodyDisplay::Form(form) => vec![form.as_child()],
+        }
+    }
+}
+
+impl Draw for RecipeBodyDisplay {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        match self {
+            RecipeBodyDisplay::Raw(preview) => preview.draw(
+                frame,
+                TextWindowProps::default(),
+                metadata.area(),
+                true,
+            ),
+            RecipeBodyDisplay::Form(form) => form.draw(
+                frame,
+                to_table(form.data(), ["", "Field", "Value"]).generate(),
+                metadata.area(),
+                true,
+            ),
+        }
+    }
+}
+
+/// One row in the query/header table
+#[derive(Debug)]
+struct RowState {
+    key: String,
+    value: TemplatePreview,
+    enabled: Persistent<bool>,
 }
 
 impl RowState {

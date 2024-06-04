@@ -8,9 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- JSON bodies can now be defined with the `!json` tag [#242](https://github.com/LucasPickering/slumber/issues/242)
-  - This should make JSON requests more convenient to write, because you no longer have to specify the `Content-Type` header yourself
-  - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/recipe_body.html)
+- Structured bodies can now be defined with tags on the `body` field of a recipe, making it more convenient to construct bodies of common types. Supported types are:
+  - `!json` [#242](https://github.com/LucasPickering/slumber/issues/242)
+  - `!form_urlencoded` [#244](https://github.com/LucasPickering/slumber/issues/244)
+  - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/recipe_body.html) for usage instructions
 - Templates can now render binary values in certain contexts
   - [See docs](https://slumber.lucaspickering.me/book/user_guide/templates.html#binary-templates)
 

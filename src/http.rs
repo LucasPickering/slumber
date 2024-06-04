@@ -53,11 +53,13 @@ use anyhow::Context;
 use async_recursion::async_recursion;
 use bytes::Bytes;
 use chrono::Utc;
-use futures::future::{self, try_join_all, OptionFuture};
-use indexmap::IndexMap;
+use futures::{
+    future::{self, try_join_all, OptionFuture},
+    Future,
+};
 use reqwest::{
     header::{self, HeaderMap, HeaderName, HeaderValue},
-    Client, Response, Url,
+    Client, RequestBuilder, Response, Url,
 };
 use std::{collections::HashSet, sync::Arc};
 use tokio::try_join;
@@ -119,14 +121,14 @@ impl HttpEngine {
             info_span!("Build request", request_id = %id, ?recipe, ?options)
                 .entered();
 
-        let (client, request) = async {
+        let future = async {
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
                 recipe.render_url(template_context),
                 recipe.render_query(options, template_context),
                 recipe.render_headers(options, template_context),
                 recipe.render_authentication(template_context),
-                recipe.render_body(template_context),
+                recipe.render_body(options, template_context),
             )?;
 
             // Build the reqwest request first, so we can have it do all the
@@ -134,36 +136,23 @@ impl HttpEngine {
             // We'll just copy its homework at the end to get our
             // RequestRecord
             let client = self.get_client(&url);
-            let mut builder = client
-                .request(recipe.method.into(), url)
-                .query(&query)
-                .headers(headers);
-
-            match authentication {
-                Some(Authentication::Basic { username, password }) => {
-                    builder = builder.basic_auth(username, password)
-                }
-                Some(Authentication::Bearer(token)) => {
-                    builder = builder.bearer_auth(token)
-                }
-                None => {}
-            };
+            let mut builder =
+                client.request(recipe.method.into(), url).query(&query);
             if let Some(body) = body {
-                builder = builder.body(body);
+                builder = body.apply(builder);
+            }
+            // Set headers *after* body so the use can override the Content-Type
+            // header that was set if they want to
+            builder = builder.headers(headers);
+            if let Some(authentication) = authentication {
+                builder = authentication.apply(builder);
             }
 
             let request = builder.build()?;
             Ok((client, request))
-        }
-        .await
-        .traced()
-        .map_err(|error| {
-            RequestBuildError::new(
-                error,
-                &seed,
-                template_context.selected_profile.clone(),
-            )
-        })?;
+        };
+        let (client, request) =
+            seed.convert_error(future, template_context).await?;
 
         Ok(RequestTicket {
             record: RequestRecord::new(
@@ -192,7 +181,7 @@ impl HttpEngine {
             info_span!("Build request URL", request_id = %id, ?recipe, ?options)
                 .entered();
 
-        let request = async {
+        let future = async {
             // Parallelization!
             let (url, query) = try_join!(
                 recipe.render_url(template_context),
@@ -206,16 +195,8 @@ impl HttpEngine {
                 .query(&query)
                 .build()?;
             Ok(request)
-        }
-        .await
-        .traced()
-        .map_err(|error| {
-            RequestBuildError::new(
-                error,
-                &seed,
-                template_context.selected_profile.clone(),
-            )
-        })?;
+        };
+        let request = seed.convert_error(future, template_context).await?;
 
         Ok(request.url().clone())
     }
@@ -226,23 +207,49 @@ impl HttpEngine {
         seed: RequestSeed,
         template_context: &TemplateContext,
     ) -> Result<Option<Bytes>, RequestBuildError> {
-        let RequestSeed { id, recipe, .. } = &seed;
-        let _ = info_span!("Build request body", request_id = %id, ?recipe)
-            .entered();
+        let RequestSeed {
+            id,
+            recipe,
+            options,
+        } = &seed;
+        let _ =
+            info_span!("Build request body", request_id = %id, ?recipe, ?options)
+                .entered();
 
-        let body = recipe
-            .render_body(template_context)
-            .await
-            .traced()
-            .map_err(|error| {
-                RequestBuildError::new(
-                    error,
-                    &seed,
-                    template_context.selected_profile.clone(),
-                )
-            })?;
+        let future = async {
+            let Some(body) =
+                recipe.render_body(options, template_context).await?
+            else {
+                return Ok(None);
+            };
 
-        Ok(body)
+            match body {
+                // If we have the bytes, we don't need to bother building a
+                // request
+                RenderedBody::Raw(bytes) => Ok(Some(bytes)),
+                // The body is complex - offload the hard work to RequestBuilder
+                RenderedBody::FormUrlencoded(_) => {
+                    let url = Url::parse("http://localhost").unwrap();
+                    let client = self.get_client(&url);
+                    let mut builder = client.request(reqwest::Method::GET, url);
+                    builder = body.apply(builder);
+                    let request = builder.build()?;
+                    // We just added a body so we know it's present, and we
+                    // know it's not a stream. This requires a clone which sucks
+                    // because the bytes are going to get thrown away anyway,
+                    // but nothing we can do about that because of reqwest's API
+                    let bytes = request
+                        .body()
+                        .expect("Body should be present")
+                        .as_bytes()
+                        .expect("Body should be raw bytes")
+                        .to_owned()
+                        .into();
+                    Ok(Some(bytes))
+                }
+            }
+        };
+        seed.convert_error(future, template_context).await
     }
 
     /// Get the appropriate client to use for this request. If the request URL's
@@ -255,6 +262,23 @@ impl HttpEngine {
         } else {
             &self.client
         }
+    }
+}
+
+impl RequestSeed {
+    /// Run the given future and convert any error into [RequestBuildError]
+    async fn convert_error<T>(
+        &self,
+        future: impl Future<Output = anyhow::Result<T>>,
+        template_context: &TemplateContext,
+    ) -> Result<T, RequestBuildError> {
+        future.await.traced().map_err(|error| RequestBuildError {
+            profile_id: template_context.selected_profile.clone(),
+            recipe_id: self.recipe.id.clone(),
+            id: self.id,
+            time: Utc::now(),
+            error,
+        })
     }
 }
 
@@ -361,7 +385,7 @@ impl Recipe {
         &self,
         options: &BuildOptions,
         template_context: &TemplateContext,
-    ) -> anyhow::Result<IndexMap<String, String>> {
+    ) -> anyhow::Result<Vec<(String, String)>> {
         let iter = self
             .query
             .iter()
@@ -377,10 +401,7 @@ impl Recipe {
                     )?,
                 ))
             });
-        Ok(future::try_join_all(iter)
-            .await?
-            .into_iter()
-            .collect::<IndexMap<String, String>>())
+        future::try_join_all(iter).await
     }
 
     /// Render all headers specified by the user. This will *not* include
@@ -395,12 +416,11 @@ impl Recipe {
         // Set Content-Type based on the body type. This can be overwritten
         // below if the user explicitly passed a Content-Type value
         if let Some(content_type) =
-            self.body.as_ref().and_then(|body| body.content_type())
+            self.body.as_ref().and_then(|body| body.mime())
         {
             headers.insert(
                 header::CONTENT_TYPE,
                 content_type
-                    .mime()
                     .as_ref()
                     // A MIME type should always be a valid header value
                     .try_into()
@@ -501,27 +521,58 @@ impl Recipe {
     /// Render request body
     async fn render_body(
         &self,
+        options: &BuildOptions,
         template_context: &TemplateContext,
-    ) -> anyhow::Result<Option<Bytes>> {
+    ) -> anyhow::Result<Option<RenderedBody>> {
         let Some(body) = &self.body else {
             return Ok(None);
         };
 
-        let bytes = match body {
-            RecipeBody::Raw(body) => body
-                .render(template_context)
-                .await
-                .context("Error rendering body")?
-                .into(),
+        let rendered = match body {
+            RecipeBody::Raw(body) => RenderedBody::Raw(
+                body.render(template_context)
+                    .await
+                    .context("Error rendering body")?
+                    .into(),
+            ),
             // Recursively render the JSON body
-            RecipeBody::Json(value) => value
-                .render(template_context)
-                .await
-                .context("Error rendering body")?
-                .to_string()
-                .into(),
+            RecipeBody::Json(value) => RenderedBody::Raw(
+                value
+                    .render(template_context)
+                    .await
+                    .context("Error rendering body")?
+                    .to_string()
+                    .into(),
+            ),
+            RecipeBody::FormUrlencoded(fields) => {
+                let iter = fields
+                    .iter()
+                    // Remove disabled fields
+                    .filter(|(k, _)| !options.disabled_form_fields.contains(*k))
+                    .map(|(k, v)| async move {
+                        Ok::<_, anyhow::Error>((
+                            k.clone(),
+                            v.render_string(template_context).await.context(
+                                format!("Error rendering form field `{k}`"),
+                            )?,
+                        ))
+                    });
+                let rendered = try_join_all(iter).await?;
+                RenderedBody::FormUrlencoded(rendered)
+            }
         };
-        Ok(Some(bytes))
+        Ok(Some(rendered))
+    }
+}
+
+impl Authentication<String> {
+    fn apply(self, builder: RequestBuilder) -> RequestBuilder {
+        match self {
+            Authentication::Basic { username, password } => {
+                builder.basic_auth(username, password)
+            }
+            Authentication::Bearer(token) => builder.bearer_auth(token),
+        }
     }
 }
 
@@ -561,6 +612,25 @@ impl JsonBody {
             ),
         };
         Ok(rendered)
+    }
+}
+
+/// Body ready to be added to the request. Each variant corresponds to a method
+/// by which we'll add it to the request. This means it is **not** 1:1 with
+/// [RecipeBody]
+enum RenderedBody {
+    Raw(Bytes),
+    /// Value is `String` because only string data can be URL-encoded
+    FormUrlencoded(Vec<(String, String)>),
+}
+
+impl RenderedBody {
+    fn apply(self, builder: RequestBuilder) -> RequestBuilder {
+        // Set body. The variant tells us _how_ to set it
+        match self {
+            RenderedBody::Raw(bytes) => builder.body(bytes),
+            RenderedBody::FormUrlencoded(fields) => builder.form(&fields),
+        }
     }
 }
 
@@ -610,7 +680,7 @@ mod tests {
         },
         test_util::{by_id, header_map, Factory},
     };
-    use indexmap::indexmap;
+    use indexmap::{indexmap, IndexMap};
     use pretty_assertions::assert_eq;
     use reqwest::{Method, StatusCode};
     use rstest::{fixture, rstest};
@@ -842,10 +912,27 @@ mod tests {
         "application/json"
     )]
     // Content-Type has been overridden by an explicit header
-    #[case::content_type_override(
+    #[case::json_content_type_override(
         RecipeBody::Json(json!({"group_id": "{{group_id}}"}).into()),
         Some("text/plain"),
         br#"{"group_id":"3"}"#,
+        "text/plain"
+    )]
+    #[case::form_urlencoded(
+        RecipeBody::FormUrlencoded(indexmap! {
+            "user_id".into() => "{{user_id}}".into(),
+            "token".into() => "{{token}}".into()
+        }),
+        None,
+        b"user_id=1&token=hunter2",
+        "application/x-www-form-urlencoded"
+    )]
+    // reqwest sets the content type when initializing the body, so make sure
+    // that doesn't override the user's value
+    #[case::form_urlencoded_content_type_override(
+        RecipeBody::FormUrlencoded(Default::default()),
+        Some("text/plain"),
+        b"",
         "text/plain"
     )]
     #[tokio::test]
@@ -888,9 +975,10 @@ mod tests {
         );
     }
 
+    /// Test disabling query params, headers, and form fields
     #[rstest]
     #[tokio::test]
-    async fn test_disable_headers_and_query_params(
+    async fn test_build_options(
         http_engine: HttpEngine,
         template_context: TemplateContext,
     ) {
@@ -908,7 +996,10 @@ mod tests {
                 "content-type".into() => "text/plain".into(),
             },
             // This should implicitly set the content-type header
-            body: Some(RecipeBody::Json(json!("{{group_id}}").into())),
+            body: Some(RecipeBody::FormUrlencoded(indexmap! {
+                "user_id".into() => "{{user_id}}".into(),
+                "token".into() => "{{token}}".into(),
+            })),
             ..Recipe::factory(())
         };
         let recipe_id = recipe.id.clone();
@@ -916,10 +1007,9 @@ mod tests {
         let seed = RequestSeed::new(
             recipe,
             BuildOptions {
-                // By disabling this one, we allow the implicit content type to
-                // show through
                 disabled_headers: ["content-type".to_owned()].into(),
                 disabled_query_parameters: ["fast".to_owned()].into(),
+                disabled_form_fields: ["token".to_owned()].into(),
             },
         );
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
@@ -934,9 +1024,9 @@ mod tests {
                 url: "http://localhost/url?mode=sudo".parse().unwrap(),
                 headers: header_map([
                     ("accept", "application/json"),
-                    ("content-type", "application/json"),
+                    ("content-type", "application/x-www-form-urlencoded"),
                 ]),
-                body: Some(b"\"3\"".as_slice().into()),
+                body: Some(b"user_id=1".as_slice().into()),
             }
         );
     }

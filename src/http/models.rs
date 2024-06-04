@@ -86,12 +86,15 @@ pub struct BuildOptions {
     /// Which query parameters should be excluded?  A blacklist allows the
     /// default to be "include all".
     pub disabled_query_parameters: HashSet<String>,
+    /// For form bodies, which form fields should be excluded?
+    pub disabled_form_fields: HashSet<String>,
 }
 
 /// A request ready to be launched into through the stratosphere. This is
 /// basically a two-part ticket: the request is the part we'll hand to the HTTP
 /// engine to be launched, and the record is the ticket stub we'll keep for
-/// ourselves (to display to the user).
+/// ourselves (to display to the user
+#[derive(Debug)]
 pub struct RequestTicket {
     /// A record of the request that we can hang onto and persist
     pub(super) record: Arc<RequestRecord>,
@@ -520,23 +523,6 @@ pub struct RequestBuildError {
     pub id: RequestId,
     /// When did the error occur?
     pub time: DateTime<Utc>,
-}
-
-impl RequestBuildError {
-    /// Wrap a given error with context from the build process
-    pub fn new(
-        error: anyhow::Error,
-        seed: &RequestSeed,
-        profile_id: Option<ProfileId>,
-    ) -> Self {
-        Self {
-            profile_id,
-            recipe_id: seed.recipe.id.clone(),
-            id: seed.id,
-            time: Utc::now(),
-            error,
-        }
-    }
 }
 
 #[cfg(test)]

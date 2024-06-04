@@ -40,6 +40,11 @@ requests:
   get: !request
     method: GET
     url: https://httpbin.org/get
+
+  post: !request
+    method: POST
+    url: https://httpbin.org/post
+    body: !json { "id": 3, "name": "Slumber" }
 ```
 
 Create this file, then run the TUI with `slumber`.

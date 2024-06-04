@@ -8,9 +8,10 @@ In addition, you can pass any [`Template`](./template.md) to render any text or 
 
 The following content types have first-class support. Slumber will automatically set the `Content-Type` header to the specified value, but you can override this simply by providing your own value for the header.
 
-| Variant | Type | `Content-Type` Header | Description                                                      |
-| ------- | ---- | --------------------- | ---------------------------------------------------------------- |
-| `!json` | Any  | `application/json`    | Structured JSON body, where all strings are treated as templates |
+| Variant            | Type                                         | `Content-Type`                      | Description                                                                                               |
+| ------------------ | -------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `!json`            | Any                                          | `application/json`                  | Structured JSON body; all strings are treated as templates                                                |
+| `!form_urlencoded` | [`mapping[string, Template]`](./template.md) | `application/x-www-form-urlencoded` | URL-encoded form data; [see here for more](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST |
 
 ## Examples
 

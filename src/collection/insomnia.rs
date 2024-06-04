@@ -189,6 +189,23 @@ struct Body {
     /// This field is only present for text-like bodies (e.g. *not* forms)
     #[serde(default)]
     text: Option<Template>,
+    /// Present for form-like bodies
+    #[serde(default)]
+    params: Vec<FormParam>,
+}
+
+impl Body {
+    fn try_text(self) -> anyhow::Result<Template> {
+        self.text
+            .ok_or_else(|| anyhow!("Body missing `text` field"))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FormParam {
+    name: String,
+    value: String,
 }
 
 impl Grouped {
@@ -335,18 +352,25 @@ impl TryFrom<Body> for RecipeBody {
     type Error = anyhow::Error;
 
     fn try_from(body: Body) -> anyhow::Result<Self> {
-        let text = body.text.ok_or_else(|| anyhow!("Missing `text` field"))?;
-
         let body = if body.mime_type == mime::APPLICATION_JSON {
             // Parse JSON to our own JSON equivalent
             let json: JsonBody<String> =
-                serde_json::from_str::<serde_json::Value>(text.as_str())
-                    .context("Error parsing body as JSON")?
-                    .into();
+                serde_json::from_str::<serde_json::Value>(
+                    body.try_text()?.as_str(),
+                )
+                .context("Error parsing body as JSON")?
+                .into();
             // Convert each string into a template *without* parsing
             RecipeBody::Json(json.map(Template::dangerous))
+        } else if body.mime_type == mime::APPLICATION_WWW_FORM_URLENCODED {
+            RecipeBody::FormUrlencoded(
+                body.params
+                    .into_iter()
+                    .map(|param| (param.name, Template::dangerous(param.value)))
+                    .collect(),
+            )
         } else {
-            RecipeBody::Raw(text)
+            RecipeBody::Raw(body.try_text()?)
         };
         Ok(body)
     }

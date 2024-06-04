@@ -13,6 +13,7 @@ use derive_more::{Deref, Display, From, FromStr};
 use equivalent::Equivalent;
 use indexmap::IndexMap;
 use itertools::Itertools;
+use mime::Mime;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use strum::{EnumIter, IntoEnumIterator};
@@ -288,17 +289,24 @@ pub enum Authentication<T = Template> {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum RecipeBody {
+    /// Plain string/bytes body
     Raw(Template),
+    /// Strutured JSON, which will be stringified and sent as text
     Json(JsonBody),
+    /// `application/x-www-form-urlencoded` fields
+    FormUrlencoded(IndexMap<String, Template>),
 }
 
 impl RecipeBody {
-    /// For structured bodies, get the corresponding [ContentType]. Return
-    /// `None` for raw bodies
-    pub fn content_type(&self) -> Option<ContentType> {
+    /// Get the MIME type of this body. For raw bodies we have no idea, but for
+    /// structured bodies we can make a very educated guess
+    pub fn mime(&self) -> Option<Mime> {
         match self {
             RecipeBody::Raw(_) => None,
-            RecipeBody::Json(_) => Some(ContentType::Json),
+            RecipeBody::Json(_) => Some(mime::APPLICATION_JSON),
+            RecipeBody::FormUrlencoded(_) => {
+                Some(mime::APPLICATION_WWW_FORM_URLENCODED)
+            }
         }
     }
 }

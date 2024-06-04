@@ -523,6 +523,21 @@ mod tests {
                                 "Accept".into() => "application/json".into(),
                             },
                         }),
+                        RecipeNode::Recipe(Recipe {
+                            id: "form_urlencoded_body".into(),
+                            name: Some("Modify User".into()),
+                            method: Method::Put,
+                            url: "{{host}}/anything/{{user_guid}}".into(),
+
+                            body: Some(RecipeBody::FormUrlencoded(indexmap! {
+                                "username".into() => "new username".into()
+                            })),
+                            authentication: None,
+                            query: indexmap! {},
+                            headers: indexmap! {
+                                "Accept".into() => "application/json".into(),
+                            },
+                        }),
                     ]),
                 }),
             ])

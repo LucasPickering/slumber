@@ -129,3 +129,11 @@ requests:
           password: "{{password}}"
         # Nested JSON is *not* parsed
         body: !json '{"warning": "NOT an object"}'
+
+      form_urlencoded_body: !request
+        <<: *base_recipe
+        name: Modify User
+        method: PUT
+        url: "{{host}}/anything/{{user_guid}}"
+        body: !form_urlencoded
+          username: "new username"

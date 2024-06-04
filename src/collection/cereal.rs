@@ -2,8 +2,8 @@
 
 use crate::{
     collection::{
-        recipe_tree::RecipeNode, Chain, ChainId, JsonBody, Profile, ProfileId,
-        Recipe, RecipeBody, RecipeId,
+        recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, Recipe,
+        RecipeBody, RecipeId,
     },
     template::Template,
 };
@@ -160,7 +160,9 @@ impl RecipeBody {
     // by macros, but we need custom implementation
     const STRUCT_NAME: &'static str = "RecipeBody";
     const VARIANT_JSON: &'static str = "json";
-    const ALL_VARIANTS: &'static [&'static str] = &[Self::VARIANT_JSON];
+    const VARIANT_FORM_URLENCODED: &'static str = "form_urlencoded";
+    const ALL_VARIANTS: &'static [&'static str] =
+        &[Self::VARIANT_JSON, Self::VARIANT_FORM_URLENCODED];
 }
 
 /// Custom serialization for RecipeBody, so the `Raw` variant serializes as a
@@ -180,6 +182,13 @@ impl Serialize for RecipeBody {
                 Self::VARIANT_JSON,
                 value,
             ),
+            RecipeBody::FormUrlencoded(value) => serializer
+                .serialize_newtype_variant(
+                    Self::STRUCT_NAME,
+                    2,
+                    Self::VARIANT_FORM_URLENCODED,
+                    value,
+                ),
         }
     }
 }
@@ -235,9 +244,12 @@ impl<'de> Deserialize<'de> for RecipeBody {
             {
                 let (tag, value) = data.variant::<String>()?;
                 match tag.as_str() {
-                    RecipeBody::VARIANT_JSON => Ok(RecipeBody::Json(
-                        value.newtype_variant::<JsonBody>()?,
-                    )),
+                    RecipeBody::VARIANT_JSON => {
+                        Ok(RecipeBody::Json(value.newtype_variant()?))
+                    }
+                    RecipeBody::VARIANT_FORM_URLENCODED => {
+                        Ok(RecipeBody::FormUrlencoded(value.newtype_variant()?))
+                    }
                     other => Err(A::Error::unknown_variant(
                         other,
                         RecipeBody::ALL_VARIANTS,
@@ -340,6 +352,7 @@ pub mod serde_duration {
 mod tests {
     use super::*;
     use crate::test_util::assert_err;
+    use indexmap::indexmap;
     use rstest::rstest;
     use serde::Serialize;
     use serde_json::json;
@@ -380,19 +393,30 @@ mod tests {
     )]
     #[case::json(
         RecipeBody::Json(json!({"user": "{{user_id}}"}).into()),
-        serde_yaml::Value::Tagged(Box::new(TaggedValue{
+        serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
-            value: [
-                (serde_yaml::Value::from("user"), "{{user_id}}".into())
-            ].into_iter().collect::<Mapping>().into()
+            value: mapping([("user", "{{user_id}}")])
         })),
     )]
     #[case::json_nested(
         RecipeBody::Json(json!(r#"{"warning": "NOT an object"}"#).into()),
-        serde_yaml::Value::Tagged(Box::new(TaggedValue{
+        serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
             value: r#"{"warning": "NOT an object"}"#.into()
         })),
+    )]
+    #[case::form_urlencoded(
+        RecipeBody::FormUrlencoded(indexmap! {
+            "username".into() => "{{username}}".into(),
+            "password".into() => "{{chains.password}}".into(),
+        }),
+        serde_yaml::Value::Tagged(Box::new(TaggedValue {
+            tag: Tag::new("form_urlencoded"),
+            value: mapping([
+                ("username", "{{username}}"),
+                ("password", "{{chains.password}}"),
+            ])
+        }))
     )]
     fn test_serde_recipe_body(
         #[case] body: RecipeBody,
@@ -429,7 +453,14 @@ mod tests {
             tag: Tag::new("raw"),
             value: "{{user_id}}".into()
         })),
-        "unknown variant `raw`, expected `json`",
+        "unknown variant `raw`, expected `json` or `form_urlencoded`",
+    )]
+    #[case::form_urlencoded_wrong_type(
+        serde_yaml::Value::Tagged(Box::new(TaggedValue{
+            tag: Tag::new("form_urlencoded"),
+            value: "{{user_id}}".into()
+        })),
+        "invalid type: string \"{{user_id}}\", expected a map"
     )]
     fn test_deserialize_recipe_error(
         #[case] yaml: impl Into<serde_yaml::Value>,
@@ -500,5 +531,18 @@ mod tests {
         #[case] error: &str,
     ) {
         assert_de_tokens_error::<WrapDuration>(&[Token::Str(s)], error)
+    }
+
+    /// Build a YAML mapping
+    fn mapping(
+        fields: impl IntoIterator<Item = (&'static str, &'static str)>,
+    ) -> serde_yaml::Value {
+        fields
+            .into_iter()
+            .map(|(k, v)| {
+                (serde_yaml::Value::from(k), serde_yaml::Value::from(v))
+            })
+            .collect::<Mapping>()
+            .into()
     }
 }

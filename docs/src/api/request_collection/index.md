@@ -58,22 +58,21 @@ chains:
       recipe: login
     selector: $.token
 
-# Use YAML anchors for de-duplication (Anything under .ignore is ignored)
+# Use YAML anchors for de-duplication (Anything under .ignore will not trigger an error for unknown fields)
 .ignore:
   base: &base
     headers:
       Accept: application/json
-      Content-Type: application/json
 
 requests:
   login: !request
     <<: *base
     method: POST
     url: "{{host}}/anything/login"
-    body: |
-      {
+    body:
+      !json {
         "username": "{{chains.username}}",
-        "password": "{{chains.password}}"
+        "password": "{{chains.password}}",
       }
 
   # Folders can be used to keep your recipes organized
@@ -92,6 +91,5 @@ requests:
         method: PUT
         url: "{{host}}/anything/current-user"
         authentication: !bearer "{{chains.auth_token}}"
-        body: >
-          {"username": "Kenny"}
+        body: !json { "username": "Kenny" }
 ```

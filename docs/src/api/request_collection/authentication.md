@@ -4,10 +4,10 @@ Authentication provides shortcuts for common HTTP authentication schemes. It pop
 
 ## Variants
 
-| Variant  | Type                                            | Value                                                                                                          |
-| -------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `basic`  | [`Basic Authentication`](#basic-authentication) | [Basic authentication](https://swagger.io/docs/specification/authentication/basic-authentication/) credentials |
-| `bearer` | `string`                                        | [Bearer token](https://swagger.io/docs/specification/authentication/bearer-authentication/)                    |
+| Variant   | Type                                            | Value                                                                                                          |
+| --------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `!basic`  | [`Basic Authentication`](#basic-authentication) | [Basic authentication](https://swagger.io/docs/specification/authentication/basic-authentication/) credentials |
+| `!bearer` | `string`                                        | [Bearer token](https://swagger.io/docs/specification/authentication/bearer-authentication/)                    |
 
 ### Basic Authentication
 
@@ -26,8 +26,7 @@ requests:
   create_fish: !request
     method: POST
     url: "{{host}}/fishes"
-    body: >
-      {"kind": "barracuda", "name": "Jimmy"}
+    body: !json { "kind": "barracuda", "name": "Jimmy" }
     authentication: !basic
       username: user
       password: pass
@@ -41,7 +40,6 @@ requests:
   create_fish: !request
     method: POST
     url: "{{host}}/fishes"
-    body: >
-      {"kind": "barracuda", "name": "Jimmy"}
+    body: !json { "kind": "barracuda", "name": "Jimmy" }
     authentication: !bearer "{{chains.token}}"
 ```

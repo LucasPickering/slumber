@@ -1,28 +1,49 @@
 {
   "_type": "export",
   "__export_format": 4,
-  "__export_date": "2024-04-18T22:58:15.638Z",
-  "__export_source": "insomnia.desktop.app:v8.6.1",
+  "__export_date": "2024-06-02T00:00:08.951Z",
+  "__export_source": "insomnia.desktop.app:v9.2.0",
   "resources": [
     {
-      "_id": "req_3bc2de939f1a4d1ebc00835cbefd6b5d",
+      "_id": "req_a345faa530a7453e83ee967d18555712",
       "parentId": "wrk_scratchpad",
-      "modified": 1713481064149,
+      "modified": 1717286392629,
       "created": 1712490172886,
       "url": "https://httpbin.org/anything/login",
       "name": "Login",
       "description": "",
       "method": "POST",
-      "body": {},
+      "body": {
+        "mimeType": "application/x-www-form-urlencoded",
+        "params": [
+          {
+            "id": "pair_d67fc8e2d68a44419e8a2a6eb49a7e38",
+            "name": "username",
+            "value": "user",
+            "description": ""
+          },
+          {
+            "id": "pair_56d73e79076f45aeba128f0b1d8eb117",
+            "name": "password",
+            "value": "pass",
+            "description": ""
+          }
+        ]
+      },
+      "preRequestScript": "",
       "parameters": [],
       "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/x-www-form-urlencoded"
+        },
         {
           "name": "User-Agent",
           "value": "insomnia/8.6.1"
         }
       ],
       "authentication": {},
-      "metaSortKey": -1712668704594,
+      "metaSortKey": -1712668704494,
       "isPrivate": false,
       "pathParameters": [],
       "settingStoreCookies": true,
@@ -36,26 +57,76 @@
     {
       "_id": "wrk_scratchpad",
       "parentId": null,
-      "modified": 1710623607163,
-      "created": 1710623607163,
+      "modified": 1717286289487,
+      "created": 1717286289487,
       "name": "Scratch Pad",
       "description": "",
       "scope": "collection",
       "_type": "workspace"
     },
     {
-      "_id": "req_bff9461c4e81463b890856a283d5e2f3",
-      "parentId": "fld_2fa209e604774c8db800304ad38e68d0",
-      "modified": 1712673687766,
+      "_id": "req_583c296a600247d6b0c28a0afcefdb89",
+      "parentId": "fld_9a7332db608943b093c929a82c81df50",
+      "modified": 1717286376747,
+      "created": 1717286350726,
+      "url": "https://httpbin.org/post",
+      "name": "With Text Body",
+      "description": "",
+      "method": "POST",
+      "body": {
+        "mimeType": "text/plain",
+        "text": "hello!"
+      },
+      "preRequestScript": "",
+      "parameters": [],
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "text/plain"
+        },
+        {
+          "name": "User-Agent",
+          "value": "insomnia/8.6.1"
+        }
+      ],
+      "authentication": {},
+      "metaSortKey": -1712668712522,
+      "isPrivate": false,
+      "pathParameters": [],
+      "settingStoreCookies": true,
+      "settingSendCookies": true,
+      "settingDisableRenderRequestBody": false,
+      "settingEncodeUrl": true,
+      "settingRebuildPath": true,
+      "settingFollowRedirects": "global",
+      "_type": "request"
+    },
+    {
+      "_id": "fld_9a7332db608943b093c929a82c81df50",
+      "parentId": "wrk_scratchpad",
+      "modified": 1712668704494,
+      "created": 1712668704494,
+      "name": "My Folder",
+      "description": "",
+      "environment": {},
+      "environmentPropertyOrder": null,
+      "metaSortKey": -1712668700000,
+      "_type": "request_group"
+    },
+    {
+      "_id": "req_1419670d20eb4964956df954e1eb7c4b",
+      "parentId": "fld_9a7332db608943b093c929a82c81df50",
+      "modified": 1717286365591,
       "created": 1710624620060,
       "url": "https://httpbin.org/post",
-      "name": "With Body",
+      "name": "With JSON Body",
       "description": "",
       "method": "POST",
       "body": {
         "mimeType": "application/json",
         "text": "{\n\t\"message\": \"hello!\"\n}"
       },
+      "preRequestScript": "",
       "parameters": [],
       "headers": [
         {
@@ -80,20 +151,8 @@
       "_type": "request"
     },
     {
-      "_id": "fld_2fa209e604774c8db800304ad38e68d0",
-      "parentId": "wrk_scratchpad",
-      "modified": 1712668704494,
-      "created": 1712668704494,
-      "name": "My Folder",
-      "description": "",
-      "environment": {},
-      "environmentPropertyOrder": null,
-      "metaSortKey": -1712668704494,
-      "_type": "request_group"
-    },
-    {
-      "_id": "req_30f68ae3069b4ec59707bf793a4b74cb",
-      "parentId": "fld_2b83df7de20d446f91d94dcb0b66c06f",
+      "_id": "req_2ec3dc9ff6774ac78248777e75984831",
+      "parentId": "fld_8077c48f5a89436bbe4b3a53c06471f5",
       "modified": 1712668874211,
       "created": 1710623967061,
       "url": "https://httpbin.org/get",
@@ -101,6 +160,7 @@
       "description": "",
       "method": "GET",
       "body": {},
+      "preRequestScript": "",
       "parameters": [],
       "headers": [
         {
@@ -124,8 +184,8 @@
       "_type": "request"
     },
     {
-      "_id": "fld_2b83df7de20d446f91d94dcb0b66c06f",
-      "parentId": "fld_2fa209e604774c8db800304ad38e68d0",
+      "_id": "fld_8077c48f5a89436bbe4b3a53c06471f5",
+      "parentId": "fld_9a7332db608943b093c929a82c81df50",
       "modified": 1712668870637,
       "created": 1712668865713,
       "name": "Inner Folder",
@@ -136,8 +196,8 @@
       "_type": "request_group"
     },
     {
-      "_id": "req_82f3033addcc4d128aa34c16a2f2de73",
-      "parentId": "fld_2b83df7de20d446f91d94dcb0b66c06f",
+      "_id": "req_b08ee35904784b5f9af598f9b7fd7ca0",
+      "parentId": "fld_8077c48f5a89436bbe4b3a53c06471f5",
       "modified": 1713480815364,
       "created": 1713480809428,
       "url": "https://httpbin.org/get",
@@ -145,6 +205,7 @@
       "description": "",
       "method": "GET",
       "body": {},
+      "preRequestScript": "",
       "parameters": [],
       "headers": [
         {
@@ -170,8 +231,8 @@
       "_type": "request"
     },
     {
-      "_id": "req_b537f7f12d2f4dffbda12fdff2ff3704",
-      "parentId": "fld_2b83df7de20d446f91d94dcb0b66c06f",
+      "_id": "req_284e0d90f0d647b483f863af5ee79c23",
+      "parentId": "fld_8077c48f5a89436bbe4b3a53c06471f5",
       "modified": 1712668880543,
       "created": 1710623638685,
       "url": "https://httpbin.org/get",
@@ -179,6 +240,7 @@
       "description": "",
       "method": "GET",
       "body": {},
+      "preRequestScript": "",
       "parameters": [],
       "headers": [
         {
@@ -205,8 +267,8 @@
       "_type": "request"
     },
     {
-      "_id": "req_467d7ec5ceee4893aa443b09e25c6e53",
-      "parentId": "fld_2b83df7de20d446f91d94dcb0b66c06f",
+      "_id": "req_814a5e9b63a7482da1d8261311bc6c84",
+      "parentId": "fld_8077c48f5a89436bbe4b3a53c06471f5",
       "modified": 1712668882645,
       "created": 1710623974770,
       "url": "https://httpbin.org/get",
@@ -214,6 +276,7 @@
       "description": "",
       "method": "GET",
       "body": {},
+      "preRequestScript": "",
       "parameters": [],
       "headers": [
         {
@@ -236,43 +299,39 @@
     {
       "_id": "env_99d30891da4bdcebc63947a8fc17f076de878684",
       "parentId": "wrk_scratchpad",
-      "modified": 1713480837298,
-      "created": 1710623619898,
+      "modified": 1717286296579,
+      "created": 1717286296579,
       "name": "Base Environment",
-      "data": {
-        "greeting": "hello!"
-      },
-      "dataPropertyOrder": {
-        "&": [
-          "greeting"
-        ]
-      },
+      "data": {},
+      "dataPropertyOrder": null,
       "color": null,
       "isPrivate": false,
-      "metaSortKey": 1710623619898,
+      "metaSortKey": 1717286296579,
       "_type": "environment"
     },
     {
       "_id": "jar_99d30891da4bdcebc63947a8fc17f076de878684",
       "parentId": "wrk_scratchpad",
-      "modified": 1710623619901,
-      "created": 1710623619901,
+      "modified": 1717286296581,
+      "created": 1717286296581,
       "name": "Default Jar",
       "cookies": [],
       "_type": "cookie_jar"
     },
     {
-      "_id": "env_b54010f85b024f5d89724bd918f983ec",
+      "_id": "env_3b607180e18c41228387930058c9ca43",
       "parentId": "env_99d30891da4bdcebc63947a8fc17f076de878684",
       "modified": 1710624708900,
       "created": 1710624684621,
       "name": "Local",
       "data": {
-        "host": "http://localhost:3000"
+        "host": "http://localhost:3000",
+        "greeting": "hello!"
       },
       "dataPropertyOrder": {
         "&": [
-          "host"
+          "host",
+          "greeting"
         ]
       },
       "color": null,
@@ -281,7 +340,7 @@
       "_type": "environment"
     },
     {
-      "_id": "env_6203e0435e4f44e19406bde63f7bfa62",
+      "_id": "env_4fb19173966e42898a0a77f45af591c9",
       "parentId": "env_99d30891da4bdcebc63947a8fc17f076de878684",
       "modified": 1713480842495,
       "created": 1710624689589,

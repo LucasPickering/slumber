@@ -27,6 +27,7 @@ We'll use these credentials to log in and get an API token, so the second data s
 ```yaml
 chains:
   username:
+    # Slumber knows how to query this file based on its extension
     source: !file
       path: ./creds.json
     selector: $.user
@@ -43,10 +44,10 @@ requests:
   login: !request
     method: POST
     url: "https://myfishes.fish/anything/login"
-    body: |
-      {
+    body:
+      !json {
         "username": "{{chains.username}}",
-        "password": "{{chains.password}}"
+        "password": "{{chains.password}}",
       }
 
   get_user: !request
@@ -84,7 +85,7 @@ requests:
   login: !request
     method: POST
     url: "https://myfishes.fish/anything/login"
-    body: |
+    body: !json
       {
         "username": "{{chains.username}}",
         "password": "{{chains.password}}"

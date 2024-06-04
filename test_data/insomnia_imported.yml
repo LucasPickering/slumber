@@ -1,43 +1,24 @@
 # What we expect the Insomnia example collection to import as
 profiles:
-  env_b54010f85b024f5d89724bd918f983ec:
+  env_3b607180e18c41228387930058c9ca43:
     name: Local
     data:
-      greeting: hello!
       host: http://localhost:3000
-  env_6203e0435e4f44e19406bde63f7bfa62:
+      greeting: hello!
+  env_4fb19173966e42898a0a77f45af591c9:
     name: Remote
     data:
       host: https://httpbin.org
       greeting: howdy
 chains: {}
 requests:
-  req_3bc2de939f1a4d1ebc00835cbefd6b5d: !request
-    name: Login
-    method: POST
-    url: https://httpbin.org/anything/login
-    body: null
-    authentication: null
-    query: {}
-    headers: {}
-
-  fld_2fa209e604774c8db800304ad38e68d0: !folder
+  fld_9a7332db608943b093c929a82c81df50: !folder
     name: My Folder
     requests:
-      req_bff9461c4e81463b890856a283d5e2f3: !request
-        name: With Body
-        method: POST
-        url: https://httpbin.org/post
-        body: "{\n\t\"message\": \"hello!\"\n}"
-        authentication: null
-        query: {}
-        headers:
-          content-type: application/json
-
-      fld_2b83df7de20d446f91d94dcb0b66c06f: !folder
+      fld_8077c48f5a89436bbe4b3a53c06471f5: !folder
         name: Inner Folder
         requests:
-          req_30f68ae3069b4ec59707bf793a4b74cb: !request
+          req_2ec3dc9ff6774ac78248777e75984831: !request
             name: Bearer Auth
             method: GET
             url: https://httpbin.org/get
@@ -46,7 +27,7 @@ requests:
             query: {}
             headers: {}
 
-          req_82f3033addcc4d128aa34c16a2f2de73: !request
+          req_b08ee35904784b5f9af598f9b7fd7ca0: !request
             name: Digest Auth (Unsupported)
             method: GET
             url: https://httpbin.org/get
@@ -55,7 +36,7 @@ requests:
             query: {}
             headers: {}
 
-          req_b537f7f12d2f4dffbda12fdff2ff3704: !request
+          req_284e0d90f0d647b483f863af5ee79c23: !request
             name: Basic Auth
             method: GET
             url: https://httpbin.org/get
@@ -66,7 +47,7 @@ requests:
             query: {}
             headers: {}
 
-          req_467d7ec5ceee4893aa443b09e25c6e53: !request
+          req_814a5e9b63a7482da1d8261311bc6c84: !request
             name: No Auth
             method: GET
             url: https://httpbin.org/get
@@ -74,3 +55,35 @@ requests:
             authentication: null
             query: {}
             headers: {}
+
+      req_583c296a600247d6b0c28a0afcefdb89: !request
+        name: With Text Body
+        method: POST
+        url: https://httpbin.org/post
+        body: "hello!"
+        authentication: null
+        query: {}
+        headers:
+          content-type: text/plain
+
+      req_1419670d20eb4964956df954e1eb7c4b: !request
+        name: With JSON Body
+        method: POST
+        url: https://httpbin.org/post
+        body: !json { "message": "hello!" }
+        authentication: null
+        query: {}
+        headers:
+          # This is redundant with the body type, but it's more effort than
+          # it's worth to remove it
+          content-type: application/json
+
+  req_a345faa530a7453e83ee967d18555712: !request
+    name: Login
+    method: POST
+    url: https://httpbin.org/anything/login
+    body: null
+    authentication: null
+    query: {}
+    headers:
+      content-type: "application/x-www-form-urlencoded"

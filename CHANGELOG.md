@@ -8,8 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- JSON bodies can now be defined with the `!json` tag [#242](https://github.com/LucasPickering/slumber/issues/242)
+  - This should make JSON requests more convenient to write, because you no longer have to specify the `Content-Type` header yourself
+  - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/recipe_body.html)
 - Templates can now render binary values in certain contexts
-  - [See docs](https://slumber.lucaspickering.me/book/user_guide/templates.html#binary-templates) for more info
+  - [See docs](https://slumber.lucaspickering.me/book/user_guide/templates.html#binary-templates)
 
 ### Changed
 

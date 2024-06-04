@@ -30,58 +30,6 @@ pub enum ContentType {
     Json,
 }
 
-/// A response content type that we know how to parse. This is defined as a
-/// trait rather than an enum because it breaks apart the logic more clearly.
-pub trait ResponseContent: Debug + Display + Send + Sync {
-    /// Get the type of this content
-    fn content_type(&self) -> ContentType;
-
-    /// Parse the response body as this type
-    fn parse(body: &[u8]) -> anyhow::Result<Self>
-    where
-        Self: Sized;
-
-    /// Prettify a parsed body into something the user will really like. Once
-    /// a response is parsed, prettification is infallible. Could be slow
-    /// though!
-    fn prettify(&self) -> String;
-
-    /// Convert the content to JSON. JSON is the common language used for
-    /// querying intenally, so everything needs to be convertible to/from JSON.
-    fn to_json(&self) -> Cow<'_, serde_json::Value>;
-
-    /// Facilitate downcasting generic parsed bodies to concrete types for tests
-    #[cfg(test)]
-    fn as_any(&self) -> &dyn std::any::Any;
-}
-
-#[derive(Debug, Display, Deref, From, PartialEq)]
-pub struct Json(serde_json::Value);
-
-impl ResponseContent for Json {
-    fn content_type(&self) -> ContentType {
-        ContentType::Json
-    }
-
-    fn parse(body: &[u8]) -> anyhow::Result<Self> {
-        Ok(Self(serde_json::from_slice(body)?))
-    }
-
-    fn prettify(&self) -> String {
-        // serde_json can't fail serializing its own Value type
-        serde_json::to_string_pretty(&self.0).unwrap()
-    }
-
-    fn to_json(&self) -> Cow<'_, serde_json::Value> {
-        Cow::Borrowed(&self.0)
-    }
-
-    #[cfg(test)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self as &dyn std::any::Any
-    }
-}
-
 impl ContentType {
     /// File extensions for each content type
     const EXTENSIONS: Mapping<'static, ContentType> =
@@ -92,6 +40,33 @@ impl ContentType {
     /// and `jpg`), return whichever is defined first in the mapping.
     pub fn extension(&self) -> &'static str {
         Self::EXTENSIONS.get_label(*self)
+    }
+
+    /// Get MIME corresponding to this content type. Each content type maps to a
+    /// single MIME (although the reverse is not true)
+    pub fn mime(&self) -> Mime {
+        // Don't use a Mapping because this is a one-way relationship
+        match self {
+            ContentType::Json => mime::APPLICATION_JSON,
+        }
+    }
+
+    /// Parse the value of the content-type header and map it to a known content
+    /// type
+    fn from_mime(mime_type: &str) -> anyhow::Result<Self> {
+        let mime_type: Mime = mime_type
+            .parse()
+            .with_context(|| format!("Invalid content type `{mime_type}`"))?;
+
+        let suffix = mime_type.suffix().map(|name| name.as_str());
+        match (mime_type.type_(), mime_type.subtype(), suffix) {
+            // JSON has a lot of extended types that follow the pattern
+            // "application/*+json", match those too
+            (APPLICATION, JSON, _) | (APPLICATION, _, Some("json")) => {
+                Ok(Self::Json)
+            }
+            _ => Err(anyhow!("Unknown content type `{mime_type}`")),
+        }
     }
 
     /// Guess content type from a file path based on its extension
@@ -149,23 +124,57 @@ impl ContentType {
         let content_type = Self::from_response(response)?;
         content_type.parse_content(response.body.bytes())
     }
+}
 
-    /// Parse the value of the content-type header and map it to a known content
-    /// type
-    fn from_mime(mime_type: &str) -> anyhow::Result<Self> {
-        let mime_type: Mime = mime_type
-            .parse()
-            .with_context(|| format!("Invalid content type `{mime_type}`"))?;
+/// A response content type that we know how to parse. This is defined as a
+/// trait rather than an enum because it breaks apart the logic more clearly.
+pub trait ResponseContent: Debug + Display + Send + Sync {
+    /// Get the type of this content
+    fn content_type(&self) -> ContentType;
 
-        let suffix = mime_type.suffix().map(|name| name.as_str());
-        match (mime_type.type_(), mime_type.subtype(), suffix) {
-            // JSON has a lot of extended types that follow the pattern
-            // "application/*+json", match those too
-            (APPLICATION, JSON, _) | (APPLICATION, _, Some("json")) => {
-                Ok(Self::Json)
-            }
-            _ => Err(anyhow!("Unknown content type `{mime_type}`")),
-        }
+    /// Parse the response body as this type
+    fn parse(body: &[u8]) -> anyhow::Result<Self>
+    where
+        Self: Sized;
+
+    /// Prettify a parsed body into something the user will really like. Once
+    /// a response is parsed, prettification is infallible. Could be slow
+    /// though!
+    fn prettify(&self) -> String;
+
+    /// Convert the content to JSON. JSON is the common language used for
+    /// querying intenally, so everything needs to be convertible to/from JSON.
+    fn to_json(&self) -> Cow<'_, serde_json::Value>;
+
+    /// Facilitate downcasting generic parsed bodies to concrete types for tests
+    #[cfg(test)]
+    fn as_any(&self) -> &dyn std::any::Any;
+}
+
+#[derive(Debug, Display, Deref, From, PartialEq)]
+pub struct Json(serde_json::Value);
+
+impl ResponseContent for Json {
+    fn content_type(&self) -> ContentType {
+        ContentType::Json
+    }
+
+    fn parse(body: &[u8]) -> anyhow::Result<Self> {
+        Ok(Self(serde_json::from_slice(body)?))
+    }
+
+    fn prettify(&self) -> String {
+        // serde_json can't fail serializing its own Value type
+        serde_json::to_string_pretty(&self.0).unwrap()
+    }
+
+    fn to_json(&self) -> Cow<'_, serde_json::Value> {
+        Cow::Borrowed(&self.0)
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> &dyn std::any::Any {
+        self as &dyn std::any::Any
     }
 }
 

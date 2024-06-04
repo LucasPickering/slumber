@@ -495,6 +495,13 @@ impl From<&str> for ResponseBody {
 }
 
 #[cfg(test)]
+impl From<&[u8]> for ResponseBody {
+    fn from(value: &[u8]) -> Self {
+        Self::new(value.to_owned().into())
+    }
+}
+
+#[cfg(test)]
 impl PartialEq for ResponseBody {
     fn eq(&self, other: &Self) -> bool {
         // Ignore derived data

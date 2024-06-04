@@ -115,7 +115,6 @@ requests:
     url: "{{host}}/fishes"
     headers:
       <<: *headers_base
-      Content-Type: application/json
-    body: >
-      {"kind": "barracuda", "name": "Jimmy"}
+      Host: myfishes.fish
+    body: !json { "kind": "barracuda", "name": "Jimmy" }
 ```

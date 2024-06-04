@@ -33,6 +33,7 @@ pub struct TextWindow<T> {
     window_height: Cell<u16>,
 }
 
+#[derive(Default)]
 pub struct TextWindowProps {
     /// Is there a search box below the content? This tells us if we need to
     /// offset the horizontal scroll box an extra row.
@@ -116,6 +117,7 @@ impl<T: Debug> EventHandler for TextWindow<T> {
     }
 }
 
+/// `T` has to be convertible to text to be drawn
 impl<T> Draw<TextWindowProps> for TextWindow<T>
 where
     T: 'static,

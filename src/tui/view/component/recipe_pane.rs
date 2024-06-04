@@ -1,6 +1,7 @@
 use crate::{
-    collection::{Authentication, ProfileId, Recipe, RecipeId},
+    collection::{Authentication, ProfileId, Recipe, RecipeBody, RecipeId},
     http::BuildOptions,
+    template::Template,
     tui::{
         context::TuiContext,
         input::Action,
@@ -251,9 +252,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                     if let Some(body) = &recipe_state.body {
                         body.draw(
                             frame,
-                            TextWindowProps {
-                                has_search_box: false,
-                            },
+                            TextWindowProps::default(),
                             content_area,
                             true,
                         );
@@ -348,8 +347,8 @@ impl RecipeState {
             )
             .into(),
             body: recipe.body.as_ref().map(|body| {
-                TextWindow::new(TemplatePreview::new(
-                    body.clone(),
+                TextWindow::new(preview_body(
+                    body,
                     selected_profile_id.cloned(),
                 ))
                 .into()
@@ -357,44 +356,48 @@ impl RecipeState {
             // Map authentication type
             authentication: recipe.authentication.as_ref().map(
                 |authentication| {
-                    match authentication {
-                        Authentication::Basic { username, password } => {
-                            AuthenticationDisplay::Basic {
-                                username: TemplatePreview::new(
-                                    username.clone(),
-                                    selected_profile_id.cloned(),
-                                ),
-                                password: password.clone().map(|password| {
-                                    TemplatePreview::new(
-                                        password,
-                                        selected_profile_id.cloned(),
-                                    )
-                                }),
-                            }
-                        }
-                        Authentication::Bearer(token) => {
-                            AuthenticationDisplay::Bearer(TemplatePreview::new(
-                                token.clone(),
-                                selected_profile_id.cloned(),
-                            ))
-                        }
-                    }
-                    .into() // Convert to Component
+                    AuthenticationDisplay::new(
+                        authentication,
+                        selected_profile_id,
+                    )
+                    .into()
                 },
             ),
         }
     }
 }
 
-/// Display authentication settings. This is basically the underlying
-/// [Authentication] type, but the templates have been rendered
-#[derive(Debug)]
-enum AuthenticationDisplay {
-    Basic {
-        username: TemplatePreview,
-        password: Option<TemplatePreview>,
-    },
-    Bearer(TemplatePreview),
+/// Display authentication settings
+type AuthenticationDisplay = Authentication<TemplatePreview>;
+
+impl AuthenticationDisplay {
+    fn new(
+        authentication: &Authentication<Template>,
+        selected_profile_id: Option<&ProfileId>,
+    ) -> Self {
+        match authentication {
+            Authentication::Basic { username, password } => {
+                AuthenticationDisplay::Basic {
+                    username: TemplatePreview::new(
+                        username.clone(),
+                        selected_profile_id.cloned(),
+                    ),
+                    password: password.clone().map(|password| {
+                        TemplatePreview::new(
+                            password,
+                            selected_profile_id.cloned(),
+                        )
+                    }),
+                }
+            }
+            Authentication::Bearer(token) => {
+                AuthenticationDisplay::Bearer(TemplatePreview::new(
+                    token.clone(),
+                    selected_profile_id.cloned(),
+                ))
+            }
+        }
+    }
 }
 
 impl Draw for AuthenticationDisplay {
@@ -431,6 +434,33 @@ impl Draw for AuthenticationDisplay {
             }
         }
     }
+}
+
+/// Generate [TemplatePreview] for a body
+fn preview_body(
+    body: &RecipeBody,
+    profile_id: Option<ProfileId>,
+) -> TemplatePreview {
+    let template = match body {
+        RecipeBody::Raw(body) => body.clone(),
+        RecipeBody::Json(value) => {
+            // We want to pretty-print the JSON body. We *could* map from
+            // JsonBody<Template> -> JsonBody<TemplatePreview> then stringify
+            // that on every render, but then we'd have to implement JSON pretty
+            // printing ourselves. The easier method is to just turn this whole
+            // JSON struct into a single string (with unrendered templates),
+            // then parse that back as one big template. If it's stupid but it
+            // works, it's not stupid.
+            let value: serde_json::Value =
+                value.map_ref(|template| template.to_string()).into();
+            let stringified = format!("{value:#}");
+            // This template is composed valid templates, surrounded by JSON
+            // syntax. In no world should that result in an invalid template
+            Template::parse(stringified)
+                .expect("Unexpected template parse failure")
+        }
+    };
+    TemplatePreview::new(template, profile_id)
 }
 
 impl RowState {

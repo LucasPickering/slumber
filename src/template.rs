@@ -60,7 +60,7 @@ pub struct TemplateContext {
 
 /// An immutable string that can contain templated content. The string is parsed
 /// during creation to identify template keys, hence the immutability.
-#[derive(Clone, Debug, Display, Serialize)]
+#[derive(Clone, Debug, Default, Display, Serialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[display("{template}")]
 #[serde(into = "String", try_from = "String")]

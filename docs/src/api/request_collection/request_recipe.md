@@ -18,7 +18,7 @@ The tag for a recipe is `!request` (see examples).
 | `query`          | [`mapping[string, Template]`](./template.md) | HTTP request query parameters     | `{}`                   |
 | `headers`        | [`mapping[string, Template]`](./template.md) | HTTP request headers              | `{}`                   |
 | `authentication` | [`Authentication`](./authentication.md)      | Authentication scheme             | `null`                 |
-| `body`           | [`Template`](./template.md)                  | HTTP request body                 | `null`                 |
+| `body`           | [`RecipeBody`](./recipe_body.md)             | HTTP request body                 | `null`                 |
 
 ## Folder Fields
 
@@ -39,13 +39,12 @@ recipes:
     url: "{{host}}/anything/login"
     headers:
       accept: application/json
-      content-type: application/json
     query:
       root_access: yes_please
-    body: |
-      {
+    body:
+      !json {
         "username": "{{chains.username}}",
-        "password": "{{chains.password}}"
+        "password": "{{chains.password}}",
       }
   fish: !folder
     name: Users
@@ -53,8 +52,7 @@ recipes:
       create_fish: !request
         method: POST
         url: "{{host}}/fishes"
-        body: >
-          {"kind": "barracuda", "name": "Jimmy"}
+        body: !json { "kind": "barracuda", "name": "Jimmy" }
 
       list_fish: !request
         method: GET

@@ -24,10 +24,10 @@ requests:
   login: !request
     method: POST
     url: "https://myfishes.fish/login"
-    body: |
-      {
+    body:
+      !json {
         "username": "{{chains.username}}",
-        "password": "{{chains.password}}"
+        "password": "{{chains.password}}",
       }
 
   get_user: !request
@@ -99,17 +99,17 @@ chains:
       recipe: login
   auth_token:
     source: !command
-      command: [ "cut", "-d':'", "-f2" ]
+      command: ["cut", "-d':'", "-f2"]
       stdin: "{{chains.auth_token_raw}}"
 
 requests:
   login: !request
     method: POST
     url: "https://myfishes.fish/login"
-    body: |
-      {
+    body:
+      !json {
         "username": "{{chains.username}}",
-        "password": "{{chains.password}}"
+        "password": "{{chains.password}}",
       }
 
   get_user: !request

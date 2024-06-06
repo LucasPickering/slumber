@@ -110,6 +110,9 @@ requests:
         method: GET
         # No headers or authentication
         url: "{{host}}/anything/{{user_guid}}"
+        query:
+          - value={{field1}}
+          - value={{field2}}
 
       json_body: !request
         <<: *base_recipe

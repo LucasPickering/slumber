@@ -15,7 +15,7 @@ The tag for a recipe is `!request` (see examples).
 | `name`           | `string`                                     | Descriptive name to use in the UI | Value of key in parent |
 | `method`         | `string`                                     | HTTP request method               | Required               |
 | `url`            | [`Template`](./template.md)                  | HTTP request URL                  | Required               |
-| `query`          | [`mapping[string, Template]`](./template.md) | HTTP request query parameters     | `{}`                   |
+| `query`          | [`QueryParameters`](./query_parameters.md)   | URL query parameters              | `{}`                   |
 | `headers`        | [`mapping[string, Template]`](./template.md) | HTTP request headers              | `{}`                   |
 | `authentication` | [`Authentication`](./authentication.md)      | Authentication scheme             | `null`                 |
 | `body`           | [`RecipeBody`](./recipe_body.md)             | HTTP request body                 | `null`                 |
@@ -40,7 +40,7 @@ recipes:
     headers:
       accept: application/json
     query:
-      root_access: yes_please
+      - root_access=yes_please
     body:
       !json {
         "username": "{{chains.username}}",
@@ -58,5 +58,5 @@ recipes:
         method: GET
         url: "{{host}}/fishes"
         query:
-          big: true
+          - big=true
 ```

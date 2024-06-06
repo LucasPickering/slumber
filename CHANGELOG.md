@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `!json` [#242](https://github.com/LucasPickering/slumber/issues/242)
   - `!form_urlencoded` [#244](https://github.com/LucasPickering/slumber/issues/244)
   - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/recipe_body.html) for usage instructions
+- Support multiple instances of the same query param [#245](https://github.com/LucasPickering/slumber/issues/245) (@maksimowiczm)
+  - Query params can now be defined as a list of `<param>=<value>` entries
+  - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/query_parameters.html)
 - Templates can now render binary values in certain contexts
   - [See docs](https://slumber.lucaspickering.me/book/user_guide/templates.html#binary-templates)
 

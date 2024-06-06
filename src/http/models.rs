@@ -20,7 +20,6 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
     fmt::{Debug, Write},
     sync::{Arc, OnceLock},
 };
@@ -77,17 +76,21 @@ impl RequestSeed {
 /// recipes everywhere. Recipes could be very large so cloning may be expensive,
 /// and this options layer makes the available modifications clear and
 /// restricted.
+///
+/// These store *indexes* rather than keys because keys may not be necessarily
+/// unique (e.g. in the case of query params). Technically some could use keys
+/// and some could use indexes, but I chose consistency. I also chose `Vec` over
+/// `HashSet` because I expect these to be very small, so we don't need the
+/// overhead of hashing.
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct BuildOptions {
-    /// Which headers should be excluded? A blacklist allows the default to be
-    /// "include all".
-    pub disabled_headers: HashSet<String>,
-    /// Which query parameters should be excluded?  A blacklist allows the
-    /// default to be "include all".
-    pub disabled_query_parameters: HashSet<String>,
+    /// Which headers should be excluded?
+    pub disabled_headers: Vec<usize>,
+    /// Which query parameters should be excluded?
+    pub disabled_query_parameters: Vec<usize>,
     /// For form bodies, which form fields should be excluded?
-    pub disabled_form_fields: HashSet<String>,
+    pub disabled_form_fields: Vec<usize>,
 }
 
 /// A request ready to be launched into through the stratosphere. This is

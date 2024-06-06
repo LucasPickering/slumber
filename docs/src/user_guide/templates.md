@@ -34,7 +34,7 @@ requests:
     method: GET
     url: "{{host}}/fishes"
     query:
-      big: true
+      - big=true
 ```
 
 Now you can easily select which host to hit. In the TUI, this is done via the Profile list. In the CLI, use the `--profile` option:

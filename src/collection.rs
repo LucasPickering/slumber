@@ -462,10 +462,10 @@ mod tests {
                             .into(),
                     )),
                     authentication: None,
-                    query: indexmap! {
-                        "sudo".into() => "yes_please".into(),
-                        "fast".into() => "no_thanks".into(),
-                    },
+                    query: vec![
+                        ("sudo".into(), "yes_please".into()),
+                        ("fast".into(), "no_thanks".into()),
+                    ],
                     headers: indexmap! {
                         "Accept".into() => "application/json".into(),
                     },
@@ -479,10 +479,12 @@ mod tests {
                             name: Some("Get User".into()),
                             method: Method::Get,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-
                             body: None,
                             authentication: None,
-                            query: indexmap! {},
+                            query: vec![
+                                ("value".into(), "{{field1}}".into()),
+                                ("value".into(), "{{field2}}".into()),
+                            ],
                             headers: indexmap! {},
                         }),
                         RecipeNode::Recipe(Recipe {
@@ -490,7 +492,6 @@ mod tests {
                             name: Some("Modify User".into()),
                             method: Method::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-
                             body: Some(RecipeBody::Json(
                                 json!({
                                     "username": "new username"
@@ -500,7 +501,7 @@ mod tests {
                             authentication: Some(Authentication::Bearer(
                                 "{{chains.auth_token}}".into(),
                             )),
-                            query: indexmap! {},
+                            query: vec![],
                             headers: indexmap! {
                                 "Accept".into() => "application/json".into(),
                             },
@@ -518,7 +519,7 @@ mod tests {
                                 username: "{{username}}".into(),
                                 password: Some("{{password}}".into()),
                             }),
-                            query: indexmap! {},
+                            query: vec![],
                             headers: indexmap! {
                                 "Accept".into() => "application/json".into(),
                             },
@@ -533,7 +534,7 @@ mod tests {
                                 "username".into() => "new username".into()
                             })),
                             authentication: None,
-                            query: indexmap! {},
+                            query: vec![],
                             headers: indexmap! {
                                 "Accept".into() => "application/json".into(),
                             },

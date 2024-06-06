@@ -3,6 +3,7 @@
 use crate::{
     collection::RecipeId,
     http::RequestId,
+    template::Template,
     tui::view::{
         component::Component,
         context::ViewContext,
@@ -99,10 +100,17 @@ pub enum PersistentKey {
     /// Selected tab in the recipe pane
     RecipeTab,
 
-    /// Selected query param, per recipe. Value is the query param name
+    /// Selected query param, per recipe. Value is the query param name. The
+    /// param isn't necessarily unique so sometimes this will be wrong, but
+    /// it's close enough for now.
     RecipeSelectedQuery(RecipeId),
-    /// Toggle state for a single recipe+query param
-    RecipeQuery { recipe: RecipeId, param: String },
+    /// Toggle state for a single recipe+query param. Include the value because
+    /// keys aren't unique.
+    RecipeQuery {
+        recipe_id: RecipeId,
+        param: String,
+        value: Template,
+    },
 
     /// Selected header, per recipe. Value is the header name
     RecipeSelectedHeader(RecipeId),

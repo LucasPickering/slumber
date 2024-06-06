@@ -28,6 +28,7 @@
 - [Request Collection](./api/request_collection/index.md)
   - [Profile](./api/request_collection/profile.md)
   - [Request Recipe](./api/request_collection/request_recipe.md)
+    - [Query Parameters](./api/request_collection/query_parameters.md)
     - [Authentication](./api/request_collection/authentication.md)
     - [Recipe Body](./api/request_collection/recipe_body.md)
     - [Chain](./api/request_collection/chain.md)

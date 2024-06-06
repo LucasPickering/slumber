@@ -39,8 +39,7 @@ impl Template {
 
 /// A parsed piece of a template. After parsing, each chunk is either raw text
 /// or a parsed key, ready to be rendered.
-#[derive(Copy, Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TemplateInputChunk<T> {
     Raw(T),
     Key(TemplateKey<T>),
@@ -59,8 +58,7 @@ impl<T> TemplateInputChunk<T> {
 
 /// Indexes defining a substring of text within some string. This is a useful
 /// alternative to string slices when avoiding self-referential structs.
-#[derive(Copy, Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Span {
     start: usize,
     /// Store length instead of end so it can never be invalid

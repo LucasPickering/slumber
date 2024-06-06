@@ -11,8 +11,12 @@ use indexmap::IndexMap;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
 use std::{
-    env, fs,
+    env, fs, io,
     path::{Path, PathBuf},
+};
+use tracing_subscriber::{
+    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
+    EnvFilter, Layer,
 };
 use uuid::Uuid;
 
@@ -27,6 +31,21 @@ use uuid::Uuid;
 /// multiple param types.
 pub trait Factory<Param = ()> {
     fn factory(param: Param) -> Self;
+}
+
+/// Set up tracing for tests. This needs to be manually pulled into whatever
+/// tests want it.
+#[fixture]
+#[once]
+pub fn tracing() {
+    // Initialize tracing
+    let subscriber = tracing_subscriber::fmt::layer()
+        .with_writer(io::stderr)
+        .with_target(false)
+        .with_span_events(FmtSpan::NEW)
+        .without_time()
+        .with_filter(EnvFilter::from_default_env());
+    tracing_subscriber::registry().with(subscriber).init();
 }
 
 /// Directory containing static test data

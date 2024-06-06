@@ -7,7 +7,6 @@ use crate::{
     },
     template::Template,
 };
-use indexmap::IndexMap;
 use serde::{
     de::{EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -107,7 +106,8 @@ where
     s.parse().map_err(D::Error::custom)
 }
 
-/// Custom deserializer for query parameters.
+/// Deserialize query parameters from either a sequence of `key=value` or a
+/// map of `key: value`
 pub fn deserialize_query_parameters<'de, D>(
     deserializer: D,
 ) -> Result<Vec<(String, Template)>, D::Error>
@@ -123,45 +123,49 @@ where
             &self,
             formatter: &mut std::fmt::Formatter,
         ) -> std::fmt::Result {
-            formatter.write_str("sequence of <param>=<value> or map")
+            formatter.write_str("sequence of \"<param>=<value>\" or map")
         }
 
         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
         where
             A: SeqAccess<'de>,
         {
-            let mut query: Vec<(String, Template)> = vec![];
+            let mut query: Vec<(String, Template)> =
+                Vec::with_capacity(seq.size_hint().unwrap_or(5));
             while let Some(value) = seq.next_element::<String>()? {
-                let (key, value) = value.split_once('=').ok_or_else(|| {
-                    Error::custom("Query parameters must be in the form `<param>=<value>`")
-                })?;
+                let (param, value) =
+                    value.split_once('=').ok_or_else(|| {
+                        Error::custom(
+                            "Query parameters must be in the form \
+                            `\"<param>=<value>\"`",
+                        )
+                    })?;
 
-                if key.is_empty() {
+                if param.is_empty() {
                     return Err(Error::custom(
-                        "Query parameter key cannot be empty",
+                        "Query parameter name cannot be empty",
                     ));
                 }
 
-                let key = key.to_string();
+                let key = param.to_string();
                 let value = Template::try_from(value.to_string())
                     .map_err(Error::custom)?;
 
                 query.push((key, value));
             }
-
-            Ok(query.into_iter().collect())
+            Ok(query)
         }
 
         fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
         where
             A: MapAccess<'de>,
         {
-            let mut query: IndexMap<String, Template> = IndexMap::new();
+            let mut query: Vec<(String, Template)> =
+                Vec::with_capacity(map.size_hint().unwrap_or(5));
             while let Some((key, value)) = map.next_entry()? {
-                query.insert(key, value);
+                query.push((key, value));
             }
-
-            Ok(query.into_iter().collect())
+            Ok(query)
         }
     }
 
@@ -531,6 +535,48 @@ mod tests {
         assert_err!(
             serde_yaml::from_value::<RecipeBody>(yaml.into()),
             expected_error
+        );
+    }
+
+    /// Test deserializing query parameters from list or mapping form
+    #[rstest]
+    #[case::list(
+        &[
+            Token::Seq { len: None },
+            Token::Str("param={{value}}"),
+            Token::Str("param=value"),
+            Token::SeqEnd,
+        ],
+        vec![("param", "{{value}}"), ("param", "value")]
+    )]
+    #[case::map(
+        &[
+            Token::Map { len: None },
+            Token::Str("param"),
+            Token::Str("{{value}}"),
+            Token::MapEnd,
+        ],
+        vec![("param", "{{value}}")]
+    )]
+    fn test_deserialize_query_parameters(
+        #[case] tokens: &[Token],
+        #[case] expected: Vec<(&str, &str)>,
+    ) {
+        #[derive(Debug, PartialEq, Deserialize)]
+        #[serde(transparent)]
+        struct Wrap(
+            #[serde(deserialize_with = "deserialize_query_parameters")]
+            Vec<(String, Template)>,
+        );
+
+        assert_de_tokens::<Wrap>(
+            &Wrap(
+                expected
+                    .into_iter()
+                    .map(|(param, value)| (param.into(), value.into()))
+                    .collect(),
+            ),
+            tokens,
         );
     }
 

@@ -389,11 +389,11 @@ impl Recipe {
         let iter = self
             .query
             .iter()
-            // Filter out disabled params
-            .filter(|(param, _)| {
-                !options.disabled_query_parameters.contains(param)
-            })
-            .map(|(k, v)| async move {
+            .enumerate()
+            // Filter out disabled params. We do this by index because the keys
+            // aren't necessarily unique
+            .filter(|(i, _)| !options.disabled_query_parameters.contains(i))
+            .map(|(_, (k, v))| async move {
                 Ok::<_, anyhow::Error>((
                     k.clone(),
                     v.render_string(template_context).await.context(
@@ -432,9 +432,10 @@ impl Recipe {
         let iter = self
             .headers
             .iter()
+            .enumerate()
             // Filter out disabled headers
-            .filter(|(header, _)| !options.disabled_headers.contains(*header))
-            .map(move |(header, value_template)| {
+            .filter(|(i, _)| !options.disabled_headers.contains(i))
+            .map(move |(_, (header, value_template))| {
                 self.render_header(template_context, header, value_template)
             });
 
@@ -547,9 +548,10 @@ impl Recipe {
             RecipeBody::FormUrlencoded(fields) => {
                 let iter = fields
                     .iter()
+                    .enumerate()
                     // Remove disabled fields
-                    .filter(|(k, _)| !options.disabled_form_fields.contains(*k))
-                    .map(|(k, v)| async move {
+                    .filter(|(i, _)| !options.disabled_form_fields.contains(i))
+                    .map(|(_, (k, v))| async move {
                         Ok::<_, anyhow::Error>((
                             k.clone(),
                             v.render_string(template_context).await.context(
@@ -988,6 +990,7 @@ mod tests {
             query: vec![
                 // Included
                 ("mode".into(), "sudo".into()),
+                ("fast".into(), "false".into()),
                 // Excluded
                 ("fast".into(), "true".into()),
             ],
@@ -1009,9 +1012,9 @@ mod tests {
         let seed = RequestSeed::new(
             recipe,
             BuildOptions {
-                disabled_headers: ["content-type".to_owned()].into(),
-                disabled_query_parameters: ["fast".to_owned()].into(),
-                disabled_form_fields: ["token".to_owned()].into(),
+                disabled_headers: vec![1],
+                disabled_query_parameters: vec![2],
+                disabled_form_fields: vec![1],
             },
         );
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
@@ -1023,7 +1026,9 @@ mod tests {
                 profile_id: template_context.selected_profile.clone(),
                 recipe_id,
                 method: Method::GET,
-                url: "http://localhost/url?mode=sudo".parse().unwrap(),
+                url: "http://localhost/url?mode=sudo&fast=false"
+                    .parse()
+                    .unwrap(),
                 headers: header_map([
                     ("accept", "application/json"),
                     ("content-type", "application/x-www-form-urlencoded"),

@@ -60,15 +60,19 @@ pub struct TemplateContext {
 
 /// An immutable string that can contain templated content. The string is parsed
 /// during creation to identify template keys, hence the immutability.
-#[derive(Clone, Debug, Default, Display, Serialize)]
-#[cfg_attr(test, derive(PartialEq))]
+///
+/// Invariant: two templates with the same source string will have the same set
+/// of chunks
+#[derive(Clone, Debug, Default, Display, PartialEq, Serialize)]
 #[display("{template}")]
 #[serde(into = "String", try_from = "String")]
 pub struct Template {
     template: String,
     /// Pre-parsed chunks of the template. We can't store slices here because
     /// that would be self-referential, so just store locations. These chunks
-    /// are contiguous and span the whole template.
+    /// are contiguous and span the whole template. We *could* omit this from
+    /// the `PartialEq` check because of the above invariant, but let's keep
+    /// it in to be safe for tests.
     chunks: Vec<TemplateInputChunk<Span>>,
 }
 
@@ -160,8 +164,7 @@ pub enum TemplateChunk {
 ///
 /// The `Display` impl here should return exactly what this was parsed from.
 /// This is important for matching override keys during rendering.
-#[derive(Copy, Clone, Debug, Display)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Copy, Clone, Debug, Display, PartialEq)]
 enum TemplateKey<T> {
     /// A plain field, which can come from the profile or an override
     Field(T),

@@ -41,8 +41,9 @@ requests:
     method: POST
     url: "{{host}}/anything/login"
     query:
-      sudo: yes_please
-      fast: no_thanks
+      - sudo=yes_please
+      - fast=no_thanks
+      - fast=actually_maybe
     headers:
       Accept: application/json
     body: !form_urlencoded
@@ -58,7 +59,7 @@ requests:
         method: GET
         url: "{{host}}/get"
         query:
-          foo: bar
+          - foo=bar
 
       get_user: !request
         <<: *base

@@ -20,7 +20,7 @@ use crate::{
         context::TuiContext,
         view::{draw::Generate, state::Notification},
     },
-    util::MaybeStr,
+    util::{format_duration, format_time, MaybeStr},
 };
 use chrono::{DateTime, Duration, Local, Utc};
 use itertools::Itertools;
@@ -132,10 +132,7 @@ impl Generate for DateTime<Utc> {
     where
         Self: 'this,
     {
-        self.with_timezone(&Local)
-            .format("%b %-d %H:%M:%S")
-            .to_string()
-            .into()
+        format_time(&self).to_string().into()
     }
 }
 
@@ -147,12 +144,7 @@ impl Generate for Duration {
     where
         Self: 'this,
     {
-        let ms = self.num_milliseconds();
-        if ms < 1000 {
-            format!("{ms}ms").into()
-        } else {
-            format!("{:.2}s", ms as f64 / 1000.0).into()
-        }
+        format_duration(&self).into()
     }
 }
 

@@ -12,7 +12,7 @@ use anyhow::Context;
 use bytes::Bytes;
 use bytesize::ByteSize;
 use chrono::{DateTime, Duration, Utc};
-use derive_more::{Display, From};
+use derive_more::{Display, From, FromStr};
 use mime::Mime;
 use reqwest::{
     header::{self, HeaderMap},
@@ -30,7 +30,16 @@ use uuid::Uuid;
 /// Unique ID for a single request. Can also be used to refer to the
 /// corresponding [Exchange] or [ResponseRecord].
 #[derive(
-    Copy, Clone, Debug, Display, Eq, Hash, PartialEq, Serialize, Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    Display,
+    Eq,
+    FromStr,
+    Hash,
+    PartialEq,
+    Serialize,
+    Deserialize,
 )]
 pub struct RequestId(pub Uuid);
 

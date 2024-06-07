@@ -5,18 +5,16 @@ use crate::{
     db::{CollectionDatabase, Database},
     http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
     template::{Prompt, Prompter, TemplateContext, TemplateError},
-    util::{MaybeStr, ResultExt},
+    util::{HeaderDisplay, ResultExt},
     GlobalArgs,
 };
 use anyhow::{anyhow, Context};
 use clap::Parser;
-use dialoguer::{console::Style, Input, Password};
+use dialoguer::{Input, Password};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use reqwest::header::HeaderMap;
 use std::{
     error::Error,
-    fmt::{self, Display, Formatter},
     io::{self, Write},
     process::ExitCode,
     str::FromStr,
@@ -258,22 +256,4 @@ where
         .split_once('=')
         .ok_or_else(|| format!("invalid key=value: no \"=\" found in `{s}`"))?;
     Ok((key.parse()?, value.parse()?))
-}
-
-/// Wrapper making it easy to print a header map
-struct HeaderDisplay<'a>(&'a HeaderMap);
-
-impl<'a> Display for HeaderDisplay<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let key_style = Style::new().bold();
-        for (key, value) in self.0 {
-            writeln!(
-                f,
-                "{}: {}",
-                key_style.apply_to(key),
-                MaybeStr(value.as_bytes()),
-            )?;
-        }
-        Ok(())
-    }
 }

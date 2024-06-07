@@ -1,6 +1,7 @@
 // One module per subcommand
 mod collections;
 mod generate;
+mod history;
 mod import;
 mod request;
 mod show;
@@ -8,7 +9,8 @@ mod show;
 use crate::{
     cli::{
         collections::CollectionsCommand, generate::GenerateCommand,
-        import::ImportCommand, request::RequestCommand, show::ShowCommand,
+        history::HistoryCommand, import::ImportCommand,
+        request::RequestCommand, show::ShowCommand,
     },
     GlobalArgs,
 };
@@ -21,6 +23,7 @@ pub enum CliCommand {
     Generate(GenerateCommand),
     Import(ImportCommand),
     Collections(CollectionsCommand),
+    History(HistoryCommand),
     Show(ShowCommand),
 }
 
@@ -40,6 +43,7 @@ impl CliCommand {
             Self::Request(command) => command.execute(global).await,
             Self::Import(command) => command.execute(global).await,
             Self::Collections(command) => command.execute(global).await,
+            Self::History(command) => command.execute(global).await,
             Self::Show(command) => command.execute(global).await,
         }
     }

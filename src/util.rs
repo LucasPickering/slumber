@@ -5,10 +5,16 @@ use crate::{
     template::ChainError,
     tui::message::{Message, MessageSender},
 };
+use chrono::{
+    format::{DelayedFormat, StrftimeItems},
+    DateTime, Duration, Local, Utc,
+};
 use derive_more::{DerefMut, Display};
+use dialoguer::console::Style;
+use reqwest::header::HeaderMap;
 use serde::de::DeserializeOwned;
 use std::{
-    fmt::{self, Debug},
+    fmt::{self, Debug, Formatter},
     iter::FusedIterator,
     ops::Deref,
 };
@@ -37,6 +43,21 @@ pub fn parse_yaml<T: DeserializeOwned>(bytes: &[u8]) -> serde_yaml::Result<T> {
     let mut yaml_value = serde_yaml::from_slice::<serde_yaml::Value>(bytes)?;
     yaml_value.apply_merge()?;
     serde_yaml::from_value(yaml_value)
+}
+
+/// Format a datetime for the user
+pub fn format_time(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
+    time.with_timezone(&Local).format("%b %-d %H:%M:%S")
+}
+
+/// Format a duration for the user
+pub fn format_duration(duration: &Duration) -> String {
+    let ms = duration.num_milliseconds();
+    if ms < 1000 {
+        format!("{ms}ms")
+    } else {
+        format!("{:.2}s", ms as f64 / 1000.0)
+    }
 }
 
 /// A value that can be replaced in-place. This is useful for two purposes:
@@ -162,6 +183,24 @@ impl<'a> Display for MaybeStr<'a> {
             }
             Ok(())
         }
+    }
+}
+
+/// Wrapper making it easy to print a header map
+pub struct HeaderDisplay<'a>(pub &'a HeaderMap);
+
+impl<'a> Display for HeaderDisplay<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let key_style = Style::new().bold();
+        for (key, value) in self.0 {
+            writeln!(
+                f,
+                "{}: {}",
+                key_style.apply_to(key),
+                MaybeStr(value.as_bytes()),
+            )?;
+        }
+        Ok(())
     }
 }
 

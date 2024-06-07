@@ -2,7 +2,7 @@ use crate::{cli::Subcommand, db::Database, GlobalArgs};
 use clap::Parser;
 use std::{path::PathBuf, process::ExitCode};
 
-/// View and modify request collection state and history
+/// View and modify request collection metadata
 #[derive(Clone, Debug, Parser)]
 pub struct CollectionsCommand {
     #[command(subcommand)]

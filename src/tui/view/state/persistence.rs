@@ -20,7 +20,7 @@ use std::fmt::Debug;
 /// drop.
 #[derive(Debug, Deref, DerefMut)]
 pub struct Persistent<T: PersistentContainer> {
-    key: Option<PersistentKey>,
+    key: PersistentKey,
     #[deref]
     #[deref_mut]
     container: T,
@@ -29,22 +29,13 @@ pub struct Persistent<T: PersistentContainer> {
 impl<T: PersistentContainer> Persistent<T> {
     /// Load the latest persisted value from the DB. If present, set the value
     /// of the container.
-    pub fn new(key: PersistentKey, container: T) -> Self {
-        Self::optional(Some(key), container)
-    }
-
-    /// Create a new persistent cell, with an optional key. If the key is not
-    /// defined, this does not do any persistence loading/saving. This is
-    /// helpful for usages that should only be persistent sometimes.
-    pub fn optional(key: Option<PersistentKey>, mut container: T) -> Self {
-        if let Some(key) = &key {
-            // Load saved value from the database, and select it if available
-            let loaded = ViewContext::with_database(|database| {
-                database.get_ui::<_, <T::Value as Persistable>::Persisted>(key)
-            });
-            if let Ok(Some(value)) = loaded {
-                container.set(value);
-            }
+    pub fn new(key: PersistentKey, mut container: T) -> Self {
+        // Load saved value from the database, and select it if available
+        let loaded = ViewContext::with_database(|database| {
+            database.get_ui::<_, <T::Value as Persistable>::Persisted>(&key)
+        });
+        if let Ok(Some(value)) = loaded {
+            container.set(value);
         }
 
         Self { key, container }
@@ -67,14 +58,12 @@ where
 
 impl<T: PersistentContainer> Drop for Persistent<T> {
     fn drop(&mut self) {
-        if let Some(key) = &self.key {
-            let _ = ViewContext::with_database(|database| {
-                database.set_ui(
-                    key,
-                    self.container.get().map(Persistable::get_persistent),
-                )
-            });
-        }
+        let _ = ViewContext::with_database(|database| {
+            database.set_ui(
+                &self.key,
+                self.container.get().map(Persistable::get_persistent),
+            )
+        });
     }
 }
 

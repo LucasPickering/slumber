@@ -196,7 +196,7 @@ pub struct RequestRecord {
     #[serde(with = "cereal::serde_header_map")]
     pub headers: HeaderMap,
     /// Body content as bytes. This should be decoded as needed
-    pub body: Option<ResponseBody>,
+    pub body: Option<Bytes>,
 }
 
 impl RequestRecord {
@@ -223,12 +223,10 @@ impl RequestRecord {
             url: request.url().clone(),
             headers: request.headers().clone(),
             body: request.body().map(|body| {
-                ResponseBody::new(
-                    body.as_bytes()
-                        .expect("Streaming bodies not supported")
-                        .to_owned()
-                        .into(),
-                )
+                body.as_bytes()
+                    .expect("Streaming bodies not supported")
+                    .to_owned()
+                    .into()
             }),
         }
     }
@@ -264,8 +262,7 @@ impl RequestRecord {
     pub fn body_str(&self) -> anyhow::Result<Option<&str>> {
         if let Some(body) = &self.body {
             Ok(Some(
-                std::str::from_utf8(&body.data)
-                    .context("Error decoding body")?,
+                std::str::from_utf8(body).context("Error decoding body")?,
             ))
         } else {
             Ok(None)

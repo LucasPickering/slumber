@@ -29,9 +29,10 @@ use serde_json_path::JsonPath;
 use std::cell::Cell;
 use Debug;
 
-/// Display text body of a request OR response
+/// Display response body as text, with a query box to filter it if the body has
+/// been parsed
 #[derive(Debug)]
-pub struct ExchangeBody {
+pub struct QueryableBody {
     /// Body text content. State cell allows us to reset this whenever the
     /// request changes
     text_window: StateCell<Option<Query>, Component<TextWindow<String>>>,
@@ -59,11 +60,11 @@ enum QueryCallback {
     Submit(String),
 }
 
-impl ExchangeBody {
+impl QueryableBody {
     /// Create a new body, optionally loading the query text from the
     /// persistence DB. This is optional because not all callers use the query
     /// box, or want to persist the value.
-    pub fn new(query_persistent_key: Option<PersistentKey>) -> Self {
+    pub fn new(query_persistent_key: PersistentKey) -> Self {
         let text_box = TextBox::default()
             .with_placeholder("'/' to filter body with JSONPath")
             .with_validator(|text| JsonPath::parse(text).is_ok())
@@ -84,11 +85,8 @@ impl ExchangeBody {
             query_available: Cell::new(false),
             query_focused: false,
             query: Default::default(),
-            query_text_box: Persistent::optional(
-                query_persistent_key,
-                text_box,
-            )
-            .into(),
+            query_text_box: Persistent::new(query_persistent_key, text_box)
+                .into(),
         }
     }
 
@@ -100,7 +98,7 @@ impl ExchangeBody {
     }
 }
 
-impl EventHandler for ExchangeBody {
+impl EventHandler for QueryableBody {
     fn update(&mut self, event: Event) -> Update {
         if let Some(Action::Search) = event.action() {
             if self.query_available.get() {
@@ -148,7 +146,7 @@ impl EventHandler for ExchangeBody {
     }
 }
 
-impl<'a> Draw<ExchangeBodyProps<'a>> for ExchangeBody {
+impl<'a> Draw<ExchangeBodyProps<'a>> for QueryableBody {
     fn draw(
         &self,
         frame: &mut Frame,
@@ -251,7 +249,9 @@ mod tests {
         let body = ResponseBody::new(TEXT.into());
         let component = TestComponent::new(
             harness,
-            ExchangeBody::new(None),
+            QueryableBody::new(PersistentKey::ResponseBodyQuery(
+                RecipeId::factory(()),
+            )),
             ExchangeBodyProps { body: &body },
         );
 
@@ -279,7 +279,9 @@ mod tests {
     ) {
         let mut component = TestComponent::new(
             harness,
-            ExchangeBody::new(None),
+            QueryableBody::new(PersistentKey::ResponseBodyQuery(
+                RecipeId::factory(()),
+            )),
             ExchangeBodyProps {
                 body: &json_response.body,
             },
@@ -357,7 +359,7 @@ mod tests {
         // correctly here
         let component = TestComponent::new(
             harness,
-            ExchangeBody::new(Some(persistent_key)),
+            QueryableBody::new(persistent_key),
             ExchangeBodyProps {
                 body: &json_response.body,
             },

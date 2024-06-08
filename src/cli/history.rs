@@ -7,6 +7,7 @@ use crate::{
     GlobalArgs,
 };
 use anyhow::anyhow;
+use bytesize::ByteSize;
 use clap::Parser;
 use dialoguer::console::Style;
 use std::process::ExitCode;
@@ -94,8 +95,8 @@ impl HistoryCommand {
             print!(
                 "{} ({})\n{}",
                 subheader_style.apply_to("Body"),
-                body.size(),
-                MaybeStr(body.bytes())
+                ByteSize(body.len() as u64),
+                MaybeStr(body)
             )
         }
         println!();

@@ -945,7 +945,7 @@ mod tests {
         template_context: TemplateContext,
         #[case] body: RecipeBody,
         #[case] content_type: Option<&str>,
-        #[case] expected_body: &[u8],
+        #[case] expected_body: &'static [u8],
         #[case] expected_content_type: &str,
     ) {
         let headers = if let Some(content_type) = content_type {

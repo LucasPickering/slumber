@@ -55,13 +55,6 @@ impl TemplatePreview {
             Self::Disabled { template }
         }
     }
-
-    pub fn template(&self) -> &Template {
-        match self {
-            Self::Disabled { template } => template,
-            Self::Enabled { template, .. } => template,
-        }
-    }
 }
 
 impl Generate for &TemplatePreview {

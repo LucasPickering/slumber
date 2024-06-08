@@ -4,14 +4,18 @@ use crate::{
         input::Action,
         message::Message,
         view::{
-            common::{actions::ActionsModal, header_table::HeaderTable},
-            component::exchange_body::{ExchangeBody, ExchangeBodyProps},
+            common::{
+                actions::ActionsModal,
+                header_table::HeaderTable,
+                text_window::{TextWindow, TextWindowProps},
+            },
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update},
             state::StateCell,
             Component, ViewContext,
         },
     },
+    util::MaybeStr,
 };
 use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
@@ -34,9 +38,9 @@ pub struct RequestViewProps {
 struct State {
     /// Store pointer to the request, so we can access it in the update step
     request: Arc<RequestRecord>,
-    /// Persist the request body to track view state. Update whenever the
-    /// loaded request changes
-    body: Component<ExchangeBody>,
+    /// Persist the request body to track view state. `None` only if request
+    /// doesn't have a body
+    body: Option<Component<TextWindow<String>>>,
 }
 
 /// Items in the actions popup menu
@@ -67,11 +71,9 @@ impl EventHandler for RequestView {
                     // Copy exactly what the user sees. Currently requests
                     // don't support formatting/querying but that could
                     // change
-                    if let Some(body) = self
-                        .state
-                        .get()
-                        .and_then(|state| state.body.data().text())
-                    {
+                    if let Some(body) = self.state.get().and_then(|state| {
+                        Some(state.body.as_ref()?.data().text().clone())
+                    }) {
                         ViewContext::send_message(Message::CopyText(body));
                     }
                 }
@@ -83,8 +85,10 @@ impl EventHandler for RequestView {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        if let Some(state) = self.state.get_mut() {
-            vec![state.body.as_child()]
+        if let Some(body) =
+            self.state.get_mut().and_then(|state| state.body.as_mut())
+        {
+            vec![body.as_child()]
         } else {
             vec![]
         }
@@ -100,7 +104,9 @@ impl Draw<RequestViewProps> for RequestView {
     ) {
         let state = self.state.get_or_update(props.request.id, || State {
             request: Arc::clone(&props.request),
-            body: ExchangeBody::new(None).into(),
+            body: props.request.body.as_ref().map(|body| {
+                TextWindow::new(format!("{:#}", MaybeStr(body))).into()
+            }),
         });
 
         let [url_area, headers_area, body_area] = Layout::vertical([
@@ -120,10 +126,8 @@ impl Draw<RequestViewProps> for RequestView {
             .generate(),
             headers_area,
         );
-        if let Some(body) = &state.request.body {
-            state
-                .body
-                .draw(frame, ExchangeBodyProps { body }, body_area, true);
+        if let Some(body) = &state.body {
+            body.draw(frame, TextWindowProps::default(), body_area, true);
         }
     }
 }

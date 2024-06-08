@@ -8,7 +8,7 @@ use crate::{
         message::Message,
         view::{
             common::{actions::ActionsModal, header_table::HeaderTable},
-            component::exchange_body::{ExchangeBody, ExchangeBodyProps},
+            component::queryable_body::{ExchangeBodyProps, QueryableBody},
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update},
             state::{persistence::PersistentKey, StateCell},
@@ -55,7 +55,7 @@ struct State {
     /// The presentable version of the response body, which may or may not
     /// match the response body. We apply transformations such as filter,
     /// prettification, or in the case of binary responses, a hex dump.
-    body: Component<ExchangeBody>,
+    body: Component<QueryableBody>,
 }
 
 impl EventHandler for ResponseBodyView {
@@ -128,9 +128,9 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
         let response = &props.response;
         let state = self.state.get_or_update(props.request_id, || State {
             response: Arc::clone(&props.response),
-            body: ExchangeBody::new(Some(PersistentKey::ResponseBodyQuery(
+            body: QueryableBody::new(PersistentKey::ResponseBodyQuery(
                 props.recipe_id.clone(),
-            )))
+            ))
             .into(),
         });
 

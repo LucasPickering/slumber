@@ -35,15 +35,6 @@ impl ContentType {
     const EXTENSIONS: Mapping<'static, ContentType> =
         Mapping::new(&[(Self::Json, &["json"])]);
 
-    /// Get MIME corresponding to this content type. Each content type maps to a
-    /// single MIME (although the reverse is not true)
-    pub fn mime(&self) -> Mime {
-        // Don't use a Mapping because this is a one-way relationship
-        match self {
-            ContentType::Json => mime::APPLICATION_JSON,
-        }
-    }
-
     /// Parse the value of the content-type header and map it to a known content
     /// type
     fn from_mime(mime_type: &str) -> anyhow::Result<Self> {

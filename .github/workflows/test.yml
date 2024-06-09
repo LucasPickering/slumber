@@ -42,27 +42,39 @@ jobs:
           args: -- --check
 
   lint:
-    name: Lint
-    runs-on: ubuntu-latest
+    name: Check/Lint - ${{ matrix.platform.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Run linting on every platform to make sure we didn't break any builds.
+        # This is a subset of the Rust targets we support, just one per OS.
+        platform:
+          - name: Linux
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: Windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macOS
+            os: macOS-latest
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.platform.os }}
     steps:
       - uses: actions/checkout@v3
 
       - name: Cache Rust files
-        uses: actions/cache@v3
+        uses: swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.platform.target }}
+
+      - name: Install toolchain
+        run: rustup target add ${{ matrix.platform.target }}
 
       - name: Clippy
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-targets --all-features -- -D clippy::all'
+          args: --target ${{ matrix.platform.target }} --all-targets --all-features -- -D clippy::all'
 
   doc:
     name: Check Docs
@@ -71,15 +83,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Cache Rust files
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        uses: swatinem/rust-cache@v2
 
       - name: Doc
         uses: actions-rs/cargo@v1
@@ -96,15 +100,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Cache Rust files
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        uses: swatinem/rust-cache@v2
 
       - name: Run tests
         uses: actions-rs/cargo@v1

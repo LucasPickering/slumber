@@ -57,8 +57,10 @@ use futures::{
     future::{self, try_join_all, OptionFuture},
     Future,
 };
+use mime::Mime;
 use reqwest::{
     header::{self, HeaderMap, HeaderName, HeaderValue},
+    multipart::{Form, Part},
     Client, RequestBuilder, Response, Url,
 };
 use std::{collections::HashSet, sync::Arc};
@@ -228,7 +230,8 @@ impl HttpEngine {
                 // request
                 RenderedBody::Raw(bytes) => Ok(Some(bytes)),
                 // The body is complex - offload the hard work to RequestBuilder
-                RenderedBody::FormUrlencoded(_) => {
+                RenderedBody::FormUrlencoded(_)
+                | RenderedBody::FormMultipart(_) => {
                     let url = Url::parse("http://localhost").unwrap();
                     let client = self.get_client(&url);
                     let mut builder = client.request(reqwest::Method::GET, url);
@@ -299,7 +302,7 @@ impl RequestTicket {
         let id = self.record.id;
 
         // Capture the rest of this method in a span
-        let _ = info_span!("HTTP request", request_id = %id).entered();
+        let _ = info_span!("HTTP request", request_id = %id, ?self).entered();
 
         // This start time will be accurate because the request doesn't launch
         // until this whole future is awaited
@@ -562,6 +565,23 @@ impl Recipe {
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormUrlencoded(rendered)
             }
+            RecipeBody::FormMultipart(fields) => {
+                let iter = fields
+                    .iter()
+                    .enumerate()
+                    // Remove disabled fields
+                    .filter(|(i, _)| !options.disabled_form_fields.contains(i))
+                    .map(|(_, (k, v))| async move {
+                        Ok::<_, anyhow::Error>((
+                            k.clone(),
+                            v.render(template_context).await.context(
+                                format!("Error rendering form field `{k}`"),
+                            )?,
+                        ))
+                    });
+                let rendered = try_join_all(iter).await?;
+                RenderedBody::FormMultipart(rendered)
+            }
         };
         Ok(Some(rendered))
     }
@@ -574,6 +594,21 @@ impl Authentication<String> {
                 builder.basic_auth(username, password)
             }
             Authentication::Bearer(token) => builder.bearer_auth(token),
+        }
+    }
+}
+
+impl RecipeBody {
+    /// Get the value that we should set for the `Content-Type` header,
+    /// according to the body
+    fn mime(&self) -> Option<Mime> {
+        match self {
+            RecipeBody::Raw(_)
+            // Do *not* set anything for these, because reqwest will do that
+            // automatically and we don't want to interfere
+            | RecipeBody::FormUrlencoded(_)
+            | RecipeBody::FormMultipart(_) => None,
+            RecipeBody::Json(_) => Some(mime::APPLICATION_JSON),
         }
     }
 }
@@ -622,8 +657,11 @@ impl JsonBody {
 /// [RecipeBody]
 enum RenderedBody {
     Raw(Bytes),
-    /// Value is `String` because only string data can be URL-encoded
+    /// Field:value mapping. Value is `String` because only string data can be
+    /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
+    /// Field:value mapping. Values can be arbitrary bytes
+    FormMultipart(Vec<(String, Vec<u8>)>),
 }
 
 impl RenderedBody {
@@ -632,6 +670,14 @@ impl RenderedBody {
         match self {
             RenderedBody::Raw(bytes) => builder.body(bytes),
             RenderedBody::FormUrlencoded(fields) => builder.form(&fields),
+            RenderedBody::FormMultipart(fields) => {
+                let mut form = Form::new();
+                for (field, value) in fields {
+                    let part = Part::bytes(value);
+                    form = form.part(field, part);
+                }
+                builder.multipart(form)
+            }
         }
     }
 }
@@ -684,7 +730,8 @@ mod tests {
     };
     use indexmap::{indexmap, IndexMap};
     use pretty_assertions::assert_eq;
-    use reqwest::{Method, StatusCode};
+    use regex::Regex;
+    use reqwest::{Body, Method, StatusCode};
     use rstest::{fixture, rstest};
     use serde_json::json;
 
@@ -750,6 +797,26 @@ mod tests {
         let seed = RequestSeed::new(recipe, BuildOptions::default());
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
 
+        let expected_url: Url = "http://localhost/users/1?mode=sudo&fast=true"
+            .parse()
+            .unwrap();
+        let expected_headers = header_map([
+            ("content-type", "application/json"),
+            ("accept", "application/json"),
+        ]);
+        let expected_body = b"{\"group_id\":\"3\"}";
+
+        // Assert on the actual request
+        let request = &ticket.request;
+        assert_eq!(request.method(), Method::POST);
+        assert_eq!(request.url(), &expected_url);
+        assert_eq!(request.headers(), &expected_headers);
+        assert_eq!(
+            request.body().and_then(Body::as_bytes),
+            Some(expected_body.as_slice())
+        );
+
+        // Assert on the record too, to make sure it matches
         assert_eq!(
             *ticket.record,
             RequestRecord {
@@ -759,14 +826,9 @@ mod tests {
                 ),
                 recipe_id,
                 method: Method::POST,
-                url: "http://localhost/users/1?mode=sudo&fast=true"
-                    .parse()
-                    .unwrap(),
-                body: Some(Vec::from(b"{\"group_id\":\"3\"}").into()),
-                headers: header_map([
-                    ("content-type", "application/json"),
-                    ("accept", "application/json"),
-                ]),
+                url: expected_url,
+                body: Some(Vec::from(expected_body).into()),
+                headers: expected_headers,
             }
         );
     }
@@ -907,20 +969,24 @@ mod tests {
 
     /// Test each possible type of body. Raw bodies are covered by
     /// [test_build_request]. This seems redundant with [test_build_body], but
-    /// we need this to test that the `content-type` header is set correctly
+    /// we need this to test that the `content-type` header is set correctly.
+    /// This also allows us to test the actual built request, which could
+    /// hypothetically vary from the request record.
     #[rstest]
     #[case::json(
         RecipeBody::Json(json!({"group_id": "{{group_id}}"}).into()),
         None,
-        br#"{"group_id":"3"}"#,
-        "application/json"
+        Some(br#"{"group_id":"3"}"#.as_slice()),
+        "^application/json$",
+        &[],
     )]
     // Content-Type has been overridden by an explicit header
     #[case::json_content_type_override(
         RecipeBody::Json(json!({"group_id": "{{group_id}}"}).into()),
         Some("text/plain"),
-        br#"{"group_id":"3"}"#,
-        "text/plain"
+        Some(br#"{"group_id":"3"}"#.as_slice()),
+        "^text/plain$",
+        &[],
     )]
     #[case::form_urlencoded(
         RecipeBody::FormUrlencoded(indexmap! {
@@ -928,16 +994,31 @@ mod tests {
             "token".into() => "{{token}}".into()
         }),
         None,
-        b"user_id=1&token=hunter2",
-        "application/x-www-form-urlencoded"
+        Some(b"user_id=1&token=hunter2".as_slice()),
+        "^application/x-www-form-urlencoded$",
+        &[],
     )]
     // reqwest sets the content type when initializing the body, so make sure
     // that doesn't override the user's value
     #[case::form_urlencoded_content_type_override(
         RecipeBody::FormUrlencoded(Default::default()),
         Some("text/plain"),
-        b"",
-        "text/plain"
+        Some(b"".as_slice()),
+        "^text/plain$",
+        &[],
+    )]
+    #[case::form_multipart(
+        RecipeBody::FormMultipart(indexmap! {
+            "user_id".into() => "{{user_id}}".into(),
+            "binary".into() => "{{chains.binary}}".into()
+        }),
+        None,
+        // multipart bodies are automatically turned into streams by reqwest,
+        // and we don't store stream bodies atm
+        // https://github.com/LucasPickering/slumber/issues/256
+        None,
+        "^multipart/form-data; boundary=[a-f0-9-]{67}$",
+        &[("content-length", "321")],
     )]
     #[tokio::test]
     async fn test_structured_body(
@@ -945,8 +1026,10 @@ mod tests {
         template_context: TemplateContext,
         #[case] body: RecipeBody,
         #[case] content_type: Option<&str>,
-        #[case] expected_body: &'static [u8],
-        #[case] expected_content_type: &str,
+        #[case] expected_body: Option<&'static [u8]>,
+        // For multipart bodies, the content type includes random content
+        #[case] expected_content_type: Regex,
+        #[case] extra_headers: &[(&str, &str)],
     ) {
         let headers = if let Some(content_type) = content_type {
             indexmap! {"content-type".into() => content_type.into()}
@@ -963,12 +1046,38 @@ mod tests {
         let seed = RequestSeed::new(recipe, BuildOptions::default());
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
 
+        // Assert on the actual built request *and* the record, to make sure
+        // they're consistent with each other
+        let actual_content_type = ticket
+            .request
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .expect("Missing Content-Type header")
+            .to_str()
+            .expect("Invalid Content-Type header");
+        assert!(
+            expected_content_type.is_match(actual_content_type),
+            "Expected Content-Type `{actual_content_type}` \
+            to match `{expected_content_type}`"
+        );
+        assert_eq!(
+            ticket.request.body().and_then(Body::as_bytes),
+            expected_body
+        );
+
         assert_eq!(
             *ticket.record,
             RequestRecord {
                 id: ticket.record.id,
-                body: Some(expected_body.into()),
-                headers: header_map([("content-type", expected_content_type)]),
+                body: expected_body.map(Bytes::from),
+                // Use the actual content type here, because the expected
+                // content type maybe be a pattern and we need an exactl string.
+                // We checked actual=expected above so this is fine
+                headers: header_map(
+                    [("content-type", actual_content_type)]
+                        .into_iter()
+                        .chain(extra_headers.iter().copied())
+                ),
                 ..RequestRecord::factory((
                     Some(
                         template_context.collection.first_profile_id().clone()

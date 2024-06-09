@@ -13,7 +13,6 @@ use derive_more::{Deref, Display, From, FromStr};
 use equivalent::Equivalent;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use mime::Mime;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use strum::{EnumIter, IntoEnumIterator};
@@ -296,22 +295,10 @@ pub enum RecipeBody {
     Raw(Template),
     /// Strutured JSON, which will be stringified and sent as text
     Json(JsonBody),
-    /// `application/x-www-form-urlencoded` fields
+    /// `application/x-www-form-urlencoded` fields. Values must be strings
     FormUrlencoded(IndexMap<String, Template>),
-}
-
-impl RecipeBody {
-    /// Get the MIME type of this body. For raw bodies we have no idea, but for
-    /// structured bodies we can make a very educated guess
-    pub fn mime(&self) -> Option<Mime> {
-        match self {
-            RecipeBody::Raw(_) => None,
-            RecipeBody::Json(_) => Some(mime::APPLICATION_JSON),
-            RecipeBody::FormUrlencoded(_) => {
-                Some(mime::APPLICATION_WWW_FORM_URLENCODED)
-            }
-        }
-    }
+    /// `multipart/form-data` fields. Values can be binary
+    FormMultipart(IndexMap<String, Template>),
 }
 
 #[cfg(test)]

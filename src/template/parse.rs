@@ -1,6 +1,9 @@
 //! Template string parser
 
-use crate::template::{error::TemplateParseError, Template, TemplateKey};
+use crate::{
+    collection::ChainId,
+    template::{error::TemplateParseError, Template, TemplateKey},
+};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
@@ -34,6 +37,17 @@ impl Template {
             chunks.into_iter().map(|chunk| chunk.map(mapper)).collect();
 
         Ok(Self { template, chunks })
+    }
+
+    /// Create a template that renders a single chain. This creates a template
+    /// equivalent to `{{chains.<id>}}`
+    pub fn from_chain(id: &ChainId) -> Self {
+        // We need to double up all our own curly braces to escape them.
+        // Technically we could construct the template directly, but it's a lot
+        // more robust to re-use the parsing logic, since we need to build up
+        // the template string anyway
+        Template::parse(format!("{{{{{CHAIN_PREFIX}{id}}}}}"))
+            .expect("Generated template is invalid")
     }
 }
 
@@ -209,5 +223,16 @@ mod tests {
     #[case::whitespace("{{ field }}")]
     fn test_parse_error(#[case] template: &str) {
         assert_err!(Template::parse(template.into()), "at line 1");
+    }
+
+    /// Test that [Template::from_chain] generates the correct template
+    #[test]
+    fn test_from_chain() {
+        let template = Template::from_chain(&"chain1".into());
+        assert_eq!(&template.template, "{{chains.chain1}}");
+        assert_eq!(
+            &template.chunks,
+            &[TemplateInputChunk::Key(TemplateKey::Chain(Span::new(9, 6)))]
+        );
     }
 }

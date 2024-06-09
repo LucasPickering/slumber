@@ -3,14 +3,21 @@ profiles:
   env_3b607180e18c41228387930058c9ca43:
     name: Local
     data:
+      base_field: base
       host: http://localhost:3000
       greeting: hello!
   env_4fb19173966e42898a0a77f45af591c9:
     name: Remote
     data:
+      base_field: base
       host: https://httpbin.org
       greeting: howdy
-chains: {}
+
+chains:
+  pair_b9dfab38415a4c98a08d99a1d4a35682:
+    source: !file
+      path: ./public/slumber.png
+
 requests:
   fld_9a7332db608943b093c929a82c81df50: !folder
     name: My Folder
@@ -60,23 +67,37 @@ requests:
         name: With Text Body
         method: POST
         url: https://httpbin.org/post
-        body: "hello!"
         authentication: null
         query: {}
         headers:
           content-type: text/plain
+        body: "hello!"
 
       req_1419670d20eb4964956df954e1eb7c4b: !request
         name: With JSON Body
         method: POST
         url: https://httpbin.org/post
-        body: !json { "message": "hello!" }
         authentication: null
         query: {}
         headers:
           # This is redundant with the body type, but it's more effort than
           # it's worth to remove it
           content-type: application/json
+        body: !json { "message": "hello!" }
+
+      req_a01b6de924274654bda0835e2a073bd0: !request
+        name: With Multipart Body
+        method: POST
+        url: https://httpbin.org/post
+        authentication: null
+        query: {}
+        headers:
+          # This is redundant with the body type, but it's more effort than
+          # it's worth to remove it
+          content-type: multipart/form-data
+        body: !form_multipart
+          username: user
+          image: "{{chains.pair_b9dfab38415a4c98a08d99a1d4a35682}}"
 
   req_a345faa530a7453e83ee967d18555712: !request
     name: Login

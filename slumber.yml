@@ -29,6 +29,9 @@ chains:
       recipe: login
       trigger: !expire 12h
     selector: $.data
+  image:
+    source: !file
+      path: ./static/slumber.png
 
 .ignore:
   base: &base
@@ -80,6 +83,14 @@ requests:
     name: Get Image
     method: GET
     url: "{{host}}/image"
+
+  upload_image: !request
+    name: Upload Image
+    method: POST
+    url: "{{host}}/anything/image"
+    body: !form_multipart
+      filename: "logo.png"
+      image: "{{chains.image}}"
 
   delay: !request
     <<: *base

@@ -8,10 +8,11 @@ In addition, you can pass any [`Template`](./template.md) to render any text or 
 
 The following content types have first-class support. Slumber will automatically set the `Content-Type` header to the specified value, but you can override this simply by providing your own value for the header.
 
-| Variant            | Type                                         | `Content-Type`                      | Description                                                                                               |
-| ------------------ | -------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `!json`            | Any                                          | `application/json`                  | Structured JSON body; all strings are treated as templates                                                |
-| `!form_urlencoded` | [`mapping[string, Template]`](./template.md) | `application/x-www-form-urlencoded` | URL-encoded form data; [see here for more](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST |
+| Variant            | Type                                         | `Content-Type`                      | Description                                                                                                |
+| ------------------ | -------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `!json`            | Any                                          | `application/json`                  | Structured JSON body; all strings are treated as templates                                                 |
+| `!form_urlencoded` | [`mapping[string, Template]`](./template.md) | `application/x-www-form-urlencoded` | URL-encoded form data; [see here for more](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST) |
+| `!form_multipart`  | [`mapping[string, Template]`](./template.md) | `multipart/form-data`               | Binary form data; [see here for more](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST)      |
 
 ## Examples
 
@@ -41,4 +42,19 @@ requests:
     url: "{{host}}/fishes/{{fish_id}}"
     # Content-Type header will be set automatically based on the body type
     body: !json { "name": "Alfonso" }
+
+  urlencoded_body: !request
+    method: POST
+    url: "{{host}}/fishes/{{fish_id}}"
+    # Content-Type header will be set automatically based on the body type
+    body: !form_urlencoded
+      name: Alfonso
+
+  multipart_body: !request
+    method: POST
+    url: "{{host}}/fishes/{{fish_id}}"
+    # Content-Type header will be set automatically based on the body type
+    body: !form_multipart
+      name: Alfonso
+      image: "{{chains.fish_image}}"
 ```

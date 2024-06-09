@@ -227,8 +227,12 @@ impl RecipeBody {
     const STRUCT_NAME: &'static str = "RecipeBody";
     const VARIANT_JSON: &'static str = "json";
     const VARIANT_FORM_URLENCODED: &'static str = "form_urlencoded";
-    const ALL_VARIANTS: &'static [&'static str] =
-        &[Self::VARIANT_JSON, Self::VARIANT_FORM_URLENCODED];
+    const VARIANT_FORM_MULTIPART: &'static str = "form_multipart";
+    const ALL_VARIANTS: &'static [&'static str] = &[
+        Self::VARIANT_JSON,
+        Self::VARIANT_FORM_URLENCODED,
+        Self::VARIANT_FORM_MULTIPART,
+    ];
 }
 
 /// Custom serialization for RecipeBody, so the `Raw` variant serializes as a
@@ -253,6 +257,13 @@ impl Serialize for RecipeBody {
                     Self::STRUCT_NAME,
                     2,
                     Self::VARIANT_FORM_URLENCODED,
+                    value,
+                ),
+            RecipeBody::FormMultipart(value) => serializer
+                .serialize_newtype_variant(
+                    Self::STRUCT_NAME,
+                    3,
+                    Self::VARIANT_FORM_MULTIPART,
                     value,
                 ),
         }
@@ -315,6 +326,9 @@ impl<'de> Deserialize<'de> for RecipeBody {
                     }
                     RecipeBody::VARIANT_FORM_URLENCODED => {
                         Ok(RecipeBody::FormUrlencoded(value.newtype_variant()?))
+                    }
+                    RecipeBody::VARIANT_FORM_MULTIPART => {
+                        Ok(RecipeBody::FormMultipart(value.newtype_variant()?))
                     }
                     other => Err(A::Error::unknown_variant(
                         other,
@@ -519,7 +533,8 @@ mod tests {
             tag: Tag::new("raw"),
             value: "{{user_id}}".into()
         })),
-        "unknown variant `raw`, expected `json` or `form_urlencoded`",
+        "unknown variant `raw`, expected one of \
+        `json`, `form_urlencoded`, `form_multipart`",
     )]
     #[case::form_urlencoded_wrong_type(
         serde_yaml::Value::Tagged(Box::new(TaggedValue{

@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Structured bodies can now be defined with tags on the `body` field of a recipe, making it more convenient to construct bodies of common types. Supported types are:
   - `!json` [#242](https://github.com/LucasPickering/slumber/issues/242)
   - `!form_urlencoded` [#244](https://github.com/LucasPickering/slumber/issues/244)
+  - `!form_multipart` [#243](https://github.com/LucasPickering/slumber/issues/243)
   - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/recipe_body.html) for usage instructions
 - Support multiple instances of the same query param [#245](https://github.com/LucasPickering/slumber/issues/245) (@maksimowiczm)
   - Query params can now be defined as a list of `<param>=<value>` entries

@@ -449,6 +449,7 @@ enum RecipeBodyDisplay {
 }
 
 impl RecipeBodyDisplay {
+    /// Build a component to display the body, based on the body type
     fn new(
         body: &RecipeBody,
         selected_profile_id: Option<ProfileId>,
@@ -485,7 +486,8 @@ impl RecipeBodyDisplay {
                     .into(),
                 )
             }
-            RecipeBody::FormUrlencoded(fields) => {
+            RecipeBody::FormUrlencoded(fields)
+            | RecipeBody::FormMultipart(fields) => {
                 let form_items = fields
                     .iter()
                     .map(|(field, value)| {

@@ -222,11 +222,10 @@ impl RequestRecord {
             method: request.method().clone(),
             url: request.url().clone(),
             headers: request.headers().clone(),
-            body: request.body().map(|body| {
-                body.as_bytes()
-                    .expect("Streaming bodies not supported")
-                    .to_owned()
-                    .into()
+            body: request.body().and_then(|body| {
+                // Stream bodies are just thrown away for now
+                // https://github.com/LucasPickering/slumber/issues/256
+                Some(body.as_bytes()?.to_owned().into())
             }),
         }
     }

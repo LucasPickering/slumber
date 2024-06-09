@@ -74,7 +74,7 @@ cargo-dist-version = "0.13.3"
 # CI backends to support
 ci = ["github"]
 # The installers to generate for each app
-installers = ["shell", "homebrew", "powershell"]
+installers = ["shell", "powershell", "homebrew"]
 # A GitHub repo to push Homebrew formulas to
 tap = "LucasPickering/homebrew-tap"
 # Target platforms to build apps for (Rust target-triple syntax)
@@ -88,6 +88,6 @@ targets = [
 # Publish jobs to run in CI
 publish-jobs = ["homebrew"]
 # Publish jobs to run in CI
-pr-run-mode = "upload"
+pr-run-mode = "skip"
 # Whether to install an updater program
 install-updater = false

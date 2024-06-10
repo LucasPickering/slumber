@@ -74,19 +74,34 @@ impl Root {
         request_id: Option<RequestId>,
     ) -> anyhow::Result<()> {
         let primary_view = self.primary_view.data();
-        **self.selected_request = if let Some(request_id) = request_id {
-            // Make sure the given ID is valid, and the request is loaded
-            self.request_store.load(request_id)?;
-            Some(request_id)
-        } else if let Some(recipe_id) = primary_view.selected_recipe_id() {
-            // Find the most recent request by recipe+profile
-            let profile_id = primary_view.selected_profile_id();
-            self.request_store
-                .load_latest(profile_id, recipe_id)?
-                .map(RequestState::id)
-        } else {
-            None
+
+        let mut get_id = || -> anyhow::Result<Option<RequestId>> {
+            if let Some(request_id) = request_id {
+                // Make sure the given ID is valid, and the request is loaded.
+                // This will return `None` if the ID wasn't in the DB, which
+                // probably means we had a loading/failed request selected
+                // before reload, so it's gone. Fall back to the top of the list
+                if let Some(request_state) =
+                    self.request_store.load(request_id)?
+                {
+                    return Ok(Some(request_state.id()));
+                }
+            }
+
+            // We don't have a valid persisted ID, find the most recent for the
+            // current recipe+profile
+            if let Some(recipe_id) = primary_view.selected_recipe_id() {
+                let profile_id = primary_view.selected_profile_id();
+                Ok(self
+                    .request_store
+                    .load_latest(profile_id, recipe_id)?
+                    .map(RequestState::id))
+            } else {
+                Ok(None)
+            }
         };
+
+        **self.selected_request = get_id()?;
         Ok(())
     }
 
@@ -276,7 +291,7 @@ mod tests {
     /// Test that, on first render, if there's a persisted request ID, we load
     /// up to that instead of selecting the first in the list
     #[rstest]
-    fn test_load_persistent_request(harness: TestHarness) {
+    fn test_load_persisted_request(harness: TestHarness) {
         let collection = Collection::factory(());
         let recipe_id = collection.first_recipe_id();
         let profile_id = collection.first_profile_id();
@@ -307,6 +322,34 @@ mod tests {
             component.data().selected_request(),
             Some(&RequestState::Response {
                 exchange: old_exchange
+            })
+        );
+    }
+
+    /// Test that if the persisted request ID isn't in the DB, we'll fall back
+    /// to selecting the most recent request
+    #[rstest]
+    fn test_persisted_request_missing(harness: TestHarness) {
+        let collection = Collection::factory(());
+        let recipe_id = collection.first_recipe_id();
+        let profile_id = collection.first_profile_id();
+        let old_exchange =
+            Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
+        let new_exchange =
+            Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
+        harness.database.insert_exchange(&old_exchange).unwrap();
+        harness.database.insert_exchange(&new_exchange).unwrap();
+        harness
+            .database
+            .set_ui(PersistentKey::RequestId, RequestId::new())
+            .unwrap();
+
+        let component = TestComponent::new(harness, Root::new(&collection), ());
+
+        assert_eq!(
+            component.data().selected_request(),
+            Some(&RequestState::Response {
+                exchange: new_exchange
             })
         );
     }

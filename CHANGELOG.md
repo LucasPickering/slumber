@@ -24,6 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - When a modal/dialog is open `q` now exits the dialog instead of the entire app
 - Upgrade to Rust 1.76
 
+### Fixed
+
+- Fix "Unknown request ID" error showing on startup [#238](https://github.com/LucasPickering/slumber/issues/238)
+
 ## [1.3.2] - 2024-05-27
 
 ### Changed

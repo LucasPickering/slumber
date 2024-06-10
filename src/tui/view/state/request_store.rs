@@ -5,7 +5,6 @@ use crate::{
         context::ViewContext, state::RequestStateSummary, RequestState,
     },
 };
-use anyhow::anyhow;
 use itertools::Itertools;
 use std::collections::{hash_map::Entry, HashMap};
 
@@ -39,17 +38,23 @@ impl RequestStore {
     }
 
     /// Load a request from the database by ID. If already present in the store,
-    /// do *not* update it. Only go to the DB if it's missing.
-    pub fn load(&mut self, id: RequestId) -> anyhow::Result<()> {
-        if let Entry::Vacant(entry) = self.requests.entry(id) {
-            let exchange = ViewContext::with_database(|database| {
-                database
-                    .get_request(id)?
-                    .ok_or_else(|| anyhow!("Unknown request ID `{id}`"))
-            })?;
-            entry.insert(RequestState::response(exchange));
-        }
-        Ok(())
+    /// do *not* update it. Only go to the DB if it's missing. Return the loaded
+    /// request. Return `None` only if the ID is not present in the store *or*
+    /// the DB.
+    pub fn load(
+        &mut self,
+        id: RequestId,
+    ) -> anyhow::Result<Option<&RequestState>> {
+        let request = match self.requests.entry(id) {
+            Entry::Occupied(entry) => Some(entry.into_mut()),
+            Entry::Vacant(entry) => {
+                ViewContext::with_database(|database| database.get_request(id))?
+                    .map(|exchange| {
+                        entry.insert(RequestState::response(exchange))
+                    })
+            }
+        };
+        Ok(request.map(|r| &*r))
     }
 
     /// Get the latest request for a specific profile+recipe combo
@@ -117,9 +122,10 @@ mod tests {
     use super::*;
     use crate::{
         http::{Exchange, RequestBuildError, RequestError, RequestRecord},
-        test_util::{assert_err, assert_matches, Factory},
+        test_util::{assert_matches, Factory},
         tui::test_util::{harness, TestHarness},
     };
+    use anyhow::anyhow;
     use chrono::Utc;
     use rstest::rstest;
     use std::sync::Arc;
@@ -197,7 +203,10 @@ mod tests {
             store.get(present_id),
             Some(RequestState::Response { .. })
         );
-        store.load(present_id).expect("Expected success");
+        assert_matches!(
+            store.load(present_id),
+            Ok(Some(RequestState::Response { .. }))
+        );
         assert_matches!(
             store.get(present_id),
             Some(RequestState::Response { .. })
@@ -205,14 +214,17 @@ mod tests {
 
         // Not in store, fetch successfully
         assert!(store.get(missing_id).is_none());
-        store.load(missing_id).expect("Expected success");
+        assert_matches!(
+            store.load(missing_id),
+            Ok(Some(RequestState::Response { .. }))
+        );
         assert_matches!(
             store.get(missing_id),
             Some(RequestState::Response { .. })
         );
 
-        // Not in store and not in DB, return error
-        assert_err!(store.load(RequestId::new()), "Unknown request ID");
+        // Not in store and not in DB, return None
+        assert_matches!(store.load(RequestId::new()), Ok(None));
     }
 
     #[rstest]

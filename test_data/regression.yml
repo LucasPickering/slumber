@@ -113,6 +113,7 @@ requests:
         query:
           - value={{field1}}
           - value={{field2}}
+        headers: # Should parse as an empty map
 
       json_body: !request
         <<: *base_recipe
@@ -121,6 +122,7 @@ requests:
         url: "{{host}}/anything/{{user_guid}}"
         authentication: !bearer "{{chains.auth_token}}"
         body: !json { "username": "new username" }
+        query: # Should parse as an empty map
 
       json_body_but_not: !request
         <<: *base_recipe

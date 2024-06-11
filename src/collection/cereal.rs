@@ -126,6 +126,13 @@ where
             formatter.write_str("sequence of \"<param>=<value>\" or map")
         }
 
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(Vec::new())
+        }
+
         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
         where
             A: SeqAccess<'de>,
@@ -573,6 +580,7 @@ mod tests {
         ],
         vec![("param", "{{value}}")]
     )]
+    #[case::unit(&[Token::Unit], vec![])]
     fn test_deserialize_query_parameters(
         #[case] tokens: &[Token],
         #[case] expected: Vec<(&str, &str)>,

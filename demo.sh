@@ -16,7 +16,9 @@ case $1 in
         ;;
     "")
         rm -rf data/ # Delete temp data so the GIF is consistent
+        cargo build # Make sure the recording doesn't capture the build process
         vhs static/demo.tape
+        echo "Don't forget to look at the gif before pushing!"
         ;;
     *)
         echo "Invalid args: $@"

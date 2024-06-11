@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [1.4.0] - 2024-06-11
+
 ### Added
 
 - Structured bodies can now be defined with tags on the `body` field of a recipe, making it more convenient to construct bodies of common types. Supported types are:

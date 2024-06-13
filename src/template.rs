@@ -218,12 +218,13 @@ mod tests {
             assert_err, by_id, header_map, temp_dir, Factory, TempDir,
             TestPrompter,
         },
+        tui::test_util::EnvGuard,
     };
     use chrono::Utc;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
-    use std::{env, time::Duration};
+    use std::time::Duration;
     use tokio::fs;
 
     /// Test overriding all key types, as well as missing keys
@@ -964,13 +965,22 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::present(Some("test!"), "test!")]
+    #[case::missing(None, "")]
     #[tokio::test]
-    async fn test_environment_success() {
+    async fn test_environment_success(
+        #[case] env_value: Option<&str>,
+        #[case] expected: &str,
+    ) {
         let context = TemplateContext::factory(());
-        env::set_var("TEST", "test!");
-        assert_eq!(render!("{{env.TEST}}", context).unwrap(), "test!");
-        // Unknown gets replaced with empty string
-        assert_eq!(render!("{{env.UNKNOWN}}", context).unwrap(), "");
+        // This prevents tests from competing for environ environment variables,
+        // and isolates us from the external env
+        let result = {
+            let _guard = EnvGuard::lock([("TEST", env_value)]);
+            render!("{{env.TEST}}", context)
+        };
+        assert_eq!(result.unwrap(), expected);
     }
 
     /// Test rendering non-UTF-8 data

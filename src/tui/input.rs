@@ -1,16 +1,12 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use crate::{
-    tui::message::{Message, MessageSender},
-    util::Mapping,
-};
+use crate::{tui::message::Message, util::Mapping};
 use anyhow::{anyhow, bail};
 use crossterm::event::{
-    Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
-    MediaKeyCode, MouseButton, MouseEvent, MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MediaKeyCode,
+    MouseButton, MouseEvent, MouseEventKind,
 };
 use derive_more::Display;
-use futures::StreamExt;
 use indexmap::{indexmap, IndexMap};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -113,18 +109,6 @@ impl InputEngine {
         new
     }
 
-    /// Listen for input from the terminal, and forward relevant events to the
-    /// message queue. This future will run indefinitely, so it should be
-    /// spawned in its own task.
-    pub async fn input_loop(&self, messages_tx: MessageSender) {
-        let mut stream = EventStream::new();
-        while let Some(result) = stream.next().await {
-            // Failure to read input is both weird and fatal, so panic
-            let event = result.expect("Error reading terminal input");
-            self.handle_event(&messages_tx, event);
-        }
-    }
-
     /// Get a map of all available bindings
     pub fn bindings(&self) -> &IndexMap<Action, InputBinding> {
         &self.bindings
@@ -183,11 +167,12 @@ impl InputEngine {
         action
     }
 
-    /// Given an input event, generate and queue a corresponding message. Some
-    /// events will *not* generate a message, because they shouldn't get
-    /// handled by components. This could be because they're just useless and
-    /// noisy, or because they actually cause bugs (e.g. double key presses).
-    fn handle_event(&self, messages_tx: &MessageSender, event: Event) {
+    /// Given an input event, generate a corresponding message with mapped
+    /// action. Some events will *not* generate a message, because they
+    /// shouldn't get handled by components. This could be because they're just
+    /// useless and noisy, or because they actually cause bugs (e.g. double key
+    /// presses).
+    pub fn event_to_message(&self, event: Event) -> Option<Message> {
         if !matches!(
             event,
             Event::FocusGained
@@ -207,7 +192,9 @@ impl InputEngine {
                 })
         ) {
             let action = self.action(&event);
-            messages_tx.send(Message::Input { event, action });
+            Some(Message::Input { event, action })
+        } else {
+            None
         }
     }
 }
@@ -558,10 +545,7 @@ fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{assert_err, assert_matches},
-        tui::test_util::{harness, TestHarness},
-    };
+    use crate::test_util::{assert_err, assert_matches};
     use crossterm::event::{KeyEventState, MediaKeyCode};
     use rstest::rstest;
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
@@ -586,7 +570,7 @@ mod tests {
         })
     }
 
-    /// Test that each event queues a corresponding message
+    /// Test events that should be handled get a message generated
     #[rstest]
     #[case::key_down_mapped(
         key_event(KeyEventKind::Press, KeyCode::Enter),
@@ -629,16 +613,14 @@ mod tests {
         Some(Action::ScrollRight)
     )]
     #[case::paste(Event::Paste("hello!".into()), None)]
-    fn test_handle_event_queued(
-        mut harness: TestHarness,
+    fn test_to_message_handled(
         #[case] event: Event,
         #[case] expected_action: Option<Action>,
     ) {
         let engine = InputEngine::new(IndexMap::default());
-        engine.handle_event(harness.messages_tx(), event.clone());
         let (queued_event, queued_action) = assert_matches!(
-            harness.pop_message_now(),
-            Message::Input { event, action } => (event, action),
+            engine.event_to_message(event.clone()),
+            Some(Message::Input { event, action }) => (event, action),
         );
         assert_eq!(queued_event, event);
         assert_eq!(queued_action, expected_action);
@@ -653,13 +635,9 @@ mod tests {
     #[case::mouse_down(mouse_event(MouseEventKind::Down(MouseButton::Left)))]
     #[case::mouse_drag(mouse_event(MouseEventKind::Drag(MouseButton::Left)))]
     #[case::mouse_move(mouse_event(MouseEventKind::Moved))]
-    fn test_handle_event_killed(
-        mut harness: TestHarness,
-        #[case] event: Event,
-    ) {
+    fn test_handle_event_killed(#[case] event: Event) {
         let engine = InputEngine::new(IndexMap::default());
-        engine.handle_event(harness.messages_tx(), event);
-        harness.assert_messages_empty();
+        assert_matches!(engine.event_to_message(event), None);
     }
 
     #[rstest]

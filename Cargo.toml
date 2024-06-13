@@ -31,7 +31,6 @@ itertools = "^0.12.0"
 mime = "^0.3.17"
 nom = "7.1.3"
 notify = {version = "^6.1.1", default-features = false, features = ["macos_fsevent"]}
-open = "5.1.1"
 ratatui = {version = "^0.26.0", features = ["serde", "unstable-rendered-line-info"]}
 reqwest = {version = "^0.12.4", default-features = false, features = ["multipart", "rustls-tls"]}
 rmp-serde = "^1.1.2"

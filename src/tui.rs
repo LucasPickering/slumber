@@ -16,7 +16,7 @@ use crate::{
         context::TuiContext,
         input::Action,
         message::{Message, MessageSender, RequestConfig},
-        util::{save_file, signals},
+        util::{get_editor_command, save_file, signals},
         view::{ModalPriority, PreviewPrompter, RequestState, View},
     },
     util::{Replaceable, ResultExt},
@@ -24,10 +24,10 @@ use crate::{
 use anyhow::{anyhow, Context};
 use chrono::Utc;
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{DisableMouseCapture, EnableMouseCapture, EventStream},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use futures::Future;
+use futures::{Future, StreamExt};
 use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use std::{
@@ -38,6 +38,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
+    select,
     sync::mpsc::{self, UnboundedReceiver},
     time,
 };
@@ -126,33 +127,43 @@ impl Tui {
     async fn run(mut self) -> anyhow::Result<()> {
         // Spawn background tasks
         self.listen_for_signals();
-        tokio::spawn(
-            TuiContext::get()
-                .input_engine
-                .input_loop(self.messages_tx.clone()),
-        );
         // Hang onto this because it stops running when dropped
         let _watcher = self.watch_collection()?;
+
+        let input_engine = &TuiContext::get().input_engine;
+        // Stream of terminal input events
+        let mut input_stream = EventStream::new();
 
         // This loop is limited by the rate that messages come in, with a
         // minimum rate enforced by a timeout
         while self.should_run {
             // ===== Draw Phase =====
             // Draw *first* so initial UI state is rendered immediately
-            self.terminal.draw(|f| self.view.draw(f))?;
+            self.draw()?;
 
             // ===== Message Phase =====
             // Grab one message out of the queue and handle it. This will block
             // while the queue is empty so we don't waste CPU cycles. The
             // timeout here makes sure we don't block forever, so things like
             // time displays during in-flight requests will update.
-            let future =
-                time::timeout(Self::TICK_TIME, self.messages_rx.recv());
-            if let Ok(message) = future.await {
-                // Error would indicate a very weird and fatal bug so we wanna
-                // know about it
-                let message =
-                    message.expect("Message channel dropped while running");
+            let message = select! {
+                event_result = input_stream.next() => {
+                    if let Some(event) = event_result {
+                        let event = event.expect("Error reading terminal input");
+                        input_engine.event_to_message(event)
+                    } else {
+                        // We ran out of input, just end the program
+                        break;
+                    }
+                },
+                message = self.messages_rx.recv() => {
+                    // Error would indicate a very weird and fatal bug so we
+                    // wanna know about it
+                    Some(message.expect("Message channel dropped while running"))
+                },
+                _ = time::sleep(Self::TICK_TIME) => None,
+            };
+            if let Some(message) = message {
                 trace!(?message, "Handling message");
                 // If an error occurs, store it so we can show the user
                 if let Err(error) = self.handle_message(message) {
@@ -181,12 +192,9 @@ impl Tui {
                 });
             }
             Message::CollectionEndReload(collection) => {
-                self.reload_collection(collection);
+                self.reload_collection(collection)
             }
-            Message::CollectionEdit => {
-                let path = self.collection_file.path();
-                open::that_detached(path).context("Error opening {path:?}")?;
-            }
+            Message::CollectionEdit => self.edit_collection()?,
 
             Message::CopyRequestUrl(request_config) => {
                 self.copy_request_url(request_config)?;
@@ -328,6 +336,43 @@ impl Tui {
     fn quit(&mut self) {
         info!("Initiating graceful shutdown");
         self.should_run = false;
+    }
+
+    /// Draw the view onto the screen
+    fn draw(&mut self) -> anyhow::Result<()> {
+        self.terminal.draw(|frame| self.view.draw(frame))?;
+        Ok(())
+    }
+
+    /// Open the collection file in the user's configured editor. **This will
+    /// block the main thread**, because we assume we're opening a terminal
+    /// editor and therefore should yield the terminal to the editor.
+    fn edit_collection(&mut self) -> anyhow::Result<()> {
+        let path = self.collection_file.path();
+        let mut command = get_editor_command(path)?;
+        let error_context =
+            format!("Error spawning editor with command `{command:?}`");
+
+        // Block while the editor runs. Useful for terminal editors since
+        // they'll take over the whole screen. Potentially annoying for GUI
+        // editors that block, but we'll just hope the command is
+        // fire-and-forget. If this becomes an issue we can try to detect if the
+        // subprocess took over the terminal and cut it loose if not, or add a
+        // config field for it.
+        self.terminal.draw(|frame| {
+            frame.render_widget("Waiting for editor to close...", frame.size());
+        })?;
+        command.status().context(error_context)?;
+        // If the editor was terminal-based it probably dropped us out of the
+        // alternate screen when it closed, so get back in there. This is
+        // idempotent so no harm in doing it
+        crossterm::execute!(io::stdout(), EnterAlternateScreen)?;
+        // Redraw immediately. The main loop will probably be in the tick
+        // timeout when we go back to it, so that adds a 250ms delay to
+        // redrawing the screen that we want to skip.
+        self.draw()?;
+
+        Ok(())
     }
 
     /// Render URL for a request, then copy it to the clipboard

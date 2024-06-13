@@ -5,7 +5,7 @@
 [![Discord chat][discord-badge]][discord-url]
 
 [discord-badge]: https://img.shields.io/discord/1236076369251926116.svg?logo=discord&style=flat-square
-[discord-url]: https://discord.gg/G9RbbUsj
+[discord-url]: https://discord.gg/MQdCRDRs8t
 
 - [Home Page](https://slumber.lucaspickering.me)
 - [Installation](https://slumber.lucaspickering.me/artifacts/)

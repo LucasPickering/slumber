@@ -2,7 +2,7 @@
 
 First off, thank you for considering contributing to Slumber.
 
-If your contribution is not straightforward, please first discuss the change you wish to make by creating a new issue before making the change. For more detailed discussions, consider joining the [Discord server](https://discord.gg/G9RbbUsj) for faster communication.
+If your contribution is not straightforward, please first discuss the change you wish to make by creating a new issue before making the change. For more detailed discussions, consider joining the [Discord server](https://discord.gg/MQdCRDRs8t) for faster communication.
 
 ## Reporting Issues
 

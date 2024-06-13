@@ -11,6 +11,10 @@ use crate::{
 };
 use ratatui::{backend::TestBackend, Terminal};
 use rstest::fixture;
+use std::{
+    env,
+    sync::{Mutex, MutexGuard},
+};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 /// Get a test harness, with a clean terminal etc. See [TestHarness].
@@ -60,16 +64,6 @@ impl TestHarness {
         &self.messages_tx
     }
 
-    /// Assert the message queue is empty. Requires `&mut self` because it will
-    /// actually pop a message off the queue
-    pub fn assert_messages_empty(&mut self) {
-        let message = self.messages_rx.try_recv().ok();
-        assert!(
-            message.is_none(),
-            "Expected empty queue, but had message {message:?}"
-        );
-    }
-
     /// Pop the next message off the queue. Panic if the queue is empty
     pub fn pop_message_now(&mut self) -> Message {
         self.messages_rx.try_recv().expect("Message queue empty")
@@ -83,6 +77,69 @@ impl TestHarness {
     /// Clear all messages in the queue
     pub fn clear_messages(&mut self) {
         while self.messages_rx.try_recv().is_ok() {}
+    }
+}
+
+/// A guard used to indicate that the current process environment is locked.
+/// This should be used in all tests that access environment variables, to
+/// prevent interference from external variable settings or tests conflicting
+/// with each other.
+pub struct EnvGuard {
+    previous_values: Vec<(String, Option<String>)>,
+    #[allow(unused)]
+    guard: MutexGuard<'static, ()>,
+}
+
+impl EnvGuard {
+    /// Lock the environment and set each given variable to its corresponding
+    /// value. The returned guard will keep the environment locked so the
+    /// calling test has exclusive access to it. Upon being dropped, the old
+    /// environment values will be restored and then the environment will be
+    /// unlocked.
+    pub fn lock(
+        variables: impl IntoIterator<
+            Item = (impl Into<String>, Option<impl Into<String>>),
+        >,
+    ) -> Self {
+        /// Global mutex for accessing environment variables. Technically we
+        /// could break this out into a map with one mutex per variable, but
+        /// that adds a ton of complexity for very little value.
+        static MUTEX: Mutex<()> = Mutex::new(());
+
+        let guard = MUTEX.lock().expect("Environment lock is poisoned");
+        let previous_values = variables
+            .into_iter()
+            .map(|(variable, new_value)| {
+                let variable: String = variable.into();
+                let previous_value = env::var(&variable).ok();
+
+                if let Some(value) = new_value {
+                    env::set_var(&variable, value.into());
+                } else {
+                    env::remove_var(&variable);
+                }
+
+                (variable, previous_value)
+            })
+            .collect();
+
+        Self {
+            previous_values,
+            guard,
+        }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        // Restore each env var
+        for (variable, value) in &self.previous_values {
+            if let Some(value) = value {
+                env::set_var(variable, value);
+            } else {
+                env::remove_var(variable);
+            }
+        }
     }
 }
 

@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- "Edit Collection" action now uses the editor set in `$VISUAL`/`$EDITOR` instead of whatever editor you have set as default for `.yaml`/`.yml` files
+- "Edit Collection" action now uses the editor set in `$VISUAL`/`$EDITOR` instead of whatever editor you have set as default for `.yaml`/`.yml` files [#262](https://github.com/LucasPickering/slumber/issues/262)
   - In most cases this means you'll now get `vim` instead of VSCode or another GUI editor
   - Closing the editor will return you to Slumber, meaning you can stay in the terminal the entire time
 

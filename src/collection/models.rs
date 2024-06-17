@@ -486,20 +486,14 @@ impl Equivalent<ChainId> for ChainId<&str> {
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainSource {
-    /// Load data from the most recent response of a particular request recipe
-    Request {
-        recipe: RecipeId,
-        /// When should this request be automatically re-executed?
-        #[serde(default)]
-        trigger: ChainRequestTrigger,
-        #[serde(default)]
-        section: ChainRequestSection,
-    },
     /// Run an external command to get a result
     Command {
         command: Vec<Template>,
         stdin: Option<Template>,
     },
+    /// Load from an environment variable
+    #[serde(rename = "env")]
+    Environment { variable: Template },
     /// Load data from a file
     File { path: Template },
     /// Prompt the user for a value
@@ -508,6 +502,15 @@ pub enum ChainSource {
         message: Option<Template>,
         /// Default value for the shown textbox
         default: Option<Template>,
+    },
+    /// Load data from the most recent response of a particular request recipe
+    Request {
+        recipe: RecipeId,
+        /// When should this request be automatically re-executed?
+        #[serde(default)]
+        trigger: ChainRequestTrigger,
+        #[serde(default)]
+        section: ChainRequestSection,
     },
 }
 

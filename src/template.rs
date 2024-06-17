@@ -172,6 +172,7 @@ enum TemplateKey<T> {
     #[display("{CHAIN_PREFIX}{_0}")]
     Chain(T),
     /// A value pulled from the process environment
+    /// DEPRECATED: To be removed in 2.0, replaced by !env chain source
     #[display("{ENV_PREFIX}{_0}")]
     Environment(T),
 }
@@ -747,6 +748,38 @@ mod tests {
         };
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
+    }
+
+    /// Test success with a chained environment variable
+    #[rstest]
+    #[case::present(Some("test!"), "test!")]
+    #[case::missing(None, "")]
+    #[tokio::test]
+    async fn test_chain_environment(
+        #[case] env_value: Option<&str>,
+        #[case] expected: &str,
+    ) {
+        let source = ChainSource::Environment {
+            variable: "TEST".into(),
+        };
+        let chain = Chain {
+            source,
+            ..Chain::factory(())
+        };
+        let context = TemplateContext {
+            collection: Collection {
+                chains: by_id([chain]),
+                ..Collection::factory(())
+            },
+            ..TemplateContext::factory(())
+        };
+        // This prevents tests from competing for environment variables, and
+        // isolates us from the external env
+        let result = {
+            let _guard = EnvGuard::lock([("TEST", env_value)]);
+            render!("{{chains.chain1}}", context)
+        };
+        assert_eq!(result.unwrap(), expected);
     }
 
     /// Test success with chained file

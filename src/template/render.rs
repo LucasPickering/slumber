@@ -144,6 +144,22 @@ impl Template {
         // Parallelization!
         future::join_all(futures).await
     }
+
+    /// Render a template whose result will be used as configuration for a
+    /// chain. It's assumed we need string output for that. The given field name
+    /// will be used to provide a descriptive error.
+    async fn render_nested(
+        &self,
+        field: impl Into<String>,
+        context: &TemplateContext,
+    ) -> Result<String, ChainError> {
+        self.render_string(context)
+            .await
+            .map_err(|error| ChainError::Nested {
+                field: field.into(),
+                error: error.into(),
+            })
+    }
 }
 
 impl From<TemplateResult> for TemplateChunk {
@@ -250,13 +266,39 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                 )?;
 
             // Resolve the value based on the source type. Also resolve its
-            // content type. For responses this will come from its header. For
-            // anything else, we'll fall back to the content_type field defined
-            // by the user.
+            // content type. For responses this will come from its header, from
+            // files from its extension. For anything else, we'll fall back to
+            // the content_type field defined by the user.
             //
             // We intentionally throw the content detection error away here,
             // because it isn't that intuitive for users and is hard to plumb
             let (value, content_type) = match &chain.source {
+                ChainSource::Command { command, stdin } => (
+                    self.render_command(context, command, stdin.as_ref())
+                        .await?,
+                    // No way to guess content type on this
+                    None,
+                ),
+                ChainSource::File { path } => {
+                    self.render_file(context, path).await?
+                }
+                ChainSource::Environment { variable } => (
+                    self.render_environment_variable(context, variable).await?,
+                    // No way to guess content type on this
+                    None,
+                ),
+                ChainSource::Prompt { message, default } => (
+                    self.render_prompt(
+                        context,
+                        message.as_ref(),
+                        default.as_ref(),
+                        chain.sensitive,
+                    )
+                    .await?
+                    .into_bytes(),
+                    // No way to guess content type on this
+                    None,
+                ),
                 ChainSource::Request {
                     recipe,
                     trigger,
@@ -271,29 +313,6 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                         self.extract_response_value(response, section)?;
                     (value, content_type)
                 }
-                ChainSource::File { path } => {
-                    self.render_file(context, path).await?
-                }
-                ChainSource::Command { command, stdin } => {
-                    // No way to guess content type on this
-                    (
-                        self.render_command(context, command, stdin.as_ref())
-                            .await?,
-                        None,
-                    )
-                }
-                ChainSource::Prompt { message, default } => (
-                    self.render_prompt(
-                        context,
-                        message.as_ref(),
-                        default.as_ref(),
-                        chain.sensitive,
-                    )
-                    .await?
-                    .into_bytes(),
-                    // No way to guess content type on this
-                    None,
-                ),
             };
             // If the user provided a content type, prefer that over the
             // detected one
@@ -452,6 +471,17 @@ impl<'a> ChainTemplateSource<'a> {
         })
     }
 
+    /// Render a value from an environment variable
+    async fn render_environment_variable(
+        &self,
+        context: &TemplateContext,
+        variable: &Template,
+    ) -> Result<Vec<u8>, ChainError> {
+        let variable = variable.render_nested("variable", context).await?;
+        let value = load_environment_variable(&variable);
+        Ok(value.into_bytes())
+    }
+
     /// Render a chained value from a file. Return the files bytes, as well as
     /// its content type if it's known
     async fn render_file(
@@ -459,14 +489,7 @@ impl<'a> ChainTemplateSource<'a> {
         context: &TemplateContext,
         path: &Template,
     ) -> Result<(Vec<u8>, Option<ContentType>), ChainError> {
-        let path: PathBuf = path
-            .render_string(context)
-            .await
-            .map_err(|error| ChainError::Nested {
-                field: "path".into(),
-                error: error.into(),
-            })?
-            .into();
+        let path: PathBuf = path.render_nested("path", context).await?.into();
         // Guess content type based on file extension
         let content_type = ContentType::from_path(&path).ok();
         let content = fs::read(&path)
@@ -485,12 +508,9 @@ impl<'a> ChainTemplateSource<'a> {
         // Render each arg in the command
         let command = future::try_join_all(command.iter().enumerate().map(
             |(i, template)| async move {
-                template.render_string(context).await.map_err(|error| {
-                    ChainError::Nested {
-                        field: format!("command[{i}]"),
-                        error: error.into(),
-                    }
-                })
+                template
+                    .render_nested(format!("command[{i}]"), context)
+                    .await
             },
         ))
         .await?;
@@ -503,13 +523,7 @@ impl<'a> ChainTemplateSource<'a> {
 
         // Render the stdin template, if present
         let input = if let Some(template) = stdin {
-            let input =
-                template.render_string(context).await.map_err(|error| {
-                    ChainError::Nested {
-                        field: "stdin".into(),
-                        error: error.into(),
-                    }
-                })?;
+            let input = template.render_nested("stdin", context).await?;
 
             Some(input)
         } else {
@@ -575,22 +589,12 @@ impl<'a> ChainTemplateSource<'a> {
         // on the prompt channel
         let (tx, rx) = oneshot::channel();
         let message = if let Some(template) = message {
-            template.render_string(context).await.map_err(|error| {
-                ChainError::Nested {
-                    field: "message".into(),
-                    error: error.into(),
-                }
-            })?
+            template.render_nested("message", context).await?
         } else {
             self.chain_id.to_string()
         };
         let default = if let Some(template) = default {
-            Some(template.render_string(context).await.map_err(|error| {
-                ChainError::Nested {
-                    field: "default".into(),
-                    error: error.into(),
-                }
-            })?)
+            Some(template.render_nested("default", context).await?)
         } else {
             None
         };
@@ -613,12 +617,7 @@ struct EnvironmentTemplateSource<'a> {
 #[async_trait]
 impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
     async fn render(&self, _: &'a TemplateContext) -> TemplateResult {
-        let value = env::var_os(self.variable)
-            // If the variable is missing or otherwise inaccessible, use an
-            // empty string. This models standard shell behavior, so it should
-            // be intuitive for users.
-            .unwrap_or_default()
-            .into_encoded_bytes();
+        let value = load_environment_variable(self.variable).into_bytes();
         Ok(RenderedChunk {
             value,
             sensitive: false,
@@ -643,4 +642,16 @@ impl ChainOutputTrim {
             Self::Both => s.trim().into(),
         }
     }
+}
+
+/// Load variable from environment. If the variable is missing or otherwise
+/// inaccessible, return an empty string. This models standard shell behavior,
+/// so it should be intuitive for users.
+///
+/// The variable will be loaded as a **string**, not bytes. This is because the
+/// raw byte representation varies by OS. We're choosing a uniform experience
+/// over the ability to load non-string bytes from an env variable, because
+/// that's an extremely niche use case.
+fn load_environment_variable(variable: &str) -> String {
+    env::var(variable).unwrap_or_default()
 }

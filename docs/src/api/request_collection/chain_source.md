@@ -14,6 +14,9 @@ trigger: !expire 12h
 !command
 command: ["echo", "-n", "hello"]
 ---
+!env
+variable: USERNAME
+---
 !file
 path: ./username.txt
 ---
@@ -23,12 +26,13 @@ message: Enter Password
 
 ## Variants
 
-| Variant    | Type                               | Description                                                     |
-| ---------- | ---------------------------------- | --------------------------------------------------------------- |
-| `!request` | [`ChainSource::Request`](#request) | Body of the most recent response for a specific request recipe. |
-| `!command` | [`ChainSource::Command`](#command) | Stdout of the executed command                                  |
-| `!file`    | [`ChainSource::File`](#file)       | Contents of the file                                            |
-| `!prompt`  | [`ChainSource::Prompt`](#prompt)   | Value entered by the user                                       |
+| Variant    | Type                                                | Description                                                     |
+| ---------- | --------------------------------------------------- | --------------------------------------------------------------- |
+| `!request` | [`ChainSource::Request`](#request)                  | Body of the most recent response for a specific request recipe. |
+| `!command` | [`ChainSource::Command`](#command)                  | Stdout of the executed command                                  |
+| `!env`     | [`ChainSource::Environment`](#environment-variable) | Value of an envionrment variable, or empty string if undefined  |
+| `!file`    | [`ChainSource::File`](#file)                        | Contents of the file                                            |
+| `!prompt`  | [`ChainSource::Prompt`](#prompt)                    | Value entered by the user                                       |
 
 ### Request
 
@@ -107,6 +111,14 @@ Execute a command and use its stdout as the rendered value.
 | --------- | ------------ | ----------------------------------------------------------- | -------- |
 | `command` | `Template[]` | Command to execute, in the format `[program, ...arguments]` | Required |
 | `stdin`   | `Template`   | Standard input which will be piped into the command         | None     |
+
+### Environment Variable
+
+Load a value from an environment variable.
+
+| Field      | Type       | Description      | Default  |
+| ---------- | ---------- | ---------------- | -------- |
+| `variable` | `Template` | Variable to load | Required |
 
 ### File
 

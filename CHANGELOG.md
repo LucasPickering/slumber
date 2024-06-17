@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [1.5.0] - 2024-06-17
+
 ### Added
 
 - Add `!env` chain source, for loading environment variables

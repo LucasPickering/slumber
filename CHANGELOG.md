@@ -6,11 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add `!env` chain source, for loading environment variables
+  - This is intended to replace the existing `{{env.VARIABLE}}` syntax, which is now deprecated and will be removed in the future
+
 ### Changed
 
 - "Edit Collection" action now uses the editor set in `$VISUAL`/`$EDITOR` instead of whatever editor you have set as default for `.yaml`/`.yml` files
   - In most cases this means you'll now get `vim` instead of VSCode or another GUI editor
   - Closing the editor will return you to Slumber, meaning you can stay in the terminal the entire time
+
+### Fixed
+
+- Environment variables in `{{env.VARIABLE}}` templates are now loaded as strings according to the OS encoding, as opposed to always being decoded as UTF-8
 
 ## [1.4.0] - 2024-06-11
 

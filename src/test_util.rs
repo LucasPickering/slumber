@@ -170,8 +170,7 @@ macro_rules! assert_matches {
         match $expr {
             $pattern => $bindings,
             value => panic!(
-                "Unexpected value; \
-                {value:?} does not match expected {expected}",
+                "Unexpected value {value:?} does not match expected {expected}",
                 expected = stringify!($pattern)
             ),
         }

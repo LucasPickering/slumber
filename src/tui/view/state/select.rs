@@ -176,11 +176,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         // If the selection changed, call the callback
         match &self.on_select {
             Some(on_select) if current != new => {
-                let selected = self
-                    .state
-                    .get_mut()
-                    .selected()
-                    .and_then(|index| self.items.get_mut(index));
+                let selected = new.and_then(|index| self.items.get_mut(index));
                 if let Some(selected) = selected {
                     on_select(selected);
                 }
@@ -358,4 +354,96 @@ where
     T: PartialEq<Item>,
 {
     items.iter().position(|item| value == item)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        collection::{Profile, ProfileId},
+        test_util::Factory,
+        tui::{
+            test_util::{harness, TestHarness},
+            view::{
+                context::PersistedLazy, test_util::TestComponent, ViewContext,
+            },
+        },
+    };
+    use crossterm::event::KeyCode;
+    use persisted::{PersistedKey, PersistedStore};
+    use ratatui::widgets::List;
+    use rstest::rstest;
+    use serde::Serialize;
+    use std::sync::mpsc;
+
+    /// Test going up and down in the list
+    #[rstest]
+    fn test_navigation(harness: TestHarness) {
+        let select = SelectState::builder(vec!['a', 'b', 'c']).build();
+        let mut component =
+            TestComponent::new(harness, select, List::default());
+        assert_eq!(component.data().selected(), Some(&'a'));
+        component.send_key(KeyCode::Down).assert_empty();
+        assert_eq!(component.data().selected(), Some(&'b'));
+
+        component.send_key(KeyCode::Up).assert_empty();
+        assert_eq!(component.data().selected(), Some(&'a'));
+    }
+
+    /// Test on_select callback
+    #[rstest]
+    fn test_on_select(harness: TestHarness) {
+        // Track calls to the callback
+        let (tx, rx) = mpsc::channel();
+
+        let select = SelectState::builder(vec!['a', 'b', 'c'])
+            .on_select(move |item| tx.send(*item).unwrap())
+            .build();
+        let mut component =
+            TestComponent::new(harness, select, List::default());
+
+        assert_eq!(component.data().selected(), Some(&'a'));
+        assert_eq!(rx.recv().unwrap(), 'a');
+        component.send_key(KeyCode::Down).assert_empty();
+        assert_eq!(rx.recv().unwrap(), 'b');
+    }
+
+    /// Test on_submit callback
+    #[rstest]
+    fn test_on_submit(harness: TestHarness) {
+        // Track calls to the callback
+        let (tx, rx) = mpsc::channel();
+
+        let select = SelectState::builder(vec!['a', 'b', 'c'])
+            .on_submit(move |item| tx.send(*item).unwrap())
+            .build();
+        let mut component =
+            TestComponent::new(harness, select, List::default());
+
+        component.send_key(KeyCode::Down).assert_empty();
+        component.send_key(KeyCode::Enter).assert_empty();
+        assert_eq!(rx.recv().unwrap(), 'b');
+    }
+
+    /// Test persisting selected item
+    #[rstest]
+    fn test_persistence(_harness: TestHarness) {
+        #[derive(Debug, PersistedKey, Serialize)]
+        #[persisted(Option<ProfileId>)]
+        struct Key;
+
+        let profile = Profile::factory(());
+        let profile_id = profile.id.clone();
+
+        ViewContext::store_persisted(&Key, Some(profile_id.clone()));
+
+        let pid = profile_id.clone();
+        let select = PersistedLazy::new(
+            Key,
+            SelectState::<_, usize>::builder(vec![profile])
+                .on_select(move |item| assert_eq!(item.id, pid))
+                .build(),
+        );
+        assert_eq!(select.selected().map(Profile::id), Some(&profile_id));
+    }
 }

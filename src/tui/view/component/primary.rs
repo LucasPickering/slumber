@@ -42,7 +42,7 @@ pub struct PrimaryView {
     // Own state
     selected_pane:
         PersistedLazy<SingletonKey<PrimaryPane>, FixedSelectState<PrimaryPane>>,
-    fullscreen_mode: Persisted<SingletonKey<Option<FullscreenMode>>>,
+    fullscreen_mode: Persisted<FullscreenModeKey>,
 
     // Children
     profile_pane: Component<ProfilePane>,
@@ -77,9 +77,8 @@ pub enum PrimaryPane {
 }
 impl FixedSelect for PrimaryPane {}
 
-/// The various things that can be requested (haha get it, requested) to be
-/// shown in fullscreen. If one of these is requested while not available, we
-/// simply won't show it.
+/// Panes that can be fullscreened. This is separate from [PrimaryPane] because
+/// it makes it easy to check when we should exit fullscreen mode.
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 enum FullscreenMode {
     /// Fullscreen the active request recipe
@@ -88,9 +87,14 @@ enum FullscreenMode {
     Exchange,
 }
 
-/// Sentinel type for propagating an even that closes fullscreen mode
+/// Persistence key for fullscreen mode
+#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
+#[persisted(Option<FullscreenMode>)]
+struct FullscreenModeKey;
+
+/// Event triggered when selected pane changes, so we can exit fullscreen
 #[derive(Debug)]
-struct ExitFullscreen;
+struct PaneChanged;
 
 impl PrimaryView {
     pub fn new(collection: &Collection) -> Self {
@@ -102,7 +106,7 @@ impl PrimaryView {
         let selected_pane = FixedSelectState::builder()
             // Changing panes kicks us out of fullscreen
             .on_select(|_| {
-                ViewContext::push_event(Event::new_local(ExitFullscreen))
+                ViewContext::push_event(Event::new_local(PaneChanged))
             })
             .build();
 
@@ -111,7 +115,7 @@ impl PrimaryView {
                 SingletonKey::default(),
                 selected_pane,
             ),
-            fullscreen_mode: Persisted::new(SingletonKey::default(), None),
+            fullscreen_mode: Persisted::default(),
 
             recipe_list_pane,
             profile_pane,
@@ -139,7 +143,7 @@ impl PrimaryView {
         self.selected_profile().map(|profile| &profile.id)
     }
 
-    /// Draw the "normal" view, when nothing is full
+    /// Draw the "normal" view, when nothing is fullscreened
     fn draw_all_panes(
         &self,
         frame: &mut Frame,
@@ -189,6 +193,11 @@ impl PrimaryView {
         );
     }
 
+    /// Is the given pane selected?
+    fn is_selected(&self, primary_pane: PrimaryPane) -> bool {
+        self.selected_pane.is_selected(&primary_pane)
+    }
+
     fn toggle_fullscreen(&mut self, mode: FullscreenMode) {
         // If we're already in the given mode, exit
         *self.fullscreen_mode = if Some(mode) == *self.fullscreen_mode {
@@ -198,9 +207,15 @@ impl PrimaryView {
         };
     }
 
-    /// Is the given pane selected?
-    fn is_selected(&self, primary_pane: PrimaryPane) -> bool {
-        self.selected_pane.is_selected(&primary_pane)
+    /// Exit fullscreen mode if it doesn't match the selected pane. This is
+    /// called when the pane changes, but it's possible they match when we're
+    /// loading from persistence. In those cases, stay in fullscreen.
+    fn maybe_exit_fullscreen(&mut self) {
+        match (self.selected_pane.selected(), *self.fullscreen_mode) {
+            (PrimaryPane::Recipe, Some(FullscreenMode::Recipe))
+            | (PrimaryPane::Exchange, Some(FullscreenMode::Exchange)) => {}
+            _ => *self.fullscreen_mode = None,
+        }
     }
 
     /// Get layout for the right column of panes
@@ -296,15 +311,15 @@ impl EventHandler for PrimaryView {
                 // Toggle fullscreen
                 Action::Fullscreen => {
                     match self.selected_pane.selected() {
-                        // These aren't fullscreenable. Still consume the event
-                        // though, no one else will need it anyway
-                        PrimaryPane::RecipeList => {}
                         PrimaryPane::Recipe => {
                             self.toggle_fullscreen(FullscreenMode::Recipe)
                         }
                         PrimaryPane::Exchange => {
                             self.toggle_fullscreen(FullscreenMode::Exchange)
                         }
+                        // This isn't fullscreenable. Still consume the event
+                        // though, no one else will need it anyway
+                        PrimaryPane::RecipeList => {}
                     }
                 }
                 // Exit fullscreen
@@ -315,8 +330,8 @@ impl EventHandler for PrimaryView {
             },
 
             Event::Local(local) => {
-                if let Some(ExitFullscreen) = local.downcast_ref() {
-                    *self.fullscreen_mode = None;
+                if let Some(PaneChanged) = local.downcast_ref() {
+                    self.maybe_exit_fullscreen();
                 } else if let Some(pane) = local.downcast_ref::<PrimaryPane>() {
                     // Children can select themselves by sending PrimaryPane
                     self.selected_pane.select(pane);
@@ -390,6 +405,7 @@ mod tests {
             view::test_util::TestComponent,
         },
     };
+    use persisted::PersistedStore;
     use rstest::{fixture, rstest};
 
     /// Create component to be tested
@@ -408,6 +424,31 @@ mod tests {
         // Clear template preview messages so we can test what we want
         component.harness_mut().clear_messages();
         component
+    }
+
+    /// Test selected pane and fullscreen mode loading from persistence
+    #[rstest]
+    fn test_pane_persistence(harness: TestHarness) {
+        ViewContext::store_persisted(
+            &SingletonKey::<PrimaryPane>::default(),
+            PrimaryPane::Exchange,
+        );
+        ViewContext::store_persisted(
+            &FullscreenModeKey,
+            Some(FullscreenMode::Exchange),
+        );
+
+        // We can't use the fixture normally because we have to set persistence
+        // state first
+        let component = component(harness);
+        assert_eq!(
+            component.data().selected_pane.selected(),
+            PrimaryPane::Exchange
+        );
+        assert_matches!(
+            *component.data().fullscreen_mode,
+            Some(FullscreenMode::Exchange)
+        );
     }
 
     /// Test "Copy URL" action, which is available via the Recipe List or Recipe

@@ -4,8 +4,8 @@
 use crate::{
     collection::{
         self, cereal::deserialize_from_str, Chain, ChainId, ChainSource,
-        Collection, Folder, JsonBody, Method, Profile, ProfileId, Recipe,
-        RecipeBody, RecipeId, RecipeNode, RecipeTree,
+        Collection, Folder, HasId, JsonBody, Method, Profile, ProfileId,
+        Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     template::Template,
 };

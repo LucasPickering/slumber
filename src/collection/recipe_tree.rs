@@ -1,6 +1,8 @@
 //! Recipe/folder tree structure
 
-use crate::collection::{cereal::deserialize_id_map, Folder, Recipe, RecipeId};
+use crate::collection::{
+    cereal::deserialize_id_map, Folder, HasId, Recipe, RecipeId,
+};
 use derive_more::From;
 use indexmap::{map::Values, IndexMap};
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
@@ -200,14 +202,6 @@ impl From<IndexMap<RecipeId, RecipeNode>> for RecipeTree {
 }
 
 impl RecipeNode {
-    /// Get the ID of the inner folder or recipe
-    pub fn id(&self) -> &RecipeId {
-        match self {
-            RecipeNode::Folder(folder) => &folder.id,
-            RecipeNode::Recipe(recipe) => &recipe.id,
-        }
-    }
-
     /// If this node is a recipe, return it. Otherwise return `None`
     pub fn recipe(&self) -> Option<&Recipe> {
         match self {

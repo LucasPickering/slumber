@@ -1,5 +1,7 @@
 use crate::{
-    collection::{Recipe, RecipeId, RecipeLookupKey, RecipeNode, RecipeTree},
+    collection::{
+        HasId, Recipe, RecipeId, RecipeLookupKey, RecipeNode, RecipeTree,
+    },
     tui::{
         context::TuiContext,
         input::Action,

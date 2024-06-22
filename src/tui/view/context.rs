@@ -9,7 +9,9 @@ use crate::{
         },
     },
 };
-use std::cell::RefCell;
+use persisted::PersistedStore;
+use serde::{de::DeserializeOwned, Serialize};
+use std::{cell::RefCell, fmt::Debug};
 
 /// Thread-local context container, which stores mutable state needed in the
 /// view thread. Until [TuiContext](crate::tui::TuiContext), which stores
@@ -128,6 +130,41 @@ impl ViewContext {
             let refs: Vec<_> = context.event_queue.to_vec();
             f(refs.as_slice());
         })
+    }
+}
+
+/// Wrapper for [persisted::PersistedKey] that applies additional bounds
+/// necessary for our store
+pub trait PersistedKey: Debug + Serialize + persisted::PersistedKey {}
+impl<T: Debug + Serialize + persisted::PersistedKey> PersistedKey for T {}
+
+/// Wrapper for [persisted::Persisted] bound to our store
+pub type Persisted<K> = persisted::Persisted<ViewContext, K>;
+
+/// Wrapper for [persisted::PersistedLazy] bound to our store
+pub type PersistedLazy<K, C> = persisted::PersistedLazy<ViewContext, K, C>;
+
+/// Persist UI state via the database. We have to be able to serialize keys to
+/// insert and lookup. We have to serialize values to insert, and deserialize
+/// them to retrieve.
+impl<K> PersistedStore<K> for ViewContext
+where
+    K: PersistedKey,
+    K::Value: Debug + Serialize + DeserializeOwned,
+{
+    fn load_persisted(key: &K) -> Option<K::Value> {
+        Self::with_database(|database| database.get_ui((K::type_name(), key)))
+            // Error is already traced in the DB, nothing to do with it here
+            .ok()
+            .flatten()
+    }
+
+    fn store_persisted(key: &K, value: K::Value) {
+        Self::with_database(|database| {
+            database.set_ui((K::type_name(), key), value)
+        })
+        // Error is already traced in the DB, nothing to do with it here
+        .ok();
     }
 }
 

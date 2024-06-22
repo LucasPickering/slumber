@@ -1,7 +1,6 @@
 //! State types for the view.
 
 pub mod fixed_select;
-pub mod persistence;
 pub mod request_store;
 pub mod select;
 

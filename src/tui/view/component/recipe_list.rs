@@ -6,20 +6,17 @@ use crate::{
         view::{
             common::{actions::ActionsModal, list::List, Pane},
             component::{primary::PrimaryPane, recipe_pane::RecipeMenuAction},
+            context::{Persisted, PersistedLazy},
             draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
-            state::{
-                persistence::{
-                    impl_persistable, Persistable, Persistent, PersistentKey,
-                },
-                select::SelectState,
-            },
+            state::select::SelectState,
             Component, ViewContext,
         },
     },
 };
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
+use persisted::{PersistedKey, SingletonKey};
 use ratatui::Frame;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -41,36 +38,39 @@ pub struct RecipeListPane {
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
-    select: Component<Persistent<SelectState<RecipeNode>>>,
+    select:
+        Component<PersistedLazy<SelectedRecipeKey, SelectState<RecipeNode>>>,
     /// Set of all folders that are collapsed
     /// Invariant: No recipes, only folders
-    collapsed: Persistent<Collapsed>,
+    ///
+    /// We persist the entire set. This will accrue removed folders over time
+    /// (if they were collapsed at the time of deletion). That isn't really an
+    /// issue though, it just means it'll be pre-collapsed if the user ever
+    /// adds the folder back. Not worth working around.
+    collapsed: Persisted<SingletonKey<Collapsed>>,
 }
 
-/// Set of collapsed folders. This newtype is really only necessary so we can
-/// implement [Persistable] on it
-#[derive(Debug, Default, Deref, DerefMut, Serialize, Deserialize)]
-#[serde(transparent)]
-struct Collapsed(HashSet<RecipeId>);
+/// Persisted key for the ID of the selected recipe
+#[derive(Debug, Serialize, PersistedKey)]
+#[persisted(Option<RecipeId>)]
+struct SelectedRecipeKey;
 
-/// Ternary state for modifying node collapse state
-enum CollapseState {
-    Expand,
-    Collapse,
-    Toggle,
+/// Needed for persistence
+impl PartialEq<RecipeNode> for RecipeId {
+    fn eq(&self, node: &RecipeNode) -> bool {
+        self == node.id()
+    }
 }
 
 impl RecipeListPane {
     pub fn new(recipes: &RecipeTree) -> Self {
         // This clone is unfortunate, but we can't hold onto a reference to the
         // recipes
-        let collapsed = Persistent::new(
-            PersistentKey::RecipeCollapsed,
-            Collapsed::default(),
-        );
-        let persistent = Persistent::new(
-            PersistentKey::RecipeId,
-            build_select_state(recipes, &collapsed),
+        let collapsed: Persisted<SingletonKey<Collapsed>> =
+            Persisted::default();
+        let persistent = PersistedLazy::new(
+            SelectedRecipeKey,
+            collapsed.build_select_state(recipes),
         );
         Self {
             recipes: recipes.clone(),
@@ -118,7 +118,7 @@ impl RecipeListPane {
         // If we changed the set of what is visible, rebuild the list state
         if changed {
             let mut new_select_state =
-                build_select_state(&self.recipes, &self.collapsed);
+                self.collapsed.build_select_state(&self.recipes);
             // Carry over the selection
             if let Some(selected) = select.selected() {
                 new_select_state.select(selected.id());
@@ -221,6 +221,19 @@ impl Draw for RecipeListPane {
     }
 }
 
+/// Set of collapsed folders. Newtype allows us to encapsulate some extra
+/// functionality
+#[derive(Debug, Default, Deref, DerefMut, Serialize, Deserialize)]
+#[serde(transparent)]
+struct Collapsed(HashSet<RecipeId>);
+
+/// Ternary state for modifying node collapse state
+enum CollapseState {
+    Expand,
+    Collapse,
+    Toggle,
+}
+
 impl Collapsed {
     /// Is this specific folder collapsed?
     fn is_collapsed(&self, folder_id: &RecipeId) -> bool {
@@ -236,46 +249,24 @@ impl Collapsed {
         };
         !ancestors.iter().any(|id| self.is_collapsed(id))
     }
-}
 
-/// Persist recipe by ID
-impl Persistable for RecipeNode {
-    type Persisted = RecipeId;
+    /// Construct select list based on which nodes are currently visible
+    fn build_select_state(
+        &self,
+        recipes: &RecipeTree,
+    ) -> SelectState<RecipeNode> {
+        // When highlighting a new recipe, load it from the repo
+        fn on_select(_: &mut RecipeNode) {
+            // If a recipe isn't selected, this will do nothing
+            ViewContext::push_event(Event::HttpSelectRequest(None));
+        }
 
-    fn get_persistent(&self) -> &Self::Persisted {
-        self.id()
+        let items = recipes
+            .iter()
+            // Filter out hidden nodes
+            .filter(|(lookup_key, _)| self.is_visible(lookup_key))
+            .map(|(_, node)| node.clone())
+            .collect();
+        SelectState::builder(items).on_select(on_select).build()
     }
-}
-
-/// Needed for persistence loading
-impl PartialEq<RecipeNode> for RecipeId {
-    fn eq(&self, node: &RecipeNode) -> bool {
-        self == node.id()
-    }
-}
-
-// Persistence for collapsed set of folders. Technically this can accrue
-// removed folders over time (if they were collapsed at the time of deletion).
-// That isn't really an issue though, it just means it'll be pre-collapsed if
-// the user ever adds the folder back. Not worth working around.
-impl_persistable!(Collapsed);
-
-/// Construct select list based on which nodes are currently visible
-fn build_select_state(
-    recipes: &RecipeTree,
-    collapsed: &Collapsed,
-) -> SelectState<RecipeNode> {
-    // When highlighting a new recipe, load it from the repo
-    fn on_select(_: &mut RecipeNode) {
-        // If a recipe isn't selected, this will do nothing
-        ViewContext::push_event(Event::HttpSelectRequest(None));
-    }
-
-    let items = recipes
-        .iter()
-        // Filter out hidden nodes
-        .filter(|(lookup_key, _)| collapsed.is_visible(lookup_key))
-        .map(|(_, node)| node.clone())
-        .collect();
-    SelectState::builder(items).on_select(on_select).build()
 }

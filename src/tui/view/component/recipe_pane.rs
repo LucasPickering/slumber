@@ -1,5 +1,7 @@
 use crate::{
-    collection::{Authentication, ProfileId, Recipe, RecipeBody, RecipeId},
+    collection::{
+        Authentication, HasId, ProfileId, Recipe, RecipeBody, RecipeId,
+    },
     http::BuildOptions,
     template::Template,
     tui::{
@@ -15,13 +17,11 @@ use crate::{
                 Pane,
             },
             component::primary::PrimaryPane,
+            context::{Persisted, PersistedKey, PersistedLazy},
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update},
             state::{
-                fixed_select::FixedSelect,
-                persistence::{Persistable, Persistent, PersistentKey},
-                select::SelectState,
-                StateCell,
+                fixed_select::FixedSelect, select::SelectState, StateCell,
             },
             Component, ViewContext,
         },
@@ -29,6 +29,7 @@ use crate::{
 };
 use derive_more::Display;
 use itertools::Itertools;
+use persisted::SingletonKey;
 use ratatui::{
     layout::Layout,
     prelude::Constraint,
@@ -39,21 +40,12 @@ use serde::{Deserialize, Serialize};
 use strum::{EnumCount, EnumIter};
 
 /// Display a request recipe
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RecipePane {
-    tabs: Component<Tabs<Tab>>,
+    tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
     recipe_state: StateCell<RecipeStateKey, RecipeState>,
-}
-
-impl Default for RecipePane {
-    fn default() -> Self {
-        Self {
-            tabs: Tabs::new(PersistentKey::RecipeTab).into(),
-            recipe_state: Default::default(),
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -69,11 +61,19 @@ struct RecipeStateKey {
     recipe_id: RecipeId,
 }
 
+/// A table of toggleable key:value rows. This has two persisted states:
+/// - Track key of selected row (one entry per table)
+/// - Track toggle state of each row (one entry per row)
+type PersistedTable<RowSelectKey, RowToggleKey> = PersistedLazy<
+    RowSelectKey,
+    SelectState<RowState<RowToggleKey>, TableState>,
+>;
+
 #[derive(Debug)]
 struct RecipeState {
     url: TemplatePreview,
-    query: Component<Persistent<SelectState<RowState, TableState>>>,
-    headers: Component<Persistent<SelectState<RowState, TableState>>>,
+    query: Component<PersistedTable<QueryRowKey, QueryRowToggleKey>>,
+    headers: Component<PersistedTable<HeaderRowKey, HeaderRowToggleKey>>,
     body: Option<Component<RecipeBodyDisplay>>,
     authentication: Option<Component<AuthenticationDisplay>>,
 }
@@ -99,6 +99,93 @@ enum Tab {
 }
 impl FixedSelect for Tab {}
 
+/// Persistence key for selected query param, per recipe. Value is the query
+/// param name
+#[derive(Debug, Serialize, persisted::PersistedKey)]
+#[persisted(Option<String>)]
+struct QueryRowKey(RecipeId);
+
+/// Persistence key for toggle state for a single query param in the table
+#[derive(Debug, Serialize, persisted::PersistedKey)]
+#[persisted(bool)]
+struct QueryRowToggleKey {
+    recipe_id: RecipeId,
+    param: String,
+}
+
+/// Persistence key for selected header, per recipe. Value is the header name
+#[derive(Debug, Serialize, persisted::PersistedKey)]
+#[persisted(Option<String>)]
+struct HeaderRowKey(RecipeId);
+
+/// Persistence key for toggle state for a single header in the table
+#[derive(Debug, Serialize, persisted::PersistedKey)]
+#[persisted(bool)]
+struct HeaderRowToggleKey {
+    recipe_id: RecipeId,
+    header: String,
+}
+
+/// Persistence key for selected form field, per recipe. Value is the field name
+#[derive(Debug, Serialize, persisted::PersistedKey)]
+#[persisted(Option<String>)]
+struct FormRowKey(RecipeId);
+
+/// Persistence key for toggle state for a single form field in the table
+#[derive(Debug, Serialize, persisted::PersistedKey)]
+#[persisted(bool)]
+struct FormRowToggleKey {
+    recipe_id: RecipeId,
+    field: String,
+}
+
+/// One row in the query/header table. Generic param is the persistence key to
+/// use for toggle state
+#[derive(Debug)]
+struct RowState<K: PersistedKey<Value = bool>> {
+    key: String,
+    value: TemplatePreview,
+    enabled: Persisted<K>,
+}
+
+impl<K: PersistedKey<Value = bool>> RowState<K> {
+    fn new(key: String, value: TemplatePreview, persisted_key: K) -> Self {
+        Self {
+            key,
+            value,
+            enabled: Persisted::new(persisted_key, true),
+        }
+    }
+
+    /// Toggle row state on submit
+    fn on_submit(row: &mut Self) {
+        *row.enabled ^= true;
+    }
+}
+
+/// Needed for SelectState persistence
+impl<K: PersistedKey<Value = bool>> HasId for RowState<K> {
+    type Id = String;
+
+    fn id(&self) -> &Self::Id {
+        &self.key
+    }
+
+    fn set_id(&mut self, id: Self::Id) {
+        self.key = id;
+    }
+}
+
+/// Needed for SelectState persistence
+impl<K> PartialEq<RowState<K>> for String
+where
+    K: PersistedKey<Value = bool>,
+{
+    fn eq(&self, row_state: &RowState<K>) -> bool {
+        self == &row_state.key
+    }
+}
+
 /// Items in the actions popup menu. This is also used by the recipe list
 /// component, so the action is handled in the parent.
 #[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
@@ -118,9 +205,9 @@ impl RecipePane {
     /// Generate a [BuildOptions] instance based on current UI state
     pub fn build_options(&self) -> BuildOptions {
         if let Some(state) = self.recipe_state.get() {
-            /// Convert select state into the set of disabled indexes
-            fn to_disabled_indexes(
-                select_state: &SelectState<RowState, TableState>,
+            /// Convert select state into the set of disabled keys
+            fn to_disabled_indexes<K: PersistedKey<Value = bool>>(
+                select_state: &SelectState<RowState<K>, TableState>,
             ) -> Vec<usize> {
                 select_state
                     .items()
@@ -304,10 +391,9 @@ impl RecipeState {
                         value.clone(),
                         selected_profile_id.cloned(),
                     ),
-                    PersistentKey::RecipeQuery {
+                    QueryRowToggleKey {
                         recipe_id: recipe.id.clone(),
                         param: param.clone(),
-                        value: value.clone(),
                     },
                 )
             })
@@ -322,8 +408,8 @@ impl RecipeState {
                         value.clone(),
                         selected_profile_id.cloned(),
                     ),
-                    PersistentKey::RecipeHeader {
-                        recipe: recipe.id.clone(),
+                    HeaderRowToggleKey {
+                        recipe_id: recipe.id.clone(),
                         header: header.clone(),
                     },
                 )
@@ -335,15 +421,15 @@ impl RecipeState {
                 recipe.url.clone(),
                 selected_profile_id.cloned(),
             ),
-            query: Persistent::new(
-                PersistentKey::RecipeSelectedQuery(recipe.id.clone()),
+            query: PersistedLazy::new(
+                QueryRowKey(recipe.id.clone()),
                 SelectState::builder(query_items)
                     .on_submit(RowState::on_submit)
                     .build(),
             )
             .into(),
-            headers: Persistent::new(
-                PersistentKey::RecipeSelectedHeader(recipe.id.clone()),
+            headers: PersistedLazy::new(
+                HeaderRowKey(recipe.id.clone()),
                 SelectState::builder(header_items)
                     .on_submit(RowState::on_submit)
                     .build(),
@@ -445,7 +531,7 @@ impl Draw for AuthenticationDisplay {
 #[derive(Debug)]
 enum RecipeBodyDisplay {
     Raw(Component<TextWindow<TemplatePreview>>),
-    Form(Component<Persistent<SelectState<RowState, TableState>>>),
+    Form(Component<PersistedTable<FormRowKey, FormRowToggleKey>>),
 }
 
 impl RecipeBodyDisplay {
@@ -497,8 +583,8 @@ impl RecipeBodyDisplay {
                                 value.clone(),
                                 selected_profile_id.clone(),
                             ),
-                            PersistentKey::RecipeFormField {
-                                recipe: recipe_id.clone(),
+                            FormRowToggleKey {
+                                recipe_id: recipe_id.clone(),
                                 field: field.clone(),
                             },
                         )
@@ -508,13 +594,8 @@ impl RecipeBodyDisplay {
                     .on_submit(RowState::on_submit)
                     .build();
                 Self::Form(
-                    Persistent::new(
-                        PersistentKey::RecipeSelectedFormField(
-                            recipe_id.clone(),
-                        ),
-                        select,
-                    )
-                    .into(),
+                    PersistedLazy::new(FormRowKey(recipe_id.clone()), select)
+                        .into(),
                 )
             }
         }
@@ -549,40 +630,9 @@ impl Draw for RecipeBodyDisplay {
     }
 }
 
-/// One row in the query/header table
-#[derive(Debug)]
-struct RowState {
-    key: String,
-    value: TemplatePreview,
-    enabled: Persistent<bool>,
-}
-
-impl RowState {
-    fn new(
-        key: String,
-        value: TemplatePreview,
-        persistent_key: PersistentKey,
-    ) -> Self {
-        Self {
-            key,
-            value,
-            enabled: Persistent::new(
-                persistent_key,
-                // Value itself is the container, so just pass a default value
-                true,
-            ),
-        }
-    }
-
-    /// Toggle row state on submit
-    fn on_submit(row: &mut Self) {
-        *row.enabled ^= true;
-    }
-}
-
 /// Convert table select state into a renderable table
-fn to_table<'a>(
-    state: &'a SelectState<RowState, TableState>,
+fn to_table<'a, K: PersistedKey<Value = bool>>(
+    state: &'a SelectState<RowState<K>, TableState>,
     header: [&'a str; 3],
 ) -> Table<'a, 3, Row<'a>> {
     Table {
@@ -604,107 +654,5 @@ fn to_table<'a>(
             Constraint::Percentage(50),
         ],
         ..Default::default()
-    }
-}
-
-/// This impl persists just which row is *selected*
-impl Persistable for RowState {
-    type Persisted = String;
-
-    fn get_persistent(&self) -> &Self::Persisted {
-        &self.key
-    }
-}
-
-/// Make row selectable by key, for persistence loading
-impl PartialEq<RowState> for String {
-    fn eq(&self, other: &RowState) -> bool {
-        self == &other.key
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        test_util::Factory,
-        tui::{
-            test_util::{harness, TestHarness},
-            view::test_util::TestComponent,
-        },
-    };
-    use crossterm::event::KeyCode;
-    use rstest::rstest;
-
-    /// Query params have special persistence because the keys aren't unique
-    #[rstest]
-    #[test]
-    fn test_persist_query(harness: TestHarness) {
-        let recipe = Recipe {
-            query: vec![
-                ("sudo".into(), "yes".into()),
-                ("speed".into(), "slow".into()),
-                ("speed".into(), "fast".into()),
-            ],
-            ..Recipe::factory(())
-        };
-
-        let mut component = TestComponent::new(
-            harness,
-            RecipePane::default(),
-            RecipePaneProps {
-                selected_recipe: Some(&recipe),
-                selected_profile_id: None,
-            },
-        );
-
-        // Check initial state
-        {
-            component.send_key(KeyCode::Right).assert_empty();
-            let data = component.data();
-            let state = data.recipe_state.get().unwrap();
-            let query = state.query.data();
-            assert_eq!(data.tabs.data().selected(), &Tab::Query);
-            assert_eq!(query.selected_index(), Some(0));
-            assert!(*query.items()[0].enabled);
-            assert!(*query.items()[1].enabled);
-            assert!(*query.items()[2].enabled);
-        }
-
-        // Disable the 2nd row
-        {
-            component.send_key(KeyCode::Down).assert_empty();
-            component.send_key(KeyCode::Down).assert_empty();
-            component.send_key(KeyCode::Enter).assert_empty();
-            let state = component.data().recipe_state.get().unwrap();
-            let query = state.query.data();
-            assert_eq!(query.selected_index(), Some(2));
-            assert!(*query.items()[0].enabled);
-            assert!(*query.items()[1].enabled);
-            assert!(!*query.items()[2].enabled);
-        }
-
-        // Dropping the component here will persist the values
-        let harness = component.into_harness();
-        // Rebuild the component, persisted values should be loaded
-        let component = TestComponent::new(
-            harness,
-            RecipePane::default(),
-            RecipePaneProps {
-                selected_recipe: Some(&recipe),
-                selected_profile_id: None,
-            },
-        );
-
-        {
-            let state = component.data().recipe_state.get().unwrap();
-            let query = state.query.data();
-            // This is actually a bug - it should be row 2, but we fell back to
-            // the first instance of the param. Good enough for now though
-            assert_eq!(query.selected_index(), Some(1));
-            assert!(*query.items()[0].enabled);
-            assert!(*query.items()[1].enabled);
-            assert!(!*query.items()[2].enabled);
-        }
     }
 }

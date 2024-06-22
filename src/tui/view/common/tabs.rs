@@ -4,43 +4,26 @@ use crate::tui::{
     view::{
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
-        state::{
-            fixed_select::{FixedSelect, FixedSelectState},
-            persistence::{Persistable, Persistent, PersistentKey},
-        },
+        state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
+use persisted::PersistedContainer;
 use ratatui::Frame;
 use std::fmt::Debug;
 
 /// Multi-tab display. Generic parameter defines the available tabs.
-#[derive(Debug)]
-pub struct Tabs<T>
-where
-    T: FixedSelect + Persistable<Persisted = T>,
-{
-    tabs: Persistent<FixedSelectState<T, usize>>,
+#[derive(Debug, Default)]
+pub struct Tabs<T: FixedSelect> {
+    tabs: FixedSelectState<T, usize>,
 }
 
-impl<T> Tabs<T>
-where
-    T: FixedSelect + Persistable<Persisted = T>,
-{
-    pub fn new(persistent_key: PersistentKey) -> Self {
-        Self {
-            tabs: Persistent::new(persistent_key, Default::default()),
-        }
-    }
-
-    pub fn selected(&self) -> &T {
+impl<T: FixedSelect> Tabs<T> {
+    pub fn selected(&self) -> T {
         self.tabs.selected()
     }
 }
 
-impl<T> EventHandler for Tabs<T>
-where
-    T: FixedSelect + Persistable<Persisted = T>,
-{
+impl<T: FixedSelect> EventHandler for Tabs<T> {
     fn update(&mut self, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
@@ -54,10 +37,7 @@ where
     }
 }
 
-impl<T> Draw for Tabs<T>
-where
-    T: FixedSelect + Persistable<Persisted = T>,
-{
+impl<T: FixedSelect> Draw for Tabs<T> {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         frame.render_widget(
             ratatui::widgets::Tabs::new(T::iter().map(|e| e.to_string()))
@@ -65,5 +45,21 @@ where
                 .highlight_style(TuiContext::get().styles.tab.highlight),
             metadata.area(),
         )
+    }
+}
+
+/// Persist selected tab
+impl<T> PersistedContainer for Tabs<T>
+where
+    T: FixedSelect,
+{
+    type Value = T;
+
+    fn get_persisted(&self) -> Self::Value {
+        self.tabs.get_persisted()
+    }
+
+    fn set_persisted(&mut self, value: Self::Value) {
+        self.tabs.set_persisted(value)
     }
 }

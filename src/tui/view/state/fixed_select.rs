@@ -2,14 +2,12 @@ use crate::{
     tui::view::{
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
-        state::{
-            persistence::{Persistable, PersistentContainer},
-            select::{SelectState, SelectStateBuilder, SelectStateData},
-        },
+        state::select::{SelectState, SelectStateBuilder, SelectStateData},
     },
     util::EnumChain,
 };
 use itertools::Itertools;
+use persisted::PersistedContainer;
 use ratatui::{
     widgets::{ListState, StatefulWidget},
     Frame,
@@ -103,9 +101,10 @@ where
     }
 
     /// Get the currently selected item
-    pub fn selected(&self) -> &Item {
+    pub fn selected(&self) -> Item {
         self.select
             .selected()
+            .copied()
             .expect("Fixed-size list cannot be empty")
     }
 
@@ -119,7 +118,7 @@ where
     where
         Item: PartialEq,
     {
-        self.selected() == item
+        &self.selected() == item
     }
 
     /// Select an item by value. Context is required for callbacks. Generally
@@ -176,19 +175,18 @@ where
     }
 }
 
-impl<Item, State> PersistentContainer for FixedSelectState<Item, State>
+impl<Item, State> PersistedContainer for FixedSelectState<Item, State>
 where
-    Item: FixedSelect + Persistable,
-    Item::Persisted: PartialEq<Item>,
+    Item: FixedSelect,
     State: SelectStateData,
 {
     type Value = Item;
 
-    fn get(&self) -> Option<&Self::Value> {
-        Some(self.selected())
+    fn get_persisted(&self) -> Self::Value {
+        self.selected()
     }
 
-    fn set(&mut self, value: <Self::Value as Persistable>::Persisted) {
+    fn set_persisted(&mut self, value: Self::Value) {
         // This will call the on_select callback if the item is in the list
         self.select(&value);
     }

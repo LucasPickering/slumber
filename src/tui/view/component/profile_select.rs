@@ -10,24 +10,23 @@ use crate::{
                 list::List, modal::Modal, table::Table,
                 template_preview::TemplatePreview, Pane,
             },
+            context::PersistedLazy,
             draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
-            state::{
-                persistence::{Persistable, Persistent, PersistentKey},
-                select::SelectState,
-                StateCell,
-            },
+            state::{select::SelectState, StateCell},
             Component, ModalPriority, ViewContext,
         },
     },
     util::doc_link,
 };
 use itertools::Itertools;
+use persisted::PersistedKey;
 use ratatui::{
     layout::{Constraint, Layout},
     text::{Line, Text},
     Frame,
 };
+use serde::Serialize;
 
 /// Minimal pane to show the current profile, and handle interaction to open the
 /// profile list modal
@@ -60,14 +59,26 @@ pub struct ProfilePane {
     /// That, combined with the need to have 'static state in order to move it
     /// into the modal, means duplicating SelectState and cloning the contents
     /// is the best way to go.
-    profiles: Persistent<SelectState<Profile>>,
+    profiles: PersistedLazy<SelectedProfileKey, SelectState<Profile>>,
+}
+
+/// Persisted key for the ID of the selected profile
+#[derive(Debug, Serialize, PersistedKey)]
+#[persisted(Option<ProfileId>)]
+struct SelectedProfileKey;
+
+/// Needed for persistence
+impl PartialEq<Profile> for ProfileId {
+    fn eq(&self, profile: &Profile) -> bool {
+        self == &profile.id
+    }
 }
 
 impl ProfilePane {
     pub fn new(profiles: Vec<Profile>) -> Self {
         let profiles = SelectState::builder(profiles).build();
         Self {
-            profiles: Persistent::new(PersistentKey::ProfileId, profiles),
+            profiles: PersistedLazy::new(SelectedProfileKey, profiles),
         }
     }
 
@@ -263,20 +274,5 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
             ..Default::default()
         };
         frame.render_widget(table.generate(), metadata.area());
-    }
-}
-
-impl Persistable for Profile {
-    type Persisted = ProfileId;
-
-    fn get_persistent(&self) -> &Self::Persisted {
-        &self.id
-    }
-}
-
-/// Needed for persistence
-impl PartialEq<Profile> for ProfileId {
-    fn eq(&self, other: &Profile) -> bool {
-        self == &other.id
     }
 }

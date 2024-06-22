@@ -14,7 +14,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear},
     Frame,
 };
-use std::{collections::VecDeque, fmt::Debug, ops::DerefMut};
+use std::{collections::VecDeque, fmt::Debug};
 use tracing::trace;
 
 /// A modal (AKA popup or dialog) is a high-priority element to be shown to the
@@ -166,15 +166,5 @@ impl Draw for ModalQueue {
             // Render the actual content
             modal.draw(frame, (), inner_area, true);
         }
-    }
-}
-
-impl EventHandler for Box<dyn Modal> {
-    fn update(&mut self, event: Event) -> Update {
-        self.deref_mut().update(event)
-    }
-
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        self.deref_mut().children()
     }
 }

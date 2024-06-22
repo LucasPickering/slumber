@@ -12,7 +12,7 @@ use crate::{
         },
     },
 };
-use std::{any::Any, collections::VecDeque, fmt::Debug};
+use std::{any::Any, collections::VecDeque, fmt::Debug, ops::DerefMut};
 use tracing::trace;
 
 /// A UI element that can handle user/async input. This trait facilitates an
@@ -48,13 +48,17 @@ pub trait EventHandler {
     }
 }
 
-impl EventHandler for &mut dyn EventHandler {
+impl<T> EventHandler for T
+where
+    T: DerefMut,
+    T::Target: EventHandler,
+{
     fn update(&mut self, event: Event) -> Update {
-        (*self).update(event)
+        self.deref_mut().update(event)
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        (*self).children()
+        self.deref_mut().children()
     }
 }
 

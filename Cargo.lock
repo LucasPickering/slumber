@@ -1358,6 +1358,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
+name = "persisted"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0028834a42222bf37fbf5c7301aca8ae24868903d8dff54ac2f6019471bfd39"
+dependencies = [
+ "derive_more",
+ "persisted_derive",
+ "serde",
+]
+
+[[package]]
+name = "persisted_derive"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b2c6d25aa47171c23908b0d03c6998ebf04a9c20be9f72adc8434d2cd2d627a"
+dependencies = [
+ "quote",
+ "syn 2.0.65",
+]
+
+[[package]]
 name = "petgraph"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2005,6 +2026,7 @@ dependencies = [
  "mockito",
  "nom",
  "notify",
+ "persisted",
  "pretty_assertions",
  "ratatui",
  "regex",

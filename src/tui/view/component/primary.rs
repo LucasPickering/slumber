@@ -14,13 +14,11 @@ use crate::{
                 recipe_list::RecipeListPane,
                 recipe_pane::{RecipeMenuAction, RecipePane, RecipePaneProps},
             },
+            context::{Persisted, PersistedLazy},
             draw::{Draw, DrawMetadata},
             event::{Event, EventHandler, Update},
             state::{
                 fixed_select::{FixedSelect, FixedSelectState},
-                persistence::{
-                    impl_persistable, Persistable, Persistent, PersistentKey,
-                },
                 RequestState,
             },
             Component, ViewContext,
@@ -29,6 +27,7 @@ use crate::{
 };
 use derive_more::Display;
 use itertools::Itertools;
+use persisted::SingletonKey;
 use ratatui::{
     layout::Layout,
     prelude::{Constraint, Rect},
@@ -41,8 +40,9 @@ use strum::{EnumCount, EnumIter};
 #[derive(Debug)]
 pub struct PrimaryView {
     // Own state
-    selected_pane: Persistent<FixedSelectState<PrimaryPane>>,
-    fullscreen_mode: Persistent<Option<FullscreenMode>>,
+    selected_pane:
+        PersistedLazy<SingletonKey<PrimaryPane>, FixedSelectState<PrimaryPane>>,
+    fullscreen_mode: Persisted<SingletonKey<Option<FullscreenMode>>>,
 
     // Children
     profile_pane: Component<ProfilePane>,
@@ -87,7 +87,6 @@ enum FullscreenMode {
     /// Fullscreen the active request/response exchange
     Exchange,
 }
-impl_persistable!(Option<FullscreenMode>);
 
 /// Sentinel type for propagating an even that closes fullscreen mode
 #[derive(Debug)]
@@ -108,14 +107,11 @@ impl PrimaryView {
             .build();
 
         Self {
-            selected_pane: Persistent::new(
-                PersistentKey::PrimaryPane,
+            selected_pane: PersistedLazy::new(
+                SingletonKey::default(),
                 selected_pane,
             ),
-            fullscreen_mode: Persistent::new(
-                PersistentKey::FullscreenMode,
-                None,
-            ),
+            fullscreen_mode: Persisted::new(SingletonKey::default(), None),
 
             recipe_list_pane,
             profile_pane,

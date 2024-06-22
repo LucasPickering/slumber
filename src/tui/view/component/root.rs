@@ -12,22 +12,21 @@ use crate::{
                 misc::NotificationText,
                 primary::{PrimaryView, PrimaryViewProps},
             },
+            context::PersistedLazy,
             draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
             state::{
-                persistence::{
-                    Persistable, Persistent, PersistentContainer, PersistentKey,
-                },
-                request_store::RequestStore,
-                RequestState, RequestStateSummary,
+                request_store::RequestStore, RequestState, RequestStateSummary,
             },
             Component, ModalPriority, ViewContext,
         },
     },
     util::ResultExt,
 };
-use derive_more::{Deref, DerefMut};
+use derive_more::From;
+use persisted::{PersistedContainer, PersistedKey};
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
+use serde::Serialize;
 
 /// The root view component
 #[derive(Debug)]
@@ -36,7 +35,7 @@ pub struct Root {
     /// Track and cache in-progress and completed requests
     request_store: RequestStore,
     /// Which request are we showing in the request/response panel?
-    selected_request: Persistent<SelectedRequestId>,
+    selected_request: PersistedLazy<SelectedRequestKey, SelectedRequestId>,
 
     // ==== Children =====
     /// We hold onto the primary view even when it's not visible, because we
@@ -51,10 +50,7 @@ impl Root {
         // Load the selected request *second*, so it will take precedence over
         // the event that attempts to load the latest request for the recipe
         let primary_view = PrimaryView::new(collection);
-        let selected_request = Persistent::new(
-            PersistentKey::RequestId,
-            SelectedRequestId::default(),
-        );
+        let selected_request = PersistedLazy::new_default(SelectedRequestKey);
         Self {
             // State
             request_store: RequestStore::default(),
@@ -74,7 +70,6 @@ impl Root {
         request_id: Option<RequestId>,
     ) -> anyhow::Result<()> {
         let primary_view = self.primary_view.data();
-
         let mut get_id = || -> anyhow::Result<Option<RequestId>> {
             if let Some(request_id) = request_id {
                 // Make sure the given ID is valid, and the request is loaded.
@@ -101,13 +96,14 @@ impl Root {
             }
         };
 
-        **self.selected_request = get_id()?;
+        *self.selected_request = get_id()?.into();
         Ok(())
     }
 
     /// What request should be shown in the request/response pane right now?
     fn selected_request(&self) -> Option<&RequestState> {
         self.selected_request
+            .0
             .and_then(|request_id| self.request_store.get(request_id))
     }
 
@@ -124,7 +120,7 @@ impl Root {
                 .collect();
 
             ViewContext::open_modal(
-                History::new(recipe, requests, **self.selected_request),
+                History::new(recipe, requests, self.selected_request.0),
                 ModalPriority::Low,
             );
         }
@@ -145,7 +141,7 @@ impl EventHandler for Root {
                 let id = state.id();
                 // If this request is *new*, select it
                 if self.request_store.update(state) {
-                    **self.selected_request = Some(id);
+                    *self.selected_request = Some(id).into();
                 }
             }
 
@@ -227,23 +223,28 @@ impl Draw for Root {
     }
 }
 
+/// Persistence key for the selected request
+#[derive(Debug, Serialize, PersistedKey)]
+#[persisted(Option<RequestId>)]
+struct SelectedRequestKey;
+
 /// A wrapper for the selected request ID. This is needed to customize
 /// persistence loading. We have to load the persisted value via an event so it
 /// can be loaded from the DB.
-#[derive(Debug, Default, Deref, DerefMut)]
+#[derive(Debug, Default, From)]
 struct SelectedRequestId(Option<RequestId>);
 
-impl PersistentContainer for SelectedRequestId {
-    type Value = RequestId;
+impl PersistedContainer for SelectedRequestId {
+    type Value = Option<RequestId>;
 
-    fn get(&self) -> Option<&Self::Value> {
-        self.0.as_ref()
+    fn get_persisted(&self) -> Self::Value {
+        self.0
     }
 
-    fn set(&mut self, value: <Self::Value as Persistable>::Persisted) {
+    fn set_persisted(&mut self, request_id: Self::Value) {
         // We can't just set the value directly, because then the request won't
         // be loaded from the DB
-        ViewContext::push_event(Event::HttpSelectRequest(Some(value)))
+        ViewContext::push_event(Event::HttpSelectRequest(request_id))
     }
 }
 
@@ -259,6 +260,7 @@ mod tests {
         },
     };
     use crossterm::event::KeyCode;
+    use persisted::PersistedStore;
     use rstest::rstest;
 
     /// Test that, on first render, the view loads the most recent historical
@@ -302,10 +304,10 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
-        harness
-            .database
-            .set_ui(PersistentKey::RequestId, old_exchange.id)
-            .unwrap();
+        ViewContext::store_persisted(
+            &SelectedRequestKey,
+            Some(old_exchange.id),
+        );
 
         let component = TestComponent::new(harness, Root::new(&collection), ());
 
@@ -319,10 +321,8 @@ mod tests {
             Some(recipe_id)
         );
         assert_eq!(
-            component.data().selected_request(),
-            Some(&RequestState::Response {
-                exchange: old_exchange
-            })
+            component.data().selected_request().map(|state| state.id()),
+            Some(old_exchange.id)
         );
     }
 
@@ -341,7 +341,7 @@ mod tests {
         harness.database.insert_exchange(&new_exchange).unwrap();
         harness
             .database
-            .set_ui(PersistentKey::RequestId, RequestId::new())
+            .set_ui(&SelectedRequestKey, RequestId::new())
             .unwrap();
 
         let component = TestComponent::new(harness, Root::new(&collection), ());

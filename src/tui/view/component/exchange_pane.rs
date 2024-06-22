@@ -15,15 +15,17 @@ use crate::{
                 },
                 Component,
             },
+            context::PersistedLazy,
             draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
-            state::{fixed_select::FixedSelect, persistence::PersistentKey},
+            state::fixed_select::FixedSelect,
             RequestState, ViewContext,
         },
     },
     util::doc_link,
 };
 use derive_more::Display;
+use persisted::SingletonKey;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
     text::{Line, Text},
@@ -38,9 +40,9 @@ use strum::{EnumCount, EnumIter};
 /// between request and response. Parent is responsible for switching between
 /// tabs, because switching is done by hotkey and we can't see hotkeys if the
 /// pane isn't selected.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ExchangePane {
-    tabs: Component<Tabs<Tab>>,
+    tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
     request: Component<RequestView>,
     response_headers: Component<ResponseHeadersView>,
     response_body: Component<ResponseBodyView>,
@@ -50,17 +52,6 @@ pub struct ExchangePaneProps<'a> {
     /// Selected recipe OR folder. Used to decide what placeholder to show
     pub selected_recipe_node: Option<&'a RecipeNode>,
     pub request_state: Option<&'a RequestState>,
-}
-
-impl Default for ExchangePane {
-    fn default() -> Self {
-        Self {
-            tabs: Tabs::new(PersistentKey::ExchangeTab).into(),
-            request: Default::default(),
-            response_headers: Default::default(),
-            response_body: Default::default(),
-        }
-    }
 }
 
 #[derive(

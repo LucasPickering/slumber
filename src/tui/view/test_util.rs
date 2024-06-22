@@ -67,11 +67,6 @@ where
         &mut self.harness
     }
 
-    /// Drop this component, returning the contained harness to be re-used
-    pub fn into_harness(self) -> TestHarness {
-        self.harness
-    }
-
     /// Get a reference to the wrapped component's inner data
     pub fn data(&self) -> &T {
         self.component.data()

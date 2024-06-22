@@ -8,16 +8,19 @@ use crate::{
         message::Message,
         view::{
             common::{actions::ActionsModal, header_table::HeaderTable},
-            component::queryable_body::{ExchangeBodyProps, QueryableBody},
+            component::queryable_body::{QueryableBody, QueryableBodyProps},
+            context::PersistedLazy,
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update},
-            state::{persistence::PersistentKey, StateCell},
+            state::StateCell,
             Component, ViewContext,
         },
     },
 };
 use derive_more::Display;
+use persisted::PersistedKey;
 use ratatui::Frame;
+use serde::Serialize;
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
@@ -55,8 +58,13 @@ struct State {
     /// The presentable version of the response body, which may or may not
     /// match the response body. We apply transformations such as filter,
     /// prettification, or in the case of binary responses, a hex dump.
-    body: Component<QueryableBody>,
+    body: Component<PersistedLazy<ResponseQueryPersistedKey, QueryableBody>>,
 }
+
+/// Persisted key for response body JSONPath query text box
+#[derive(Debug, Serialize, PersistedKey)]
+#[persisted(String)]
+struct ResponseQueryPersistedKey(RecipeId);
 
 impl EventHandler for ResponseBodyView {
     fn update(&mut self, event: Event) -> Update {
@@ -128,15 +136,16 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
         let response = &props.response;
         let state = self.state.get_or_update(props.request_id, || State {
             response: Arc::clone(&props.response),
-            body: QueryableBody::new(PersistentKey::ResponseBodyQuery(
-                props.recipe_id.clone(),
-            ))
+            body: PersistedLazy::new(
+                ResponseQueryPersistedKey(props.recipe_id.clone()),
+                QueryableBody::new(),
+            )
             .into(),
         });
 
         state.body.draw(
             frame,
-            ExchangeBodyProps {
+            QueryableBodyProps {
                 body: &response.body,
             },
             metadata.area(),

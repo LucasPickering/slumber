@@ -6,11 +6,11 @@ use crate::tui::{
     view::{
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
-        state::persistence::{Persistable, PersistentContainer},
     },
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nom::AsChar;
+use persisted::PersistedContainer;
 use ratatui::{
     layout::Rect,
     text::{Line, Masked, Text},
@@ -335,14 +335,14 @@ impl TextState {
     }
 }
 
-impl PersistentContainer for TextBox {
+impl PersistedContainer for TextBox {
     type Value = String;
 
-    fn get(&self) -> Option<&Self::Value> {
-        Some(&self.state.text)
+    fn get_persisted(&self) -> Self::Value {
+        self.state.text.clone()
     }
 
-    fn set(&mut self, value: <Self::Value as Persistable>::Persisted) {
+    fn set_persisted(&mut self, value: Self::Value) {
         self.set_text(value);
     }
 }

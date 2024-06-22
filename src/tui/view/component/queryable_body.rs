@@ -11,16 +11,14 @@ use crate::{
             },
             draw::{Draw, DrawMetadata},
             event::{Event, EventHandler, Update},
-            state::{
-                persistence::{Persistent, PersistentKey},
-                StateCell,
-            },
+            state::StateCell,
             Component, ViewContext,
         },
     },
     util::{MaybeStr, ResultExt},
 };
 use anyhow::Context;
+use persisted::PersistedContainer;
 use ratatui::{
     layout::{Constraint, Layout},
     Frame,
@@ -30,7 +28,8 @@ use std::cell::Cell;
 use Debug;
 
 /// Display response body as text, with a query box to filter it if the body has
-/// been parsed
+/// been parsed. The query state can be persisted by persisting this entire
+/// container.
 #[derive(Debug)]
 pub struct QueryableBody {
     /// Body text content. State cell allows us to reset this whenever the
@@ -44,27 +43,19 @@ pub struct QueryableBody {
     /// Expression used to filter the content of the body down
     query: Option<Query>,
     /// Where the user enters their body query
-    query_text_box: Component<Persistent<TextBox>>,
+    query_text_box: Component<TextBox>,
 }
 
 #[derive(Clone)]
-pub struct ExchangeBodyProps<'a> {
+pub struct QueryableBodyProps<'a> {
     pub body: &'a ResponseBody,
-}
-
-/// All callback events from the query text box
-#[derive(Debug)]
-enum QueryCallback {
-    Focus,
-    Cancel,
-    Submit(String),
 }
 
 impl QueryableBody {
     /// Create a new body, optionally loading the query text from the
     /// persistence DB. This is optional because not all callers use the query
     /// box, or want to persist the value.
-    pub fn new(query_persistent_key: PersistentKey) -> Self {
+    pub fn new() -> Self {
         let text_box = TextBox::default()
             .with_placeholder("'/' to filter body with JSONPath")
             .with_validator(|text| JsonPath::parse(text).is_ok())
@@ -85,8 +76,7 @@ impl QueryableBody {
             query_available: Cell::new(false),
             query_focused: false,
             query: Default::default(),
-            query_text_box: Persistent::new(query_persistent_key, text_box)
-                .into(),
+            query_text_box: text_box.into(),
         }
     }
 
@@ -95,6 +85,12 @@ impl QueryableBody {
         self.text_window
             .get()
             .map(|text_window| text_window.data().text().to_owned())
+    }
+}
+
+impl Default for QueryableBody {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -146,11 +142,11 @@ impl EventHandler for QueryableBody {
     }
 }
 
-impl<'a> Draw<ExchangeBodyProps<'a>> for QueryableBody {
+impl<'a> Draw<QueryableBodyProps<'a>> for QueryableBody {
     fn draw(
         &self,
         frame: &mut Frame,
-        props: ExchangeBodyProps,
+        props: QueryableBodyProps,
         metadata: DrawMetadata,
     ) {
         // Body can only be queried if it's been parsed
@@ -183,6 +179,27 @@ impl<'a> Draw<ExchangeBodyProps<'a>> for QueryableBody {
     }
 }
 
+/// Persist the query text box
+impl PersistedContainer for QueryableBody {
+    type Value = String;
+
+    fn get_persisted(&self) -> Self::Value {
+        self.query_text_box.data().get_persisted()
+    }
+
+    fn set_persisted(&mut self, value: Self::Value) {
+        self.query_text_box.data_mut().set_persisted(value)
+    }
+}
+
+/// All callback events from the query text box
+#[derive(Debug)]
+enum QueryCallback {
+    Focus,
+    Cancel,
+    Submit(String),
+}
+
 fn init_text_window(
     body: &ResponseBody,
     query: Option<&Query>,
@@ -210,19 +227,20 @@ fn init_text_window(
 mod tests {
     use super::*;
     use crate::{
-        collection::RecipeId,
         http::ResponseRecord,
-        test_util::{header_map, Factory},
+        test_util::header_map,
         tui::{
             context::TuiContext,
             test_util::{harness, TestHarness},
-            view::test_util::TestComponent,
+            view::{context::PersistedLazy, test_util::TestComponent},
         },
     };
     use crossterm::event::KeyCode;
+    use persisted::{PersistedKey, PersistedStore};
     use ratatui::text::Span;
     use reqwest::StatusCode;
     use rstest::{fixture, rstest};
+    use serde::Serialize;
 
     const TEXT: &[u8] = b"{\"greeting\":\"hello\"}";
 
@@ -249,10 +267,8 @@ mod tests {
         let body = ResponseBody::new(TEXT.into());
         let component = TestComponent::new(
             harness,
-            QueryableBody::new(PersistentKey::ResponseBodyQuery(
-                RecipeId::factory(()),
-            )),
-            ExchangeBodyProps { body: &body },
+            QueryableBody::new(),
+            QueryableBodyProps { body: &body },
         );
 
         // Assert state
@@ -279,10 +295,8 @@ mod tests {
     ) {
         let mut component = TestComponent::new(
             harness,
-            QueryableBody::new(PersistentKey::ResponseBodyQuery(
-                RecipeId::factory(()),
-            )),
-            ExchangeBodyProps {
+            QueryableBody::new(),
+            QueryableBodyProps {
                 body: &json_response.body,
             },
         );
@@ -338,29 +352,27 @@ mod tests {
         assert_eq!(data.query_text_box.data().text(), "$.greeting");
     }
 
-    /// Render a parsed body with query text box, and initial query from the DB
+    /// Render a parsed body with query text box, and load initial query from
+    /// the DB. This tests the `PersistedContainer` implementation
     #[rstest]
-    fn test_initial_query(
+    fn test_persistence(
         #[with(30, 4)] harness: TestHarness,
         json_response: ResponseRecord,
     ) {
-        let recipe_id = RecipeId::factory(());
+        #[derive(Debug, Serialize, PersistedKey)]
+        #[persisted(String)]
+        struct Key;
 
         // Add initial query to the DB
-        let persistent_key =
-            PersistentKey::ResponseBodyQuery(recipe_id.clone());
-        harness
-            .database
-            .set_ui(&persistent_key, "$.greeting")
-            .unwrap();
+        ViewContext::store_persisted(&Key, "$.greeting".to_owned());
 
         // We already have another test to check that querying works via typing
         // in the box, so we just need to make sure state is initialized
         // correctly here
         let component = TestComponent::new(
             harness,
-            QueryableBody::new(persistent_key),
-            ExchangeBodyProps {
+            PersistedLazy::new(Key, QueryableBody::new()),
+            QueryableBodyProps {
                 body: &json_response.body,
             },
         );

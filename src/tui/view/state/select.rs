@@ -1,11 +1,14 @@
-use crate::tui::{
-    input::Action,
-    view::{
-        draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, Update},
-        state::persistence::{Persistable, PersistentContainer},
+use crate::{
+    collection::HasId,
+    tui::{
+        input::Action,
+        view::{
+            draw::{Draw, DrawMetadata},
+            event::{Event, EventHandler, Update},
+        },
     },
 };
+use persisted::PersistedContainer;
 use ratatui::{
     widgets::{ListState, StatefulWidget, TableState},
     Frame,
@@ -203,11 +206,6 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
             self.select_index(index);
         }
     }
-
-    /// Kind-agnostic helper for the selected item
-    fn selected_opt(&self) -> Option<&Item> {
-        self.items.get(self.state.borrow().selected()?)
-    }
 }
 
 impl<Item, State> Default for SelectState<Item, State>
@@ -275,23 +273,26 @@ where
     }
 }
 
-impl<Item, State> PersistentContainer for SelectState<Item, State>
+impl<Item, State> PersistedContainer for SelectState<Item, State>
 where
-    Item: Persistable,
-    // Whatever is persisted in the DB needs to be comparable to the items in
-    // the list, so we can select by equality
-    Item::Persisted: PartialEq<Item>,
+    Item: HasId,
+    Item::Id: PartialEq<Item>, // Bound needed so we can select items by ID
     State: SelectStateData,
 {
-    type Value = Item;
+    type Value = Option<Item::Id>;
 
-    fn get(&self) -> Option<&Self::Value> {
-        self.selected_opt()
+    fn get_persisted(&self) -> Self::Value {
+        self.selected().map(Item::id).cloned()
     }
 
-    fn set(&mut self, value: <Self::Value as Persistable>::Persisted) {
-        // This will call the on_select callback if the item is in the list
-        self.select(&value);
+    fn set_persisted(&mut self, value: Self::Value) {
+        // If we persisted `None`, we *don't* want to update state here. That
+        // means the list was empty before persisting and it may now have data,
+        // and we don't want to overwrite whatever was pre-selected
+        if let Some(value) = &value {
+            // This will call the on_select callback if the item is in the list
+            self.select(value);
+        }
     }
 }
 

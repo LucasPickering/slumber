@@ -224,9 +224,6 @@ impl<T> FixedSelectWithoutDefault for T where
 /// Trait alias for a static list of items to be cycled through
 pub trait FixedSelect: FixedSelectWithoutDefault + Default {}
 
-// / Auto-impl for anything we can
-// impl<T> FixedSelect for T where T: FixedSelectWithoutDefault + Default {}
-
 impl<T, U> FixedSelect for EnumChain<T, U>
 where
     T: FixedSelect,

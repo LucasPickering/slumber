@@ -39,13 +39,16 @@ impl HasId for RecipeNode {
     type Id = RecipeId;
 
     fn id(&self) -> &Self::Id {
-        self.id()
+        match self {
+            Self::Folder(folder) => &folder.id,
+            Self::Recipe(recipe) => &recipe.id,
+        }
     }
 
     fn set_id(&mut self, id: Self::Id) {
         match self {
-            RecipeNode::Folder(folder) => folder.id = id,
-            RecipeNode::Recipe(recipe) => recipe.id = id,
+            Self::Folder(folder) => folder.id = id,
+            Self::Recipe(recipe) => recipe.id = id,
         }
     }
 }

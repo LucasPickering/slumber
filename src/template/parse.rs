@@ -1,44 +1,42 @@
-//! Template string parser
+//! Parsing and stringification for templates
 
 use crate::{
     collection::ChainId,
     template::{error::TemplateParseError, Template, TemplateKey},
 };
-use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_while1},
-    combinator::{all_consuming, cut},
-    error::{context, ErrorKind, ParseError, VerboseError},
-    multi::many0,
-    sequence::{preceded, terminated},
-    FindSubstring, Finish, IResult, InputLength, InputTake, Offset, Parser,
+use aho_corasick::AhoCorasick;
+use serde::{
+    de::{Error, Visitor},
+    Deserialize, Deserializer,
+};
+use std::{
+    fmt::{self, Display},
+    str::FromStr,
+    sync::Arc,
+};
+use winnow::{
+    combinator::{
+        alt, cut_err, eof, not, preceded, repeat, repeat_till, terminated,
+    },
+    error::StrContext,
+    token::{any, take_while},
+    PResult, Parser,
 };
 
+/// Character used to escape other characters, converting their special meaning
+/// into raw text
+const ESCAPE: &str = "\\";
+/// Marks the start of a template key
 const KEY_OPEN: &str = "{{";
+/// Marks the end of a template key
 const KEY_CLOSE: &str = "}}";
+/// Any sequence that can be escaped to strip its semantic meaning
+const ESCAPABLE: [&str; 2] = [ESCAPE, KEY_OPEN];
 // Export these so they can be used in TemplateKey's Display impl
 pub const CHAIN_PREFIX: &str = "chains.";
 pub const ENV_PREFIX: &str = "env.";
 
-type ParseResult<'a, T> = IResult<&'a str, T, VerboseError<&'a str>>;
-
 impl Template {
-    /// Parse a template, extracting all template keys
-    pub fn parse(template: String) -> Result<Self, TemplateParseError> {
-        // Parse everything as string slices
-        let (_, chunks) = all_chunks(&template)
-            .finish()
-            .map_err(|error| TemplateParseError::new(&template, error))?;
-
-        // Map all the string slices to spans to avoid self-references. It would
-        // be better to track the spans as we go, but that's a bit harder
-        let mapper = |s: &str| Span::new(template.offset(s), s.len());
-        let chunks =
-            chunks.into_iter().map(|chunk| chunk.map(mapper)).collect();
-
-        Ok(Self { template, chunks })
-    }
-
     /// Create a template that renders a single chain. This creates a template
     /// equivalent to `{{chains.<id>}}`
     pub fn from_chain(id: &ChainId) -> Self {
@@ -46,193 +44,342 @@ impl Template {
         // Technically we could construct the template directly, but it's a lot
         // more robust to re-use the parsing logic, since we need to build up
         // the template string anyway
-        Template::parse(format!("{{{{{CHAIN_PREFIX}{id}}}}}"))
+        format!("{KEY_OPEN}{CHAIN_PREFIX}{id}{KEY_CLOSE}")
+            .parse()
             .expect("Generated template is invalid")
+    }
+}
+
+/// Parse a template, extracting all template keys
+impl FromStr for Template {
+    type Err = TemplateParseError;
+
+    fn from_str(template: &str) -> Result<Self, Self::Err> {
+        let chunks = all_chunks
+            .parse(template)
+            .map_err(TemplateParseError::new)?;
+
+        Ok(Self { chunks })
+    }
+}
+
+/// For serialization
+impl From<Template> for String {
+    fn from(template: Template) -> Self {
+        template.to_string()
+    }
+}
+
+impl Display for Template {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Re-stringify the template. For raw spans, we need to escape special
+        // characters to get them to re-parse correctly later.
+        for chunk in &self.chunks {
+            match chunk {
+                TemplateInputChunk::Raw(s) => {
+                    let s = s.as_str();
+                    let searcher = AhoCorasick::new(ESCAPABLE)
+                        .expect("Invalid search string");
+                    // Find each special sequence, and add a backslash before it
+                    let mut i = 0;
+                    for m in searcher.find_iter(s) {
+                        // Write everything before the special char, then escape
+                        // The escaped sequence will be written on the next iter
+                        write!(f, "{}{ESCAPE}", &s[i..m.start()])?;
+                        i = m.start();
+                    }
+                    // Fencepost: segment betwen last match and end
+                    write!(f, "{}", &s[i..])?;
+                }
+                TemplateInputChunk::Key(key) => {
+                    write!(f, "{KEY_OPEN}{key}{KEY_CLOSE}")?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+// Custom deserializer for `Template`. This is useful for deserializing values
+// that are not strings, but should be treated as strings such as numbers,
+// booleans, and nulls.
+impl<'de> Deserialize<'de> for Template {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct TemplateVisitor;
+
+        macro_rules! visit_primitive {
+            ($func:ident, $type:ty) => {
+                fn $func<E>(self, v: $type) -> Result<Self::Value, E>
+                where
+                    E: Error,
+                {
+                    self.visit_string(v.to_string())
+                }
+            };
+        }
+
+        impl<'de> Visitor<'de> for TemplateVisitor {
+            type Value = Template;
+
+            fn expecting(
+                &self,
+                formatter: &mut std::fmt::Formatter,
+            ) -> std::fmt::Result {
+                formatter.write_str("string, number, or boolean")
+            }
+
+            visit_primitive!(visit_bool, bool);
+            visit_primitive!(visit_u64, u64);
+            visit_primitive!(visit_i64, i64);
+            visit_primitive!(visit_f64, f64);
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                v.parse().map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_any(TemplateVisitor)
     }
 }
 
 /// A parsed piece of a template. After parsing, each chunk is either raw text
 /// or a parsed key, ready to be rendered.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum TemplateInputChunk<T> {
-    Raw(T),
-    Key(TemplateKey<T>),
-}
-
-impl<T> TemplateInputChunk<T> {
-    /// Map the internal data using the given function. Useful for mapping
-    /// string slices to spans and vice versa.
-    fn map<U>(self, f: impl Fn(T) -> U) -> TemplateInputChunk<U> {
-        match self {
-            Self::Raw(value) => TemplateInputChunk::Raw(f(value)),
-            Self::Key(key) => TemplateInputChunk::Key(key.map(f)),
-        }
-    }
-}
-
-/// Indexes defining a substring of text within some string. This is a useful
-/// alternative to string slices when avoiding self-referential structs.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Span {
-    start: usize,
-    /// Store length instead of end so it can never be invalid
-    len: usize,
-}
-
-impl Span {
-    pub(super) fn new(start: usize, len: usize) -> Self {
-        Self { start, len }
-    }
-
-    /// Starting index of the span, inclusive
-    pub fn start(&self) -> usize {
-        self.start
-    }
-
-    /// Ending index of the span, exclusive
-    pub fn end(&self) -> usize {
-        self.start + self.len
-    }
+#[derive(Clone, Debug, PartialEq)]
+pub enum TemplateInputChunk {
+    /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
+    /// stored in an `Arc` so we can share cheaply in each render, without
+    /// having to clone text. This works because templates are immutable.
+    Raw(Arc<String>),
+    Key(TemplateKey),
 }
 
 /// Parse a template into keys and raw text
-fn all_chunks(input: &str) -> ParseResult<Vec<TemplateInputChunk<&str>>> {
-    all_consuming(many0(alt((
-        key.map(TemplateInputChunk::Key),
-        raw.map(TemplateInputChunk::Raw),
-    ))))(input)
+fn all_chunks(input: &mut &str) -> PResult<Vec<TemplateInputChunk>> {
+    repeat_till(
+        0..,
+        alt((
+            key.map(TemplateInputChunk::Key),
+            raw.map(TemplateInputChunk::Raw),
+        ))
+        .context(StrContext::Label("template chunk")),
+        eof,
+    )
+    .map(|(chunks, _)| chunks)
+    .context(StrContext::Label("template"))
+    .parse_next(input)
 }
 
 /// Parse raw text, until we hit a key or end of input
-fn raw(input: &str) -> ParseResult<&str> {
-    context("raw", take_until_or_eof(KEY_OPEN))(input)
+fn raw(input: &mut &str) -> PResult<Arc<String>> {
+    repeat(
+        0..,
+        alt((
+            escape_sequence,
+            // Match anything other than a key opening. This is inefficient
+            // because it means we'll copy into the accumulating string one
+            // char at a time. We could theoretically grab up to the next
+            // escape seq or key here but I couldn't figure that out. Potential
+            // optimization if perf is a problem
+            (not(KEY_OPEN), any).recognize(),
+        )),
+    )
+    .map(Arc::new)
+    .context(StrContext::Label("raw text"))
+    .parse_next(input)
+}
+
+/// Match an escape sequence, e.g. `\\`` or `\{{`
+fn escape_sequence<'a>(input: &mut &'a str) -> PResult<&'a str> {
+    alt(ESCAPABLE.map(|text| (ESCAPE, text)))
+        // Throw away the escape char
+        .map(|(_, right)| right)
+        .parse_next(input)
 }
 
 /// Parse a template key
-fn key(input: &str) -> ParseResult<TemplateKey<&str>> {
-    context(
-        "key",
-        preceded(
-            tag(KEY_OPEN),
-            // Any error inside a template key is fatal, including an unclosed
-            // key
-            cut(terminated(key_contents, tag(KEY_CLOSE))),
-        ),
-    )(input)
+fn key(input: &mut &str) -> PResult<TemplateKey> {
+    preceded(
+        KEY_OPEN,
+        // Any error inside a template key is fatal, including an unclosed key
+        cut_err(terminated(key_contents, KEY_CLOSE)),
+    )
+    .context(StrContext::Label("key"))
+    .parse_next(input)
 }
 
 /// Parse the contents of a key (inside the `{{ }}`)
-fn key_contents(input: &str) -> ParseResult<TemplateKey<&str>> {
+fn key_contents(input: &mut &str) -> PResult<TemplateKey> {
     alt((
-        context(
-            "chain",
-            preceded(tag(CHAIN_PREFIX), identifier).map(TemplateKey::Chain),
-        ),
-        context(
-            "environment",
-            preceded(tag(ENV_PREFIX), identifier).map(TemplateKey::Environment),
-        ),
-        context("field", identifier.map(TemplateKey::Field)),
-    ))(input)
+        preceded(
+            CHAIN_PREFIX,
+            identifier.map(|id| TemplateKey::Chain(id.into())),
+        )
+        .context(StrContext::Label("chain")),
+        preceded(ENV_PREFIX, identifier.map(TemplateKey::Environment))
+            .context(StrContext::Label("environment")),
+        identifier
+            .map(TemplateKey::Field)
+            .context(StrContext::Label("field")),
+    ))
+    .parse_next(input)
 }
 
 /// Parse a field name/chain ID/env variable etc, inside a key
-fn identifier(input: &str) -> ParseResult<&str> {
-    context(
-        "identifier",
-        take_while1(|c: char| c.is_alphanumeric() || "-_".contains(c)),
-    )(input)
-}
-
-/// A copy pasta of nom's `take_until` that will take up to the end of a string
-/// if the terminator never appears, instead of erroring out. I couldn't
-/// figure out how to do this with other combinators, so here we go
-fn take_until_or_eof<'a>(
-    tag: &'a str,
-) -> impl Fn(&'a str) -> ParseResult<&'a str> {
-    |i| match i.find_substring(tag) {
-        Some(index) => Ok(i.take_split(index)),
-        None if i.input_len() > 0 => Ok(i.take_split(i.input_len())),
-        None => Err(nom::Err::Error(VerboseError::from_error_kind(
-            i,
-            ErrorKind::TakeUntil,
-        ))),
-    }
+fn identifier(input: &mut &str) -> PResult<String> {
+    take_while(1.., |c: char| c.is_alphanumeric() || "-_".contains(c))
+        .map(String::from)
+        .context(StrContext::Label("identifier"))
+        .parse_next(input)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_util::assert_err;
-    use itertools::Itertools;
     use rstest::rstest;
+    use serde_test::{assert_de_tokens, assert_ser_tokens, Token};
+
+    /// Build a template out of string chunks. Useful when you want to avoid
+    /// parsing behavior
+    fn tmpl(chunks: impl IntoIterator<Item = TemplateInputChunk>) -> Template {
+        Template {
+            chunks: chunks.into_iter().collect(),
+        }
+    }
+
+    /// Shorthand for creating a new raw chunk
+    fn raw(value: &str) -> TemplateInputChunk {
+        TemplateInputChunk::Raw(value.to_owned().into())
+    }
+
+    /// Shorthand for creating a field key chunk
+    fn key_field(field: &str) -> TemplateInputChunk {
+        TemplateInputChunk::Key(TemplateKey::Field(field.into()))
+    }
+
+    /// Shorthand for creating an env key chunk
+    fn key_env(variable: &str) -> TemplateInputChunk {
+        TemplateInputChunk::Key(TemplateKey::Environment(variable.into()))
+    }
+
+    /// Shorthand for creating a chain key chunk
+    fn key_chain(chain_id: &str) -> TemplateInputChunk {
+        TemplateInputChunk::Key(TemplateKey::Chain(chain_id.into()))
+    }
 
     /// Test parsing success cases
     #[rstest]
-    #[case::empty("", vec![])]
-    #[case::raw("raw", vec![TemplateInputChunk::Raw("raw")])]
-    #[case::unopened_key("unopened}}", vec![TemplateInputChunk::Raw("unopened}}")])]
-    #[case::field(
-        "{{field1}}",
-        vec![TemplateInputChunk::Key(TemplateKey::Field("field1"))]
-    )]
-    #[case::field_number_id("{{1}}", vec![TemplateInputChunk::Key(TemplateKey::Field("1"))])]
-    #[case::chain(
-        "{{chains.chain1}}",
-        vec![TemplateInputChunk::Key(TemplateKey::Chain("chain1"))]
-    )]
-    #[case::env(
-        "{{env.ENV}}",
-        vec![TemplateInputChunk::Key(TemplateKey::Environment("ENV"))]
-    )]
+    #[case::empty("", tmpl([]))]
+    #[case::raw("raw", tmpl([raw("raw")]))]
+    #[case::unopened_key("unopened}}", tmpl([raw("unopened}}")]))]
+    #[case::field("{{field1}}", tmpl([key_field("field1")]))]
+    #[case::field_number_id("{{1}}", tmpl([key_field("1")]))]
+    #[case::chain("{{chains.chain1}}", tmpl([key_chain("chain1")]))]
+    #[case::env("{{env.ENV}}", tmpl([key_env("ENV")]))]
     #[case::utf8(
         "intro\n{{user_id}} 💚💙💜 {{chains.chain}}\noutro\r\nmore outro",
-        vec![
-            TemplateInputChunk::Raw("intro\n"),
-            TemplateInputChunk::Key(TemplateKey::Field("user_id")),
-            TemplateInputChunk::Raw(" 💚💙💜 "),
-            TemplateInputChunk::Key(TemplateKey::Chain("chain")),
-            TemplateInputChunk::Raw("\noutro\r\nmore outro"),
-        ]
+        tmpl([
+            raw("intro\n"),
+            key_field("user_id"),
+            raw(" 💚💙💜 "),
+            key_chain("chain"),
+            raw("\noutro\r\nmore outro"),
+        ]),
     )]
-    fn test_parse(
-        #[case] template: &str,
-        #[case] expected_chunks: Vec<TemplateInputChunk<&str>>,
-    ) {
-        let parsed =
-            Template::parse(template.to_owned()).expect("Parsing failed");
-        // Map from spans to strings to make test creation easier
-        let chunks = parsed
-            .chunks
-            .iter()
-            .map(|chunk| chunk.map(|span| parsed.substring(span)))
-            .collect_vec();
-        assert_eq!(chunks, expected_chunks);
+    #[case::binary(r#"\xc3\x28"#, tmpl([raw(r#"\xc3\x28"#)]))]
+    #[case::escape_key(
+        r#"\{{escape}} {{field}} \{{escape}}"#,
+        tmpl([raw("{{escape}} "), key_field("field"), raw(" {{escape}}")]),
+    )]
+    #[case::escape_incomplete_key(
+        r#"escaped: \{{hello"#, tmpl([raw("escaped: {{hello")])
+    )]
+    #[case::escape_backslash(
+        r#"unescaped: \\{{user_id}}"#,
+        tmpl([raw(r#"unescaped: \"#), key_field("user_id")]),
+    )]
+    fn test_parse(#[case] template: &str, #[case] expected: Template) {
+        let parsed: Template = template.parse().expect("Parsing failed");
+        assert_eq!(parsed, expected);
     }
 
     /// Test parsing error cases. The error messages are not very descriptive
     /// so don't even bother looking for particular content
     #[rstest]
-    #[case::unclosed_key("{{")]
-    #[case::empty_key("{{}}")]
-    #[case::invalid_key("{{.}}")]
-    #[case::incomplete_dotted_key("{{bogus.}}")]
-    #[case::invalid_dotted_key("{{bogus.one}}")]
-    #[case::invalid_chain("{{chains.one.two}}")]
-    #[case::invalid_env("{{env.one.two}}")]
-    #[case::whitespace("{{ field }}")]
-    fn test_parse_error(#[case] template: &str) {
-        assert_err!(Template::parse(template.into()), "at line 1");
+    #[case::unclosed_key("{{", "invalid identifier")]
+    #[case::empty_key("{{}}", "invalid identifier")]
+    #[case::invalid_key("{{.}}", "invalid identifier")]
+    #[case::incomplete_dotted_key("{{bogus.}}", "invalid key")]
+    #[case::invalid_dotted_key("{{bogus.one}}", "invalid key")]
+    #[case::invalid_chain("{{chains.one.two}}", "invalid key")]
+    #[case::invalid_env("{{env.one.two}}", "invalid key")]
+    #[case::whitespace_key("{{ field }}", "invalid identifier")]
+    fn test_parse_error(#[case] template: &str, #[case] expected_error: &str) {
+        assert_err!(template.parse::<Template>(), expected_error);
     }
 
     /// Test that [Template::from_chain] generates the correct template
     #[test]
     fn test_from_chain() {
         let template = Template::from_chain(&"chain1".into());
-        assert_eq!(&template.template, "{{chains.chain1}}");
-        assert_eq!(
-            &template.chunks,
-            &[TemplateInputChunk::Key(TemplateKey::Chain(Span::new(9, 6)))]
-        );
+        assert_eq!(&template.to_string(), "{{chains.chain1}}");
+        assert_eq!(&template.chunks, &[key_chain("chain1")]);
+    }
+
+    /// Test [Template::raw]. This should parse+stringify back to the same thing
+    #[rstest]
+    #[case::key("{{hello}}", tmpl([raw("{{hello}}")]))]
+    #[case::backslash(r#"\{{hello}}"#, tmpl([raw(r#"\{{hello}}"#)]))]
+    fn test_raw(#[case] template: &str, #[case] expected: Template) {
+        let escaped = Template::raw(template.into());
+        assert_eq!(escaped, expected);
+    }
+
+    /// Test serialization and printing, which should escape raw chunks
+    #[rstest]
+    #[case::empty(tmpl([]), "")]
+    #[case::raw(tmpl([raw("hello!")]), "hello!")]
+    #[case::field(tmpl([key_field("user_id")]), "{{user_id}}")]
+    #[case::env(tmpl([key_env("ENV1")]), "{{env.ENV1}}")]
+    #[case::chain(tmpl([key_chain("chain1")]), "{{chains.chain1}}")]
+    #[case::escape_key(
+        tmpl([raw(r#"esc: {{user_id}}"#)]), r#"esc: \{{user_id}}"#
+    )]
+    #[case::escape_backslash(
+        tmpl([raw(r#"esc: \"#), key_field("user_id")]),
+        r#"esc: \\{{user_id}}"#,
+    )]
+    fn test_stringify(
+        #[case] template: Template,
+        #[case] expected: &'static str,
+    ) {
+        assert_eq!(&template.to_string(), expected);
+        assert_ser_tokens(&template, &[Token::String(expected)]);
+    }
+
+    /// Test deserialization, which has some additional logic on top of parsing
+    #[rstest]
+    // boolean
+    #[case::bool_true(Token::Bool(true), "true")]
+    #[case::bool_false(Token::Bool(false), "false")]
+    // numeric
+    #[case::u64(Token::U64(1000), "1000")]
+    #[case::i64_negative(Token::I64(-1000), "-1000")]
+    #[case::float_positive(Token::F64(10.1), "10.1")]
+    #[case::float_negative(Token::F64(-10.1), "-10.1")]
+    // string
+    #[case::str(Token::Str("hello"), "hello")]
+    #[case::str_null(Token::Str("null"), "null")]
+    #[case::str_true(Token::Str("true"), "true")]
+    #[case::str_false(Token::Str("false"), "false")]
+    #[case::str_with_keys(Token::Str("{{user_id}}"), "{{user_id}}")]
+    fn test_deserialize(#[case] token: Token, #[case] expected: &str) {
+        assert_de_tokens(&Template::from(expected), &[token]);
     }
 }

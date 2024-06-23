@@ -145,7 +145,7 @@ struct Request {
     parent_id: String,
     meta_sort_key: i64,
     name: String,
-    url: Template,
+    url: String,
     method: Method,
     #[serde(deserialize_with = "deserialize_shitty_option")]
     authentication: Option<Authentication>,
@@ -176,13 +176,13 @@ enum Authentication {
 #[derive(Debug, Deserialize)]
 struct Header {
     name: String,
-    value: Template,
+    value: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct Parameter {
     name: String,
-    value: Template,
+    value: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,14 +192,14 @@ struct Body {
     mime_type: Mime,
     /// This field is only present for text-like bodies (e.g. *not* forms)
     #[serde(default)]
-    text: Option<Template>,
+    text: Option<String>,
     /// Present for form-like bodies
     #[serde(default)]
     params: Vec<FormParam>,
 }
 
 impl Body {
-    fn try_text(self) -> anyhow::Result<Template> {
+    fn try_text(self) -> anyhow::Result<String> {
         self.text
             .ok_or_else(|| anyhow!("Body missing `text` field"))
     }
@@ -291,7 +291,7 @@ impl From<Environment> for Profile {
             data: environment
                 .data
                 .into_iter()
-                .map(|(k, v)| (k, Template::dangerous(v)))
+                .map(|(k, v)| (k, Template::raw(v)))
                 .collect(),
         }
     }
@@ -316,12 +316,15 @@ impl From<Request> for RecipeNode {
         if let Some(Body { mime_type, .. }) = &request.body {
             headers.insert(
                 header::CONTENT_TYPE.as_str().into(),
-                Template::dangerous(mime_type.to_string()),
+                Template::raw(mime_type.to_string()),
             );
         }
         // Load explicit headers *after* so we can override the implicit stuff
         for header in request.headers {
-            headers.insert(header.name.to_lowercase(), header.value);
+            headers.insert(
+                header.name.to_lowercase(),
+                Template::raw(header.value),
+            );
         }
         headers.shift_remove(header::USER_AGENT.as_str());
 
@@ -356,12 +359,14 @@ impl From<Request> for RecipeNode {
             id: request.id.into(),
             name: Some(request.name),
             method: request.method,
-            url: request.url,
+            url: Template::raw(request.url),
             body,
             query: request
                 .parameters
                 .into_iter()
-                .map(|parameter| (parameter.name, parameter.value))
+                .map(|parameter| {
+                    (parameter.name, Template::raw(parameter.value))
+                })
                 .collect(),
             headers,
             authentication,
@@ -382,7 +387,7 @@ impl TryFrom<Body> for RecipeBody {
                 .context("Error parsing body as JSON")?
                 .into();
             // Convert each string into a template *without* parsing
-            RecipeBody::Json(json.map(Template::dangerous))
+            RecipeBody::Json(json.map(Template::raw))
         } else if body.mime_type == mime::APPLICATION_WWW_FORM_URLENCODED {
             RecipeBody::FormUrlencoded(
                 body.params.into_iter().map(FormParam::into).collect(),
@@ -392,7 +397,7 @@ impl TryFrom<Body> for RecipeBody {
                 body.params.into_iter().map(FormParam::into).collect(),
             )
         } else {
-            RecipeBody::Raw(body.try_text()?)
+            RecipeBody::Raw(Template::raw(body.try_text()?))
         };
         Ok(body)
     }
@@ -404,9 +409,7 @@ impl From<FormParam> for (String, Template) {
     fn from(param: FormParam) -> Self {
         match param.kind {
             // Simple string, map to a raw template
-            FormParamKind::String => {
-                (param.name, Template::dangerous(param.value))
-            }
+            FormParamKind::String => (param.name, Template::raw(param.value)),
             // We'll map this to a chain that loads the file. The ID of the
             // chain is the ID of this param. We're banking on that chain being
             // created elsewhere. It's a bit spaghetti but otherwise we'd need
@@ -427,13 +430,13 @@ impl TryFrom<Authentication> for collection::Authentication {
         match authentication {
             Authentication::Basic { username, password } => {
                 Ok(collection::Authentication::Basic {
-                    username: Template::dangerous(username),
-                    password: Some(Template::dangerous(password)),
+                    username: Template::raw(username),
+                    password: Some(Template::raw(password)),
                 })
             }
-            Authentication::Bearer { token } => Ok(
-                collection::Authentication::Bearer(Template::dangerous(token)),
-            ),
+            Authentication::Bearer { token } => {
+                Ok(collection::Authentication::Bearer(Template::raw(token)))
+            }
             // Caller should print a warning for this
             Authentication::Other { kind } => Err(kind),
         }
@@ -448,7 +451,7 @@ fn build_profiles(
     fn convert_data(
         data: IndexMap<String, String>,
     ) -> impl Iterator<Item = (String, Template)> {
-        data.into_iter().map(|(k, v)| (k, Template::dangerous(v)))
+        data.into_iter().map(|(k, v)| (k, Template::raw(v)))
     }
 
     // The Base Environment is the one with the workspace as a parent. We
@@ -519,7 +522,7 @@ fn build_chains(requests: &[Request]) -> IndexMap<ChainId, Chain> {
                     Chain {
                         id,
                         source: ChainSource::File {
-                            path: Template::dangerous(path.to_owned()),
+                            path: Template::raw(path.to_owned()),
                         },
                         sensitive: false,
                         selector: None,

@@ -9,7 +9,6 @@ use crate::tui::{
     },
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use nom::AsChar;
 use persisted::PersistedContainer;
 use ratatui::{
     layout::Rect,
@@ -280,7 +279,7 @@ impl TextState {
     /// Insert one character at the current cursor position
     fn insert(&mut self, c: char) {
         self.text.insert(self.cursor, c);
-        self.cursor += c.len();
+        self.cursor += c.len_utf8();
     }
 
     /// Move cursor left one **character**. This may be multiple bytes, if the
@@ -310,7 +309,7 @@ impl TextState {
                 .chars()
                 .next()
                 .expect("Another char (not at end of string yet)");
-            self.cursor += next_char.len();
+            self.cursor += next_char.len_utf8();
         }
     }
 

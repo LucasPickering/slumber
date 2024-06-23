@@ -10,7 +10,6 @@ use crate::{
 };
 use anyhow::anyhow;
 use derive_more::{Deref, Display, From, FromStr};
-use equivalent::Equivalent;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -414,7 +413,7 @@ impl From<serde_json::Value> for JsonBody<String> {
 impl From<serde_json::Value> for JsonBody<Template> {
     fn from(value: serde_json::Value) -> Self {
         let halfway: JsonBody<String> = value.into();
-        halfway.map(|s| Template::parse(s).unwrap())
+        halfway.map(|s| s.parse().unwrap())
     }
 }
 
@@ -460,24 +459,11 @@ pub struct Chain {
     Serialize,
     Deserialize,
 )]
-pub struct ChainId<S = String>(S);
+pub struct ChainId(String);
 
 impl From<&str> for ChainId {
     fn from(value: &str) -> Self {
         Self(value.into())
-    }
-}
-
-impl From<&ChainId<&str>> for ChainId {
-    fn from(value: &ChainId<&str>) -> Self {
-        Self(value.0.into())
-    }
-}
-
-/// Allow looking up by ChainId<&str> in a map
-impl Equivalent<ChainId> for ChainId<&str> {
-    fn equivalent(&self, key: &ChainId) -> bool {
-        self.0 == key.0
     }
 }
 

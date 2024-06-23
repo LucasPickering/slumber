@@ -67,15 +67,17 @@ impl Generate for &TemplatePreview {
         Self: 'this,
     {
         match self {
-            TemplatePreview::Disabled { template } => template.as_str().into(),
+            TemplatePreview::Disabled { template } => {
+                template.to_string().into()
+            }
             // If the preview render is ready, show it. Otherwise fall back
             // to the raw
             TemplatePreview::Enabled {
                 template, chunks, ..
             } => match chunks.get() {
-                Some(chunks) => TextStitcher::stitch_chunks(template, chunks),
+                Some(chunks) => TextStitcher::stitch_chunks(chunks),
                 // Preview still rendering
-                None => template.as_str().into(),
+                None => template.to_string().into(),
             },
         }
     }
@@ -102,10 +104,7 @@ struct TextStitcher<'a> {
 
 impl<'a> TextStitcher<'a> {
     /// Convert chunks into a series of spans, which can be turned into a line
-    fn stitch_chunks(
-        template: &'a Template,
-        chunks: &'a [TemplateChunk],
-    ) -> Text<'a> {
+    fn stitch_chunks(chunks: &'a [TemplateChunk]) -> Text<'a> {
         let styles = &TuiContext::get().styles;
 
         // Each chunk will get its own styling, but we can't just make each
@@ -115,7 +114,7 @@ impl<'a> TextStitcher<'a> {
         // manually split the lines
         let mut stitcher = Self::default();
         for chunk in chunks {
-            let chunk_text = Self::get_chunk_text(template, chunk);
+            let chunk_text = Self::get_chunk_text(chunk);
             let style = match &chunk {
                 TemplateChunk::Raw(_) => Style::default(),
                 TemplateChunk::Rendered { .. } => styles.template_preview.text,
@@ -145,12 +144,9 @@ impl<'a> TextStitcher<'a> {
     }
 
     /// Get the renderable text for a chunk of a template
-    fn get_chunk_text(
-        template: &'a Template,
-        chunk: &'a TemplateChunk,
-    ) -> &'a str {
+    fn get_chunk_text(chunk: &'a TemplateChunk) -> &'a str {
         match chunk {
-            TemplateChunk::Raw(span) => template.substring(*span),
+            TemplateChunk::Raw(text) => text,
             TemplateChunk::Rendered { value, sensitive } => {
                 if *sensitive {
                     // Hide sensitive values. Ratatui has a Masked type, but
@@ -257,7 +253,7 @@ mod tests {
         };
 
         let chunks = template.render_chunks(&context).await;
-        let text = TextStitcher::stitch_chunks(&template, &chunks);
+        let text = TextStitcher::stitch_chunks(&chunks);
         assert_eq!(text, Text::from(expected));
     }
 

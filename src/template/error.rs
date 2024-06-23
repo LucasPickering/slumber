@@ -4,9 +4,9 @@ use crate::{
     template::RECURSION_LIMIT,
     util::doc_link,
 };
-use nom::error::VerboseError;
 use std::{io, path::PathBuf, string::FromUtf8Error};
 use thiserror::Error;
+use winnow::error::{ContextError, ParseError};
 
 /// An error while parsing a template. This is derived from a nom error
 #[derive(Debug, Error)]
@@ -15,8 +15,8 @@ pub struct TemplateParseError(String);
 
 impl TemplateParseError {
     /// Create a user-friendly parse error
-    pub(super) fn new(template: &str, error: VerboseError<&str>) -> Self {
-        Self(nom::error::convert_error(template, error))
+    pub(super) fn new(error: ParseError<&str, ContextError>) -> Self {
+        Self(error.to_string())
     }
 }
 

@@ -16,6 +16,24 @@ There are several ways of sourcing templating values:
 | Environment Variable          | `{{env.VARIABLE}}`    | Environment variable from parent shell/process. **Deprecated in favor of the [`!env` chain source](./chain_source.md).** | `""`             |
 | [Chain](./chain.md)           | `{{chains.chain_id}}` | Complex chained value                                                                                                    | Error if unknown |
 
+## Escape Sequences
+
+In some scenarios you may want to use the `{{` sequence to represent those literal characters, rather than the start of a template key. To achieve this, you can escape the sequence with a backslash `\`.
+
+```
+\{{this is raw text}}
+```
+
+If you want to represent a literal backslash before a template key, you can escape the backslash:
+
+```
+\\{{field1}}
+```
+
+> Note: YAML also uses `\` as its escape character, meaning you'll need to double all backslashes: the firs to escape in YAML, the second to escape in Slumber.
+
+Any other backslash (i.e. any backslash not followed by another backslash or `{{`) is treated literally.
+
 ## Examples
 
 ```yaml
@@ -33,4 +51,10 @@ There are several ways of sourcing templating values:
 ---
 # No dynamic values
 "hello, world!"
+---
+# Escaped template key
+"\\{{this is raw text}}"
+---
+# Escaped backslash
+"\\\\{{location}}"
 ```

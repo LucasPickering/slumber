@@ -560,9 +560,10 @@ impl RecipeBodyDisplay {
                 let value: serde_json::Value =
                     value.map_ref(|template| template.to_string()).into();
                 let stringified = format!("{value:#}");
-                // This template is composed valid templates, surrounded by JSON
+                // This template is made of valid templates, surrounded by JSON
                 // syntax. In no world should that result in an invalid template
-                let template = Template::parse(stringified)
+                let template = stringified
+                    .parse()
                     .expect("Unexpected template parse failure");
                 Self::Raw(
                     TextWindow::new(TemplatePreview::new(

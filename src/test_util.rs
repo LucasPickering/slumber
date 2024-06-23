@@ -2,7 +2,7 @@
 
 use crate::{
     collection::HasId,
-    template::{Prompt, Prompter, Template},
+    template::{Prompt, Prompter},
     util::ResultExt,
 };
 use anyhow::Context;
@@ -109,13 +109,6 @@ impl Prompter for TestPrompter {
         }
     }
 }
-
-impl From<&str> for Template {
-    fn from(value: &str) -> Self {
-        value.to_owned().try_into().unwrap()
-    }
-}
-// Can't implement this for From<String> because it conflicts with TryFrom
 
 /// Construct a map of values keyed by their ID
 pub fn by_id<T: HasId>(

@@ -158,8 +158,7 @@ where
                 }
 
                 let key = param.to_string();
-                let value = Template::try_from(value.to_string())
-                    .map_err(Error::custom)?;
+                let value = value.parse().map_err(Error::custom)?;
 
                 query.push((key, value));
             }
@@ -180,55 +179,6 @@ where
     }
 
     deserializer.deserialize_any(QueryParametersVisitor)
-}
-
-// Custom deserializer for `Template`. This is useful for deserializing values
-// that are not strings, but should be treated as strings such as numbers,
-// booleans, and nulls.
-impl<'de> Deserialize<'de> for Template {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct TemplateVisitor;
-
-        macro_rules! visit_primitive {
-            ($func:ident, $type:ty) => {
-                fn $func<E>(self, v: $type) -> Result<Self::Value, E>
-                where
-                    E: Error,
-                {
-                    self.visit_string(v.to_string())
-                }
-            };
-        }
-
-        impl<'de> Visitor<'de> for TemplateVisitor {
-            type Value = Template;
-
-            fn expecting(
-                &self,
-                formatter: &mut std::fmt::Formatter,
-            ) -> std::fmt::Result {
-                formatter.write_str("string, number, or boolean")
-            }
-
-            visit_primitive!(visit_bool, bool);
-            visit_primitive!(visit_u64, u64);
-            visit_primitive!(visit_i64, i64);
-            visit_primitive!(visit_f64, f64);
-            visit_primitive!(visit_str, &str);
-
-            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                Template::try_from(v).map_err(E::custom)
-            }
-        }
-
-        deserializer.deserialize_any(TemplateVisitor)
-    }
 }
 
 impl RecipeBody {
@@ -296,8 +246,7 @@ impl<'de> Deserialize<'de> for RecipeBody {
                 where
                     E: Error,
                 {
-                    let template =
-                        Template::try_from(v.to_string()).map_err(E::custom)?;
+                    let template = v.to_string().parse().map_err(E::custom)?;
                     Ok(RecipeBody::Raw(template))
                 }
             };
@@ -362,16 +311,10 @@ impl<'de> Deserialize<'de> for RecipeBody {
 pub mod serde_duration {
     use derive_more::Display;
     use itertools::Itertools;
-    use nom::{
-        bytes::complete::take_while,
-        character::complete::digit1,
-        combinator::{all_consuming, map_res},
-        sequence::tuple,
-        IResult,
-    };
     use serde::{de::Error, Deserialize, Deserializer, Serializer};
     use std::time::Duration;
     use strum::{EnumIter, EnumString, IntoEnumIterator};
+    use winnow::{ascii::digit1, token::take_while, PResult, Parser};
 
     #[derive(Debug, Display, EnumIter, EnumString)]
     enum Unit {
@@ -405,17 +348,20 @@ pub mod serde_duration {
     where
         D: Deserializer<'de>,
     {
-        fn quantity(input: &str) -> IResult<&str, u64> {
-            map_res(digit1, str::parse)(input)
+        fn quantity(input: &mut &str) -> PResult<u64> {
+            digit1.parse_to().parse_next(input)
         }
 
-        fn unit(input: &str) -> IResult<&str, &str> {
-            take_while(char::is_alphabetic)(input)
+        fn unit<'a>(input: &mut &'a str) -> PResult<&'a str> {
+            take_while(1.., char::is_alphabetic).parse_next(input)
         }
 
         let input = String::deserialize(deserializer)?;
-        let (_, (quantity, unit)) =
-            all_consuming(tuple((quantity, unit)))(&input).map_err(|_| {
+        let (quantity, unit) = (quantity, unit)
+            .parse(&input)
+            // The format is so simple there isn't much value in spitting out a
+            // specific parsing error, just use a canned one
+            .map_err(|_| {
                 D::Error::custom(
                     "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)",
                 )

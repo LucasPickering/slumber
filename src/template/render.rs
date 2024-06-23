@@ -16,7 +16,6 @@ use crate::{
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::future;
-use itertools::Itertools;
 use std::{
     env,
     path::PathBuf,
@@ -44,7 +43,7 @@ impl Template {
         &self,
         context: &TemplateContext,
     ) -> Result<Vec<u8>, TemplateError> {
-        debug!(template = self.template, "Rendering template");
+        debug!(template = %self, "Rendering template");
 
         if context.recursion_count.load(Ordering::Relaxed) >= RECURSION_LIMIT {
             return Err(TemplateError::RecursionLimit);
@@ -53,22 +52,25 @@ impl Template {
         // Render each individual template chunk in the string
         let chunks = self.render_chunks(context).await;
 
-        let unwrap_chunk = |chunk| match chunk {
-            TemplateChunk::Raw(span) => {
-                Ok(self.substring(span).as_bytes().to_owned())
+        // Stitch the chunks together into one buffer
+        let len = chunks
+            .iter()
+            .map(|chunk| match chunk {
+                TemplateChunk::Raw(text) => text.as_bytes().len(),
+                TemplateChunk::Rendered { value, .. } => value.len(),
+                TemplateChunk::Error(_) => 0,
+            })
+            .sum();
+        let mut buf = Vec::with_capacity(len);
+        for chunk in chunks {
+            match chunk {
+                TemplateChunk::Raw(text) => buf.extend(text.as_bytes()),
+                TemplateChunk::Rendered { value, .. } => buf.extend(value),
+                TemplateChunk::Error(error) => return Err(error),
             }
-            TemplateChunk::Rendered { value, .. } => Ok(value),
-            TemplateChunk::Error(error) => Err(error),
-        };
+        }
 
-        // Stitch the rendered chunks together into one string. It's possible
-        // this is suboptimal for single-chunk templates, but until that's
-        // a demonstrated bottleneck this is good enough.
-        chunks
-            .into_iter()
-            .map(unwrap_chunk)
-            .flatten_ok()
-            .try_collect()
+        Ok(buf)
     }
 
     /// Render the template using values from the given context. If any chunk
@@ -87,20 +89,18 @@ impl Template {
     /// returning the individual rendered chunks. This is useful in any
     /// application where rendered chunks need to be handled differently from
     /// raw chunks, e.g. in render previews.
-    #[instrument(skip_all, fields(template = self.template))]
+    #[instrument(skip_all, fields(template = %self))]
     pub async fn render_chunks(
         &self,
         context: &TemplateContext,
     ) -> Vec<TemplateChunk> {
         // Map over each parsed chunk, and render the keys into strings. The
-        // raw text chunks will be mapped 1:1
-        let futures = self.chunks.iter().copied().map(|chunk| async move {
+        // raw text chunks will be mapped 1:1. This clone is pretty cheap
+        // because raw text uses Arc and keys just contain metadata
+        let futures = self.chunks.iter().cloned().map(|chunk| async move {
             match chunk {
-                TemplateInputChunk::Raw(span) => TemplateChunk::Raw(span),
+                TemplateInputChunk::Raw(text) => TemplateChunk::Raw(text),
                 TemplateInputChunk::Key(key) => {
-                    // Grab the string corresponding to the span
-                    let key = key.map(|span| self.substring(span));
-
                     // The formatted key should match the source that it was
                     // parsed from, therefore we can use it to match the
                     // override key
@@ -124,8 +124,7 @@ impl Template {
                         }
                         None => {
                             // Standard case - parse the key and render it
-                            let result =
-                                key.into_source().render(context).await;
+                            let result = key.to_source().render(context).await;
                             if let Ok(value) = &result {
                                 trace!(
                                     key = raw,
@@ -174,14 +173,12 @@ impl From<TemplateResult> for TemplateChunk {
     }
 }
 
-impl<'a> TemplateKey<&'a str> {
+impl TemplateKey {
     /// Convert this key into a renderable value type
-    fn into_source(self) -> Box<dyn TemplateSource<'a>> {
+    fn to_source(&self) -> Box<dyn '_ + TemplateSource<'_>> {
         match self {
             Self::Field(field) => Box::new(FieldTemplateSource { field }),
-            Self::Chain(chain_id) => Box::new(ChainTemplateSource {
-                chain_id: chain_id.into(),
-            }),
+            Self::Chain(chain_id) => Box::new(ChainTemplateSource { chain_id }),
             Self::Environment(variable) => {
                 Box::new(EnvironmentTemplateSource { variable })
             }
@@ -206,7 +203,7 @@ trait TemplateSource<'a>: 'a + Send + Sync {
 
 /// A simple field value (e.g. from the profile or an override)
 struct FieldTemplateSource<'a> {
-    pub field: &'a str,
+    field: &'a str,
 }
 
 #[async_trait]
@@ -251,7 +248,7 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
 
 /// A chained value from a complex source. Could be an HTTP response, file, etc.
 struct ChainTemplateSource<'a> {
-    pub chain_id: ChainId<&'a str>,
+    chain_id: &'a ChainId,
 }
 
 #[async_trait]
@@ -261,8 +258,8 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
         let result: Result<_, ChainError> = async {
             // Resolve chained value
             let chain =
-                context.collection.chains.get(&self.chain_id).ok_or_else(
-                    || ChainError::ChainUnknown((&self.chain_id).into()),
+                context.collection.chains.get(self.chain_id).ok_or_else(
+                    || ChainError::ChainUnknown(self.chain_id.clone()),
                 )?;
 
             // Resolve the value based on the source type. Also resolve its
@@ -340,7 +337,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
 
         // Wrap the chain error into a TemplateError
         result.map_err(|error| TemplateError::Chain {
-            chain_id: (&self.chain_id).into(),
+            chain_id: self.chain_id.clone(),
             error,
         })
     }
@@ -611,7 +608,7 @@ impl<'a> ChainTemplateSource<'a> {
 
 /// A value sourced from the process's environment
 struct EnvironmentTemplateSource<'a> {
-    pub variable: &'a str,
+    variable: &'a str,
 }
 
 #[async_trait]

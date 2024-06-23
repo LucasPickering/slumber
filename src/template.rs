@@ -4,25 +4,43 @@ mod prompt;
 mod render;
 
 pub use error::{ChainError, TemplateError};
-pub use parse::Span;
 pub use prompt::{Prompt, PromptChannel, Prompter};
 
 use crate::{
-    collection::{Collection, ProfileId},
+    collection::{ChainId, Collection, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
-    template::{
-        error::TemplateParseError,
-        parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
-    },
+    template::parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
 };
 use derive_more::Display;
 use indexmap::IndexMap;
 use serde::Serialize;
-use std::{fmt::Debug, sync::atomic::AtomicU8};
+use std::{
+    fmt::Debug,
+    sync::{atomic::AtomicU8, Arc},
+};
 
 /// Maximum number of layers of nested templates
 const RECURSION_LIMIT: u8 = 10;
+
+/// A parsed template, which can contain raw and/or templated content. The
+/// string is parsed during creation to identify template keys, hence the
+/// immutability.
+///
+/// The original string is *not* stored. To recover the source string, use the
+/// [Display] implementation.
+///
+/// Invariant: two templates with the same source string will have the same set
+/// of chunks
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(into = "String", try_from = "String")]
+pub struct Template {
+    /// Pre-parsed chunks of the template. For raw chunks we store the
+    /// presentation text (which is not necessarily the source text, as escape
+    /// sequences will be eliminated). For keys, just store the needed
+    /// metadata.
+    chunks: Vec<TemplateInputChunk>,
+}
 
 /// A little container struct for all the data that the user can access via
 /// templating. Unfortunately this has to own all data so templating can be
@@ -58,78 +76,31 @@ pub struct TemplateContext {
     pub recursion_count: AtomicU8,
 }
 
-/// An immutable string that can contain templated content. The string is parsed
-/// during creation to identify template keys, hence the immutability.
-///
-/// Invariant: two templates with the same source string will have the same set
-/// of chunks
-#[derive(Clone, Debug, Default, Display, PartialEq, Serialize)]
-#[display("{template}")]
-#[serde(into = "String", try_from = "String")]
-pub struct Template {
-    template: String,
-    /// Pre-parsed chunks of the template. We can't store slices here because
-    /// that would be self-referential, so just store locations. These chunks
-    /// are contiguous and span the whole template. We *could* omit this from
-    /// the `PartialEq` check because of the above invariant, but let's keep
-    /// it in to be safe for tests.
-    chunks: Vec<TemplateInputChunk<Span>>,
-}
-
 impl Template {
-    /// Get the raw template text
-    pub fn as_str(&self) -> &str {
-        &self.template
-    }
-
-    /// Get a substring of this template. Panics if the span is out of range
-    pub fn substring(&self, span: Span) -> &str {
-        &self.template[span.start()..span.end()]
-    }
-
-    /// Create a new template **without parsing**. The created template should
-    /// *never* be rendered. This is only useful when creating templates purely
-    /// for the purpose of being serialized, e.g. when importing an external
-    /// config into a request collection.
-    ///
-    /// If you try to render this thing, you'll always get the raw string back.
-    /// The "correct" thing to do would be to add some safeguards to make that
-    /// impossible (either type state or a runtime check), but it's not worth
-    /// the extra code for something that is very unlikely to happen. It says
-    /// "dangerous", don't be stupid.
-    pub fn dangerous(template: String) -> Self {
-        // Create one raw chunk for everything
-        let chunk = TemplateInputChunk::Raw(Span::new(0, template.len()));
+    /// Create a new template from a raw string, without parsing it at all.
+    /// Useful when importing from external formats where the string isn't
+    /// expected to be a valid Slumber template
+    pub fn raw(template: String) -> Template {
+        // This may seem too easy, but the hard part comes during
+        // stringification, when we need to add backslashes to get the string to
+        // parse correctly later
         Self {
-            template,
-            chunks: vec![chunk],
+            chunks: vec![TemplateInputChunk::Raw(template.into())],
         }
     }
 }
 
-/// For deserialization
-impl TryFrom<String> for Template {
-    type Error = TemplateParseError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::parse(value)
-    }
-}
-
-/// For serialization
-impl From<Template> for String {
-    fn from(value: Template) -> Self {
-        value.template
-    }
-}
-
-/// For rstest magic conversion
 #[cfg(test)]
-impl std::str::FromStr for Template {
-    type Err = TemplateParseError;
+impl From<&str> for Template {
+    fn from(value: &str) -> Self {
+        value.parse().unwrap()
+    }
+}
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse(s.to_owned())
+#[cfg(test)]
+impl From<String> for Template {
+    fn from(value: String) -> Self {
+        value.as_str().into()
     }
 }
 
@@ -139,15 +110,21 @@ impl std::str::FromStr for Template {
 #[cfg_attr(test, derive(PartialEq))]
 pub enum TemplateChunk {
     /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
-    /// stored as a span in the original string, rather than a string slice, to
-    /// allow this to be passed between tasks/threads easily. We could store an
-    /// owned copy here but that would require copying what could be a very
-    /// large block of text.
-    Raw(Span),
+    /// stored in an `Arc` so we can reference the text in the parsed input
+    /// without having to clone it.
+    Raw(Arc<String>),
     /// Outcome of rendering a template key
     Rendered { value: Vec<u8>, sensitive: bool },
     /// An error occurred while rendering a template key
     Error(TemplateError),
+}
+
+#[cfg(test)]
+impl TemplateChunk {
+    /// Shorthand for creating a new raw chunk
+    fn raw(value: &str) -> Self {
+        Self::Raw(value.to_owned().into())
+    }
 }
 
 /// A parsed template key. The variant of this determines how the key will be
@@ -164,29 +141,17 @@ pub enum TemplateChunk {
 ///
 /// The `Display` impl here should return exactly what this was parsed from.
 /// This is important for matching override keys during rendering.
-#[derive(Copy, Clone, Debug, Display, PartialEq)]
-enum TemplateKey<T> {
+#[derive(Clone, Debug, Display, PartialEq)]
+enum TemplateKey {
     /// A plain field, which can come from the profile or an override
-    Field(T),
+    Field(String),
     /// A value from a predefined chain of another recipe
     #[display("{CHAIN_PREFIX}{_0}")]
-    Chain(T),
+    Chain(ChainId),
     /// A value pulled from the process environment
     /// DEPRECATED: To be removed in 2.0, replaced by !env chain source
     #[display("{ENV_PREFIX}{_0}")]
-    Environment(T),
-}
-
-impl<T> TemplateKey<T> {
-    /// Map the internal data using the given function. Useful for mapping
-    /// string slices to spans and vice versa.
-    fn map<U>(self, f: impl Fn(T) -> U) -> TemplateKey<U> {
-        match self {
-            Self::Field(value) => TemplateKey::Field(f(value)),
-            Self::Chain(value) => TemplateKey::Chain(f(value)),
-            Self::Environment(value) => TemplateKey::Environment(f(value)),
-        }
-    }
+    Environment(String),
 }
 
 #[cfg(test)]
@@ -279,26 +244,11 @@ mod tests {
     /// Test that a field key renders correctly
     #[tokio::test]
     async fn test_field() {
-        let nested_template =
-            Template::parse("user id: {{user_id}}".into()).unwrap();
-        let profile_data = indexmap! {
+        let context = profile_context(indexmap! {
             "user_id".into() => "1".into(),
             "group_id".into() => "3".into(),
-            "recursive".into() => nested_template,
-        };
-        let profile = Profile {
-            data: profile_data,
-            ..Profile::factory(())
-        };
-        let profile_id = profile.id.clone();
-        let context = TemplateContext {
-            collection: Collection {
-                profiles: by_id([profile]),
-                ..Collection::factory(())
-            },
-            selected_profile: Some(profile_id),
-            ..TemplateContext::factory(())
-        };
+            "recursive".into() => "user id: {{user_id}}".into(),
+        });
 
         assert_eq!(&render!("", context).unwrap(), "");
         assert_eq!(&render!("plain", context).unwrap(), "plain");
@@ -326,23 +276,10 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_field_error(#[case] template: &str, #[case] expected: &str) {
-        let profile_data = indexmap! {
-            "nested".into() => Template::parse("{{onion_id}}".into()).unwrap(),
-            "recursive".into() => Template::parse("{{recursive}}".into()).unwrap(),
-        };
-        let profile = Profile {
-            data: profile_data,
-            ..Profile::factory(())
-        };
-        let profile_id = profile.id.clone();
-        let context = TemplateContext {
-            collection: Collection {
-                profiles: by_id([profile]),
-                ..Collection::factory(())
-            },
-            selected_profile: Some(profile_id),
-            ..TemplateContext::factory(())
-        };
+        let context = profile_context(indexmap! {
+            "nested".into() => "{{onion_id}}".into(),
+            "recursive".into() => "{{recursive}}".into(),
+        });
         assert_err!(render!(template, context), expected);
     }
 
@@ -626,7 +563,7 @@ mod tests {
             .await;
 
         let recipe = Recipe {
-            url: format!("{url}/get").as_str().into(),
+            url: format!("{url}/get").into(),
             ..Recipe::factory(())
         };
         let chain = Chain {
@@ -1061,20 +998,8 @@ mod tests {
     /// Test rendering into individual chunks with complex unicode
     #[tokio::test]
     async fn test_render_chunks() {
-        let profile_data = indexmap! { "user_id".into() => "🧡💛".into() };
-        let profile = Profile {
-            data: profile_data,
-            ..Profile::factory(())
-        };
-        let profile_id = profile.id.clone();
-        let context = TemplateContext {
-            collection: Collection {
-                profiles: by_id([profile]),
-                ..Collection::factory(())
-            },
-            selected_profile: Some(profile_id),
-            ..TemplateContext::factory(())
-        };
+        let context =
+            profile_context(indexmap! { "user_id".into() => "🧡💛".into() });
 
         let chunks =
             Template::from("intro {{user_id}} 💚💙💜 {{unknown}} outro")
@@ -1083,19 +1008,49 @@ mod tests {
         assert_eq!(
             chunks,
             vec![
-                TemplateChunk::Raw(Span::new(0, 6)),
+                TemplateChunk::raw("intro "),
                 TemplateChunk::Rendered {
                     value: "🧡💛".into(),
                     sensitive: false
                 },
                 // Each emoji is 4 bytes
-                TemplateChunk::Raw(Span::new(17, 14)),
+                TemplateChunk::raw(" 💚💙💜 "),
                 TemplateChunk::Error(TemplateError::FieldUnknown {
                     field: "unknown".into()
                 }),
-                TemplateChunk::Raw(Span::new(42, 6)),
+                TemplateChunk::raw(" outro"),
             ]
         );
+    }
+
+    /// Tested rendering a template with escaped keys, which should be treated
+    /// as raw text
+    #[tokio::test]
+    async fn test_render_escaped() {
+        let context =
+            profile_context(indexmap! { "user_id".into() => "user1".into() });
+        let template = r#"user: {{user_id}} escaped: \{{user_id}}"#;
+        assert_eq!(
+            render!(template, context).unwrap(),
+            "user: user1 escaped: {{user_id}}"
+        );
+    }
+
+    /// Build a template context that only has simple profile data
+    fn profile_context(data: IndexMap<String, Template>) -> TemplateContext {
+        let profile = Profile {
+            data,
+            ..Profile::factory(())
+        };
+        let profile_id = profile.id.clone();
+        TemplateContext {
+            collection: Collection {
+                profiles: by_id([profile]),
+                ..Collection::factory(())
+            },
+            selected_profile: Some(profile_id),
+            ..TemplateContext::factory(())
+        }
     }
 
     /// Helper for rendering a template to a string

@@ -12,9 +12,9 @@ use crate::{
     http::HttpEngine,
     template::parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
 };
-use derive_more::Display;
+use derive_more::{Deref, Display};
 use indexmap::IndexMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::Debug,
     sync::{atomic::AtomicU8, Arc},
@@ -104,6 +104,33 @@ impl From<String> for Template {
     }
 }
 
+/// An identifier that can be used in a template key. A valid identifier is
+/// any string of one or more characters that contains only allowed characters,
+/// as defined by [Self::is_char_allowed].
+///
+/// Construct via the [FromStr](std::str::FromStr) impl (in [parse] module)
+#[derive(
+    Clone,
+    Debug,
+    Deref,
+    Default,
+    Display,
+    Eq,
+    Hash,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
+pub struct Identifier(String);
+
+/// A shortcut for creating identifiers from static strings. Since the string
+/// is static we know it must be valid; panic if not.
+impl From<&'static str> for Identifier {
+    fn from(value: &'static str) -> Self {
+        Self(value.parse().unwrap())
+    }
+}
+
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string, and those chunks should be contiguous.
 #[derive(Debug)]
@@ -144,14 +171,14 @@ impl TemplateChunk {
 #[derive(Clone, Debug, Display, PartialEq)]
 enum TemplateKey {
     /// A plain field, which can come from the profile or an override
-    Field(String),
+    Field(Identifier),
     /// A value from a predefined chain of another recipe
     #[display("{CHAIN_PREFIX}{_0}")]
     Chain(ChainId),
     /// A value pulled from the process environment
     /// DEPRECATED: To be removed in 2.0, replaced by !env chain source
     #[display("{ENV_PREFIX}{_0}")]
-    Environment(String),
+    Environment(Identifier),
 }
 
 #[cfg(test)]

@@ -13,9 +13,10 @@ use winnow::error::{ContextError, ParseError};
 #[error("{0}")]
 pub struct TemplateParseError(String);
 
-impl TemplateParseError {
-    /// Create a user-friendly parse error
-    pub(super) fn new(error: ParseError<&str, ContextError>) -> Self {
+/// Convert winnow's error type into ours. This stringifies the error so we can
+/// dump the reference to the input
+impl From<ParseError<&str, ContextError>> for TemplateParseError {
+    fn from(error: ParseError<&str, ContextError>) -> Self {
         Self(error.to_string())
     }
 }

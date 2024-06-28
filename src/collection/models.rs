@@ -6,7 +6,7 @@ use crate::{
         recipe_tree::{RecipeNode, RecipeTree},
     },
     http::{ContentType, Query},
-    template::Template,
+    template::{Identifier, Template},
 };
 use anyhow::anyhow;
 use derive_more::{Deref, Display, From, FromStr};
@@ -453,16 +453,16 @@ pub struct Chain {
     Default,
     Display,
     Eq,
-    From,
+    FromStr,
     Hash,
     PartialEq,
     Serialize,
     Deserialize,
 )]
-pub struct ChainId(String);
+pub struct ChainId(#[deref(forward)] Identifier);
 
-impl From<&str> for ChainId {
-    fn from(value: &str) -> Self {
+impl<T: Into<Identifier>> From<T> for ChainId {
+    fn from(value: T) -> Self {
         Self(value.into())
     }
 }

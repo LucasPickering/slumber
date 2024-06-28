@@ -2,7 +2,7 @@
 
 use crate::{
     collection::ChainId,
-    template::{error::TemplateParseError, Template, TemplateKey},
+    template::{error::TemplateParseError, Identifier, Template, TemplateKey},
 };
 use aho_corasick::AhoCorasick;
 use serde::{
@@ -37,16 +37,12 @@ pub const CHAIN_PREFIX: &str = "chains.";
 pub const ENV_PREFIX: &str = "env.";
 
 impl Template {
-    /// Create a template that renders a single chain. This creates a template
-    /// equivalent to `{{chains.<id>}}`
-    pub fn from_chain(id: &ChainId) -> Self {
-        // We need to double up all our own curly braces to escape them.
-        // Technically we could construct the template directly, but it's a lot
-        // more robust to re-use the parsing logic, since we need to build up
-        // the template string anyway
-        format!("{KEY_OPEN}{CHAIN_PREFIX}{id}{KEY_CLOSE}")
-            .parse()
-            .expect("Generated template is invalid")
+    /// Create a template that renders a single chain, equivalent to
+    /// `{{chains.<id>}}`
+    pub fn from_chain(id: ChainId) -> Self {
+        Self {
+            chunks: vec![TemplateInputChunk::Key(TemplateKey::Chain(id))],
+        }
     }
 }
 
@@ -55,10 +51,7 @@ impl FromStr for Template {
     type Err = TemplateParseError;
 
     fn from_str(template: &str) -> Result<Self, Self::Err> {
-        let chunks = all_chunks
-            .parse(template)
-            .map_err(TemplateParseError::new)?;
-
+        let chunks = all_chunks.parse(template)?;
         Ok(Self { chunks })
     }
 }
@@ -148,6 +141,35 @@ impl<'de> Deserialize<'de> for Template {
     }
 }
 
+impl Identifier {
+    /// Which characters are allowed in identifiers?
+    fn is_char_allowed(c: char) -> bool {
+        c.is_alphanumeric() || "-_".contains(c)
+    }
+
+    /// Generate an identifier from a string, replacing all invalid chars with
+    /// a placeholder. Panic if the string is empty.
+    pub fn escape(value: &str) -> Self {
+        if value.is_empty() {
+            panic!("Cannot create identifier from empty string");
+        }
+        Self(
+            value
+                .chars()
+                .map(|c| if Self::is_char_allowed(c) { c } else { '_' })
+                .collect(),
+        )
+    }
+}
+
+impl FromStr for Identifier {
+    type Err = TemplateParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(identifier.parse(s)?)
+    }
+}
+
 /// A parsed piece of a template. After parsing, each chunk is either raw text
 /// or a parsed key, ready to be rendered.
 #[derive(Clone, Debug, PartialEq)]
@@ -230,10 +252,11 @@ fn key_contents(input: &mut &str) -> PResult<TemplateKey> {
     .parse_next(input)
 }
 
-/// Parse a field name/chain ID/env variable etc, inside a key
-fn identifier(input: &mut &str) -> PResult<String> {
-    take_while(1.., |c: char| c.is_alphanumeric() || "-_".contains(c))
-        .map(String::from)
+/// Parse a field name/chain ID/env variable etc, inside a key. See [Identifier]
+/// for the definition of allowed syntax.
+fn identifier(input: &mut &str) -> PResult<Identifier> {
+    take_while(1.., Identifier::is_char_allowed)
+        .map(|id: &str| Identifier(id.to_owned()))
         .context(StrContext::Label("identifier"))
         .parse_next(input)
 }
@@ -259,17 +282,17 @@ mod tests {
     }
 
     /// Shorthand for creating a field key chunk
-    fn key_field(field: &str) -> TemplateInputChunk {
+    fn key_field(field: &'static str) -> TemplateInputChunk {
         TemplateInputChunk::Key(TemplateKey::Field(field.into()))
     }
 
     /// Shorthand for creating an env key chunk
-    fn key_env(variable: &str) -> TemplateInputChunk {
+    fn key_env(variable: &'static str) -> TemplateInputChunk {
         TemplateInputChunk::Key(TemplateKey::Environment(variable.into()))
     }
 
     /// Shorthand for creating a chain key chunk
-    fn key_chain(chain_id: &str) -> TemplateInputChunk {
+    fn key_chain(chain_id: &'static str) -> TemplateInputChunk {
         TemplateInputChunk::Key(TemplateKey::Chain(chain_id.into()))
     }
 
@@ -327,7 +350,7 @@ mod tests {
     /// Test that [Template::from_chain] generates the correct template
     #[test]
     fn test_from_chain() {
-        let template = Template::from_chain(&"chain1".into());
+        let template = Template::from_chain("chain1".into());
         assert_eq!(&template.to_string(), "{{chains.chain1}}");
         assert_eq!(&template.chunks, &[key_chain("chain1")]);
     }
@@ -381,5 +404,20 @@ mod tests {
     #[case::str_with_keys(Token::Str("{{user_id}}"), "{{user_id}}")]
     fn test_deserialize(#[case] token: Token, #[case] expected: &str) {
         assert_de_tokens(&Template::from(expected), &[token]);
+    }
+
+    #[rstest]
+    #[case::valid("valid-identifier_yeah", "valid-identifier_yeah")]
+    #[case::invalid("not valid!", "not_valid_")]
+    fn test_escape_identifier(#[case] input: &str, #[case] expected: &str) {
+        let parsed = Identifier::escape(input);
+        assert_eq!(parsed.as_str(), expected);
+    }
+
+    /// Escaping an empty identifier panics
+    #[test]
+    #[should_panic]
+    fn test_escape_identifier_empty() {
+        Identifier::escape("");
     }
 }

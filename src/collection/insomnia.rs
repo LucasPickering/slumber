@@ -7,7 +7,7 @@ use crate::{
         Collection, Folder, HasId, JsonBody, Method, Profile, ProfileId,
         Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
-    template::Template,
+    template::{Identifier, Template},
 };
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
@@ -415,9 +415,10 @@ impl From<FormParam> for (String, Template) {
             // created elsewhere. It's a bit spaghetti but otherwise we'd need
             // mutable access to the entire collection, which I think would end
             // up with even more spaghetti
-            FormParamKind::File => {
-                (param.name, Template::from_chain(&param.id.into()))
-            }
+            FormParamKind::File => (
+                param.name,
+                Template::from_chain(Identifier::escape(&param.id).into()),
+            ),
         }
     }
 }
@@ -508,7 +509,7 @@ fn build_chains(requests: &[Request]) -> IndexMap<ChainId, Chain> {
             debug!("Generating chains for form parameter `{}`", param.id);
 
             if let FormParamKind::File = param.kind {
-                let id: ChainId = param.id.as_str().into();
+                let id: ChainId = Identifier::escape(&param.id).into();
                 let Some(path) = &param.file_name else {
                     warn!(
                         "Form param `{}` is of type `file` \

@@ -22,6 +22,8 @@ use strum::{EnumCount, IntoEnumIterator};
 use tracing::error;
 
 const WEBSITE: &str = "https://slumber.lucaspickering.me";
+pub const NEW_ISSUE_LINK: &str =
+    "https://github.com/LucasPickering/slumber/issues/new/choose";
 
 /// Get a link to a page on the doc website. This will append the doc prefix,
 /// as well as the suffix.

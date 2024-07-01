@@ -37,6 +37,14 @@ pub const CHAIN_PREFIX: &str = "chains.";
 pub const ENV_PREFIX: &str = "env.";
 
 impl Template {
+    /// Create a template that renders a single field, equivalent to
+    /// `{{<field>}}`
+    pub fn from_field(field: Identifier) -> Self {
+        Self {
+            chunks: vec![TemplateInputChunk::Key(TemplateKey::Field(field))],
+        }
+    }
+
     /// Create a template that renders a single chain, equivalent to
     /// `{{chains.<id>}}`
     pub fn from_chain(id: ChainId) -> Self {
@@ -347,6 +355,14 @@ mod tests {
         assert_err!(template.parse::<Template>(), expected_error);
     }
 
+    /// Test that [Template::from_field] generates the correct template
+    #[test]
+    fn test_from_field() {
+        let template = Template::from_field("field1".into());
+        assert_eq!(&template.to_string(), "{{field1}}");
+        assert_eq!(&template.chunks, &[key_field("field1")]);
+    }
+
     /// Test that [Template::from_chain] generates the correct template
     #[test]
     fn test_from_chain() {
@@ -357,6 +373,7 @@ mod tests {
 
     /// Test [Template::raw]. This should parse+stringify back to the same thing
     #[rstest]
+    #[case::empty("", tmpl([]))]
     #[case::key("{{hello}}", tmpl([raw("{{hello}}")]))]
     #[case::backslash(r#"\{{hello}}"#, tmpl([raw(r#"\{{hello}}"#)]))]
     fn test_raw(#[case] template: &str, #[case] expected: Template) {

@@ -300,6 +300,14 @@ pub enum RecipeBody {
     FormMultipart(IndexMap<String, Template>),
 }
 
+impl RecipeBody {
+    /// Build a JSON body *without* parsing the internal strings as templates.
+    /// Useful for importing from external formats.
+    pub fn untemplated_json(value: serde_json::Value) -> Self {
+        Self::Json(JsonBody::<String>::from(value).map(Template::raw))
+    }
+}
+
 #[cfg(test)]
 impl From<&str> for RecipeBody {
     fn from(template: &str) -> Self {

@@ -4,7 +4,7 @@
 mod cereal;
 mod insomnia;
 mod models;
-mod openapiv3;
+mod openapi;
 mod recipe_tree;
 
 pub use cereal::HasId;

@@ -6,6 +6,7 @@ use crate::collection::{
 use derive_more::From;
 use indexmap::{map::Values, IndexMap};
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
+use thiserror::Error;
 
 /// A folder/recipe tree. This is exactly what the user inputs in their
 /// collection file. IDs in this tree are **globally* unique, meaning no two
@@ -45,10 +46,21 @@ pub enum RecipeNode {
     Recipe(Recipe),
 }
 
+/// Error returned when attempting to build a [RecipeTree] with a duplicate
+/// recipe ID. IDs are unique throughout the entire tree.
+#[derive(Debug, Error)]
+#[error(
+    "Duplicate recipe/folder ID `{0}`; \
+    recipe/folder IDs must be globally unique"
+)]
+pub struct DuplicateRecipeIdError(RecipeId);
+
 impl RecipeTree {
     /// Create a new tree. If there are *any* duplicate IDs in the tree, the
     /// duplicate ID will be returned as an `Err`.
-    pub fn new(tree: IndexMap<RecipeId, RecipeNode>) -> Result<Self, RecipeId> {
+    pub fn new(
+        tree: IndexMap<RecipeId, RecipeNode>,
+    ) -> Result<Self, DuplicateRecipeIdError> {
         // IDs of *all* nodes are unique, which means we can build a flat lookup
         // map for all recipes. This is also where we enforce uniqueness
         let mut nodes_by_id = IndexMap::new();
@@ -59,7 +71,7 @@ impl RecipeTree {
         for (lookup_key, node) in new.iter() {
             let evicted = nodes_by_id.insert(node.id().clone(), lookup_key);
             if evicted.is_some() {
-                return Err(node.id().clone());
+                return Err(DuplicateRecipeIdError(node.id().clone()));
             }
         }
         new.nodes_by_id = nodes_by_id;
@@ -173,13 +185,7 @@ impl<'de> Deserialize<'de> for RecipeTree {
     {
         let tree: IndexMap<RecipeId, RecipeNode> =
             deserialize_id_map(deserializer)?;
-        Self::new(tree).map_err(|node_id| {
-            D::Error::custom(format!(
-                "Duplicate recipe/folder ID `{}`; \
-                recipe/folder IDs must be globally unique",
-                node_id
-            ))
-        })
+        Self::new(tree).map_err(D::Error::custom)
     }
 }
 
@@ -197,7 +203,7 @@ impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
 #[cfg(test)]
 impl From<IndexMap<RecipeId, RecipeNode>> for RecipeTree {
     fn from(tree: IndexMap<RecipeId, RecipeNode>) -> Self {
-        Self::new(tree).expect("Duplicate recipe ID")
+        Self::new(tree).unwrap()
     }
 }
 

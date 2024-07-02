@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Initial support for importing collections from an OpenAPIv3 specification [#106](https://github.com/LucasPickering/slumber/issues/106)
+  - Currently only OpenAPI 3.0 (not 3.1) is supported. Please try this out and give feedback if anything doesn't work.
 
 ### Changed
 

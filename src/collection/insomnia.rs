@@ -4,10 +4,11 @@
 use crate::{
     collection::{
         self, cereal::deserialize_from_str, Chain, ChainId, ChainSource,
-        Collection, Folder, HasId, JsonBody, Method, Profile, ProfileId,
-        Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
+        Collection, Folder, HasId, Method, Profile, ProfileId, Recipe,
+        RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     template::{Identifier, Template},
+    util::NEW_ISSUE_LINK,
 };
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
@@ -16,7 +17,7 @@ use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Deserializer};
 use std::{collections::HashMap, fs::File, path::Path};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 impl Collection {
     /// Convert an Insomnia exported collection into the slumber format. This
@@ -34,8 +35,7 @@ impl Collection {
             "The Insomnia importer is approximate. Some features are missing \
             and it most likely will not give you an equivalent collection. If \
             you would like to request support for a particular Insomnia \
-            feature, please open an issue: \
-            https://github.com/LucasPickering/slumber/issues/new"
+            feature, please open an issue: {NEW_ISSUE_LINK}"
         );
         let file = File::open(insomnia_file).context(format!(
             "Error opening Insomnia collection file {insomnia_file:?}"
@@ -253,7 +253,7 @@ impl Grouped {
                 Resource::ApiSpec => {}
                 // Anything unknown should give a warning
                 Resource::Other { id, kind } => {
-                    warn!("Ignoring resource `{id}` of unknown type `{kind}`");
+                    error!("Ignoring resource `{id}` of unknown type `{kind}`");
                 }
             }
         }
@@ -333,7 +333,7 @@ impl From<Request> for RecipeNode {
             .map(RecipeBody::try_from)
             .transpose()
             .inspect_err(|error| {
-                warn!(
+                error!(
                     "Error importing body for request `{id}`: {error}",
                     id = request.id
                 )
@@ -346,7 +346,7 @@ impl From<Request> for RecipeNode {
             request.authentication.and_then(|authentication| {
                 let result = authentication.try_into();
                 if let Err(kind) = &result {
-                    warn!(
+                    error!(
                         "Ignoring authentication of unknown type `{kind}` \
                         for request `{}`",
                         request.id
@@ -379,15 +379,13 @@ impl TryFrom<Body> for RecipeBody {
 
     fn try_from(body: Body) -> anyhow::Result<Self> {
         let body = if body.mime_type == mime::APPLICATION_JSON {
-            // Parse JSON to our own JSON equivalent
-            let json: JsonBody<String> =
-                serde_json::from_str::<serde_json::Value>(
-                    body.try_text()?.as_str(),
-                )
-                .context("Error parsing body as JSON")?
-                .into();
-            // Convert each string into a template *without* parsing
-            RecipeBody::Json(json.map(Template::raw))
+            // Parse to JSON
+            let json = serde_json::from_str::<serde_json::Value>(
+                body.try_text()?.as_str(),
+            )
+            .context("Error parsing body as JSON")?;
+            // Convert to our own body
+            RecipeBody::untemplated_json(json)
         } else if body.mime_type == mime::APPLICATION_WWW_FORM_URLENCODED {
             RecipeBody::FormUrlencoded(
                 body.params.into_iter().map(FormParam::into).collect(),
@@ -511,7 +509,7 @@ fn build_chains(requests: &[Request]) -> IndexMap<ChainId, Chain> {
             if let FormParamKind::File = param.kind {
                 let id: ChainId = Identifier::escape(&param.id).into();
                 let Some(path) = &param.file_name else {
-                    warn!(
+                    error!(
                         "Form param `{}` is of type `file` \
                         but missing `file_name` field",
                         param.id
@@ -585,10 +583,7 @@ fn build_recipe_tree(
     }
 
     let tree = build_tree(&mut children_map, workspace_id)?;
-
-    RecipeTree::new(tree).map_err(|duplicate_id| {
-        anyhow!("Duplicate folder/recipe ID `{duplicate_id}`")
-    })
+    Ok(RecipeTree::new(tree)?)
 }
 
 /// For some fucked reason, Insomnia uses empty map instead of `null` for empty

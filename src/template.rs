@@ -81,12 +81,15 @@ impl Template {
     /// Useful when importing from external formats where the string isn't
     /// expected to be a valid Slumber template
     pub fn raw(template: String) -> Template {
-        // This may seem too easy, but the hard part comes during
-        // stringification, when we need to add backslashes to get the string to
-        // parse correctly later
-        Self {
-            chunks: vec![TemplateInputChunk::Raw(template.into())],
-        }
+        let chunks = if template.is_empty() {
+            vec![]
+        } else {
+            // This may seem too easy, but the hard part comes during
+            // stringification, when we need to add backslashes to get the
+            // string to parse correctly later
+            vec![TemplateInputChunk::Raw(template.into())]
+        };
+        Self { chunks }
     }
 }
 

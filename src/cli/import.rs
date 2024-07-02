@@ -20,9 +20,13 @@ pub struct ImportCommand {
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
+#[allow(rustdoc::bare_urls)]
 enum Format {
+    /// Insomnia export format (JSON or YAML)
     Insomnia,
-    Openapiv3,
+    /// OpenAPI v3.0 (JSON or YAML) v3.1 not supported but may work
+    /// https://spec.openapis.org/oas/v3.0.3
+    Openapi,
 }
 
 impl Subcommand for ImportCommand {
@@ -30,7 +34,7 @@ impl Subcommand for ImportCommand {
         // Load the input
         let collection = match self.format {
             Format::Insomnia => Collection::from_insomnia(&self.input_file)?,
-            Format::Openapiv3 => Collection::from_openapiv3(&self.input_file)?,
+            Format::Openapi => Collection::from_openapi(&self.input_file)?,
         };
 
         // Write the output

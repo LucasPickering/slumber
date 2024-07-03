@@ -5,7 +5,7 @@ use crate::{
         input::Action,
         message::Message,
         view::{
-            common::{actions::GlobalAction, modal::ModalQueue},
+            common::modal::ModalQueue,
             component::{
                 help::HelpFooter,
                 history::History,
@@ -168,15 +168,6 @@ impl EventHandler for Root {
             // Any other unhandled input event should *not* log an error,
             // because it is probably just unmapped input, and not a bug
             Event::Input { .. } => {}
-
-            Event::Local(ref callback) => {
-                match callback.downcast_ref::<GlobalAction>() {
-                    Some(GlobalAction::EditCollection) => {
-                        ViewContext::send_message(Message::CollectionEdit)
-                    }
-                    None => return Update::Propagate(event),
-                }
-            }
 
             // There shouldn't be anything left unhandled. Bubble up to log it
             _ => return Update::Propagate(event),

@@ -18,7 +18,6 @@ use crate::{
             context::PersistedLazy,
             draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
-            state::fixed_select::FixedSelect,
             RequestState, ViewContext,
         },
     },
@@ -72,7 +71,6 @@ enum Tab {
     Body,
     Headers,
 }
-impl FixedSelect for Tab {}
 
 impl EventHandler for ExchangePane {
     fn update(&mut self, event: Event) -> Update {

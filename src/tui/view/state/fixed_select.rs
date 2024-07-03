@@ -1,10 +1,7 @@
-use crate::{
-    tui::view::{
-        draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, Update},
-        state::select::{SelectState, SelectStateBuilder, SelectStateData},
-    },
-    util::EnumChain,
+use crate::tui::view::{
+    draw::{Draw, DrawMetadata},
+    event::{Event, EventHandler, Update},
+    state::select::{SelectState, SelectStateBuilder, SelectStateData},
 };
 use itertools::Itertools;
 use persisted::PersistedContainer;
@@ -192,15 +189,13 @@ where
     }
 }
 
-/// A version of [FixedSelect] without the `Default` bound. This is used for
-/// the action menu, in which individual action menu variants don't need to
-/// implement default because it will always default to one of the global
-/// variants.
-pub trait FixedSelectWithoutDefault:
+/// Trait alias for a static list of items to be cycled through
+pub trait FixedSelect:
     'static
     + Copy
     + Clone
     + Debug
+    + Default
     + Display
     + EnumCount
     + IntoEnumIterator
@@ -209,24 +204,15 @@ pub trait FixedSelectWithoutDefault:
 }
 
 /// Auto-impl for anything we can
-impl<T> FixedSelectWithoutDefault for T where
+impl<T> FixedSelect for T where
     T: 'static
         + Copy
         + Clone
         + Debug
+        + Default
         + Display
         + EnumCount
         + IntoEnumIterator
         + PartialEq
-{
-}
-
-/// Trait alias for a static list of items to be cycled through
-pub trait FixedSelect: FixedSelectWithoutDefault + Default {}
-
-impl<T, U> FixedSelect for EnumChain<T, U>
-where
-    T: FixedSelect,
-    U: FixedSelectWithoutDefault,
 {
 }

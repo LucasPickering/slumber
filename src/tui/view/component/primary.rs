@@ -15,12 +15,9 @@ use crate::{
                 recipe_pane::{RecipeMenuAction, RecipePane, RecipePaneProps},
             },
             context::{Persisted, PersistedLazy},
-            draw::{Draw, DrawMetadata},
+            draw::{Draw, DrawMetadata, ToStringGenerate},
             event::{Event, EventHandler, Update},
-            state::{
-                fixed_select::{FixedSelect, FixedSelectState},
-                RequestState,
-            },
+            state::{fixed_select::FixedSelectState, RequestState},
             Component, ViewContext,
         },
     },
@@ -75,7 +72,6 @@ pub enum PrimaryPane {
     Recipe,
     Exchange,
 }
-impl FixedSelect for PrimaryPane {}
 
 /// Panes that can be fullscreened. This is separate from [PrimaryPane] because
 /// it makes it easy to check when we should exit fullscreen mode.
@@ -95,6 +91,18 @@ struct FullscreenModeKey;
 /// Event triggered when selected pane changes, so we can exit fullscreen
 #[derive(Debug)]
 struct PaneChanged;
+
+/// Action menu items. This is the fallback menu if none of our children have
+/// one
+#[derive(
+    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
+)]
+enum MenuAction {
+    #[default]
+    #[display("Edit Collection")]
+    EditCollection,
+}
+impl ToStringGenerate for MenuAction {}
 
 impl PrimaryView {
     pub fn new(collection: &Collection) -> Self {
@@ -248,6 +256,7 @@ impl PrimaryView {
             options: self.recipe_pane.data().build_options(),
         };
         let message = match action {
+            RecipeMenuAction::EditCollection => Message::CollectionEdit,
             RecipeMenuAction::CopyUrl => {
                 Message::CopyRequestUrl(request_config)
             }
@@ -288,7 +297,8 @@ impl EventHandler for PrimaryView {
                     }
                 }
                 Action::OpenActions => {
-                    ViewContext::open_modal_default::<ActionsModal>();
+                    ViewContext::open_modal_default::<ActionsModal<MenuAction>>(
+                    );
                 }
                 Action::OpenHelp => {
                     ViewContext::open_modal_default::<HelpModal>();
@@ -339,6 +349,13 @@ impl EventHandler for PrimaryView {
                     local.downcast_ref::<RecipeMenuAction>()
                 {
                     self.handle_recipe_menu_action(*action);
+                } else if let Some(action) = local.downcast_ref::<MenuAction>()
+                {
+                    match action {
+                        MenuAction::EditCollection => {
+                            ViewContext::send_message(Message::CollectionEdit)
+                        }
+                    }
                 } else {
                     return Update::Propagate(event);
                 }

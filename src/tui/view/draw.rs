@@ -1,6 +1,5 @@
 //! Traits for rendering stuff
 
-use crate::util::EnumChain;
 use ratatui::{layout::Rect, text::Span, Frame};
 use std::{fmt::Display, ops::Deref};
 
@@ -106,5 +105,3 @@ where
         self.to_string().into()
     }
 }
-
-impl<T: Display, U: Display> ToStringGenerate for EnumChain<T, U> {}

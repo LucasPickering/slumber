@@ -40,8 +40,13 @@ pub struct ResponseBodyViewProps<'a> {
 }
 
 /// Items in the actions popup menu for the Body
-#[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
+#[derive(
+    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
+)]
 enum BodyMenuAction {
+    #[default]
+    #[display("Edit Collection")]
+    EditCollection,
     #[display("Copy Body")]
     CopyBody,
     #[display("Save Body as File")]
@@ -72,6 +77,9 @@ impl EventHandler for ResponseBodyView {
             ViewContext::open_modal_default::<ActionsModal<BodyMenuAction>>();
         } else if let Some(action) = event.local::<BodyMenuAction>() {
             match action {
+                BodyMenuAction::EditCollection => {
+                    ViewContext::send_message(Message::CollectionEdit)
+                }
                 BodyMenuAction::CopyBody => {
                     // Use whatever text is visible to the user
                     if let Some(body) = self

@@ -44,8 +44,13 @@ struct State {
 }
 
 /// Items in the actions popup menu
-#[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
+#[derive(
+    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
+)]
 enum MenuAction {
+    #[default]
+    #[display("Edit Collection")]
+    EditCollection,
     #[display("Copy URL")]
     CopyUrl,
     #[display("Copy Body")]
@@ -60,6 +65,9 @@ impl EventHandler for RequestView {
             ViewContext::open_modal_default::<ActionsModal<MenuAction>>()
         } else if let Some(action) = event.local::<MenuAction>() {
             match action {
+                MenuAction::EditCollection => {
+                    ViewContext::send_message(Message::CollectionEdit)
+                }
                 MenuAction::CopyUrl => {
                     if let Some(state) = self.state.get() {
                         ViewContext::send_message(Message::CopyText(

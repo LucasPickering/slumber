@@ -20,9 +20,7 @@ use crate::{
             context::{Persisted, PersistedKey, PersistedLazy},
             draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
             event::{Event, EventHandler, Update},
-            state::{
-                fixed_select::FixedSelect, select::SelectState, StateCell,
-            },
+            state::{select::SelectState, StateCell},
             Component, ViewContext,
         },
     },
@@ -97,7 +95,6 @@ enum Tab {
     Headers,
     Authentication,
 }
-impl FixedSelect for Tab {}
 
 /// Persistence key for selected query param, per recipe. Value is the query
 /// param name
@@ -188,9 +185,13 @@ where
 
 /// Items in the actions popup menu. This is also used by the recipe list
 /// component, so the action is handled in the parent.
-#[derive(Copy, Clone, Debug, Display, EnumCount, EnumIter, PartialEq)]
-#[allow(clippy::enum_variant_names)]
+#[derive(
+    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
+)]
 pub enum RecipeMenuAction {
+    #[default]
+    #[display("Edit Collection")]
+    EditCollection,
     #[display("Copy URL")]
     CopyUrl,
     #[display("Copy Body")]
@@ -198,7 +199,6 @@ pub enum RecipeMenuAction {
     #[display("Copy as cURL")]
     CopyCurl,
 }
-
 impl ToStringGenerate for RecipeMenuAction {}
 
 impl RecipePane {

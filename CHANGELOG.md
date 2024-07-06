@@ -17,6 +17,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - While this is technically a breaking change, this is not a major version bump because it's extremely unlikely that this will break anything in practice for a user
   - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/template.html#escape-sequences)
 
+### Fixed
+
+- Support TLS certificates in native certificate store [#275](https://github.com/LucasPickering/slumber/issues/275)
+
 ## [1.5.0] - 2024-06-17
 
 ### Added

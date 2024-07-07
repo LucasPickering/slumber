@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [1.6.0] - 2024-07-07
+
 ### Added
 
 - Initial support for importing collections from an OpenAPIv3 specification [#106](https://github.com/LucasPickering/slumber/issues/106)

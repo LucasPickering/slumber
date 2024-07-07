@@ -27,7 +27,8 @@ slumber import insomnia insomnia.json slumber.yml
 Supported formats:
 
 - Insomnia
-- OpenAPI v3
+- OpenAPI v3.0
+  - Note: Despite the minor version bump, OpenAPI v3.1 is _not_ backward compatible with v3.0. If you have a v3.1 spec, it _may_ work with this importer, but no promises.
 
 Requested formats:
 

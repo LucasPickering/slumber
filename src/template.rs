@@ -208,7 +208,6 @@ mod tests {
             Chain, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
             ChainSource, Profile, Recipe, RecipeId,
         },
-        config::Config,
         http::{ContentType, Exchange, RequestRecord, ResponseRecord},
         test_util::{
             assert_err, by_id, header_map, temp_dir, Factory, TempDir,
@@ -604,14 +603,13 @@ mod tests {
             },
             ..Chain::factory(())
         };
-        let http_engine = HttpEngine::new(&Config::default());
         let context = TemplateContext {
             collection: Collection {
                 recipes: by_id([recipe]).into(),
                 chains: by_id([chain]),
                 ..Collection::factory(())
             },
-            http_engine: Some(http_engine),
+            http_engine: Some(HttpEngine::default()),
             database,
             ..TemplateContext::factory(())
         };

@@ -1,5 +1,6 @@
 use crate::{
     cli::{request::BuildRequestCommand, Subcommand},
+    http::InsecureHosts,
     template::TemplateError,
     GlobalArgs,
 };
@@ -30,7 +31,7 @@ impl Subcommand for GenerateCommand {
         let (_, ticket) = self
             .build_request
             // User has to explicitly opt into executing triggered requests
-            .build_request(global, self.execute_triggers)
+            .build_request(global, InsecureHosts::None, self.execute_triggers)
             .await
             .map_err(|error| {
                 // If the build failed because triggered requests are disabled,

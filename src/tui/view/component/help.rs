@@ -1,14 +1,12 @@
-use crate::{
+use crate::tui::{
     config::Config,
-    tui::{
-        context::TuiContext,
-        input::{Action, InputBinding},
-        view::{
-            common::{modal::Modal, table::Table},
-            context::ViewContext,
-            draw::{Draw, DrawMetadata, Generate},
-            event::EventHandler,
-        },
+    context::TuiContext,
+    input::{Action, InputBinding},
+    view::{
+        common::{modal::Modal, table::Table},
+        context::ViewContext,
+        draw::{Draw, DrawMetadata, Generate},
+        event::EventHandler,
     },
 };
 use itertools::Itertools;

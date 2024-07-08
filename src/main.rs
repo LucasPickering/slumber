@@ -3,7 +3,6 @@
 
 mod cli;
 mod collection;
-mod config;
 mod db;
 mod http;
 mod template;

@@ -1,7 +1,6 @@
 use crate::{
-    config::Config,
-    http::HttpEngine,
-    tui::{input::InputEngine, view::Styles},
+    http::{HttpEngine, InsecureHosts},
+    tui::{config::Config, input::InputEngine, view::Styles},
 };
 use std::sync::OnceLock;
 
@@ -47,7 +46,9 @@ impl TuiContext {
     fn new(config: Config) -> Self {
         let styles = Styles::new(&config.theme);
         let input_engine = InputEngine::new(config.input_bindings.clone());
-        let http_engine = HttpEngine::new(&config);
+        let http_engine = HttpEngine::new(InsecureHosts::Only(
+            config.ignore_certificate_hosts.iter().cloned().collect(),
+        ));
         Self {
             config,
             styles,

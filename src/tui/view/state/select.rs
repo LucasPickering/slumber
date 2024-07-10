@@ -33,6 +33,9 @@ where
     /// Callback when an item is highlighted
     #[debug(skip)]
     on_select: Option<Callback<Item>>,
+    /// Callback when the Toggle action is performed on an item
+    #[debug(skip)]
+    on_toggle: Option<Callback<Item>>,
     /// Callback when the Submit action is performed on an item
     #[debug(skip)]
     on_submit: Option<Callback<Item>>,
@@ -47,6 +50,7 @@ pub struct SelectStateBuilder<Item, State> {
     /// type of the value. Defaults to 0.
     preselect_index: usize,
     on_select: Option<Callback<Item>>,
+    on_toggle: Option<Callback<Item>>,
     on_submit: Option<Callback<Item>>,
     _state: PhantomData<State>,
 }
@@ -89,6 +93,15 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         self
     }
 
+    /// Set the callback to be called when the user hits space on an item
+    pub fn on_toggle(
+        mut self,
+        on_toggle: impl 'static + Fn(&mut Item),
+    ) -> Self {
+        self.on_toggle = Some(Box::new(on_toggle));
+        self
+    }
+
     /// Set the callback to be called when the user hits enter on an item
     pub fn on_submit(
         mut self,
@@ -106,6 +119,7 @@ impl<Item, State> SelectStateBuilder<Item, State> {
             state: RefCell::default(),
             items: self.items,
             on_select: self.on_select,
+            on_toggle: self.on_toggle,
             on_submit: self.on_submit,
         };
         // Set initial value. Generally the index will be valid unless the list
@@ -127,6 +141,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
             items,
             preselect_index: 0,
             on_select: None,
+            on_toggle: None,
             on_submit: None,
             _state: PhantomData,
         }
@@ -229,6 +244,22 @@ where
         match action {
             Action::Up | Action::ScrollUp => self.previous(),
             Action::Down | Action::ScrollDown => self.next(),
+            Action::Toggle => {
+                // If we have an on_toggle, our parent wants us to handle
+                // toggle events so consume it even if nothing is selected
+                if let Some(on_toggle) = &self.on_toggle {
+                    let selected = self
+                        .state
+                        .get_mut()
+                        .selected()
+                        .and_then(|index| self.items.get_mut(index));
+                    if let Some(selected) = selected {
+                        on_toggle(selected);
+                    }
+                } else {
+                    return Update::Propagate(event);
+                }
+            }
             Action::Submit => {
                 // If we have an on_submit, our parent wants us to handle
                 // submit events so consume it even if nothing is selected

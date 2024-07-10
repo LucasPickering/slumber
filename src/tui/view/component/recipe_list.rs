@@ -149,10 +149,9 @@ impl EventHandler for RecipeListPane {
             Action::Right => {
                 self.set_selected_collapsed(CollapseState::Expand);
             }
-            // If this state update does nothing, then we have a recipe
-            // selected. Fall through to propagate the event
-            Action::Submit
-                if self.set_selected_collapsed(CollapseState::Toggle) => {}
+            Action::Toggle => {
+                self.set_selected_collapsed(CollapseState::Toggle);
+            }
             Action::OpenActions => ViewContext::open_modal_default::<
                 ActionsModal<RecipeMenuAction>,
             >(),

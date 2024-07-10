@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Remove `Config` line from `slumber show paths` output
   - Config file location can still be retrieved in the help menu of the TUI
 
+### Changes
+
+- Checkbox row state and folder expand/collapse state are now toggled via the spacebar instead of enter
+  - This can be rebound ([see docs](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html))
+
 ## [1.6.0] - 2024-07-07
 
 ### Added

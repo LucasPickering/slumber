@@ -234,6 +234,7 @@ impl Default for InputEngine {
                 Action::Home => KeyCode::Home.into(),
                 Action::End => KeyCode::End.into(),
                 Action::Submit => KeyCode::Enter.into(),
+                Action::Toggle => KeyCode::Char(' ').into(),
                 Action::Cancel => KeyCode::Esc.into(),
                 Action::SelectProfileList => KeyCode::Char('p').into(),
                 Action::SelectRecipeList => KeyCode::Char('l').into(),
@@ -296,9 +297,11 @@ pub enum Action {
     Home,
     End,
 
-    /// Do a thing, e.g. submit a modal. Alternatively, send a request
+    /// Do a thing, e.g. submit in a text prompt. Alternatively, send a request
     #[display("Send Request/Submit")]
     Submit,
+    /// Toggle checkbox and similar components on/off
+    Toggle,
     /// Close the current modal/dialog/etc.
     Cancel,
     /// Browse request history

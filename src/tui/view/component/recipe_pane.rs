@@ -154,8 +154,7 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
         }
     }
 
-    /// Toggle row state on submit
-    fn on_submit(row: &mut Self) {
+    fn toggle(row: &mut Self) {
         *row.enabled ^= true;
     }
 }
@@ -424,14 +423,14 @@ impl RecipeState {
             query: PersistedLazy::new(
                 QueryRowKey(recipe.id.clone()),
                 SelectState::builder(query_items)
-                    .on_submit(RowState::on_submit)
+                    .on_toggle(RowState::toggle)
                     .build(),
             )
             .into(),
             headers: PersistedLazy::new(
                 HeaderRowKey(recipe.id.clone()),
                 SelectState::builder(header_items)
-                    .on_submit(RowState::on_submit)
+                    .on_toggle(RowState::toggle)
                     .build(),
             )
             .into(),
@@ -592,7 +591,7 @@ impl RecipeBodyDisplay {
                     })
                     .collect();
                 let select = SelectState::builder(form_items)
-                    .on_submit(RowState::on_submit)
+                    .on_toggle(RowState::toggle)
                     .build();
                 Self::Form(
                     PersistedLazy::new(FormRowKey(recipe_id.clone()), select)

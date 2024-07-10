@@ -52,6 +52,7 @@ input_bindings:
 | `home`                | `home`                      |
 | `end`                 | `end`                       |
 | `submit`              | `enter`                     |
+| `toggle`              | `space`                     |
 | `cancel`              | `esc`                       |
 | `history`             | `h`                         |
 | `search`              | `/`                         |

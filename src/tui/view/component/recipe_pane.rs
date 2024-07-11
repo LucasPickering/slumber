@@ -1,6 +1,7 @@
 use crate::{
     collection::{
-        Authentication, HasId, ProfileId, Recipe, RecipeBody, RecipeId,
+        Authentication, Folder, HasId, ProfileId, Recipe, RecipeBody, RecipeId,
+        RecipeNode,
     },
     http::BuildOptions,
     template::Template,
@@ -24,6 +25,7 @@ use crate::{
             Component, ViewContext,
         },
     },
+    util::doc_link,
 };
 use derive_more::Display;
 use itertools::Itertools;
@@ -31,6 +33,7 @@ use persisted::SingletonKey;
 use ratatui::{
     layout::Layout,
     prelude::Constraint,
+    text::{Line, Text},
     widgets::{Paragraph, Row, TableState},
     Frame,
 };
@@ -48,7 +51,7 @@ pub struct RecipePane {
 
 #[derive(Clone)]
 pub struct RecipePaneProps<'a> {
-    pub selected_recipe: Option<&'a Recipe>,
+    pub selected_recipe_node: Option<&'a RecipeNode>,
     pub selected_profile_id: Option<&'a ProfileId>,
 }
 
@@ -291,9 +294,14 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
         metadata: DrawMetadata,
     ) {
         // Render outermost block
-        let title = TuiContext::get()
-            .input_engine
-            .add_hint("Recipe", Action::SelectRecipe);
+        let title = TuiContext::get().input_engine.add_hint(
+            if let Some(RecipeNode::Folder(_)) = props.selected_recipe_node {
+                "Folder"
+            } else {
+                "Recipe"
+            },
+            Action::SelectRecipe,
+        );
         let block = Pane {
             title: &title,
             has_focus: metadata.has_focus(),
@@ -302,74 +310,86 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
         let inner_area = block.inner(metadata.area());
         frame.render_widget(block, metadata.area());
 
+        // Empty states
+        let recipe = match props.selected_recipe_node {
+            None => {
+                frame.render_widget(
+                    Text::from(vec![
+                        "No recipes defined; add one to your collection".into(),
+                        doc_link("api/request_collection/request_recipe")
+                            .into(),
+                    ]),
+                    inner_area,
+                );
+                return;
+            }
+            Some(RecipeNode::Folder(folder)) => {
+                frame.render_widget(folder.generate(), inner_area);
+                return;
+            }
+            Some(RecipeNode::Recipe(recipe)) => recipe,
+        };
+
         // Render request contents
-        if let Some(recipe) = props.selected_recipe {
-            let method = recipe.method.to_string();
+        let method = recipe.method.to_string();
 
-            let [metadata_area, tabs_area, content_area] = Layout::vertical([
-                Constraint::Length(1),
-                Constraint::Length(1),
-                Constraint::Min(0),
-            ])
-            .areas(inner_area);
+        let [metadata_area, tabs_area, content_area] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .areas(inner_area);
 
-            let [method_area, url_area] = Layout::horizontal(
-                // Method gets just as much as it needs, URL gets the rest
-                [Constraint::Max(method.len() as u16 + 1), Constraint::Min(0)],
-            )
-            .areas(metadata_area);
+        let [method_area, url_area] = Layout::horizontal(
+            // Method gets just as much as it needs, URL gets the rest
+            [Constraint::Max(method.len() as u16 + 1), Constraint::Min(0)],
+        )
+        .areas(metadata_area);
 
-            // Whenever the recipe or profile changes, generate a preview for
-            // each templated value. Almost anything that could change the
-            // preview will either involve changing one of those two things, or
-            // would require reloading the whole collection which will reset
-            // UI state.
-            let recipe_state = self.recipe_state.get_or_update(
-                RecipeStateKey {
-                    selected_profile_id: props.selected_profile_id.cloned(),
-                    recipe_id: recipe.id.clone(),
-                },
-                || RecipeState::new(recipe, props.selected_profile_id),
-            );
+        // Whenever the recipe or profile changes, generate a preview for
+        // each templated value. Almost anything that could change the
+        // preview will either involve changing one of those two things, or
+        // would require reloading the whole collection which will reset
+        // UI state.
+        let recipe_state = self.recipe_state.get_or_update(
+            RecipeStateKey {
+                selected_profile_id: props.selected_profile_id.cloned(),
+                recipe_id: recipe.id.clone(),
+            },
+            || RecipeState::new(recipe, props.selected_profile_id),
+        );
 
-            // First line: Method + URL
-            frame.render_widget(Paragraph::new(method), method_area);
-            frame.render_widget(&recipe_state.url, url_area);
+        // First line: Method + URL
+        frame.render_widget(Paragraph::new(method), method_area);
+        frame.render_widget(&recipe_state.url, url_area);
 
-            // Navigation tabs
-            self.tabs.draw(frame, (), tabs_area, true);
+        // Navigation tabs
+        self.tabs.draw(frame, (), tabs_area, true);
 
-            // Request content
-            match self.tabs.data().selected() {
-                Tab::Body => {
-                    if let Some(body) = &recipe_state.body {
-                        body.draw(frame, (), content_area, true);
-                    }
+        // Request content
+        match self.tabs.data().selected() {
+            Tab::Body => {
+                if let Some(body) = &recipe_state.body {
+                    body.draw(frame, (), content_area, true);
                 }
-                Tab::Query => recipe_state.query.draw(
-                    frame,
-                    to_table(
-                        recipe_state.query.data(),
-                        ["", "Parameter", "Value"],
-                    )
+            }
+            Tab::Query => recipe_state.query.draw(
+                frame,
+                to_table(recipe_state.query.data(), ["", "Parameter", "Value"])
                     .generate(),
-                    content_area,
-                    true,
-                ),
-                Tab::Headers => recipe_state.headers.draw(
-                    frame,
-                    to_table(
-                        recipe_state.headers.data(),
-                        ["", "Header", "Value"],
-                    )
+                content_area,
+                true,
+            ),
+            Tab::Headers => recipe_state.headers.draw(
+                frame,
+                to_table(recipe_state.headers.data(), ["", "Header", "Value"])
                     .generate(),
-                    content_area,
-                    true,
-                ),
-                Tab::Authentication => {
-                    if let Some(authentication) = &recipe_state.authentication {
-                        authentication.draw(frame, (), content_area, true)
-                    }
+                content_area,
+                true,
+            ),
+            Tab::Authentication => {
+                if let Some(authentication) = &recipe_state.authentication {
+                    authentication.draw(frame, (), content_area, true)
                 }
             }
         }
@@ -654,5 +674,54 @@ fn to_table<'a, K: PersistedKey<Value = bool>>(
             Constraint::Percentage(50),
         ],
         ..Default::default()
+    }
+}
+
+/// Render folder as a tree
+impl<'a> Generate for &'a Folder {
+    type Output<'this> = Text<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        // Generate something like:
+        // Users
+        // ├─Get Users
+        // ├─Get User
+        // ├─inner
+        // │ ├─Get User
+        // │ ├─inner2
+        // │ │ └─Get User
+        // │ └─Get User
+        // └─Modify User
+
+        let mut lines = vec![self.name().into()];
+        fn add_lines<'a>(
+            lines: &mut Vec<Line<'a>>,
+            folder: &'a Folder,
+            depth: usize,
+        ) {
+            let len = folder.children.len();
+            for (i, node) in folder.children.values().enumerate() {
+                let mut line = Line::default();
+
+                // Add decoration
+                for _ in 0..depth {
+                    line.push_span("│ ");
+                }
+                line.push_span(if i < len - 1 { "├─" } else { "└─" });
+
+                line.push_span(node.name());
+                lines.push(line);
+                if let RecipeNode::Folder(folder) = node {
+                    add_lines(lines, folder, depth + 1);
+                }
+            }
+        }
+        add_lines(&mut lines, self, 0);
+        lines.into()
     }
 }

@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Checkbox row state and folder expand/collapse state are now toggled via the spacebar instead of enter
   - This can be rebound ([see docs](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html))
+- Show folder tree in recipe pane when a folder is selected
 
 ## [1.6.0] - 2024-07-07
 

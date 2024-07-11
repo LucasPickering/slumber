@@ -1,7 +1,5 @@
 use crate::{
-    collection::{
-        HasId, Recipe, RecipeId, RecipeLookupKey, RecipeNode, RecipeTree,
-    },
+    collection::{HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeTree},
     tui::{
         context::TuiContext,
         input::Action,
@@ -85,12 +83,6 @@ impl RecipeListPane {
     /// empty
     pub fn selected_node(&self) -> Option<&RecipeNode> {
         self.select.data().selected()
-    }
-
-    /// Which recipe in the recipe list is selected? `None` iff the list is
-    /// empty OR a folder is selected.
-    pub fn selected_recipe(&self) -> Option<&Recipe> {
-        self.selected_node().and_then(RecipeNode::recipe)
     }
 
     /// Set the currently selected folder as expanded/collapsed (or toggle it).

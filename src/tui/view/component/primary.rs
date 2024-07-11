@@ -1,7 +1,9 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
-    collection::{Collection, Profile, ProfileId, Recipe, RecipeId},
+    collection::{
+        Collection, Profile, ProfileId, Recipe, RecipeId, RecipeNode,
+    },
     tui::{
         input::Action,
         message::{Message, RequestConfig},
@@ -135,7 +137,10 @@ impl PrimaryView {
     /// Which recipe in the recipe list is selected? `None` iff the list is
     /// empty OR a folder is selected.
     pub fn selected_recipe(&self) -> Option<&Recipe> {
-        self.recipe_list_pane.data().selected_recipe()
+        self.recipe_list_pane
+            .data()
+            .selected_node()
+            .and_then(RecipeNode::recipe)
     }
 
     pub fn selected_recipe_id(&self) -> Option<&RecipeId> {
@@ -177,10 +182,11 @@ impl PrimaryView {
             self.is_selected(PrimaryPane::RecipeList),
         );
 
+        let selected_recipe_node = self.recipe_list_pane.data().selected_node();
         self.recipe_pane.draw(
             frame,
             RecipePaneProps {
-                selected_recipe: self.selected_recipe(),
+                selected_recipe_node,
                 selected_profile_id: self.selected_profile_id(),
             },
             recipe_area,
@@ -190,10 +196,7 @@ impl PrimaryView {
         self.exchange_pane.draw(
             frame,
             ExchangePaneProps {
-                selected_recipe_node: self
-                    .recipe_list_pane
-                    .data()
-                    .selected_node(),
+                selected_recipe_node,
                 request_state: props.selected_request,
             },
             request_response_area,
@@ -388,7 +391,10 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
             Some(FullscreenMode::Recipe) => self.recipe_pane.draw(
                 frame,
                 RecipePaneProps {
-                    selected_recipe: self.selected_recipe(),
+                    selected_recipe_node: self
+                        .recipe_list_pane
+                        .data()
+                        .selected_node(),
                     selected_profile_id: self.selected_profile_id(),
                 },
                 metadata.area(),

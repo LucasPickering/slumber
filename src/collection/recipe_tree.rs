@@ -208,19 +208,26 @@ impl From<IndexMap<RecipeId, RecipeNode>> for RecipeTree {
 }
 
 impl RecipeNode {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Folder(folder) => folder.name(),
+            Self::Recipe(recipe) => recipe.name(),
+        }
+    }
+
     /// If this node is a recipe, return it. Otherwise return `None`
     pub fn recipe(&self) -> Option<&Recipe> {
         match self {
-            RecipeNode::Recipe(recipe) => Some(recipe),
-            RecipeNode::Folder(_) => None,
+            Self::Recipe(recipe) => Some(recipe),
+            Self::Folder(_) => None,
         }
     }
 
     /// If this node is a folder, return it. Otherwise return `None`
     pub fn folder(&self) -> Option<&Folder> {
         match self {
-            RecipeNode::Recipe(_) => None,
-            RecipeNode::Folder(folder) => Some(folder),
+            Self::Recipe(_) => None,
+            Self::Folder(folder) => Some(folder),
         }
     }
 }

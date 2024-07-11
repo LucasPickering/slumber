@@ -21,13 +21,12 @@ use crate::{
             RequestState, ViewContext,
         },
     },
-    util::doc_link,
 };
 use derive_more::Display;
 use persisted::SingletonKey;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
-    text::{Line, Text},
+    text::Line,
     widgets::block::Title,
     Frame,
 };
@@ -121,24 +120,16 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
         // Empty states
         match props.selected_recipe_node {
             None => {
-                frame.render_widget(
-                    Text::from(vec![
-                        "No recipes defined; add one to your collection".into(),
-                        doc_link("api/request_collection/request_recipe")
-                            .into(),
-                    ]),
-                    area,
-                );
                 return;
             }
-            Some(RecipeNode::Folder { .. }) => {
+            Some(RecipeNode::Folder(_)) => {
                 frame.render_widget(
                     "Select a recipe to see its request history",
                     area,
                 );
                 return;
             }
-            Some(RecipeNode::Recipe { .. }) => {}
+            Some(RecipeNode::Recipe(_)) => {}
         }
 
         // Split out the areas we *may* need

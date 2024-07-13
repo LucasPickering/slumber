@@ -57,19 +57,17 @@ impl QueryableBody {
     /// box, or want to persist the value.
     pub fn new() -> Self {
         let text_box = TextBox::default()
-            .with_placeholder("'/' to filter body with JSONPath")
-            .with_validator(|text| JsonPath::parse(text).is_ok())
+            .placeholder("'/' to filter body with JSONPath")
+            .validator(|text| JsonPath::parse(text).is_ok())
             // Callback trigger an events, so we can modify our own state
-            .with_on_click(|_| {
+            .on_click(|| {
                 ViewContext::push_event(Event::new_local(QueryCallback::Focus))
             })
-            .with_on_cancel(|_| {
+            .on_cancel(|| {
                 ViewContext::push_event(Event::new_local(QueryCallback::Cancel))
             })
-            .with_on_submit(|text_box| {
-                ViewContext::push_event(Event::new_local(
-                    QueryCallback::Submit(text_box.text().to_owned()),
-                ))
+            .on_submit(|| {
+                ViewContext::push_event(Event::new_local(QueryCallback::Submit))
             });
         Self {
             text_window: Default::default(),
@@ -113,7 +111,8 @@ impl EventHandler for QueryableBody {
                     );
                     self.query_focused = false;
                 }
-                QueryCallback::Submit(text) => {
+                QueryCallback::Submit => {
+                    let text = self.query_text_box.data().text();
                     self.query = text
                         .parse()
                         // Log the error, then throw it away
@@ -197,7 +196,7 @@ impl PersistedContainer for QueryableBody {
 enum QueryCallback {
     Focus,
     Cancel,
-    Submit(String),
+    Submit,
 }
 
 fn init_text_window(

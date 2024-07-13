@@ -58,6 +58,8 @@ rstest = {version = "0.19.0", default-features = false}
 serde_test = "1.0.176"
 
 [profile.dev.package]
+# Optimize critical macro packages, to speed up incremental build
+derive_more-impl.opt-level = 3
 proc-macro2.opt-level = 3
 quote.opt-level = 3
 serde_derive.opt-level = 3

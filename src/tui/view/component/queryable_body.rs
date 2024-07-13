@@ -59,16 +59,11 @@ impl QueryableBody {
         let text_box = TextBox::default()
             .placeholder("'/' to filter body with JSONPath")
             .validator(|text| JsonPath::parse(text).is_ok())
-            // Callback trigger an events, so we can modify our own state
-            .on_click(|| {
-                ViewContext::push_event(Event::new_local(QueryCallback::Focus))
-            })
-            .on_cancel(|| {
-                ViewContext::push_event(Event::new_local(QueryCallback::Cancel))
-            })
-            .on_submit(|| {
-                ViewContext::push_event(Event::new_local(QueryCallback::Submit))
-            });
+            // Callbacks trigger events, so we can modify our own state
+            .on_click(|| QueryCallback::Focus.push())
+            .on_change(|| QueryCallback::Change.push())
+            .on_cancel(|| QueryCallback::Cancel.push())
+            .on_submit(|| QueryCallback::Submit.push());
         Self {
             text_window: Default::default(),
             query_available: Cell::new(false),
@@ -83,6 +78,23 @@ impl QueryableBody {
         self.text_window
             .get()
             .map(|text_window| text_window.data().text().to_owned())
+    }
+
+    /// Apply current body query
+    fn apply_query(&mut self) {
+        let text = self.query_text_box.data().text();
+        if text.is_empty() {
+            self.query = None;
+        } else {
+            self.query = text
+                .parse()
+                // The validator should prevent invalid queries from getting
+                // here. If we somehow do though, show the error to the user
+                // just so they have an idea that something is wrong
+                .with_context(|| format!("Error parsing query {text:?}"))
+                .traced()
+                .reported(&ViewContext::messages_tx());
+        }
     }
 }
 
@@ -111,16 +123,9 @@ impl EventHandler for QueryableBody {
                     );
                     self.query_focused = false;
                 }
+                QueryCallback::Change => self.apply_query(),
                 QueryCallback::Submit => {
-                    let text = self.query_text_box.data().text();
-                    self.query = text
-                        .parse()
-                        // Log the error, then throw it away
-                        .with_context(|| {
-                            format!("Error parsing query {text:?}")
-                        })
-                        .traced()
-                        .ok();
+                    self.apply_query();
                     self.query_focused = false;
                 }
             }
@@ -196,7 +201,14 @@ impl PersistedContainer for QueryableBody {
 enum QueryCallback {
     Focus,
     Cancel,
+    Change,
     Submit,
+}
+
+impl QueryCallback {
+    fn push(self) {
+        ViewContext::push_event(Event::new_local(self))
+    }
 }
 
 fn init_text_window(

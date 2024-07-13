@@ -33,6 +33,9 @@ pub struct TextBox {
     /// Called when user clicks to start editing
     #[debug(skip)]
     on_click: Option<Callback>,
+    /// Called whenever value changes, with a debounce
+    #[debug(skip)]
+    on_change: Option<Callback>,
     /// Called when user exits with submission (e.g. Enter)
     #[debug(skip)]
     on_submit: Option<Callback>,
@@ -80,6 +83,13 @@ impl TextBox {
         self
     }
 
+    /// Set the callback to be called whenever the text value is changed. The
+    /// callback will *not* be called if the new input is invalid.
+    pub fn on_change(mut self, on_change: impl 'static + Fn()) -> Self {
+        self.on_change = Some(Box::new(on_change));
+        self
+    }
+
     /// Set the callback to be called when the user hits escape
     pub fn on_cancel(mut self, on_cancel: impl 'static + Fn()) -> Self {
         self.on_cancel = Some(Box::new(on_cancel));
@@ -121,30 +131,15 @@ impl TextBox {
     }
 
     /// Call parent's submission callback
-    fn submit(&mut self) {
+    fn submit(&self) {
         if self.is_valid() {
-            if let Some(on_submit) = &self.on_submit {
-                on_submit();
-            }
+            call(&self.on_submit)
         }
     }
 
-    /// Call parent's cancel callback
-    fn cancel(&mut self) {
-        if let Some(on_cancel) = &self.on_cancel {
-            on_cancel();
-        }
-    }
-
-    /// Call parent's on_click callback
-    fn click(&mut self) {
-        if let Some(on_click) = &self.on_click {
-            on_click();
-        }
-    }
-
-    /// Handle input key event to modify text/cursor state
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
+    /// Handle input key event to modify text/cursor state. Return whether text
+    /// (*not* cursor position) was modified or not
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> bool {
         match key_event.code {
             KeyCode::Char(c) => self.state.insert(c),
             KeyCode::Backspace => self.state.delete_left(),
@@ -155,6 +150,7 @@ impl TextBox {
                 } else {
                     self.state.left();
                 }
+                false
             }
             KeyCode::Right => {
                 if key_event.modifiers.contains(KeyModifiers::CONTROL) {
@@ -162,10 +158,17 @@ impl TextBox {
                 } else {
                     self.state.right();
                 }
+                false
             }
-            KeyCode::Home => self.state.home(),
-            KeyCode::End => self.state.end(),
-            _ => {}
+            KeyCode::Home => {
+                self.state.home();
+                false
+            }
+            KeyCode::End => {
+                self.state.end();
+                false
+            }
+            _ => false,
         }
     }
 }
@@ -180,15 +183,20 @@ impl EventHandler for TextBox {
             Event::Input {
                 action: Some(Action::Cancel),
                 ..
-            } => self.cancel(),
+            } => call(&self.on_cancel),
             Event::Input {
                 action: Some(Action::LeftClick),
                 ..
-            } => self.click(),
+            } => call(&self.on_click),
             Event::Input {
                 event: crossterm::event::Event::Key(key_event),
                 ..
-            } => self.handle_key_event(key_event),
+            } => {
+                let text_changed = self.handle_key_event(key_event);
+                if text_changed && self.is_valid() {
+                    call(&self.on_change);
+                }
+            }
             _ => return Update::Propagate(event),
         }
         Update::Consumed
@@ -270,10 +278,12 @@ impl TextState {
         self.cursor = self.text.len();
     }
 
-    /// Insert one character at the current cursor position
-    fn insert(&mut self, c: char) {
+    /// Insert one character at the current cursor position. Return whether text
+    /// was modified or not
+    fn insert(&mut self, c: char) -> bool {
         self.text.insert(self.cursor, c);
         self.cursor += c.len_utf8();
+        true
     }
 
     /// Move cursor left one **character**. This may be multiple bytes, if the
@@ -307,18 +317,26 @@ impl TextState {
         }
     }
 
-    /// Delete character immediately left of the cursor
-    fn delete_left(&mut self) {
+    /// Delete character immediately left of the cursor. Return whether text
+    /// was modified or not
+    fn delete_left(&mut self) -> bool {
         if !self.is_at_home() {
             self.left();
             self.text.remove(self.cursor);
+            true
+        } else {
+            false
         }
     }
 
-    /// Delete character immediately rightof the cursor
-    fn delete_right(&mut self) {
+    /// Delete character immediately rightof the cursor. Return whether text
+    /// was modified or not
+    fn delete_right(&mut self) -> bool {
         if !self.is_at_end() {
             self.text.remove(self.cursor);
+            true
+        } else {
+            false
         }
     }
 
@@ -337,6 +355,13 @@ impl PersistedContainer for TextBox {
 
     fn set_persisted(&mut self, value: Self::Value) {
         self.set_text(value);
+    }
+}
+
+/// Call a callback if defined
+fn call(f: &Option<impl Fn()>) {
+    if let Some(f) = f {
+        f();
     }
 }
 
@@ -400,12 +425,14 @@ mod tests {
     #[rstest]
     fn test_interaction(#[with(10, 1)] harness: TestHarness) {
         let click_count = Counter::default();
+        let change_count = Counter::default();
         let submit_count = Counter::default();
         let cancel_count = Counter::default();
         let mut component = TestComponent::new(
             harness,
             TextBox::default()
                 .on_click(click_count.callback())
+                .on_change(change_count.callback())
                 .on_submit(submit_count.callback())
                 .on_cancel(cancel_count.callback()),
             (),
@@ -427,6 +454,8 @@ mod tests {
         // Test callbacks
         component.click(0, 0).assert_empty();
         assert_eq!(click_count, 1);
+
+        assert_eq!(change_count, 6); // One call per character
 
         component.send_key(KeyCode::Enter).assert_empty();
         assert_eq!(submit_count, 1);

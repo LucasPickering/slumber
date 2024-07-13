@@ -41,33 +41,33 @@ pub struct TextBox {
     on_cancel: Option<Callback>,
 }
 
-type Callback = Box<dyn Fn(&TextBox)>;
+type Callback = Box<dyn Fn()>;
 
 type Validator = Box<dyn Fn(&str) -> bool>;
 
 impl TextBox {
     /// Set initialize value for the text box
-    pub fn with_default(mut self, default: String) -> Self {
+    pub fn default_value(mut self, default: String) -> Self {
         self.state.text = default;
         self.state.end();
         self
     }
 
     /// Mark content as sensitive, to be replaced with a placeholder character
-    pub fn with_sensitive(mut self, sensitive: bool) -> Self {
+    pub fn sensitive(mut self, sensitive: bool) -> Self {
         self.sensitive = sensitive;
         self
     }
 
     /// Set placeholder (text to show when content is empty) on initialization
-    pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
+    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
         self.placeholder_text = placeholder.into();
         self
     }
 
     /// Set validation function. If input is invalid, the submission callback
     /// will be blocked, meaning the user must fix the error or cancel.
-    pub fn with_validator(
+    pub fn validator(
         mut self,
         validator: impl 'static + Fn(&str) -> bool,
     ) -> Self {
@@ -75,25 +75,19 @@ impl TextBox {
         self
     }
     /// Set the callback to be called when the user clicks the textbox
-    pub fn with_on_click(mut self, on_click: impl 'static + Fn(&Self)) -> Self {
+    pub fn on_click(mut self, on_click: impl 'static + Fn()) -> Self {
         self.on_click = Some(Box::new(on_click));
         self
     }
 
     /// Set the callback to be called when the user hits escape
-    pub fn with_on_cancel(
-        mut self,
-        on_cancel: impl 'static + Fn(&Self),
-    ) -> Self {
+    pub fn on_cancel(mut self, on_cancel: impl 'static + Fn()) -> Self {
         self.on_cancel = Some(Box::new(on_cancel));
         self
     }
 
     /// Set the callback to be called when the user hits enter
-    pub fn with_on_submit(
-        mut self,
-        on_submit: impl 'static + Fn(&Self),
-    ) -> Self {
+    pub fn on_submit(mut self, on_submit: impl 'static + Fn()) -> Self {
         self.on_submit = Some(Box::new(on_submit));
         self
     }
@@ -130,7 +124,7 @@ impl TextBox {
     fn submit(&mut self) {
         if self.is_valid() {
             if let Some(on_submit) = &self.on_submit {
-                on_submit(self);
+                on_submit();
             }
         }
     }
@@ -138,14 +132,14 @@ impl TextBox {
     /// Call parent's cancel callback
     fn cancel(&mut self) {
         if let Some(on_cancel) = &self.on_cancel {
-            on_cancel(self);
+            on_cancel();
         }
     }
 
     /// Call parent's on_click callback
     fn click(&mut self) {
         if let Some(on_click) = &self.on_click {
-            on_click(self);
+            on_click();
         }
     }
 
@@ -388,9 +382,9 @@ mod tests {
         }
 
         /// Create a callback that just calls the counter
-        fn callback(&self) -> impl Fn(&TextBox) {
+        fn callback(&self) -> impl Fn() {
             let counter = self.clone();
-            move |_| {
+            move || {
                 counter.increment();
             }
         }
@@ -411,9 +405,9 @@ mod tests {
         let mut component = TestComponent::new(
             harness,
             TextBox::default()
-                .with_on_click(click_count.callback())
-                .with_on_submit(submit_count.callback())
-                .with_on_cancel(cancel_count.callback()),
+                .on_click(click_count.callback())
+                .on_submit(submit_count.callback())
+                .on_cancel(cancel_count.callback()),
             (),
         );
 
@@ -473,11 +467,8 @@ mod tests {
 
     #[rstest]
     fn test_sensitive(#[with(6, 1)] harness: TestHarness) {
-        let mut component = TestComponent::new(
-            harness,
-            TextBox::default().with_sensitive(true),
-            (),
-        );
+        let mut component =
+            TestComponent::new(harness, TextBox::default().sensitive(true), ());
 
         component.send_text("hello").assert_empty();
 
@@ -489,7 +480,7 @@ mod tests {
     fn test_placeholder(#[with(6, 1)] harness: TestHarness) {
         let component = TestComponent::new(
             harness,
-            TextBox::default().with_placeholder("hello"),
+            TextBox::default().placeholder("hello"),
             (),
         );
 
@@ -506,7 +497,7 @@ mod tests {
     fn test_validator(#[with(6, 1)] harness: TestHarness) {
         let mut component = TestComponent::new(
             harness,
-            TextBox::default().with_validator(|text| text.len() <= 2),
+            TextBox::default().validator(|text| text.len() <= 2),
             (),
         );
 

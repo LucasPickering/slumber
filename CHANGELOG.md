@@ -12,6 +12,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - This can be rebound ([see docs](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html))
 - Show folder tree in recipe pane when a folder is selected
 - Don't exit body filter text box on Enter [#270](https://github.com/LucasPickering/slumber/issues/270)
+- Show elapsed time for failed requests (e.g. in case of network error)
+
+### Fixes
+
+- Fix latest request not being pre-selected correctly if it's not a successful response
 
 ## [1.6.0] - 2024-07-07
 

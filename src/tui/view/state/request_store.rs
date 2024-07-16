@@ -87,7 +87,7 @@ impl RequestStore {
                 state.profile_id() == profile_id
                     && state.recipe_id() == recipe_id
             })
-            .max_by_key(|state| state.time()))
+            .max_by_key(|state| state.request_metadata().start_time))
     }
 
     /// Load all historical requests for a recipe+profile, then return the
@@ -324,7 +324,8 @@ mod tests {
                 profile_id: Some(profile_id.clone()),
                 recipe_id: recipe_id.clone(),
                 id: build_error_id,
-                time: Utc::now(),
+                start_time: Utc::now(),
+                end_time: Utc::now(),
                 error: anyhow!("oh no!"),
             },
         });

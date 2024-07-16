@@ -140,9 +140,9 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
         ])
         .areas(area);
 
-        // Draw whatever metadata is available
+        // Draw timing metadata
         if let Some(metadata) =
-            props.request_state.and_then(RequestState::request_metadata)
+            props.request_state.map(RequestState::request_metadata)
         {
             frame.render_widget(
                 Line::from(vec![
@@ -153,6 +153,7 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
                 metadata_area,
             );
         }
+        // Draw response metadata
         if let Some(metadata) = props
             .request_state
             .and_then(RequestState::response_metadata)
@@ -168,7 +169,7 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
             );
         }
 
-        // Render request/response based on state. Lambas help with code dupe
+        // Render request/response based on state. Lambdas help with code dupe
         let selected_tab = self.tabs.data().selected();
         let render_tabs = |frame| self.tabs.draw(frame, (), tabs_area, true);
         let render_request = |frame, request: &Arc<RequestRecord>| {
@@ -187,10 +188,10 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
                 area,
             ),
             Some(RequestState::Building { .. }) => {
-                frame.render_widget("Initializing request...", area)
+                frame.render_widget("Initializing request...", content_area)
             }
             Some(RequestState::BuildError { error, .. }) => {
-                frame.render_widget(error.generate(), area)
+                frame.render_widget(error.generate(), content_area)
             }
             Some(RequestState::Loading { request, .. }) => {
                 render_tabs(frame);

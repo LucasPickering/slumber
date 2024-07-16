@@ -529,8 +529,10 @@ pub struct RequestBuildError {
     pub recipe_id: RecipeId,
     /// ID of the failed request
     pub id: RequestId,
-    /// When did the error occur?
-    pub time: DateTime<Utc>,
+    /// When did the build start?
+    pub start_time: DateTime<Utc>,
+    /// When did the build end, i.e. when did the error occur?
+    pub end_time: DateTime<Utc>,
 }
 
 #[cfg(test)]
@@ -539,7 +541,8 @@ impl PartialEq for RequestBuildError {
         self.profile_id == other.profile_id
             && self.recipe_id == other.recipe_id
             && self.id == other.id
-            && self.time == other.time
+            && self.start_time == other.start_time
+            && self.end_time == other.end_time
             && self.error.to_string() == other.error.to_string()
     }
 }

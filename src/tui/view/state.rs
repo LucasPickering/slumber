@@ -180,35 +180,43 @@ impl RequestState {
         }
     }
 
-    /// Get the time of the request state. For in-flight or completed requests,
-    /// this is when it *started*.
-    pub fn time(&self) -> DateTime<Utc> {
-        match self {
-            Self::Building { start_time, .. } => *start_time,
-            Self::BuildError { error } => error.time,
-            Self::Loading { start_time, .. } => *start_time,
-            Self::Response { exchange } => exchange.start_time,
-            Self::RequestError { error } => error.start_time,
-        }
-    }
-
     /// Get metadata about a request. Return `None` if the request hasn't been
     /// successfully built (yet)
-    pub fn request_metadata(&self) -> Option<RequestMetadata> {
+    pub fn request_metadata(&self) -> RequestMetadata {
         match self {
-            Self::Building { .. } | Self::BuildError { .. } => None,
-            Self::Loading { start_time, .. } => Some(RequestMetadata {
+            // In-progress states
+            Self::Building { start_time, .. }
+            | Self::Loading { start_time, .. } => RequestMetadata {
                 start_time: *start_time,
                 duration: Utc::now() - start_time,
-            }),
-            Self::Response { exchange, .. } => Some(RequestMetadata {
+            },
+
+            // Error states
+            Self::BuildError {
+                error:
+                    RequestBuildError {
+                        start_time,
+                        end_time,
+                        ..
+                    },
+            }
+            | Self::RequestError {
+                error:
+                    RequestError {
+                        start_time,
+                        end_time,
+                        ..
+                    },
+            } => RequestMetadata {
+                start_time: *start_time,
+                duration: *end_time - *start_time,
+            },
+
+            // Completed
+            Self::Response { exchange, .. } => RequestMetadata {
                 start_time: exchange.start_time,
                 duration: exchange.duration(),
-            }),
-            Self::RequestError { error } => Some(RequestMetadata {
-                start_time: error.start_time,
-                duration: error.end_time - error.start_time,
-            }),
+            },
         }
     }
 
@@ -258,7 +266,8 @@ pub enum RequestStateSummary {
     },
     BuildError {
         id: RequestId,
-        time: DateTime<Utc>,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
     },
     Loading {
         id: RequestId,
@@ -289,7 +298,9 @@ impl RequestStateSummary {
             Self::Building {
                 start_time: time, ..
             }
-            | Self::BuildError { time, .. }
+            | Self::BuildError {
+                start_time: time, ..
+            }
             | Self::Loading {
                 start_time: time, ..
             }
@@ -308,7 +319,8 @@ impl From<&RequestState> for RequestStateSummary {
             },
             RequestState::BuildError { error } => Self::BuildError {
                 id: error.id,
-                time: error.time,
+                start_time: error.start_time,
+                end_time: error.end_time,
             },
             RequestState::Loading {
                 request,

@@ -275,11 +275,13 @@ impl RequestSeed {
         future: impl Future<Output = anyhow::Result<T>>,
         template_context: &TemplateContext,
     ) -> Result<T, RequestBuildError> {
+        let start_time = Utc::now();
         future.await.traced().map_err(|error| RequestBuildError {
             profile_id: template_context.selected_profile.clone(),
             recipe_id: self.recipe.id.clone(),
             id: self.id,
-            time: Utc::now(),
+            start_time,
+            end_time: Utc::now(),
             error,
         })
     }

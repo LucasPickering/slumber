@@ -57,28 +57,37 @@ impl RequestStore {
         Ok(request.map(|r| &*r))
     }
 
-    /// Get the latest request for a specific profile+recipe combo
+    /// Get the latest request (by start time) for a specific profile+recipe
+    /// combo
     pub fn load_latest(
         &mut self,
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
     ) -> anyhow::Result<Option<&RequestState>> {
+        // Get the latest record in the DB
         let exchange = ViewContext::with_database(|database| {
             database.get_latest_request(profile_id, recipe_id)
         })?;
-        let state = exchange.map(|exchange| {
-            let state = RequestState::response(exchange);
-            // Insert into the map, get a reference back
-            // unstable: https://doc.rust-lang.org/std/collections/hash_map/enum.Entry.html#method.insert_entry
-            match self.requests.entry(state.id()) {
-                Entry::Occupied(mut entry) => {
-                    entry.insert(state);
-                    entry.into_mut() as &_ // Drop mutability
-                }
-                Entry::Vacant(entry) => entry.insert(state),
-            }
-        });
-        Ok(state)
+        if let Some(exchange) = exchange {
+            // Cache this record if it isn't already
+            self.requests
+                .entry(exchange.id)
+                // This is expensive because it parses the body, so avoid it if
+                // the record is already cached
+                .or_insert_with(|| RequestState::response(exchange));
+        }
+
+        // Now that the know the most recent completed record is in our local
+        // cache, find the most recent record of *any* kind
+
+        Ok(self
+            .requests
+            .values()
+            .filter(|state| {
+                state.profile_id() == profile_id
+                    && state.recipe_id() == recipe_id
+            })
+            .max_by_key(|state| state.time()))
     }
 
     /// Load all historical requests for a recipe+profile, then return the
@@ -249,6 +258,33 @@ mod tests {
         assert_matches!(
             store.load_latest(Some(&profile_id), &("other".into())),
             Ok(None)
+        );
+    }
+
+    /// Test load_latest when the most recent request for the profile is a
+    /// request that's not in the DB (i.e. in a state other than completed)
+    #[rstest]
+    fn test_load_latest_local(harness: TestHarness) {
+        let profile_id = ProfileId::factory(());
+        let recipe_id = RecipeId::factory(());
+
+        // We don't expect to load this one
+        create_exchange(&harness, Some(&profile_id), Some(&recipe_id));
+
+        // This is what we should see
+        let request_record = Arc::new(RequestRecord::factory((
+            Some(profile_id.clone()),
+            recipe_id.clone(),
+        )));
+
+        let mut store = RequestStore::default();
+        store.update(RequestState::loading(Arc::clone(&request_record)));
+        assert_eq!(
+            store
+                .load_latest(Some(&profile_id), &recipe_id)
+                .unwrap()
+                .map(RequestState::id),
+            Some(request_record.id)
         );
     }
 

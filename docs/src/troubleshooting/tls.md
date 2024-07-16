@@ -12,16 +12,6 @@ If you can't or don't want to fix the certificate, and you need to keep TLS enab
 
 > **WARNING:** This is dangerous. You will be susceptible to MITM attacks on these hosts. Only do this if you control the server you're hitting, and are confident your network is not compromised.
 
-## CLI
-
-The `--insecure` flag disables TLS checks for a particular request:
-
-```
-slumber request --insecure hello_world
-```
-
-## TUI
-
 - Open your [Slumber configuration](../api/configuration/index.md)
 - Add the field `ignore_certificate_hosts: ["<hostname>"]`
   - `<hostname>` is the domain or IP of the server you're requesting from

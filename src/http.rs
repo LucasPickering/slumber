@@ -44,6 +44,7 @@ pub use query::*;
 
 use crate::{
     collection::{Authentication, JsonBody, Method, Recipe, RecipeBody},
+    config::Config,
     db::CollectionDatabase,
     template::{Template, TemplateContext},
     util::ResultExt,
@@ -82,15 +83,12 @@ pub struct HttpEngine {
     /// specifically wants to ignore errors for the request!
     danger_client: Client,
     /// Hostnames for which we should ignore TLS
-    insecure_hosts: InsecureHosts,
+    danger_hostnames: HashSet<String>,
 }
 
 impl HttpEngine {
-    /// Build a new HTTP engine, which can be used for the entire program life.
-    /// `ignore_certificate_hosts` defines the hosts for which we should ignore
-    /// any TLS certificate errors. This is dangerous! Only pass hostnames that
-    /// you know are safe (e.g. `localhost`).
-    pub fn new(insecure_hosts: InsecureHosts) -> Self {
+    /// Build a new HTTP engine, which can be used for the entire program life
+    pub fn new(config: &Config) -> Self {
         Self {
             client: Client::builder()
                 .user_agent(USER_AGENT)
@@ -101,7 +99,11 @@ impl HttpEngine {
                 .danger_accept_invalid_certs(true)
                 .build()
                 .expect("Error building reqwest client"),
-            insecure_hosts,
+            danger_hostnames: config
+                .ignore_certificate_hosts
+                .iter()
+                .cloned()
+                .collect(),
         }
     }
 
@@ -258,40 +260,10 @@ impl HttpEngine {
     /// dangerous client.
     fn get_client(&self, url: &Url) -> &Client {
         let host = url.host_str().unwrap_or_default();
-        if self.insecure_hosts.is_insecure(host) {
+        if self.danger_hostnames.contains(host) {
             &self.danger_client
         } else {
             &self.client
-        }
-    }
-}
-
-impl Default for HttpEngine {
-    fn default() -> Self {
-        Self::new(InsecureHosts::default())
-    }
-}
-
-/// Which hosts should be handled insecurely. I.e. for which hosts should we
-/// ignore all TLS errors?
-#[derive(Clone, Debug, Default)]
-pub enum InsecureHosts {
-    /// Handle all hosts securely
-    #[default]
-    None,
-    /// Ignore TLS errors on a specific set of hosts
-    Only(HashSet<String>),
-    /// Ignore TLS errors on all hosts
-    All,
-}
-
-impl InsecureHosts {
-    /// Check if a host should be handled insecurely
-    fn is_insecure(&self, host: &str) -> bool {
-        match self {
-            InsecureHosts::None => false,
-            InsecureHosts::Only(hosts) => hosts.contains(host),
-            InsecureHosts::All => true,
         }
     }
 }
@@ -765,7 +737,7 @@ mod tests {
 
     #[fixture]
     fn http_engine() -> HttpEngine {
-        HttpEngine::default()
+        HttpEngine::new(&Config::default())
     }
 
     #[fixture]

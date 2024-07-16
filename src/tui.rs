@@ -1,4 +1,3 @@
-mod config;
 pub mod context;
 pub mod input;
 pub mod message;
@@ -9,11 +8,11 @@ pub mod view;
 
 use crate::{
     collection::{Collection, CollectionFile, ProfileId, Recipe, RecipeId},
+    config::Config,
     db::{CollectionDatabase, Database},
     http::RequestSeed,
     template::{Prompter, Template, TemplateChunk, TemplateContext},
     tui::{
-        config::Config,
         context::TuiContext,
         input::Action,
         message::{Message, MessageSender, RequestConfig},

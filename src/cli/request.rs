@@ -1,10 +1,9 @@
 use crate::{
     cli::Subcommand,
     collection::{CollectionFile, ProfileId, RecipeId},
+    config::Config,
     db::{CollectionDatabase, Database},
-    http::{
-        BuildOptions, HttpEngine, InsecureHosts, RequestSeed, RequestTicket,
-    },
+    http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
     template::{Prompt, Prompter, TemplateContext, TemplateError},
     util::{HeaderDisplay, ResultExt},
     GlobalArgs,
@@ -32,12 +31,6 @@ const HTTP_ERROR_EXIT_CODE: u8 = 2;
 pub struct RequestCommand {
     #[clap(flatten)]
     build_request: BuildRequestCommand,
-
-    /// **DANGER** Ignore all TLS errors on this request. The request will be
-    /// susceptible to man-in-the-middle and other attacks. Only use this if
-    /// you are sure the target host is secure!
-    #[clap(long)]
-    insecure: bool,
 
     /// Print HTTP response status
     #[clap(long)]
@@ -84,15 +77,10 @@ pub struct BuildRequestCommand {
 
 impl Subcommand for RequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let insecure_hosts = if self.insecure {
-            InsecureHosts::All
-        } else {
-            InsecureHosts::None
-        };
         let (database, ticket) = self
             .build_request
             // Don't execute sub-requests in a dry run
-            .build_request(global, insecure_hosts, !self.dry_run)
+            .build_request(global, !self.dry_run)
             .await
             .map_err(|error| {
                 // If the build failed because triggered requests are disabled,
@@ -159,14 +147,14 @@ impl BuildRequestCommand {
     pub async fn build_request(
         self,
         global: GlobalArgs,
-        insecure_hosts: InsecureHosts,
         trigger_dependencies: bool,
     ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
         let collection_path = CollectionFile::try_path(None, global.file)?;
         let database = Database::load()?.into_collection(&collection_path)?;
         let collection_file = CollectionFile::load(collection_path).await?;
         let collection = collection_file.collection;
-        let http_engine = HttpEngine::new(insecure_hosts);
+        let config = Config::load()?;
+        let http_engine = HttpEngine::new(&config);
 
         // Validate profile ID, so we can provide a good error if it's invalid
         if let Some(profile_id) = &self.profile {

@@ -1,5 +1,5 @@
 use crate::{
-    cli::Subcommand, collection::CollectionFile, db::Database,
+    cli::Subcommand, collection::CollectionFile, config::Config, db::Database,
     util::paths::DataDirectory, GlobalArgs,
 };
 use clap::Parser;
@@ -17,6 +17,8 @@ pub struct ShowCommand {
 enum ShowTarget {
     /// Print the path of all directories/files that Slumber uses
     Paths,
+    /// Print loaded configuration
+    Config,
     /// Print current request collection
     Collection,
 }
@@ -29,6 +31,7 @@ impl Subcommand for ShowCommand {
                     CollectionFile::try_path(None, global.file);
                 println!("Data directory: {}", DataDirectory::root());
                 println!("Log file: {}", DataDirectory::log());
+                println!("Config: {}", Config::path());
                 println!("Database: {}", Database::path());
                 println!(
                     "Collection: {}",
@@ -37,6 +40,10 @@ impl Subcommand for ShowCommand {
                         .map(Path::to_string_lossy)
                         .unwrap_or_else(|error| Cow::Owned(error.to_string()))
                 )
+            }
+            ShowTarget::Config => {
+                let config = Config::load()?;
+                println!("{}", to_yaml(&config));
             }
             ShowTarget::Collection => {
                 let collection_path =

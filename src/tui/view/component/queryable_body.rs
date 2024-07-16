@@ -121,7 +121,6 @@ impl EventHandler for QueryableBody {
                         })
                         .traced()
                         .ok();
-                    self.query_focused = false;
                 }
             }
         } else {
@@ -329,8 +328,16 @@ mod tests {
         let data = component.data();
         assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
         assert_eq!(data.text().as_deref(), Some("[\n  \"hello\"\n]"));
+        assert!(data.query_focused); // Still focused
 
-        // Check the view again too
+        // Cancelling out of the text box should reset the query value
+        component.send_text("more text").assert_empty();
+        component.send_key(KeyCode::Esc).assert_empty();
+        let data = component.data();
+        assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
+        assert_eq!(data.query_text_box.data().text(), "$.greeting");
+
+        // Check the view again
         component.assert_buffer_lines([
             vec![gutter("1"), " [                        ".into()],
             vec![gutter("2"), "   \"hello\"              ".into()],
@@ -341,14 +348,6 @@ mod tests {
                 styles.text,
             )],
         ]);
-
-        // Cancelling out of the text box should reset the query value
-        component.send_key(KeyCode::Char('/')).assert_empty();
-        component.send_text("more text").assert_empty();
-        component.send_key(KeyCode::Esc).assert_empty();
-        let data = component.data();
-        assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
-        assert_eq!(data.query_text_box.data().text(), "$.greeting");
     }
 
     /// Render a parsed body with query text box, and load initial query from

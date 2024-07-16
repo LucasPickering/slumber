@@ -38,8 +38,6 @@ pub struct Root {
     selected_request: PersistedLazy<SelectedRequestKey, SelectedRequestId>,
 
     // ==== Children =====
-    /// We hold onto the primary view even when it's not visible, because we
-    /// don't want the state to reset when changing views
     primary_view: Component<PrimaryView>,
     modal_queue: Component<ModalQueue>,
     notification_text: Option<Component<NotificationText>>,

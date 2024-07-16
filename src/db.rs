@@ -311,9 +311,9 @@ impl CollectionDatabase {
             .traced()
     }
 
-    /// Get the most recent request+response for a profile+recipe, or `None` if
-    /// there has never been one received. If the given profile is `None`, match
-    /// all requests that have no associated profile.
+    /// Get the most recent request+response (by start time) for a profile +
+    /// recipe, or `None` if there has never been one received. If the given
+    /// profile is `None`, match all requests that have no associated profile.
     pub fn get_latest_request(
         &self,
         profile_id: Option<&ProfileId>,

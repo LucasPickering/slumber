@@ -180,6 +180,18 @@ impl RequestState {
         }
     }
 
+    /// Get the time of the request state. For in-flight or completed requests,
+    /// this is when it *started*.
+    pub fn time(&self) -> DateTime<Utc> {
+        match self {
+            Self::Building { start_time, .. } => *start_time,
+            Self::BuildError { error } => error.time,
+            Self::Loading { start_time, .. } => *start_time,
+            Self::Response { exchange } => exchange.start_time,
+            Self::RequestError { error } => error.start_time,
+        }
+    }
+
     /// Get metadata about a request. Return `None` if the request hasn't been
     /// successfully built (yet)
     pub fn request_metadata(&self) -> Option<RequestMetadata> {

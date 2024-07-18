@@ -20,7 +20,10 @@ use std::{
     env,
     path::PathBuf,
     process::Stdio,
-    sync::{atomic::Ordering, Arc},
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
 };
 use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
 use tracing::{debug, debug_span, instrument, trace};
@@ -45,7 +48,9 @@ impl Template {
     ) -> Result<Vec<u8>, TemplateError> {
         debug!(template = %self, "Rendering template");
 
-        if context.recursion_count.load(Ordering::Relaxed) >= RECURSION_LIMIT {
+        let recursion_count =
+            context.state.recursion_count.load(Ordering::Relaxed);
+        if recursion_count >= RECURSION_LIMIT {
             return Err(TemplateError::RecursionLimit);
         }
 
@@ -232,7 +237,10 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
 
         // recursion!
         trace!(%field, %template, "Rendering recursive template");
-        context.recursion_count.fetch_add(1, Ordering::Relaxed);
+        context
+            .state
+            .recursion_count
+            .fetch_add(1, Ordering::Relaxed);
         let rendered = template.render(context).await.map_err(|error| {
             TemplateError::FieldNested {
                 field: field.to_owned(),
@@ -620,6 +628,24 @@ impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
             sensitive: false,
         })
     }
+}
+
+/// State for one or more related renders. This state is stored in the template
+/// context. It can be used for a single end-to-end render (including all
+/// sub-renders), but it can also be carried across multiple top-level renders
+/// to share state across an entire recipe.
+#[derive(Debug, Default)]
+pub struct RenderState {
+    /// A count of how many templates have *already* been rendered with this
+    /// context. This is used to prevent infinite recursion. This tracks the
+    /// *total* number of recursive calls across all , not the number
+    /// of *layers*. That means the following scenarios will all have a max
+    /// `recursion_count` of 4:
+    ///
+    /// - 1 template that renders 4 levels deep of children
+    /// - 1 template that renders 4 children at the top level
+    /// - 2 templates sharing a context that each render 2 children
+    recursion_count: AtomicU8,
 }
 
 impl ChainOutputTrim {

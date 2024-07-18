@@ -10,15 +10,15 @@ use crate::{
     collection::{ChainId, Collection, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
-    template::parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
+    template::{
+        parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
+        render::RenderState,
+    },
 };
 use derive_more::{Deref, Display};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt::Debug,
-    sync::{atomic::AtomicU8, Arc},
-};
+use std::sync::Arc;
 
 /// Maximum number of layers of nested templates
 const RECURSION_LIMIT: u8 = 10;
@@ -65,15 +65,11 @@ pub struct TemplateContext {
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
-    /// A count of how many templates have *already* been rendered with this
-    /// context. This is used to prevent infinite recursion in templates. For
-    /// all external calls, you can start this at 0.
-    ///
-    /// This tracks the *total* number of recursive calls in a render tree, not
-    /// the number of *layers*. That means one template that renders 5 child
-    /// templates is the same as a template that renders a single child 5
-    /// times.
-    pub recursion_count: AtomicU8,
+    /// Internally mutable state that should persist across all renders
+    /// associated with this context. This is part of the context so it can be
+    /// shared across related renders, e.g. multiple parts of the same recipe.
+    /// Always initialize with [RenderState::default].
+    pub state: RenderState,
 }
 
 impl Template {
@@ -195,7 +191,7 @@ impl crate::test_util::Factory for TemplateContext {
             database: CollectionDatabase::factory(()),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
-            recursion_count: 0.into(),
+            state: Default::default(),
         }
     }
 }

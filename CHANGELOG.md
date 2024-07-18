@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixes
 
 - Fix latest request not being pre-selected correctly if it's not a successful response
+- Detect infinite loops in chain configuration templates
 
 ## [1.6.0] - 2024-07-07
 

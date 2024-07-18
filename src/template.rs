@@ -20,9 +20,6 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-/// Maximum number of layers of nested templates
-const RECURSION_LIMIT: u8 = 10;
-
 /// A parsed template, which can contain raw and/or templated content. The
 /// string is parsed during creation to identify template keys, hence the
 /// immutability.
@@ -646,6 +643,51 @@ mod tests {
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
     }
 
+    /// Test failure with chained command
+    #[rstest]
+    #[case::no_command(&[], None, "No command given")]
+    #[case::unknown_command(
+        &["totally not a program"], None, "No such file or directory"
+    )]
+    #[case::command_error(
+        &["head", "/dev/random"], None, "invalid utf-8 sequence"
+    )]
+    #[case::stdin_error(
+        &["tail"],
+        Some("{{chains.stdin}}"),
+        "Resolving chain `chain1`: Rendering nested template for field `stdin`: \
+         Resolving chain `stdin`: Unknown chain: stdin"
+    )]
+    #[case::recursion_limit(
+        &["echo", "{{chains.chain1}}"],
+        None,
+        "Template recursion limit reached",
+    )]
+    #[tokio::test]
+    async fn test_chain_command_error(
+        #[case] command: &[&str],
+        #[case] stdin: Option<&str>,
+        #[case] expected_error: &str,
+    ) {
+        let source = ChainSource::Command {
+            command: command.iter().copied().map(Template::from).collect(),
+            stdin: stdin.map(Template::from),
+        };
+        let chain = Chain {
+            source,
+            ..Chain::factory(())
+        };
+        let context = TemplateContext {
+            collection: Collection {
+                chains: by_id([chain]),
+                ..Collection::factory(())
+            },
+            ..TemplateContext::factory(())
+        };
+
+        assert_err!(render!("{{chains.chain1}}", context), expected_error);
+    }
+
     /// Test trimmed chained command
     #[rstest]
     #[case::no_trim(ChainOutputTrim::None, "   hello!   ")]
@@ -671,46 +713,6 @@ mod tests {
         };
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
-    }
-
-    /// Test failure with chained command
-    #[rstest]
-    #[case::no_command(&[], None, "No command given")]
-    #[case::unknown_command(
-        &["totally not a program"], None, "No such file or directory"
-    )]
-    #[case::command_error(
-        &["head", "/dev/random"], None, "invalid utf-8 sequence"
-    )]
-    #[case::stdin_error(
-        &["tail"],
-        Some("{{chains.stdin}}"),
-        "Resolving chain `chain1`: Rendering nested template for field `stdin`: \
-         Resolving chain `stdin`: Unknown chain: stdin"
-    )]
-    #[tokio::test]
-    async fn test_chain_command_error(
-        #[case] command: &[&str],
-        #[case] stdin: Option<&str>,
-        #[case] expected_error: &str,
-    ) {
-        let source = ChainSource::Command {
-            command: command.iter().copied().map(Template::from).collect(),
-            stdin: stdin.map(Template::from),
-        };
-        let chain = Chain {
-            source,
-            ..Chain::factory(())
-        };
-        let context = TemplateContext {
-            collection: Collection {
-                chains: by_id([chain]),
-                ..Collection::factory(())
-            },
-            ..TemplateContext::factory(())
-        };
-
-        assert_err!(render!("{{chains.chain1}}", context), expected_error);
     }
 
     /// Test success with a chained environment variable

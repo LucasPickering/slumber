@@ -9,7 +9,7 @@ use crate::{
     template::{
         error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
         Prompt, Template, TemplateChunk, TemplateContext, TemplateError,
-        TemplateKey, RECURSION_LIMIT,
+        TemplateKey,
     },
     util::ResultExt,
 };
@@ -27,6 +27,14 @@ use std::{
 };
 use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
 use tracing::{debug, debug_span, instrument, trace};
+
+/// Maximum number of layers of nested templates. This is unreasonably high
+/// because we track recursion in a rudimentary way; instead of tracking the
+/// depth of recursion, we track the total number of recursive calls over the
+/// lifespan of a context. Since a context is shared for all renders in a
+/// recipe, this could get pretty high without actually involving an infinite
+/// loop.
+pub const RECURSION_LIMIT: u8 = 20;
 
 /// Outcome of rendering a single chunk. This allows attaching some metadata to
 /// the render.
@@ -152,11 +160,12 @@ impl Template {
     /// Render a template whose result will be used as configuration for a
     /// chain. It's assumed we need string output for that. The given field name
     /// will be used to provide a descriptive error.
-    async fn render_nested(
+    async fn render_chain_config(
         &self,
         field: impl Into<String>,
         context: &TemplateContext,
     ) -> Result<String, ChainError> {
+        context.state.recur();
         self.render_string(context)
             .await
             .map_err(|error| ChainError::Nested {
@@ -237,10 +246,7 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
 
         // recursion!
         trace!(%field, %template, "Rendering recursive template");
-        context
-            .state
-            .recursion_count
-            .fetch_add(1, Ordering::Relaxed);
+        context.state.recur();
         let rendered = template.render(context).await.map_err(|error| {
             TemplateError::FieldNested {
                 field: field.to_owned(),
@@ -482,7 +488,8 @@ impl<'a> ChainTemplateSource<'a> {
         context: &TemplateContext,
         variable: &Template,
     ) -> Result<Vec<u8>, ChainError> {
-        let variable = variable.render_nested("variable", context).await?;
+        let variable =
+            variable.render_chain_config("variable", context).await?;
         let value = load_environment_variable(&variable);
         Ok(value.into_bytes())
     }
@@ -494,7 +501,8 @@ impl<'a> ChainTemplateSource<'a> {
         context: &TemplateContext,
         path: &Template,
     ) -> Result<(Vec<u8>, Option<ContentType>), ChainError> {
-        let path: PathBuf = path.render_nested("path", context).await?.into();
+        let path: PathBuf =
+            path.render_chain_config("path", context).await?.into();
         // Guess content type based on file extension
         let content_type = ContentType::from_path(&path).ok();
         let content = fs::read(&path)
@@ -514,7 +522,7 @@ impl<'a> ChainTemplateSource<'a> {
         let command = future::try_join_all(command.iter().enumerate().map(
             |(i, template)| async move {
                 template
-                    .render_nested(format!("command[{i}]"), context)
+                    .render_chain_config(format!("command[{i}]"), context)
                     .await
             },
         ))
@@ -528,7 +536,7 @@ impl<'a> ChainTemplateSource<'a> {
 
         // Render the stdin template, if present
         let input = if let Some(template) = stdin {
-            let input = template.render_nested("stdin", context).await?;
+            let input = template.render_chain_config("stdin", context).await?;
 
             Some(input)
         } else {
@@ -594,12 +602,12 @@ impl<'a> ChainTemplateSource<'a> {
         // on the prompt channel
         let (tx, rx) = oneshot::channel();
         let message = if let Some(template) = message {
-            template.render_nested("message", context).await?
+            template.render_chain_config("message", context).await?
         } else {
             self.chain_id.to_string()
         };
         let default = if let Some(template) = default {
-            Some(template.render_nested("default", context).await?)
+            Some(template.render_chain_config("default", context).await?)
         } else {
             None
         };
@@ -646,6 +654,13 @@ pub struct RenderState {
     /// - 1 template that renders 4 children at the top level
     /// - 2 templates sharing a context that each render 2 children
     recursion_count: AtomicU8,
+}
+
+impl RenderState {
+    /// Increment the recursion count
+    fn recur(&self) {
+        self.recursion_count.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 impl ChainOutputTrim {

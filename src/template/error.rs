@@ -1,7 +1,7 @@
 use crate::{
     collection::{ChainId, ProfileId, RecipeId},
     http::{QueryError, RequestBuildError, RequestError},
-    template::RECURSION_LIMIT,
+    template::render::RECURSION_LIMIT,
     util::doc_link,
 };
 use std::{io, path::PathBuf, string::FromUtf8Error};

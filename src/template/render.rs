@@ -16,25 +16,9 @@ use crate::{
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::future;
-use std::{
-    env,
-    path::PathBuf,
-    process::Stdio,
-    sync::{
-        atomic::{AtomicU8, Ordering},
-        Arc,
-    },
-};
+use std::{env, path::PathBuf, process::Stdio, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
-use tracing::{debug, debug_span, instrument, trace};
-
-/// Maximum number of layers of nested templates. This is unreasonably high
-/// because we track recursion in a rudimentary way; instead of tracking the
-/// depth of recursion, we track the total number of recursive calls over the
-/// lifespan of a context. Since a context is shared for all renders in a
-/// recipe, this could get pretty high without actually involving an infinite
-/// loop.
-pub const RECURSION_LIMIT: u8 = 20;
+use tracing::{debug, debug_span, error, instrument, trace, trace_span};
 
 /// Outcome of rendering a single chunk. This allows attaching some metadata to
 /// the render.
@@ -54,16 +38,44 @@ impl Template {
         &self,
         context: &TemplateContext,
     ) -> Result<Vec<u8>, TemplateError> {
+        self.render_impl(context, &mut RenderKeyStack::default())
+            .await
+    }
+
+    /// Render the template using values from the given context. If any chunk
+    /// failed to render, return an error. The rendered template will be
+    /// converted from raw bytes to UTF-8. If it is not valid UTF-8, return an
+    /// error.
+    pub async fn render_string(
+        &self,
+        context: &TemplateContext,
+    ) -> Result<String, TemplateError> {
+        self.render_string_impl(context, &mut RenderKeyStack::default())
+            .await
+    }
+
+    /// Render the template string using values from the given context,
+    /// returning the individual rendered chunks. This is useful in any
+    /// application where rendered chunks need to be handled differently from
+    /// raw chunks, e.g. in render previews.
+    pub async fn render_chunks(
+        &self,
+        context: &TemplateContext,
+    ) -> Vec<TemplateChunk> {
+        self.render_chunks_impl(context, &mut RenderKeyStack::default())
+            .await
+    }
+
+    /// Internal version of [Self::render] with local render state
+    async fn render_impl<'a>(
+        &'a self,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
+    ) -> Result<Vec<u8>, TemplateError> {
         debug!(template = %self, "Rendering template");
 
-        let recursion_count =
-            context.state.recursion_count.load(Ordering::Relaxed);
-        if recursion_count >= RECURSION_LIMIT {
-            return Err(TemplateError::RecursionLimit);
-        }
-
         // Render each individual template chunk in the string
-        let chunks = self.render_chunks(context).await;
+        let chunks = self.render_chunks_impl(context, stack).await;
 
         // Stitch the chunks together into one buffer
         let len = chunks
@@ -86,69 +98,78 @@ impl Template {
         Ok(buf)
     }
 
-    /// Render the template using values from the given context. If any chunk
-    /// failed to render, return an error. The rendered template will be
-    /// converted from raw bytes to UTF-8. If it is not valid UTF-8, return an
-    /// error.
-    pub async fn render_string(
-        &self,
-        context: &TemplateContext,
+    /// Internal version of [Self::render_string] with local render state
+    async fn render_string_impl<'a>(
+        &'a self,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
     ) -> Result<String, TemplateError> {
-        let bytes = self.render(context).await?;
+        let bytes = self.render_impl(context, stack).await?;
         String::from_utf8(bytes).map_err(TemplateError::InvalidUtf8)
     }
 
-    /// Render the template string using values from the given context,
-    /// returning the individual rendered chunks. This is useful in any
-    /// application where rendered chunks need to be handled differently from
-    /// raw chunks, e.g. in render previews.
+    /// Internal version of [Self::render_chunks] with local render state
     #[instrument(skip_all, fields(template = %self))]
-    pub async fn render_chunks(
-        &self,
-        context: &TemplateContext,
+    async fn render_chunks_impl<'a>(
+        &'a self,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
     ) -> Vec<TemplateChunk> {
+        async fn render_key<'a>(
+            key: &'a TemplateKey,
+            context: &'a TemplateContext,
+            stack: &mut RenderKeyStack<'a>,
+        ) -> TemplateResult {
+            // The formatted key should match the source that it was parsed
+            // from, therefore we can use it to match the override key
+            let raw = key.to_string();
+
+            // If the key is in the overrides, use the given value
+            // without parsing it
+            match context.overrides.get(&raw) {
+                Some(value) => {
+                    trace!(
+                        key = raw,
+                        value,
+                        "Rendered template key from override"
+                    );
+                    Ok(RenderedChunk {
+                        value: value.clone().into_bytes(),
+                        // The overriden value *could* be marked
+                        // sensitive, but we're taking a shortcut and
+                        // assuming it isn't
+                        sensitive: false,
+                    })
+                }
+                None => {
+                    let span = trace_span!("Rendering template key", key = raw);
+                    let _ = span.enter();
+                    stack.push(key)?;
+                    // Standard case - parse the key and render it
+                    let result = key.to_source().render(context, stack).await;
+                    stack.pop();
+                    if let Ok(value) = &result {
+                        trace!(?value, "Rendered template key to value");
+                    }
+                    result
+                }
+            }
+        }
+
         // Map over each parsed chunk, and render the keys into strings. The
         // raw text chunks will be mapped 1:1. This clone is pretty cheap
         // because raw text uses Arc and keys just contain metadata
-        let futures = self.chunks.iter().cloned().map(|chunk| async move {
-            match chunk {
-                TemplateInputChunk::Raw(text) => TemplateChunk::Raw(text),
-                TemplateInputChunk::Key(key) => {
-                    // The formatted key should match the source that it was
-                    // parsed from, therefore we can use it to match the
-                    // override key
-                    let raw = key.to_string();
-                    // If the key is in the overrides, use the given value
-                    // without parsing it
-                    let result = match context.overrides.get(&raw) {
-                        Some(value) => {
-                            trace!(
-                                key = raw,
-                                value,
-                                "Rendered template key from override"
-                            );
-                            Ok(RenderedChunk {
-                                value: value.clone().into_bytes(),
-                                // The overriden value *could* be marked
-                                // sensitive, but we're taking a shortcut and
-                                // assuming it isn't
-                                sensitive: false,
-                            })
-                        }
-                        None => {
-                            // Standard case - parse the key and render it
-                            let result = key.to_source().render(context).await;
-                            if let Ok(value) = &result {
-                                trace!(
-                                    key = raw,
-                                    ?value,
-                                    "Rendered template key"
-                                );
-                            }
-                            result
-                        }
-                    };
-                    result.into()
+        let futures = self.chunks.iter().map(|chunk| {
+            // Fork the local state, one copy for each new branch we're spawning
+            let mut stack = stack.clone();
+            async move {
+                match chunk {
+                    TemplateInputChunk::Raw(text) => {
+                        TemplateChunk::Raw(Arc::clone(text))
+                    }
+                    TemplateInputChunk::Key(key) => {
+                        render_key(key, context, &mut stack).await.into()
+                    }
                 }
             }
         });
@@ -160,13 +181,13 @@ impl Template {
     /// Render a template whose result will be used as configuration for a
     /// chain. It's assumed we need string output for that. The given field name
     /// will be used to provide a descriptive error.
-    async fn render_chain_config(
-        &self,
+    async fn render_chain_config<'a>(
+        &'a self,
         field: impl Into<String>,
-        context: &TemplateContext,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
     ) -> Result<String, ChainError> {
-        context.state.recur();
-        self.render_string(context)
+        self.render_string_impl(context, stack)
             .await
             .map_err(|error| ChainError::Nested {
                 field: field.into(),
@@ -212,7 +233,11 @@ trait TemplateSource<'a>: 'a + Send + Sync {
     /// sometimes this can be a reference to the template context, but
     /// other times it has to be owned data (e.g. when pulling response data
     /// from the database).
-    async fn render(&self, context: &'a TemplateContext) -> TemplateResult;
+    async fn render(
+        &self,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
+    ) -> TemplateResult;
 }
 
 /// A simple field value (e.g. from the profile or an override)
@@ -222,7 +247,11 @@ struct FieldTemplateSource<'a> {
 
 #[async_trait]
 impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
-    async fn render(&self, context: &'a TemplateContext) -> TemplateResult {
+    async fn render(
+        &self,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
+    ) -> TemplateResult {
         let field = self.field;
 
         // Get the value from the profile
@@ -245,14 +274,14 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
         })?;
 
         // recursion!
-        trace!(%field, %template, "Rendering recursive template");
-        context.state.recur();
-        let rendered = template.render(context).await.map_err(|error| {
-            TemplateError::FieldNested {
-                field: field.to_owned(),
-                error: Box::new(error),
-            }
-        })?;
+        let rendered =
+            template
+                .render_impl(context, stack)
+                .await
+                .map_err(|error| TemplateError::FieldNested {
+                    field: field.to_owned(),
+                    error: Box::new(error),
+                })?;
         Ok(RenderedChunk {
             value: rendered,
             sensitive: false,
@@ -267,7 +296,11 @@ struct ChainTemplateSource<'a> {
 
 #[async_trait]
 impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
-    async fn render(&self, context: &'a TemplateContext) -> TemplateResult {
+    async fn render(
+        &self,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
+    ) -> TemplateResult {
         // Any error in here is the chain error subtype
         let result: Result<_, ChainError> = async {
             // Resolve chained value
@@ -285,22 +318,29 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
             // because it isn't that intuitive for users and is hard to plumb
             let (value, content_type) = match &chain.source {
                 ChainSource::Command { command, stdin } => (
-                    self.render_command(context, command, stdin.as_ref())
-                        .await?,
+                    self.render_command(
+                        context,
+                        stack,
+                        command,
+                        stdin.as_ref(),
+                    )
+                    .await?,
                     // No way to guess content type on this
                     None,
                 ),
                 ChainSource::File { path } => {
-                    self.render_file(context, path).await?
+                    self.render_file(context, stack, path).await?
                 }
                 ChainSource::Environment { variable } => (
-                    self.render_environment_variable(context, variable).await?,
+                    self.render_environment_variable(context, stack, variable)
+                        .await?,
                     // No way to guess content type on this
                     None,
                 ),
                 ChainSource::Prompt { message, default } => (
                     self.render_prompt(
                         context,
+                        stack,
                         message.as_ref(),
                         default.as_ref(),
                         chain.sensitive,
@@ -485,11 +525,13 @@ impl<'a> ChainTemplateSource<'a> {
     /// Render a value from an environment variable
     async fn render_environment_variable(
         &self,
-        context: &TemplateContext,
-        variable: &Template,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
+        variable: &'a Template,
     ) -> Result<Vec<u8>, ChainError> {
-        let variable =
-            variable.render_chain_config("variable", context).await?;
+        let variable = variable
+            .render_chain_config("variable", context, stack)
+            .await?;
         let value = load_environment_variable(&variable);
         Ok(value.into_bytes())
     }
@@ -498,11 +540,14 @@ impl<'a> ChainTemplateSource<'a> {
     /// its content type if it's known
     async fn render_file(
         &self,
-        context: &TemplateContext,
-        path: &Template,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
+        path: &'a Template,
     ) -> Result<(Vec<u8>, Option<ContentType>), ChainError> {
-        let path: PathBuf =
-            path.render_chain_config("path", context).await?.into();
+        let path: PathBuf = path
+            .render_chain_config("path", context, stack)
+            .await?
+            .into();
         // Guess content type based on file extension
         let content_type = ContentType::from_path(&path).ok();
         let content = fs::read(&path)
@@ -514,16 +559,25 @@ impl<'a> ChainTemplateSource<'a> {
     /// Render a chained value from an external command
     async fn render_command(
         &self,
-        context: &TemplateContext,
-        command: &[Template],
-        stdin: Option<&Template>,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
+        command: &'a [Template],
+        stdin: Option<&'a Template>,
     ) -> Result<Vec<u8>, ChainError> {
         // Render each arg in the command
         let command = future::try_join_all(command.iter().enumerate().map(
-            |(i, template)| async move {
-                template
-                    .render_chain_config(format!("command[{i}]"), context)
-                    .await
+            |(i, template)| {
+                // Fork the local state, one copy for each new branch
+                let mut stack = stack.clone();
+                async move {
+                    template
+                        .render_chain_config(
+                            format!("command[{i}]"),
+                            context,
+                            &mut stack,
+                        )
+                        .await
+                }
             },
         ))
         .await?;
@@ -536,7 +590,9 @@ impl<'a> ChainTemplateSource<'a> {
 
         // Render the stdin template, if present
         let input = if let Some(template) = stdin {
-            let input = template.render_chain_config("stdin", context).await?;
+            let input = template
+                .render_chain_config("stdin", context, stack)
+                .await?;
 
             Some(input)
         } else {
@@ -594,20 +650,27 @@ impl<'a> ChainTemplateSource<'a> {
     async fn render_prompt(
         &self,
         context: &'a TemplateContext,
-        message: Option<&Template>,
-        default: Option<&Template>,
+        stack: &mut RenderKeyStack<'a>,
+        message: Option<&'a Template>,
+        default: Option<&'a Template>,
         sensitive: bool,
     ) -> Result<String, ChainError> {
         // Use the prompter to ask the user a question, and wait for a response
         // on the prompt channel
         let (tx, rx) = oneshot::channel();
         let message = if let Some(template) = message {
-            template.render_chain_config("message", context).await?
+            template
+                .render_chain_config("message", context, stack)
+                .await?
         } else {
             self.chain_id.to_string()
         };
         let default = if let Some(template) = default {
-            Some(template.render_chain_config("default", context).await?)
+            Some(
+                template
+                    .render_chain_config("default", context, stack)
+                    .await?,
+            )
         } else {
             None
         };
@@ -629,7 +692,11 @@ struct EnvironmentTemplateSource<'a> {
 
 #[async_trait]
 impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
-    async fn render(&self, _: &'a TemplateContext) -> TemplateResult {
+    async fn render(
+        &self,
+        _: &'a TemplateContext,
+        _: &mut RenderKeyStack,
+    ) -> TemplateResult {
         let value = load_environment_variable(self.variable).into_bytes();
         Ok(RenderedChunk {
             value,
@@ -638,28 +705,43 @@ impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
     }
 }
 
-/// State for one or more related renders. This state is stored in the template
-/// context. It can be used for a single end-to-end render (including all
-/// sub-renders), but it can also be carried across multiple top-level renders
-/// to share state across an entire recipe.
-#[derive(Debug, Default)]
-pub struct RenderState {
-    /// A count of how many templates have *already* been rendered with this
-    /// context. This is used to prevent infinite recursion. This tracks the
-    /// *total* number of recursive calls across all , not the number
-    /// of *layers*. That means the following scenarios will all have a max
-    /// `recursion_count` of 4:
-    ///
-    /// - 1 template that renders 4 levels deep of children
-    /// - 1 template that renders 4 children at the top level
-    /// - 2 templates sharing a context that each render 2 children
-    recursion_count: AtomicU8,
-}
+/// Track the series of template keys that we've followed to get to the current
+/// spot in the render. This is used to detect cycles in templates, to prevent
+/// infinite loops. This tracks a **single branch** of a single template's
+/// render tree. Each time a nested template key is encountered, we trigger a
+/// nested render and push onto the stack. If multiple nested keys are found,
+/// state is forked to maintain a stack for each branch separately.
+#[derive(Clone, Debug, Default)]
+struct RenderKeyStack<'a>(Vec<&'a TemplateKey>);
 
-impl RenderState {
-    /// Increment the recursion count
-    fn recur(&self) {
-        self.recursion_count.fetch_add(1, Ordering::Relaxed);
+impl<'a> RenderKeyStack<'a> {
+    /// Push an additional key onto the render stack. If the key is already in
+    /// the stack, that indicates a cycle and we'll return an error. This should
+    /// be called *before* rendering the given key, and popped immediately after
+    /// rendering it.
+    fn push(
+        &mut self,
+        template_key: &'a TemplateKey,
+    ) -> Result<(), TemplateError> {
+        if self.0.contains(&template_key) {
+            // Push anyway so we show the full cycle in the error
+            self.0.push(template_key);
+            Err(TemplateError::InfiniteLoop(
+                self.0.iter().copied().cloned().collect(),
+            ))
+        } else {
+            self.0.push(template_key);
+            Ok(())
+        }
+    }
+
+    /// Pop the last key off the render stack. Call immediately after a key
+    /// finishes rendering.
+    fn pop(&mut self) {
+        if self.0.pop().is_none() {
+            // Indicates some sort of logic bug
+            error!("Pop attempted on empty template key stack");
+        }
     }
 }
 

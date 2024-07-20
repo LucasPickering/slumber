@@ -10,10 +10,7 @@ use crate::{
     collection::{ChainId, Collection, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
-    template::{
-        parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
-        render::RenderState,
-    },
+    template::parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
 };
 use derive_more::{Deref, Display};
 use indexmap::IndexMap;
@@ -62,11 +59,6 @@ pub struct TemplateContext {
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
-    /// Internally mutable state that should persist across all renders
-    /// associated with this context. This is part of the context so it can be
-    /// shared across related renders, e.g. multiple parts of the same recipe.
-    /// Always initialize with [RenderState::default].
-    pub state: RenderState,
 }
 
 impl Template {
@@ -165,7 +157,7 @@ impl TemplateChunk {
 /// The `Display` impl here should return exactly what this was parsed from.
 /// This is important for matching override keys during rendering.
 #[derive(Clone, Debug, Display, PartialEq)]
-enum TemplateKey {
+pub enum TemplateKey {
     /// A plain field, which can come from the profile or an override
     Field(Identifier),
     /// A value from a predefined chain of another recipe
@@ -188,7 +180,6 @@ impl crate::test_util::Factory for TemplateContext {
             database: CollectionDatabase::factory(()),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
-            state: Default::default(),
         }
     }
 }
@@ -265,24 +256,27 @@ mod tests {
     }
 
     /// Test that a field key renders correctly
+    #[rstest]
+    #[case::empty("", "")]
+    #[case::raw("plain", "plain")]
+    #[case::nested("{{nested}}", "user id: 1")]
+    // Using the same nested field twice should *not* trigger cycle detection
+    #[case::nested_twice("{{nested}} {{nested}}", "user id: 1 user id: 1")]
+    #[case::complex(
+        // Test complex stitching. Emoji is important to test because the
+        // stitching uses character indexes
+        "start {{user_id}} 🧡💛 {{group_id}} end",
+        "start 1 🧡💛 3 end"
+    )]
     #[tokio::test]
-    async fn test_field() {
+    async fn test_field(#[case] template: &str, #[case] expected: &str) {
         let context = profile_context(indexmap! {
             "user_id".into() => "1".into(),
             "group_id".into() => "3".into(),
-            "recursive".into() => "user id: {{user_id}}".into(),
+            "nested".into() => "user id: {{user_id}}".into(),
         });
 
-        assert_eq!(&render!("", context).unwrap(), "");
-        assert_eq!(&render!("plain", context).unwrap(), "plain");
-        assert_eq!(&render!("{{recursive}}", context).unwrap(), "user id: 1");
-        assert_eq!(
-            // Test complex stitching. Emoji is important to test because the
-            // stitching uses character indexes
-            &render!("start {{user_id}} 🧡💛 {{group_id}} end", context)
-                .unwrap(),
-            "start 1 🧡💛 3 end"
-        );
+        assert_eq!(&render!(template, context).unwrap(), expected);
     }
 
     /// Potential error cases for a profile field
@@ -292,10 +286,6 @@ mod tests {
         "{{nested}}",
         "Rendering nested template for field `nested`: \
         Unknown field `onion_id`"
-    )]
-    #[case::recursion_limit(
-        "{{recursive}}",
-        "Template recursion limit reached"
     )]
     #[tokio::test]
     async fn test_field_error(#[case] template: &str, #[case] expected: &str) {
@@ -657,11 +647,6 @@ mod tests {
         Some("{{chains.stdin}}"),
         "Resolving chain `chain1`: Rendering nested template for field `stdin`: \
          Resolving chain `stdin`: Unknown chain: stdin"
-    )]
-    #[case::recursion_limit(
-        &["echo", "{{chains.chain1}}"],
-        None,
-        "Template recursion limit reached",
     )]
     #[tokio::test]
     async fn test_chain_command_error(
@@ -1079,6 +1064,64 @@ mod tests {
             selected_profile: Some(profile_id),
             ..TemplateContext::factory(())
         }
+    }
+
+    /// Test various cases that should trigger cycle detection
+    #[rstest]
+    #[case::field("{{infinite}}")]
+    #[case::chain("{{chains.infinite}}")]
+    #[case::chain_second("{{chains.ok}} {{chains.infinite}}")]
+    #[case::mutual_field("{{mutual1}}")]
+    #[case::mutual_chain("{{chains.mutual1}}")]
+    #[tokio::test]
+    async fn test_infinite_loops(#[case] template: Template) {
+        let profile = Profile {
+            data: indexmap! {
+                "infinite".into() => "{{infinite}}".into(),
+                "mutual1".into() => "{{mutual2}}".into(),
+                "mutual2".into() => "{{mutual1}}".into(),
+            },
+            ..Profile::factory(())
+        };
+        let profile_id = profile.id.clone();
+
+        let chains = [
+            Chain {
+                id: "ok".into(),
+                source: ChainSource::command(["echo"]),
+                ..Chain::factory(())
+            },
+            Chain {
+                id: "infinite".into(),
+                source: ChainSource::command(["echo", "{{chains.infinite}}"]),
+                ..Chain::factory(())
+            },
+            Chain {
+                id: "mutual1".into(),
+                source: ChainSource::command(["echo", "{{chains.mutual2}}"]),
+                ..Chain::factory(())
+            },
+            Chain {
+                id: "mutual2".into(),
+                source: ChainSource::command(["echo", "{{chains.mutual1}}"]),
+                ..Chain::factory(())
+            },
+        ];
+
+        let context = TemplateContext {
+            collection: Collection {
+                profiles: by_id([profile]),
+                chains: by_id(chains),
+                ..Collection::factory(())
+            },
+            selected_profile: Some(profile_id),
+            ..TemplateContext::factory(())
+        };
+
+        assert_err!(
+            render!(template, context),
+            "Infinite loop detected in template"
+        );
     }
 
     /// Helper for rendering a template to a string

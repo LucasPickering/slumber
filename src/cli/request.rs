@@ -194,7 +194,6 @@ impl BuildRequestCommand {
             database: database.clone(),
             overrides,
             prompter: Box::new(CliPrompter),
-            state: Default::default(),
         };
         let seed = RequestSeed::new(recipe, BuildOptions::default());
         let request = http_engine.build(seed, &template_context).await?;

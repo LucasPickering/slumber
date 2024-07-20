@@ -578,7 +578,6 @@ impl Tui {
             database: self.database.clone(),
             overrides: Default::default(),
             prompter,
-            state: Default::default(),
         })
     }
 }

@@ -1,10 +1,11 @@
 use crate::{
     collection::{ChainId, ProfileId, RecipeId},
     http::{QueryError, RequestBuildError, RequestError},
-    template::render::RECURSION_LIMIT,
+    template::TemplateKey,
     util::doc_link,
 };
-use std::{io, path::PathBuf, string::FromUtf8Error};
+use itertools::Itertools;
+use std::{fmt::Display, io, path::PathBuf, string::FromUtf8Error};
 use thiserror::Error;
 use winnow::error::{ContextError, ParseError};
 
@@ -62,12 +63,10 @@ pub enum TemplateError {
     #[error(transparent)]
     InvalidUtf8(FromUtf8Error),
 
-    /// Too many templates!
-    #[error(
-        "Template recursion limit reached; cannot render more than \
-        {RECURSION_LIMIT} nested templates"
-    )]
-    RecursionLimit,
+    /// Cycle detected in nested template keys. We store the entire cycle stack
+    /// for presentation
+    #[error("Infinite loop detected in template: {}", format_cycle(.0))]
+    InfiniteLoop(Vec<TemplateKey>),
 
     #[error("Resolving chain `{chain_id}`")]
     Chain {
@@ -213,4 +212,8 @@ impl PartialEq for ChainError {
     fn eq(&self, _: &Self) -> bool {
         unimplemented!("PartialEq for ChainError is hard to implement")
     }
+}
+
+fn format_cycle(stack: &[TemplateKey]) -> impl '_ + Display {
+    stack.iter().format(" -> ")
 }

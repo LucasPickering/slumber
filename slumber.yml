@@ -28,7 +28,7 @@ chains:
     source: !request
       recipe: login
       trigger: !expire 12h
-    selector: $.data
+    selector: $.form
   image:
     source: !file
       path: ./static/slumber.png

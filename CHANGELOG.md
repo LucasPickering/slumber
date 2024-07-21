@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Fix latest request not being pre-selected correctly if it's not a successful response
 - Detect infinite loops in chain configuration templates
+- Duplicated chains in a recipe will only be rendered once [#118](https://github.com/LucasPickering/slumber/issues/118)
 
 ## [1.6.0] - 2024-07-07
 

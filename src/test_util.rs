@@ -13,6 +13,7 @@ use rstest::fixture;
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
@@ -85,24 +86,30 @@ impl Drop for TempDir {
     }
 }
 
-/// Return a static value when prompted, or no value if none is given
+/// Response to prompts with zero or more values in sequence
 #[derive(Debug, Default)]
 pub struct TestPrompter {
-    value: Option<String>,
+    responses: Vec<String>,
+    /// Track where in the sequence of responses we are
+    index: AtomicUsize,
 }
 
 impl TestPrompter {
-    pub fn new<T: Into<String>>(value: Option<T>) -> Self {
+    pub fn new<T: Into<String>>(
+        responses: impl IntoIterator<Item = T>,
+    ) -> Self {
         Self {
-            value: value.map(Into::into),
+            responses: responses.into_iter().map(T::into).collect(),
+            index: 0.into(),
         }
     }
 }
 
 impl Prompter for TestPrompter {
     fn prompt(&self, prompt: Prompt) {
-        // If no value was given, check default. If no default, don't respond
-        if let Some(value) = self.value.as_ref() {
+        // Grab the next value in the sequence. If we're all out, don't respond
+        let index = self.index.fetch_add(1, Ordering::Relaxed);
+        if let Some(value) = self.responses.get(index) {
             prompt.channel.respond(value.clone())
         } else if let Some(default) = prompt.default {
             prompt.channel.respond(default);

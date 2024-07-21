@@ -736,6 +736,7 @@ mod tests {
     use reqwest::{Body, Method, StatusCode};
     use rstest::{fixture, rstest};
     use serde_json::json;
+    use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
     #[fixture]
     fn http_engine() -> HttpEngine {
@@ -1202,17 +1203,16 @@ mod tests {
         template_context: TemplateContext,
     ) {
         // Mock HTTP response
-        let mut server = mockito::Server::new_async().await;
-        let url = server.url();
-        let mock = server
-            .mock("GET", "/get")
-            .with_status(200)
-            .with_body("hello!")
-            .create_async()
+        let server = MockServer::start().await;
+        let host = server.uri();
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/get"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("hello!"))
+            .mount(&server)
             .await;
 
         let recipe = Recipe {
-            url: format!("{url}/get").as_str().into(),
+            url: format!("{host}/get").as_str().into(),
             ..Recipe::factory(())
         };
 
@@ -1235,15 +1235,13 @@ mod tests {
             ResponseRecord {
                 status: StatusCode::OK,
                 headers: header_map([
-                    ("connection", "close"),
+                    ("content-type", "text/plain"),
                     ("content-length", "6"),
                     ("date", date_header),
                 ]),
                 body: ResponseBody::new(b"hello!".as_slice().into())
             }
         );
-
-        mock.assert();
     }
 
     /// Leading/trailing newlines should be stripped from rendered header

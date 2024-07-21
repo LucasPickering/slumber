@@ -227,6 +227,7 @@ mod tests {
         time::Duration,
     };
     use tokio::fs;
+    use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
     /// Test overriding all key types, as well as missing keys
     #[tokio::test]
@@ -587,17 +588,16 @@ mod tests {
         }
 
         // Mock HTTP response
-        let mut server = mockito::Server::new_async().await;
-        let url = server.url();
-        let mock = server
-            .mock("GET", "/get")
-            .with_status(200)
-            .with_body("hello!")
-            .create_async()
+        let server = MockServer::start().await;
+        let host = server.uri();
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/get"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("hello!"))
+            .mount(&server)
             .await;
 
         let recipe = Recipe {
-            url: format!("{url}/get").into(),
+            url: format!("{host}/get").into(),
             ..Recipe::factory(())
         };
         let chain = Chain {
@@ -621,8 +621,6 @@ mod tests {
         };
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
-
-        mock.assert();
     }
 
     /// Test success with chained command

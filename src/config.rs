@@ -3,16 +3,12 @@ use crate::{
         input::{Action, InputBinding},
         view::Theme,
     },
-    util::{
-        parse_yaml,
-        paths::{DataDirectory, FileGuard},
-        ResultExt,
-    },
+    util::{parse_yaml, paths::DataDirectory, ResultExt},
 };
 use anyhow::Context;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::{fs, path::PathBuf};
 use tracing::info;
 
 /// App-level configuration, which is global across all sessions and
@@ -42,7 +38,7 @@ impl Config {
     /// deserialization failed. This is *not* async because it's only run during
     /// startup, when all operations are synchronous.
     pub fn load() -> anyhow::Result<Self> {
-        let path = Self::path().create_parent()?;
+        let path = Self::path();
         info!(?path, "Loading configuration file");
 
         match fs::read(&path) {
@@ -63,8 +59,8 @@ impl Config {
     }
 
     /// Path to the configuration file
-    pub fn path() -> FileGuard {
-        DataDirectory::root().file(Self::FILE)
+    pub fn path() -> PathBuf {
+        DataDirectory::get().file(Self::FILE)
     }
 }
 

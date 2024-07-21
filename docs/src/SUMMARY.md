@@ -41,5 +41,6 @@
 
 # Troubleshooting
 
+- [Logs](./troubleshooting/logs.md)
 - [Lost Request History](./troubleshooting/lost_history.md)
 - [TLS Certificate Errors](./troubleshooting/tls.md)

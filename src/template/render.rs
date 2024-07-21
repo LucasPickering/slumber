@@ -11,7 +11,7 @@ use crate::{
         Prompt, Template, TemplateChunk, TemplateContext, TemplateError,
         TemplateKey,
     },
-    util::ResultExt,
+    util::{FutureCache, FutureCacheOutcome, ResultExt},
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -22,9 +22,14 @@ use tracing::{debug, debug_span, error, instrument, trace, trace_span};
 
 /// Outcome of rendering a single chunk. This allows attaching some metadata to
 /// the render.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct RenderedChunk {
-    value: Vec<u8>,
+    /// This is wrapped in `Arc` to de-duplicate large values derived from
+    /// chains. When the same chain is used multiple times in a render group it
+    /// gets deduplicated, meaning multiple render results would refer to the
+    /// same data. In the vast majority of cases though we only ever have one
+    /// pointer to this data.
+    value: Arc<Vec<u8>>,
     sensitive: bool,
 }
 
@@ -90,7 +95,11 @@ impl Template {
         for chunk in chunks {
             match chunk {
                 TemplateChunk::Raw(text) => buf.extend(text.as_bytes()),
-                TemplateChunk::Rendered { value, .. } => buf.extend(value),
+                TemplateChunk::Rendered { value, .. } => {
+                    // Only clone if we have multiple copies of this data, which
+                    // only occurs if a chain is used more than once
+                    buf.extend(Arc::unwrap_or_clone(value))
+                }
                 TemplateChunk::Error(error) => return Err(error),
             }
         }
@@ -134,7 +143,7 @@ impl Template {
                         "Rendered template key from override"
                     );
                     Ok(RenderedChunk {
-                        value: value.clone().into_bytes(),
+                        value: value.clone().into_bytes().into(),
                         // The overriden value *could* be marked
                         // sensitive, but we're taking a shortcut and
                         // assuming it isn't
@@ -283,7 +292,7 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
                     error: Box::new(error),
                 })?;
         Ok(RenderedChunk {
-            value: rendered,
+            value: rendered.into(),
             sensitive: false,
         })
     }
@@ -301,8 +310,24 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
         context: &'a TemplateContext,
         stack: &mut RenderKeyStack<'a>,
     ) -> TemplateResult {
+        // Check the chain cache to see if this value is already being computed
+        // somewhere else. If it is, we'll block on that and re-use the result.
+        // If not, we get a guard back, meaning we're responsible for the
+        // computation. At the end, we'll write back to the guard so everyone
+        // else can copy our homework.
+        let cache = &context.state.chain_results;
+        let guard = match cache.get_or_init(self.chain_id.clone()).await {
+            FutureCacheOutcome::Hit(result) => return result,
+            FutureCacheOutcome::Miss(guard) => guard,
+            // The future responsible for writing to the guard didn't. That's a
+            // very unlikely logic bug so worth a panic
+            FutureCacheOutcome::NoResponse => {
+                panic!("Cached future did not set a value. This is a bug!")
+            }
+        };
+
         // Any error in here is the chain error subtype
-        let result: Result<_, ChainError> = async {
+        let result: TemplateResult = async {
             // Resolve chained value
             let chain =
                 context.collection.chains.get(self.chain_id).ok_or_else(
@@ -374,26 +399,32 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                 let content_type =
                     content_type.ok_or(ChainError::UnknownContentType)?;
                 // Parse according to detected content type
-                let value = content_type
-                    .parse_content(&value)
-                    .map_err(|err| ChainError::ParseResponse { error: err })?;
+                let value =
+                    content_type.parse_content(&value).map_err(|error| {
+                        ChainError::ParseResponse {
+                            error: error.into(),
+                        }
+                    })?;
                 selector.query_to_string(&*value)?.into_bytes()
             } else {
                 value
             };
 
             Ok(RenderedChunk {
-                value: chain.trim.apply(value),
+                value: chain.trim.apply(value).into(),
                 sensitive: chain.sensitive,
             })
         }
-        .await;
-
-        // Wrap the chain error into a TemplateError
-        result.map_err(|error| TemplateError::Chain {
+        .await
+        .map_err(|error| TemplateError::Chain {
             chain_id: self.chain_id.clone(),
             error,
-        })
+        });
+
+        // Store value in the cache so other instances of this chain can use it
+        guard.set(result.clone());
+
+        result
     }
 }
 
@@ -427,7 +458,7 @@ impl<'a> ChainTemplateSource<'a> {
                     context.selected_profile.as_ref(),
                     recipe_id,
                 )
-                .map_err(ChainError::Database)
+                .map_err(|error| ChainError::Database(error.into()))
         };
         // Helper to execute the request, if triggered
         let send_request = || async {
@@ -456,11 +487,13 @@ impl<'a> ChainTemplateSource<'a> {
                         context,
                     )
                     .await
-                    .map_err(TriggeredRequestError::Build)?;
+                    .map_err(|error| {
+                        TriggeredRequestError::Build(error.into())
+                    })?;
                 ticket
                     .send(&context.database)
                     .await
-                    .map_err(TriggeredRequestError::Send)
+                    .map_err(|error| TriggeredRequestError::Send(error.into()))
             };
             result.await.map_err(|error| ChainError::Trigger {
                 recipe_id: recipe.id.clone(),
@@ -550,9 +583,11 @@ impl<'a> ChainTemplateSource<'a> {
             .into();
         // Guess content type based on file extension
         let content_type = ContentType::from_path(&path).ok();
-        let content = fs::read(&path)
-            .await
-            .map_err(|error| ChainError::File { path, error })?;
+        let content =
+            fs::read(&path).await.map_err(|error| ChainError::File {
+                path,
+                error: error.into(),
+            })?;
         Ok((content, content_type))
     }
 
@@ -608,7 +643,7 @@ impl<'a> ChainTemplateSource<'a> {
             .spawn()
             .map_err(|error| ChainError::Command {
                 command: command.to_owned(),
-                error,
+                error: error.into(),
             })
             .traced()?;
 
@@ -622,7 +657,7 @@ impl<'a> ChainTemplateSource<'a> {
                 .await
                 .map_err(|error| ChainError::Command {
                     command: command.to_owned(),
-                    error,
+                    error: error.into(),
                 })
                 .traced()?;
         }
@@ -633,7 +668,7 @@ impl<'a> ChainTemplateSource<'a> {
             .await
             .map_err(|error| ChainError::Command {
                 command: command.to_owned(),
-                error,
+                error: error.into(),
             })
             .traced()?;
 
@@ -699,10 +734,21 @@ impl<'a> TemplateSource<'a> for EnvironmentTemplateSource<'a> {
     ) -> TemplateResult {
         let value = load_environment_variable(self.variable).into_bytes();
         Ok(RenderedChunk {
-            value,
+            value: value.into(),
             sensitive: false,
         })
     }
+}
+
+/// State for a render group, which consists of one or more related renders
+/// (e.g. all the template renders for a single recipe). This state is stored in
+/// the template context.
+#[derive(Debug, Default)]
+pub struct RenderGroupState {
+    /// Cache the result of each chain, so multiple references to the same
+    /// chain within a render group don't have to do the work multiple
+    /// times.
+    chain_results: FutureCache<ChainId, TemplateResult>,
 }
 
 /// Track the series of template keys that we've followed to get to the current

@@ -728,7 +728,7 @@ mod tests {
         collection::{
             self, Authentication, Chain, ChainSource, Collection, Profile,
         },
-        test_util::{by_id, header_map, Factory},
+        test_util::{by_id, header_map, Factory, TestPrompter},
     };
     use indexmap::{indexmap, IndexMap};
     use pretty_assertions::assert_eq;
@@ -756,19 +756,35 @@ mod tests {
             ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
-        let binary_chain = Chain {
-            // Invalid UTF-8
-            id: "binary".into(),
-            source: ChainSource::command(["echo", "-n", "-e", r#"\xc3\x28"#]),
-            ..Chain::factory(())
-        };
+        let chains = [
+            Chain {
+                id: "text".into(),
+                source: ChainSource::Prompt {
+                    message: None,
+                    default: None,
+                },
+                ..Chain::factory(())
+            },
+            Chain {
+                // Invalid UTF-8
+                id: "binary".into(),
+                source: ChainSource::command([
+                    "echo",
+                    "-n",
+                    "-e",
+                    r#"\xc3\x28"#,
+                ]),
+                ..Chain::factory(())
+            },
+        ];
         TemplateContext {
             collection: Collection {
                 profiles: by_id([profile]),
-                chains: by_id([binary_chain]),
+                chains: by_id(chains),
                 ..Collection::factory(())
             },
             selected_profile: Some(profile_id.clone()),
+            prompter: Box::new(TestPrompter::new(["first", "second"])),
             ..TemplateContext::factory(())
         }
     }
@@ -1146,6 +1162,35 @@ mod tests {
                 ]),
                 body: Some(b"user_id=1".as_slice().into()),
             }
+        );
+    }
+
+    /// Using the same chain in two different templates should be deduplicated,
+    /// so that the chain is only computed once
+    #[rstest]
+    #[tokio::test]
+    async fn test_chain_duplicate(
+        http_engine: HttpEngine,
+        template_context: TemplateContext,
+    ) {
+        let recipe = Recipe {
+            method: collection::Method::Post,
+            url: "{{host}}/{{chains.text}}".into(),
+            body: Some("{{chains.text}}".into()),
+            ..Recipe::factory(())
+        };
+
+        let seed = RequestSeed::new(recipe, BuildOptions::default());
+        let ticket = http_engine.build(seed, &template_context).await.unwrap();
+
+        let expected_url: Url = "http://localhost/first".parse().unwrap();
+        let expected_body = b"first";
+
+        let request = &ticket.request;
+        assert_eq!(request.url(), &expected_url);
+        assert_eq!(
+            request.body().and_then(Body::as_bytes),
+            Some(expected_body.as_slice())
         );
     }
 

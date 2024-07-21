@@ -10,7 +10,10 @@ use crate::{
     collection::{ChainId, Collection, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
-    template::parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
+    template::{
+        parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
+        render::RenderGroupState,
+    },
 };
 use derive_more::{Deref, Display};
 use indexmap::IndexMap;
@@ -59,6 +62,10 @@ pub struct TemplateContext {
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
+    /// State that should be shared across al renders that use this context.
+    /// This is meant to be opaque; just use [RenderGroupState::default] to
+    /// initialize.
+    pub state: RenderGroupState,
 }
 
 impl Template {
@@ -129,7 +136,17 @@ pub enum TemplateChunk {
     /// without having to clone it.
     Raw(Arc<String>),
     /// Outcome of rendering a template key
-    Rendered { value: Vec<u8>, sensitive: bool },
+    Rendered {
+        /// This is wrapped in `Arc` to de-duplicate large values derived from
+        /// chains. When the same chain is used multiple times in a render
+        /// group it gets deduplicated, meaning multiple render results would
+        /// refer to the same data. In the vast majority of cases though we
+        /// only ever have one pointer to this data. This is arguably a
+        /// premature optimization, but it's very possible for a large chained
+        /// body to be used twice, and we wouldn't want to duplicate that.
+        value: Arc<Vec<u8>>,
+        sensitive: bool,
+    },
     /// An error occurred while rendering a template key
     Error(TemplateError),
 }
@@ -180,6 +197,7 @@ impl crate::test_util::Factory for TemplateContext {
             database: CollectionDatabase::factory(()),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
+            state: RenderGroupState::default(),
         }
     }
 }
@@ -204,7 +222,10 @@ mod tests {
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
-    use std::time::Duration;
+    use std::{
+        sync::atomic::{AtomicU8, Ordering},
+        time::Duration,
+    };
     use tokio::fs;
 
     /// Test overriding all key types, as well as missing keys
@@ -785,8 +806,14 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::response(Some("hello!"), "hello!")]
+    #[case::default(None, "default")]
     #[tokio::test]
-    async fn test_chain_prompt() {
+    async fn test_chain_prompt(
+        #[case] response: Option<&str>,
+        #[case] expected: &str,
+    ) {
         let chain = Chain {
             source: ChainSource::Prompt {
                 message: Some("password".into()),
@@ -796,20 +823,16 @@ mod tests {
         };
 
         // Test value from prompter
-        let mut context = TemplateContext {
+        let context = TemplateContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
             },
 
-            prompter: Box::new(TestPrompter::new(Some("hello!"))),
+            prompter: Box::new(TestPrompter::new(response)),
             ..TemplateContext::factory(())
         };
-        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
-
-        // Test default value
-        context.prompter = Box::new(TestPrompter::new::<String>(None));
-        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "default");
+        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
     }
 
     /// Prompting gone wrong
@@ -828,7 +851,7 @@ mod tests {
                 ..Collection::factory(())
             },
             // Prompter gives no response
-            prompter: Box::new(TestPrompter::new::<String>(None)),
+            prompter: Box::<TestPrompter>::default(),
             ..TemplateContext::factory(())
         };
 
@@ -836,6 +859,85 @@ mod tests {
             render!("{{chains.chain1}}", context),
             "No response from prompt"
         );
+    }
+
+    /// Test that a chain being used twice only computes the chain once
+    #[tokio::test]
+    async fn test_chain_duplicate() {
+        let chain = Chain {
+            source: ChainSource::Prompt {
+                message: None,
+                default: None,
+            },
+            ..Chain::factory(())
+        };
+
+        #[derive(Default, Debug)]
+        struct CountingPrompter(AtomicU8);
+
+        impl Prompter for CountingPrompter {
+            fn prompt(&self, prompt: Prompt) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                prompt
+                    .channel
+                    .respond(self.0.load(Ordering::Relaxed).to_string());
+            }
+        }
+
+        let context = TemplateContext {
+            collection: Collection {
+                chains: by_id([chain]),
+                ..Collection::factory(())
+            },
+
+            prompter: Box::new(TestPrompter::new(["first", "second"])),
+            ..TemplateContext::factory(())
+        };
+        assert_eq!(
+            render!("{{chains.chain1}} {{chains.chain1}}", context).unwrap(),
+            "first first"
+        );
+    }
+
+    /// When a chain is used twice and it produces an error, we should see the
+    /// error twice in the chunk result, but only once in the consolidated
+    /// result
+    #[tokio::test]
+    async fn test_chain_duplicate_error() {
+        let chain = Chain {
+            source: ChainSource::Prompt {
+                message: None,
+                default: None,
+            },
+            ..Chain::factory(())
+        };
+        let chain_id = chain.id.clone();
+        let context = TemplateContext {
+            collection: Collection {
+                chains: by_id([chain]),
+                ..Collection::factory(())
+            },
+
+            prompter: Box::<TestPrompter>::default(),
+            ..TemplateContext::factory(())
+        };
+        let template = Template::from("{{chains.chain1}}{{chains.chain1}}");
+
+        // Chunked render
+        let expected_error = TemplateError::Chain {
+            chain_id,
+            error: ChainError::PromptNoResponse,
+        };
+        assert_eq!(
+            template.render_chunks(&context).await,
+            vec![
+                TemplateChunk::Error(expected_error.clone()),
+                TemplateChunk::Error(expected_error)
+            ]
+        );
+
+        // Consolidated render
+        assert_err!(render!(template, context), "No response from prompt");
     }
 
     /// Values marked sensitive should have that flag set in the rendered output
@@ -855,7 +957,7 @@ mod tests {
                 ..Collection::factory(())
             },
             // Prompter gives no response
-            prompter: Box::new(TestPrompter::new(Some("hello!"))),
+            prompter: Box::new(TestPrompter::new(["hello!"])),
             ..TemplateContext::factory(())
         };
         assert_eq!(
@@ -863,7 +965,7 @@ mod tests {
                 .render_chunks(&context)
                 .await,
             vec![TemplateChunk::Rendered {
-                value: "hello!".into(),
+                value: Arc::new("hello!".into()),
                 sensitive: true
             }]
         );
@@ -1023,7 +1125,7 @@ mod tests {
             vec![
                 TemplateChunk::raw("intro "),
                 TemplateChunk::Rendered {
-                    value: "🧡💛".into(),
+                    value: Arc::new("🧡💛".into()),
                     sensitive: false
                 },
                 // Each emoji is 4 bytes

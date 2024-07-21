@@ -13,17 +13,6 @@ use thiserror::Error;
 #[serde(transparent)]
 pub struct Query(JsonPath);
 
-#[derive(Debug, Error)]
-pub enum QueryError {
-    /// Got either 0 or 2+ results for JSON path query
-    #[error("Expected exactly one result from query")]
-    InvalidResult {
-        #[from]
-        #[source]
-        error: ExactlyOneError,
-    },
-}
-
 impl Query {
     /// Apply a query to some content, returning the result in the original
     /// format. This will convert to a common format, apply the query, then
@@ -72,6 +61,28 @@ impl Query {
     }
 }
 
+/// A remapping of [serde_json_path::ExactlyOneError]. This is a simplified
+/// version that implements `Clone`, which makes it easier to use within
+/// template errors.
+#[derive(Copy, Clone, Debug, Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum QueryError {
+    /// Got either 0 or 2+ results for JSON path query
+    #[error("Expected exactly one result from query, but got {actual_count}")]
+    InvalidResult { actual_count: usize },
+}
+
+impl From<ExactlyOneError> for QueryError {
+    fn from(error: ExactlyOneError) -> Self {
+        match error {
+            ExactlyOneError::Empty => Self::InvalidResult { actual_count: 0 },
+            ExactlyOneError::MoreThanOne(n) => {
+                Self::InvalidResult { actual_count: n }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,8 +106,16 @@ mod tests {
     }
 
     #[rstest]
-    #[case::too_many_results("$[*]", json(json!([1, 2])), "Expected exactly one result")]
-    #[case::no_results("$[*]", json(json!([])), "Expected exactly one result")]
+    #[case::too_many_results(
+        "$[*]",
+        json(json!([1, 2])),
+        "Expected exactly one result from query, but got 2",
+    )]
+    #[case::no_results(
+        "$[*]",
+        json(json!([])),
+        "Expected exactly one result from query, but got 0",
+    )]
     fn test_query_to_string_error(
         #[case] query: &str,
         #[case] content: Box<dyn ResponseContent>,

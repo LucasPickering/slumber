@@ -385,7 +385,7 @@ impl Tui {
             request_config.options,
         );
         let template_context =
-            self.template_context(request_config.profile_id, true)?;
+            self.template_context(request_config.profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
@@ -409,7 +409,7 @@ impl Tui {
             request_config.options,
         );
         let template_context =
-            self.template_context(request_config.profile_id, true)?;
+            self.template_context(request_config.profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
@@ -437,7 +437,7 @@ impl Tui {
             request_config.options,
         );
         let template_context =
-            self.template_context(request_config.profile_id, true)?;
+            self.template_context(request_config.profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
@@ -465,7 +465,7 @@ impl Tui {
         // These clones are all cheap.
 
         let template_context =
-            self.template_context(profile_id.clone(), true)?;
+            self.template_context(profile_id.clone(), false)?;
         let messages_tx = self.messages_tx();
 
         // Mark request state as building
@@ -532,7 +532,7 @@ impl Tui {
         profile_id: Option<ProfileId>,
         destination: Arc<OnceLock<Vec<TemplateChunk>>>,
     ) -> anyhow::Result<()> {
-        let context = self.template_context(profile_id, false)?;
+        let context = self.template_context(profile_id, true)?;
         self.spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render_chunks(&context).await;
@@ -561,20 +561,23 @@ impl Tui {
     fn template_context(
         &self,
         profile_id: Option<ProfileId>,
-        real_prompt: bool,
+        is_preview: bool,
     ) -> anyhow::Result<TemplateContext> {
         let context = TuiContext::get();
-        let prompter: Box<dyn Prompter> = if real_prompt {
-            Box::new(self.messages_tx())
-        } else {
-            Box::new(PreviewPrompter)
-        };
         let collection = &self.collection_file.collection;
+        let (http_engine, prompter): (_, Box<dyn Prompter>) = if is_preview {
+            (None, Box::new(PreviewPrompter))
+        } else {
+            (
+                Some(context.http_engine.clone()),
+                Box::new(self.messages_tx()),
+            )
+        };
 
         Ok(TemplateContext {
             selected_profile: profile_id,
             collection: collection.clone(),
-            http_engine: Some(context.http_engine.clone()),
+            http_engine,
             database: self.database.clone(),
             overrides: Default::default(),
             prompter,

@@ -113,14 +113,17 @@ impl EventHandler for QueryableBody {
                 }
                 QueryCallback::Submit => {
                     let text = self.query_text_box.data().text();
-                    self.query = text
-                        .parse()
-                        // Log the error, then throw it away
-                        .with_context(|| {
-                            format!("Error parsing query {text:?}")
-                        })
-                        .traced()
-                        .ok();
+                    self.query = if text.is_empty() {
+                        None
+                    } else {
+                        text.parse()
+                            // Log the error, then throw it away
+                            .with_context(|| {
+                                format!("Error parsing query {text:?}")
+                            })
+                            .traced()
+                            .ok()
+                    };
                 }
             }
         } else {

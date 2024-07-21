@@ -10,6 +10,7 @@ use crate::{
             event::EventHandler,
         },
     },
+    util::paths::TempDirectory,
 };
 use itertools::Itertools;
 use ratatui::{
@@ -55,7 +56,7 @@ pub struct HelpModal;
 
 impl HelpModal {
     /// Number of lines in the general section (not including header)
-    const GENERAL_LENGTH: u16 = 3;
+    const GENERAL_LENGTH: u16 = 4;
 
     /// Get the list of bindings that will be shown in the modal
     fn bindings() -> impl Iterator<Item = (Action, &'static InputBinding)> {
@@ -99,15 +100,19 @@ impl Draw for HelpModal {
             title: Some("General"),
             rows: [
                 ("Version", Line::from(CRATE_VERSION)),
-                ("Configuration", Line::from(Config::path().to_string())),
+                ("Configuration", Config::path().display().to_string().into()),
+                (
+                    "Log",
+                    TempDirectory::get().log().display().to_string().into(),
+                ),
                 (
                     "Collection",
-                    Line::from(ViewContext::with_database(|database| {
-                        database
-                            .collection_path()
-                            .map(|path| path.display().to_string())
-                            .unwrap_or_default()
-                    })),
+                    ViewContext::with_database(|database| {
+                        database.collection_path()
+                    })
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_default()
+                    .into(),
                 ),
             ]
             .into_iter()

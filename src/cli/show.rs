@@ -1,6 +1,10 @@
 use crate::{
-    cli::Subcommand, collection::CollectionFile, config::Config, db::Database,
-    util::paths::DataDirectory, GlobalArgs,
+    cli::Subcommand,
+    collection::CollectionFile,
+    config::Config,
+    db::Database,
+    util::paths::{DataDirectory, TempDirectory},
+    GlobalArgs,
 };
 use clap::Parser;
 use serde::Serialize;
@@ -29,10 +33,10 @@ impl Subcommand for ShowCommand {
             ShowTarget::Paths => {
                 let collection_path =
                     CollectionFile::try_path(None, global.file);
-                println!("Data directory: {}", DataDirectory::root());
-                println!("Log file: {}", DataDirectory::log());
-                println!("Config: {}", Config::path());
-                println!("Database: {}", Database::path());
+                println!("Data directory: {}", DataDirectory::get());
+                println!("Temporary directory: {}", TempDirectory::get());
+                println!("Config: {}", Config::path().display());
+                println!("Database: {}", Database::path().display());
                 println!(
                     "Collection: {}",
                     collection_path

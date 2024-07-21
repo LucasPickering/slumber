@@ -12,7 +12,11 @@ mod test_util;
 mod tui;
 mod util;
 
-use crate::{cli::CliCommand, tui::Tui, util::paths::DataDirectory};
+use crate::{
+    cli::CliCommand,
+    tui::Tui,
+    util::paths::{DataDirectory, TempDirectory},
+};
 use clap::Parser;
 use std::{fs::File, io, path::PathBuf, process::ExitCode};
 use tracing::level_filters::LevelFilter;
@@ -47,6 +51,8 @@ struct GlobalArgs {
 async fn main() -> anyhow::Result<ExitCode> {
     // Global initialization
     let args = Args::parse();
+    DataDirectory::init()?;
+    TempDirectory::init()?;
     initialize_tracing(args.subcommand.is_some()).unwrap();
 
     // Select mode based on whether request ID(s) were given
@@ -78,7 +84,7 @@ async fn main() -> anyhow::Result<ExitCode> {
 /// Set up tracing to log to a file. Optionally also log to stderr (for CLI
 /// usage)
 fn initialize_tracing(console_output: bool) -> anyhow::Result<()> {
-    let path = DataDirectory::log().create_parent()?;
+    let path = TempDirectory::get().log();
     let log_file = File::create(path)?;
     let file_subscriber = tracing_subscriber::fmt::layer()
         .with_file(true)

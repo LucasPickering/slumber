@@ -4,10 +4,7 @@
 use crate::{
     collection::{ProfileId, RecipeId},
     http::{Exchange, ExchangeSummary, RequestId},
-    util::{
-        paths::{DataDirectory, FileGuard},
-        ResultExt,
-    },
+    util::{paths::DataDirectory, ResultExt},
 };
 use anyhow::{anyhow, Context};
 use derive_more::Display;
@@ -62,7 +59,7 @@ impl Database {
     /// anywhere in the app. The migrations will run on first connection, and
     /// not after that.
     pub fn load() -> anyhow::Result<Self> {
-        let path = Self::path().create_parent()?;
+        let path = Self::path();
         info!(?path, "Loading database");
         let mut connection = Connection::open(path)?;
         connection.pragma_update(
@@ -79,8 +76,8 @@ impl Database {
     }
 
     /// Path to the database file
-    pub fn path() -> FileGuard {
-        DataDirectory::root().file(Self::FILE)
+    pub fn path() -> PathBuf {
+        DataDirectory::get().file(Self::FILE)
     }
 
     /// Apply database migrations

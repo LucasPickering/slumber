@@ -45,6 +45,10 @@ struct GlobalArgs {
     /// (in this order): slumber.yml, slumber.yaml, .slumber.yml, .slumber.yaml
     #[clap(long, short)]
     file: Option<PathBuf>,
+    /// Print the path to the log file for this session, before running the
+    /// given subcommand
+    #[clap(long)]
+    log: bool,
 }
 
 #[tokio::main]
@@ -54,6 +58,10 @@ async fn main() -> anyhow::Result<ExitCode> {
     DataDirectory::init()?;
     TempDirectory::init()?;
     initialize_tracing(args.subcommand.is_some()).unwrap();
+
+    if args.global.log {
+        println!("{}", TempDirectory::get().log().display());
+    }
 
     // Select mode based on whether request ID(s) were given
     match args.subcommand {

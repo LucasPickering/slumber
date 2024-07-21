@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add global `--log` argument to CLI, to print the log file being used for that invocation
+
 ### Changes
 
 - Checkbox row state and folder expand/collapse state are now toggled via the spacebar instead of enter

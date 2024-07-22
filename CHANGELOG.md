@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+This release focuses on minor fixes and improvements. There are no new major features or added functionality.
+
 ### Added
 
 - Add global `--log` argument to CLI, to print the log file being used for that invocation
@@ -13,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changes
 
 - Checkbox row state and folder expand/collapse state are now toggled via the spacebar instead of enter
+  - Enter now sends a request from anywhere. While this change may be annoying, it will hopefully be more intuitive in the long run.
   - This can be rebound ([see docs](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html))
 - Show folder tree in recipe pane when a folder is selected
 - Don't exit body filter text box on Enter [#270](https://github.com/LucasPickering/slumber/issues/270)

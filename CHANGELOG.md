@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [1.7.0] - 2024-07-22
+
 This release focuses on minor fixes and improvements. There are no new major features or added functionality.
 
 ### Added

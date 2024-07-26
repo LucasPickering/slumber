@@ -224,7 +224,7 @@ impl RecipePane {
                 .body
                 .as_ref()
                 .and_then(|body| match body.data() {
-                    RecipeBodyDisplay::Raw(_) => None,
+                    RecipeBodyDisplay::Raw { .. } => None,
                     RecipeBodyDisplay::Form(form) => {
                         Some(to_disabled_indexes(form.data()))
                     }
@@ -549,7 +549,10 @@ impl Draw for AuthenticationDisplay {
 /// determines the representation
 #[derive(Debug)]
 enum RecipeBodyDisplay {
-    Raw(Component<TextWindow<TemplatePreview>>),
+    Raw {
+        preview: TemplatePreview,
+        text_window: Component<TextWindow>,
+    },
     Form(Component<PersistedTable<FormRowKey, FormRowToggleKey>>),
 }
 
@@ -561,13 +564,13 @@ impl RecipeBodyDisplay {
         recipe_id: &RecipeId,
     ) -> Self {
         match body {
-            RecipeBody::Raw(body) => Self::Raw(
-                TextWindow::new(TemplatePreview::new(
+            RecipeBody::Raw(body) => Self::Raw {
+                preview: TemplatePreview::new(
                     body.clone(),
                     selected_profile_id,
-                ))
-                .into(),
-            ),
+                ),
+                text_window: Component::default(),
+            },
             RecipeBody::Json(value) => {
                 // We want to pretty-print the JSON body. We *could* map from
                 // JsonBody<Template> -> JsonBody<TemplatePreview> then
@@ -584,13 +587,13 @@ impl RecipeBodyDisplay {
                 let template = stringified
                     .parse()
                     .expect("Unexpected template parse failure");
-                Self::Raw(
-                    TextWindow::new(TemplatePreview::new(
+                Self::Raw {
+                    preview: TemplatePreview::new(
                         template,
                         selected_profile_id,
-                    ))
-                    .into(),
-                )
+                    ),
+                    text_window: Component::default(),
+                }
             }
             RecipeBody::FormUrlencoded(fields)
             | RecipeBody::FormMultipart(fields) => {
@@ -625,7 +628,9 @@ impl RecipeBodyDisplay {
 impl EventHandler for RecipeBodyDisplay {
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         match self {
-            RecipeBodyDisplay::Raw(preview) => vec![preview.as_child()],
+            RecipeBodyDisplay::Raw { text_window, .. } => {
+                vec![text_window.as_child()]
+            }
             RecipeBodyDisplay::Form(form) => vec![form.as_child()],
         }
     }
@@ -634,9 +639,15 @@ impl EventHandler for RecipeBodyDisplay {
 impl Draw for RecipeBodyDisplay {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         match self {
-            RecipeBodyDisplay::Raw(preview) => preview.draw(
+            RecipeBodyDisplay::Raw {
+                preview,
+                text_window,
+            } => text_window.draw(
                 frame,
-                TextWindowProps::default(),
+                TextWindowProps {
+                    text: preview.generate(),
+                    has_search_box: false,
+                },
                 metadata.area(),
                 true,
             ),

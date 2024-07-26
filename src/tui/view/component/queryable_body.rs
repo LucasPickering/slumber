@@ -9,7 +9,7 @@ use crate::{
                 text_box::TextBox,
                 text_window::{TextWindow, TextWindowProps},
             },
-            draw::{Draw, DrawMetadata},
+            draw::{Draw, DrawMetadata, Generate},
             event::{Event, EventHandler, Update},
             state::StateCell,
             Component, ViewContext,
@@ -24,7 +24,7 @@ use ratatui::{
     Frame,
 };
 use serde_json_path::JsonPath;
-use std::cell::Cell;
+use std::{cell::Cell, ops::Deref};
 use Debug;
 
 /// Display response body as text, with a query box to filter it if the body has
@@ -32,9 +32,9 @@ use Debug;
 /// container.
 #[derive(Debug)]
 pub struct QueryableBody {
-    /// Body text content. State cell allows us to reset this whenever the
-    /// request changes
-    text_window: StateCell<Option<Query>, Component<TextWindow<String>>>,
+    /// Visible text state. This needs to be in a cell because it's initialized
+    /// from the body passed in via props
+    filtered_text: StateCell<Option<Query>, String>,
     /// Store whether the body can be queried. True only if it's a recognized
     /// and parsed format
     query_available: Cell<bool>,
@@ -44,6 +44,8 @@ pub struct QueryableBody {
     query: Option<Query>,
     /// Where the user enters their body query
     query_text_box: Component<TextBox>,
+    /// Filtered text display
+    text_window: Component<TextWindow>,
 }
 
 #[derive(Clone)]
@@ -70,19 +72,19 @@ impl QueryableBody {
                 ViewContext::push_event(Event::new_local(QueryCallback::Submit))
             });
         Self {
-            text_window: Default::default(),
+            filtered_text: Default::default(),
             query_available: Cell::new(false),
             query_focused: false,
             query: Default::default(),
             query_text_box: text_box.into(),
+            text_window: Default::default(),
         }
     }
 
-    /// Get visible body text
+    /// Get visible body text. Return an owned value because that's what all
+    /// consumers need anyway, and it makes the API simpler
     pub fn text(&self) -> Option<String> {
-        self.text_window
-            .get()
-            .map(|text_window| text_window.data().text().to_owned())
+        self.filtered_text.get().map(|text| text.to_owned())
     }
 }
 
@@ -133,13 +135,7 @@ impl EventHandler for QueryableBody {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        [
-            Some(self.query_text_box.as_child()),
-            self.text_window.get_mut().map(Component::as_child),
-        ]
-        .into_iter()
-        .flatten()
-        .collect()
+        vec![self.query_text_box.as_child(), self.text_window.as_child()]
     }
 }
 
@@ -161,12 +157,13 @@ impl<'a> Draw<QueryableBodyProps<'a>> for QueryableBody {
         .areas(metadata.area());
 
         // Draw the body
-        let text = self.text_window.get_or_update(self.query.clone(), || {
-            init_text_window(props.body, self.query.as_ref())
+        let text = self.filtered_text.get_or_update(self.query.clone(), || {
+            init_state(props.body, self.query.as_ref())
         });
-        text.draw(
+        self.text_window.draw(
             frame,
             TextWindowProps {
+                text: text.deref().generate(),
                 has_search_box: query_available,
             },
             body_area,
@@ -201,15 +198,11 @@ enum QueryCallback {
     Submit,
 }
 
-fn init_text_window(
-    body: &ResponseBody,
-    query: Option<&Query>,
-) -> Component<TextWindow<String>> {
+fn init_state(body: &ResponseBody, query: Option<&Query>) -> String {
     // Query and prettify text if possible. This involves a lot of cloning
     // because it makes stuff easier. If it becomes a bottleneck on large
     // responses it's fixable.
-    let body = body
-        .parsed()
+    body.parsed()
         .map(|parsed_body| {
             // Body is a known content type so we parsed it - apply a query if
             // necessary and prettify the output
@@ -219,9 +212,7 @@ fn init_text_window(
         })
         // Content couldn't be parsed, fall back to the raw text
         // If the text isn't UTF-8, we'll show a placeholder instead
-        .unwrap_or_else(|| format!("{:#}", MaybeStr(body.bytes())));
-
-    TextWindow::new(body).into()
+        .unwrap_or_else(|| format!("{:#}", MaybeStr(body.bytes())))
 }
 
 #[cfg(test)]

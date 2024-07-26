@@ -27,6 +27,7 @@ use strum::{EnumCount, EnumIter};
 #[derive(Debug, Default)]
 pub struct RequestView {
     state: StateCell<RequestId, State>,
+    body_text_window: Component<TextWindow>,
 }
 
 pub struct RequestViewProps {
@@ -38,9 +39,9 @@ pub struct RequestViewProps {
 struct State {
     /// Store pointer to the request, so we can access it in the update step
     request: Arc<RequestRecord>,
-    /// Persist the request body to track view state. `None` only if request
-    /// doesn't have a body
-    body: Option<Component<TextWindow<String>>>,
+    /// Persist the visible body, because it may vary from the actual body.
+    /// `None` iff the request has no body
+    body: Option<String>,
 }
 
 /// Items in the actions popup menu
@@ -77,10 +78,10 @@ impl EventHandler for RequestView {
                 }
                 MenuAction::CopyBody => {
                     // Copy exactly what the user sees. Currently requests
-                    // don't support formatting/querying but that could
-                    // change
+                    // don't support formatting/querying but that could change
                     if let Some(body) = self.state.get().and_then(|state| {
-                        Some(state.body.as_ref()?.data().text().clone())
+                        let body = state.body.as_ref()?;
+                        Some(body.to_owned())
                     }) {
                         ViewContext::send_message(Message::CopyText(body));
                     }
@@ -93,13 +94,7 @@ impl EventHandler for RequestView {
     }
 
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        if let Some(body) =
-            self.state.get_mut().and_then(|state| state.body.as_mut())
-        {
-            vec![body.as_child()]
-        } else {
-            vec![]
-        }
+        vec![self.body_text_window.as_child()]
     }
 }
 
@@ -112,9 +107,11 @@ impl Draw<RequestViewProps> for RequestView {
     ) {
         let state = self.state.get_or_update(props.request.id, || State {
             request: Arc::clone(&props.request),
-            body: props.request.body.as_ref().map(|body| {
-                TextWindow::new(format!("{:#}", MaybeStr(body))).into()
-            }),
+            body: props
+                .request
+                .body
+                .as_ref()
+                .map(|body| format!("{:#}", MaybeStr(body))),
         });
 
         let [url_area, headers_area, body_area] = Layout::vertical([
@@ -135,7 +132,15 @@ impl Draw<RequestViewProps> for RequestView {
             headers_area,
         );
         if let Some(body) = &state.body {
-            body.draw(frame, TextWindowProps::default(), body_area, true);
+            self.body_text_window.draw(
+                frame,
+                TextWindowProps {
+                    text: body.generate(),
+                    has_search_box: false,
+                },
+                body_area,
+                true,
+            );
         }
     }
 }

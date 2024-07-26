@@ -3,7 +3,7 @@ use crate::tui::{
     input::Action,
     view::{
         common::scrollbar::Scrollbar,
-        draw::{Draw, DrawMetadata, Generate},
+        draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
     },
 };
@@ -16,15 +16,10 @@ use ratatui::{
 };
 use std::{cell::Cell, cmp, fmt::Debug};
 
-/// A scrollable (but not editable) block of text. Text is not externally
-/// mutable. If you need to update the text, store this in a `StateCell` and
-/// reconstruct the entire component.
-///
-/// The generic parameter allows for any type that can be converted to ratatui's
-/// `Text`, e.g. `String` or `TemplatePreview`.
+/// A scrollable (but not editable) block of text. Internal state will be
+/// updated on each render, to adjust to the text's width/height.
 #[derive(Debug, Default)]
-pub struct TextWindow<T> {
-    text: T,
+pub struct TextWindow {
     offset_x: u16,
     offset_y: u16,
     text_width: Cell<u16>,
@@ -33,30 +28,15 @@ pub struct TextWindow<T> {
     window_height: Cell<u16>,
 }
 
-#[derive(Default)]
-pub struct TextWindowProps {
+pub struct TextWindowProps<'a> {
+    /// Text to render
+    pub text: Text<'a>,
     /// Is there a search box below the content? This tells us if we need to
     /// offset the horizontal scroll box an extra row.
     pub has_search_box: bool,
 }
 
-impl<T> TextWindow<T> {
-    pub fn new(text: T) -> Self {
-        Self {
-            text,
-            offset_x: 0,
-            offset_y: 0,
-            text_width: Cell::default(),
-            text_height: Cell::default(),
-            window_width: Cell::default(),
-            window_height: Cell::default(),
-        }
-    }
-
-    pub fn text(&self) -> &T {
-        &self.text
-    }
-
+impl TextWindow {
     /// Get the final line that we can't scroll past. This will be the first
     /// line of the last page of text
     fn max_scroll_line(&self) -> u16 {
@@ -97,7 +77,7 @@ impl<T> TextWindow<T> {
     }
 }
 
-impl<T: Debug> EventHandler for TextWindow<T> {
+impl EventHandler for TextWindow {
     fn update(&mut self, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
@@ -118,19 +98,15 @@ impl<T: Debug> EventHandler for TextWindow<T> {
 }
 
 /// `T` has to be convertible to text to be drawn
-impl<T> Draw<TextWindowProps> for TextWindow<T>
-where
-    T: 'static,
-    for<'a> &'a T: Generate<Output<'a> = Text<'a>>,
-{
+impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
     fn draw(
         &self,
         frame: &mut Frame,
-        props: TextWindowProps,
+        props: TextWindowProps<'a>,
         metadata: DrawMetadata,
     ) {
         let styles = &TuiContext::get().styles;
-        let text = Paragraph::new(self.text.generate());
+        let text = Paragraph::new(props.text);
         // Assume no line wrapping when calculating line count
         let text_height = text.line_count(u16::MAX) as u16;
 

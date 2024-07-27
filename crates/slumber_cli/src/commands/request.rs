@@ -1,7 +1,4 @@
-use crate::{
-    cli::{util::HeaderDisplay, Subcommand},
-    GlobalArgs,
-};
+use crate::{util::HeaderDisplay, GlobalArgs, Subcommand};
 use anyhow::{anyhow, Context};
 use clap::Parser;
 use dialoguer::{Input, Password};

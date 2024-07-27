@@ -2010,11 +2010,9 @@ dependencies = [
  "bytes",
  "bytesize",
  "chrono",
- "clap",
  "cli-clipboard",
  "crossterm",
  "derive_more",
- "dialoguer",
  "futures",
  "indexmap",
  "itertools",
@@ -2029,12 +2027,30 @@ dependencies = [
  "serde_json_path",
  "serde_test",
  "serde_yaml",
+ "slumber_cli",
  "slumber_core",
  "strum",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "slumber_cli"
+version = "1.7.0"
+dependencies = [
+ "anyhow",
+ "bytesize",
+ "clap",
+ "dialoguer",
+ "indexmap",
+ "itertools",
+ "reqwest",
+ "serde",
+ "serde_yaml",
+ "slumber_core",
+ "tracing",
 ]
 
 [[package]]

@@ -1,7 +1,4 @@
-use crate::{
-    cli::{request::BuildRequestCommand, Subcommand},
-    GlobalArgs,
-};
+use crate::{commands::request::BuildRequestCommand, GlobalArgs, Subcommand};
 use clap::{Parser, ValueEnum};
 use slumber_core::{http::InsecureHosts, template::TemplateError};
 use std::process::ExitCode;

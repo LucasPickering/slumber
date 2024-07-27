@@ -1,4 +1,4 @@
-use crate::{cli::Subcommand, GlobalArgs};
+use crate::{GlobalArgs, Subcommand};
 use clap::Parser;
 use slumber_core::db::Database;
 use std::{path::PathBuf, process::ExitCode};

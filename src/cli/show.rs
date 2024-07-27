@@ -1,13 +1,12 @@
-use crate::{
-    cli::Subcommand,
+use crate::{cli::Subcommand, GlobalArgs};
+use clap::Parser;
+use serde::Serialize;
+use slumber_core::{
     collection::CollectionFile,
     config::Config,
     db::Database,
-    util::paths::{DataDirectory, TempDirectory},
-    GlobalArgs,
+    util::{DataDirectory, TempDirectory},
 };
-use clap::Parser;
-use serde::Serialize;
 use std::{borrow::Cow, path::Path, process::ExitCode};
 
 /// Print meta information about Slumber (config, collections, etc.)
@@ -46,7 +45,7 @@ impl Subcommand for ShowCommand {
                 )
             }
             ShowTarget::Config => {
-                let config = Config::load()?;
+                let config = Config::<()>::load()?;
                 println!("{}", to_yaml(&config));
             }
             ShowTarget::Collection => {

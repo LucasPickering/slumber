@@ -1,3 +1,4 @@
+mod config;
 pub mod context;
 pub mod input;
 pub mod message;
@@ -6,20 +7,14 @@ pub mod test_util;
 mod util;
 pub mod view;
 
-use crate::{
-    collection::{Collection, CollectionFile, ProfileId, Recipe, RecipeId},
-    config::Config,
-    db::{CollectionDatabase, Database},
-    http::RequestSeed,
-    template::{Prompter, Template, TemplateChunk, TemplateContext},
-    tui::{
-        context::TuiContext,
-        input::Action,
-        message::{Message, MessageSender, RequestConfig},
-        util::{get_editor_command, save_file, signals},
-        view::{ModalPriority, PreviewPrompter, RequestState, View},
+use crate::tui::{
+    context::TuiContext,
+    input::Action,
+    message::{Message, MessageSender, RequestConfig},
+    util::{
+        get_editor_command, save_file, signals, Replaceable, ResultReported,
     },
-    util::{Replaceable, ResultExt},
+    view::{ModalPriority, PreviewPrompter, RequestState, View},
 };
 use anyhow::{anyhow, Context};
 use chrono::Utc;
@@ -30,6 +25,13 @@ use crossterm::{
 use futures::{Future, StreamExt};
 use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
+use slumber_core::{
+    collection::{Collection, CollectionFile, ProfileId, Recipe, RecipeId},
+    config::Config,
+    db::{CollectionDatabase, Database},
+    http::RequestSeed,
+    template::{Prompter, Template, TemplateChunk, TemplateContext},
+};
 use std::{
     io::{self, Stdout},
     ops::Deref,

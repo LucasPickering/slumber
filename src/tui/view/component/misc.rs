@@ -1,20 +1,17 @@
 //! Miscellaneous components. They have specific purposes and therefore aren't
 //! generic/utility, but don't fall into a clear category.
 
-use crate::{
-    template::{Prompt, PromptChannel},
-    tui::view::{
-        common::{
-            button::ButtonGroup,
-            modal::{IntoModal, Modal},
-            text_box::TextBox,
-        },
-        component::Component,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, Update},
-        state::Notification,
-        Confirm, ViewContext,
+use crate::tui::view::{
+    common::{
+        button::ButtonGroup,
+        modal::{IntoModal, Modal},
+        text_box::TextBox,
     },
+    component::Component,
+    draw::{Draw, DrawMetadata, Generate},
+    event::{Event, EventHandler, Update},
+    state::Notification,
+    Confirm, ViewContext,
 };
 use derive_more::Display;
 use ratatui::{
@@ -23,6 +20,7 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
     Frame,
 };
+use slumber_core::template::{Prompt, PromptChannel};
 use std::{cell::Cell, fmt::Debug, rc::Rc};
 use strum::{EnumCount, EnumIter};
 

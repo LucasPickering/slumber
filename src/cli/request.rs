@@ -1,11 +1,5 @@
 use crate::{
-    cli::Subcommand,
-    collection::{CollectionFile, ProfileId, RecipeId},
-    config::Config,
-    db::{CollectionDatabase, Database},
-    http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
-    template::{Prompt, Prompter, TemplateContext, TemplateError},
-    util::{HeaderDisplay, ResultExt},
+    cli::{util::HeaderDisplay, Subcommand},
     GlobalArgs,
 };
 use anyhow::{anyhow, Context};
@@ -13,6 +7,14 @@ use clap::Parser;
 use dialoguer::{Input, Password};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use slumber_core::{
+    collection::{CollectionFile, ProfileId, RecipeId},
+    config::Config,
+    db::{CollectionDatabase, Database},
+    http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
+    template::{Prompt, Prompter, TemplateContext, TemplateError},
+    util::ResultTraced,
+};
 use std::{
     error::Error,
     io::{self, Write},
@@ -153,8 +155,8 @@ impl BuildRequestCommand {
         let database = Database::load()?.into_collection(&collection_path)?;
         let collection_file = CollectionFile::load(collection_path).await?;
         let collection = collection_file.collection;
-        let config = Config::load()?;
-        let http_engine = HttpEngine::new(&config);
+        let config = Config::<()>::load()?;
+        let http_engine = HttpEngine::new(&config.ignore_certificate_hosts);
 
         // Validate profile ID, so we can provide a good error if it's invalid
         if let Some(profile_id) = &self.profile {

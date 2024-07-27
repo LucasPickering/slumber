@@ -1,11 +1,7 @@
-use crate::{
-    collection::ProfileId,
-    template::{Template, TemplateChunk},
-    tui::{
-        context::TuiContext,
-        message::Message,
-        view::{draw::Generate, ViewContext},
-    },
+use crate::tui::{
+    context::TuiContext,
+    message::Message,
+    view::{draw::Generate, ViewContext},
 };
 use ratatui::{
     buffer::Buffer,
@@ -13,6 +9,10 @@ use ratatui::{
     style::Style,
     text::{Line, Span, Text},
     widgets::{Paragraph, Widget},
+};
+use slumber_core::{
+    collection::ProfileId,
+    template::{Template, TemplateChunk},
 };
 use std::{
     mem,
@@ -41,7 +41,7 @@ impl TemplatePreview {
     /// render the template, *if* template preview is enabled. Profile ID
     /// defines which profile to use for the render.
     pub fn new(template: Template, profile_id: Option<ProfileId>) -> Self {
-        if TuiContext::get().config.preview_templates {
+        if TuiContext::get().config.extension.preview_templates {
             let chunks = Arc::new(OnceLock::new());
             ViewContext::send_message(Message::TemplatePreview {
                 // If this is a bottleneck we can Arc it
@@ -190,14 +190,14 @@ impl<'a> TextStitcher<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
+    use crate::tui::test_util::{harness, TestHarness};
+    use indexmap::indexmap;
+    use rstest::rstest;
+    use slumber_core::{
         collection::{Chain, ChainSource, Collection, Profile},
         template::TemplateContext,
         test_util::{by_id, Factory},
-        tui::test_util::{harness, TestHarness},
     };
-    use indexmap::indexmap;
-    use rstest::rstest;
 
     /// Test line breaks, multi-byte characters, and binary data
     #[rstest]

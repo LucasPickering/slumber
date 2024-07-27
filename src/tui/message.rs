@@ -1,17 +1,17 @@
 //! Async message passing! This is how inputs and other external events trigger
 //! state updates.
 
-use crate::{
+use crate::tui::{input::Action, view::Confirm};
+use anyhow::Context;
+use derive_more::From;
+use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
         BuildOptions, Exchange, RequestBuildError, RequestError, RequestRecord,
     },
     template::{Prompt, Prompter, Template, TemplateChunk},
-    tui::{input::Action, view::Confirm},
-    util::ResultExt,
+    util::ResultTraced,
 };
-use anyhow::Context;
-use derive_more::From;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;

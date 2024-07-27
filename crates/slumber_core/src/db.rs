@@ -4,7 +4,7 @@
 use crate::{
     collection::{ProfileId, RecipeId},
     http::{Exchange, ExchangeSummary, RequestId},
-    util::{paths::DataDirectory, ResultExt},
+    util::{DataDirectory, ResultTraced},
 };
 use anyhow::{anyhow, Context};
 use derive_more::Display;
@@ -491,7 +491,7 @@ impl CollectionDatabase {
 }
 
 /// Create an in-memory DB, only for testing
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for Database {
     fn factory(_: ()) -> Self {
         let mut connection = Connection::open_in_memory().unwrap();
@@ -503,11 +503,12 @@ impl crate::test_util::Factory for Database {
 }
 
 /// Create an in-memory DB, only for testing
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for CollectionDatabase {
     fn factory(_: ()) -> Self {
+        use crate::util::get_repo_root;
         Database::factory(())
-            .into_collection(Path::new("./slumber.yml"))
+            .into_collection(&get_repo_root().join("slumber.yml"))
             .expect("Error initializing DB collection")
     }
 }
@@ -666,17 +667,17 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for ExchangeSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::Factory;
+    use crate::{test_util::Factory, util::get_repo_root};
     use itertools::Itertools;
     use std::collections::HashMap;
 
     #[test]
     fn test_merge() {
         let database = Database::factory(());
-        let path1 = Path::new("slumber.yml");
-        let path2 = Path::new("README.md"); // Has to be a real file
-        let collection1 = database.clone().into_collection(path1).unwrap();
-        let collection2 = database.clone().into_collection(path2).unwrap();
+        let path1 = get_repo_root().join("slumber.yml");
+        let path2 = get_repo_root().join("README.md"); // Has to be a real file
+        let collection1 = database.clone().into_collection(&path1).unwrap();
+        let collection2 = database.clone().into_collection(&path2).unwrap();
 
         let exchange1 = Exchange::factory(());
         let exchange2 = Exchange::factory(());
@@ -715,7 +716,7 @@ mod tests {
         );
 
         // Do the merge
-        database.merge_collections(path2, path1).unwrap();
+        database.merge_collections(&path2, &path1).unwrap();
 
         // Collection 2 values should've overwritten
         assert_eq!(
@@ -744,11 +745,11 @@ mod tests {
         let database = Database::factory(());
         let collection1 = database
             .clone()
-            .into_collection(Path::new("slumber.yml"))
+            .into_collection(&get_repo_root().join("slumber.yml"))
             .unwrap();
         let collection2 = database
             .clone()
-            .into_collection(Path::new("README.md"))
+            .into_collection(&get_repo_root().join("README.md"))
             .unwrap();
 
         let exchange2 = Exchange::factory(());
@@ -882,11 +883,11 @@ mod tests {
         let database = Database::factory(());
         let collection1 = database
             .clone()
-            .into_collection(Path::new("slumber.yml"))
+            .into_collection(Path::new("../../slumber.yml"))
             .unwrap();
         let collection2 = database
             .clone()
-            .into_collection(Path::new("README.md"))
+            .into_collection(Path::new("Cargo.toml"))
             .unwrap();
 
         let ui_key = "key1";

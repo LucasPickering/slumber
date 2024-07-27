@@ -1,27 +1,22 @@
 //! Components for the "primary" view, which is the paned request/response view
 
-use crate::{
-    collection::{
-        Collection, Profile, ProfileId, Recipe, RecipeId, RecipeNode,
-    },
-    tui::{
-        input::Action,
-        message::{Message, RequestConfig},
-        view::{
-            common::actions::ActionsModal,
-            component::{
-                exchange_pane::{ExchangePane, ExchangePaneProps},
-                help::HelpModal,
-                profile_select::ProfilePane,
-                recipe_list::RecipeListPane,
-                recipe_pane::{RecipeMenuAction, RecipePane, RecipePaneProps},
-            },
-            context::{Persisted, PersistedLazy},
-            draw::{Draw, DrawMetadata, ToStringGenerate},
-            event::{Event, EventHandler, Update},
-            state::{fixed_select::FixedSelectState, RequestState},
-            Component, ViewContext,
+use crate::tui::{
+    input::Action,
+    message::{Message, RequestConfig},
+    view::{
+        common::actions::ActionsModal,
+        component::{
+            exchange_pane::{ExchangePane, ExchangePaneProps},
+            help::HelpModal,
+            profile_select::ProfilePane,
+            recipe_list::RecipeListPane,
+            recipe_pane::{RecipeMenuAction, RecipePane, RecipePaneProps},
         },
+        context::{Persisted, PersistedLazy},
+        draw::{Draw, DrawMetadata, ToStringGenerate},
+        event::{Event, EventHandler, Update},
+        state::{fixed_select::FixedSelectState, RequestState},
+        Component, ViewContext,
     },
 };
 use derive_more::Display;
@@ -33,6 +28,9 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
+use slumber_core::collection::{
+    Collection, Profile, ProfileId, Recipe, RecipeId, RecipeNode,
+};
 use strum::{EnumCount, EnumIter};
 
 /// Primary TUI view, which shows request/response panes
@@ -419,17 +417,16 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        http::BuildOptions,
-        test_util::{assert_matches, Factory},
-        tui::{
-            message::{Message, RequestConfig},
-            test_util::{harness, TestHarness},
-            view::test_util::TestComponent,
-        },
+    use crate::tui::{
+        message::{Message, RequestConfig},
+        test_util::{harness, TestHarness},
+        view::test_util::TestComponent,
     };
     use persisted::PersistedStore;
     use rstest::{fixture, rstest};
+    use slumber_core::{
+        assert_matches, http::BuildOptions, test_util::Factory,
+    };
 
     /// Create component to be tested
     #[fixture]

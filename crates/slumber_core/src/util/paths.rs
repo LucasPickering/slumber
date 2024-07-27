@@ -4,7 +4,7 @@ use std::{
     env,
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
-    process,
+    process::{self, Command},
     sync::OnceLock,
 };
 
@@ -26,8 +26,7 @@ impl DataDirectory {
     /// This will create the directory, and return an error if that fails
     pub fn init() -> anyhow::Result<()> {
         let path = if cfg!(debug_assertions) {
-            // If env var isn't defined, this will just become ./data/
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("data/")
+            get_repo_root().join("data/")
         } else {
             // According to the docs, this dir will be present on all platforms
             // https://docs.rs/dirs/latest/dirs/fn.data_dir.html
@@ -115,4 +114,30 @@ impl TempDirectory {
     pub fn log(&self) -> &PathBuf {
         &self.log_file
     }
+}
+
+/// Get path to the root of the git repo. This is needed because this crate
+/// doesn't live at the repo root, so we can't use `CARGO_MANIFEST_DIR`. Path
+/// will be cached so subsequent calls are fast. If the path can't be found,
+/// fall back to the current working directory instead. Always returns an
+/// absolute path.
+#[cfg(any(debug_assertions, test))]
+pub(crate) fn get_repo_root() -> &'static Path {
+    use crate::util::ResultTraced;
+
+    static CACHE: OnceLock<PathBuf> = OnceLock::new();
+
+    CACHE.get_or_init(|| {
+        let try_get = || -> anyhow::Result<PathBuf> {
+            let output = Command::new("git")
+                .args(["rev-parse", "--show-toplevel"])
+                .output()?;
+            let path = String::from_utf8(output.stdout)?;
+            Ok(path.trim().into())
+        };
+        try_get()
+            .context("Error getting repo root path")
+            .traced()
+            .unwrap_or_default()
+    })
 }

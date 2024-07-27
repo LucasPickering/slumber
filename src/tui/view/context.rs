@@ -1,16 +1,14 @@
-use crate::{
-    db::CollectionDatabase,
-    tui::{
-        message::{Message, MessageSender},
-        view::{
-            common::modal::Modal,
-            event::{Event, EventQueue},
-            ModalPriority,
-        },
+use crate::tui::{
+    message::{Message, MessageSender},
+    view::{
+        common::modal::Modal,
+        event::{Event, EventQueue},
+        ModalPriority,
     },
 };
 use persisted::PersistedStore;
 use serde::{de::DeserializeOwned, Serialize};
+use slumber_core::db::CollectionDatabase;
 use std::{cell::RefCell, fmt::Debug};
 
 /// Thread-local context container, which stores mutable state needed in the
@@ -171,11 +169,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::assert_matches,
-        tui::test_util::{assert_events, harness, TestHarness},
-    };
+    use crate::tui::test_util::{assert_events, harness, TestHarness};
     use rstest::rstest;
+    use slumber_core::assert_matches;
 
     #[rstest]
     fn test_event_queue(_harness: TestHarness) {

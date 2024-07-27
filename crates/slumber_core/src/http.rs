@@ -1,6 +1,7 @@
 //! HTTP-specific logic and models. [HttpEngine] is the main entrypoint for all
 //! operations. This is the life cycle of a request:
 //!
+//! ```no_test
 //! +--------+
 //! | Recipe |
 //! +--------+
@@ -32,22 +33,20 @@
 //! +----------+
 //! | Exchange |
 //! +----------+
+//! ```
 
 mod cereal;
-mod content_type;
+pub mod content_type;
 mod models;
-mod query;
+pub mod query;
 
-pub use content_type::*;
 pub use models::*;
-pub use query::*;
 
 use crate::{
     collection::{Authentication, JsonBody, Method, Recipe, RecipeBody},
-    config::Config,
     db::CollectionDatabase,
     template::{Template, TemplateContext},
-    util::ResultExt,
+    util::ResultTraced,
 };
 use anyhow::Context;
 use async_recursion::async_recursion;
@@ -55,7 +54,7 @@ use bytes::Bytes;
 use chrono::Utc;
 use futures::{
     future::{self, try_join_all, OptionFuture},
-    Future,
+    try_join, Future,
 };
 use mime::Mime;
 use reqwest::{
@@ -64,11 +63,9 @@ use reqwest::{
     Client, RequestBuilder, Response, Url,
 };
 use std::{collections::HashSet, sync::Arc};
-use tokio::try_join;
 use tracing::{info, info_span};
 
-const USER_AGENT: &str =
-    concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
 
 /// Utility for handling all HTTP operations. The main purpose of this is to
 /// de-asyncify HTTP so it can be called in the main TUI thread. All heavy
@@ -88,7 +85,7 @@ pub struct HttpEngine {
 
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
-    pub fn new(config: &Config) -> Self {
+    pub fn new(ignore_certificate_hosts: &[String]) -> Self {
         Self {
             client: Client::builder()
                 .user_agent(USER_AGENT)
@@ -99,8 +96,7 @@ impl HttpEngine {
                 .danger_accept_invalid_certs(true)
                 .build()
                 .expect("Error building reqwest client"),
-            danger_hostnames: config
-                .ignore_certificate_hosts
+            danger_hostnames: ignore_certificate_hosts
                 .iter()
                 .cloned()
                 .collect(),
@@ -265,6 +261,12 @@ impl HttpEngine {
         } else {
             &self.client
         }
+    }
+}
+
+impl Default for HttpEngine {
+    fn default() -> Self {
+        Self::new(&[])
     }
 }
 
@@ -740,7 +742,7 @@ mod tests {
 
     #[fixture]
     fn http_engine() -> HttpEngine {
-        HttpEngine::new(&Config::default())
+        HttpEngine::default()
     }
 
     #[fixture]

@@ -1,17 +1,15 @@
 //! Utilities for handling input events from users, as well as external async
 //! events (e.g. HTTP responses)
 
-use crate::{
-    http::RequestId,
-    tui::{
-        input::Action,
-        view::{
-            common::modal::{Modal, ModalPriority},
-            state::{Notification, RequestState},
-            Component,
-        },
+use crate::tui::{
+    input::Action,
+    view::{
+        common::modal::{Modal, ModalPriority},
+        state::{Notification, RequestState},
+        Component,
     },
 };
+use slumber_core::http::RequestId;
 use std::{any::Any, collections::VecDeque, fmt::Debug, ops::DerefMut};
 use tracing::trace;
 

@@ -1,9 +1,11 @@
+//! Generate strings (and bytes) from user-written templates with dynamic data
+
 mod error;
 mod parse;
 mod prompt;
 mod render;
 
-pub use error::{ChainError, TemplateError};
+pub use error::{ChainError, TemplateError, TriggeredRequestError};
 pub use prompt::{Prompt, PromptChannel, Prompter};
 
 use crate::{
@@ -63,8 +65,7 @@ pub struct TemplateContext {
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
     /// State that should be shared across al renders that use this context.
-    /// This is meant to be opaque; just use [RenderGroupState::default] to
-    /// initialize.
+    /// This is meant to be opaque; just use [Default::default] to initialize.
     pub state: RenderGroupState,
 }
 
@@ -85,14 +86,14 @@ impl Template {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl From<&str> for Template {
     fn from(value: &str) -> Self {
         value.parse().unwrap()
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl From<String> for Template {
     fn from(value: String) -> Self {
         value.as_str().into()
@@ -100,10 +101,10 @@ impl From<String> for Template {
 }
 
 /// An identifier that can be used in a template key. A valid identifier is
-/// any string of one or more characters that contains only allowed characters,
-/// as defined by [Self::is_char_allowed].
+/// any non-empty string that contains only alphanumeric characters, `-`, or
+/// `_`.
 ///
-/// Construct via the [FromStr](std::str::FromStr) impl (in [parse] module)
+/// Construct via [FromStr](std::str::FromStr)
 #[derive(
     Clone,
     Debug,
@@ -186,7 +187,7 @@ pub enum TemplateKey {
     Environment(Identifier),
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for TemplateContext {
     fn factory(_: ()) -> Self {
         use crate::test_util::TestPrompter;
@@ -206,17 +207,18 @@ impl crate::test_util::Factory for TemplateContext {
 mod tests {
     use super::*;
     use crate::{
+        assert_err,
         collection::{
             Chain, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
             ChainSource, Profile, Recipe, RecipeId,
         },
-        config::Config,
-        http::{ContentType, Exchange, RequestRecord, ResponseRecord},
+        http::{
+            content_type::ContentType, Exchange, RequestRecord, ResponseRecord,
+        },
         test_util::{
-            assert_err, by_id, header_map, temp_dir, Factory, TempDir,
+            by_id, header_map, temp_dir, EnvGuard, Factory, TempDir,
             TestPrompter,
         },
-        tui::test_util::EnvGuard,
     };
     use chrono::Utc;
     use indexmap::indexmap;
@@ -608,7 +610,7 @@ mod tests {
             },
             ..Chain::factory(())
         };
-        let http_engine = HttpEngine::new(&Config::default());
+        let http_engine = HttpEngine::default();
         let context = TemplateContext {
             collection: Collection {
                 recipes: by_id([recipe]).into(),

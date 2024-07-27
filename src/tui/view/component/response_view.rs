@@ -1,26 +1,26 @@
 //! Display for HTTP responses
 
-use crate::{
-    collection::RecipeId,
-    http::{RequestId, ResponseRecord},
-    tui::{
-        input::Action,
-        message::Message,
-        view::{
-            common::{actions::ActionsModal, header_table::HeaderTable},
-            component::queryable_body::{QueryableBody, QueryableBodyProps},
-            context::PersistedLazy,
-            draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-            event::{Event, EventHandler, Update},
-            state::StateCell,
-            Component, ViewContext,
-        },
+use crate::tui::{
+    input::Action,
+    message::Message,
+    view::{
+        common::{actions::ActionsModal, header_table::HeaderTable},
+        component::queryable_body::{QueryableBody, QueryableBodyProps},
+        context::PersistedLazy,
+        draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
+        event::{Event, EventHandler, Update},
+        state::StateCell,
+        Component, ViewContext,
     },
 };
 use derive_more::Display;
 use persisted::PersistedKey;
 use ratatui::Frame;
 use serde::Serialize;
+use slumber_core::{
+    collection::RecipeId,
+    http::{RequestId, ResponseRecord},
+};
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
@@ -189,16 +189,17 @@ impl<'a> Draw<ResponseHeadersViewProps<'a>> for ResponseHeadersView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        http::Exchange,
-        test_util::{assert_matches, header_map, Factory},
-        tui::{
-            test_util::{harness, TestHarness},
-            view::test_util::TestComponent,
-        },
+    use crate::tui::{
+        test_util::{harness, TestHarness},
+        view::test_util::TestComponent,
     };
     use indexmap::indexmap;
     use rstest::rstest;
+    use slumber_core::{
+        assert_matches,
+        http::Exchange,
+        test_util::{header_map, Factory},
+    };
 
     /// Test "Copy Body" menu action
     #[rstest]

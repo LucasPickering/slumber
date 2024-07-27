@@ -192,9 +192,9 @@ fn parse_reference<T: ComponentKind>(
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
     use super::*;
-    use crate::test_util::assert_err;
+    use crate::assert_err;
     use indexmap::{indexmap, IndexMap};
     use openapiv3::{Components, OAuth2Flows};
     use rstest::rstest;

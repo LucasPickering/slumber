@@ -1,11 +1,11 @@
-use crate::{
-    collection::{ProfileId, RecipeId},
-    http::RequestId,
-    tui::view::{
-        context::ViewContext, state::RequestStateSummary, RequestState,
-    },
+use crate::tui::view::{
+    context::ViewContext, state::RequestStateSummary, RequestState,
 };
 use itertools::Itertools;
+use slumber_core::{
+    collection::{ProfileId, RecipeId},
+    http::RequestId,
+};
 use std::collections::{hash_map::Entry, HashMap};
 
 /// Simple in-memory "database" for request state. This serves a few purposes:
@@ -129,14 +129,15 @@ impl RequestStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        http::{Exchange, RequestBuildError, RequestError, RequestRecord},
-        test_util::{assert_matches, Factory},
-        tui::test_util::{harness, TestHarness},
-    };
+    use crate::tui::test_util::{harness, TestHarness};
     use anyhow::anyhow;
     use chrono::Utc;
     use rstest::rstest;
+    use slumber_core::{
+        assert_matches,
+        http::{Exchange, RequestBuildError, RequestError, RequestRecord},
+        test_util::Factory,
+    };
     use std::sync::Arc;
 
     #[test]

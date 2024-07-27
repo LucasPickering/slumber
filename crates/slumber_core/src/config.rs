@@ -1,13 +1,6 @@
-use crate::{
-    tui::{
-        input::{Action, InputBinding},
-        view::Theme,
-    },
-    util::{parse_yaml, paths::DataDirectory, ResultExt},
-};
+use crate::util::{parse_yaml, DataDirectory, ResultTraced};
 use anyhow::Context;
-use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use tracing::info;
 
@@ -15,22 +8,25 @@ use tracing::info;
 /// collections. This is *not* meant to modifiable during a session. If changes
 /// are made to the config file while a session is running, they won't be
 /// picked up until the app restarts.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Config {
+pub struct Config<E = ()> {
     /// TLS cert errors on these hostnames are ignored. Be careful!
     #[serde(default)]
     pub ignore_certificate_hosts: Vec<String>,
-    /// Should templates be rendered inline in the UI, or should we show the
-    /// raw text?
-    pub preview_templates: bool,
-    /// Overrides for default key bindings
-    pub input_bindings: IndexMap<Action, InputBinding>,
-    /// Visual configuration for the TUI (e.g. colors)
-    pub theme: Theme,
+    /// TODO
+    #[serde(flatten)]
+    pub extension: E,
 }
 
-impl Config {
+impl Config<()> {
+    /// Path to the configuration file
+    pub fn path() -> PathBuf {
+        DataDirectory::get().file(Self::FILE)
+    }
+}
+
+impl<E: Default + DeserializeOwned> Config<E> {
     const FILE: &'static str = "config.yml";
 
     /// Load configuration from the file, if present. If not, just return a
@@ -38,7 +34,7 @@ impl Config {
     /// deserialization failed. This is *not* async because it's only run during
     /// startup, when all operations are synchronous.
     pub fn load() -> anyhow::Result<Self> {
-        let path = Self::path();
+        let path = Config::path();
         info!(?path, "Loading configuration file");
 
         match fs::read(&path) {
@@ -55,22 +51,6 @@ impl Config {
                 );
                 Ok(Self::default())
             }
-        }
-    }
-
-    /// Path to the configuration file
-    pub fn path() -> PathBuf {
-        DataDirectory::get().file(Self::FILE)
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            ignore_certificate_hosts: Vec::new(),
-            preview_templates: true,
-            input_bindings: IndexMap::default(),
-            theme: Theme::default(),
         }
     }
 }

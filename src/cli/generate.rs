@@ -1,9 +1,9 @@
 use crate::{
     cli::{request::BuildRequestCommand, Subcommand},
-    template::TemplateError,
     GlobalArgs,
 };
 use clap::{Parser, ValueEnum};
+use slumber_core::template::TemplateError;
 use std::process::ExitCode;
 
 /// Render a request and generate an equivalent for a third-party client

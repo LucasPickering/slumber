@@ -307,6 +307,7 @@ impl<'de> Deserialize<'de> for RecipeBody {
 /// - m
 /// - h
 /// - d
+///
 /// Examples: `30s`, `5m`, `12h`, `3d`
 pub mod serde_duration {
     use derive_more::Display;

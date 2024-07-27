@@ -35,7 +35,7 @@ pub trait EventHandler {
     /// - Get list of children
     /// - Filter out children that aren't visible
     /// - For keyboard events, filter out children that aren't in focus (mouse
-    /// events can still be handled by unfocused components)
+    ///   events can still be handled by unfocused components)
     /// - Pass the event to the first child in the list
     ///     - If it consumes the event, stop
     ///     - If it propagates, move on to the next child, and so on

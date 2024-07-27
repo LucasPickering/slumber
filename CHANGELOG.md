@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Remove `Config` line from `slumber show paths` output
   - Config file location can still be retrieved in the help menu of the TUI
 
+### Changed
+
+- Upgrade to Rust 1.80
+
 ## [1.7.0] - 2024-07-22
 
 This release focuses on minor fixes and improvements. There are no new major features or added functionality.

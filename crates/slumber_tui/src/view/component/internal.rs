@@ -121,7 +121,7 @@ impl<T> Component<T> {
     /// - Am I currently visible? I.e. was I drawn on the last draw phase?
     /// - If it's a non-mouse event, do I have focus?
     /// - If it's a mouse event, was it over me? Mouse events should always go
-    /// to the clicked element, even when unfocused, because that's intuitive.
+    ///   to the clicked element, even when unfocused, because that's intuitive.
     fn should_handle(&self, event: &Event) -> bool {
         // If this component isn't currently in the visible tree, it shouldn't
         // handle any events

@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use tracing::info;
 
-/// App-level configuration, which is global across all sessions and
-/// collections. This is *not* meant to modifiable during a session. If changes
-/// are made to the config file while a session is running, they won't be
-/// picked up until the app restarts.
+/// App-level configuration, specific to the TUI. This is global across all
+/// sessions and collections. This is *not* meant to be modifiable during a
+/// session. If changes are made to the config file while a session is running,
+/// they won't be picked up until the app restarts.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {

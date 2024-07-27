@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Breaking
+
+- `ignore_certificate_hosts` config field no longer applies to the CLI
+  - It has been replaced by the `--insecure` CLI flag on the `request` subcommand
+  - This means the config file no longer impacts the CLI at all
+- Remove `slumber show config` sub-subcommand
+- Remove `Config` line from `slumber show paths` output
+  - Config file location can still be retrieved in the help menu of the TUI
+
 ## [1.7.0] - 2024-07-22
 
 This release focuses on minor fixes and improvements. There are no new major features or added functionality.

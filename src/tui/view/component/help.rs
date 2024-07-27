@@ -1,6 +1,6 @@
 use crate::{
-    config::Config,
     tui::{
+        config::Config,
         context::TuiContext,
         input::{Action, InputBinding},
         view::{

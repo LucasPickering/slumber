@@ -1,23 +1,16 @@
 # Configuration
 
-Configuration provides _application_-level settings, as opposed to collection-level settings.
+Configuration provides _application_-level settings, as opposed to collection-level settings. Configuration **only applies to the TUI**. The CLI is not impacted by the configuration file. Config fields that are relevant to the CLI are also available as CLI flags.
 
 ## Location & Creation
 
 Configuration is stored in the Slumber root directory, under the file `config.yml`. To find the root directory, you can run:
 
 ```sh
-slumber show dir
+slumber show paths
 ```
 
-To quickly create and edit the file:
-
-```sh
-# Replace vim with your favorite text editor
-vim $(slumber show dir)/config.yml
-```
-
-If the root directory doesn't exist yet, you can create it yourself or have Slumber create it by simply starting the TUI.
+You can also find the config path by running the TUI and opening the help menu with `?`. If the root directory doesn't exist yet, you can create it yourself or have Slumber create it by simply starting the TUI.
 
 ## Fields
 

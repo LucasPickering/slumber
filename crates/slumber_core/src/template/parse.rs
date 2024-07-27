@@ -216,7 +216,7 @@ fn raw(input: &mut &str) -> PResult<Arc<String>> {
             // char at a time. We could theoretically grab up to the next
             // escape seq or key here but I couldn't figure that out. Potential
             // optimization if perf is a problem
-            (not(KEY_OPEN), any).recognize(),
+            (not(KEY_OPEN), any).take(),
         )),
     )
     .map(Arc::new)

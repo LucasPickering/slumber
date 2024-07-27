@@ -1,11 +1,9 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
 
-mod tui;
-
-use crate::tui::Tui;
 use slumber_cli::Args;
 use slumber_core::util::{DataDirectory, TempDirectory};
+use slumber_tui::Tui;
 use std::{fs::File, io, process::ExitCode};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{filter::EnvFilter, fmt::format::FmtSpan, prelude::*};

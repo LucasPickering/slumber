@@ -7,6 +7,6 @@
 # https://github.com/watchexec/cargo-watch/issues/269
 
 RUST_LOG=${RUST_LOG:-slumber=debug} watchexec --restart --no-process-group \
-    --watch Cargo.toml --watch Cargo.lock --watch src/ \
+    --watch Cargo.toml --watch Cargo.lock --watch src/ --watch crates/ \
     -- cargo run \
     -- $@

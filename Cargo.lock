@@ -2007,33 +2007,12 @@ name = "slumber"
 version = "1.7.0"
 dependencies = [
  "anyhow",
- "bytes",
- "bytesize",
- "chrono",
- "cli-clipboard",
- "crossterm",
- "derive_more",
- "futures",
- "indexmap",
- "itertools",
- "mime",
- "notify",
- "persisted",
- "ratatui",
- "reqwest",
- "rstest",
- "serde",
- "serde_json",
- "serde_json_path",
- "serde_test",
- "serde_yaml",
  "slumber_cli",
  "slumber_core",
- "strum",
+ "slumber_tui",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -2091,6 +2070,36 @@ dependencies = [
  "uuid",
  "winnow",
  "wiremock",
+]
+
+[[package]]
+name = "slumber_tui"
+version = "1.7.0"
+dependencies = [
+ "anyhow",
+ "bytesize",
+ "chrono",
+ "cli-clipboard",
+ "crossterm",
+ "derive_more",
+ "futures",
+ "indexmap",
+ "itertools",
+ "notify",
+ "persisted",
+ "ratatui",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "serde_json_path",
+ "serde_test",
+ "serde_yaml",
+ "slumber_core",
+ "strum",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

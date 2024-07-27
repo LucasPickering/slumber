@@ -50,6 +50,7 @@ impl<T> ResultReported<T, ChainError> for Result<T, ChainError> {
 /// A value that can be replaced in-place. This is useful for two purposes:
 /// - Transferring ownership of values from old to new
 /// - Dropping the old value before creating the new one
+///
 /// This struct has one invariant: The value is always defined, *except* while
 /// the replacement closure is executing. Better make sure that guy doesn't
 /// panic!

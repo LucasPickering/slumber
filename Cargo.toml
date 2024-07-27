@@ -9,7 +9,7 @@ name = "slumber"
 repository = "https://github.com/LucasPickering/slumber"
 version = "1.7.0"
 # Keep in sync w/ rust-toolchain.toml
-rust-version = "1.76.0"
+rust-version = "1.80.0"
 
 [workspace]
 members = ["crates/slumber_cli", "crates/slumber_core", "crates/slumber_tui"]

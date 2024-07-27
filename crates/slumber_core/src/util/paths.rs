@@ -23,6 +23,7 @@ impl DataDirectory {
     /// Initialize directory for all generated files. The path is contextual:
     /// - In development, use a directory from the crate root
     /// - In release, use a platform-specific directory in the user's home
+    ///
     /// This will create the directory, and return an error if that fails
     pub fn init() -> anyhow::Result<()> {
         let path = if cfg!(debug_assertions) {

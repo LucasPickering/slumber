@@ -1,4 +1,4 @@
-use crate::{cli::Subcommand, GlobalArgs};
+use crate::{GlobalArgs, Subcommand};
 use clap::Parser;
 use serde::Serialize;
 use slumber_core::{

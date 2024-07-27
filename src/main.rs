@@ -1,44 +1,14 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
 
-mod cli;
 mod tui;
 
-use crate::{cli::CliCommand, tui::Tui};
-use clap::Parser;
+use crate::tui::Tui;
+use slumber_cli::Args;
 use slumber_core::util::{DataDirectory, TempDirectory};
-use std::{fs::File, io, path::PathBuf, process::ExitCode};
+use std::{fs::File, io, process::ExitCode};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{filter::EnvFilter, fmt::format::FmtSpan, prelude::*};
-
-#[derive(Debug, Parser)]
-#[clap(
-    author,
-    version,
-    about,
-    long_about = "Configurable HTTP client with both TUI and CLI interfaces"
-)]
-struct Args {
-    #[command(flatten)]
-    global: GlobalArgs,
-    /// Subcommand to execute. If omitted, run the TUI
-    #[command(subcommand)]
-    subcommand: Option<CliCommand>,
-}
-
-/// Arguments that are available to all subcommands and the TUI
-#[derive(Debug, Parser)]
-struct GlobalArgs {
-    /// Collection file, which defines profiles, recipes, etc. If omitted,
-    /// check the current and all parent directories for the following files
-    /// (in this order): slumber.yml, slumber.yaml, .slumber.yml, .slumber.yaml
-    #[clap(long, short)]
-    file: Option<PathBuf>,
-    /// Print the path to the log file for this session, before running the
-    /// given subcommand
-    #[clap(long)]
-    log: bool,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<ExitCode> {

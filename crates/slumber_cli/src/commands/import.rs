@@ -1,4 +1,4 @@
-use crate::{cli::Subcommand, GlobalArgs};
+use crate::{GlobalArgs, Subcommand};
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
 use slumber_core::collection::Collection;

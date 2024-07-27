@@ -12,18 +12,16 @@ version = "1.7.0"
 rust-version = "1.76.0"
 
 [workspace]
-members = ["crates/slumber_core"]
+members = ["crates/slumber_cli", "crates/slumber_core"]
 
 [dependencies]
 anyhow = {version = "^1.0.75", features = ["backtrace"]}
 bytes = {version = "1.5.0", features = ["serde"]}
 bytesize = {version = "1.3.0", default-features = false}
 chrono = {version = "^0.4.31", default-features = false, features = ["clock", "serde", "std"]}
-clap = {version = "^4.4.2", features = ["derive"]}
 cli-clipboard = "0.4.0"
 crossterm = {version = "^0.27.0", features = ["event-stream"]}
 derive_more = {version = "1.0.0-beta.6", features = ["debug", "deref", "deref_mut", "display", "from", "from_str"]}
-dialoguer = {version = "^0.11.0", default-features = false, features = ["password"]}
 futures = "^0.3.28"
 indexmap = {version = "^2.0.1", features = ["serde"]}
 itertools = "^0.12.0"
@@ -36,6 +34,7 @@ serde = {version = "^1.0.188", features = ["derive"]}
 serde_json = {version = "^1.0.107", default-features = false}
 serde_json_path = "^0.6.3"
 serde_yaml = {version = "^0.9.25", default-features = false}
+slumber_cli = {path = "./crates/slumber_cli", version = "1.7.0"}
 slumber_core = {path = "./crates/slumber_core", version = "1.7.0"}
 strum = {version = "^0.26.0", default-features = false, features = ["derive"]}
 tokio = {version = "^1.32.0", default-features = false, features = ["fs", "macros", "process", "rt", "rt-multi-thread", "signal"]}

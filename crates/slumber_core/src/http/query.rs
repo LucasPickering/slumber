@@ -1,6 +1,6 @@
 //! Utilities for querying HTTP response data
 
-use crate::http::ResponseContent;
+use crate::http::content_type::ResponseContent;
 use derive_more::{Display, FromStr};
 use serde::{Deserialize, Serialize};
 use serde_json_path::{ExactlyOneError, JsonPath};
@@ -86,7 +86,7 @@ impl From<ExactlyOneError> for QueryError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{http::Json, test_util::assert_err};
+    use crate::{assert_err, http::content_type::Json};
     use rstest::rstest;
     use serde_json::json;
 

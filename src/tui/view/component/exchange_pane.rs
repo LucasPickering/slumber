@@ -1,25 +1,21 @@
-use crate::{
-    collection::RecipeNode,
-    http::RequestRecord,
-    tui::{
-        context::TuiContext,
-        input::Action,
-        view::{
-            common::{tabs::Tabs, Pane},
-            component::{
-                primary::PrimaryPane,
-                request_view::{RequestView, RequestViewProps},
-                response_view::{
-                    ResponseBodyView, ResponseBodyViewProps,
-                    ResponseHeadersView, ResponseHeadersViewProps,
-                },
-                Component,
+use crate::tui::{
+    context::TuiContext,
+    input::Action,
+    view::{
+        common::{tabs::Tabs, Pane},
+        component::{
+            primary::PrimaryPane,
+            request_view::{RequestView, RequestViewProps},
+            response_view::{
+                ResponseBodyView, ResponseBodyViewProps, ResponseHeadersView,
+                ResponseHeadersViewProps,
             },
-            context::PersistedLazy,
-            draw::{Draw, DrawMetadata, Generate},
-            event::{Event, EventHandler, Update},
-            RequestState, ViewContext,
+            Component,
         },
+        context::PersistedLazy,
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Event, EventHandler, Update},
+        RequestState, ViewContext,
     },
 };
 use derive_more::Display;
@@ -31,6 +27,7 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
+use slumber_core::{collection::RecipeNode, http::RequestRecord};
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 

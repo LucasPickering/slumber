@@ -1,11 +1,8 @@
-use crate::{
-    collection::HasId,
-    tui::{
-        input::Action,
-        view::{
-            draw::{Draw, DrawMetadata},
-            event::{Event, EventHandler, Update},
-        },
+use crate::tui::{
+    input::Action,
+    view::{
+        draw::{Draw, DrawMetadata},
+        event::{Event, EventHandler, Update},
     },
 };
 use persisted::PersistedContainer;
@@ -13,6 +10,7 @@ use ratatui::{
     widgets::{ListState, StatefulWidget, TableState},
     Frame,
 };
+use slumber_core::collection::HasId;
 use std::{cell::RefCell, fmt::Debug, marker::PhantomData};
 
 /// State manager for a dynamic list of items.
@@ -332,9 +330,6 @@ pub trait SelectStateData: Default {
 
     /// Select an element by index
     fn select(&mut self, index: usize);
-
-    /// Visual offset into the list, for scrolling
-    fn offset(&self) -> usize;
 }
 
 impl SelectStateData for ListState {
@@ -344,10 +339,6 @@ impl SelectStateData for ListState {
 
     fn select(&mut self, index: usize) {
         self.select(Some(index))
-    }
-
-    fn offset(&self) -> usize {
-        self.offset()
     }
 }
 
@@ -359,10 +350,6 @@ impl SelectStateData for TableState {
     fn select(&mut self, index: usize) {
         self.select(Some(index))
     }
-
-    fn offset(&self) -> usize {
-        self.offset()
-    }
 }
 
 impl SelectStateData for usize {
@@ -372,10 +359,6 @@ impl SelectStateData for usize {
 
     fn select(&mut self, index: usize) {
         *self = index;
-    }
-
-    fn offset(&self) -> usize {
-        0 // Assume all elements are always visible
     }
 }
 
@@ -390,21 +373,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        collection::{Profile, ProfileId},
-        test_util::Factory,
-        tui::{
-            test_util::{harness, TestHarness},
-            view::{
-                context::PersistedLazy, test_util::TestComponent, ViewContext,
-            },
-        },
+    use crate::tui::{
+        test_util::{harness, TestHarness},
+        view::{context::PersistedLazy, test_util::TestComponent, ViewContext},
     };
     use crossterm::event::KeyCode;
     use persisted::{PersistedKey, PersistedStore};
     use ratatui::widgets::List;
     use rstest::rstest;
     use serde::Serialize;
+    use slumber_core::{
+        collection::{Profile, ProfileId},
+        test_util::Factory,
+    };
     use std::sync::mpsc;
 
     /// Test going up and down in the list

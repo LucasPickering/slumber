@@ -1,16 +1,13 @@
-use crate::{
-    tui::{
-        config::Config,
-        context::TuiContext,
-        input::{Action, InputBinding},
-        view::{
-            common::{modal::Modal, table::Table},
-            context::ViewContext,
-            draw::{Draw, DrawMetadata, Generate},
-            event::EventHandler,
-        },
+use crate::tui::{
+    config::Config,
+    context::TuiContext,
+    input::{Action, InputBinding},
+    view::{
+        common::{modal::Modal, table::Table},
+        context::ViewContext,
+        draw::{Draw, DrawMetadata, Generate},
+        event::EventHandler,
     },
-    util::paths::TempDirectory,
 };
 use itertools::Itertools;
 use ratatui::{
@@ -18,6 +15,7 @@ use ratatui::{
     text::{Line, Text},
     Frame,
 };
+use slumber_core::util::TempDirectory;
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 

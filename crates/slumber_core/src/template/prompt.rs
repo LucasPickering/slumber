@@ -1,4 +1,4 @@
-use crate::util::ResultExt;
+use crate::util::ResultTraced;
 use anyhow::anyhow;
 use derive_more::From;
 use std::fmt::Debug;

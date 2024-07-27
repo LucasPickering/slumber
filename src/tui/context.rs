@@ -1,7 +1,5 @@
-use crate::{
-    http::{HttpEngine, InsecureHosts},
-    tui::{config::Config, input::InputEngine, view::Styles},
-};
+use crate::tui::{config::Config, input::InputEngine, view::Styles};
+use slumber_core::http::{HttpEngine, InsecureHosts};
 use std::sync::OnceLock;
 
 /// The singleton value for the context. Initialized once during startup, then

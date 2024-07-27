@@ -1,5 +1,6 @@
-use crate::{cli::Subcommand, db::Database, GlobalArgs};
+use crate::{cli::Subcommand, GlobalArgs};
 use clap::Parser;
+use slumber_core::db::Database;
 use std::{path::PathBuf, process::ExitCode};
 
 /// View and modify request collection metadata

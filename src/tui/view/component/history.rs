@@ -1,16 +1,12 @@
-use crate::{
-    collection::Recipe,
-    http::RequestId,
-    tui::{
-        context::TuiContext,
-        view::{
-            common::{list::List, modal::Modal},
-            component::Component,
-            draw::{Draw, DrawMetadata, Generate},
-            event::{Event, EventHandler},
-            state::{select::SelectState, RequestStateSummary},
-            ViewContext,
-        },
+use crate::tui::{
+    context::TuiContext,
+    view::{
+        common::{list::List, modal::Modal},
+        component::Component,
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Event, EventHandler},
+        state::{select::SelectState, RequestStateSummary},
+        ViewContext,
     },
 };
 use ratatui::{
@@ -18,6 +14,7 @@ use ratatui::{
     text::{Line, Span},
     Frame,
 };
+use slumber_core::{collection::Recipe, http::RequestId};
 
 /// Browse request/response history for a recipe
 #[derive(Debug)]

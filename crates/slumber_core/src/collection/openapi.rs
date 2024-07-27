@@ -17,7 +17,7 @@ use crate::{
         RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     template::Template,
-    util::{ResultExt, NEW_ISSUE_LINK},
+    util::{ResultTraced, NEW_ISSUE_LINK},
 };
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
@@ -626,32 +626,38 @@ impl<'a> RecipeBuilder<'a> {
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
     use super::*;
-    use crate::collection::{Collection, CollectionFile};
+    use crate::{
+        collection::{Collection, CollectionFile},
+        test_util::test_data_dir,
+    };
     use indexmap::indexmap;
     use openapiv3::{Example, Schema, SchemaData, SchemaKind, Type};
     use pretty_assertions::assert_eq;
     use rstest::{fixture, rstest};
     use serde_json::json;
-    use std::sync::OnceLock;
+    use std::{path::PathBuf, sync::OnceLock};
 
-    const OPENAPIV3_FILE: &str = "./test_data/openapiv3_petstore.yml";
+    const OPENAPIV3_FILE: &str = "openapiv3_petstore.yml";
     /// Assertion expectation is stored in a separate file. This is for a couple
     /// reasons:
     /// - It's huge so it makes code hard to navigate
     /// - Changes don't require a re-compile
-    const OPENAPIV3_IMPORTED_FILE: &str =
-        "./test_data/openapiv3_petstore_imported.yml";
+    const OPENAPIV3_IMPORTED_FILE: &str = "openapiv3_petstore_imported.yml";
 
     /// Catch-all test for openapiv3 import
+    #[rstest]
     #[tokio::test]
-    async fn test_openapiv3_import() {
-        let imported = Collection::from_openapi(OPENAPIV3_FILE).unwrap();
-        let expected = CollectionFile::load(OPENAPIV3_IMPORTED_FILE.into())
-            .await
-            .unwrap()
-            .collection;
+    async fn test_openapiv3_import(test_data_dir: PathBuf) {
+        let imported =
+            Collection::from_openapi(test_data_dir.join(OPENAPIV3_FILE))
+                .unwrap();
+        let expected =
+            CollectionFile::load(test_data_dir.join(OPENAPIV3_IMPORTED_FILE))
+                .await
+                .unwrap()
+                .collection;
         assert_eq!(imported, expected);
     }
 

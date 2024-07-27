@@ -7,20 +7,15 @@ pub mod test_util;
 mod util;
 pub mod view;
 
-use crate::{
-    collection::{Collection, CollectionFile, ProfileId, Recipe, RecipeId},
-    db::{CollectionDatabase, Database},
-    http::RequestSeed,
-    template::{Prompter, Template, TemplateChunk, TemplateContext},
-    tui::{
-        config::Config,
-        context::TuiContext,
-        input::Action,
-        message::{Message, MessageSender, RequestConfig},
-        util::{get_editor_command, save_file, signals},
-        view::{ModalPriority, PreviewPrompter, RequestState, View},
+use crate::tui::{
+    config::Config,
+    context::TuiContext,
+    input::Action,
+    message::{Message, MessageSender, RequestConfig},
+    util::{
+        get_editor_command, save_file, signals, Replaceable, ResultReported,
     },
-    util::{Replaceable, ResultExt},
+    view::{ModalPriority, PreviewPrompter, RequestState, View},
 };
 use anyhow::{anyhow, Context};
 use chrono::Utc;
@@ -31,6 +26,12 @@ use crossterm::{
 use futures::{Future, StreamExt};
 use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
+use slumber_core::{
+    collection::{Collection, CollectionFile, ProfileId, Recipe, RecipeId},
+    db::{CollectionDatabase, Database},
+    http::RequestSeed,
+    template::{Prompter, Template, TemplateChunk, TemplateContext},
+};
 use std::{
     io::{self, Stdout},
     ops::Deref,

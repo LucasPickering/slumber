@@ -1,23 +1,19 @@
 //! Components related to the selection of profiles
 
-use crate::{
-    collection::{Profile, ProfileId},
-    tui::{
-        context::TuiContext,
-        input::Action,
-        view::{
-            common::{
-                list::List, modal::Modal, table::Table,
-                template_preview::TemplatePreview, Pane,
-            },
-            context::PersistedLazy,
-            draw::{Draw, DrawMetadata, Generate},
-            event::{Event, EventHandler, Update},
-            state::{select::SelectState, StateCell},
-            Component, ModalPriority, ViewContext,
+use crate::tui::{
+    context::TuiContext,
+    input::Action,
+    view::{
+        common::{
+            list::List, modal::Modal, table::Table,
+            template_preview::TemplatePreview, Pane,
         },
+        context::PersistedLazy,
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Event, EventHandler, Update},
+        state::{select::SelectState, StateCell},
+        Component, ModalPriority, ViewContext,
     },
-    util::doc_link,
 };
 use itertools::Itertools;
 use persisted::PersistedKey;
@@ -27,6 +23,10 @@ use ratatui::{
     Frame,
 };
 use serde::Serialize;
+use slumber_core::{
+    collection::{Profile, ProfileId},
+    util::doc_link,
+};
 
 /// Minimal pane to show the current profile, and handle interaction to open the
 /// profile list modal
@@ -66,13 +66,6 @@ pub struct ProfilePane {
 #[derive(Debug, Serialize, PersistedKey)]
 #[persisted(Option<ProfileId>)]
 struct SelectedProfileKey;
-
-/// Needed for persistence
-impl PartialEq<Profile> for ProfileId {
-    fn eq(&self, profile: &Profile) -> bool {
-        self == &profile.id
-    }
-}
 
 impl ProfilePane {
     pub fn new(profiles: Vec<Profile>) -> Self {

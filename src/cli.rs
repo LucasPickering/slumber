@@ -5,6 +5,7 @@ mod history;
 mod import;
 mod request;
 mod show;
+mod util;
 
 use crate::{
     cli::{

@@ -13,14 +13,9 @@ pub mod template_preview;
 pub mod text_box;
 pub mod text_window;
 
-use crate::{
-    collection::Profile,
-    http::{RequestBuildError, RequestError},
-    tui::{
-        context::TuiContext,
-        view::{draw::Generate, state::Notification},
-    },
-    util::{format_duration, format_time, MaybeStr},
+use crate::tui::{
+    context::TuiContext,
+    view::{draw::Generate, state::Notification},
 };
 use chrono::{DateTime, Duration, Local, Utc};
 use itertools::Itertools;
@@ -29,6 +24,11 @@ use ratatui::{
     widgets::{Block, Borders},
 };
 use reqwest::{header::HeaderValue, StatusCode};
+use slumber_core::{
+    collection::Profile,
+    http::{RequestBuildError, RequestError},
+    util::{format_duration, format_time, MaybeStr},
+};
 
 /// A container with a title and border
 pub struct Pane<'a> {

@@ -1,17 +1,14 @@
-use crate::{
-    collection::{HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeTree},
-    tui::{
-        context::TuiContext,
-        input::Action,
-        view::{
-            common::{actions::ActionsModal, list::List, Pane},
-            component::{primary::PrimaryPane, recipe_pane::RecipeMenuAction},
-            context::{Persisted, PersistedLazy},
-            draw::{Draw, DrawMetadata, Generate},
-            event::{Event, EventHandler, Update},
-            state::select::SelectState,
-            Component, ViewContext,
-        },
+use crate::tui::{
+    context::TuiContext,
+    input::Action,
+    view::{
+        common::{actions::ActionsModal, list::List, Pane},
+        component::{primary::PrimaryPane, recipe_pane::RecipeMenuAction},
+        context::{Persisted, PersistedLazy},
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Event, EventHandler, Update},
+        state::select::SelectState,
+        Component, ViewContext,
     },
 };
 use derive_more::{Deref, DerefMut};
@@ -19,6 +16,9 @@ use itertools::Itertools;
 use persisted::{PersistedKey, SingletonKey};
 use ratatui::Frame;
 use serde::{Deserialize, Serialize};
+use slumber_core::collection::{
+    HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeTree,
+};
 use std::collections::HashSet;
 
 /// List/tree of recipes and folders. This is mostly just a list, but with some
@@ -54,13 +54,6 @@ pub struct RecipeListPane {
 #[derive(Debug, Serialize, PersistedKey)]
 #[persisted(Option<RecipeId>)]
 struct SelectedRecipeKey;
-
-/// Needed for persistence
-impl PartialEq<RecipeNode> for RecipeId {
-    fn eq(&self, node: &RecipeNode) -> bool {
-        self == node.id()
-    }
-}
 
 impl RecipeListPane {
     pub fn new(recipes: &RecipeTree) -> Self {

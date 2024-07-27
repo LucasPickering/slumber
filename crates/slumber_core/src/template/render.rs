@@ -5,13 +5,13 @@ use crate::{
         ChainId, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
         ChainSource, RecipeId,
     },
-    http::{ContentType, Exchange, RequestSeed, ResponseRecord},
+    http::{content_type::ContentType, Exchange, RequestSeed, ResponseRecord},
     template::{
         error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
         Prompt, Template, TemplateChunk, TemplateContext, TemplateError,
         TemplateKey,
     },
-    util::{FutureCache, FutureCacheOutcome, ResultExt},
+    util::{FutureCache, FutureCacheOutcome, ResultTraced},
 };
 use async_trait::async_trait;
 use chrono::Utc;

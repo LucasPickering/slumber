@@ -1,12 +1,5 @@
 use crate::{
-    cli::Subcommand,
-    collection::{CollectionFile, ProfileId, RecipeId},
-    db::{CollectionDatabase, Database},
-    http::{
-        BuildOptions, HttpEngine, InsecureHosts, RequestSeed, RequestTicket,
-    },
-    template::{Prompt, Prompter, TemplateContext, TemplateError},
-    util::{HeaderDisplay, ResultExt},
+    cli::{util::HeaderDisplay, Subcommand},
     GlobalArgs,
 };
 use anyhow::{anyhow, Context};
@@ -14,6 +7,15 @@ use clap::Parser;
 use dialoguer::{Input, Password};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use slumber_core::{
+    collection::{CollectionFile, ProfileId, RecipeId},
+    db::{CollectionDatabase, Database},
+    http::{
+        BuildOptions, HttpEngine, InsecureHosts, RequestSeed, RequestTicket,
+    },
+    template::{Prompt, Prompter, TemplateContext, TemplateError},
+    util::ResultTraced,
+};
 use std::{
     error::Error,
     io::{self, Write},

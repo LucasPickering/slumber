@@ -1,13 +1,11 @@
-use crate::{
-    tui::{
-        input::{Action, InputBinding},
-        view::Theme,
-    },
-    util::{parse_yaml, paths::DataDirectory, ResultExt},
+use crate::tui::{
+    input::{Action, InputBinding},
+    view::Theme,
 };
 use anyhow::Context;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use slumber_core::util::{parse_yaml, DataDirectory, ResultTraced};
 use std::{fs, path::PathBuf};
 use tracing::info;
 

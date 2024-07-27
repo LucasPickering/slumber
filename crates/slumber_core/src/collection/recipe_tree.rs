@@ -189,7 +189,7 @@ impl<'de> Deserialize<'de> for RecipeTree {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
     fn from(value: IndexMap<RecipeId, Recipe>) -> Self {
         value
@@ -200,7 +200,7 @@ impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl From<IndexMap<RecipeId, RecipeNode>> for RecipeTree {
     fn from(tree: IndexMap<RecipeId, RecipeNode>) -> Self {
         Self::new(tree).unwrap()
@@ -247,7 +247,10 @@ impl From<&Vec<&RecipeId>> for RecipeLookupKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{assert_err, by_id, Factory};
+    use crate::{
+        assert_err,
+        test_util::{by_id, Factory},
+    };
     use indexmap::indexmap;
     use itertools::Itertools;
     use rstest::{fixture, rstest};

@@ -1,12 +1,11 @@
-use crate::{
-    cli::Subcommand,
-    collection::CollectionFile,
-    db::Database,
-    util::paths::{DataDirectory, TempDirectory},
-    GlobalArgs,
-};
+use crate::{cli::Subcommand, GlobalArgs};
 use clap::Parser;
 use serde::Serialize;
+use slumber_core::{
+    collection::CollectionFile,
+    db::Database,
+    util::{DataDirectory, TempDirectory},
+};
 use std::{borrow::Cow, path::Path, process::ExitCode};
 
 /// Print meta information about Slumber (config, collections, etc.)

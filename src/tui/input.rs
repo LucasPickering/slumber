@@ -1,6 +1,6 @@
 //! Logic related to input handling. This is considered part of the controller.
 
-use crate::{tui::message::Message, util::Mapping};
+use crate::tui::message::Message;
 use anyhow::{anyhow, bail};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MediaKeyCode,
@@ -10,6 +10,7 @@ use derive_more::Display;
 use indexmap::{indexmap, IndexMap};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use slumber_core::util::Mapping;
 use std::{
     borrow::Cow,
     fmt::{self, Debug},
@@ -548,10 +549,10 @@ fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{assert_err, assert_matches};
     use crossterm::event::{KeyEventState, MediaKeyCode};
     use rstest::rstest;
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
+    use slumber_core::{assert_err, assert_matches};
 
     /// Helper to create a key event
     fn key_event(kind: KeyEventKind, code: KeyCode) -> Event {

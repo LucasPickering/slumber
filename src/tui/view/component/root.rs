@@ -1,32 +1,29 @@
-use crate::{
-    collection::Collection,
-    http::RequestId,
-    tui::{
-        input::Action,
-        message::Message,
-        view::{
-            common::modal::ModalQueue,
-            component::{
-                help::HelpFooter,
-                history::History,
-                misc::NotificationText,
-                primary::{PrimaryView, PrimaryViewProps},
-            },
-            context::PersistedLazy,
-            draw::{Draw, DrawMetadata, Generate},
-            event::{Event, EventHandler, Update},
-            state::{
-                request_store::RequestStore, RequestState, RequestStateSummary,
-            },
-            Component, ModalPriority, ViewContext,
+use crate::tui::{
+    input::Action,
+    message::Message,
+    util::ResultReported,
+    view::{
+        common::modal::ModalQueue,
+        component::{
+            help::HelpFooter,
+            history::History,
+            misc::NotificationText,
+            primary::{PrimaryView, PrimaryViewProps},
         },
+        context::PersistedLazy,
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Event, EventHandler, Update},
+        state::{
+            request_store::RequestStore, RequestState, RequestStateSummary,
+        },
+        Component, ModalPriority, ViewContext,
     },
-    util::ResultExt,
 };
 use derive_more::From;
 use persisted::{PersistedContainer, PersistedKey};
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
 use serde::Serialize;
+use slumber_core::{collection::Collection, http::RequestId};
 
 /// The root view component
 #[derive(Debug)]
@@ -240,17 +237,14 @@ impl PersistedContainer for SelectedRequestId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        http::Exchange,
-        test_util::{assert_matches, Factory},
-        tui::{
-            test_util::{harness, TestHarness},
-            view::test_util::TestComponent,
-        },
+    use crate::tui::{
+        test_util::{harness, TestHarness},
+        view::test_util::TestComponent,
     };
     use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
+    use slumber_core::{assert_matches, http::Exchange, test_util::Factory};
 
     /// Test that, on first render, the view loads the most recent historical
     /// request for the first recipe+profile

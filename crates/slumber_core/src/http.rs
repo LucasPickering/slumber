@@ -1,6 +1,7 @@
 //! HTTP-specific logic and models. [HttpEngine] is the main entrypoint for all
 //! operations. This is the life cycle of a request:
 //!
+//! ```no_test
 //! +--------+
 //! | Recipe |
 //! +--------+
@@ -32,21 +33,20 @@
 //! +----------+
 //! | Exchange |
 //! +----------+
+//! ```
 
 mod cereal;
-mod content_type;
+pub mod content_type;
 mod models;
-mod query;
+pub mod query;
 
-pub use content_type::*;
 pub use models::*;
-pub use query::*;
 
 use crate::{
     collection::{Authentication, JsonBody, Method, Recipe, RecipeBody},
     db::CollectionDatabase,
     template::{Template, TemplateContext},
-    util::ResultExt,
+    util::ResultTraced,
 };
 use anyhow::Context;
 use async_recursion::async_recursion;
@@ -54,7 +54,7 @@ use bytes::Bytes;
 use chrono::Utc;
 use futures::{
     future::{self, try_join_all, OptionFuture},
-    Future,
+    try_join, Future,
 };
 use mime::Mime;
 use reqwest::{
@@ -63,11 +63,9 @@ use reqwest::{
     Client, RequestBuilder, Response, Url,
 };
 use std::{collections::HashSet, sync::Arc};
-use tokio::try_join;
 use tracing::{info, info_span};
 
-const USER_AGENT: &str =
-    concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
 
 /// Utility for handling all HTTP operations. The main purpose of this is to
 /// de-asyncify HTTP so it can be called in the main TUI thread. All heavy

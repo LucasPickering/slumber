@@ -4,17 +4,17 @@ pub mod fixed_select;
 pub mod request_store;
 pub mod select;
 
-use crate::{
+use bytesize::ByteSize;
+use chrono::{DateTime, Duration, Utc};
+use derive_more::Deref;
+use reqwest::StatusCode;
+use slumber_core::{
     collection::{ProfileId, RecipeId},
     http::{
         Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
         RequestRecord,
     },
 };
-use bytesize::ByteSize;
-use chrono::{DateTime, Duration, Utc};
-use derive_more::Deref;
-use reqwest::StatusCode;
 use std::{
     cell::{Ref, RefCell},
     sync::Arc,

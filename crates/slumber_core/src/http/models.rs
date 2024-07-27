@@ -5,8 +5,11 @@
 
 use crate::{
     collection::{ProfileId, Recipe, RecipeId},
-    http::{cereal, ContentType, ResponseContent},
-    util::ResultExt,
+    http::{
+        cereal,
+        content_type::{ContentType, ResponseContent},
+    },
+    util::ResultTraced,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -92,7 +95,7 @@ impl RequestSeed {
 /// `HashSet` because I expect these to be very small, so we don't need the
 /// overhead of hashing.
 #[derive(Clone, Debug, Default)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct BuildOptions {
     /// Which headers should be excluded?
     pub disabled_headers: Vec<usize>,
@@ -126,7 +129,7 @@ impl RequestTicket {
 /// [RequestTicket::send] when a response is received successfully for a sent
 /// request.
 #[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct Exchange {
     /// ID to uniquely refer to this exchange
     pub id: RequestId,
@@ -180,7 +183,7 @@ impl From<&Exchange> for ExchangeSummary {
 /// potentially be large so we want to be intentional about duplicating it only
 /// when necessary.
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct RequestRecord {
     /// Unique ID for this request
     pub id: RequestId,
@@ -269,7 +272,7 @@ impl RequestRecord {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for RequestRecord {
     fn factory(_: ()) -> Self {
         Self {
@@ -285,7 +288,7 @@ impl crate::test_util::Factory for RequestRecord {
 }
 
 /// Customize profile and recipe ID
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
     for RequestRecord
 {
@@ -302,7 +305,7 @@ impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for ResponseRecord {
     fn factory(_: ()) -> Self {
         Self {
@@ -313,7 +316,7 @@ impl crate::test_util::Factory for ResponseRecord {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for Exchange {
     fn factory(_: ()) -> Self {
         let request = RequestRecord::factory(());
@@ -329,7 +332,7 @@ impl crate::test_util::Factory for Exchange {
 }
 
 /// Customize profile and recipe ID
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
     fn factory(params: (Option<ProfileId>, RecipeId)) -> Self {
         let request = RequestRecord::factory(params);
@@ -353,7 +356,7 @@ impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
 /// This intentionally does not implement Clone, because responses could
 /// potentially be very large.
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct ResponseRecord {
     #[serde(with = "cereal::serde_status_code")]
     pub status: StatusCode,
@@ -506,7 +509,7 @@ impl From<&[u8]> for ResponseBody {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl PartialEq for ResponseBody {
     fn eq(&self, other: &Self) -> bool {
         // Ignore derived data
@@ -535,7 +538,7 @@ pub struct RequestBuildError {
     pub end_time: DateTime<Utc>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl PartialEq for RequestBuildError {
     fn eq(&self, other: &Self) -> bool {
         self.profile_id == other.profile_id
@@ -569,7 +572,7 @@ pub struct RequestError {
     pub end_time: DateTime<Utc>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl PartialEq for RequestError {
     fn eq(&self, other: &Self) -> bool {
         self.error.to_string() == other.error.to_string()

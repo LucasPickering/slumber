@@ -1,21 +1,19 @@
-pub mod paths;
+//! Miscellaneous utility constants/types/functions
 
-use crate::{
-    http::RequestError,
-    template::ChainError,
-    tui::message::{Message, MessageSender},
-};
+mod paths;
+
+pub use crate::util::paths::*;
+
+use crate::{http::RequestError, template::ChainError};
 use chrono::{
     format::{DelayedFormat, StrftimeItems},
     DateTime, Duration, Local, Utc,
 };
 use derive_more::{DerefMut, Display};
-use dialoguer::console::Style;
-use reqwest::header::HeaderMap;
 use serde::de::DeserializeOwned;
 use std::{
     collections::{hash_map::Entry, HashMap},
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug},
     hash::Hash,
     ops::Deref,
     sync::Arc,
@@ -24,6 +22,7 @@ use tokio::sync::{Mutex, OwnedRwLockWriteGuard, RwLock};
 use tracing::error;
 
 const WEBSITE: &str = "https://slumber.lucaspickering.me";
+/// Link to the GitHub New Issue form
 pub const NEW_ISSUE_LINK: &str =
     "https://github.com/LucasPickering/slumber/issues/new/choose";
 
@@ -31,6 +30,7 @@ pub const NEW_ISSUE_LINK: &str =
 /// as well as the suffix.
 ///
 /// ```
+/// use slumber_core::util::doc_link;
 /// assert_eq!(
 ///     doc_link("api/chain"),
 ///     "https://slumber.lucaspickering.me/book/api/chain.html",
@@ -64,100 +64,38 @@ pub fn format_duration(duration: &Duration) -> String {
     }
 }
 
-/// A value that can be replaced in-place. This is useful for two purposes:
-/// - Transferring ownership of values from old to new
-/// - Dropping the old value before creating the new one
-/// This struct has one invariant: The value is always defined, *except* while
-/// the replacement closure is executing. Better make sure that guy doesn't
-/// panic!
-#[derive(Debug)]
-pub struct Replaceable<T>(Option<T>);
-
-impl<T> Replaceable<T> {
-    pub fn new(value: T) -> Self {
-        Self(Some(value))
-    }
-
-    /// Replace the old value with the new one. The function that generates the
-    /// new value consumes the old one.
-    ///
-    /// The only time this value will panic on access is while the passed
-    /// closure is executing (or during unwind if it panicked).
-    pub fn replace(&mut self, f: impl FnOnce(T) -> T) {
-        let old = self.0.take().expect("Replaceable value not present!");
-        self.0 = Some(f(old));
-    }
-}
-
-/// Access the inner value. If mid-replacement, this will panic
-impl<T> Deref for Replaceable<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref().expect("Replacement in progress or failed")
-    }
-}
-
-/// Access the inner value. If mid-replacement, this will panic
-impl<T> DerefMut for Replaceable<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.as_mut().expect("Replacement in progress or failed")
-    }
-}
-
-pub trait ResultExt<T, E>: Sized {
+/// Extension trait for [Result]
+pub trait ResultTraced<T, E>: Sized {
     /// If this is an error, trace it. Return the same result.
     fn traced(self) -> Self;
-
-    /// If this result is an error, send it over the message channel to be
-    /// shown the user, and return `None`. If it's `Ok`, return `Some`.
-    fn reported(self, messages_tx: &MessageSender) -> Option<T>;
 }
 
 // This is deliberately *not* implemented for non-anyhow errors, because we only
 // want to trace errors that have full context attached
-impl<T> ResultExt<T, anyhow::Error> for anyhow::Result<T> {
+impl<T> ResultTraced<T, anyhow::Error> for anyhow::Result<T> {
     fn traced(self) -> Self {
         if let Err(err) = &self {
             error!(error = err.deref());
         }
         self
     }
-
-    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
-        match self {
-            Ok(value) => Some(value),
-            Err(error) => {
-                messages_tx.send(Message::Error { error });
-                None
-            }
-        }
-    }
 }
 
-impl<T> ResultExt<T, RequestError> for Result<T, RequestError> {
+impl<T> ResultTraced<T, RequestError> for Result<T, RequestError> {
     fn traced(self) -> Self {
         if let Err(err) = &self {
             error!(error = %err);
         }
         self
     }
-
-    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
-        self.map_err(anyhow::Error::from).reported(messages_tx)
-    }
 }
 
-impl<T> ResultExt<T, ChainError> for Result<T, ChainError> {
+impl<T> ResultTraced<T, ChainError> for Result<T, ChainError> {
     fn traced(self) -> Self {
         if let Err(err) = &self {
             error!(error = %err);
         }
         self
-    }
-
-    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
-        self.map_err(anyhow::Error::from).reported(messages_tx)
     }
 }
 
@@ -187,24 +125,6 @@ impl<'a> Display for MaybeStr<'a> {
             }
             Ok(())
         }
-    }
-}
-
-/// Wrapper making it easy to print a header map
-pub struct HeaderDisplay<'a>(pub &'a HeaderMap);
-
-impl<'a> Display for HeaderDisplay<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let key_style = Style::new().bold();
-        for (key, value) in self.0 {
-            writeln!(
-                f,
-                "{}: {}",
-                key_style.apply_to(key),
-                MaybeStr(value.as_bytes()),
-            )?;
-        }
-        Ok(())
     }
 }
 
@@ -258,7 +178,7 @@ impl<'a, T: Copy> Mapping<'a, T> {
 /// being computed. This allows multiple computers of the same async values to
 /// deduplicate their work.
 #[derive(Debug)]
-pub struct FutureCache<K: Hash + Eq, V: Clone> {
+pub(crate) struct FutureCache<K: Hash + Eq, V: Clone> {
     /// Cache each value by key. The outer mutex will only be held open for as
     /// long as it takes to check if the value is in the cache or not. The
     /// inner lock will be blocked on until the value is available.
@@ -309,7 +229,7 @@ impl<K: Hash + Eq, V: Clone> Default for FutureCache<K, V> {
 }
 
 /// Outcome of check a future cache for a particular key
-pub enum FutureCacheOutcome<V> {
+pub(crate) enum FutureCacheOutcome<V> {
     /// The value is already in the cache
     Hit(V),
     /// The value is not in the cache. Caller is responsible for inserting it
@@ -325,7 +245,7 @@ pub enum FutureCacheOutcome<V> {
 /// responsible for calling [FutureCacheGuard::set] to insert the value for
 /// everyone else. Subsequent callers to the cache will block until `set` is
 /// called.
-pub struct FutureCacheGuard<V>(OwnedRwLockWriteGuard<Option<V>>);
+pub(crate) struct FutureCacheGuard<V>(OwnedRwLockWriteGuard<Option<V>>);
 
 impl<V> FutureCacheGuard<V> {
     pub fn set(mut self, value: V) {

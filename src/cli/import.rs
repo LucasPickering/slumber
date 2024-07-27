@@ -1,6 +1,7 @@
-use crate::{cli::Subcommand, collection::Collection, GlobalArgs};
+use crate::{cli::Subcommand, GlobalArgs};
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
+use slumber_core::collection::Collection;
 use std::{
     fs::File,
     io::{self, Write},

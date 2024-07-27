@@ -1,31 +1,22 @@
-use crate::{
-    collection::{
-        Authentication, Folder, HasId, ProfileId, Recipe, RecipeBody, RecipeId,
-        RecipeNode,
-    },
-    http::BuildOptions,
-    template::Template,
-    tui::{
-        context::TuiContext,
-        input::Action,
-        view::{
-            common::{
-                actions::ActionsModal,
-                table::{Table, ToggleRow},
-                tabs::Tabs,
-                template_preview::TemplatePreview,
-                text_window::{TextWindow, TextWindowProps},
-                Pane,
-            },
-            component::primary::PrimaryPane,
-            context::{Persisted, PersistedKey, PersistedLazy},
-            draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-            event::{Event, EventHandler, Update},
-            state::{select::SelectState, StateCell},
-            Component, ViewContext,
+use crate::tui::{
+    context::TuiContext,
+    input::Action,
+    view::{
+        common::{
+            actions::ActionsModal,
+            table::{Table, ToggleRow},
+            tabs::Tabs,
+            template_preview::TemplatePreview,
+            text_window::{TextWindow, TextWindowProps},
+            Pane,
         },
+        component::primary::PrimaryPane,
+        context::{Persisted, PersistedKey, PersistedLazy},
+        draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
+        event::{Event, EventHandler, Update},
+        state::{select::SelectState, StateCell},
+        Component, ViewContext,
     },
-    util::doc_link,
 };
 use derive_more::Display;
 use itertools::Itertools;
@@ -38,6 +29,15 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
+use slumber_core::{
+    collection::{
+        Authentication, Folder, HasId, ProfileId, Recipe, RecipeBody, RecipeId,
+        RecipeNode,
+    },
+    http::BuildOptions,
+    template::Template,
+    util::doc_link,
+};
 use strum::{EnumCount, EnumIter};
 
 /// Display a request recipe
@@ -477,7 +477,14 @@ impl RecipeState {
 }
 
 /// Display authentication settings
-type AuthenticationDisplay = Authentication<TemplatePreview>;
+#[derive(Debug)]
+enum AuthenticationDisplay {
+    Basic {
+        username: TemplatePreview,
+        password: Option<TemplatePreview>,
+    },
+    Bearer(TemplatePreview),
+}
 
 impl AuthenticationDisplay {
     fn new(

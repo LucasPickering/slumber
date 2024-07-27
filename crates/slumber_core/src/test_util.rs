@@ -3,7 +3,7 @@
 use crate::{
     collection::HasId,
     template::{Prompt, Prompter},
-    util::ResultExt,
+    util::{get_repo_root, ResultTraced},
 };
 use anyhow::Context;
 use derive_more::Deref;
@@ -11,13 +11,12 @@ use indexmap::IndexMap;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
 use std::{
-    env, fs, io,
-    path::{Path, PathBuf},
-    sync::atomic::{AtomicUsize, Ordering},
-};
-use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
-    EnvFilter, Layer,
+    env, fs,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex, MutexGuard,
+    },
 };
 use uuid::Uuid;
 
@@ -34,25 +33,73 @@ pub trait Factory<Param = ()> {
     fn factory(param: Param) -> Self;
 }
 
-/// Set up tracing for tests. This needs to be manually pulled into whatever
-/// tests want it.
-#[fixture]
-#[once]
-pub fn tracing() {
-    // Initialize tracing
-    let subscriber = tracing_subscriber::fmt::layer()
-        .with_writer(io::stderr)
-        .with_target(false)
-        .with_span_events(FmtSpan::NEW)
-        .without_time()
-        .with_filter(EnvFilter::from_default_env());
-    tracing_subscriber::registry().with(subscriber).init();
-}
-
 /// Directory containing static test data
 #[fixture]
 pub fn test_data_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("test_data")
+    get_repo_root().join("test_data")
+}
+
+/// A guard used to indicate that the current process environment is locked.
+/// This should be used in all tests that access environment variables, to
+/// prevent interference from external variable settings or tests conflicting
+/// with each other.
+pub struct EnvGuard {
+    previous_values: Vec<(String, Option<String>)>,
+    #[allow(unused)]
+    guard: MutexGuard<'static, ()>,
+}
+
+impl EnvGuard {
+    /// Lock the environment and set each given variable to its corresponding
+    /// value. The returned guard will keep the environment locked so the
+    /// calling test has exclusive access to it. Upon being dropped, the old
+    /// environment values will be restored and then the environment will be
+    /// unlocked.
+    pub fn lock(
+        variables: impl IntoIterator<
+            Item = (impl Into<String>, Option<impl Into<String>>),
+        >,
+    ) -> Self {
+        /// Global mutex for accessing environment variables. Technically we
+        /// could break this out into a map with one mutex per variable, but
+        /// that adds a ton of complexity for very little value.
+        static MUTEX: Mutex<()> = Mutex::new(());
+
+        let guard = MUTEX.lock().expect("Environment lock is poisoned");
+        let previous_values = variables
+            .into_iter()
+            .map(|(variable, new_value)| {
+                let variable: String = variable.into();
+                let previous_value = env::var(&variable).ok();
+
+                if let Some(value) = new_value {
+                    env::set_var(&variable, value.into());
+                } else {
+                    env::remove_var(&variable);
+                }
+
+                (variable, previous_value)
+            })
+            .collect();
+
+        Self {
+            previous_values,
+            guard,
+        }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        // Restore each env var
+        for (variable, value) in &self.previous_values {
+            if let Some(value) = value {
+                env::set_var(variable, value);
+            } else {
+                env::remove_var(variable);
+            }
+        }
+    }
 }
 
 /// Create a new temporary folder. This will include a random subfolder to
@@ -144,6 +191,7 @@ pub fn header_map<'a>(
 
 /// Assert a result is the `Err` variant, and the stringified error contains
 /// the given message
+#[macro_export]
 macro_rules! assert_err {
     ($e:expr, $msg:expr) => {{
         use itertools::Itertools as _;
@@ -158,15 +206,15 @@ macro_rules! assert_err {
         )
     }};
 }
-pub(crate) use assert_err;
 
 /// Assert the given expression matches a pattern and optional condition.
 /// Additionally, evaluate an expression using the bound pattern. This can be
 /// used to apply additional assertions inline, or extract bound values to use
 /// in subsequent statements.
+#[macro_export]
 macro_rules! assert_matches {
     ($expr:expr, $pattern:pat $(if $condition:expr)? $(,)?) => {
-        crate::test_util::assert_matches!($expr, $pattern $(if $condition)? => ());
+        slumber_core::assert_matches!($expr, $pattern $(if $condition)? => ());
     };
     ($expr:expr, $pattern:pat $(if $condition:expr)? => $output:expr $(,)?) => {
         match $expr {
@@ -187,4 +235,3 @@ macro_rules! assert_matches {
         }
     };
 }
-pub(crate) use assert_matches;

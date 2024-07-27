@@ -1,21 +1,17 @@
 //! Request/response body display component
 
-use crate::{
-    http::{Query, ResponseBody},
-    tui::{
-        input::Action,
-        view::{
-            common::{
-                text_box::TextBox,
-                text_window::{TextWindow, TextWindowProps},
-            },
-            draw::{Draw, DrawMetadata, Generate},
-            event::{Event, EventHandler, Update},
-            state::StateCell,
-            Component, ViewContext,
+use crate::tui::{
+    input::Action,
+    view::{
+        common::{
+            text_box::TextBox,
+            text_window::{TextWindow, TextWindowProps},
         },
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Event, EventHandler, Update},
+        state::StateCell,
+        Component, ViewContext,
     },
-    util::{MaybeStr, ResultExt},
 };
 use anyhow::Context;
 use persisted::PersistedContainer;
@@ -24,6 +20,10 @@ use ratatui::{
     Frame,
 };
 use serde_json_path::JsonPath;
+use slumber_core::{
+    http::{query::Query, ResponseBody},
+    util::{MaybeStr, ResultTraced},
+};
 use std::{cell::Cell, ops::Deref};
 use Debug;
 
@@ -218,14 +218,10 @@ fn init_state(body: &ResponseBody, query: Option<&Query>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        http::ResponseRecord,
-        test_util::header_map,
-        tui::{
-            context::TuiContext,
-            test_util::{harness, TestHarness},
-            view::{context::PersistedLazy, test_util::TestComponent},
-        },
+    use crate::tui::{
+        context::TuiContext,
+        test_util::{harness, TestHarness},
+        view::{context::PersistedLazy, test_util::TestComponent},
     };
     use crossterm::event::KeyCode;
     use persisted::{PersistedKey, PersistedStore};
@@ -233,6 +229,7 @@ mod tests {
     use reqwest::StatusCode;
     use rstest::{fixture, rstest};
     use serde::Serialize;
+    use slumber_core::{http::ResponseRecord, test_util::header_map};
 
     const TEXT: &[u8] = b"{\"greeting\":\"hello\"}";
 

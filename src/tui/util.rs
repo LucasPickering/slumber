@@ -1,19 +1,92 @@
-//! Utilities for signal and message handling for the TUI. Most non-core
-//! functionality is spun out into this module.
-
-use crate::{
-    template::Prompt,
-    tui::{
-        message::{Message, MessageSender},
-        view::Confirm,
-    },
-    util::ResultExt,
+use crate::tui::{
+    message::{Message, MessageSender},
+    view::Confirm,
 };
 use anyhow::{anyhow, Context};
+use derive_more::DerefMut;
 use futures::{future, FutureExt};
-use std::{env, io, path::Path, process::Command};
+use slumber_core::{
+    http::RequestError,
+    template::{ChainError, Prompt},
+    util::ResultTraced,
+};
+use std::{env, io, ops::Deref, path::Path, process::Command};
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::oneshot};
 use tracing::{debug, info, warn};
+
+/// Extension trait for [Result]
+pub trait ResultReported<T, E>: Sized {
+    /// If this result is an error, send it over the message channel to be
+    /// shown the user, and return `None`. If it's `Ok`, return `Some`.
+    fn reported(self, messages_tx: &MessageSender) -> Option<T>;
+}
+
+// This is deliberately *not* implemented for non-anyhow errors, because we only
+// want to trace errors that have full context attached
+impl<T> ResultReported<T, anyhow::Error> for anyhow::Result<T> {
+    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
+        match self {
+            Ok(value) => Some(value),
+            Err(error) => {
+                messages_tx.send(Message::Error { error });
+                None
+            }
+        }
+    }
+}
+
+impl<T> ResultReported<T, RequestError> for Result<T, RequestError> {
+    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
+        self.map_err(anyhow::Error::from).reported(messages_tx)
+    }
+}
+
+impl<T> ResultReported<T, ChainError> for Result<T, ChainError> {
+    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
+        self.map_err(anyhow::Error::from).reported(messages_tx)
+    }
+}
+
+/// A value that can be replaced in-place. This is useful for two purposes:
+/// - Transferring ownership of values from old to new
+/// - Dropping the old value before creating the new one
+/// This struct has one invariant: The value is always defined, *except* while
+/// the replacement closure is executing. Better make sure that guy doesn't
+/// panic!
+#[derive(Debug)]
+pub struct Replaceable<T>(Option<T>);
+
+impl<T> Replaceable<T> {
+    pub fn new(value: T) -> Self {
+        Self(Some(value))
+    }
+
+    /// Replace the old value with the new one. The function that generates the
+    /// new value consumes the old one.
+    ///
+    /// The only time this value will panic on access is while the passed
+    /// closure is executing (or during unwind if it panicked).
+    pub fn replace(&mut self, f: impl FnOnce(T) -> T) {
+        let old = self.0.take().expect("Replaceable value not present!");
+        self.0 = Some(f(old));
+    }
+}
+
+/// Access the inner value. If mid-replacement, this will panic
+impl<T> Deref for Replaceable<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().expect("Replacement in progress or failed")
+    }
+}
+
+/// Access the inner value. If mid-replacement, this will panic
+impl<T> DerefMut for Replaceable<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut().expect("Replacement in progress or failed")
+    }
+}
 
 /// Listen for any exit signals, and return `Ok(())` when any signal is
 /// received. This can only fail during initialization.
@@ -184,12 +257,13 @@ async fn confirm(messages_tx: &MessageSender, message: impl ToString) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::{assert_err, assert_matches, temp_dir, TempDir},
-        tui::test_util::{harness, EnvGuard, TestHarness},
-    };
+    use crate::tui::test_util::{harness, TestHarness};
     use itertools::Itertools;
     use rstest::rstest;
+    use slumber_core::{
+        assert_err, assert_matches,
+        test_util::{temp_dir, EnvGuard, TempDir},
+    };
     use std::ffi::OsStr;
     use tokio::fs;
 

@@ -1,0 +1,53 @@
+[package]
+authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
+description = "Core library for Slumber. Not intended for external use."
+edition = "2021"
+homepage = "https://slumber.lucaspickering.me"
+keywords = ["rest", "http", "terminal", "tui"]
+license = "MIT"
+name = "slumber_core"
+repository = "https://github.com/LucasPickering/slumber"
+version = "1.7.0"
+# Rely on parent for rust-version
+
+[dependencies]
+aho-corasick = "^1.0.0"
+anyhow = "^1.0.0"
+async-recursion = "^1.1.1"
+async-trait = "^0.1.73"
+bytes = {version = "^1.5.0", features = ["serde"]}
+bytesize = {version = "^1.3.0", default-features = false}
+chrono = {version = "^0.4.31", default-features = false, features = ["clock", "serde", "std"]}
+derive_more = {version = "1.0.0-beta.6", features = ["debug", "deref", "deref_mut", "display", "from", "from_str"]}
+dirs = "^5.0.1"
+futures = "^0.3.28"
+indexmap = {version = "^2.0.0", features = ["serde"]}
+itertools = "^0.12.0"
+mime = "^0.3.17"
+openapiv3 = "^2.0.0"
+reqwest = {version = "^0.12.0", default-features = false, features = ["multipart", "rustls-tls", "rustls-tls-native-roots"]}
+rmp-serde = "^1.1.2"
+rstest = {version = "^0.19.0", default-features = false, optional = true}
+rusqlite = {version = "^0.31.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
+rusqlite_migration = "^1.2.0"
+serde = {version = "^1.0.0", features = ["derive"]}
+serde_json = {version = "^1.0.0", default-features = false}
+serde_json_path = "^0.6.3"
+serde_yaml = {version = "^0.9.0", default-features = false}
+strum = {version = "^0.26.0", default-features = false, features = ["derive"]}
+thiserror = "^1.0.0"
+tokio = {version = "^1.32.0", default-features = false, features = ["fs", "process"]}
+tracing = "^0.1.0"
+url = {version = "^2.0.0", features = ["serde"]}# Inherited from reqwest
+uuid = {version = "^1.4.0", default-features = false, features = ["serde", "v4"]}
+winnow = "0.6"
+
+[dev-dependencies]
+pretty_assertions = "^1.4.0"
+regex = {version = "^1.10.5", default-features = false}
+rstest = {version = "^0.19.0", default-features = false}
+serde_test = "^1.0.176"
+wiremock = {version = "^0.6.0", default-features = false}
+
+[features]
+test = ["dep:rstest"]

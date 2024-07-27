@@ -1,24 +1,24 @@
-use crate::{
-    http::{RequestId, RequestRecord},
-    tui::{
-        input::Action,
-        message::Message,
-        view::{
-            common::{
-                actions::ActionsModal,
-                header_table::HeaderTable,
-                text_window::{TextWindow, TextWindowProps},
-            },
-            draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-            event::{Event, EventHandler, Update},
-            state::StateCell,
-            Component, ViewContext,
+use crate::tui::{
+    input::Action,
+    message::Message,
+    view::{
+        common::{
+            actions::ActionsModal,
+            header_table::HeaderTable,
+            text_window::{TextWindow, TextWindowProps},
         },
+        draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
+        event::{Event, EventHandler, Update},
+        state::StateCell,
+        Component, ViewContext,
     },
-    util::MaybeStr,
 };
 use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
+use slumber_core::{
+    http::{RequestId, RequestRecord},
+    util::MaybeStr,
+};
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 

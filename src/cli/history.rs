@@ -1,15 +1,17 @@
 use crate::{
-    cli::Subcommand,
-    collection::{CollectionFile, ProfileId, RecipeId},
-    db::Database,
-    http::{Exchange, ExchangeSummary, RequestId},
-    util::{format_duration, format_time, HeaderDisplay, MaybeStr},
+    cli::{util::HeaderDisplay, Subcommand},
     GlobalArgs,
 };
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::Parser;
 use dialoguer::console::Style;
+use slumber_core::{
+    collection::{CollectionFile, ProfileId, RecipeId},
+    db::Database,
+    http::{Exchange, ExchangeSummary, RequestId},
+    util::{format_duration, format_time, MaybeStr},
+};
 use std::process::ExitCode;
 use tracing::warn;
 

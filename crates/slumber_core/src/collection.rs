@@ -11,7 +11,7 @@ pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 
-use crate::util::{parse_yaml, ResultExt};
+use crate::util::{parse_yaml, ResultTraced};
 use anyhow::{anyhow, Context};
 use itertools::Itertools;
 use std::{
@@ -27,7 +27,7 @@ use tracing::{info, trace, warn};
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
 /// defined, we'll take the earliest and print a warning.
-pub const CONFIG_FILES: &[&str] = &[
+const CONFIG_FILES: &[&str] = &[
     "slumber.yml",
     "slumber.yaml",
     ".slumber.yml",
@@ -94,10 +94,12 @@ impl CollectionFile {
                 anyhow!("No collection file found in current or ancestor directories")
             })
     }
+}
 
-    /// Create a new file with a placeholder path for testing
-    #[cfg(test)]
-    pub fn testing(collection: Collection) -> Self {
+/// Create a new file with a placeholder path for testing
+#[cfg(any(test, feature = "test"))]
+impl crate::test_util::Factory<Collection> for CollectionFile {
+    fn factory(collection: Collection) -> Self {
         Self {
             path: PathBuf::default(),
             collection,
@@ -181,8 +183,9 @@ async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
 mod tests {
     use super::*;
     use crate::{
-        http::ContentType,
-        test_util::{assert_err, by_id, temp_dir, test_data_dir, TempDir},
+        assert_err,
+        http::content_type::ContentType,
+        test_util::{by_id, temp_dir, test_data_dir, TempDir},
     };
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;

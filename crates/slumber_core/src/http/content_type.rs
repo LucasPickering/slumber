@@ -3,7 +3,7 @@
 //! [ResponseContent]. If you want to parse as a statically known content type,
 //! just use that struct. If you just need to refer to the content _type_, and
 //! not a value, use [ContentType]. If you want to parse dynamically based on
-//! the response's metadata, use [ContentType::parse_response].
+//! the response's metadata, use [ResponseRecord::parse_body].
 
 use crate::{http::ResponseRecord, util::Mapping};
 use anyhow::{anyhow, Context};
@@ -135,6 +135,7 @@ pub trait ResponseContent: Debug + Display + Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
+/// JSON content type
 #[derive(Debug, Display, Deref, From, PartialEq)]
 pub struct Json(serde_json::Value);
 
@@ -165,7 +166,7 @@ impl ResponseContent for Json {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{assert_err, Factory};
+    use crate::{assert_err, test_util::Factory};
     use reqwest::header::{
         HeaderMap, HeaderValue, InvalidHeaderValue, CONTENT_TYPE,
     };

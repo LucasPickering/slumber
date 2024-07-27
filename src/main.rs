@@ -2,21 +2,11 @@
 #![deny(clippy::all)]
 
 mod cli;
-mod collection;
-mod db;
-mod http;
-mod template;
-#[cfg(test)]
-mod test_util;
 mod tui;
-mod util;
 
-use crate::{
-    cli::CliCommand,
-    tui::Tui,
-    util::paths::{DataDirectory, TempDirectory},
-};
+use crate::{cli::CliCommand, tui::Tui};
 use clap::Parser;
+use slumber_core::util::{DataDirectory, TempDirectory};
 use std::{fs::File, io, path::PathBuf, process::ExitCode};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{filter::EnvFilter, fmt::format::FmtSpan, prelude::*};

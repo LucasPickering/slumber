@@ -1,7 +1,7 @@
 //! Helper structs and functions for building components
 
-use crate::template::{Prompt, PromptChannel, Prompter};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use slumber_core::template::{Prompt, PromptChannel, Prompter};
 
 /// A data structure for representation a yes/no confirmation. This is similar
 /// to [Prompt], but it only asks a yes/no question.

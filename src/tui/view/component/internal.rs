@@ -305,13 +305,10 @@ impl Drop for DrawGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_util::assert_matches,
-        tui::{
-            input::Action,
-            test_util::{harness, TestHarness},
-            view::event::Update,
-        },
+    use crate::tui::{
+        input::Action,
+        test_util::{harness, TestHarness},
+        view::event::Update,
     };
     use crossterm::event::{
         KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
@@ -319,6 +316,7 @@ mod tests {
     };
     use ratatui::layout::Layout;
     use rstest::{fixture, rstest};
+    use slumber_core::assert_matches;
 
     #[derive(Debug, Default)]
     struct Branch {

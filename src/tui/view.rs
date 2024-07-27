@@ -15,21 +15,18 @@ pub use state::RequestState;
 pub use theme::{Styles, Theme};
 pub use util::{Confirm, PreviewPrompter};
 
-use crate::{
-    collection::CollectionFile,
-    db::CollectionDatabase,
-    tui::{
-        input::Action,
-        message::{Message, MessageSender},
-        view::{
-            component::{Component, Root},
-            event::{Event, Update},
-            state::Notification,
-        },
+use crate::tui::{
+    input::Action,
+    message::{Message, MessageSender},
+    view::{
+        component::{Component, Root},
+        event::{Event, Update},
+        state::Notification,
     },
 };
 use anyhow::anyhow;
 use ratatui::Frame;
+use slumber_core::{collection::CollectionFile, db::CollectionDatabase};
 use std::fmt::Debug;
 use tracing::{error, trace, trace_span};
 
@@ -155,18 +152,15 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        collection::Collection,
-        test_util::Factory,
-        tui::test_util::{assert_events, harness, TestHarness},
-    };
+    use crate::tui::test_util::{assert_events, harness, TestHarness};
     use rstest::rstest;
+    use slumber_core::{collection::Collection, test_util::Factory};
 
     /// Test view handling and drawing during initial view setup
     #[rstest]
     fn test_initial_draw(mut harness: TestHarness) {
         let collection = Collection::factory(());
-        let collection_file = CollectionFile::testing(collection);
+        let collection_file = CollectionFile::factory(collection);
         let mut view = View::new(
             &collection_file,
             harness.database.clone(),

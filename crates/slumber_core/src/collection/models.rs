@@ -4,8 +4,9 @@ use crate::{
     collection::{
         cereal,
         recipe_tree::{RecipeNode, RecipeTree},
+        HasId,
     },
-    http::{ContentType, Query},
+    http::{content_type::ContentType, query::Query},
     template::{Identifier, Template},
 };
 use anyhow::anyhow;
@@ -56,7 +57,7 @@ impl Profile {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for Profile {
     fn factory(_: ()) -> Self {
         Self {
@@ -82,14 +83,21 @@ impl crate::test_util::Factory for Profile {
 )]
 pub struct ProfileId(String);
 
-#[cfg(test)]
+/// Needed for persistence
+impl PartialEq<Profile> for ProfileId {
+    fn eq(&self, profile: &Profile) -> bool {
+        self == &profile.id
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
 impl From<&str> for ProfileId {
     fn from(value: &str) -> Self {
         value.to_owned().into()
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for ProfileId {
     fn factory(_: ()) -> Self {
         uuid::Uuid::new_v4().to_string().into()
@@ -120,7 +128,7 @@ impl Folder {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for Folder {
     fn factory(_: ()) -> Self {
         Self {
@@ -138,7 +146,7 @@ impl Recipe {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for Recipe {
     fn factory(_: ()) -> Self {
         Self {
@@ -196,14 +204,21 @@ pub struct Recipe {
 )]
 pub struct RecipeId(String);
 
-#[cfg(test)]
+/// Needed for persistence
+impl PartialEq<RecipeNode> for RecipeId {
+    fn eq(&self, node: &RecipeNode) -> bool {
+        self == node.id()
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
 impl From<&str> for RecipeId {
     fn from(value: &str) -> Self {
         value.to_owned().into()
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for RecipeId {
     fn factory(_: ()) -> Self {
         uuid::Uuid::new_v4().to_string().into()
@@ -248,7 +263,7 @@ impl From<Method> for String {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for Chain {
     fn factory(_: ()) -> Self {
         Self {
@@ -509,7 +524,7 @@ pub enum ChainSource {
 }
 
 /// Test-only helpers
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl ChainSource {
     /// Build a new [Self::Command] variant from [command, ...args]
     pub fn command<const N: usize>(cmd: [&str; N]) -> ChainSource {
@@ -567,7 +582,7 @@ pub enum ChainOutputTrim {
 }
 
 /// Test-only helpers
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl Collection {
     /// Get the ID of the first **recipe** (not recipe node) in the list. Panic
     /// if empty. This is useful because the default collection factory includes
@@ -586,7 +601,7 @@ impl Collection {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for Collection {
     fn factory(_: ()) -> Self {
         use crate::test_util::by_id;

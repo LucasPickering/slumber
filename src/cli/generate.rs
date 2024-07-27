@@ -1,10 +1,9 @@
 use crate::{
     cli::{request::BuildRequestCommand, Subcommand},
-    http::InsecureHosts,
-    template::TemplateError,
     GlobalArgs,
 };
 use clap::{Parser, ValueEnum};
+use slumber_core::{http::InsecureHosts, template::TemplateError};
 use std::process::ExitCode;
 
 /// Render a request and generate an equivalent for a third-party client

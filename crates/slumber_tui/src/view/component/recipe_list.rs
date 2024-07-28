@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    input::Action,
     view::{
         common::{actions::ActionsModal, list::List, Pane},
         component::{primary::PrimaryPane, recipe_pane::RecipeMenuAction},
@@ -16,6 +15,7 @@ use itertools::Itertools;
 use persisted::{PersistedKey, SingletonKey};
 use ratatui::Frame;
 use serde::{Deserialize, Serialize};
+use slumber_config::Action;
 use slumber_core::collection::{
     HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeTree,
 };

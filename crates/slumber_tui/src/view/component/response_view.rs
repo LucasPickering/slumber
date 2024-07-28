@@ -1,7 +1,6 @@
 //! Display for HTTP responses
 
 use crate::{
-    input::Action,
     message::Message,
     view::{
         common::{actions::ActionsModal, header_table::HeaderTable},
@@ -17,6 +16,7 @@ use derive_more::Display;
 use persisted::PersistedKey;
 use ratatui::Frame;
 use serde::Serialize;
+use slumber_config::Action;
 use slumber_core::{
     collection::RecipeId,
     http::{RequestId, ResponseRecord},

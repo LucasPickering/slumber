@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    input::Action,
     view::{
         common::scrollbar::Scrollbar,
         draw::{Draw, DrawMetadata},
@@ -15,6 +14,7 @@ use ratatui::{
     widgets::{Paragraph, ScrollbarOrientation},
     Frame,
 };
+use slumber_config::Action;
 use slumber_core::http::content_type::ContentType;
 use std::{cell::Cell, cmp};
 

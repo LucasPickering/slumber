@@ -2,7 +2,6 @@
 
 use crate::{
     context::TuiContext,
-    input::Action,
     view::{
         draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, Update},
@@ -15,6 +14,7 @@ use ratatui::{
     text::Span,
     Frame,
 };
+use slumber_config::Action;
 
 /// An piece of text that the user can "press" with the submit action. It should
 /// only be interactable if it is focused, but that's up to the caller to

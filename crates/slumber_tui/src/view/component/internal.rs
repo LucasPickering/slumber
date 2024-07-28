@@ -306,7 +306,6 @@ impl Drop for DrawGuard {
 mod tests {
     use super::*;
     use crate::{
-        input::Action,
         test_util::{harness, TestHarness},
         view::event::Update,
     };
@@ -316,6 +315,7 @@ mod tests {
     };
     use ratatui::layout::Layout;
     use rstest::{fixture, rstest};
+    use slumber_config::Action;
     use slumber_core::assert_matches;
 
     #[derive(Debug, Default)]

@@ -1,17 +1,14 @@
 //! Request/response body display component
 
-use crate::{
-    input::Action,
-    view::{
-        common::{
-            text_box::TextBox,
-            text_window::{TextWindow, TextWindowProps},
-        },
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, Update},
-        state::StateCell,
-        Component, ViewContext,
+use crate::view::{
+    common::{
+        text_box::TextBox,
+        text_window::{TextWindow, TextWindowProps},
     },
+    draw::{Draw, DrawMetadata, Generate},
+    event::{Event, EventHandler, Update},
+    state::StateCell,
+    Component, ViewContext,
 };
 use anyhow::Context;
 use persisted::PersistedContainer;
@@ -20,6 +17,7 @@ use ratatui::{
     Frame,
 };
 use serde_json_path::JsonPath;
+use slumber_config::Action;
 use slumber_core::{
     http::{content_type::ContentType, query::Query, ResponseBody},
     util::{MaybeStr, ResultTraced},

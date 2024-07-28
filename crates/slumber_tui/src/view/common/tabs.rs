@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    input::Action,
     view::{
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
@@ -9,6 +8,7 @@ use crate::{
 };
 use persisted::PersistedContainer;
 use ratatui::Frame;
+use slumber_config::Action;
 use std::fmt::Debug;
 
 /// Multi-tab display. Generic parameter defines the available tabs.

@@ -1,24 +1,26 @@
 [package]
 authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
-description = "Command line interface for Slumber. Not intended for external use."
+description = "Configuration for Slumber. Not intended for external use."
 edition = "2021"
 homepage = "https://slumber.lucaspickering.me"
 keywords = ["rest", "http", "terminal", "tui"]
 license = "MIT"
-name = "slumber_cli"
+name = "slumber_config"
 repository = "https://github.com/LucasPickering/slumber"
 version = "1.7.0"
 # Rely on parent for rust-version
 
 [dependencies]
 anyhow = {workspace = true}
-clap = {version = "4.4.2", features = ["derive"]}
-dialoguer = {version = "0.11.0", default-features = false, features = ["password"]}
+crossterm = {workspace = true}
+derive_more = {workspace = true, features = ["display"]}
 indexmap = {workspace = true}
 itertools = {workspace = true}
-reqwest = {workspace = true}
+ratatui = {workspace = true, features = ["serde"]}
 serde = {workspace = true}
-serde_yaml = {workspace = true}
-slumber_config = {workspace = true}
 slumber_core = {workspace = true}
 tracing = {workspace = true}
+
+[dev-dependencies]
+rstest = {workspace = true}
+serde_test = {workspace = true}

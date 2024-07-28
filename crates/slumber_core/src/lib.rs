@@ -8,7 +8,6 @@
 //! do so at your own risk of breakage.
 
 pub mod collection;
-pub mod config;
 pub mod db;
 pub mod http;
 pub mod template;

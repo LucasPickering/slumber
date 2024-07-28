@@ -4,7 +4,6 @@ pub mod fixed_select;
 pub mod request_store;
 pub mod select;
 
-use bytesize::ByteSize;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::Deref;
 use reqwest::StatusCode;
@@ -140,7 +139,7 @@ pub struct RequestMetadata {
 pub struct ResponseMetadata {
     pub status: StatusCode,
     /// Size of the response *body*
-    pub size: ByteSize,
+    pub size: usize,
 }
 
 impl RequestState {

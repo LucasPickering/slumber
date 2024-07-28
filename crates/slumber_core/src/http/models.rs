@@ -13,7 +13,6 @@ use crate::{
 };
 use anyhow::Context;
 use bytes::Bytes;
-use bytesize::ByteSize;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::{Display, From, FromStr};
 use mime::Mime;
@@ -449,8 +448,8 @@ impl ResponseBody {
     }
 
     /// Get body size, in bytes
-    pub fn size(&self) -> ByteSize {
-        ByteSize(self.bytes().len() as u64)
+    pub fn size(&self) -> usize {
+        self.bytes().len()
     }
 
     /// Get the parsed version of this body. Must haved call

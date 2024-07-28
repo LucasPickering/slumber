@@ -77,8 +77,6 @@ impl Template {
         context: &'a TemplateContext,
         stack: &mut RenderKeyStack<'a>,
     ) -> Result<Vec<u8>, TemplateError> {
-        debug!(template = %self, "Rendering template");
-
         // Render each individual template chunk in the string
         let chunks = self.render_chunks_impl(context, stack).await;
 
@@ -118,7 +116,7 @@ impl Template {
     }
 
     /// Internal version of [Self::render_chunks] with local render state
-    #[instrument(skip_all, fields(template = %self))]
+    #[instrument(skip_all, fields(template = %self.display()))]
     async fn render_chunks_impl<'a>(
         &'a self,
         context: &'a TemplateContext,

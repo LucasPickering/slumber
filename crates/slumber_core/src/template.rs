@@ -31,8 +31,7 @@ use std::sync::Arc;
 ///
 /// Invariant: two templates with the same source string will have the same set
 /// of chunks
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
-#[serde(into = "String", try_from = "String")]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Template {
     /// Pre-parsed chunks of the template. For raw chunks we store the
     /// presentation text (which is not necessarily the source text, as escape

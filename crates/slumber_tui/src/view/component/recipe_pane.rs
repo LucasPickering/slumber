@@ -593,8 +593,9 @@ impl RecipeBodyDisplay {
                 // is to just turn this whole JSON struct into a single string
                 // (with unrendered templates), then parse that back as one big
                 // template. If it's stupid but it works, it's not stupid.
-                let value: serde_json::Value =
-                    value.map_ref(|template| template.to_string()).into();
+                let value: serde_json::Value = value
+                    .map_ref(|template| template.display().to_string())
+                    .into();
                 let stringified = format!("{value:#}");
                 // This template is made of valid templates, surrounded by JSON
                 // syntax. In no world should that result in an invalid template

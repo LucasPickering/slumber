@@ -67,9 +67,7 @@ impl Generate for &TemplatePreview {
         Self: 'this,
     {
         match self {
-            TemplatePreview::Disabled { template } => {
-                template.to_string().into()
-            }
+            TemplatePreview::Disabled { template } => template.display().into(),
             // If the preview render is ready, show it. Otherwise fall back
             // to the raw
             TemplatePreview::Enabled {
@@ -77,7 +75,7 @@ impl Generate for &TemplatePreview {
             } => match chunks.get() {
                 Some(chunks) => TextStitcher::stitch_chunks(chunks),
                 // Preview still rendering
-                None => template.to_string().into(),
+                None => template.display().into(),
             },
         }
     }

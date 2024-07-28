@@ -7,13 +7,9 @@ use crate::{
 use aho_corasick::AhoCorasick;
 use serde::{
     de::{Error, Visitor},
-    Deserialize, Deserializer,
+    Deserialize, Deserializer, Serialize,
 };
-use std::{
-    fmt::{self, Display},
-    str::FromStr,
-    sync::Arc,
-};
+use std::{borrow::Cow, fmt::Write, str::FromStr, sync::Arc};
 use winnow::{
     combinator::{
         alt, cut_err, eof, not, preceded, repeat, repeat_till, terminated,
@@ -52,6 +48,56 @@ impl Template {
             chunks: vec![TemplateInputChunk::Key(TemplateKey::Chain(id))],
         }
     }
+
+    /// Convert the template to a string. This will only allocate for escaped or
+    /// keyed templates.
+    pub fn display(&self) -> Cow<'_, str> {
+        let mut buf = String::new();
+
+        // Re-stringify the template. For raw spans, we need to escape
+        // special characters to get them to re-parse correctly later.
+        for chunk in &self.chunks {
+            match chunk {
+                TemplateInputChunk::Raw(s) => {
+                    let s = s.as_str();
+                    let searcher = AhoCorasick::new(ESCAPABLE)
+                        .expect("Invalid search string");
+                    // Find each special sequence, and add a backslash
+                    // before it
+                    let mut i = 0;
+                    for m in searcher.find_iter(s) {
+                        // Write everything before the special char, then
+                        // escape. The escaped sequence will be written on the
+                        // next iter
+                        buf.push_str(&s[i..m.start()]);
+                        buf.push_str(ESCAPE);
+                        i = m.start();
+                    }
+
+                    // If we have just a single raw chunk, and it doesn't
+                    // contain any escape sequences, we can return a reference
+                    // to it and avoid any allocation or copying
+                    if self.chunks.len() == 1 && buf.is_empty() {
+                        return s.into();
+                    }
+
+                    // Fencepost: segment between last match and end
+                    buf.push_str(&s[i..]);
+                }
+                TemplateInputChunk::Key(key) => {
+                    write!(&mut buf, "{KEY_OPEN}{key}{KEY_CLOSE}").unwrap();
+                }
+            }
+        }
+
+        // This doesn't seem important because an empty String doesn't allocate
+        // either, but consumers of Cow can optimize better with a borrowed str
+        if buf.is_empty() {
+            return "".into();
+        }
+
+        buf.into()
+    }
 }
 
 /// Parse a template, extracting all template keys
@@ -64,40 +110,12 @@ impl FromStr for Template {
     }
 }
 
-/// For serialization
-impl From<Template> for String {
-    fn from(template: Template) -> Self {
-        template.to_string()
-    }
-}
-
-impl Display for Template {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Re-stringify the template. For raw spans, we need to escape special
-        // characters to get them to re-parse correctly later.
-        for chunk in &self.chunks {
-            match chunk {
-                TemplateInputChunk::Raw(s) => {
-                    let s = s.as_str();
-                    let searcher = AhoCorasick::new(ESCAPABLE)
-                        .expect("Invalid search string");
-                    // Find each special sequence, and add a backslash before it
-                    let mut i = 0;
-                    for m in searcher.find_iter(s) {
-                        // Write everything before the special char, then escape
-                        // The escaped sequence will be written on the next iter
-                        write!(f, "{}{ESCAPE}", &s[i..m.start()])?;
-                        i = m.start();
-                    }
-                    // Fencepost: segment betwen last match and end
-                    write!(f, "{}", &s[i..])?;
-                }
-                TemplateInputChunk::Key(key) => {
-                    write!(f, "{KEY_OPEN}{key}{KEY_CLOSE}")?;
-                }
-            }
-        }
-        Ok(())
+impl Serialize for Template {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.display().serialize(serializer)
     }
 }
 
@@ -272,7 +290,7 @@ fn identifier(input: &mut &str) -> PResult<Identifier> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::assert_err;
+    use crate::{assert_err, assert_matches};
     use rstest::rstest;
     use serde_test::{assert_de_tokens, assert_ser_tokens, Token};
 
@@ -359,7 +377,7 @@ mod tests {
     #[test]
     fn test_from_field() {
         let template = Template::from_field("field1".into());
-        assert_eq!(&template.to_string(), "{{field1}}");
+        assert_eq!(template.display(), "{{field1}}");
         assert_eq!(&template.chunks, &[key_field("field1")]);
     }
 
@@ -367,7 +385,7 @@ mod tests {
     #[test]
     fn test_from_chain() {
         let template = Template::from_chain("chain1".into());
-        assert_eq!(&template.to_string(), "{{chains.chain1}}");
+        assert_eq!(template.display(), "{{chains.chain1}}");
         assert_eq!(&template.chunks, &[key_chain("chain1")]);
     }
 
@@ -381,25 +399,35 @@ mod tests {
         assert_eq!(escaped, expected);
     }
 
-    /// Test serialization and printing, which should escape raw chunks
+    /// Test serialization and printing, which should escape raw chunks. Also
+    /// test that it only allocates when necessary
     #[rstest]
-    #[case::empty(tmpl([]), "")]
-    #[case::raw(tmpl([raw("hello!")]), "hello!")]
-    #[case::field(tmpl([key_field("user_id")]), "{{user_id}}")]
-    #[case::env(tmpl([key_env("ENV1")]), "{{env.ENV1}}")]
-    #[case::chain(tmpl([key_chain("chain1")]), "{{chains.chain1}}")]
+    #[case::empty(tmpl([]), "", false)]
+    #[case::raw(tmpl([raw("hello!")]), "hello!", false)]
+    #[case::field(tmpl([key_field("user_id")]), "{{user_id}}",true)]
+    #[case::env(tmpl([key_env("ENV1")]), "{{env.ENV1}}", true)]
+    #[case::chain(tmpl([key_chain("chain1")]), "{{chains.chain1}}", true)]
     #[case::escape_key(
-        tmpl([raw(r#"esc: {{user_id}}"#)]), r#"esc: \{{user_id}}"#
+        tmpl([raw(r#"esc: {{user_id}}"#)]), r#"esc: \{{user_id}}"#, true
     )]
     #[case::escape_backslash(
         tmpl([raw(r#"esc: \"#), key_field("user_id")]),
         r#"esc: \\{{user_id}}"#,
+        true // Escaping requires an allocation, since the text changes
     )]
     fn test_stringify(
         #[case] template: Template,
         #[case] expected: &'static str,
+        #[case] should_allocate: bool,
     ) {
-        assert_eq!(&template.to_string(), expected);
+        let s = template.display();
+        assert_eq!(s, expected);
+        // Make sure we didn't make any unexpected clones
+        if should_allocate {
+            assert_matches!(s, Cow::Owned(_));
+        } else {
+            assert_matches!(s, Cow::Borrowed(_));
+        }
         assert_ser_tokens(&template, &[Token::String(expected)]);
     }
 

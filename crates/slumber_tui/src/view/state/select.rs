@@ -25,7 +25,7 @@ where
     /// draw phase, by [ratatui::Frame::render_stateful_widget]. This allows
     /// rendering without a mutable reference.
     state: RefCell<State>,
-    items: Vec<Item>,
+    items: Vec<SelectItem<Item>>,
     /// Callback when an item is highlighted
     #[debug(skip)]
     on_select: Option<Callback<Item>>,
@@ -37,11 +37,19 @@ where
     on_submit: Option<Callback<Item>>,
 }
 
+/// An item in a select list, with additional metadata
+#[derive(Debug)]
+pub struct SelectItem<T> {
+    pub value: T,
+    /// If an item is disabled, we'll skip over it during selections
+    pub disabled: bool,
+}
+
 /// Builder for [SelectState]. The main reason for the builder is to allow
 /// callbacks to be present during state initialization, in case we want to
 /// call on_select for the default item.
 pub struct SelectStateBuilder<Item, State> {
-    items: Vec<Item>,
+    items: Vec<SelectItem<Item>>,
     /// Store preselected value as an index, so we don't need to care about the
     /// type of the value. Defaults to 0.
     preselect_index: usize,
@@ -52,6 +60,26 @@ pub struct SelectStateBuilder<Item, State> {
 }
 
 impl<Item, State> SelectStateBuilder<Item, State> {
+    /// Disable certain items in the list by value. Disabled items can still be
+    /// selected, but do not trigger callbacks.
+    pub fn disabled_items<'a, T>(
+        mut self,
+        disabled_items: impl IntoIterator<Item = &'a T>,
+    ) -> Self
+    where
+        T: 'a + PartialEq<Item>,
+    {
+        // O(n^2)! We expect both lists to be very small so it's not an issue
+        for disabled in disabled_items {
+            for item in &mut self.items {
+                if disabled == &item.value {
+                    item.disabled = true;
+                }
+            }
+        }
+        self
+    }
+
     /// Set the value that should be initially selected
     pub fn preselect<T>(mut self, value: &T) -> Self
     where
@@ -121,7 +149,7 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         // Set initial value. Generally the index will be valid unless the list
         // is empty, because it's either the default of 0 or was derived from
         // a list search. Do a proper bounds check just to be safe though.
-        if select.items.len() > self.preselect_index {
+        if self.preselect_index < select.items.len() {
             select.select_index(self.preselect_index);
         }
         select
@@ -134,7 +162,13 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     /// Start a new builder
     pub fn builder(items: Vec<Item>) -> SelectStateBuilder<Item, State> {
         SelectStateBuilder {
-            items,
+            items: items
+                .into_iter()
+                .map(|item| SelectItem {
+                    value: item,
+                    disabled: false,
+                })
+                .collect(),
             preselect_index: 0,
             on_select: None,
             on_toggle: None,
@@ -144,8 +178,16 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     }
 
     /// Get all items in the list
-    pub fn items(&self) -> &[Item] {
+    pub fn items(&self) -> &[SelectItem<Item>] {
         &self.items
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
     }
 
     /// Get the index of the currently selected item (if any)
@@ -155,7 +197,9 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
 
     /// Get the currently selected item (if any)
     pub fn selected(&self) -> Option<&Item> {
-        self.items.get(self.state.borrow().selected()?)
+        self.items
+            .get(self.state.borrow().selected()?)
+            .map(|item| &item.value)
     }
 
     /// Select an item by value. Context is required for callbacks. Generally
@@ -188,8 +232,12 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         match &self.on_select {
             Some(on_select) if current != new => {
                 let selected = new.and_then(|index| self.items.get_mut(index));
-                if let Some(selected) = selected {
-                    on_select(selected);
+                // Don't call callbacks for disabled items
+                match selected {
+                    Some(selected) if !selected.disabled => {
+                        on_select(&mut selected.value);
+                    }
+                    _ => {}
                 }
             }
             _ => {}
@@ -250,7 +298,7 @@ where
                         .selected()
                         .and_then(|index| self.items.get_mut(index));
                     if let Some(selected) = selected {
-                        on_toggle(selected);
+                        on_toggle(&mut selected.value);
                     }
                 } else {
                     return Update::Propagate(event);
@@ -265,8 +313,12 @@ where
                         .get_mut()
                         .selected()
                         .and_then(|index| self.items.get_mut(index));
-                    if let Some(selected) = selected {
-                        on_submit(selected);
+                    // Don't call callbacks for disabled items
+                    match selected {
+                        Some(selected) if !selected.disabled => {
+                            on_submit(&mut selected.value);
+                        }
+                        _ => {}
                     }
                 } else {
                     return Update::Propagate(event);
@@ -279,7 +331,7 @@ where
 }
 
 /// Support rendering if the parent tells us exactly what to draw. This makes it
-/// easy to track the area that a component is drawn to, so we always receive
+/// easy to track the area that a select is drawn to, so we always receive
 /// the appropriate cursor events. It's impossible to draw the select component
 /// in another way because of the restricted access to the inner state.
 impl<Item, State, W> Draw<W> for SelectState<Item, State>
@@ -361,11 +413,11 @@ impl SelectStateData for usize {
 }
 
 /// Find the index of a value in the list
-fn find_index<Item, T>(items: &[Item], value: &T) -> Option<usize>
+fn find_index<Item, T>(items: &[SelectItem<Item>], value: &T) -> Option<usize>
 where
     T: PartialEq<Item>,
 {
-    items.iter().position(|item| value == item)
+    items.iter().position(|item| value == &item.value)
 }
 
 #[cfg(test)]
@@ -412,6 +464,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
 
         let select = SelectState::builder(items.0)
+            .disabled_items(&["c"])
             .on_select(move |item| tx.send(*item).unwrap())
             .build();
         let mut component = TestComponent::new(harness, select, items.1);
@@ -420,6 +473,10 @@ mod tests {
         assert_eq!(rx.recv().unwrap(), "a");
         component.send_key(KeyCode::Down).assert_empty();
         assert_eq!(rx.recv().unwrap(), "b");
+
+        // "c" is disabled, should not trigger callback
+        component.send_key(KeyCode::Down).assert_empty();
+        assert!(rx.try_recv().is_err());
     }
 
     /// Test on_submit callback
@@ -432,6 +489,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
 
         let select = SelectState::builder(items.0)
+            .disabled_items(&["c"])
             .on_submit(move |item| tx.send(*item).unwrap())
             .build();
         let mut component = TestComponent::new(harness, select, items.1);
@@ -439,6 +497,11 @@ mod tests {
         component.send_key(KeyCode::Down).assert_empty();
         component.send_key(KeyCode::Enter).assert_empty();
         assert_eq!(rx.recv().unwrap(), "b");
+
+        // "c" is disabled, should not trigger callback
+        component.send_key(KeyCode::Down).assert_empty();
+        component.send_key(KeyCode::Enter).assert_empty();
+        assert!(rx.try_recv().is_err());
     }
 
     /// Test persisting selected item

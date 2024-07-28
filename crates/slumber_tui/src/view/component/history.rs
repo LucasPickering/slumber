@@ -63,7 +63,7 @@ impl Modal for History {
     fn dimensions(&self) -> (Constraint, Constraint) {
         (
             Constraint::Length(40),
-            Constraint::Length(self.select.data().items().len().min(20) as u16),
+            Constraint::Length(self.select.data().len().min(20) as u16),
         )
     }
 }
@@ -78,7 +78,7 @@ impl Draw for History {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         self.select.draw(
             frame,
-            List::new(self.select.data().items()),
+            List::from(self.select.data()),
             metadata.area(),
             true,
         );

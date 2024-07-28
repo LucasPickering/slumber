@@ -84,7 +84,11 @@ impl ProfilePane {
         ViewContext::open_modal(
             ProfileListModal::new(
                 // See self.profiles doc comment for why we need to clone
-                self.profiles.items().to_owned(),
+                self.profiles
+                    .items()
+                    .iter()
+                    .map(|item| item.value.clone())
+                    .collect(),
                 self.profiles.selected().map(|profile| &profile.id),
             ),
             ModalPriority::Low,
@@ -189,7 +193,7 @@ impl Draw for ProfileListModal {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         // Empty state
         let select = self.select.data();
-        if select.items().is_empty() {
+        if select.is_empty() {
             frame.render_widget(
                 Text::from(vec![
                     "No profiles defined; add one to your collection.".into(),
@@ -201,14 +205,13 @@ impl Draw for ProfileListModal {
         }
 
         let [list_area, _, detail_area] = Layout::vertical([
-            Constraint::Length(select.items().len().min(5) as u16),
+            Constraint::Length(select.len().min(5) as u16),
             Constraint::Length(1), // Padding
             Constraint::Min(0),
         ])
         .areas(metadata.area());
 
-        self.select
-            .draw(frame, List::new(select.items()), list_area, true);
+        self.select.draw(frame, List::from(select), list_area, true);
         if let Some(profile) = select.selected() {
             self.detail.draw(
                 frame,

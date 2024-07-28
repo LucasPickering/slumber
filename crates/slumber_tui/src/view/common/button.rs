@@ -82,7 +82,7 @@ impl<T: FixedSelect> Draw for ButtonGroup<T> {
         // The button width is based on the longest button
         let width = items
             .iter()
-            .map(|button| button.to_string().len())
+            .map(|button| button.value.to_string().len())
             .max()
             .unwrap_or(0) as u16;
         let (areas, _) =
@@ -91,6 +91,7 @@ impl<T: FixedSelect> Draw for ButtonGroup<T> {
                 .split_with_spacers(metadata.area());
 
         for (button, area) in items.iter().zip(areas.iter()) {
+            let button = &button.value;
             frame.render_widget(
                 Button {
                     text: &button.to_string(),

@@ -8,11 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Add syntax highlight to recipe, request, and response display [#264](https://github.com/LucasPickering/slumber/issues/264)
+- Add syntax highlighting to recipe, request, and response display [#264](https://github.com/LucasPickering/slumber/issues/264)
 
 ### Changed
 
 - Upgrade to Rust 1.80
+- Disable unavailable menu actions [#222](https://github.com/LucasPickering/slumber/issues/222)
 
 ## [1.7.0] - 2024-07-22
 

@@ -14,7 +14,7 @@ use ratatui::{
     text::{Line, Text},
     Frame,
 };
-use slumber_core::{config::Config, util::TempDirectory};
+use slumber_core::{config, util::TempDirectory};
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -97,7 +97,7 @@ impl Draw for HelpModal {
             title: Some("General"),
             rows: [
                 ("Version", Line::from(CRATE_VERSION)),
-                ("Configuration", Config::path().display().to_string().into()),
+                ("Configuration", config::path().display().to_string().into()),
                 (
                     "Log",
                     TempDirectory::get().log().display().to_string().into(),

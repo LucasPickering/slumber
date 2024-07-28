@@ -17,6 +17,7 @@ mod util;
 mod view;
 
 use crate::{
+    config::TuiConfig,
     context::TuiContext,
     input::Action,
     message::{Message, MessageSender, RequestConfig},
@@ -36,7 +37,6 @@ use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId, Recipe, RecipeId},
-    config::Config,
     db::{CollectionDatabase, Database},
     http::RequestSeed,
     template::{Prompter, Template, TemplateChunk, TemplateContext},
@@ -92,7 +92,7 @@ impl Tui {
         // ===== Initialize global state =====
         // This stuff only needs to be set up *once per session*
 
-        let config = Config::load()?;
+        let config = TuiConfig::load()?;
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx = MessageSender::new(messages_tx);

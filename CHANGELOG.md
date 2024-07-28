@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Upgrade to Rust 1.80
+- `slumber show config` no longer outputs the entire config file
+  - This is a technical limitation, hopefully to be removed again in the future
 
 ## [1.7.0] - 2024-07-22
 

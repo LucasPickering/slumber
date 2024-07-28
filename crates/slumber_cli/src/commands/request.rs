@@ -152,7 +152,7 @@ impl BuildRequestCommand {
         let database = Database::load()?.into_collection(&collection_path)?;
         let collection_file = CollectionFile::load(collection_path).await?;
         let collection = collection_file.collection;
-        let config = Config::<()>::load()?;
+        let config = Config::load()?;
         let http_engine = HttpEngine::new(&config.ignore_certificate_hosts);
 
         // Validate profile ID, so we can provide a good error if it's invalid

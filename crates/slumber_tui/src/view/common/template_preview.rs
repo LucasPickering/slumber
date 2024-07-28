@@ -41,7 +41,7 @@ impl TemplatePreview {
     /// render the template, *if* template preview is enabled. Profile ID
     /// defines which profile to use for the render.
     pub fn new(template: Template, profile_id: Option<ProfileId>) -> Self {
-        if TuiContext::get().config.extension.preview_templates {
+        if TuiContext::get().config.preview_templates {
             let chunks = Arc::new(OnceLock::new());
             ViewContext::send_message(Message::TemplatePreview {
                 // If this is a bottleneck we can Arc it

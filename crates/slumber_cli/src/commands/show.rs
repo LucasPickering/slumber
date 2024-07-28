@@ -3,7 +3,7 @@ use clap::Parser;
 use serde::Serialize;
 use slumber_core::{
     collection::CollectionFile,
-    config::Config,
+    config::{self, Config},
     db::Database,
     util::{DataDirectory, TempDirectory},
 };
@@ -34,7 +34,7 @@ impl Subcommand for ShowCommand {
                     CollectionFile::try_path(None, global.file);
                 println!("Data directory: {}", DataDirectory::get());
                 println!("Temporary directory: {}", TempDirectory::get());
-                println!("Config: {}", Config::path().display());
+                println!("Config: {}", config::path().display());
                 println!("Database: {}", Database::path().display());
                 println!(
                     "Collection: {}",
@@ -45,7 +45,7 @@ impl Subcommand for ShowCommand {
                 )
             }
             ShowTarget::Config => {
-                let config = Config::<()>::load()?;
+                let config = Config::load()?;
                 println!("{}", to_yaml(&config));
             }
             ShowTarget::Collection => {

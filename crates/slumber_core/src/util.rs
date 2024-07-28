@@ -64,6 +64,23 @@ pub fn format_duration(duration: &Duration) -> String {
     }
 }
 
+/// Format a byte total, e.g. 1_000_000 -> 1 MB
+pub fn format_byte_size(size: usize) -> String {
+    const K: usize = 10usize.pow(3);
+    const M: usize = 10usize.pow(6);
+    const G: usize = 10usize.pow(9);
+    const T: usize = 10usize.pow(12);
+    let (denom, suffix) = match size {
+        ..K => return format!("{size} B"),
+        K..M => (K, "K"),
+        M..G => (M, "M"),
+        G..T => (G, "G"),
+        T.. => (T, "T"),
+    };
+    let size = size as f64 / denom as f64;
+    format!("{size:.1} {suffix}B")
+}
+
 /// Extension trait for [Result]
 pub trait ResultTraced<T, E>: Sized {
     /// If this is an error, trace it. Return the same result.
@@ -260,5 +277,28 @@ impl<V> Drop for FutureCacheGuard<V> {
             // identifying *which* lock this happened to :(
             error!("Future cache guard dropped without setting a value");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::zero(0, "0 B")]
+    #[case::one(1, "1 B")]
+    #[case::almost_kb(999, "999 B")]
+    #[case::kb(1000, "1.0 KB")]
+    #[case::kb_round_down(1049, "1.0 KB")]
+    #[case::kb_round_up(1050, "1.1 KB")]
+    #[case::almost_mb(999_999, "1000.0 KB")]
+    #[case::mb(1_000_000, "1.0 MB")]
+    #[case::almost_gb(999_999_999, "1000.0 MB")]
+    #[case::gb(1_000_000_000, "1.0 GB")]
+    #[case::almost_tb(999_999_999_999, "1000.0 GB")]
+    #[case::tb(1_000_000_000_000, "1.0 TB")]
+    fn test_format_byte_size(#[case] size: usize, #[case] expected: &str) {
+        assert_eq!(&format_byte_size(size), expected);
     }
 }

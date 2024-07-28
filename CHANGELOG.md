@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Remove `Config` line from `slumber show paths` output
   - Config file location can still be retrieved in the help menu of the TUI
 
+### Added
+
+- Add syntax highlight to recipe, request, and response display [#264](https://github.com/LucasPickering/slumber/issues/264)
+
 ### Changed
 
 - Upgrade to Rust 1.80

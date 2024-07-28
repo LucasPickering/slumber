@@ -9,7 +9,7 @@ use crate::{http::ResponseRecord, util::Mapping};
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
 use mime::{Mime, APPLICATION, JSON};
-use reqwest::header::{self, HeaderValue};
+use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path};
 
@@ -24,7 +24,7 @@ use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path};
 ///
 /// For the serialization string, obviously use serde. For the others, use
 /// the corresponding methods/associated functions.
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentType {
     Json,
@@ -64,10 +64,9 @@ impl ContentType {
             .ok_or_else(|| anyhow!("Unknown extension `{extension}`"))
     }
 
-    /// Parse the content type from a response's `Content-Type` header
-    pub fn from_response(response: &ResponseRecord) -> anyhow::Result<Self> {
-        let header_value = response
-            .headers
+    /// Parse the content type from the `Content-Type` header
+    pub fn from_headers(headers: &HeaderMap) -> anyhow::Result<Self> {
+        let header_value = headers
             .get(header::CONTENT_TYPE)
             .map(HeaderValue::as_bytes)
             .ok_or_else(|| anyhow!("Response has no content-type header"))?;
@@ -105,7 +104,7 @@ impl ContentType {
     pub(super) fn parse_response(
         response: &ResponseRecord,
     ) -> anyhow::Result<Box<dyn ResponseContent>> {
-        let content_type = Self::from_response(response)?;
+        let content_type = Self::from_headers(&response.headers)?;
         content_type.parse_content(response.body.bytes())
     }
 }

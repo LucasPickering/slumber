@@ -16,7 +16,7 @@ use crate::{
 use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
 use slumber_core::{
-    http::{RequestId, RequestRecord},
+    http::{content_type::ContentType, RequestId, RequestRecord},
     util::MaybeStr,
 };
 use std::sync::Arc;
@@ -132,10 +132,13 @@ impl Draw<RequestViewProps> for RequestView {
             headers_area,
         );
         if let Some(body) = &state.body {
+            let content_type =
+                ContentType::from_headers(&props.request.headers).ok();
             self.body_text_window.draw(
                 frame,
                 TextWindowProps {
                     text: body.generate(),
+                    content_type,
                     has_search_box: false,
                 },
                 body_area,

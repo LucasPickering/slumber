@@ -34,7 +34,7 @@ use slumber_core::{
         Authentication, Folder, HasId, ProfileId, Recipe, RecipeBody, RecipeId,
         RecipeNode,
     },
-    http::BuildOptions,
+    http::{content_type::ContentType, BuildOptions},
     template::Template,
     util::doc_link,
 };
@@ -557,6 +557,8 @@ impl Draw for AuthenticationDisplay {
 #[derive(Debug)]
 enum RecipeBodyDisplay {
     Raw {
+        /// Needed for syntax highlighting
+        content_type: Option<ContentType>,
         preview: TemplatePreview,
         text_window: Component<TextWindow>,
     },
@@ -572,6 +574,11 @@ impl RecipeBodyDisplay {
     ) -> Self {
         match body {
             RecipeBody::Raw(body) => Self::Raw {
+                // Hypothetically we could grab the content type from the
+                // Content-Type header above and plumb it down here, but more
+                // effort than it's worth IMO. This gives users a solid reason
+                // to use !json anyway
+                content_type: None,
                 preview: TemplatePreview::new(
                     body.clone(),
                     selected_profile_id,
@@ -595,6 +602,7 @@ impl RecipeBodyDisplay {
                     .parse()
                     .expect("Unexpected template parse failure");
                 Self::Raw {
+                    content_type: Some(ContentType::Json),
                     preview: TemplatePreview::new(
                         template,
                         selected_profile_id,
@@ -647,12 +655,14 @@ impl Draw for RecipeBodyDisplay {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         match self {
             RecipeBodyDisplay::Raw {
+                content_type,
                 preview,
                 text_window,
             } => text_window.draw(
                 frame,
                 TextWindowProps {
                     text: preview.generate(),
+                    content_type: *content_type,
                     has_search_box: false,
                 },
                 metadata.area(),

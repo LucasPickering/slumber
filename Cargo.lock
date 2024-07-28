@@ -1941,13 +1941,11 @@ dependencies = [
 [[package]]
 name = "serde_json_path"
 version = "0.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bc0207b6351893eafa1e39aa9aea452abb6425ca7b02dd64faf29109e7a33ba"
+source = "git+https://github.com/LucasPickering/serde_json_path?branch=regex-feature#40c4f8108e6d986070a665f0ffa7578a0e133983"
 dependencies = [
  "inventory",
  "nom",
  "once_cell",
- "regex",
  "serde",
  "serde_json",
  "serde_json_path_core",
@@ -1958,8 +1956,7 @@ dependencies = [
 [[package]]
 name = "serde_json_path_core"
 version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3d64fe53ce1aaa31bea2b2b46d3b6ab6a37e61854bedcbd9f174e188f3f7d79"
+source = "git+https://github.com/LucasPickering/serde_json_path?branch=regex-feature#40c4f8108e6d986070a665f0ffa7578a0e133983"
 dependencies = [
  "inventory",
  "once_cell",
@@ -1971,8 +1968,7 @@ dependencies = [
 [[package]]
 name = "serde_json_path_macros"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a31e8177a443fd3e94917f12946ae7891dfb656e6d4c5e79b8c5d202fbcb723"
+source = "git+https://github.com/LucasPickering/serde_json_path?branch=regex-feature#40c4f8108e6d986070a665f0ffa7578a0e133983"
 dependencies = [
  "inventory",
  "once_cell",
@@ -1983,8 +1979,7 @@ dependencies = [
 [[package]]
 name = "serde_json_path_macros_internal"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75dde5a1d2ed78dfc411fc45592f72d3694436524d3353683ecb3d22009731dc"
+source = "git+https://github.com/LucasPickering/serde_json_path?branch=regex-feature#40c4f8108e6d986070a665f0ffa7578a0e133983"
 dependencies = [
  "proc-macro2",
  "quote",

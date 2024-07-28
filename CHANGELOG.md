@@ -11,9 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `ignore_certificate_hosts` config field no longer applies to the CLI
   - It has been replaced by the `--insecure` CLI flag on the `request` subcommand
   - This means the config file no longer impacts the CLI at all
-- Remove `slumber show config` sub-subcommand
-- Remove `Config` line from `slumber show paths` output
-  - Config file location can still be retrieved in the help menu of the TUI
+  - Remove `slumber show config` sub-subcommand
+  - Remove `Config` line from `slumber show paths` output
+    - Config file location can still be retrieved in the help menu of the TUI
+- Remove regex functionality for JSONpath filter (`search` and `match` functions)
+  - I doubt these are very useful, and they incur a very large build time cost to compile the regex engine
 
 ### Changed
 

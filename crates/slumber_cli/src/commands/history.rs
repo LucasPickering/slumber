@@ -1,13 +1,12 @@
 use crate::{util::HeaderDisplay, GlobalArgs, Subcommand};
 use anyhow::anyhow;
-use bytesize::ByteSize;
 use clap::Parser;
 use dialoguer::console::Style;
 use slumber_core::{
     collection::{CollectionFile, ProfileId, RecipeId},
     db::Database,
     http::{Exchange, ExchangeSummary, RequestId},
-    util::{format_duration, format_time, MaybeStr},
+    util::{format_byte_size, format_duration, format_time, MaybeStr},
 };
 use std::process::ExitCode;
 use tracing::warn;
@@ -94,7 +93,7 @@ impl HistoryCommand {
             print!(
                 "{} ({})\n{}",
                 subheader_style.apply_to("Body"),
-                ByteSize(body.len() as u64),
+                format_byte_size(body.len()),
                 MaybeStr(body)
             )
         }
@@ -130,7 +129,7 @@ impl HistoryCommand {
         print!(
             "{} ({})\n{}",
             subheader_style.apply_to("Body"),
-            response.body.size(),
+            format_byte_size(response.body.size()),
             MaybeStr(response.body.bytes())
         );
     }

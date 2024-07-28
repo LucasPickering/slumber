@@ -27,7 +27,9 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
-use slumber_core::{collection::RecipeNode, http::RequestRecord};
+use slumber_core::{
+    collection::RecipeNode, http::RequestRecord, util::format_byte_size,
+};
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
@@ -159,7 +161,7 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
                 Line::from(vec![
                     metadata.status.generate(),
                     " ".into(),
-                    metadata.size.to_string_as(false).into(),
+                    format_byte_size(metadata.size).into(),
                 ])
                 .alignment(Alignment::Right),
                 metadata_area,

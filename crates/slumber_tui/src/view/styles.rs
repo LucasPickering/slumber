@@ -27,6 +27,8 @@ pub struct Styles {
 pub struct ListStyles {
     /// Highlighted item in a list
     pub highlight: Style,
+    /// Disabled item in a list
+    pub disabled: Style,
 }
 
 /// Styles for the Modal component
@@ -128,6 +130,7 @@ impl Styles {
                     .bg(theme.primary_color)
                     .fg(theme.primary_text_color)
                     .add_modifier(Modifier::BOLD),
+                disabled: Style::default().fg(Color::DarkGray),
             },
             modal: ModalStyles {
                 border: Style::default(),

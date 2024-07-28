@@ -1,7 +1,9 @@
 use crate::view::{
     draw::{Draw, DrawMetadata},
     event::{Event, EventHandler, Update},
-    state::select::{SelectState, SelectStateBuilder, SelectStateData},
+    state::select::{
+        SelectItem, SelectState, SelectStateBuilder, SelectStateData,
+    },
 };
 use itertools::Itertools;
 use persisted::PersistedContainer;
@@ -26,21 +28,34 @@ where
     /// Re-use SelectState for state management. The only different is we
     /// guarantee any value of the item type is in the list (because there's
     /// a fixed number of values), so in a few places we'll unwrap options.
-    select: SelectState<Item, State>,
+    inner: SelectState<Item, State>,
 }
 
 pub struct FixedSelectStateBuilder<Item, State> {
     /// Defer to SelectStateBuilder for everything
-    select: SelectStateBuilder<Item, State>,
+    inner: SelectStateBuilder<Item, State>,
 }
 
 impl<Item, State> FixedSelectStateBuilder<Item, State> {
+    /// Disable certain items in the list by value. Disabled items can still be
+    /// selected, but do not trigger callbacks.
+    pub fn disabled_items<'a, T>(
+        mut self,
+        disabled_items: impl IntoIterator<Item = &'a T>,
+    ) -> Self
+    where
+        T: 'a + PartialEq<Item>,
+    {
+        self.inner = self.inner.disabled_items(disabled_items);
+        self
+    }
+
     /// Set the callback to be called when the user highlights a new item
     pub fn on_select(
         mut self,
         on_select: impl 'static + Fn(&mut Item),
     ) -> Self {
-        self.select = self.select.on_select(on_select);
+        self.inner = self.inner.on_select(on_select);
         self
     }
 
@@ -49,7 +64,7 @@ impl<Item, State> FixedSelectStateBuilder<Item, State> {
         mut self,
         on_submit: impl 'static + Fn(&mut Item),
     ) -> Self {
-        self.select = self.select.on_submit(on_submit);
+        self.inner = self.inner.on_submit(on_submit);
         self
     }
 
@@ -59,7 +74,7 @@ impl<Item, State> FixedSelectStateBuilder<Item, State> {
         State: SelectStateData,
     {
         FixedSelectState {
-            select: self.select.preselect(&Item::default()).build(),
+            inner: self.inner.preselect(&Item::default()).build(),
         }
     }
 }
@@ -86,28 +101,28 @@ where
             );
         }
         FixedSelectStateBuilder {
-            select: SelectState::builder(items),
+            inner: SelectState::builder(items),
         }
     }
 
     /// Get the index of the currently selected item
     pub fn selected_index(&self) -> usize {
-        self.select
+        self.inner
             .selected_index()
             .expect("Fixed-size list cannot be empty")
     }
 
     /// Get the currently selected item
     pub fn selected(&self) -> Item {
-        self.select
+        self.inner
             .selected()
             .copied()
             .expect("Fixed-size list cannot be empty")
     }
 
     /// Get all items in the list
-    pub fn items(&self) -> &[Item] {
-        self.select.items()
+    pub fn items(&self) -> &[SelectItem<Item>] {
+        self.inner.items()
     }
 
     /// Is the given item selected?
@@ -125,17 +140,17 @@ where
     where
         T: PartialEq<Item>,
     {
-        self.select.select(value);
+        self.inner.select(value);
     }
 
     /// Select the previous item in the list
     pub fn previous(&mut self) {
-        self.select.previous();
+        self.inner.previous();
     }
 
     /// Select the next item in the list
     pub fn next(&mut self) {
-        self.select.next();
+        self.inner.next();
     }
 }
 
@@ -156,7 +171,7 @@ where
     State: Debug + SelectStateData,
 {
     fn update(&mut self, event: Event) -> Update {
-        self.select.update(event)
+        self.inner.update(event)
     }
 }
 
@@ -168,7 +183,7 @@ where
     W: StatefulWidget<State = State>,
 {
     fn draw(&self, frame: &mut Frame, props: W, metadata: DrawMetadata) {
-        self.select.draw(frame, props, metadata);
+        self.inner.draw(frame, props, metadata);
     }
 }
 

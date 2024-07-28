@@ -137,7 +137,7 @@ mod tests {
 
         // Render a list once to get a realistic offset calculation
         let mut buffer = Buffer::empty(area);
-        let list = List::new((0..content_length).map(|i| i.to_string()));
+        let list = List::from_iter((0..content_length).map(|i| i.to_string()));
         let mut state = ListState::default().with_selected(Some(selected));
         StatefulWidget::render(list, area, &mut buffer, &mut state);
 

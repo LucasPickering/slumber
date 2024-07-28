@@ -14,7 +14,7 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Event, EventHandler, Update},
         state::{select::SelectState, StateCell},
-        Component, ViewContext,
+        Component, ModalPriority, ViewContext,
     },
 };
 use derive_more::Display;
@@ -201,6 +201,24 @@ pub enum RecipeMenuAction {
     #[display("Copy as cURL")]
     CopyCurl,
 }
+
+impl RecipeMenuAction {
+    pub fn disabled_actions(
+        has_recipe: bool,
+        has_body: bool,
+    ) -> &'static [Self] {
+        if has_recipe {
+            if has_body {
+                &[]
+            } else {
+                &[Self::CopyBody]
+            }
+        } else {
+            &[Self::CopyUrl, Self::CopyBody, Self::CopyCurl]
+        }
+    }
+}
+
 impl ToStringGenerate for RecipeMenuAction {}
 
 impl RecipePane {
@@ -215,7 +233,7 @@ impl RecipePane {
                     .items()
                     .iter()
                     .enumerate()
-                    .filter(|(_, row)| !*row.enabled)
+                    .filter(|(_, row)| !*row.value.enabled)
                     .map(|(i, _)| i)
                     .collect()
             }
@@ -255,9 +273,16 @@ impl EventHandler for RecipePane {
                         PrimaryPane::Recipe,
                     ));
                 }
-                Action::OpenActions => ViewContext::open_modal_default::<
-                    ActionsModal<RecipeMenuAction>,
-                >(),
+                Action::OpenActions => {
+                    let state = self.recipe_state.get_mut();
+                    ViewContext::open_modal(
+                        ActionsModal::new(RecipeMenuAction::disabled_actions(
+                            state.is_some(),
+                            state.map(|state| state.body.as_ref()).is_some(),
+                        )),
+                        ModalPriority::Low,
+                    )
+                }
                 _ => return Update::Propagate(event),
             }
         } else {
@@ -689,6 +714,7 @@ fn to_table<'a, K: PersistedKey<Value = bool>>(
             .items()
             .iter()
             .map(|item| {
+                let item = &item.value;
                 ToggleRow::new(
                     [item.key.as_str().into(), item.value.generate()],
                     *item.enabled,

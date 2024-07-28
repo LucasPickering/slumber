@@ -9,7 +9,7 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Event, EventHandler, Update},
         state::StateCell,
-        Component, ViewContext,
+        Component, ModalPriority, ViewContext,
     },
 };
 use derive_more::Display;
@@ -63,7 +63,20 @@ impl ToStringGenerate for MenuAction {}
 impl EventHandler for RequestView {
     fn update(&mut self, event: Event) -> Update {
         if let Some(Action::OpenActions) = event.action() {
-            ViewContext::open_modal_default::<ActionsModal<MenuAction>>()
+            let disabled = if self
+                .state
+                .get_mut()
+                .and_then(|state| state.body.as_ref())
+                .is_some()
+            {
+                [].as_slice()
+            } else {
+                &[MenuAction::CopyBody]
+            };
+            ViewContext::open_modal(
+                ActionsModal::new(disabled),
+                ModalPriority::Low,
+            );
         } else if let Some(action) = event.local::<MenuAction>() {
             match action {
                 MenuAction::EditCollection => {

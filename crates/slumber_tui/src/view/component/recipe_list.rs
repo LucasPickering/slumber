@@ -7,7 +7,7 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, Update},
         state::select::SelectState,
-        Component, ViewContext,
+        Component, ModalPriority, ViewContext,
     },
 };
 use derive_more::{Deref, DerefMut};
@@ -137,9 +137,17 @@ impl EventHandler for RecipeListPane {
             Action::Toggle => {
                 self.set_selected_collapsed(CollapseState::Toggle);
             }
-            Action::OpenActions => ViewContext::open_modal_default::<
-                ActionsModal<RecipeMenuAction>,
-            >(),
+            Action::OpenActions => {
+                let recipe =
+                    self.select.data().selected().and_then(RecipeNode::recipe);
+                ViewContext::open_modal(
+                    ActionsModal::new(RecipeMenuAction::disabled_actions(
+                        recipe.is_some(),
+                        recipe.map(|recipe| recipe.body.as_ref()).is_some(),
+                    )),
+                    ModalPriority::Low,
+                )
+            }
             _ => return Update::Propagate(event),
         }
 
@@ -172,7 +180,8 @@ impl Draw for RecipeListPane {
         let items = select
             .items()
             .iter()
-            .map(|node| {
+            .map(|item| {
+                let node = &item.value;
                 let (icon, name) = match node {
                     RecipeNode::Folder(folder) => {
                         let icon = if self.collapsed.is_collapsed(&folder.id) {
@@ -203,7 +212,7 @@ impl Draw for RecipeListPane {
             })
             .collect_vec();
 
-        self.select.draw(frame, List::new(items), area, true);
+        self.select.draw(frame, List::from_iter(items), area, true);
     }
 }
 

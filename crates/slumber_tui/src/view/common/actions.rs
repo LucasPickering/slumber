@@ -21,8 +21,10 @@ pub struct ActionsModal<T: FixedSelect> {
     actions: Component<FixedSelectState<T, ListState>>,
 }
 
-impl<T: FixedSelect> Default for ActionsModal<T> {
-    fn default() -> Self {
+impl<T: FixedSelect> ActionsModal<T> {
+    /// Create a new actions modal, optionall disabling certain actions based on
+    /// some external condition(s).
+    pub fn new(disabled_actions: &[T]) -> Self {
         let on_submit = move |action: &mut T| {
             // Close the modal *first*, so the parent can handle the
             // callback event. Jank but it works
@@ -32,10 +34,17 @@ impl<T: FixedSelect> Default for ActionsModal<T> {
 
         Self {
             actions: FixedSelectState::builder()
+                .disabled_items(disabled_actions)
                 .on_submit(on_submit)
                 .build()
                 .into(),
         }
+    }
+}
+
+impl<T: FixedSelect> Default for ActionsModal<T> {
+    fn default() -> Self {
+        Self::new(&[])
     }
 }
 
@@ -67,7 +76,7 @@ where
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         self.actions.draw(
             frame,
-            List::new(self.actions.data().items()),
+            List::from(self.actions.data()),
             metadata.area(),
             true,
         );

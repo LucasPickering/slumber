@@ -6,7 +6,7 @@ use slumber_core::util::{DataDirectory, TempDirectory};
 use slumber_tui::Tui;
 use std::{fs::File, io, process::ExitCode};
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{filter::EnvFilter, fmt::format::FmtSpan, prelude::*};
+use tracing_subscriber::{filter::Targets, fmt::format::FmtSpan, prelude::*};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<ExitCode> {
@@ -51,6 +51,12 @@ async fn main() -> anyhow::Result<ExitCode> {
 fn initialize_tracing(console_output: bool) -> anyhow::Result<()> {
     let path = TempDirectory::get().log();
     let log_file = File::create(path)?;
+    // Basically a minimal version of EnvFilter that doesn't require regexes
+    // https://github.com/tokio-rs/tracing/issues/1436#issuecomment-918528013
+    let targets: Targets = std::env::var("RUST_LOG")
+        .ok()
+        .and_then(|env| env.parse().ok())
+        .unwrap_or_default();
     let file_subscriber = tracing_subscriber::fmt::layer()
         .with_file(true)
         .with_line_number(true)
@@ -58,7 +64,7 @@ fn initialize_tracing(console_output: bool) -> anyhow::Result<()> {
         .with_target(false)
         .with_ansi(false)
         .with_span_events(FmtSpan::NEW)
-        .with_filter(EnvFilter::from_default_env());
+        .with_filter(targets);
 
     // Enable console output for CLI
     let console_subscriber = if console_output {

@@ -214,7 +214,7 @@ macro_rules! assert_err {
 #[macro_export]
 macro_rules! assert_matches {
     ($expr:expr, $pattern:pat $(if $condition:expr)? $(,)?) => {
-        slumber_core::assert_matches!($expr, $pattern $(if $condition)? => ());
+        $crate::assert_matches!($expr, $pattern $(if $condition)? => ());
     };
     ($expr:expr, $pattern:pat $(if $condition:expr)? => $output:expr $(,)?) => {
         match $expr {

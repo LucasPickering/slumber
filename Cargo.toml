@@ -43,7 +43,7 @@ slumber_core = {path = "./crates/slumber_core", version = "1.7.0"}
 slumber_tui = {path = "./crates/slumber_tui", version = "1.7.0"}
 tokio = {workspace = true, features = ["macros", "rt-multi-thread"]}
 tracing = {workspace = true}
-tracing-subscriber = {version = "0.3.17", default-features = false, features = ["ansi", "env-filter", "fmt", "registry"]}
+tracing-subscriber = {version = "0.3.17", default-features = false, features = ["ansi", "fmt", "registry"]}
 
 # The profile that 'cargo dist' will build with
 [profile.dist]

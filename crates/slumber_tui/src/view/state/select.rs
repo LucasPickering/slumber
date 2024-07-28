@@ -380,7 +380,7 @@ mod tests {
     use crossterm::event::KeyCode;
     use persisted::{PersistedKey, PersistedStore};
     use ratatui::widgets::List;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use serde::Serialize;
     use slumber_core::{
         collection::{Profile, ProfileId},
@@ -390,51 +390,57 @@ mod tests {
 
     /// Test going up and down in the list
     #[rstest]
-    fn test_navigation(harness: TestHarness) {
-        let select = SelectState::builder(vec!['a', 'b', 'c']).build();
-        let mut component =
-            TestComponent::new(harness, select, List::default());
-        assert_eq!(component.data().selected(), Some(&'a'));
+    fn test_navigation(
+        harness: TestHarness,
+        items: (Vec<&'static str>, List<'static>),
+    ) {
+        let select = SelectState::builder(items.0).build();
+        let mut component = TestComponent::new(harness, select, items.1);
+        assert_eq!(component.data().selected(), Some(&"a"));
         component.send_key(KeyCode::Down).assert_empty();
-        assert_eq!(component.data().selected(), Some(&'b'));
+        assert_eq!(component.data().selected(), Some(&"b"));
 
         component.send_key(KeyCode::Up).assert_empty();
-        assert_eq!(component.data().selected(), Some(&'a'));
+        assert_eq!(component.data().selected(), Some(&"a"));
     }
 
     /// Test on_select callback
     #[rstest]
-    fn test_on_select(harness: TestHarness) {
+    fn test_on_select(
+        harness: TestHarness,
+        items: (Vec<&'static str>, List<'static>),
+    ) {
         // Track calls to the callback
         let (tx, rx) = mpsc::channel();
 
-        let select = SelectState::builder(vec!['a', 'b', 'c'])
+        let select = SelectState::builder(items.0)
             .on_select(move |item| tx.send(*item).unwrap())
             .build();
-        let mut component =
-            TestComponent::new(harness, select, List::default());
+        let mut component = TestComponent::new(harness, select, items.1);
 
-        assert_eq!(component.data().selected(), Some(&'a'));
-        assert_eq!(rx.recv().unwrap(), 'a');
+        assert_eq!(component.data().selected(), Some(&"a"));
+        assert_eq!(rx.recv().unwrap(), "a");
         component.send_key(KeyCode::Down).assert_empty();
-        assert_eq!(rx.recv().unwrap(), 'b');
+        assert_eq!(rx.recv().unwrap(), "b");
     }
 
     /// Test on_submit callback
     #[rstest]
-    fn test_on_submit(harness: TestHarness) {
+    fn test_on_submit(
+        harness: TestHarness,
+        items: (Vec<&'static str>, List<'static>),
+    ) {
         // Track calls to the callback
         let (tx, rx) = mpsc::channel();
 
-        let select = SelectState::builder(vec!['a', 'b', 'c'])
+        let select = SelectState::builder(items.0)
             .on_submit(move |item| tx.send(*item).unwrap())
             .build();
-        let mut component =
-            TestComponent::new(harness, select, List::default());
+        let mut component = TestComponent::new(harness, select, items.1);
 
         component.send_key(KeyCode::Down).assert_empty();
         component.send_key(KeyCode::Enter).assert_empty();
-        assert_eq!(rx.recv().unwrap(), 'b');
+        assert_eq!(rx.recv().unwrap(), "b");
     }
 
     /// Test persisting selected item
@@ -457,5 +463,12 @@ mod tests {
                 .build(),
         );
         assert_eq!(select.selected().map(Profile::id), Some(&profile_id));
+    }
+
+    #[fixture]
+    fn items() -> (Vec<&'static str>, List<'static>) {
+        let items = vec!["a", "b", "c"];
+        let list = items.iter().copied().collect();
+        (items, list)
     }
 }

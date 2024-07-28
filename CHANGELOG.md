@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add syntax highlight to recipe, request, and response display [#264](https://github.com/LucasPickering/slumber/issues/264)
+
 ### Changed
 
 - Upgrade to Rust 1.80

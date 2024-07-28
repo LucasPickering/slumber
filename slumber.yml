@@ -38,6 +38,7 @@ chains:
     authentication: !bearer "{{chains.auth_token}}"
     headers:
       Accept: application/json
+      Content-Type: application/json
 
 requests:
   login: !request
@@ -75,7 +76,14 @@ requests:
         name: Modify User
         method: PUT
         url: "{{host}}/anything/{{user_guid}}"
-        body: !json { "username": "new username" }
+        body:
+          !json {
+            "new_username": "user formerly known as {{chains.username}}",
+            "number": 3,
+            "bool": true,
+            "null": null,
+            "array": [1, 2, false, 3.3, "www.www"],
+          }
 
   get_image: !request
     headers:

@@ -384,7 +384,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                         self.get_response(context, recipe, *trigger).await?;
                     // Guess content type based on HTTP header
                     let content_type =
-                        ContentType::from_response(&response).ok();
+                        ContentType::from_headers(&response.headers).ok();
                     let value =
                         self.extract_response_value(response, section)?;
                     (value, content_type)

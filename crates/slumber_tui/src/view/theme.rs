@@ -196,8 +196,12 @@ impl Styles {
                 title: Style::default().add_modifier(Modifier::BOLD),
             },
             template_preview: TemplatePreviewStyles {
-                text: Style::default().fg(theme.secondary_color),
-                error: Style::default().bg(theme.error_color),
+                text: Style::default()
+                    .fg(theme.secondary_color)
+                    .add_modifier(Modifier::UNDERLINED),
+                error: Style::default()
+                    .fg(Color::default()) // Override syntax highlighting
+                    .bg(theme.error_color),
             },
             text: TextStyle {
                 highlight: Style::default()

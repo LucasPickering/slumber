@@ -1,15 +1,13 @@
-use crate::{
-    input::Action,
-    view::{
-        draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, Update},
-    },
+use crate::view::{
+    draw::{Draw, DrawMetadata},
+    event::{Event, EventHandler, Update},
 };
 use persisted::PersistedContainer;
 use ratatui::{
     widgets::{ListState, StatefulWidget, TableState},
     Frame,
 };
+use slumber_config::Action;
 use slumber_core::collection::HasId;
 use std::{cell::RefCell, fmt::Debug, marker::PhantomData};
 

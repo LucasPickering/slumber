@@ -4,19 +4,18 @@ mod context;
 mod draw;
 mod event;
 mod state;
+mod styles;
 #[cfg(test)]
 pub mod test_util;
-mod theme;
 mod util;
 
 pub use common::modal::{IntoModal, ModalPriority};
 pub use context::ViewContext;
 pub use state::RequestState;
-pub use theme::{Styles, Theme};
+pub use styles::Styles;
 pub use util::{Confirm, PreviewPrompter};
 
 use crate::{
-    input::Action,
     message::{Message, MessageSender},
     view::{
         component::{Component, Root},
@@ -26,6 +25,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use ratatui::Frame;
+use slumber_config::Action;
 use slumber_core::{collection::CollectionFile, db::CollectionDatabase};
 use std::fmt::Debug;
 use tracing::{error, trace, trace_span};

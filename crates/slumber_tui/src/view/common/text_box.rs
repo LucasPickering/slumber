@@ -2,7 +2,6 @@
 
 use crate::{
     context::TuiContext,
-    input::Action,
     view::{
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
@@ -16,6 +15,7 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
+use slumber_config::Action;
 
 /// Single line text submission component
 #[derive(derive_more::Debug, Default)]

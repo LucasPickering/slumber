@@ -2,7 +2,6 @@
 
 use crate::{
     context::TuiContext,
-    input::Action,
     view::{
         common::{
             list::List, modal::Modal, table::Table,
@@ -23,6 +22,7 @@ use ratatui::{
     Frame,
 };
 use serde::Serialize;
+use slumber_config::Action;
 use slumber_core::{
     collection::{Profile, ProfileId},
     util::doc_link,

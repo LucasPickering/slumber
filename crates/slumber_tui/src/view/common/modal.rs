@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    input::Action,
     view::{
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
@@ -14,6 +13,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear},
     Frame,
 };
+use slumber_config::Action;
 use std::{collections::VecDeque, fmt::Debug};
 use tracing::trace;
 

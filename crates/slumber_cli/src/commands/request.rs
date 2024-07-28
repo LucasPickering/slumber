@@ -4,9 +4,9 @@ use clap::Parser;
 use dialoguer::{Input, Password};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use slumber_config::Config;
 use slumber_core::{
     collection::{CollectionFile, ProfileId, RecipeId},
-    config::Config,
     db::{CollectionDatabase, Database},
     http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
     template::{Prompt, Prompter, TemplateContext, TemplateError},

@@ -1,5 +1,4 @@
 use crate::{
-    input::Action,
     message::Message,
     util::ResultReported,
     view::{
@@ -23,6 +22,7 @@ use derive_more::From;
 use persisted::{PersistedContainer, PersistedKey};
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
 use serde::Serialize;
+use slumber_config::Action;
 use slumber_core::{collection::Collection, http::RequestId};
 
 /// The root view component

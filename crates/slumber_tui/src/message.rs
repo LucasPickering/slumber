@@ -1,9 +1,10 @@
 //! Async message passing! This is how inputs and other external events trigger
 //! state updates.
 
-use crate::{input::Action, view::Confirm};
+use crate::view::Confirm;
 use anyhow::Context;
 use derive_more::From;
+use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
     http::{

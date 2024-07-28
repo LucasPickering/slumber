@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    input::{Action, InputBinding},
     view::{
         common::{modal::Modal, table::Table},
         context::ViewContext,
@@ -14,7 +13,8 @@ use ratatui::{
     text::{Line, Text},
     Frame,
 };
-use slumber_core::{config, util::TempDirectory};
+use slumber_config::{Action, Config, InputBinding};
+use slumber_core::util::TempDirectory;
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -97,7 +97,7 @@ impl Draw for HelpModal {
             title: Some("General"),
             rows: [
                 ("Version", Line::from(CRATE_VERSION)),
-                ("Configuration", config::path().display().to_string().into()),
+                ("Configuration", Config::path().display().to_string().into()),
                 (
                     "Log",
                     TempDirectory::get().log().display().to_string().into(),

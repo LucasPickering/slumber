@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    input::Action,
     view::{
         common::{
             actions::ActionsModal,
@@ -29,6 +28,7 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
+use slumber_config::Action;
 use slumber_core::{
     collection::{
         Authentication, Folder, HasId, ProfileId, Recipe, RecipeBody, RecipeId,

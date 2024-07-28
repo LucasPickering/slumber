@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    input::Action,
     view::{
         common::{tabs::Tabs, Pane},
         component::{
@@ -27,6 +26,7 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
+use slumber_config::Action;
 use slumber_core::{
     collection::RecipeNode, http::RequestRecord, util::format_byte_size,
 };

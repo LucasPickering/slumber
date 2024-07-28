@@ -7,7 +7,6 @@
 //! `slumber` crate version. If you choose to depend directly on this crate, you
 //! do so at your own risk of breakage.
 
-mod config;
 mod context;
 mod input;
 mod message;
@@ -17,9 +16,7 @@ mod util;
 mod view;
 
 use crate::{
-    config::TuiConfig,
     context::TuiContext,
-    input::Action,
     message::{Message, MessageSender, RequestConfig},
     util::{
         get_editor_command, save_file, signals, Replaceable, ResultReported,
@@ -35,6 +32,7 @@ use crossterm::{
 use futures::{Future, StreamExt};
 use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
+use slumber_config::{Action, Config};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId, Recipe, RecipeId},
     db::{CollectionDatabase, Database},
@@ -92,7 +90,7 @@ impl Tui {
         // ===== Initialize global state =====
         // This stuff only needs to be set up *once per session*
 
-        let config = TuiConfig::load()?;
+        let config = Config::load()?;
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx = MessageSender::new(messages_tx);

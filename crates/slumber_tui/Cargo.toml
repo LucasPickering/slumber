@@ -14,20 +14,21 @@ version = "1.7.0"
 anyhow = {workspace = true}
 chrono = {workspace = true}
 cli-clipboard = "0.4.0"
-crossterm = {version = "0.27.0", features = ["event-stream"]}
+crossterm = {workspace = true, features = ["bracketed-paste", "windows", "events", "event-stream"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from"]}
 futures = {workspace = true}
 indexmap = {workspace = true}
 itertools = {workspace = true}
 notify = {version = "6.1.1", default-features = false, features = ["macos_fsevent"]}
 persisted = {version = "0.1.0", features = ["serde"]}
-ratatui = {version = "0.27.0", features = ["serde", "unstable-rendered-line-info"]}
+ratatui = {workspace = true, features = ["crossterm", "underline-color", "unstable-rendered-line-info"]}
 reqwest = {workspace = true}
 serde = {workspace = true}
 serde_json = {workspace = true}
 serde_json_path = {workspace = true}
 serde_yaml = {workspace = true}
-slumber_core = {path = "../slumber_core", version = "1.7.0"}
+slumber_config = {workspace = true}
+slumber_core = {workspace = true}
 strum = {workspace = true}
 tokio = {workspace = true, features = ["macros", "signal"]}
 tracing = {workspace = true}
@@ -38,5 +39,4 @@ uuid = {workspace = true}
 [dev-dependencies]
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
-serde_test = {workspace = true}
-slumber_core = {path = "../slumber_core", features = ["test"]}
+slumber_core = {workspace = true, features = ["test"]}

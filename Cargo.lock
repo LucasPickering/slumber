@@ -2104,6 +2104,24 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_yaml",
+ "slumber_config",
+ "slumber_core",
+ "tracing",
+]
+
+[[package]]
+name = "slumber_config"
+version = "1.7.0"
+dependencies = [
+ "anyhow",
+ "crossterm",
+ "derive_more",
+ "indexmap",
+ "itertools 0.13.0",
+ "ratatui",
+ "rstest",
+ "serde",
+ "serde_test",
  "slumber_core",
  "tracing",
 ]
@@ -2168,8 +2186,8 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_json_path",
- "serde_test",
  "serde_yaml",
+ "slumber_config",
  "slumber_core",
  "strum",
  "tokio",

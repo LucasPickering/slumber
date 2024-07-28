@@ -1,7 +1,6 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
-    input::Action,
     message::{Message, RequestConfig},
     view::{
         common::actions::ActionsModal,
@@ -28,6 +27,7 @@ use ratatui::{
     Frame,
 };
 use serde::{Deserialize, Serialize};
+use slumber_config::Action;
 use slumber_core::collection::{
     Collection, Profile, ProfileId, Recipe, RecipeId, RecipeNode,
 };

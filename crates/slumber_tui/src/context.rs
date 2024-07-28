@@ -1,4 +1,5 @@
-use crate::{config::TuiConfig, input::InputEngine, view::Styles};
+use crate::{input::InputEngine, view::Styles};
+use slumber_config::Config;
 use slumber_core::http::HttpEngine;
 use std::sync::OnceLock;
 
@@ -17,7 +18,7 @@ static INSTANCE: OnceLock<TuiContext> = OnceLock::new();
 #[derive(Debug)]
 pub struct TuiContext {
     /// App-level configuration
-    pub config: TuiConfig,
+    pub config: Config,
     /// Visual styles, derived from the theme
     pub styles: Styles,
     /// Input:action bindings
@@ -28,7 +29,7 @@ pub struct TuiContext {
 
 impl TuiContext {
     /// Initialize global context. Should be called only once, during startup.
-    pub fn init(config: TuiConfig) {
+    pub fn init(config: Config) {
         INSTANCE
             .set(Self::new(config))
             .expect("Global context is already initialized");
@@ -38,14 +39,13 @@ impl TuiContext {
     /// and if the context is already initialized, do nothing.
     #[cfg(test)]
     pub fn init_test() {
-        INSTANCE.get_or_init(|| Self::new(TuiConfig::default()));
+        INSTANCE.get_or_init(|| Self::new(Config::default()));
     }
 
-    fn new(config: TuiConfig) -> Self {
+    fn new(config: Config) -> Self {
         let styles = Styles::new(&config.theme);
         let input_engine = InputEngine::new(config.input_bindings.clone());
-        let http_engine =
-            HttpEngine::new(&config.core.ignore_certificate_hosts);
+        let http_engine = HttpEngine::new(&config.ignore_certificate_hosts);
         Self {
             config,
             styles,

@@ -1,5 +1,4 @@
 use crate::{
-    input::Action,
     message::Message,
     view::{
         common::{
@@ -15,6 +14,7 @@ use crate::{
 };
 use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
+use slumber_config::Action;
 use slumber_core::{
     http::{content_type::ContentType, RequestId, RequestRecord},
     util::MaybeStr,

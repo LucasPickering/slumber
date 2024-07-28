@@ -213,6 +213,7 @@ where
 /// [TestComponent::update_draw] call. This wrapper makes it easy to check
 /// which, if any, events were propagated.
 #[must_use = "Propagated events must be checked"]
+#[derive(Debug)]
 pub struct PropagatedEvents(Vec<Event>);
 
 impl PropagatedEvents {

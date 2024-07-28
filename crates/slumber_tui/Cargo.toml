@@ -21,7 +21,7 @@ indexmap = {workspace = true}
 itertools = {workspace = true}
 notify = {version = "6.1.1", default-features = false, features = ["macos_fsevent"]}
 persisted = {version = "0.1.0", features = ["serde"]}
-ratatui = {version = "0.26.0", features = ["serde", "unstable-rendered-line-info"]}
+ratatui = {version = "0.27.0", features = ["serde", "unstable-rendered-line-info"]}
 reqwest = {workspace = true}
 serde = {workspace = true}
 serde_json = {workspace = true}

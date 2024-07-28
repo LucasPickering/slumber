@@ -380,6 +380,17 @@ impl ResponseRecord {
         }
     }
 
+    /// Get the content type of the response body, according to the
+    /// `Content-Type` header
+    pub fn content_type(&self) -> Option<ContentType> {
+        // If we've parsed the body, we'll have the content type present. If
+        // not, check the header now
+        self.body
+            .parsed()
+            .map(|content| content.content_type())
+            .or_else(|| ContentType::from_headers(&self.headers).ok())
+    }
+
     /// Get a suggested file name for the content of this response. First we'll
     /// check the Content-Disposition header. If it's missing or doesn't have a
     /// file name, we'll check the Content-Type to at least guess at an

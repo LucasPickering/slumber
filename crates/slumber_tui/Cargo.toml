@@ -31,9 +31,12 @@ slumber_core = {path = "../slumber_core", version = "1.7.0"}
 strum = {workspace = true}
 tokio = {workspace = true, features = ["macros", "signal"]}
 tracing = {workspace = true}
+tree-sitter-highlight = "0.22.6"
+tree-sitter-json = "0.21.0"
 uuid = {workspace = true}
 
 [dev-dependencies]
+pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 serde_test = {workspace = true}
 slumber_core = {path = "../slumber_core", features = ["test"]}

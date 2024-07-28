@@ -21,7 +21,7 @@ use ratatui::{
 };
 use serde_json_path::JsonPath;
 use slumber_core::{
-    http::{query::Query, ResponseBody},
+    http::{content_type::ContentType, query::Query, ResponseBody},
     util::{MaybeStr, ResultTraced},
 };
 use std::{cell::Cell, ops::Deref};
@@ -49,6 +49,13 @@ pub struct QueryableBody {
 
 #[derive(Clone)]
 pub struct QueryableBodyProps<'a> {
+    /// Type of the body content; include for syntax highlighting
+    pub content_type: Option<ContentType>,
+    /// Body content. Theoretically this component isn't specific to responses,
+    /// but that's the only place where it's used currently so we specifically
+    /// accept a response body. By keeping it 90% agnostic (i.e. not accepting
+    /// a full response), it makes it easier to adapt in the future if we want
+    /// to make request bodies queryable as well.
     pub body: &'a ResponseBody,
 }
 
@@ -163,6 +170,7 @@ impl<'a> Draw<QueryableBodyProps<'a>> for QueryableBody {
             frame,
             TextWindowProps {
                 text: text.deref().generate(),
+                content_type: props.content_type,
                 has_search_box: query_available,
             },
             body_area,
@@ -201,7 +209,8 @@ fn init_state(body: &ResponseBody, query: Option<&Query>) -> String {
     // Query and prettify text if possible. This involves a lot of cloning
     // because it makes stuff easier. If it becomes a bottleneck on large
     // responses it's fixable.
-    body.parsed()
+    let body = body
+        .parsed()
         .map(|parsed_body| {
             // Body is a known content type so we parsed it - apply a query if
             // necessary and prettify the output
@@ -211,7 +220,8 @@ fn init_state(body: &ResponseBody, query: Option<&Query>) -> String {
         })
         // Content couldn't be parsed, fall back to the raw text
         // If the text isn't UTF-8, we'll show a placeholder instead
-        .unwrap_or_else(|| format!("{:#}", MaybeStr(body.bytes())))
+        .unwrap_or_else(|| format!("{:#}", MaybeStr(body.bytes())));
+    body
 }
 
 #[cfg(test)]
@@ -256,7 +266,10 @@ mod tests {
         let component = TestComponent::new(
             harness,
             QueryableBody::new(),
-            QueryableBodyProps { body: &body },
+            QueryableBodyProps {
+                content_type: None,
+                body: &body,
+            },
         );
 
         // Assert state
@@ -285,6 +298,7 @@ mod tests {
             harness,
             QueryableBody::new(),
             QueryableBodyProps {
+                content_type: None,
                 body: &json_response.body,
             },
         );
@@ -361,6 +375,7 @@ mod tests {
             harness,
             PersistedLazy::new(Key, QueryableBody::new()),
             QueryableBodyProps {
+                content_type: None,
                 body: &json_response.body,
             },
         );

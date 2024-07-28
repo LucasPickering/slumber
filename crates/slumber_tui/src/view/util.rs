@@ -1,5 +1,7 @@
 //! Helper structs and functions for building components
 
+pub mod highlight;
+
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use slumber_core::template::{Prompt, PromptChannel, Prompter};
 

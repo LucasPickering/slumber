@@ -5,6 +5,7 @@ use crate::{
         common::scrollbar::Scrollbar,
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
+        util::highlight,
     },
 };
 use ratatui::{
@@ -14,11 +15,12 @@ use ratatui::{
     widgets::{Paragraph, ScrollbarOrientation},
     Frame,
 };
-use std::{cell::Cell, cmp, fmt::Debug};
+use slumber_core::http::content_type::ContentType;
+use std::{cell::Cell, cmp};
 
 /// A scrollable (but not editable) block of text. Internal state will be
 /// updated on each render, to adjust to the text's width/height.
-#[derive(Debug, Default)]
+#[derive(derive_more::Debug, Default)]
 pub struct TextWindow {
     offset_x: u16,
     offset_y: u16,
@@ -31,6 +33,8 @@ pub struct TextWindow {
 pub struct TextWindowProps<'a> {
     /// Text to render
     pub text: Text<'a>,
+    /// Language of the content; pass to enable syntax highlighting
+    pub content_type: Option<ContentType>,
     /// Is there a search box below the content? This tells us if we need to
     /// offset the horizontal scroll box an extra row.
     pub has_search_box: bool,
@@ -106,7 +110,15 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
         metadata: DrawMetadata,
     ) {
         let styles = &TuiContext::get().styles;
-        let text = Paragraph::new(props.text);
+
+        // Apply syntax highlighting
+        let text = if let Some(content_type) = props.content_type {
+            highlight::highlight(content_type, props.text)
+        } else {
+            props.text
+        };
+
+        let text = Paragraph::new(text);
         // Assume no line wrapping when calculating line count
         let text_height = text.line_count(u16::MAX) as u16;
 

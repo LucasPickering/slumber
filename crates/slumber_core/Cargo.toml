@@ -42,7 +42,7 @@ uuid = {workspace = true, features = ["serde", "v4"]}
 winnow = "0.6.16"
 
 [dev-dependencies]
-pretty_assertions = "1.4.0"
+pretty_assertions = {workspace = true}
 regex = {version = "1.10.5", default-features = false}
 rstest = {workspace = true}
 serde_test = {workspace = true}

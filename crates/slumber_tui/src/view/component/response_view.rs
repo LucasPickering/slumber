@@ -154,6 +154,7 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
         state.body.draw(
             frame,
             QueryableBodyProps {
+                content_type: response.content_type(),
                 body: &response.body,
             },
             metadata.area(),

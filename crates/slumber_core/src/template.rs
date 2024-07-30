@@ -359,11 +359,7 @@ mod tests {
             ..ResponseRecord::factory(())
         };
         database
-            .insert_exchange(&Exchange {
-                request: request.into(),
-                response: response.into(),
-                ..Exchange::factory(())
-            })
+            .insert_exchange(&Exchange::factory((request, response)))
             .unwrap();
         let selector = selector.map(|s| s.parse().unwrap());
         let recipe = Recipe {

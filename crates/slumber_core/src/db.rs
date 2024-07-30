@@ -1,25 +1,22 @@
 //! The database is responsible for persisting data, including requests and
 //! responses.
 
+mod convert;
 mod migrations;
 
 use crate::{
     collection::{ProfileId, RecipeId},
+    db::convert::{ByteEncoded, CollectionPath, JsonEncoded, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
     util::{DataDirectory, ResultTraced},
 };
 use anyhow::{anyhow, Context};
 use derive_more::Display;
-use reqwest::StatusCode;
-use rusqlite::{
-    named_params,
-    types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
-    Connection, DatabaseName, OptionalExtension, Row, ToSql,
-};
+use rusqlite::{named_params, Connection, DatabaseName, OptionalExtension};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     fmt::Debug,
-    ops::Deref,
+    ops::DerefMut,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -37,6 +34,8 @@ use uuid::Uuid;
 /// to a collection should have an FK column to the `collections` table.
 ///
 /// This uses an `Arc` internally, so it's safe and cheap to clone.
+///
+/// Schema is defined in [migrations]
 #[derive(Clone, Debug)]
 pub struct Database {
     /// Data is stored in a sqlite DB. Mutex is needed for multi-threaded
@@ -46,12 +45,6 @@ pub struct Database {
     /// complicated.
     connection: Arc<Mutex<Connection>>,
 }
-
-/// A unique ID for a collection. This is generated when the collection is
-/// inserted into the DB.
-#[derive(Copy, Clone, Debug, Display)]
-#[cfg_attr(test, derive(Eq, Hash, PartialEq))]
-pub struct CollectionId(Uuid);
 
 impl Database {
     const FILE: &'static str = "state.sqlite";
@@ -88,7 +81,7 @@ impl Database {
     }
 
     /// Get a reference to the DB connection. Panics if the lock is poisoned
-    fn connection(&self) -> impl '_ + Deref<Target = Connection> {
+    fn connection(&self) -> impl '_ + DerefMut<Target = Connection> {
         self.connection.lock().expect("Connection lock poisoned")
     }
 
@@ -144,22 +137,22 @@ impl Database {
         // Update each table in individually
         connection
             .execute(
-                "UPDATE requests SET collection_id = :target
+                "UPDATE requests_v2 SET collection_id = :target
                 WHERE collection_id = :source",
                 named_params! {":source": source, ":target": target},
             )
-            .context("Error migrating table `requests`")
+            .context("Error migrating table `requests_v2`")
             .traced()?;
         connection
             .execute(
                 // Overwrite UI state. Maybe this isn't the best UX, but sqlite
                 // doesn't provide an "UPDATE OR DELETE" so this is easiest and
                 // still reasonable
-                "UPDATE OR REPLACE ui_state SET collection_id = :target
+                "UPDATE OR REPLACE ui_state_v2 SET collection_id = :target
                 WHERE collection_id = :source",
                 named_params! {":source": source, ":target": target},
             )
-            .context("Error migrating table `ui_state`")
+            .context("Error migrating table `ui_state_v2`")
             .traced()?;
 
         connection
@@ -189,7 +182,7 @@ impl Database {
                 "INSERT INTO collections (id, path) VALUES (:id, :path)
                 ON CONFLICT(path) DO NOTHING",
                 named_params! {
-                    ":id": CollectionId(Uuid::new_v4()),
+                    ":id": CollectionId::new(),
                     ":path": &path,
                 },
             )
@@ -245,7 +238,7 @@ impl CollectionDatabase {
         self.database
             .connection()
             .query_row(
-                "SELECT * FROM requests
+                "SELECT * FROM requests_v2
                 WHERE collection_id = :collection_id
                     AND id = :request_id
                 ORDER BY start_time DESC LIMIT 1",
@@ -280,7 +273,7 @@ impl CollectionDatabase {
             .connection()
             .query_row(
                 // `IS` needed for profile_id so `None` will match `NULL`
-                "SELECT * FROM requests
+                "SELECT * FROM requests_v2
                 WHERE collection_id = :collection_id
                     AND profile_id IS :profile_id
                     AND recipe_id = :recipe_id
@@ -319,19 +312,36 @@ impl CollectionDatabase {
             .connection()
             .execute(
                 "INSERT INTO
-                requests (
+                requests_v2 (
                     id,
                     collection_id,
                     profile_id,
                     recipe_id,
                     start_time,
                     end_time,
-                    request,
-                    response,
-                    status_code
+                    method,
+                    url,
+                    request_headers,
+                    request_body,
+                    status_code,
+                    response_headers,
+                    response_body
                 )
-                VALUES (:id, :collection_id, :profile_id, :recipe_id,
-                    :start_time, :end_time, :request, :response, :status_code)",
+                VALUES (
+                    :id,
+                    :collection_id,
+                    :profile_id,
+                    :recipe_id,
+                    :start_time,
+                    :end_time,
+                    :method,
+                    :url,
+                    :request_headers,
+                    :request_body,
+                    :status_code,
+                    :response_headers,
+                    :response_body
+                )",
                 named_params! {
                     ":id": exchange.id,
                     ":collection_id": self.collection_id,
@@ -339,9 +349,15 @@ impl CollectionDatabase {
                     ":recipe_id": &exchange.request.recipe_id,
                     ":start_time": &exchange.start_time,
                     ":end_time": &exchange.end_time,
-                    ":request": &ByteEncoded(&*exchange.request),
-                    ":response": &ByteEncoded(&*exchange.response),
+
+                    ":method": exchange.request.method.as_str(),
+                    ":url": exchange.request.url.as_str(),
+                    ":request_headers": SqlWrap(&exchange.request.headers),
+                    ":request_body": exchange.request.body.as_deref(),
+
                     ":status_code": exchange.response.status.as_u16(),
+                    ":response_headers": SqlWrap(&exchange.response.headers),
+                    ":response_body": exchange.response.body.bytes(),
                 },
             )
             .context(format!(
@@ -366,7 +382,7 @@ impl CollectionDatabase {
         self.database
             .connection()
             .prepare(
-                "SELECT id, start_time, end_time, status_code FROM requests
+                "SELECT id, start_time, end_time, status_code FROM requests_v2
                 WHERE collection_id = :collection_id
                     AND profile_id IS :profile_id
                     AND recipe_id = :recipe_id
@@ -386,8 +402,13 @@ impl CollectionDatabase {
             .context("Error extracting request history")
     }
 
-    /// Get the value of a UI state field
-    pub fn get_ui<K, V>(&self, key: K) -> anyhow::Result<Option<V>>
+    /// Get the value of a UI state field. Key type is included as part of the
+    /// key, to disambiguate between keys of identical structure
+    pub fn get_ui<K, V>(
+        &self,
+        key_type: &str,
+        key: K,
+    ) -> anyhow::Result<Option<V>>
     where
         K: Debug + Serialize,
         V: Debug + DeserializeOwned,
@@ -396,14 +417,17 @@ impl CollectionDatabase {
             .database
             .connection()
             .query_row(
-                "SELECT value FROM ui_state
-                WHERE collection_id = :collection_id AND key = :key",
+                "SELECT value FROM ui_state_v2
+                WHERE collection_id = :collection_id
+                    AND key_type = :key_type
+                    AND key = :key",
                 named_params! {
                     ":collection_id": self.collection_id,
-                    ":key": ByteEncoded(&key),
+                    ":key_type": key_type,
+                    ":key": JsonEncoded(&key),
                 },
                 |row| {
-                    let value: ByteEncoded<V> = row.get("value")?;
+                    let value: JsonEncoded<V> = row.get("value")?;
                     Ok(value.0)
                 },
             )
@@ -415,7 +439,12 @@ impl CollectionDatabase {
     }
 
     /// Set the value of a UI state field
-    pub fn set_ui<K, V>(&self, key: K, value: V) -> anyhow::Result<()>
+    pub fn set_ui<K, V>(
+        &self,
+        key_type: &str,
+        key: K,
+        value: V,
+    ) -> anyhow::Result<()>
     where
         K: Debug + Serialize,
         V: Debug + Serialize,
@@ -425,13 +454,14 @@ impl CollectionDatabase {
             .connection()
             .execute(
                 // Upsert!
-                "INSERT INTO ui_state (collection_id, key, value)
-                VALUES (:collection_id, :key, :value)
+                "INSERT INTO ui_state_v2 (collection_id, key_type, key, value)
+                VALUES (:collection_id, :key_type, :key, :value)
                 ON CONFLICT DO UPDATE SET value = excluded.value",
                 named_params! {
                     ":collection_id": self.collection_id,
-                    ":key": ByteEncoded(key),
-                    ":value": ByteEncoded(value),
+                    ":key_type": key_type,
+                    ":key": JsonEncoded(key),
+                    ":value": JsonEncoded(value),
                 },
             )
             .context("Error saving UI state to database")
@@ -442,6 +472,18 @@ impl CollectionDatabase {
     #[cfg(test)]
     pub fn collection_id(&self) -> CollectionId {
         self.collection_id
+    }
+}
+
+/// A unique ID for a collection. This is generated when the collection is
+/// inserted into the DB.
+#[derive(Copy, Clone, Debug, Display)]
+#[cfg_attr(test, derive(Eq, Hash, PartialEq))]
+pub struct CollectionId(Uuid);
+
+impl CollectionId {
+    fn new() -> Self {
+        Self(Uuid::new_v4())
     }
 }
 
@@ -468,157 +510,6 @@ impl crate::test_util::Factory for CollectionDatabase {
     }
 }
 
-impl ToSql for CollectionId {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        self.0.to_sql()
-    }
-}
-
-impl FromSql for CollectionId {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Ok(Self(Uuid::column_result(value)?))
-    }
-}
-
-impl ToSql for ProfileId {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        self.deref().to_sql()
-    }
-}
-
-impl FromSql for ProfileId {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Ok(String::column_result(value)?.into())
-    }
-}
-
-impl ToSql for RequestId {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        self.0.to_sql()
-    }
-}
-
-impl FromSql for RequestId {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Ok(Self(Uuid::column_result(value)?))
-    }
-}
-
-impl ToSql for RecipeId {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        self.deref().to_sql()
-    }
-}
-
-impl FromSql for RecipeId {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Ok(String::column_result(value)?.into())
-    }
-}
-
-/// Neat little wrapper for a collection path, to make sure it gets
-/// canonicalized and serialized/deserialized consistently
-#[derive(Debug, Display)]
-#[display("{}", _0.0.display())]
-struct CollectionPath(ByteEncoded<PathBuf>);
-
-impl From<CollectionPath> for PathBuf {
-    fn from(path: CollectionPath) -> Self {
-        path.0 .0
-    }
-}
-
-impl TryFrom<&Path> for CollectionPath {
-    type Error = anyhow::Error;
-
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        path.canonicalize()
-            .context(format!("Error canonicalizing path {path:?}"))
-            .traced()
-            .map(|path| Self(ByteEncoded(path)))
-    }
-}
-
-impl ToSql for CollectionPath {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        self.0.to_sql()
-    }
-}
-
-impl FromSql for CollectionPath {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        ByteEncoded::<PathBuf>::column_result(value).map(Self)
-    }
-}
-
-/// A wrapper to serialize/deserialize a value as msgpack for DB storage
-#[derive(Debug)]
-struct ByteEncoded<T>(T);
-
-impl<T: Serialize> ToSql for ByteEncoded<T> {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        let bytes = rmp_serde::to_vec_named(&self.0).map_err(|err| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(err))
-        })?;
-        Ok(ToSqlOutput::Owned(bytes.into()))
-    }
-}
-
-impl<T: DeserializeOwned> FromSql for ByteEncoded<T> {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        let bytes = value.as_blob()?;
-        let value: T = rmp_serde::from_slice(bytes)
-            .map_err(|err| FromSqlError::Other(Box::new(err)))?;
-        Ok(Self(value))
-    }
-}
-
-/// Convert from `SELECT * FROM requests`
-impl<'a, 'b> TryFrom<&'a Row<'b>> for Exchange {
-    type Error = rusqlite::Error;
-
-    fn try_from(row: &'a Row<'b>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            id: row.get("id")?,
-            start_time: row.get("start_time")?,
-            end_time: row.get("end_time")?,
-            // Deserialize from bytes
-            request: Arc::new(row.get::<_, ByteEncoded<_>>("request")?.0),
-            response: Arc::new(row.get::<_, ByteEncoded<_>>("response")?.0),
-        })
-    }
-}
-
-/// Convert from SQL row
-impl<'a, 'b> TryFrom<&'a Row<'b>> for ExchangeSummary {
-    type Error = rusqlite::Error;
-
-    fn try_from(row: &'a Row<'b>) -> Result<Self, Self::Error> {
-        // Use a wrapper struct to deserialize the status code from an int
-        struct StatusCodeWrapper(StatusCode);
-        fn other<T>(error: T) -> FromSqlError
-        where
-            T: 'static + std::error::Error + Send + Sync,
-        {
-            FromSqlError::Other(Box::new(error))
-        }
-        impl FromSql for StatusCodeWrapper {
-            fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-                let code: u16 = value.as_i64()?.try_into().map_err(other)?;
-                let code = StatusCode::from_u16(code as u16).map_err(other)?;
-                Ok(Self(code))
-            }
-        }
-
-        Ok(Self {
-            id: row.get("id")?,
-            start_time: row.get("start_time")?,
-            end_time: row.get("end_time")?,
-            status: row.get::<_, StatusCodeWrapper>("status_code")?.0,
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -640,11 +531,12 @@ mod tests {
             Exchange::factory((Some("profile1".into()), "recipe1".into()));
         let profile_id = exchange1.request.profile_id.as_ref();
         let recipe_id = &exchange1.request.recipe_id;
+        let key_type = "MyKey";
         let ui_key = "key1";
         collection1.insert_exchange(&exchange1).unwrap();
-        collection1.set_ui(ui_key, "value1").unwrap();
+        collection1.set_ui(key_type, ui_key, "value1").unwrap();
         collection2.insert_exchange(&exchange2).unwrap();
-        collection2.set_ui(ui_key, "value2").unwrap();
+        collection2.set_ui(key_type, ui_key, "value2").unwrap();
 
         // Sanity checks
         assert_eq!(
@@ -656,7 +548,7 @@ mod tests {
             exchange1.id
         );
         assert_eq!(
-            collection1.get_ui::<_, String>(ui_key).unwrap(),
+            collection1.get_ui::<_, String>(key_type, ui_key).unwrap(),
             Some("value1".into())
         );
         assert_eq!(
@@ -668,7 +560,7 @@ mod tests {
             exchange2.id
         );
         assert_eq!(
-            collection2.get_ui::<_, String>(ui_key).unwrap(),
+            collection2.get_ui::<_, String>(key_type, ui_key).unwrap(),
             Some("value2".into())
         );
 
@@ -685,7 +577,7 @@ mod tests {
             exchange2.id
         );
         assert_eq!(
-            collection1.get_ui::<_, String>(ui_key).unwrap(),
+            collection1.get_ui::<_, String>(key_type, ui_key).unwrap(),
             Some("value2".into())
         );
 
@@ -847,16 +739,17 @@ mod tests {
             .into_collection(Path::new("Cargo.toml"))
             .unwrap();
 
+        let key_type = "MyKey";
         let ui_key = "key1";
-        collection1.set_ui(ui_key, "value1").unwrap();
-        collection2.set_ui(ui_key, "value2").unwrap();
+        collection1.set_ui(key_type, ui_key, "value1").unwrap();
+        collection2.set_ui(key_type, ui_key, "value2").unwrap();
 
         assert_eq!(
-            collection1.get_ui::<_, String>(ui_key).unwrap(),
+            collection1.get_ui::<_, String>(key_type, ui_key).unwrap(),
             Some("value1".into())
         );
         assert_eq!(
-            collection2.get_ui::<_, String>(ui_key).unwrap(),
+            collection2.get_ui::<_, String>(key_type, ui_key).unwrap(),
             Some("value2".into())
         );
     }

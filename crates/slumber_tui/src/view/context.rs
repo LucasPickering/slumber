@@ -151,7 +151,7 @@ where
     K::Value: Debug + Serialize + DeserializeOwned,
 {
     fn load_persisted(key: &K) -> Option<K::Value> {
-        Self::with_database(|database| database.get_ui((K::type_name(), key)))
+        Self::with_database(|database| database.get_ui(K::type_name(), key))
             // Error is already traced in the DB, nothing to do with it here
             .ok()
             .flatten()
@@ -159,7 +159,7 @@ where
 
     fn store_persisted(key: &K, value: K::Value) {
         Self::with_database(|database| {
-            database.set_ui((K::type_name(), key), value)
+            database.set_ui(K::type_name(), key, value)
         })
         // Error is already traced in the DB, nothing to do with it here
         .ok();

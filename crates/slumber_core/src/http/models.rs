@@ -175,12 +175,13 @@ impl From<&Exchange> for ExchangeSummary {
 /// - Each [reqwest::Request] can only exist once (from creation to sending),
 ///   whereas a record can be hung onto after the launch to keep showing it on
 ///   screen.
-/// - This is serialized/deserializable, for persistence
 /// - This stores additional Slumber-specific metadata
 ///
 /// This intentionally does *not* implement `Clone`, because request data could
 /// potentially be large so we want to be intentional about duplicating it only
 /// when necessary.
+///
+/// Remove serde impls in https://github.com/LucasPickering/slumber/issues/306
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct RequestRecord {
@@ -292,13 +293,18 @@ impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
     for RequestRecord
 {
     fn factory((profile_id, recipe_id): (Option<ProfileId>, RecipeId)) -> Self {
+        use crate::test_util::header_map;
         Self {
             id: RequestId::new(),
             profile_id,
             recipe_id,
             method: reqwest::Method::GET,
             url: "http://localhost/url".parse().unwrap(),
-            headers: HeaderMap::new(),
+            headers: header_map([
+                ("Accept", "application/json"),
+                ("Content-Type", "application/json"),
+                ("User-Agent", "slumber"),
+            ]),
             body: None,
         }
     }
@@ -309,6 +315,17 @@ impl crate::test_util::Factory for ResponseRecord {
     fn factory(_: ()) -> Self {
         Self {
             status: StatusCode::OK,
+            headers: HeaderMap::new(),
+            body: ResponseBody::default(),
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl crate::test_util::Factory<StatusCode> for ResponseRecord {
+    fn factory(status: StatusCode) -> Self {
+        Self {
+            status,
             headers: HeaderMap::new(),
             body: ResponseBody::default(),
         }
@@ -334,8 +351,17 @@ impl crate::test_util::Factory<RecipeId> for Exchange {
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
     fn factory(params: (Option<ProfileId>, RecipeId)) -> Self {
-        let request = RequestRecord::factory(params);
-        let response = ResponseRecord::factory(());
+        Self::factory((
+            RequestRecord::factory(params),
+            ResponseRecord::factory(()),
+        ))
+    }
+}
+
+/// Customize profile and recipe ID
+#[cfg(any(test, feature = "test"))]
+impl crate::test_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
+    fn factory((request, response): (RequestRecord, ResponseRecord)) -> Self {
         Self {
             id: request.id,
             request: request.into(),
@@ -349,11 +375,12 @@ impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
 /// A resolved HTTP response, with all content loaded and ready to be displayed
 /// to the user. A simpler alternative to [reqwest::Response], because there's
 /// no way to access all resolved data on that type at once. Resolving the
-/// response body requires moving the response. This also provides serialization
-/// and deserialization so responses can be persisted and re-accessed later.
+/// response body requires moving the response.
 ///
 /// This intentionally does not implement Clone, because responses could
 /// potentially be very large.
+///
+/// Remove serde impls in https://github.com/LucasPickering/slumber/issues/306
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct ResponseRecord {
@@ -516,6 +543,13 @@ impl From<&str> for ResponseBody {
 impl From<&[u8]> for ResponseBody {
     fn from(value: &[u8]) -> Self {
         Self::new(value.to_owned().into())
+    }
+}
+
+#[cfg(test)]
+impl From<serde_json::Value> for ResponseBody {
+    fn from(value: serde_json::Value) -> Self {
+        Self::new(value.to_string().into())
     }
 }
 

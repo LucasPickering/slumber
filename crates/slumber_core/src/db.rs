@@ -679,8 +679,10 @@ mod tests {
         let collection1 = database.clone().into_collection(&path1).unwrap();
         let collection2 = database.clone().into_collection(&path2).unwrap();
 
-        let exchange1 = Exchange::factory(());
-        let exchange2 = Exchange::factory(());
+        let exchange1 =
+            Exchange::factory((Some("profile1".into()), "recipe1".into()));
+        let exchange2 =
+            Exchange::factory((Some("profile1".into()), "recipe1".into()));
         let profile_id = exchange1.request.profile_id.as_ref();
         let recipe_id = &exchange1.request.recipe_id;
         let ui_key = "key1";

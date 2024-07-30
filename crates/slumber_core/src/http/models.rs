@@ -277,7 +277,7 @@ impl crate::test_util::Factory for RequestRecord {
         Self {
             id: RequestId::new(),
             profile_id: None,
-            recipe_id: "recipe1".into(),
+            recipe_id: RecipeId::factory(()),
             method: reqwest::Method::GET,
             url: "http://localhost/url".parse().unwrap(),
             headers: HeaderMap::new(),
@@ -318,15 +318,15 @@ impl crate::test_util::Factory for ResponseRecord {
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for Exchange {
     fn factory(_: ()) -> Self {
-        let request = RequestRecord::factory(());
-        let response = ResponseRecord::factory(());
-        Self {
-            id: request.id,
-            request: request.into(),
-            response: response.into(),
-            start_time: Utc::now(),
-            end_time: Utc::now(),
-        }
+        Self::factory((None, RecipeId::factory(())))
+    }
+}
+
+/// Customize recipe ID
+#[cfg(any(test, feature = "test"))]
+impl crate::test_util::Factory<RecipeId> for Exchange {
+    fn factory(params: RecipeId) -> Self {
+        Self::factory((None, params))
     }
 }
 

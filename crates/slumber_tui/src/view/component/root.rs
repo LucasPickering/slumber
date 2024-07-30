@@ -324,7 +324,11 @@ mod tests {
         harness.database.insert_exchange(&new_exchange).unwrap();
         harness
             .database
-            .set_ui(&SelectedRequestKey, RequestId::new())
+            .set_ui(
+                SelectedRequestKey::type_name(),
+                &SelectedRequestKey,
+                RequestId::new(),
+            )
             .unwrap();
 
         let component = TestComponent::new(harness, Root::new(&collection), ());

@@ -61,7 +61,7 @@ impl Profile {
 impl crate::test_util::Factory for Profile {
     fn factory(_: ()) -> Self {
         Self {
-            id: "profile1".into(),
+            id: ProfileId::factory(()),
             name: None,
             data: IndexMap::new(),
         }
@@ -132,7 +132,7 @@ impl Folder {
 impl crate::test_util::Factory for Folder {
     fn factory(_: ()) -> Self {
         Self {
-            id: "folder1".into(),
+            id: RecipeId::factory(()),
             name: None,
             children: IndexMap::new(),
         }
@@ -150,7 +150,7 @@ impl Recipe {
 impl crate::test_util::Factory for Recipe {
     fn factory(_: ()) -> Self {
         Self {
-            id: "recipe1".into(),
+            id: RecipeId::factory(()),
             name: None,
             method: Method::Get,
             url: "http://localhost/url".into(),
@@ -269,7 +269,7 @@ impl crate::test_util::Factory for Chain {
         Self {
             id: "chain1".into(),
             source: ChainSource::Request {
-                recipe: "recipe1".into(),
+                recipe: RecipeId::factory(()),
                 trigger: Default::default(),
                 section: Default::default(),
             },

@@ -468,7 +468,7 @@ mod tests {
                 body: "not json!".into(),
                 ..ResponseRecord::factory(())
             }.into(),
-            ..Exchange::factory(())
+            ..Exchange::factory(RecipeId::from("recipe1"))
         }),
         "content type not provided",
     )]
@@ -490,7 +490,7 @@ mod tests {
                 body: "not json!".into(),
                 ..ResponseRecord::factory(())
             }.into(),
-            ..Exchange::factory(())
+            ..Exchange::factory(RecipeId::from("recipe1"))
         }),
         "Parsing response: expected ident at line 1 column 2",
     )]
@@ -512,7 +512,7 @@ mod tests {
                 body: "[1, 2]".into(),
                 ..ResponseRecord::factory(())
             }.into(),
-            ..Exchange::factory(())
+            ..Exchange::factory(RecipeId::from("recipe1"))
         }),
         "Expected exactly one result",
     )]

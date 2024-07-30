@@ -423,20 +423,19 @@ mod tests {
         view::test_util::TestComponent,
     };
     use persisted::PersistedStore;
-    use rstest::{fixture, rstest};
+    use rstest::rstest;
     use slumber_core::{
         assert_matches, http::BuildOptions, test_util::Factory,
     };
 
     /// Create component to be tested
-    #[fixture]
-    fn component(
+    fn create_component(
         harness: TestHarness,
+        collection: &Collection,
     ) -> TestComponent<PrimaryView, PrimaryViewProps<'static>> {
-        let collection = Collection::factory(());
         let mut component = TestComponent::new(
             harness,
-            PrimaryView::new(&collection),
+            PrimaryView::new(collection),
             PrimaryViewProps {
                 selected_request: None,
             },
@@ -458,9 +457,8 @@ mod tests {
             Some(FullscreenMode::Exchange),
         );
 
-        // We can't use the fixture normally because we have to set persistence
-        // state first
-        let component = component(harness);
+        let collection = Collection::factory(());
+        let component = create_component(harness, &collection);
         assert_eq!(
             component.data().selected_pane.selected(),
             PrimaryPane::Exchange
@@ -474,9 +472,9 @@ mod tests {
     /// Test "Copy URL" action, which is available via the Recipe List or Recipe
     /// panes
     #[rstest]
-    fn test_copy_url(
-        mut component: TestComponent<PrimaryView, PrimaryViewProps<'static>>,
-    ) {
+    fn test_copy_url(harness: TestHarness) {
+        let collection = Collection::factory(());
+        let mut component = create_component(harness, &collection);
         component
             .update_draw(Event::new_local(RecipeMenuAction::CopyUrl))
             .assert_empty();
@@ -488,8 +486,8 @@ mod tests {
         assert_eq!(
             request_config,
             RequestConfig {
-                recipe_id: "recipe1".into(),
-                profile_id: Some("profile1".into()),
+                recipe_id: collection.first_recipe_id().clone(),
+                profile_id: Some(collection.first_profile_id().clone()),
                 options: BuildOptions::default()
             }
         );
@@ -498,9 +496,9 @@ mod tests {
     /// Test "Copy Body" action, which is available via the Recipe List or
     /// Recipe panes
     #[rstest]
-    fn test_copy_body(
-        mut component: TestComponent<PrimaryView, PrimaryViewProps<'static>>,
-    ) {
+    fn test_copy_body(harness: TestHarness) {
+        let collection = Collection::factory(());
+        let mut component = create_component(harness, &collection);
         component
             .update_draw(Event::new_local(RecipeMenuAction::CopyBody))
             .assert_empty();
@@ -512,8 +510,8 @@ mod tests {
         assert_eq!(
             request_config,
             RequestConfig {
-                recipe_id: "recipe1".into(),
-                profile_id: Some("profile1".into()),
+                recipe_id: collection.first_recipe_id().clone(),
+                profile_id: Some(collection.first_profile_id().clone()),
                 options: BuildOptions::default()
             }
         );
@@ -522,9 +520,9 @@ mod tests {
     /// Test "Copy as cURL" action, which is available via the Recipe List or
     /// Recipe panes
     #[rstest]
-    fn test_copy_as_curl(
-        mut component: TestComponent<PrimaryView, PrimaryViewProps<'static>>,
-    ) {
+    fn test_copy_as_curl(harness: TestHarness) {
+        let collection = Collection::factory(());
+        let mut component = create_component(harness, &collection);
         component
             .update_draw(Event::new_local(RecipeMenuAction::CopyCurl))
             .assert_empty();
@@ -536,8 +534,8 @@ mod tests {
         assert_eq!(
             request_config,
             RequestConfig {
-                recipe_id: "recipe1".into(),
-                profile_id: Some("profile1".into()),
+                recipe_id: collection.first_recipe_id().clone(),
+                profile_id: Some(collection.first_profile_id().clone()),
                 options: BuildOptions::default()
             }
         );

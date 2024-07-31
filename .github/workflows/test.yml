@@ -23,16 +23,8 @@ jobs:
           toolchain: ${{env.TOOLCHAIN}}
           components: rustfmt
 
-      - name: Cache cargo files
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-nightly-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Rust files
+        uses: swatinem/rust-cache@v2
 
       - name: Rustfmt
         uses: actions-rs/cargo@v1
@@ -57,7 +49,7 @@ jobs:
             target: x86_64-pc-windows-msvc
           - name: macOS
             os: macOS-latest
-            target: x86_64-apple-darwin
+            target: aarch64-apple-darwin
     runs-on: ${{ matrix.platform.os }}
     steps:
       - uses: actions/checkout@v3
@@ -94,13 +86,33 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test - ${{ matrix.platform.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Run tests on every platform. This is a subset of the Rust targets we
+        # support, just one per OS.
+        platform:
+          - name: Linux
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: Windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macOS
+            os: macOS-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.platform.os }}
     steps:
       - uses: actions/checkout@v3
 
       - name: Cache Rust files
         uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.platform.target }}
+
+      - name: Install toolchain
+        run: rustup target add ${{ matrix.platform.target }}
 
       - name: Run tests
         uses: actions-rs/cargo@v1

@@ -130,7 +130,12 @@ impl TextBox {
     /// Handle input key event to modify text/cursor state
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
-            KeyCode::Char(c) => self.state.insert(c),
+            // Don't handle keystrokes if the user is holding a modifier
+            KeyCode::Char(c)
+                if (key_event.modifiers - KeyModifiers::SHIFT).is_empty() =>
+            {
+                self.state.insert(c)
+            }
             KeyCode::Backspace => self.state.delete_left(),
             KeyCode::Delete => self.state.delete_right(),
             KeyCode::Left => {
@@ -414,6 +419,19 @@ mod tests {
             cursor(" "),
             text("   "),
         ]]);
+
+        // Sending with a modifier applied should do nothing, unless it's shift
+        component
+            .send_key_modifiers(KeyCode::Char('W'), KeyModifiers::SHIFT)
+            .assert_empty();
+        assert_state(&component.data().state, "hello!W", 7);
+        component
+            .send_key_modifiers(
+                KeyCode::Char('W'), // this is what crossterm actually sends
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            )
+            .assert_empty();
+        assert_state(&component.data().state, "hello!W", 7);
 
         // Test callbacks
         component.click(0, 0).assert_empty();

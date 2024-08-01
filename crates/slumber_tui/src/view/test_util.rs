@@ -186,9 +186,18 @@ where
     /// component, then drain events and draw.  See
     /// [Self::update_draw] about return value.
     pub fn send_key(&mut self, code: KeyCode) -> PropagatedEvents {
+        self.send_key_modifiers(code, KeyModifiers::NONE)
+    }
+
+    /// [Self::send_key], but with modifier keys applied
+    pub fn send_key_modifiers(
+        &mut self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+    ) -> PropagatedEvents {
         let crossterm_event = crossterm::event::Event::Key(KeyEvent {
             code,
-            modifiers: KeyModifiers::NONE,
+            modifiers,
             kind: KeyEventKind::Press,
             state: KeyEventState::empty(),
         });

@@ -19,6 +19,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Support template for header names in the `section` field of `!request` chains
 - Expand `~` to the home directory in `!file` chain sources and when saving response body as a file
 
+### Fixed
+
+- Don't type in text boxes when modifiers keys (other than shift) are enabled
+  - Should mitigate some potential confusing behavior when using terminal key sequences
+
 ## [1.7.0] - 2024-07-22
 
 This release focuses on minor fixes and improvements. There are no new major features or added functionality.

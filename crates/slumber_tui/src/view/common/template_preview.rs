@@ -194,7 +194,7 @@ mod tests {
     use slumber_core::{
         collection::{Chain, ChainSource, Collection, Profile},
         template::TemplateContext,
-        test_util::{by_id, Factory},
+        test_util::{by_id, invalid_utf8_chain, Factory},
     };
 
     /// Test line breaks, multi-byte characters, and binary data
@@ -225,6 +225,7 @@ mod tests {
     #[tokio::test]
     async fn test_template_stitch(
         _harness: TestHarness,
+        invalid_utf8_chain: ChainSource,
         #[case] template: Template,
         #[case] expected: Vec<Line<'static>>,
     ) {
@@ -236,7 +237,7 @@ mod tests {
         let profile_id = profile.id.clone();
         let chain = Chain {
             id: "binary".into(),
-            source: ChainSource::command(["echo", "-n", "-e", r#"\xc3\x28"#]),
+            source: invalid_utf8_chain,
             ..Chain::factory(())
         };
         let collection = Collection {

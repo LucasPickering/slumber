@@ -215,8 +215,8 @@ mod tests {
             content_type::ContentType, Exchange, RequestRecord, ResponseRecord,
         },
         test_util::{
-            by_id, header_map, temp_dir, EnvGuard, Factory, TempDir,
-            TestPrompter,
+            by_id, header_map, invalid_utf8_chain, temp_dir, EnvGuard, Factory,
+            TempDir, TestPrompter,
         },
     };
     use chrono::Utc;
@@ -657,7 +657,11 @@ mod tests {
     #[rstest]
     #[case::no_command(&[], None, "No command given")]
     #[case::unknown_command(
-        &["totally not a program"], None, "No such file or directory"
+        &["totally not a program"], None, if cfg!(unix) {
+            "No such file or directory"
+        } else {
+            "program not found"
+        }
     )]
     #[case::command_error(
         &["head", "/dev/random"], None, "invalid utf-8 sequence"
@@ -1041,12 +1045,16 @@ mod tests {
             },
             ..TemplateContext::factory(())
         };
-        assert_err!(
-            render!("{{chains.command}}", context),
+        let expected = if cfg!(unix) {
             "Rendering nested template for field `command[2]`: \
             Resolving chain `file`: Reading file `bogus.txt`: \
             No such file or directory"
-        );
+        } else {
+            "Rendering nested template for field `command[2]`: \
+            Resolving chain `file`: Reading file `bogus.txt`: \
+            The system cannot find the file specified. (os error 2)"
+        };
+        assert_err!(render!("{{chains.command}}", context), expected);
     }
 
     #[rstest]
@@ -1068,10 +1076,11 @@ mod tests {
     }
 
     /// Test rendering non-UTF-8 data
+    #[rstest]
     #[tokio::test]
-    async fn test_render_binary() {
+    async fn test_render_binary(invalid_utf8_chain: ChainSource) {
         let chain = Chain {
-            source: ChainSource::command(["echo", "-n", "-e", r#"\xc3\x28"#]),
+            source: invalid_utf8_chain,
             ..Chain::factory(())
         };
         let context = TemplateContext {
@@ -1092,10 +1101,11 @@ mod tests {
     }
 
     /// Test rendering non-UTF-8 data to string returns an error
+    #[rstest]
     #[tokio::test]
-    async fn test_render_invalid_utf8() {
+    async fn test_render_invalid_utf8(invalid_utf8_chain: ChainSource) {
         let chain = Chain {
-            source: ChainSource::command(["echo", "-n", "-e", r#"\xc3\x28"#]),
+            source: invalid_utf8_chain,
             ..Chain::factory(())
         };
         let context = TemplateContext {

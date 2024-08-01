@@ -542,7 +542,9 @@ impl ChainSource {
 pub enum ChainRequestSection {
     #[default]
     Body,
-    Header(String),
+    /// Pull a value from a response's headers. If the given header appears
+    /// multiple times, the first value will be used
+    Header(Template),
 }
 
 /// Define when a recipe with a chained request should auto-execute the

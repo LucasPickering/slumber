@@ -383,8 +383,11 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     // Guess content type based on HTTP header
                     let content_type =
                         ContentType::from_headers(&response.headers).ok();
-                    let value =
-                        self.extract_response_value(response, section)?;
+                    let value = self
+                        .extract_response_value(
+                            context, stack, response, section,
+                        )
+                        .await?;
                     (value, content_type)
                 }
             };
@@ -528,25 +531,28 @@ impl<'a> ChainTemplateSource<'a> {
             .expect("Request Arc should have only one reference"))
     }
 
-    /// Extract the specified component bytes from the response.
-    /// Returns an error with the missing header if not found.
-    fn extract_response_value(
+    /// Extract the specified component bytes from the response. For headers,
+    /// the header name is a template so we'll render that.
+    async fn extract_response_value(
         &self,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
         response: ResponseRecord,
-        component: &ChainRequestSection,
+        component: &'a ChainRequestSection,
     ) -> Result<Vec<u8>, ChainError> {
         Ok(match component {
             // This will clone the bytes, which is necessary for the subsequent
             // string conversion anyway
             ChainRequestSection::Body => response.body.into_bytes().into(),
-            ChainRequestSection::Header(target_header) => {
+            ChainRequestSection::Header(header) => {
+                let header = header
+                    .render_chain_config("section", context, stack)
+                    .await?;
                 response
                     .headers
                     // If header has multiple values, only grab the first
-                    .get(target_header)
-                    .ok_or_else(|| ChainError::MissingHeader {
-                        header: target_header.clone(),
-                    })?
+                    .get(&header)
+                    .ok_or_else(|| ChainError::MissingHeader { header })?
                     .as_bytes()
                     .to_vec()
             }

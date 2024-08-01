@@ -324,33 +324,68 @@ mod tests {
     #[case::no_selector(
         None,
         ChainRequestSection::Body,
-        r#"{"array":[1,2],"bool":false,"number":6,"object":{"a":1},"string":"Hello World!"}"#
+        &json!({
+            "array": [1, 2],
+            "bool": false,
+            "number": 6,
+            "object": {"a": 1},
+            "string": "Hello World!"
+        }).to_string()
     )]
     #[case::string(Some("$.string"), ChainRequestSection::Body, "Hello World!")]
     #[case::number(Some("$.number"), ChainRequestSection::Body, "6")]
     #[case::bool(Some("$.bool"), ChainRequestSection::Body, "false")]
     #[case::array(Some("$.array"), ChainRequestSection::Body, "[1,2]")]
     #[case::object(Some("$.object"), ChainRequestSection::Body, "{\"a\":1}")]
-    #[case::header(None, ChainRequestSection::Header("Token".into()), "Secret Value")]
+    #[case::header(
+        None,
+        ChainRequestSection::Header("Token".into()),
+        "Secret Value",
+    )]
+    #[case::header(
+        None,
+        ChainRequestSection::Header("{{header}}".into()),
+        "Secret Value",
+    )]
     #[tokio::test]
     async fn test_chain_request(
         #[case] selector: Option<&str>,
         #[case] section: ChainRequestSection,
         #[case] expected_value: &str,
     ) {
-        let recipe_id: RecipeId = "recipe1".into();
+        let profile = Profile {
+            data: indexmap! {"header".into() => "Token".into()},
+            ..Profile::factory(())
+        };
+        let recipe = Recipe {
+            ..Recipe::factory(())
+        };
+        let selector = selector.map(|s| s.parse().unwrap());
+        let chain = Chain {
+            source: ChainSource::Request {
+                recipe: recipe.id.clone(),
+                trigger: Default::default(),
+                section,
+            },
+            selector,
+            content_type: Some(ContentType::Json),
+            ..Chain::factory(())
+        };
+
         let database = CollectionDatabase::factory(());
         let response_body = json!({
             "string": "Hello World!",
             "number": 6,
             "bool": false,
-            "array": [1,2],
+            "array": [1, 2],
             "object": {"a": 1},
         });
         let response_headers =
             header_map(indexmap! {"Token" => "Secret Value"});
+
         let request = RequestRecord {
-            recipe_id: recipe_id.clone(),
+            recipe_id: recipe.id.clone(),
+            profile_id: Some(profile.id.clone()),
             ..RequestRecord::factory(())
         };
         let response = ResponseRecord {
@@ -361,25 +396,13 @@ mod tests {
         database
             .insert_exchange(&Exchange::factory((request, response)))
             .unwrap();
-        let selector = selector.map(|s| s.parse().unwrap());
-        let recipe = Recipe {
-            id: recipe_id.clone(),
-            ..Recipe::factory(())
-        };
-        let chain = Chain {
-            source: ChainSource::Request {
-                recipe: recipe_id.clone(),
-                trigger: Default::default(),
-                section,
-            },
-            selector,
-            content_type: Some(ContentType::Json),
-            ..Chain::factory(())
-        };
+
         let context = TemplateContext {
+            selected_profile: Some(profile.id.clone()),
             collection: Collection {
                 recipes: by_id([recipe]).into(),
                 chains: by_id([chain]),
+                profiles: by_id([profile]),
                 ..Collection::factory(())
             },
             database,

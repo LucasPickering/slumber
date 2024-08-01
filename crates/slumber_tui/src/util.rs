@@ -8,9 +8,14 @@ use futures::{future, FutureExt};
 use slumber_core::{
     http::RequestError,
     template::{ChainError, Prompt},
-    util::ResultTraced,
+    util::{expand_home, ResultTraced},
 };
-use std::{env, io, ops::Deref, path::Path, process::Command};
+use std::{
+    env, io,
+    ops::Deref,
+    path::{Path, PathBuf},
+    process::Command,
+};
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::oneshot};
 use tracing::{debug, info, warn};
 
@@ -156,6 +161,7 @@ pub async fn save_file(
         return Ok(());
     }
 
+    let path = expand_home(PathBuf::from(path)); // Expand ~
     let result = {
         // Attempt to open the file *if it doesn't exist already*
         let result = OpenOptions::new()
@@ -168,12 +174,12 @@ pub async fn save_file(
             Ok(file) => Ok(file),
             // If the file already exists, ask for confirmation to overwrite
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                warn!(path, "File already exists, asking to overwrite");
+                warn!(?path, "File already exists, asking to overwrite");
 
                 // Hi, sorry, follow up question. Are you sure?
                 if confirm(
                     &messages_tx,
-                    format!("`{path}` already exists, overwrite?"),
+                    format!("`{}` already exists, overwrite?", path.display()),
                 )
                 .await
                 {
@@ -192,20 +198,20 @@ pub async fn save_file(
         }
     };
 
-    debug!(path, bytes = data.len(), "Writing to file");
+    debug!(?path, bytes = data.len(), "Writing to file");
     async {
         let mut file = result?;
         file.write_all(&data).await?;
         file.flush().await
     }
     .await
-    .with_context(|| format!("Error writing to file `{path}`"))
+    .with_context(|| format!("Error writing to file `{}`", path.display()))
     .traced()?;
 
     // It might be nice to show the full path here, but it's not trivial to get
     // that. The stdlib has fs::canonicalize, but it does more than we need
     // (specifically it resolves symlinks), which might be confusing
-    messages_tx.send(Message::Notify(format!("Saved to {path}")));
+    messages_tx.send(Message::Notify(format!("Saved to {}", path.display())));
     Ok(())
 }
 

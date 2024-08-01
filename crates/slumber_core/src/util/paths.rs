@@ -1,6 +1,7 @@
 use anyhow::Context;
 use derive_more::Display;
 use std::{
+    borrow::Cow,
     env,
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
@@ -148,4 +149,46 @@ pub(crate) fn get_repo_root() -> &'static Path {
             .traced()
             .unwrap_or_default()
     })
+}
+
+/// Expand a leading `~` in a path into the user's home directory. Only expand
+/// if the `~` is the sole component, or trailed by a slash. In other words,
+/// `~test.txt` will *not* be expanded. Given path will be cloned only if
+pub fn expand_home<'a>(path: impl Into<Cow<'a, Path>>) -> Cow<'a, Path> {
+    let path: Cow<_> = path.into();
+    match path.strip_prefix("~") {
+        Ok(rest) => {
+            let Some(home_dir) = dirs::home_dir() else {
+                return path;
+            };
+            home_dir.join(rest).into()
+        }
+        Err(_) => path,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use std::path::PathBuf;
+
+    #[rstest]
+    #[case::empty("", "")]
+    #[case::plain("test.txt", "test.txt")]
+    #[case::tilde_only("~", "$HOME")]
+    #[case::tilde_dir("~/test.txt", "$HOME/test.txt")]
+    #[case::tilde_double("~/~/test.txt", "$HOME/~/test.txt")]
+    #[case::tilde_in_filename("~test.txt", "~test.txt")]
+    #[case::tilde_middle("text/~/test.txt", "text/~/test.txt")]
+    #[case::tilde_end("text/~", "text/~")]
+    fn test_expand_home(#[case] path: PathBuf, #[case] expected: String) {
+        // We're assuming this dependency is correct. This provides portability,
+        // so the tests pass on windows
+        let home = dirs::home_dir().unwrap();
+        let home = home.to_str().unwrap();
+        assert!(!home.is_empty(), "Home dir is empty"); // Sanity
+        let expected = expected.replace("$HOME", home);
+        assert_eq!(expand_home(&path).as_ref(), PathBuf::from(expected));
+    }
 }

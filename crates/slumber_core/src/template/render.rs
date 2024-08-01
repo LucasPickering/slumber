@@ -11,7 +11,7 @@ use crate::{
         Prompt, Template, TemplateChunk, TemplateContext, TemplateError,
         TemplateKey,
     },
-    util::{FutureCache, FutureCacheOutcome, ResultTraced},
+    util::{expand_home, FutureCache, FutureCacheOutcome, ResultTraced},
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -585,6 +585,8 @@ impl<'a> ChainTemplateSource<'a> {
             .render_chain_config("path", context, stack)
             .await?
             .into();
+        let path = expand_home(path).into_owned(); // Expand ~
+
         // Guess content type based on file extension
         let content_type = ContentType::from_path(&path).ok();
         let content =

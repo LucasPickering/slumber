@@ -90,10 +90,10 @@ trigger: !always
 
 This defines which section of the response (headers or body) should be used to load the value from.
 
-| Variant  | Type     | Description                                                                                                                  |
-| -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `body`   | None     | The body of the response                                                                                                     |
-| `header` | `string` | A specific header from the response. If the header appears multiple times in the response, only the first value will be used |
+| Variant  | Type       | Description                                                                                                                  |
+| -------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `body`   | None       | The body of the response                                                                                                     |
+| `header` | `Template` | A specific header from the response. If the header appears multiple times in the response, only the first value will be used |
 
 #### Examples
 

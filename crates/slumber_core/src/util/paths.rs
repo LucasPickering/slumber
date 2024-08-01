@@ -4,7 +4,7 @@ use std::{
     env,
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
-    process::{self, Command},
+    process::{self},
     sync::OnceLock,
 };
 
@@ -26,13 +26,7 @@ impl DataDirectory {
     ///
     /// This will create the directory, and return an error if that fails
     pub fn init() -> anyhow::Result<()> {
-        let path = if cfg!(debug_assertions) {
-            get_repo_root().join("data/")
-        } else {
-            // According to the docs, this dir will be present on all platforms
-            // https://docs.rs/dirs/latest/dirs/fn.data_dir.html
-            dirs::data_dir().unwrap().join("slumber")
-        };
+        let path = Self::get_directory();
 
         // Create the dir
         fs::create_dir_all(&path).with_context(|| {
@@ -43,6 +37,18 @@ impl DataDirectory {
             .set(Self(path))
             .expect("Temporary directory is already initialized");
         Ok(())
+    }
+
+    #[cfg(debug_assertions)]
+    fn get_directory() -> PathBuf {
+        get_repo_root().join("data/")
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn get_directory() -> PathBuf {
+        // According to the docs, this dir will be present on all platforms
+        // https://docs.rs/dirs/latest/dirs/fn.data_dir.html
+        dirs::data_dir().unwrap().join("slumber")
     }
 
     /// Get a reference to the global directory for permanent data. See
@@ -125,6 +131,7 @@ impl TempDirectory {
 #[cfg(any(debug_assertions, test))]
 pub(crate) fn get_repo_root() -> &'static Path {
     use crate::util::ResultTraced;
+    use std::process::Command;
 
     static CACHE: OnceLock<PathBuf> = OnceLock::new();
 

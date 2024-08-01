@@ -6,7 +6,7 @@ mod migrations;
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    db::convert::{ByteEncoded, CollectionPath, JsonEncoded, SqlWrap},
+    db::convert::{CollectionPath, JsonEncoded, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
     util::{DataDirectory, ResultTraced},
 };
@@ -89,7 +89,9 @@ impl Database {
     pub fn collections(&self) -> anyhow::Result<Vec<PathBuf>> {
         self.connection()
             .prepare("SELECT path FROM collections")?
-            .query_map([], |row| Ok(row.get::<_, ByteEncoded<_>>("path")?.0))
+            .query_map([], |row| {
+                Ok(row.get::<_, CollectionPath>("path")?.into())
+            })
             .context("Error fetching collections")?
             .collect::<rusqlite::Result<Vec<_>>>()
             .context("Error extracting collection data")

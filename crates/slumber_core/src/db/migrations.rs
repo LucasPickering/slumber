@@ -1,15 +1,20 @@
 use crate::{
     db::{
-        convert::{ByteEncoded, SqlWrap},
+        convert::{CollectionPath, SqlWrap},
         CollectionId,
     },
     http::Exchange,
     util::ResultTraced,
 };
 use anyhow::Context;
-use rusqlite::{named_params, Row, Transaction};
+use rusqlite::{
+    named_params,
+    types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
+    Row, ToSql, Transaction,
+};
 use rusqlite_migration::{HookResult, Migrations, M};
-use std::sync::Arc;
+use serde::{de::DeserializeOwned, Serialize};
+use std::{path::PathBuf, sync::Arc};
 use tracing::info;
 
 /// Get all DB migrations in history
@@ -98,12 +103,20 @@ pub fn migrations() -> Migrations<'static> {
             )",
             migrate_ui_state_v2_up,
         ),
+        // Encode collection path as text instead of MessagePacking it. We
+        // could change the type of the path column to TEXT, but sqlite doesn't
+        // support modifying column type. We could add a new column, but it
+        // also doesn't support dropping columns with UNIQUE so the old
+        // one would still be there
+        M::up_with_hook("", migrate_collection_paths),
     ])
 }
 
 /// Post-up hook to copy data from the `requests` table to `requests_v2`. This
 /// will leave the old table around, so we can recover user data if something
 /// goes wrong. We'll delete it in a later migration.
+///
+/// To be removed in https://github.com/LucasPickering/slumber/issues/306
 fn migrate_requests_v2_up(transaction: &Transaction) -> HookResult {
     fn load_exchange(
         row: &Row<'_>,
@@ -191,7 +204,9 @@ fn migrate_requests_v2_up(transaction: &Transaction) -> HookResult {
 }
 
 /// Copy rows from ui_state -> ui_state_v2. Drop the old table since, unlike
-/// requests, it's not a huge deal if we lose some data
+/// requests, it's not a huge deal if we lose some data.
+///
+/// To be removed in https://github.com/LucasPickering/slumber/issues/306
 fn migrate_ui_state_v2_up(transaction: &Transaction) -> HookResult {
     #[derive(Debug)]
     struct V1Row {
@@ -245,6 +260,64 @@ fn migrate_ui_state_v2_up(transaction: &Transaction) -> HookResult {
     Ok(())
 }
 
+/// Migrate `collections.path` from MessagePack encoding to strings.
+/// Theoretically if there is a stored path with non-UTF-8 bytes, that will
+/// cause a failure here. In practice though, those are extremely rare so we're
+/// really just lopping off the msgpack prefix bytes.
+///
+/// To be removed in https://github.com/LucasPickering/slumber/issues/306
+fn migrate_collection_paths(transaction: &Transaction) -> HookResult {
+    fn load_row(
+        row: &Row,
+    ) -> Result<(CollectionId, CollectionPath), rusqlite::Error> {
+        let id = row.get("id")?;
+        let path = CollectionPath::from_canonical(
+            row.get::<_, ByteEncoded<PathBuf>>("path")?.0,
+        );
+        Ok((id, path))
+    }
+
+    info!("Migrating table `collections` from MessagePack to UTF-8");
+    let mut select_stmt = transaction.prepare("SELECT * FROM collections")?;
+    let mut update_stmt = transaction
+        .prepare("UPDATE collections SET path = :path WHERE id = :id")?;
+    for result in select_stmt.query_map([], load_row)? {
+        // If something goes wrong here we want to crash, because missing a
+        // migration on a collection is pretty bad. It means the entire
+        // collection history would be invisible to the user.
+        let (id, path) = result?;
+        update_stmt.execute(named_params! {":id": id, ":path": path})?;
+    }
+
+    Ok(())
+}
+
+/// A wrapper to serialize/deserialize a value as msgpack for DB storage. We
+/// don't use this for any live schemas, just keeping it around for migrations
+/// from old data formats.
+///
+/// To be removed in https://github.com/LucasPickering/slumber/issues/306
+#[derive(Debug)]
+pub struct ByteEncoded<T>(pub T);
+
+impl<T: Serialize> ToSql for ByteEncoded<T> {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        let bytes = rmp_serde::to_vec_named(&self.0).map_err(|err| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(err))
+        })?;
+        Ok(ToSqlOutput::Owned(bytes.into()))
+    }
+}
+
+impl<T: DeserializeOwned> FromSql for ByteEncoded<T> {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let bytes = value.as_blob()?;
+        let value: T = rmp_serde::from_slice(bytes)
+            .map_err(|error| FromSqlError::Other(Box::new(error)))?;
+        Ok(Self(value))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +337,12 @@ mod tests {
     const MIGRATION_ALL_V1: usize = 4;
     const MIGRATION_REQUESTS_V2: usize = MIGRATION_ALL_V1 + 1;
     const MIGRATION_UI_STATE_V2: usize = MIGRATION_REQUESTS_V2 + 1;
+    const MIGRATION_COLLECTION_PATHS: usize = MIGRATION_UI_STATE_V2 + 1;
+
+    #[fixture]
+    fn collection_path() -> CollectionPath {
+        get_repo_root().join("slumber.yml").into()
+    }
 
     #[fixture]
     fn connection() -> Connection {
@@ -272,12 +351,21 @@ mod tests {
             .to_version(&mut connection, MIGRATION_COLLECTIONS)
             .unwrap();
 
-        let collection_id = CollectionId::new();
-        let collection_path: CollectionPath = get_repo_root()
-            .join("slumber.yml")
-            .as_path()
-            .try_into()
+        connection
+    }
+
+    /// Test copying data requests -> requests_v2
+    #[rstest]
+    fn test_migrate_requests_v2(
+        collection_path: CollectionPath,
+        mut connection: Connection,
+    ) {
+        let migrations = migrations();
+        migrations
+            .to_version(&mut connection, MIGRATION_ALL_V1)
             .unwrap();
+
+        let collection_id = CollectionId::new();
         connection
             .execute(
                 "INSERT INTO collections (id, path) VALUES (:id, :path)",
@@ -286,17 +374,6 @@ mod tests {
                     ":path": collection_path,
                 },
             )
-            .unwrap();
-
-        connection
-    }
-
-    /// Test copying data requests -> requests_v2
-    #[rstest]
-    fn test_migrate_requests_v2(mut connection: Connection) {
-        let migrations = migrations();
-        migrations
-            .to_version(&mut connection, MIGRATION_ALL_V1)
             .unwrap();
 
         let exchanges = [
@@ -330,8 +407,8 @@ mod tests {
                 .execute(
                     "INSERT INTO
                         requests (
-                            collection_id,
                             id,
+                            collection_id,
                             profile_id,
                             recipe_id,
                             start_time,
@@ -341,11 +418,13 @@ mod tests {
                             status_code
                         )
                         VALUES (
-                            (SELECT id FROM collections),
-                            :id, :profile_id, :recipe_id, :start_time,
-                            :end_time, :request, :response, :status_code)",
+                            :id, :collection_id, :profile_id, :recipe_id,
+                            :start_time, :end_time, :request, :response,
+                            :status_code
+                        )",
                     named_params! {
                         ":id": exchange.id,
+                        ":collection_id": &collection_id,
                         ":profile_id": &exchange.request.profile_id,
                         ":recipe_id": &exchange.request.recipe_id,
                         ":start_time": &exchange.start_time,
@@ -381,10 +460,24 @@ mod tests {
 
     /// Test copying data ui_state -> ui_state_v2
     #[rstest]
-    fn test_migrate_ui_state_v2(mut connection: Connection) {
+    fn test_migrate_ui_state_v2(
+        collection_path: CollectionPath,
+        mut connection: Connection,
+    ) {
         let migrations = migrations();
         migrations
             .to_version(&mut connection, MIGRATION_ALL_V1)
+            .unwrap();
+
+        let collection_id = CollectionId::new();
+        connection
+            .execute(
+                "INSERT INTO collections (id, path) VALUES (:id, :path)",
+                named_params! {
+                    ":id": collection_id,
+                    ":path": collection_path,
+                },
+            )
             .unwrap();
 
         let rows = [
@@ -402,8 +495,9 @@ mod tests {
                 .execute(
                     "INSERT INTO
                         ui_state (collection_id, key, value)
-                        VALUES ((SELECT id FROM collections), :key, :value)",
+                        VALUES (:collection_id, :key, :value)",
                     named_params! {
+                        ":collection_id": collection_id,
                         ":key": ByteEncoded((key_type, key)),
                         ":value": ByteEncoded(value),
                     },
@@ -439,5 +533,51 @@ mod tests {
             .try_collect()
             .unwrap();
         assert_eq!(&migrated, &rows);
+    }
+
+    /// Test migration collection paths off of MessagePack
+    #[rstest]
+    fn test_migration_collection_paths(mut connection: Connection) {
+        let migrations = migrations();
+        migrations
+            .to_version(&mut connection, MIGRATION_ALL_V1)
+            .unwrap();
+
+        let repo_root = get_repo_root();
+        let collections = [
+            (CollectionId::new(), repo_root.join("slumber.yml")),
+            (CollectionId::new(), repo_root.join("README.md")),
+            (CollectionId::new(), repo_root.join("üťf-8.txt")),
+        ];
+
+        // Insert in old format
+        for (id, path) in &collections {
+            connection
+                .execute(
+                    "INSERT INTO collections (id, path) VALUES (:id, :path)",
+                    named_params! {
+                        ":id": id,
+                        ":path": ByteEncoded(path),
+                    },
+                )
+                .unwrap();
+        }
+
+        migrations
+            .to_version(&mut connection, MIGRATION_COLLECTION_PATHS)
+            .unwrap();
+
+        let mut stmt = connection.prepare("SELECT * FROM collections").unwrap();
+        let migrated: Vec<(CollectionId, PathBuf)> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get("id")?,
+                    row.get::<_, CollectionPath>("path")?.into(),
+                ))
+            })
+            .unwrap()
+            .try_collect()
+            .unwrap();
+        assert_eq!(&migrated, &collections);
     }
 }

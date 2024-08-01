@@ -16,7 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - This _shouldn't_ have any user impact, it's just a technical improvement. If you notice any issues such as missing or incorrect request history, please [let me know](https://github.com/LucasPickering/slumber/issues/new?assignees=&labels=bug&projects=&template=bug_report.md)
 - Upgrade to Rust 1.80
 - Disable unavailable menu actions [#222](https://github.com/LucasPickering/slumber/issues/222)
-- Support template for header names in the `section` field of response chains
+- Support template for header names in the `section` field of `!request` chains
+- Expand `~` to the home directory in `!file` chain sources and when saving response body as a file
 
 ## [1.7.0] - 2024-07-22
 

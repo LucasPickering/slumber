@@ -730,7 +730,9 @@ mod tests {
         collection::{
             self, Authentication, Chain, ChainSource, Collection, Profile,
         },
-        test_util::{by_id, header_map, Factory, TestPrompter},
+        test_util::{
+            by_id, header_map, invalid_utf8_chain, Factory, TestPrompter,
+        },
     };
     use indexmap::{indexmap, IndexMap};
     use pretty_assertions::assert_eq;
@@ -746,7 +748,7 @@ mod tests {
     }
 
     #[fixture]
-    fn template_context() -> TemplateContext {
+    fn template_context(invalid_utf8_chain: ChainSource) -> TemplateContext {
         let profile_data = indexmap! {
             "host".into() => "http://localhost".into(),
             "mode".into() => "sudo".into(),
@@ -771,12 +773,7 @@ mod tests {
             Chain {
                 // Invalid UTF-8
                 id: "binary".into(),
-                source: ChainSource::command([
-                    "echo",
-                    "-n",
-                    "-e",
-                    r#"\xc3\x28"#,
-                ]),
+                source: invalid_utf8_chain,
                 ..Chain::factory(())
             },
         ];

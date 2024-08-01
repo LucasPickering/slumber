@@ -10,6 +10,7 @@ use crate::{
 };
 use anyhow::Context;
 use bytes::Bytes;
+use core::str;
 use derive_more::Display;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -24,6 +25,7 @@ use std::{
     fmt::Debug,
     ops::Deref,
     path::{Path, PathBuf},
+    str::Utf8Error,
     sync::Arc,
 };
 use thiserror::Error;
@@ -83,18 +85,42 @@ impl FromSql for RecipeId {
     }
 }
 
-/// Neat little wrapper for a collection path, to make sure it gets
-/// canonicalized and serialized/deserialized consistently
+/// Wrapper to serialize paths as strings in the DB. This is flawed because
+/// paths aren't guaranteed to be UTF-8 on either Windows or Linux, but in
+/// practice they always should be. The alternative would be to serialize them
+/// as raw bytes, but on Windows that requires converting to/from UTF-16 which
+/// is even more complicated.
+///
+/// Note: In the past (pre-1.8.0) this was encoded via MessagePack, which relied
+/// on the `Serialize`/`Deserialize` implementation, which has the same
+/// restrictions (it defers to the OS encoding).
 #[derive(Debug, Display)]
-#[display("{}", _0.0.display())]
-pub struct CollectionPath(ByteEncoded<PathBuf>);
+#[display("{}", _0.display())]
+pub struct CollectionPath(PathBuf);
 
-impl From<CollectionPath> for PathBuf {
-    fn from(path: CollectionPath) -> Self {
-        path.0 .0
+impl CollectionPath {
+    /// Create a `CollectionPath` from a path known to already be canonicalized.
+    /// Useful when decoding from an existing DB row.
+    pub fn from_canonical(path: PathBuf) -> Self {
+        Self(path)
     }
 }
 
+impl From<CollectionPath> for PathBuf {
+    fn from(value: CollectionPath) -> Self {
+        value.0
+    }
+}
+
+#[cfg(test)]
+impl From<PathBuf> for CollectionPath {
+    fn from(path: PathBuf) -> Self {
+        Self(path)
+    }
+}
+
+/// Canonicalize paths during creation to deduplicate potential differences due
+/// to symlinks, cwd, etc.
 impl TryFrom<&Path> for CollectionPath {
     type Error = anyhow::Error;
 
@@ -102,19 +128,41 @@ impl TryFrom<&Path> for CollectionPath {
         path.canonicalize()
             .context(format!("Error canonicalizing path {path:?}"))
             .traced()
-            .map(|path| Self(ByteEncoded(path)))
+            .map(Self)
     }
 }
 
+/// Serialize path as UTF-8
 impl ToSql for CollectionPath {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        self.0.to_sql()
+        #[derive(Debug, Error)]
+        #[error("Collection path `{0:?}` is not valid UTF-8 as UTF-8")]
+        struct PathStringifyError(PathBuf);
+
+        self.0
+            .to_str()
+            .ok_or_else(|| {
+                rusqlite::Error::ToSqlConversionFailure(
+                    PathStringifyError(self.0.clone()).into(),
+                )
+            })?
+            .as_bytes()
+            .to_sql()
     }
 }
 
+/// Deserialize path from UTF-8
 impl FromSql for CollectionPath {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        ByteEncoded::<PathBuf>::column_result(value).map(Self)
+        #[derive(Debug, Error)]
+        #[error("Error parsing collection path as UTF-8")]
+        struct PathParseError(Utf8Error);
+
+        let path = str::from_utf8(value.as_blob()?)
+            .map_err(PathParseError)
+            .map_err(error_other)?
+            .to_owned();
+        Ok(Self(path.into()))
     }
 }
 
@@ -135,29 +183,6 @@ impl<T: DeserializeOwned> FromSql for JsonEncoded<T> {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         let s = value.as_str()?;
         let value: T = serde_json::from_str(s).map_err(error_other)?;
-        Ok(Self(value))
-    }
-}
-
-/// A wrapper to serialize/deserialize a value as msgpack for DB storage
-///
-/// To be removed in https://github.com/LucasPickering/slumber/issues/306
-#[derive(Debug)]
-pub struct ByteEncoded<T>(pub T);
-
-impl<T: Serialize> ToSql for ByteEncoded<T> {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        let bytes = rmp_serde::to_vec_named(&self.0).map_err(|err| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(err))
-        })?;
-        Ok(ToSqlOutput::Owned(bytes.into()))
-    }
-}
-
-impl<T: DeserializeOwned> FromSql for ByteEncoded<T> {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        let bytes = value.as_blob()?;
-        let value: T = rmp_serde::from_slice(bytes).map_err(error_other)?;
         Ok(Self(value))
     }
 }

@@ -76,30 +76,34 @@ const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
 #[derive(Clone, Debug)]
 pub struct HttpEngine {
     client: Client,
-    /// This client ignores TLS cert errors. Only use it if the user
-    /// specifically wants to ignore errors for the request!
-    danger_client: Client,
-    /// Hostnames for which we should ignore TLS
-    danger_hostnames: HashSet<String>,
+    /// A client that ignores TLS errors, and the hostnames we should use it
+    /// for. If the user didn't specify any (99.9% of cases), don't bother
+    /// creating a client because it's expensive.
+    danger_client: Option<(Client, HashSet<String>)>,
 }
 
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
     pub fn new(ignore_certificate_hosts: &[String]) -> Self {
+        let client = Client::builder()
+            .user_agent(USER_AGENT)
+            .build()
+            .expect("Error building reqwest client");
+        let danger_client = if ignore_certificate_hosts.is_empty() {
+            None
+        } else {
+            Some((
+                Client::builder()
+                    .user_agent(USER_AGENT)
+                    .danger_accept_invalid_certs(true)
+                    .build()
+                    .expect("Error building reqwest client"),
+                ignore_certificate_hosts.iter().cloned().collect(),
+            ))
+        };
         Self {
-            client: Client::builder()
-                .user_agent(USER_AGENT)
-                .build()
-                .expect("Error building reqwest client"),
-            danger_client: Client::builder()
-                .user_agent(USER_AGENT)
-                .danger_accept_invalid_certs(true)
-                .build()
-                .expect("Error building reqwest client"),
-            danger_hostnames: ignore_certificate_hosts
-                .iter()
-                .cloned()
-                .collect(),
+            client,
+            danger_client,
         }
     }
 
@@ -256,10 +260,9 @@ impl HttpEngine {
     /// dangerous client.
     fn get_client(&self, url: &Url) -> &Client {
         let host = url.host_str().unwrap_or_default();
-        if self.danger_hostnames.contains(host) {
-            &self.danger_client
-        } else {
-            &self.client
+        match &self.danger_client {
+            Some((client, hostnames)) if hostnames.contains(host) => client,
+            _ => &self.client,
         }
     }
 }
@@ -731,7 +734,8 @@ mod tests {
             self, Authentication, Chain, ChainSource, Collection, Profile,
         },
         test_util::{
-            by_id, header_map, invalid_utf8_chain, Factory, TestPrompter,
+            by_id, header_map, http_engine, invalid_utf8_chain, Factory,
+            TestPrompter,
         },
     };
     use indexmap::{indexmap, IndexMap};
@@ -740,12 +744,8 @@ mod tests {
     use reqwest::{Body, Method, StatusCode};
     use rstest::{fixture, rstest};
     use serde_json::json;
+    use std::ptr;
     use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
-
-    #[fixture]
-    fn http_engine() -> HttpEngine {
-        HttpEngine::default()
-    }
 
     #[fixture]
     fn template_context(invalid_utf8_chain: ChainSource) -> TemplateContext {
@@ -789,10 +789,34 @@ mod tests {
         }
     }
 
+    /// Make sure we only use the dangerous client when we really expect to.
+    /// There's isn't an easy way to mock TLS errors, so the easiest way to
+    /// test this is to just make sure [HttpEngine::get_client] returns the
+    /// expected client
+    #[rstest]
+    #[case::safe("safe", false)]
+    #[case::danger("danger", true)]
+    fn test_get_client(
+        http_engine: &HttpEngine,
+        #[case] hostname: &str,
+        #[case] expected_danger: bool,
+    ) {
+        let client = http_engine
+            .get_client(&format!("http://{hostname}/").parse().unwrap());
+        if expected_danger {
+            assert!(ptr::eq(
+                client,
+                &http_engine.danger_client.as_ref().unwrap().0
+            ));
+        } else {
+            assert!(ptr::eq(client, &http_engine.client));
+        }
+    }
+
     #[rstest]
     #[tokio::test]
     async fn test_build_request(
-        http_engine: HttpEngine,
+        http_engine: &HttpEngine,
         template_context: TemplateContext,
     ) {
         let recipe = Recipe {
@@ -856,7 +880,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_build_url(
-        http_engine: HttpEngine,
+        http_engine: &HttpEngine,
         template_context: TemplateContext,
     ) {
         let recipe = Recipe {
@@ -895,7 +919,7 @@ mod tests {
     #[case::binary(RecipeBody::Raw("{{chains.binary}}".into()), b"\xc3\x28")]
     #[tokio::test]
     async fn test_build_body(
-        http_engine: HttpEngine,
+        http_engine: &HttpEngine,
         template_context: TemplateContext,
         #[case] body: RecipeBody,
         #[case] expected_body: &[u8],
@@ -933,7 +957,7 @@ mod tests {
     #[case::bearer(Authentication::Bearer("{{token}}".into()), "Bearer token!")]
     #[tokio::test]
     async fn test_authentication(
-        http_engine: HttpEngine,
+        http_engine: &HttpEngine,
         #[case] authentication: Authentication,
         #[case] expected_header: &str,
     ) {
@@ -1040,7 +1064,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_structured_body(
-        http_engine: HttpEngine,
+        http_engine: &HttpEngine,
         template_context: TemplateContext,
         #[case] body: RecipeBody,
         #[case] content_type: Option<&str>,
@@ -1110,7 +1134,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_build_options(
-        http_engine: HttpEngine,
+        http_engine: &HttpEngine,
         template_context: TemplateContext,
     ) {
         let recipe = Recipe {
@@ -1170,7 +1194,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_chain_duplicate(
-        http_engine: HttpEngine,
+        http_engine: &HttpEngine,
         template_context: TemplateContext,
     ) {
         let recipe = Recipe {
@@ -1198,7 +1222,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_send_request(
-        http_engine: HttpEngine,
+        http_engine: &HttpEngine,
         template_context: TemplateContext,
     ) {
         // Mock HTTP response

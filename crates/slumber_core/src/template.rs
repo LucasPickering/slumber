@@ -215,18 +215,15 @@ mod tests {
             content_type::ContentType, Exchange, RequestRecord, ResponseRecord,
         },
         test_util::{
-            by_id, header_map, invalid_utf8_chain, temp_dir, EnvGuard, Factory,
-            TempDir, TestPrompter,
+            by_id, header_map, http_engine, invalid_utf8_chain, temp_dir,
+            EnvGuard, Factory, TempDir, TestPrompter,
         },
     };
     use chrono::Utc;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
-    use std::{
-        sync::atomic::{AtomicU8, Ordering},
-        time::Duration,
-    };
+    use std::time::Duration;
     use tokio::fs;
     use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
@@ -596,6 +593,7 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_triggered_request(
+        http_engine: &HttpEngine,
         #[case] trigger: ChainRequestTrigger,
         // Optional request data to store in the database
         #[case] exchange: Option<Exchange>,
@@ -628,14 +626,13 @@ mod tests {
             },
             ..Chain::factory(())
         };
-        let http_engine = HttpEngine::default();
         let context = TemplateContext {
             collection: Collection {
                 recipes: by_id([recipe]).into(),
                 chains: by_id([chain]),
                 ..Collection::factory(())
             },
-            http_engine: Some(http_engine),
+            http_engine: Some(http_engine.clone()),
             database,
             ..TemplateContext::factory(())
         };
@@ -893,18 +890,6 @@ mod tests {
             },
             ..Chain::factory(())
         };
-
-        #[derive(Default, Debug)]
-        struct CountingPrompter(AtomicU8);
-
-        impl Prompter for CountingPrompter {
-            fn prompt(&self, prompt: Prompt) {
-                self.0.fetch_add(1, Ordering::Relaxed);
-                prompt
-                    .channel
-                    .respond(self.0.load(Ordering::Relaxed).to_string());
-            }
-        }
 
         let context = TemplateContext {
             collection: Collection {

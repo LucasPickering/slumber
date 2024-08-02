@@ -157,8 +157,8 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
         }
     }
 
-    fn toggle(row: &mut Self) {
-        *row.enabled ^= true;
+    fn toggle(&mut self) {
+        *self.enabled.borrow_mut() ^= true;
     }
 }
 

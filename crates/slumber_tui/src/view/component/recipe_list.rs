@@ -87,13 +87,17 @@ impl RecipeListPane {
         let changed = if let Some(folder) = folder {
             let collapsed = &mut self.collapsed;
             match state {
-                CollapseState::Expand => collapsed.remove(&folder.id),
-                CollapseState::Collapse => collapsed.insert(folder.id.clone()),
+                CollapseState::Expand => {
+                    collapsed.borrow_mut().remove(&folder.id)
+                }
+                CollapseState::Collapse => {
+                    collapsed.borrow_mut().insert(folder.id.clone())
+                }
                 CollapseState::Toggle => {
                     if collapsed.contains(&folder.id) {
-                        collapsed.remove(&folder.id);
+                        collapsed.borrow_mut().remove(&folder.id);
                     } else {
-                        collapsed.insert(folder.id.clone());
+                        collapsed.borrow_mut().insert(folder.id.clone());
                     }
                     true
                 }

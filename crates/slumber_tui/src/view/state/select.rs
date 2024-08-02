@@ -514,7 +514,7 @@ mod tests {
         let profile = Profile::factory(());
         let profile_id = profile.id.clone();
 
-        ViewContext::store_persisted(&Key, Some(profile_id.clone()));
+        ViewContext::store_persisted(&Key, &Some(profile_id.clone()));
 
         let pid = profile_id.clone();
         let select = PersistedLazy::new(

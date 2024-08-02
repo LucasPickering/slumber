@@ -289,7 +289,7 @@ mod tests {
         harness.database.insert_exchange(&new_exchange).unwrap();
         ViewContext::store_persisted(
             &SelectedRequestKey,
-            Some(old_exchange.id),
+            &Some(old_exchange.id),
         );
 
         let component = TestComponent::new(harness, Root::new(&collection), ());

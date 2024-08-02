@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Don't type in text boxes when modifiers keys (other than shift) are enabled
   - Should mitigate some potential confusing behavior when using terminal key sequences
+- Query parameter and header toggle rows no longer lose their state when switching profiles
 
 ## [1.7.0] - 2024-07-22
 

@@ -364,7 +364,7 @@ mod tests {
         struct Key;
 
         // Add initial query to the DB
-        ViewContext::store_persisted(&Key, "$.greeting".to_owned());
+        ViewContext::store_persisted(&Key, &"$.greeting".to_owned());
 
         // We already have another test to check that querying works via typing
         // in the box, so we just need to make sure state is initialized

@@ -209,11 +209,12 @@ impl PrimaryView {
 
     fn toggle_fullscreen(&mut self, mode: FullscreenMode) {
         // If we're already in the given mode, exit
-        *self.fullscreen_mode = if Some(mode) == *self.fullscreen_mode {
-            None
-        } else {
-            Some(mode)
-        };
+        *self.fullscreen_mode.borrow_mut() =
+            if Some(mode) == *self.fullscreen_mode {
+                None
+            } else {
+                Some(mode)
+            };
     }
 
     /// Exit fullscreen mode if it doesn't match the selected pane. This is
@@ -223,7 +224,7 @@ impl PrimaryView {
         match (self.selected_pane.selected(), *self.fullscreen_mode) {
             (PrimaryPane::Recipe, Some(FullscreenMode::Recipe))
             | (PrimaryPane::Exchange, Some(FullscreenMode::Exchange)) => {}
-            _ => *self.fullscreen_mode = None,
+            _ => *self.fullscreen_mode.borrow_mut() = None,
         }
     }
 
@@ -335,7 +336,7 @@ impl EventHandler for PrimaryView {
                 }
                 // Exit fullscreen
                 Action::Cancel if self.fullscreen_mode.is_some() => {
-                    *self.fullscreen_mode = None;
+                    *self.fullscreen_mode.borrow_mut() = None;
                 }
                 _ => return Update::Propagate(event),
             },
@@ -450,11 +451,11 @@ mod tests {
     fn test_pane_persistence(harness: TestHarness) {
         ViewContext::store_persisted(
             &SingletonKey::<PrimaryPane>::default(),
-            PrimaryPane::Exchange,
+            &PrimaryPane::Exchange,
         );
         ViewContext::store_persisted(
             &FullscreenModeKey,
-            Some(FullscreenMode::Exchange),
+            &Some(FullscreenMode::Exchange),
         );
 
         let collection = Collection::factory(());

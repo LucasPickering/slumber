@@ -157,7 +157,7 @@ where
             .flatten()
     }
 
-    fn store_persisted(key: &K, value: K::Value) {
+    fn store_persisted(key: &K, value: &K::Value) {
         Self::with_database(|database| {
             database.set_ui(K::type_name(), key, value)
         })

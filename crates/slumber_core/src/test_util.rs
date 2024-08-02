@@ -2,6 +2,7 @@
 
 use crate::{
     collection::{ChainSource, HasId},
+    http::HttpEngine,
     template::{Prompt, Prompter},
     util::{get_repo_root, ResultTraced},
 };
@@ -119,6 +120,14 @@ impl Drop for EnvGuard {
 #[fixture]
 pub fn temp_dir() -> TempDir {
     TempDir::new()
+}
+
+/// Create an HTTP engine for building/sending requests. This is a singleton
+/// because creation is expensive (~300ms), and the engine is immutable.
+#[fixture]
+#[once]
+pub fn http_engine() -> HttpEngine {
+    HttpEngine::default()
 }
 
 /// Guard for a temporary directory. Create the directory on creation, delete

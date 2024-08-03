@@ -641,7 +641,7 @@ mod tests {
                 .await
                 .unwrap()
                 .collection;
-        assert_eq!(imported, expected);
+        assert_eq!(imported, *expected);
     }
 
     #[test]

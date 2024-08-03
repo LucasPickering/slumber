@@ -484,7 +484,7 @@ impl<'a> ChainTemplateSource<'a> {
                     .ok_or(TriggeredRequestError::NotAllowed)?;
                 let ticket = http_engine
                     .build(
-                        RequestSeed::new(recipe.clone(), build_options),
+                        RequestSeed::new(recipe_id.clone(), build_options),
                         context,
                     )
                     .await

@@ -4,7 +4,7 @@
 //! exchange is incomplete or failed.
 
 use crate::{
-    collection::{ProfileId, Recipe, RecipeId},
+    collection::{ProfileId, RecipeId},
     http::{
         cereal,
         content_type::{ContentType, ResponseContent},
@@ -65,16 +65,16 @@ pub struct RequestSeed {
     /// Unique ID for this request
     pub id: RequestId,
     /// Recipe from which the request should be rendered
-    pub recipe: Recipe,
+    pub recipe_id: RecipeId,
     /// Configuration for the build
     pub options: BuildOptions,
 }
 
 impl RequestSeed {
-    pub fn new(recipe: Recipe, options: BuildOptions) -> Self {
+    pub fn new(recipe_id: RecipeId, options: BuildOptions) -> Self {
         Self {
             id: RequestId::new(),
-            recipe,
+            recipe_id,
             options,
         }
     }
@@ -220,7 +220,7 @@ impl RequestRecord {
         Self {
             id: seed.id,
             profile_id,
-            recipe_id: seed.recipe.id,
+            recipe_id: seed.recipe_id,
 
             method: request.method().clone(),
             url: request.url().clone(),

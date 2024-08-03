@@ -116,14 +116,19 @@ impl HttpEngine {
     ) -> Result<RequestTicket, RequestBuildError> {
         let RequestSeed {
             id,
-            recipe,
+            recipe_id,
             options,
         } = &seed;
         let _ =
-            info_span!("Build request", request_id = %id, ?recipe, ?options)
+            info_span!("Build request", request_id = %id, ?recipe_id, ?options)
                 .entered();
 
         let future = async {
+            let recipe = template_context
+                .collection
+                .recipes
+                .try_get_recipe(recipe_id)?;
+
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
                 recipe.render_url(template_context),
@@ -176,14 +181,19 @@ impl HttpEngine {
     ) -> Result<Url, RequestBuildError> {
         let RequestSeed {
             id,
-            recipe,
+            recipe_id,
             options,
         } = &seed;
         let _ =
-            info_span!("Build request URL", request_id = %id, ?recipe, ?options)
+            info_span!("Build request URL", request_id = %id, ?recipe_id, ?options)
                 .entered();
 
         let future = async {
+            let recipe = template_context
+                .collection
+                .recipes
+                .try_get_recipe(recipe_id)?;
+
             // Parallelization!
             let (url, query) = try_join!(
                 recipe.render_url(template_context),
@@ -211,14 +221,19 @@ impl HttpEngine {
     ) -> Result<Option<Bytes>, RequestBuildError> {
         let RequestSeed {
             id,
-            recipe,
+            recipe_id,
             options,
         } = &seed;
         let _ =
-            info_span!("Build request body", request_id = %id, ?recipe, ?options)
+            info_span!("Build request body", request_id = %id, ?recipe_id, ?options)
                 .entered();
 
         let future = async {
+            let recipe = template_context
+                .collection
+                .recipes
+                .try_get_recipe(recipe_id)?;
+
             let Some(body) =
                 recipe.render_body(options, template_context).await?
             else {
@@ -283,7 +298,7 @@ impl RequestSeed {
         let start_time = Utc::now();
         future.await.traced().map_err(|error| RequestBuildError {
             profile_id: template_context.selected_profile.clone(),
-            recipe_id: self.recipe.id.clone(),
+            recipe_id: self.recipe_id.clone(),
             id: self.id,
             start_time,
             end_time: Utc::now(),
@@ -742,47 +757,49 @@ mod tests {
     use pretty_assertions::assert_eq;
     use regex::Regex;
     use reqwest::{Body, Method, StatusCode};
-    use rstest::{fixture, rstest};
+    use rstest::rstest;
     use serde_json::json;
     use std::ptr;
     use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
-    #[fixture]
-    fn template_context(invalid_utf8_chain: ChainSource) -> TemplateContext {
+    /// Create a template context. Take a set of extra recipes and chains to
+    /// add to the created collection
+    fn template_context(
+        recipes: impl IntoIterator<Item = Recipe>,
+        chains: impl IntoIterator<Item = Chain>,
+    ) -> TemplateContext {
         let profile_data = indexmap! {
             "host".into() => "http://localhost".into(),
             "mode".into() => "sudo".into(),
             "user_id".into() => "1".into(),
             "group_id".into() => "3".into(),
-            "token".into() => "hunter2".into(),
+            "username".into() => "user".into(),
+            "password".into() => "hunter2".into(),
+            "token".into() => "tokenzzz".into(),
         };
         let profile = Profile {
             data: profile_data,
             ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
-        let chains = [
-            Chain {
-                id: "text".into(),
-                source: ChainSource::Prompt {
-                    message: None,
-                    default: None,
-                },
-                ..Chain::factory(())
+        let chains = [Chain {
+            id: "text".into(),
+            source: ChainSource::Prompt {
+                message: None,
+                default: None,
             },
-            Chain {
-                // Invalid UTF-8
-                id: "binary".into(),
-                source: invalid_utf8_chain,
-                ..Chain::factory(())
-            },
-        ];
+            ..Chain::factory(())
+        }]
+        .into_iter()
+        .chain(chains);
         TemplateContext {
             collection: Collection {
+                recipes: by_id(recipes).into(),
                 profiles: by_id([profile]),
                 chains: by_id(chains),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             selected_profile: Some(profile_id.clone()),
             prompter: Box::new(TestPrompter::new(["first", "second"])),
             ..TemplateContext::factory(())
@@ -815,10 +832,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn test_build_request(
-        http_engine: &HttpEngine,
-        template_context: TemplateContext,
-    ) {
+    async fn test_build_request(http_engine: &HttpEngine) {
         let recipe = Recipe {
             method: collection::Method::Post,
             url: "{{host}}/users/{{user_id}}".into(),
@@ -835,8 +849,9 @@ mod tests {
             ..Recipe::factory(())
         };
         let recipe_id = recipe.id.clone();
+        let template_context = template_context([recipe], []);
 
-        let seed = RequestSeed::new(recipe, BuildOptions::default());
+        let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
 
         let expected_url: Url = "http://localhost/users/1?mode=sudo&fast=true"
@@ -879,10 +894,7 @@ mod tests {
     /// should *not* be built
     #[rstest]
     #[tokio::test]
-    async fn test_build_url(
-        http_engine: &HttpEngine,
-        template_context: TemplateContext,
-    ) {
+    async fn test_build_url(http_engine: &HttpEngine) {
         let recipe = Recipe {
             url: "{{host}}/users/{{user_id}}".into(),
             query: vec![
@@ -893,8 +905,10 @@ mod tests {
             ],
             ..Recipe::factory(())
         };
+        let recipe_id = recipe.id.clone();
+        let template_context = template_context([recipe], []);
 
-        let seed = RequestSeed::new(recipe, BuildOptions::default());
+        let seed = RequestSeed::new(recipe_id, BuildOptions::default());
         let url = http_engine
             .build_url(seed, &template_context)
             .await
@@ -920,16 +934,26 @@ mod tests {
     #[tokio::test]
     async fn test_build_body(
         http_engine: &HttpEngine,
-        template_context: TemplateContext,
+        invalid_utf8_chain: ChainSource,
         #[case] body: RecipeBody,
         #[case] expected_body: &[u8],
     ) {
-        let recipe = Recipe {
-            body: Some(body),
-            ..Recipe::factory(())
-        };
-
-        let seed = RequestSeed::new(recipe, BuildOptions::default());
+        let template_context = template_context(
+            [Recipe {
+                body: Some(body),
+                ..Recipe::factory(())
+            }],
+            [Chain {
+                // Invalid UTF-8
+                id: "binary".into(),
+                source: invalid_utf8_chain,
+                ..Chain::factory(())
+            }],
+        );
+        let seed = RequestSeed::new(
+            template_context.collection.first_recipe_id().clone(),
+            BuildOptions::default(),
+        );
         let body = http_engine
             .build_body(seed, &template_context)
             .await
@@ -954,31 +978,13 @@ mod tests {
         },
         "Basic dXNlcjo="
     )]
-    #[case::bearer(Authentication::Bearer("{{token}}".into()), "Bearer token!")]
+    #[case::bearer(Authentication::Bearer("{{token}}".into()), "Bearer tokenzzz")]
     #[tokio::test]
     async fn test_authentication(
         http_engine: &HttpEngine,
         #[case] authentication: Authentication,
         #[case] expected_header: &str,
     ) {
-        let profile_data = indexmap! {
-            "username".into() => "user".into(),
-            "password".into() => "hunter2".into(),
-            "token".into() => "token!".into(),
-        };
-        let profile = Profile {
-            data: profile_data,
-            ..Profile::factory(())
-        };
-        let profile_id = profile.id.clone();
-        let template_context = TemplateContext {
-            collection: Collection {
-                profiles: by_id([profile]),
-                ..Collection::factory(())
-            },
-            selected_profile: Some(profile_id.clone()),
-            ..TemplateContext::factory(())
-        };
         let recipe = Recipe {
             // `Authorization` header should appear twice. This probably isn't
             // something a user would ever want to do, but it should be
@@ -988,15 +994,18 @@ mod tests {
             ..Recipe::factory(())
         };
         let recipe_id = recipe.id.clone();
+        let template_context = template_context([recipe], []);
 
-        let seed = RequestSeed::new(recipe, BuildOptions::default());
+        let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
 
         assert_eq!(
             *ticket.record,
             RequestRecord {
                 id: ticket.record.id,
-                profile_id: Some(profile_id),
+                profile_id: Some(
+                    template_context.collection.first_profile_id().clone()
+                ),
                 recipe_id,
                 method: Method::GET,
                 url: "http://localhost/url".parse().unwrap(),
@@ -1036,7 +1045,7 @@ mod tests {
             "token".into() => "{{token}}".into()
         }),
         None,
-        Some(b"user_id=1&token=hunter2".as_slice()),
+        Some(b"user_id=1&token=tokenzzz".as_slice()),
         "^application/x-www-form-urlencoded$",
         &[],
     )]
@@ -1065,7 +1074,7 @@ mod tests {
     #[tokio::test]
     async fn test_structured_body(
         http_engine: &HttpEngine,
-        template_context: TemplateContext,
+        invalid_utf8_chain: ChainSource,
         #[case] body: RecipeBody,
         #[case] content_type: Option<&str>,
         #[case] expected_body: Option<&'static [u8]>,
@@ -1084,8 +1093,17 @@ mod tests {
             ..Recipe::factory(())
         };
         let recipe_id = recipe.id.clone();
+        let template_context = template_context(
+            [recipe],
+            [Chain {
+                // Invalid UTF-8
+                id: "binary".into(),
+                source: invalid_utf8_chain,
+                ..Chain::factory(())
+            }],
+        );
 
-        let seed = RequestSeed::new(recipe, BuildOptions::default());
+        let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
 
         // Assert on the actual built request *and* the record, to make sure
@@ -1133,10 +1151,7 @@ mod tests {
     /// Test disabling query params, headers, and form fields
     #[rstest]
     #[tokio::test]
-    async fn test_build_options(
-        http_engine: &HttpEngine,
-        template_context: TemplateContext,
-    ) {
+    async fn test_build_options(http_engine: &HttpEngine) {
         let recipe = Recipe {
             query: vec![
                 // Included
@@ -1159,9 +1174,10 @@ mod tests {
             ..Recipe::factory(())
         };
         let recipe_id = recipe.id.clone();
+        let template_context = template_context([recipe], []);
 
         let seed = RequestSeed::new(
-            recipe,
+            recipe_id.clone(),
             BuildOptions {
                 disabled_headers: vec![1],
                 disabled_query_parameters: vec![2],
@@ -1193,18 +1209,17 @@ mod tests {
     /// so that the chain is only computed once
     #[rstest]
     #[tokio::test]
-    async fn test_chain_duplicate(
-        http_engine: &HttpEngine,
-        template_context: TemplateContext,
-    ) {
+    async fn test_chain_duplicate(http_engine: &HttpEngine) {
         let recipe = Recipe {
             method: collection::Method::Post,
             url: "{{host}}/{{chains.text}}".into(),
             body: Some("{{chains.text}}".into()),
             ..Recipe::factory(())
         };
+        let recipe_id = recipe.id.clone();
+        let template_context = template_context([recipe], []);
 
-        let seed = RequestSeed::new(recipe, BuildOptions::default());
+        let seed = RequestSeed::new(recipe_id, BuildOptions::default());
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
 
         let expected_url: Url = "http://localhost/first".parse().unwrap();
@@ -1221,10 +1236,7 @@ mod tests {
     /// Test launching a built request
     #[rstest]
     #[tokio::test]
-    async fn test_send_request(
-        http_engine: &HttpEngine,
-        template_context: TemplateContext,
-    ) {
+    async fn test_send_request(http_engine: &HttpEngine) {
         // Mock HTTP response
         let server = MockServer::start().await;
         let host = server.uri();
@@ -1238,9 +1250,11 @@ mod tests {
             url: format!("{host}/get").as_str().into(),
             ..Recipe::factory(())
         };
+        let recipe_id = recipe.id.clone();
+        let template_context = template_context([recipe], []);
 
         // Build+send the request
-        let seed = RequestSeed::new(recipe, BuildOptions::default());
+        let seed = RequestSeed::new(recipe_id, BuildOptions::default());
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
         let exchange = ticket.send(&template_context.database).await.unwrap();
 
@@ -1272,7 +1286,7 @@ mod tests {
     /// they're unintentional and the user won't miss them.
     #[rstest]
     #[tokio::test]
-    async fn test_render_headers_strip(template_context: TemplateContext) {
+    async fn test_render_headers_strip() {
         let recipe = Recipe {
             // Leading/trailing newlines should be stripped
             headers: indexmap! {
@@ -1281,6 +1295,7 @@ mod tests {
             },
             ..Recipe::factory(())
         };
+        let template_context = template_context([], []);
         let rendered = recipe
             .render_headers(&BuildOptions::default(), &template_context)
             .await

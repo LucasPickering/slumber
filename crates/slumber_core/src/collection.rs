@@ -20,6 +20,7 @@ use std::{
     fs,
     future::Future,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use tokio::task;
 use tracing::{info, trace, warn};
@@ -40,7 +41,9 @@ const CONFIG_FILES: &[&str] = &[
 pub struct CollectionFile {
     /// Path to the file that this collection was loaded from
     path: PathBuf,
-    pub collection: Collection,
+    /// The collection is immutable and needs to be shared across threads for
+    /// template rendering, so we stashing it behind an `Arc` to avoid clones.
+    pub collection: Arc<Collection>,
 }
 
 impl CollectionFile {
@@ -58,7 +61,7 @@ impl CollectionFile {
     /// [Self::try_path] to find the file themself. This pattern enables the
     /// TUI to start up and watch the collection file, even if it's invalid.
     pub async fn load(path: PathBuf) -> anyhow::Result<Self> {
-        let collection = load_collection(path.clone()).await?;
+        let collection = load_collection(path.clone()).await?.into();
         Ok(Self { path, collection })
     }
 
@@ -102,7 +105,7 @@ impl crate::test_util::Factory<Collection> for CollectionFile {
     fn factory(collection: Collection) -> Self {
         Self {
             path: PathBuf::default(),
-            collection,
+            collection: collection.into(),
         }
     }
 }
@@ -548,6 +551,6 @@ mod tests {
             .into(),
             _ignore: IgnoredAny,
         };
-        assert_eq!(loaded, expected);
+        assert_eq!(*loaded, expected);
     }
 }

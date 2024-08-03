@@ -2,6 +2,7 @@
 
 use crate::{
     context::TuiContext,
+    util::ResultReported,
     view::{
         common::{
             list::List, modal::Modal, table::Table,
@@ -14,6 +15,8 @@ use crate::{
         Component, ModalPriority, ViewContext,
     },
 };
+use anyhow::anyhow;
+use indexmap::IndexMap;
 use itertools::Itertools;
 use persisted::PersistedKey;
 use ratatui::{
@@ -24,7 +27,7 @@ use ratatui::{
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Profile, ProfileId},
+    collection::{HasId, Profile, ProfileId},
     util::doc_link,
 };
 
@@ -59,7 +62,7 @@ pub struct ProfilePane {
     /// That, combined with the need to have 'static state in order to move it
     /// into the modal, means duplicating SelectState and cloning the contents
     /// is the best way to go.
-    profiles: PersistedLazy<SelectedProfileKey, SelectState<Profile>>,
+    profiles: PersistedLazy<SelectedProfileKey, SelectState<ProfileListItem>>,
 }
 
 /// Persisted key for the ID of the selected profile
@@ -68,15 +71,22 @@ pub struct ProfilePane {
 struct SelectedProfileKey;
 
 impl ProfilePane {
-    pub fn new(profiles: Vec<Profile>) -> Self {
-        let profiles = SelectState::builder(profiles).build();
+    pub fn new(profiles: &IndexMap<ProfileId, Profile>) -> Self {
+        let items = profiles
+            .values()
+            .map(|profile| ProfileListItem {
+                id: profile.id.clone(),
+                name: profile.name().to_owned(),
+            })
+            .collect();
+        let profiles = SelectState::builder(items).build();
         Self {
             profiles: PersistedLazy::new(SelectedProfileKey, profiles),
         }
     }
 
-    pub fn selected_profile(&self) -> Option<&Profile> {
-        self.profiles.selected()
+    pub fn selected_profile(&self) -> Option<&ProfileId> {
+        self.profiles.selected().map(ProfileListItem::id)
     }
 
     /// Open the profile list modal
@@ -125,13 +135,52 @@ impl Draw for ProfilePane {
         let area = block.inner(metadata.area());
 
         frame.render_widget(
-            if let Some(profile) = self.selected_profile() {
-                profile.name()
+            if let Some(profile) = self.profiles.selected() {
+                &profile.name
             } else {
                 "No profiles defined"
             },
             area,
         );
+    }
+}
+
+/// Simplified version of [Profile], to be used in the display list. This
+/// only stores whatever data is necessary to render the list
+#[derive(Clone, Debug)]
+struct ProfileListItem {
+    id: ProfileId,
+    name: String,
+}
+
+impl HasId for ProfileListItem {
+    type Id = ProfileId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+
+    fn set_id(&mut self, id: Self::Id) {
+        self.id = id;
+    }
+}
+
+impl PartialEq<ProfileListItem> for ProfileId {
+    fn eq(&self, item: &ProfileListItem) -> bool {
+        self == item.id()
+    }
+}
+
+impl<'a> Generate for &'a ProfileListItem {
+    type Output<'this> = Text<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        self.name.as_str().into()
     }
 }
 
@@ -142,18 +191,18 @@ struct SelectProfile(ProfileId);
 /// Modal to allow user to select a profile from a list and preview profile
 /// fields
 #[derive(Debug)]
-pub struct ProfileListModal {
-    select: Component<SelectState<Profile>>,
+struct ProfileListModal {
+    select: Component<SelectState<ProfileListItem>>,
     detail: Component<ProfileDetail>,
 }
 
 impl ProfileListModal {
     pub fn new(
-        profiles: Vec<Profile>,
+        profiles: Vec<ProfileListItem>,
         selected_profile: Option<&ProfileId>,
     ) -> Self {
         // Loaded request depends on the profile, so refresh on change
-        fn on_submit(profile: &mut Profile) {
+        fn on_submit(profile: &mut ProfileListItem) {
             // Close the modal *first*, so the parent can handle the
             // callback event. Jank but it works
             ViewContext::push_event(Event::CloseModal);
@@ -215,7 +264,9 @@ impl Draw for ProfileListModal {
         if let Some(profile) = select.selected() {
             self.detail.draw(
                 frame,
-                ProfileDetailProps { profile },
+                ProfileDetailProps {
+                    profile_id: &profile.id,
+                },
                 detail_area,
                 false,
             )
@@ -225,12 +276,12 @@ impl Draw for ProfileListModal {
 
 /// Display the contents of a profile
 #[derive(Debug, Default)]
-pub struct ProfileDetail {
+struct ProfileDetail {
     fields: StateCell<ProfileId, Vec<(String, TemplatePreview)>>,
 }
 
-pub struct ProfileDetailProps<'a> {
-    pub profile: &'a Profile,
+struct ProfileDetailProps<'a> {
+    profile_id: &'a ProfileId,
 }
 
 impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
@@ -242,23 +293,32 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
     ) {
         // Whenever the selected profile changes, rebuild the internal state.
         // This is needed because the template preview rendering is async.
-        let fields =
-            self.fields.get_or_update(props.profile.id.clone(), || {
-                props
-                    .profile
-                    .data
-                    .iter()
-                    .map(|(key, template)| {
-                        (
-                            key.clone(),
-                            TemplatePreview::new(
-                                template.clone(),
-                                Some(props.profile.id.clone()),
-                            ),
-                        )
-                    })
-                    .collect_vec()
-            });
+        let profile_id = props.profile_id;
+        let fields = self.fields.get_or_update(profile_id.clone(), || {
+            let collection = ViewContext::collection();
+            let Some(profile) = collection
+                .profiles
+                .get(profile_id)
+                // Failure is a logic error
+                .ok_or_else(|| anyhow!("No profile with ID `{profile_id}`"))
+                .reported(&ViewContext::messages_tx())
+            else {
+                return Default::default();
+            };
+            profile
+                .data
+                .iter()
+                .map(|(key, template)| {
+                    (
+                        key.clone(),
+                        TemplatePreview::new(
+                            template.clone(),
+                            Some(profile_id.clone()),
+                        ),
+                    )
+                })
+                .collect_vec()
+        });
 
         let table = Table {
             header: Some(["Field", "Value"]),

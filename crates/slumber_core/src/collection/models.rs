@@ -4,7 +4,6 @@ use crate::{
     collection::{
         cereal,
         recipe_tree::{RecipeNode, RecipeTree},
-        HasId,
     },
     http::{content_type::ContentType, query::Query},
     template::{Identifier, Template},
@@ -19,7 +18,10 @@ use strum::{EnumIter, IntoEnumIterator};
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+///
+/// This deliberately does not implement `Clone`, because it could potentially
+/// be very large. Instead, it's hidden behind an `Arc` by `CollectionFile`.
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Collection {
@@ -40,7 +42,7 @@ pub struct Collection {
 }
 
 /// Mutually exclusive hot-swappable config group
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
@@ -83,13 +85,6 @@ impl crate::test_util::Factory for Profile {
 )]
 pub struct ProfileId(String);
 
-/// Needed for persistence
-impl PartialEq<Profile> for ProfileId {
-    fn eq(&self, profile: &Profile) -> bool {
-        self == &profile.id
-    }
-}
-
 #[cfg(any(test, feature = "test"))]
 impl From<&str> for ProfileId {
     fn from(value: &str) -> Self {
@@ -105,7 +100,7 @@ impl crate::test_util::Factory for ProfileId {
 }
 
 /// A gathering of like-minded recipes and/or folders
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Folder {
@@ -166,7 +161,7 @@ impl crate::test_util::Factory for Recipe {
 /// order to distinguish it from a single instance of an HTTP request. And it's
 /// not called `RequestTemplate` because the word "template" has a specific
 /// meaning related to string interpolation.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Recipe {
@@ -203,13 +198,6 @@ pub struct Recipe {
     Deserialize,
 )]
 pub struct RecipeId(String);
-
-/// Needed for persistence
-impl PartialEq<RecipeNode> for RecipeId {
-    fn eq(&self, node: &RecipeNode) -> bool {
-        self == node.id()
-    }
-}
 
 #[cfg(any(test, feature = "test"))]
 impl From<&str> for RecipeId {
@@ -287,7 +275,7 @@ impl crate::test_util::Factory for Chain {
 ///
 /// Type parameter allows this to be re-used for post-render purposes (with
 /// `T=String`).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Authentication<T = Template> {
@@ -302,7 +290,7 @@ pub enum Authentication<T = Template> {
 /// convenience, to construct complex bodies in common formats. The HTTP engine
 /// uses the variant to determine not only how to serialize the body, but also
 /// other parameters of the request (e.g. the `Content-Type` header).
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum RecipeBody {
     /// Plain string/bytes body
@@ -335,7 +323,7 @@ impl From<&str> for RecipeBody {
 /// a generic param `S`. For recipes, `S = Template`, so that strings can be
 /// templatized. Other type params are used throughout the app to represent the
 /// result of certain transformations.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(untagged)]
 pub enum JsonBody<S = Template> {
@@ -443,7 +431,7 @@ impl From<serde_json::Value> for JsonBody<Template> {
 /// A chain is a means to data from one response in another request. The chain
 /// is the middleman: it defines where and how to pull the value, then recipes
 /// can use it in a template via `{{chains.<chain_id>}}`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Chain {
@@ -467,8 +455,7 @@ pub struct Chain {
     pub trim: ChainOutputTrim,
 }
 
-/// Unique ID for a chain. Takes a generic param so we can create these during
-/// templating without having to clone the underlying string.
+/// Unique ID for a chain, provided by the user
 #[derive(
     Clone,
     Debug,
@@ -491,7 +478,7 @@ impl<T: Into<Identifier>> From<T> for ChainId {
 }
 
 /// The source of data for a chain
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainSource {
@@ -536,7 +523,7 @@ impl ChainSource {
 }
 
 /// The component of the response to use as the chain source
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainRequestSection {

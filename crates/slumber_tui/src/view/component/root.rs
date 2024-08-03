@@ -106,16 +106,16 @@ impl Root {
     /// the harness.database load failed.
     fn open_history(&mut self) -> anyhow::Result<()> {
         let primary_view = self.primary_view.data();
-        if let Some(recipe) = primary_view.selected_recipe() {
+        if let Some(recipe_id) = primary_view.selected_recipe_id() {
             // Make sure all requests for this profile+recipe are loaded
             let requests = self
                 .request_store
-                .load_summaries(primary_view.selected_profile_id(), &recipe.id)?
+                .load_summaries(primary_view.selected_profile_id(), recipe_id)?
                 .map(RequestStateSummary::from)
                 .collect();
 
             ViewContext::open_modal(
-                History::new(recipe, requests, self.selected_request.0),
+                History::new(recipe_id, requests, self.selected_request.0),
                 ModalPriority::Low,
             );
         }
@@ -343,9 +343,8 @@ mod tests {
 
     #[rstest]
     fn test_edit_collection(harness: TestHarness) {
-        let collection = Collection::factory(());
-        let mut component =
-            TestComponent::new(harness, Root::new(&collection), ());
+        let root = Root::new(&harness.collection);
+        let mut component = TestComponent::new(harness, root, ());
 
         component.harness_mut().clear_messages(); // Clear init junk
 

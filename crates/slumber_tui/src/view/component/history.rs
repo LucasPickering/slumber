@@ -1,5 +1,6 @@
 use crate::{
     context::TuiContext,
+    util::ResultReported,
     view::{
         common::{list::List, modal::Modal},
         component::Component,
@@ -14,7 +15,7 @@ use ratatui::{
     text::{Line, Span},
     Frame,
 };
-use slumber_core::{collection::Recipe, http::RequestId};
+use slumber_core::{collection::RecipeId, http::RequestId};
 
 /// Browse request/response history for a recipe
 #[derive(Debug)]
@@ -27,10 +28,16 @@ impl History {
     /// Construct a new history modal with the given list of requests. Parent
     /// is responsible for loading the list from the request store.
     pub fn new(
-        recipe: &Recipe,
+        recipe_id: &RecipeId,
         requests: Vec<RequestStateSummary>,
         selected_request_id: Option<RequestId>,
     ) -> Self {
+        let recipe_name = ViewContext::collection()
+            .recipes
+            .try_get_recipe(recipe_id)
+            .reported(&ViewContext::messages_tx())
+            .map(|recipe| recipe.name().to_owned())
+            .unwrap_or_else(|| recipe_id.to_string());
         let select = SelectState::builder(requests)
             .preselect_opt(selected_request_id.as_ref())
             // When an item is selected, load it up
@@ -42,7 +49,7 @@ impl History {
             .build();
 
         Self {
-            recipe_name: recipe.name().to_owned(),
+            recipe_name,
             select: select.into(),
         }
     }

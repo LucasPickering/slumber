@@ -1,7 +1,8 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
-    message::{Message, RequestConfig},
+    message::Message,
+    util::ResultReported,
     view::{
         common::actions::ActionsModal,
         component::{
@@ -19,7 +20,6 @@ use crate::{
     },
 };
 use derive_more::Display;
-use itertools::Itertools;
 use persisted::SingletonKey;
 use ratatui::{
     layout::Layout,
@@ -29,7 +29,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::collection::{
-    Collection, Profile, ProfileId, Recipe, RecipeId, RecipeNode,
+    Collection, ProfileId, RecipeId, RecipeNodeDiscriminants,
 };
 use strum::{EnumCount, EnumIter};
 
@@ -106,10 +106,7 @@ impl ToStringGenerate for MenuAction {}
 
 impl PrimaryView {
     pub fn new(collection: &Collection) -> Self {
-        let profile_pane = ProfilePane::new(
-            collection.profiles.values().cloned().collect_vec(),
-        )
-        .into();
+        let profile_pane = ProfilePane::new(&collection.profiles).into();
         let recipe_list_pane = RecipeListPane::new(&collection.recipes).into();
         let selected_pane = FixedSelectState::builder()
             // Changing panes kicks us out of fullscreen
@@ -134,24 +131,22 @@ impl PrimaryView {
 
     /// Which recipe in the recipe list is selected? `None` iff the list is
     /// empty OR a folder is selected.
-    pub fn selected_recipe(&self) -> Option<&Recipe> {
+    pub fn selected_recipe_id(&self) -> Option<&RecipeId> {
         self.recipe_list_pane
             .data()
             .selected_node()
-            .and_then(RecipeNode::recipe)
+            .and_then(|(id, kind)| {
+                if matches!(kind, RecipeNodeDiscriminants::Recipe) {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
     }
 
-    pub fn selected_recipe_id(&self) -> Option<&RecipeId> {
-        self.selected_recipe().map(|recipe| &recipe.id)
-    }
-
-    /// Which profile in the list is selected? `None` iff the list is empty
-    pub fn selected_profile(&self) -> Option<&Profile> {
-        self.profile_pane.data().selected_profile()
-    }
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.selected_profile().map(|profile| &profile.id)
+        self.profile_pane.data().selected_profile()
     }
 
     /// Draw the "normal" view, when nothing is fullscreened
@@ -180,7 +175,20 @@ impl PrimaryView {
             self.is_selected(PrimaryPane::RecipeList),
         );
 
-        let selected_recipe_node = self.recipe_list_pane.data().selected_node();
+        let (selected_recipe_id, selected_recipe_kind) =
+            match self.recipe_list_pane.data().selected_node() {
+                Some((selected_recipe_id, selected_recipe_kind)) => {
+                    (Some(selected_recipe_id), Some(selected_recipe_kind))
+                }
+                None => (None, None),
+            };
+        let collection = ViewContext::collection();
+        let selected_recipe_node = selected_recipe_id.and_then(|id| {
+            collection
+                .recipes
+                .try_get(id)
+                .reported(&ViewContext::messages_tx())
+        });
         self.recipe_pane.draw(
             frame,
             RecipePaneProps {
@@ -194,7 +202,7 @@ impl PrimaryView {
         self.exchange_pane.draw(
             frame,
             ExchangePaneProps {
-                selected_recipe_node,
+                selected_recipe_kind,
                 request_state: props.selected_request,
             },
             request_response_area,
@@ -248,26 +256,15 @@ impl PrimaryView {
     /// context.
     fn handle_recipe_menu_action(&self, action: RecipeMenuAction) {
         // If no recipes are available, we can't do anything
-        let Some(recipe_id) = self.selected_recipe_id().cloned() else {
+        let Some(config) = self.recipe_pane.data().request_config() else {
             return;
         };
 
-        let request_config = RequestConfig {
-            profile_id: self.selected_profile_id().cloned(),
-            recipe_id,
-            options: self.recipe_pane.data().build_options(),
-        };
         let message = match action {
             RecipeMenuAction::EditCollection => Message::CollectionEdit,
-            RecipeMenuAction::CopyUrl => {
-                Message::CopyRequestUrl(request_config)
-            }
-            RecipeMenuAction::CopyBody => {
-                Message::CopyRequestBody(request_config)
-            }
-            RecipeMenuAction::CopyCurl => {
-                Message::CopyRequestCurl(request_config)
-            }
+            RecipeMenuAction::CopyUrl => Message::CopyRequestUrl(config),
+            RecipeMenuAction::CopyBody => Message::CopyRequestBody(config),
+            RecipeMenuAction::CopyCurl => Message::CopyRequestCurl(config),
         };
         ViewContext::send_message(message);
     }
@@ -285,16 +282,11 @@ impl EventHandler for PrimaryView {
                 Action::NextPane => self.selected_pane.next(),
                 Action::Submit => {
                     // Send a request from anywhere
-                    if let Some(recipe_id) = self.selected_recipe_id() {
+                    if let Some(config) =
+                        self.recipe_pane.data().request_config()
+                    {
                         ViewContext::send_message(Message::HttpBeginRequest(
-                            RequestConfig {
-                                recipe_id: recipe_id.clone(),
-                                profile_id: self.selected_profile_id().cloned(),
-                                options: self
-                                    .recipe_pane
-                                    .data()
-                                    .build_options(),
-                            },
+                            config,
                         ));
                     }
                 }
@@ -387,25 +379,35 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
     ) {
         match *self.fullscreen_mode {
             None => self.draw_all_panes(frame, props, metadata.area()),
-            Some(FullscreenMode::Recipe) => self.recipe_pane.draw(
-                frame,
-                RecipePaneProps {
-                    selected_recipe_node: self
-                        .recipe_list_pane
-                        .data()
-                        .selected_node(),
-                    selected_profile_id: self.selected_profile_id(),
-                },
-                metadata.area(),
-                true,
-            ),
+            Some(FullscreenMode::Recipe) => {
+                let collection = ViewContext::collection();
+                let selected_recipe_node =
+                    self.recipe_list_pane.data().selected_node().and_then(
+                        |(id, _)| {
+                            collection
+                                .recipes
+                                .try_get(id)
+                                .reported(&ViewContext::messages_tx())
+                        },
+                    );
+                self.recipe_pane.draw(
+                    frame,
+                    RecipePaneProps {
+                        selected_recipe_node,
+                        selected_profile_id: self.selected_profile_id(),
+                    },
+                    metadata.area(),
+                    self.is_selected(PrimaryPane::Recipe),
+                );
+            }
             Some(FullscreenMode::Exchange) => self.exchange_pane.draw(
                 frame,
                 ExchangePaneProps {
-                    selected_recipe_node: self
+                    selected_recipe_kind: self
                         .recipe_list_pane
                         .data()
-                        .selected_node(),
+                        .selected_node()
+                        .map(|(_, kind)| kind),
                     request_state: props.selected_request,
                 },
                 metadata.area(),
@@ -425,18 +427,16 @@ mod tests {
     };
     use persisted::PersistedStore;
     use rstest::rstest;
-    use slumber_core::{
-        assert_matches, http::BuildOptions, test_util::Factory,
-    };
+    use slumber_core::{assert_matches, http::BuildOptions};
 
     /// Create component to be tested
     fn create_component(
         harness: TestHarness,
-        collection: &Collection,
     ) -> TestComponent<PrimaryView, PrimaryViewProps<'static>> {
+        let view = PrimaryView::new(&harness.collection);
         let mut component = TestComponent::new(
             harness,
-            PrimaryView::new(collection),
+            view,
             PrimaryViewProps {
                 selected_request: None,
             },
@@ -458,8 +458,7 @@ mod tests {
             &Some(FullscreenMode::Exchange),
         );
 
-        let collection = Collection::factory(());
-        let component = create_component(harness, &collection);
+        let component = create_component(harness);
         assert_eq!(
             component.data().selected_pane.selected(),
             PrimaryPane::Exchange
@@ -474,8 +473,12 @@ mod tests {
     /// panes
     #[rstest]
     fn test_copy_url(harness: TestHarness) {
-        let collection = Collection::factory(());
-        let mut component = create_component(harness, &collection);
+        let expected_config = RequestConfig {
+            recipe_id: harness.collection.first_recipe_id().clone(),
+            profile_id: Some(harness.collection.first_profile_id().clone()),
+            options: BuildOptions::default(),
+        };
+        let mut component = create_component(harness);
         component
             .update_draw(Event::new_local(RecipeMenuAction::CopyUrl))
             .assert_empty();
@@ -484,22 +487,19 @@ mod tests {
             component.harness_mut().pop_message_now(),
             Message::CopyRequestUrl(request_config) => request_config,
         );
-        assert_eq!(
-            request_config,
-            RequestConfig {
-                recipe_id: collection.first_recipe_id().clone(),
-                profile_id: Some(collection.first_profile_id().clone()),
-                options: BuildOptions::default()
-            }
-        );
+        assert_eq!(request_config, expected_config);
     }
 
     /// Test "Copy Body" action, which is available via the Recipe List or
     /// Recipe panes
     #[rstest]
     fn test_copy_body(harness: TestHarness) {
-        let collection = Collection::factory(());
-        let mut component = create_component(harness, &collection);
+        let expected_config = RequestConfig {
+            recipe_id: harness.collection.first_recipe_id().clone(),
+            profile_id: Some(harness.collection.first_profile_id().clone()),
+            options: BuildOptions::default(),
+        };
+        let mut component = create_component(harness);
         component
             .update_draw(Event::new_local(RecipeMenuAction::CopyBody))
             .assert_empty();
@@ -508,22 +508,19 @@ mod tests {
             component.harness_mut().pop_message_now(),
             Message::CopyRequestBody(request_config) => request_config,
         );
-        assert_eq!(
-            request_config,
-            RequestConfig {
-                recipe_id: collection.first_recipe_id().clone(),
-                profile_id: Some(collection.first_profile_id().clone()),
-                options: BuildOptions::default()
-            }
-        );
+        assert_eq!(request_config, expected_config);
     }
 
     /// Test "Copy as cURL" action, which is available via the Recipe List or
     /// Recipe panes
     #[rstest]
     fn test_copy_as_curl(harness: TestHarness) {
-        let collection = Collection::factory(());
-        let mut component = create_component(harness, &collection);
+        let expected_config = RequestConfig {
+            recipe_id: harness.collection.first_recipe_id().clone(),
+            profile_id: Some(harness.collection.first_profile_id().clone()),
+            options: BuildOptions::default(),
+        };
+        let mut component = create_component(harness);
         component
             .update_draw(Event::new_local(RecipeMenuAction::CopyCurl))
             .assert_empty();
@@ -532,13 +529,6 @@ mod tests {
             component.harness_mut().pop_message_now(),
             Message::CopyRequestCurl(request_config) => request_config,
         );
-        assert_eq!(
-            request_config,
-            RequestConfig {
-                recipe_id: collection.first_recipe_id().clone(),
-                profile_id: Some(collection.first_profile_id().clone()),
-                options: BuildOptions::default()
-            }
-        );
+        assert_eq!(request_config, expected_config);
     }
 }

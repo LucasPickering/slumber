@@ -246,7 +246,7 @@ mod tests {
             ..Collection::factory(())
         };
         let context = TemplateContext {
-            collection,
+            collection: collection.into(),
             selected_profile: Some(profile_id),
             ..TemplateContext::factory(())
         };

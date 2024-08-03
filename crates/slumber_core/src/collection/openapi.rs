@@ -658,7 +658,7 @@ mod tests {
                 .await
                 .unwrap()
                 .collection;
-        assert_eq!(imported, expected);
+        assert_eq!(imported, *expected);
     }
 
     /// Test various cases of [RequestBuilder::process_body]

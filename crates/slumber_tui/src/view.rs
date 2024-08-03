@@ -27,7 +27,7 @@ use anyhow::anyhow;
 use ratatui::Frame;
 use slumber_config::Action;
 use slumber_core::{collection::CollectionFile, db::CollectionDatabase};
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 use tracing::{error, trace, trace_span};
 
 /// Primary entrypoint for the view. This contains the main draw functions, as
@@ -52,7 +52,11 @@ impl View {
         database: CollectionDatabase,
         messages_tx: MessageSender,
     ) -> Self {
-        ViewContext::init(database, messages_tx);
+        ViewContext::init(
+            Arc::clone(&collection_file.collection),
+            database,
+            messages_tx,
+        );
         let mut view = Self {
             root: Root::new(&collection_file.collection).into(),
         };

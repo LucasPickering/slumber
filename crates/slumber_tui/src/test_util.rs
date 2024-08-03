@@ -7,7 +7,9 @@ use crate::{
 };
 use ratatui::{backend::TestBackend, Terminal};
 use rstest::fixture;
-use slumber_core::{db::CollectionDatabase, test_util::Factory};
+use slumber_core::{
+    collection::Collection, db::CollectionDatabase, test_util::Factory,
+};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 /// Get a test harness, with a clean terminal etc. See [TestHarness].
@@ -16,11 +18,17 @@ pub fn harness(terminal_width: u16, terminal_height: u16) -> TestHarness {
     TuiContext::init_test();
     let (messages_tx, messages_rx) = mpsc::unbounded_channel();
     let messages_tx: MessageSender = messages_tx.into();
+    let collection = Collection::factory(()).into();
     let database = CollectionDatabase::factory(());
-    ViewContext::init(database.clone(), messages_tx.clone());
+    ViewContext::init(
+        Arc::clone(&collection),
+        database.clone(),
+        messages_tx.clone(),
+    );
     let backend = TestBackend::new(terminal_width, terminal_height);
     let terminal = Terminal::new(backend).unwrap();
     TestHarness {
+        collection,
         database,
         messages_tx,
         messages_rx,
@@ -45,6 +53,7 @@ fn terminal_height() -> u16 {
 /// state.
 pub struct TestHarness {
     // These are public because we don't care about external mutation
+    pub collection: Arc<Collection>,
     pub database: CollectionDatabase,
     pub terminal: Terminal<TestBackend>,
     messages_tx: MessageSender,
@@ -101,3 +110,4 @@ macro_rules! assert_events {
     }
 }
 pub(crate) use assert_events;
+use std::sync::Arc;

@@ -34,7 +34,7 @@ use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use slumber_config::{Action, Config};
 use slumber_core::{
-    collection::{Collection, CollectionFile, ProfileId, Recipe, RecipeId},
+    collection::{Collection, CollectionFile, ProfileId},
     db::{CollectionDatabase, Database},
     http::RequestSeed,
     template::{Prompter, Template, TemplateChunk, TemplateContext},
@@ -328,7 +328,7 @@ impl Tui {
 
     /// Reload state with a new collection
     fn reload_collection(&mut self, collection: Collection) {
-        self.collection_file.collection = collection;
+        self.collection_file.collection = collection.into();
 
         // Rebuild the whole view, because tons of things can change. Drop the
         // old one *first* to make sure UI state is saved before being restored
@@ -387,14 +387,14 @@ impl Tui {
     /// Render URL for a request, then copy it to the clipboard
     fn copy_request_url(
         &self,
-        request_config: RequestConfig,
+        RequestConfig {
+            profile_id,
+            recipe_id,
+            options,
+        }: RequestConfig,
     ) -> anyhow::Result<()> {
-        let seed = RequestSeed::new(
-            self.get_recipe(&request_config.recipe_id)?,
-            request_config.options,
-        );
-        let template_context =
-            self.template_context(request_config.profile_id, false)?;
+        let seed = RequestSeed::new(recipe_id, options);
+        let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
@@ -411,14 +411,14 @@ impl Tui {
     /// Render body for a request, then copy it to the clipboard
     fn copy_request_body(
         &self,
-        request_config: RequestConfig,
+        RequestConfig {
+            profile_id,
+            recipe_id,
+            options,
+        }: RequestConfig,
     ) -> anyhow::Result<()> {
-        let seed = RequestSeed::new(
-            self.get_recipe(&request_config.recipe_id)?,
-            request_config.options,
-        );
-        let template_context =
-            self.template_context(request_config.profile_id, false)?;
+        let seed = RequestSeed::new(recipe_id, options);
+        let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
@@ -439,14 +439,14 @@ impl Tui {
     /// Render a request, then copy the equivalent curl command to the clipboard
     fn copy_request_curl(
         &self,
-        request_config: RequestConfig,
+        RequestConfig {
+            profile_id,
+            recipe_id,
+            options,
+        }: RequestConfig,
     ) -> anyhow::Result<()> {
-        let seed = RequestSeed::new(
-            self.get_recipe(&request_config.recipe_id)?,
-            request_config.options,
-        );
-        let template_context =
-            self.template_context(request_config.profile_id, false)?;
+        let seed = RequestSeed::new(recipe_id, options);
+        let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
@@ -478,8 +478,7 @@ impl Tui {
         let messages_tx = self.messages_tx();
 
         // Mark request state as building
-        let initialized =
-            RequestSeed::new(self.get_recipe(&recipe_id)?, options);
+        let initialized = RequestSeed::new(recipe_id.clone(), options);
         self.view.set_request_state(RequestState::Building {
             id: initialized.id,
             start_time: Utc::now(),
@@ -516,20 +515,6 @@ impl Tui {
         });
 
         Ok(())
-    }
-
-    /// Get a recipe by ID. This will clone the recipe, so use it sparingly.
-    /// Return an error if the recipe doesn't exist. Generally if this is called
-    /// with an unknown ID that indicates a logic error elsewhere, but it
-    /// shouldn't be considered fatal.
-    fn get_recipe(&self, recipe_id: &RecipeId) -> anyhow::Result<Recipe> {
-        let recipe = self
-            .collection_file
-            .collection
-            .recipes
-            .get_recipe(recipe_id)
-            .ok_or_else(|| anyhow!("No recipe with ID `{recipe_id}`"))?;
-        Ok(recipe.clone())
     }
 
     /// Spawn a task to render a template, storing the result in a pre-defined

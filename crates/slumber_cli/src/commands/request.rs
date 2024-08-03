@@ -165,19 +165,6 @@ impl BuildRequestCommand {
             })?;
         }
 
-        // Find recipe by ID
-        let recipe = collection
-            .recipes
-            .get_recipe(&self.recipe_id)
-            .ok_or_else(|| {
-                anyhow!(
-                    "No recipe with ID `{}`; options are: {}",
-                    self.recipe_id,
-                    collection.recipes.recipe_ids().format(", ")
-                )
-            })?
-            .clone();
-
         // Build the request
         let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
         let template_context = TemplateContext {
@@ -195,7 +182,7 @@ impl BuildRequestCommand {
             prompter: Box::new(CliPrompter),
             state: Default::default(),
         };
-        let seed = RequestSeed::new(recipe, BuildOptions::default());
+        let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
         let request = http_engine.build(seed, &template_context).await?;
         Ok((database, request))
     }

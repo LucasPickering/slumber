@@ -28,7 +28,8 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::{
-    collection::RecipeNode, http::RequestRecord, util::format_byte_size,
+    collection::RecipeNodeDiscriminants, http::RequestRecord,
+    util::format_byte_size,
 };
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
@@ -46,8 +47,9 @@ pub struct ExchangePane {
 }
 
 pub struct ExchangePaneProps<'a> {
-    /// Selected recipe OR folder. Used to decide what placeholder to show
-    pub selected_recipe_node: Option<&'a RecipeNode>,
+    /// Do we have a recipe, folder, or neither selected? Used to determine
+    /// placeholder
+    pub selected_recipe_kind: Option<RecipeNodeDiscriminants>,
     pub request_state: Option<&'a RequestState>,
 }
 
@@ -109,7 +111,10 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
         }
         .generate();
         // If a recipe is selected, history is available so show the hint
-        if matches!(props.selected_recipe_node, Some(RecipeNode::Recipe(_))) {
+        if matches!(
+            props.selected_recipe_kind,
+            Some(RecipeNodeDiscriminants::Recipe)
+        ) {
             let text = input_engine.add_hint("History", Action::History);
             block = block.title(Title::from(text).alignment(Alignment::Right));
         }
@@ -117,18 +122,18 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
         let area = block.inner(metadata.area());
 
         // Empty states
-        match props.selected_recipe_node {
+        match props.selected_recipe_kind {
             None => {
                 return;
             }
-            Some(RecipeNode::Folder(_)) => {
+            Some(RecipeNodeDiscriminants::Folder) => {
                 frame.render_widget(
                     "Select a recipe to see its request history",
                     area,
                 );
                 return;
             }
-            Some(RecipeNode::Recipe(_)) => {}
+            Some(RecipeNodeDiscriminants::Recipe) => {}
         }
 
         // Split out the areas we *may* need

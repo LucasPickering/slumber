@@ -53,7 +53,7 @@ impl Subcommand for ShowCommand {
                     CollectionFile::try_path(None, global.file)?;
                 let collection_file =
                     CollectionFile::load(collection_path).await?;
-                println!("{}", to_yaml(&collection_file.collection));
+                println!("{}", to_yaml(&*collection_file.collection));
             }
         }
         Ok(ExitCode::SUCCESS)

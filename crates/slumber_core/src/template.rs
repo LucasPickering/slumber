@@ -47,7 +47,7 @@ pub struct Template {
 #[derive(Debug)]
 pub struct TemplateContext {
     /// Entire request collection
-    pub collection: Collection,
+    pub collection: Arc<Collection>,
     /// ID of the profile whose data should be used for rendering. Generally
     /// the caller should check the ID is valid before passing it, to
     /// provide a better error to the user if not.
@@ -191,7 +191,7 @@ impl crate::test_util::Factory for TemplateContext {
     fn factory(_: ()) -> Self {
         use crate::test_util::TestPrompter;
         Self {
-            collection: Collection::default(),
+            collection: Default::default(),
             selected_profile: None,
             http_engine: None,
             database: CollectionDatabase::factory(()),
@@ -251,7 +251,8 @@ mod tests {
                 profiles: by_id([profile]),
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             selected_profile: Some(profile_id),
             overrides,
             ..TemplateContext::factory(())
@@ -401,7 +402,8 @@ mod tests {
                 chains: by_id([chain]),
                 profiles: by_id([profile]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             database,
             ..TemplateContext::factory(())
         };
@@ -565,7 +567,8 @@ mod tests {
                 recipes: recipes.into(),
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             database,
             ..TemplateContext::factory(())
         };
@@ -631,7 +634,8 @@ mod tests {
                 recipes: by_id([recipe]).into(),
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             http_engine: Some(http_engine.clone()),
             database,
             ..TemplateContext::factory(())
@@ -662,7 +666,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             ..TemplateContext::factory(())
         };
 
@@ -706,7 +711,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             ..TemplateContext::factory(())
         };
 
@@ -733,7 +739,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             ..TemplateContext::factory(())
         };
 
@@ -760,7 +767,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             ..TemplateContext::factory(())
         };
         // This prevents tests from competing for environment variables, and
@@ -791,7 +799,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             ..TemplateContext::factory(())
         };
 
@@ -815,7 +824,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             ..TemplateContext::factory(())
         };
 
@@ -846,7 +856,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
 
             prompter: Box::new(TestPrompter::new(response)),
             ..TemplateContext::factory(())
@@ -868,7 +879,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             // Prompter gives no response
             prompter: Box::<TestPrompter>::default(),
             ..TemplateContext::factory(())
@@ -895,7 +907,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
 
             prompter: Box::new(TestPrompter::new(["first", "second"])),
             ..TemplateContext::factory(())
@@ -923,7 +936,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
 
             prompter: Box::<TestPrompter>::default(),
             ..TemplateContext::factory(())
@@ -962,7 +976,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             // Prompter gives no response
             prompter: Box::new(TestPrompter::new(["hello!"])),
             ..TemplateContext::factory(())
@@ -1009,7 +1024,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([file_chain, command_chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             ..TemplateContext::factory(())
         };
         assert_eq!(
@@ -1046,7 +1062,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([file_chain, command_chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             ..TemplateContext::factory(())
         };
         let expected = if cfg!(unix) {
@@ -1091,7 +1108,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             ..TemplateContext::factory(())
         };
 
@@ -1116,7 +1134,8 @@ mod tests {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             ..TemplateContext::factory(())
         };
 
@@ -1175,7 +1194,8 @@ mod tests {
             collection: Collection {
                 profiles: by_id([profile]),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             selected_profile: Some(profile_id),
             ..TemplateContext::factory(())
         }
@@ -1228,7 +1248,8 @@ mod tests {
                 profiles: by_id([profile]),
                 chains: by_id(chains),
                 ..Collection::factory(())
-            },
+            }
+            .into(),
             selected_profile: Some(profile_id),
             ..TemplateContext::factory(())
         };

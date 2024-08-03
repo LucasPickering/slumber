@@ -432,10 +432,7 @@ mod tests {
     use ratatui::widgets::List;
     use rstest::{fixture, rstest};
     use serde::Serialize;
-    use slumber_core::{
-        collection::{Profile, ProfileId},
-        test_util::Factory,
-    };
+    use slumber_core::{collection::ProfileId, test_util::Factory};
     use std::sync::mpsc;
 
     /// Test going up and down in the list
@@ -511,8 +508,28 @@ mod tests {
         #[persisted(Option<ProfileId>)]
         struct Key;
 
-        let profile = Profile::factory(());
-        let profile_id = profile.id.clone();
+        struct ProfileItem(ProfileId);
+
+        impl HasId for ProfileItem {
+            type Id = ProfileId;
+
+            fn id(&self) -> &Self::Id {
+                &self.0
+            }
+
+            fn set_id(&mut self, id: Self::Id) {
+                self.0 = id;
+            }
+        }
+
+        impl PartialEq<ProfileItem> for ProfileId {
+            fn eq(&self, item: &ProfileItem) -> bool {
+                self == &item.0
+            }
+        }
+
+        let profile_id = ProfileId::factory(());
+        let profile = ProfileItem(profile_id.clone());
 
         ViewContext::store_persisted(&Key, &Some(profile_id.clone()));
 
@@ -520,10 +537,10 @@ mod tests {
         let select = PersistedLazy::new(
             Key,
             SelectState::<_, usize>::builder(vec![profile])
-                .on_select(move |item| assert_eq!(item.id, pid))
+                .on_select(move |item| assert_eq!(item.0, pid))
                 .build(),
         );
-        assert_eq!(select.selected().map(Profile::id), Some(&profile_id));
+        assert_eq!(select.selected().map(ProfileItem::id), Some(&profile_id));
     }
 
     #[fixture]

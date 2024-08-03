@@ -8,8 +8,8 @@ use crate::{
 };
 use persisted::PersistedStore;
 use serde::{de::DeserializeOwned, Serialize};
-use slumber_core::db::CollectionDatabase;
-use std::{cell::RefCell, fmt::Debug};
+use slumber_core::{collection::Collection, db::CollectionDatabase};
+use std::{cell::RefCell, fmt::Debug, sync::Arc};
 
 /// Thread-local context container, which stores mutable state needed in the
 /// view thread. Until [TuiContext](crate::TuiContext), which stores
@@ -22,6 +22,9 @@ use std::{cell::RefCell, fmt::Debug};
 /// view code. We're leaning heavily on the fact that the view is
 /// single-threaded here.
 pub struct ViewContext {
+    /// The request collection. This is immutable through the lifespan of the
+    /// view; the entire view is rebuilt when the collection reloads.
+    collection: Arc<Collection>,
     /// Persistence database. The TUI only ever needs to run DB ops related to
     /// our collection, so we can use a collection-restricted DB handle
     database: CollectionDatabase,
@@ -50,9 +53,14 @@ impl ViewContext {
     }
 
     /// Initialize the view context for this thread
-    pub fn init(database: CollectionDatabase, messages_tx: MessageSender) {
+    pub fn init(
+        collection: Arc<Collection>,
+        database: CollectionDatabase,
+        messages_tx: MessageSender,
+    ) {
         Self::INSTANCE.with_borrow_mut(|context| {
             *context = Some(Self {
+                collection,
                 database,
                 event_queue: EventQueue::default(),
                 messages_tx,
@@ -76,6 +84,11 @@ impl ViewContext {
                 context.as_mut().expect("View context not initialized");
             f(context)
         })
+    }
+
+    /// Get a pointer to the request collection
+    pub fn collection() -> Arc<Collection> {
+        Self::with(|context| Arc::clone(&context.collection))
     }
 
     /// Execute a function with access to the database

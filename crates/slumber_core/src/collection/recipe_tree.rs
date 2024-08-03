@@ -3,9 +3,11 @@
 use crate::collection::{
     cereal::deserialize_id_map, Folder, HasId, Recipe, RecipeId,
 };
+use anyhow::anyhow;
 use derive_more::From;
 use indexmap::{map::Values, IndexMap};
 use serde::{de::Error, Deserialize, Deserializer, Serialize};
+use strum::EnumDiscriminants;
 use thiserror::Error;
 
 /// A folder/recipe tree. This is exactly what the user inputs in their
@@ -14,7 +16,7 @@ use thiserror::Error;
 /// recipes. This is a mild restriction on the user that makes implementing a
 /// lot simpler. In reality it's unlikely they would want to give two things
 /// the same ID anyway.
-#[derive(Clone, derive_more::Debug, Default)]
+#[derive(derive_more::Debug, Default)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct RecipeTree {
     /// Tree structure storing all the folder/recipe data
@@ -34,7 +36,7 @@ pub struct RecipeTree {
 pub struct RecipeLookupKey(Vec<RecipeId>);
 
 /// A node in the recipe tree, either a folder or recipe
-#[derive(Clone, Debug, From, Serialize, Deserialize)]
+#[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
@@ -107,10 +109,23 @@ impl RecipeTree {
         None
     }
 
+    /// Get a folder/recipe by ID. Return an error if the ID isn't in the tree
+    pub fn try_get(&self, id: &RecipeId) -> anyhow::Result<&RecipeNode> {
+        self.get(id)
+            .ok_or_else(|| anyhow!("No recipe node with ID `{}`", id,))
+    }
+
     /// Get a **recipe** by ID. If the ID isn't in the tree, or points to a
     /// folder, return `None`
     pub fn get_recipe(&self, id: &RecipeId) -> Option<&Recipe> {
         self.get(id).and_then(RecipeNode::recipe)
+    }
+
+    /// Get a **recipe** by ID. If the ID isn't in the tree, or points to a
+    /// folder, return an error that can be presented to the user
+    pub fn try_get_recipe(&self, id: &RecipeId) -> anyhow::Result<&Recipe> {
+        self.get_recipe(id)
+            .ok_or_else(|| anyhow!("No recipe with ID `{}`", id,))
     }
 
     /// Get all **recipe** IDs in the tree. Useful for printing a list to the

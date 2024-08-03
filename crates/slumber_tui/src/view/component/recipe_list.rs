@@ -11,13 +11,12 @@ use crate::{
     },
 };
 use derive_more::{Deref, DerefMut};
-use itertools::Itertools;
 use persisted::{PersistedKey, SingletonKey};
-use ratatui::Frame;
+use ratatui::{text::Text, Frame};
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::collection::{
-    HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeTree,
+    HasId, RecipeId, RecipeLookupKey, RecipeNodeDiscriminants, RecipeTree,
 };
 use std::collections::HashSet;
 
@@ -33,13 +32,12 @@ use std::collections::HashSet;
 /// implementation.
 #[derive(Debug)]
 pub struct RecipeListPane {
-    /// A clone of the recipe tree
-    recipes: RecipeTree,
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
-    select:
-        Component<PersistedLazy<SelectedRecipeKey, SelectState<RecipeNode>>>,
+    select: Component<
+        PersistedLazy<SelectedRecipeKey, SelectState<RecipeListItem>>,
+    >,
     /// Set of all folders that are collapsed
     /// Invariant: No recipes, only folders
     ///
@@ -66,16 +64,20 @@ impl RecipeListPane {
             collapsed.build_select_state(recipes),
         );
         Self {
-            recipes: recipes.clone(),
             select: persistent.into(),
             collapsed,
         }
     }
 
-    /// Which recipe/folder in the list is selected? `None` iff the list is
-    /// empty
-    pub fn selected_node(&self) -> Option<&RecipeNode> {
-        self.select.data().selected()
+    /// ID and kind of whatever recipe/folder in the list is selected. `None`
+    /// iff the list is empty
+    pub fn selected_node(
+        &self,
+    ) -> Option<(&RecipeId, RecipeNodeDiscriminants)> {
+        self.select
+            .data()
+            .selected()
+            .map(|node| (&node.id, node.kind))
     }
 
     /// Set the currently selected folder as expanded/collapsed (or toggle it).
@@ -83,7 +85,7 @@ impl RecipeListPane {
     /// made.
     fn set_selected_collapsed(&mut self, state: CollapseState) -> bool {
         let select = self.select.data_mut();
-        let folder = select.selected().and_then(RecipeNode::folder);
+        let folder = select.selected().filter(|node| node.is_folder());
         let changed = if let Some(folder) = folder {
             let collapsed = &mut self.collapsed;
             match state {
@@ -108,8 +110,10 @@ impl RecipeListPane {
 
         // If we changed the set of what is visible, rebuild the list state
         if changed {
-            let mut new_select_state =
-                self.collapsed.build_select_state(&self.recipes);
+            let mut new_select_state = self
+                .collapsed
+                .build_select_state(&ViewContext::collection().recipes);
+
             // Carry over the selection
             if let Some(selected) = select.selected() {
                 new_select_state.select(selected.id());
@@ -142,12 +146,24 @@ impl EventHandler for RecipeListPane {
                 self.set_selected_collapsed(CollapseState::Toggle);
             }
             Action::OpenActions => {
-                let recipe =
-                    self.select.data().selected().and_then(RecipeNode::recipe);
+                let recipe = self
+                    .select
+                    .data()
+                    .selected()
+                    .filter(|node| node.is_recipe());
+                let has_body = recipe
+                    .map(|recipe| {
+                        ViewContext::collection()
+                            .recipes
+                            .get_recipe(&recipe.id)
+                            .and_then(|recipe| recipe.body.as_ref())
+                            .is_some()
+                    })
+                    .unwrap_or(false);
                 ViewContext::open_modal(
                     ActionsModal::new(RecipeMenuAction::disabled_actions(
                         recipe.is_some(),
-                        recipe.map(|recipe| recipe.body.as_ref()).is_some(),
+                        has_body,
                     )),
                     ModalPriority::Low,
                 )
@@ -165,7 +181,6 @@ impl EventHandler for RecipeListPane {
 
 impl Draw for RecipeListPane {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        let select = self.select.data();
         let context = TuiContext::get();
 
         let title = context
@@ -179,44 +194,73 @@ impl Draw for RecipeListPane {
         let area = block.inner(metadata.area());
         frame.render_widget(block, metadata.area());
 
-        // We have to build this manually instead of using our own List type,
-        // because we need outside context during the render
-        let items = select
-            .items()
-            .iter()
-            .map(|item| {
-                let node = &item.value;
-                let (icon, name) = match node {
-                    RecipeNode::Folder(folder) => {
-                        let icon = if self.collapsed.is_collapsed(&folder.id) {
-                            "▶"
-                        } else {
-                            "▼"
-                        };
-                        (icon, folder.name())
-                    }
-                    RecipeNode::Recipe(recipe) => ("", recipe.name()),
-                };
-                let depth = self
-                    .recipes
-                    .get_lookup_key(node.id())
-                    .unwrap_or_else(|| {
-                        panic!("Recipe node {} is not in tree", node.id())
-                    })
-                    .as_slice()
-                    .len()
-                    - 1;
+        self.select
+            .draw(frame, List::from(&**self.select.data()), area, true);
+    }
+}
 
-                // Apply indentation
-                format!(
-                    "{indent:width$}{icon}{name}",
-                    indent = "",
-                    width = depth
-                )
-            })
-            .collect_vec();
+/// Simplified version of [RecipeNode], to be used in the display tree. This
+/// only stores whatever data is necessary to render the list
+#[derive(Debug)]
+struct RecipeListItem {
+    id: RecipeId,
+    name: String,
+    kind: RecipeNodeDiscriminants,
+    depth: usize,
+    collapsed: bool,
+}
 
-        self.select.draw(frame, List::from_iter(items), area, true);
+impl RecipeListItem {
+    fn is_folder(&self) -> bool {
+        matches!(self.kind, RecipeNodeDiscriminants::Folder)
+    }
+
+    fn is_recipe(&self) -> bool {
+        matches!(self.kind, RecipeNodeDiscriminants::Recipe)
+    }
+}
+
+impl HasId for RecipeListItem {
+    type Id = RecipeId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+
+    fn set_id(&mut self, id: Self::Id) {
+        self.id = id;
+    }
+}
+
+impl PartialEq<RecipeListItem> for RecipeId {
+    fn eq(&self, item: &RecipeListItem) -> bool {
+        self == item.id()
+    }
+}
+
+impl<'a> Generate for &'a RecipeListItem {
+    type Output<'this> = Text<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        let icon = match self.kind {
+            RecipeNodeDiscriminants::Folder if self.collapsed => "▶",
+            RecipeNodeDiscriminants::Folder => "▼",
+            RecipeNodeDiscriminants::Recipe => "",
+        };
+
+        // Apply indentation
+        format!(
+            "{indent:width$}{icon}{name}",
+            indent = "",
+            name = self.name,
+            width = self.depth
+        )
+        .into()
     }
 }
 
@@ -253,9 +297,9 @@ impl Collapsed {
     fn build_select_state(
         &self,
         recipes: &RecipeTree,
-    ) -> SelectState<RecipeNode> {
+    ) -> SelectState<RecipeListItem> {
         // When highlighting a new recipe, load it from the repo
-        fn on_select(_: &mut RecipeNode) {
+        fn on_select(_: &mut RecipeListItem) {
             // If a recipe isn't selected, this will do nothing
             ViewContext::push_event(Event::HttpSelectRequest(None));
         }
@@ -264,8 +308,15 @@ impl Collapsed {
             .iter()
             // Filter out hidden nodes
             .filter(|(lookup_key, _)| self.is_visible(lookup_key))
-            .map(|(_, node)| node.clone())
+            .map(|(lookup_key, node)| RecipeListItem {
+                id: node.id().clone(),
+                name: node.name().to_owned(),
+                kind: node.into(),
+                collapsed: self.is_collapsed(node.id()),
+                depth: lookup_key.as_slice().len() - 1,
+            })
             .collect();
+
         SelectState::builder(items).on_select(on_select).build()
     }
 }

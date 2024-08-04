@@ -2,10 +2,8 @@ use anyhow::Context;
 use derive_more::Display;
 use std::{
     borrow::Cow,
-    env,
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
-    process::{self},
     sync::OnceLock,
 };
 
@@ -85,15 +83,10 @@ impl TempDirectory {
     /// the created directory.
     pub fn init() -> anyhow::Result<()> {
         // Create the temp dir
-        let path = env::temp_dir().join("slumber");
-        fs::create_dir_all(&path).with_context(|| {
-            format!("Error creating temporary directory {path:?}")
-        })?;
+        let path = Self::get_directory()?;
 
-        // Use our PID in the log file so it's unique and easy to find. It's
-        // possible a PID gets re-used, so wipe out the file to be safe.
-        let log_file =
-            path.join(format!("slumber.{pid}.log", pid = process::id()));
+        // Log files can get re-used, so wipe out the existing one
+        let log_file = path.join(Self::log_file_name());
         OpenOptions::new()
             .create(true)
             .write(true)
@@ -105,6 +98,35 @@ impl TempDirectory {
             .set(Self { path, log_file })
             .expect("Temporary directory is already initialized");
         Ok(())
+    }
+
+    /// Use a static directory for dev, so stuff can be found easily
+    #[cfg(debug_assertions)]
+    fn get_directory() -> anyhow::Result<PathBuf> {
+        Ok(DataDirectory::get_directory())
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn get_directory() -> anyhow::Result<PathBuf> {
+        let path = std::env::temp_dir().join("slumber");
+        fs::create_dir_all(&path).with_context(|| {
+            format!("Error creating temporary directory {path:?}")
+        })?;
+        Ok(path)
+    }
+
+    /// Use a static log file for dev, so it can be found easily
+    #[cfg(debug_assertions)]
+    fn log_file_name() -> PathBuf {
+        "slumber.log".into()
+    }
+
+    /// Use a dynamic log file for release, so concurrent sessions don't log on
+    /// top of each other. The PID will be included in the file name, so it's
+    /// unique and predictable.
+    #[cfg(not(debug_assertions))]
+    fn log_file_name() -> PathBuf {
+        format!("slumber.{pid}.log", pid = std::process::id()).into()
     }
 
     /// Get a reference to the global directory for temporary data. See

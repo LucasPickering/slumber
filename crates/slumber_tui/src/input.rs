@@ -77,6 +77,9 @@ impl InputEngine {
                 self.bindings
                     .iter()
                     .find(|(_, binding)| binding.matches(key))
+                    .inspect(|(action,binding)| {
+                        trace!(event = ?key, ?action, ?binding, "Matched key event to binding");
+                    })
                     .map(|(action, _)| *action)
             }
             _ => None,
@@ -176,11 +179,15 @@ mod tests {
     use slumber_core::assert_matches;
 
     /// Helper to create a key event
-    fn key_event(kind: KeyEventKind, code: KeyCode) -> Event {
+    fn key_event(
+        kind: KeyEventKind,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+    ) -> Event {
         Event::Key(KeyEvent {
             kind,
             code,
-            modifiers: KeyModifiers::NONE,
+            modifiers,
             state: KeyEventState::empty(),
         })
     }
@@ -198,19 +205,27 @@ mod tests {
     /// Test events that should be handled get a message generated
     #[rstest]
     #[case::key_down_mapped(
-        key_event(KeyEventKind::Press, KeyCode::Enter),
+        key_event(KeyEventKind::Press, KeyCode::Enter, KeyModifiers::NONE),
         Some(Action::Submit)
     )]
     #[case::key_down_unmapped(
-        key_event(KeyEventKind::Press, KeyCode::Char('k')),
+        key_event(KeyEventKind::Press, KeyCode::Char('k'), KeyModifiers::NONE),
+        None
+    )]
+    #[case::key_down_bonus_modifiers(
+        key_event(KeyEventKind::Press, KeyCode::Enter, KeyModifiers::SHIFT),
         None
     )]
     #[case::key_repeat_mapped(
-        key_event(KeyEventKind::Repeat, KeyCode::Enter),
+        key_event(KeyEventKind::Repeat, KeyCode::Enter, KeyModifiers::NONE),
         Some(Action::Submit)
     )]
     #[case::key_repeat_unmapped(
-        key_event(KeyEventKind::Repeat, KeyCode::Char('k')),
+        key_event(
+            KeyEventKind::Repeat,
+            KeyCode::Char('k'),
+            KeyModifiers::NONE
+        ),
         None
     )]
     #[case::mouse_up_left(
@@ -256,7 +271,11 @@ mod tests {
     #[case::focus_gained(Event::FocusGained)]
     #[case::focus_lost(Event::FocusLost)]
     #[case::resize(Event::Resize(10, 10))]
-    #[case::key_release(key_event(KeyEventKind::Release, KeyCode::Enter))]
+    #[case::key_release(key_event(
+        KeyEventKind::Release,
+        KeyCode::Enter,
+        KeyModifiers::NONE
+    ))]
     #[case::mouse_down(mouse_event(MouseEventKind::Down(MouseButton::Left)))]
     #[case::mouse_drag(mouse_event(MouseEventKind::Drag(MouseButton::Left)))]
     #[case::mouse_move(mouse_event(MouseEventKind::Moved))]

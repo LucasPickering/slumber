@@ -139,14 +139,14 @@ impl TextBox {
             KeyCode::Backspace => self.state.delete_left(),
             KeyCode::Delete => self.state.delete_right(),
             KeyCode::Left => {
-                if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                if key_event.modifiers == KeyModifiers::CONTROL {
                     self.state.home();
                 } else {
                     self.state.left();
                 }
             }
             KeyCode::Right => {
-                if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                if key_event.modifiers == KeyModifiers::CONTROL {
                     self.state.end();
                 } else {
                     self.state.right();

@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Disable unavailable menu actions [#222](https://github.com/LucasPickering/slumber/issues/222)
 - Support template for header names in the `section` field of `!request` chains
 - Expand `~` to the home directory in `!file` chain sources and when saving response body as a file
+- Ignore key events with additional key modifiers
+  - For example, an action bound to `w` will no longer match `ctrl w`
 
 ### Fixed
 

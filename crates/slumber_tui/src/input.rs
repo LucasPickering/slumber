@@ -28,6 +28,10 @@ impl InputEngine {
         let mut new = Self::default();
         // User bindings should overwrite any default ones
         new.bindings.extend(user_bindings);
+        // If the user overwrote an action with an empty binding, remove it from
+        // the map. This has to be done *after* the extend, so the default
+        // binding is also dropped
+        new.bindings.retain(|_, binding| !binding.is_empty());
         new
     }
 
@@ -200,6 +204,36 @@ mod tests {
             row: 0,
             modifiers: KeyModifiers::NONE,
         })
+    }
+
+    /// Test that user-provided bindings take priority
+    #[rstest]
+    #[case::user_binding(
+        Action::Submit,
+        KeyCode::Char('w'),
+        KeyCode::Char('w'),
+        Some(Action::Submit)
+    )]
+    #[case::default_not_available(
+        Action::Submit,
+        KeyCode::Tab,
+        KeyCode::Enter,
+        None
+    )]
+    #[case::unbound(Action::Submit, vec![], KeyCode::Enter, None)]
+    fn test_user_bindings(
+        #[case] action: Action,
+        #[case] binding: impl Into<InputBinding>,
+        #[case] pressed: KeyCode,
+        #[case] expected: Option<Action>,
+    ) {
+        let engine = InputEngine::new(indexmap! {action => binding.into()});
+        let actual = engine.action(&key_event(
+            KeyEventKind::Press,
+            pressed,
+            KeyModifiers::NONE,
+        ));
+        assert_eq!(actual, expected);
     }
 
     /// Test events that should be handled get a message generated

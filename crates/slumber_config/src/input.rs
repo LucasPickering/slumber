@@ -200,6 +200,11 @@ impl Action {
 pub struct InputBinding(Vec<KeyCombination>);
 
 impl InputBinding {
+    /// Does this binding have no actions? If true, it should be thrown away
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Does a key event contain this key combo?
     pub fn matches(&self, event: &KeyEvent) -> bool {
         self.0.iter().any(|combo| combo.matches(event))
@@ -215,6 +220,12 @@ impl Display for InputBinding {
             write!(f, "{}", combo)?;
         }
         Ok(())
+    }
+}
+
+impl From<Vec<KeyCombination>> for InputBinding {
+    fn from(combo: Vec<KeyCombination>) -> Self {
+        Self(combo)
     }
 }
 

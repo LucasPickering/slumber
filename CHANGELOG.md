@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Expand `~` to the home directory in `!file` chain sources and when saving response body as a file
 - Ignore key events with additional key modifiers
   - For example, an action bound to `w` will no longer match `ctrl w`
+- Actions can now be unbound by specifying an empty binding
+  - For example, binding `submit: []` will make the submit action inaccessible
 
 ### Fixed
 

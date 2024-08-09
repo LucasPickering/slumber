@@ -7,7 +7,7 @@ keywords = ["rest", "http", "terminal", "tui"]
 license = "MIT"
 name = "slumber_tui"
 repository = "https://github.com/LucasPickering/slumber"
-version = "1.7.0"
+version = "1.8.0"
 # Rely on parent for rust-version
 
 [dependencies]

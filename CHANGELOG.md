@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+The highlight (no pun intended) of this release is syntax highlighting. Beyond that, the release contains a variety of small fixes and improvements.
+
 ### Added
 
 - Add syntax highlighting to recipe, request, and response display [#264](https://github.com/LucasPickering/slumber/issues/264)

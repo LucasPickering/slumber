@@ -23,17 +23,13 @@ use std::{
 /// rendered version. This switch is stored in render context, so it can be
 /// changed globally.
 #[derive(Debug)]
-pub enum TemplatePreview {
-    /// Template previewing is disabled, just show the raw text
-    Disabled { template: Template },
+pub struct TemplatePreview {
     /// Template previewing is enabled, render the template
-    Enabled {
-        template: Template,
-        /// Rendered chunks. On init we send a message which will trigger a
-        /// task to start the render. When the task is done, it'll dump
-        /// its result back here.
-        chunks: Arc<OnceLock<Vec<TemplateChunk>>>,
-    },
+    template: Template,
+    /// Rendered chunks. On init we send a message which will trigger a task to
+    /// start the render. When the task is done, it'll call a callback to set
+    /// this.
+    chunks: Arc<OnceLock<Vec<TemplateChunk>>>,
 }
 
 impl TemplatePreview {
@@ -41,19 +37,26 @@ impl TemplatePreview {
     /// render the template, *if* template preview is enabled. Profile ID
     /// defines which profile to use for the render.
     pub fn new(template: Template, profile_id: Option<ProfileId>) -> Self {
+        let chunks = Arc::new(OnceLock::new());
         if TuiContext::get().config.preview_templates {
-            let chunks = Arc::new(OnceLock::new());
+            let chunks = Arc::clone(&chunks);
+            let on_complete = move |c| {
+                // We know this won't be called twice, because:
+                // - This is the only place we modify the value, and this is the
+                //   constructor so never called twice per instance
+                // - This closure is cast to FnOnce so can't be called twice
+                chunks.set(c).expect("Template preview initialized twice")
+            };
+
             ViewContext::send_message(Message::TemplatePreview {
                 // If this is a bottleneck we can Arc it
                 template: template.clone(),
                 profile_id: profile_id.clone(),
-                destination: Arc::clone(&chunks),
+                on_complete: Box::new(on_complete),
             });
-
-            Self::Enabled { template, chunks }
-        } else {
-            Self::Disabled { template }
         }
+
+        Self { template, chunks }
     }
 }
 
@@ -66,17 +69,11 @@ impl Generate for &TemplatePreview {
     where
         Self: 'this,
     {
-        match self {
-            TemplatePreview::Disabled { template } => template.display().into(),
-            // If the preview render is ready, show it. Otherwise fall back
-            // to the raw
-            TemplatePreview::Enabled {
-                template, chunks, ..
-            } => match chunks.get() {
-                Some(chunks) => TextStitcher::stitch_chunks(chunks),
-                // Preview still rendering
-                None => template.display().into(),
-            },
+        if let Some(chunks) = self.chunks.get() {
+            TextStitcher::stitch_chunks(chunks)
+        } else {
+            // Preview is either disabled or in progress; show the raw text
+            self.template.display().into()
         }
     }
 }

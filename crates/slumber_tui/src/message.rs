@@ -13,7 +13,7 @@ use slumber_core::{
     template::{Prompt, Prompter, Template, TemplateChunk},
     util::ResultTraced,
 };
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
@@ -51,7 +51,7 @@ impl Prompter for MessageSender {
 /// be made synchronously by the input handler, but some require async handling
 /// at the top level. Messages can be triggered from anywhere (via the TUI
 /// context), but are all handled by the top-level controller.
-#[derive(Debug)]
+#[derive(derive_more::Debug)]
 pub enum Message {
     /// Trigger collection reload
     CollectionStartReload,
@@ -115,16 +115,17 @@ pub enum Message {
 
     /// Render a template string, to be previewed in the UI. Ideally this could
     /// be launched directly by the component that needs it, but only the
-    /// controller has the data needed to build the template context. The
-    /// result (including inline errors) will be written back to the given
-    /// cell.
+    /// controller has the data needed to build the template context. The given
+    /// callback will be called with the outcome (including inline errors).
     ///
-    /// By specifying the destination inline, we avoid having to plumb the
-    /// result all the way back down the component tree.
+    /// By holding a callback here, we avoid having to plumb the result all the
+    /// way back down the component tree.
     TemplatePreview {
         template: Template,
         profile_id: Option<ProfileId>,
-        destination: Arc<OnceLock<Vec<TemplateChunk>>>,
+        #[debug(skip)]
+        on_complete:
+            Box<dyn 'static + Send + Sync + FnOnce(Vec<TemplateChunk>)>,
     },
 }
 

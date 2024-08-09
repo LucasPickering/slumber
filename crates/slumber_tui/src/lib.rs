@@ -43,7 +43,7 @@ use std::{
     io::{self, Stdout},
     ops::Deref,
     path::PathBuf,
-    sync::{Arc, OnceLock},
+    sync::Arc,
     time::Duration,
 };
 use tokio::{
@@ -263,12 +263,12 @@ impl Tui {
             Message::TemplatePreview {
                 template,
                 profile_id,
-                destination,
+                on_complete,
             } => {
                 self.render_template_preview(
                     template,
                     profile_id,
-                    destination,
+                    on_complete,
                 )?;
             }
 
@@ -524,17 +524,15 @@ impl Tui {
         &self,
         template: Template,
         profile_id: Option<ProfileId>,
-        destination: Arc<OnceLock<Vec<TemplateChunk>>>,
+        on_complete: Box<
+            dyn 'static + Send + Sync + FnOnce(Vec<TemplateChunk>),
+        >,
     ) -> anyhow::Result<()> {
         let context = self.template_context(profile_id, true)?;
-        self.spawn(async move {
+        tokio::spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render_chunks(&context).await;
-            // If this fails, it's a logic error somewhere. Only one task should
-            // exist per lock
-            destination.set(chunks).map_err(|_| {
-                anyhow!("Multiple writes to template preview lock")
-            })
+            on_complete(chunks);
         });
         Ok(())
     }

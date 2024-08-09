@@ -8,7 +8,7 @@
     "artifacts": {
       "package_managers": {
         "preferred": {
-          "cargo": "cargo install slumber"
+          "cargo": "cargo install slumber --locked"
         },
         "additional": {
           "binstall": "cargo binstall slumber"

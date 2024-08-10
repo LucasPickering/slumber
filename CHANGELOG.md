@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Reduce CPU usage while idling
   - Previously, Slumber would re-render every 250ms while idling, which could lead to high CPU usage, dependending on what's on the screen. Now it will only update when changes occur, meaning idle CPU usage will be nearly 0
+- Fix backlogged events when renders are slow
+  - If renders are being particular slow, it was previously possible for input events (e.g. repeated scrolling events) to occur faster than the UI could keep up. This would lead to "lock out" behavior, where you'd stop scrolling and it'd take a while for the UI to catch up.
+  - Now, the TUI will skip draws as necessary to keep up with the input queue. In practice the skipping should be hard to notice as it only occurs during rapid TUI movements anyway.
 
 ## [1.8.0] - 2024-08-09
 

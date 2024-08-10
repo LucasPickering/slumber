@@ -26,7 +26,7 @@ use crate::{
 use anyhow::{anyhow, Context};
 use chrono::Utc;
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture, EventStream},
+    event::{self, DisableMouseCapture, EnableMouseCapture, EventStream},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::{Future, StreamExt};
@@ -189,7 +189,14 @@ impl Tui {
                 if let Err(error) = self.handle_message(message) {
                     self.view.open_modal(error, ModalPriority::High);
                 }
-                true
+
+                // Skip draws if we have more messages to process. This prevents
+                // us from falling behind the message queue, which can happen
+                // if the UI gets slow. Interactions will start to look jittery,
+                // but it's better than locking the user out
+                let has_more = !self.messages_rx.is_empty()
+                    || event::poll(Duration::from_millis(0)).unwrap_or(false);
+                !has_more
             } else {
                 // Since we have no messages, we were triggered by the tick
                 // timer. We only need to update if there are active HTTP

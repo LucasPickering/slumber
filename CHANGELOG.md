@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Add `debug` configuration field, to enable developer information
 
+### Fixed
+
+- Reduce CPU usage while idling
+  - Previously, Slumber would re-render every 250ms while idling, which could lead to high CPU usage, dependending on what's on the screen. Now it will only update when changes occur, meaning idle CPU usage will be nearly 0
+
 ## [1.8.0] - 2024-08-09
 
 The highlight (no pun intended) of this release is syntax highlighting. Beyond that, the release contains a variety of small fixes and improvements.

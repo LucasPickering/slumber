@@ -48,7 +48,10 @@ use std::{
 };
 use tokio::{
     select,
-    sync::mpsc::{self, UnboundedReceiver},
+    sync::{
+        mpsc::{self, UnboundedReceiver},
+        Semaphore,
+    },
     time,
 };
 use tracing::{debug, error, info, trace};
@@ -73,6 +76,12 @@ pub struct Tui {
     view: Replaceable<View>,
     collection_file: CollectionFile,
     should_run: bool,
+    /// Each active HTTP request should grab one permit from the semaphore. The
+    /// primary purpose of this is to track whether any requests are in-flight.
+    ///
+    /// This is probably overkill because we could just use an `AtomicU8`, but
+    /// it simplifies the semantics of incrementing/decrementing correctly.
+    http_semaphore: Arc<Semaphore>,
 }
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -80,6 +89,9 @@ type Term = Terminal<CrosstermBackend<Stdout>>;
 impl Tui {
     /// Rough **maximum** time for each iteration of the main loop
     const TICK_TIME: Duration = Duration::from_millis(250);
+    /// Maximum number of concurrent HTTP requests. This limit is fairly
+    /// arbitrary; in practice we don't ever expect to hit it.
+    const MAX_HTTP_REQUESTS: usize = 100;
 
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
@@ -125,6 +137,7 @@ impl Tui {
             should_run: true,
 
             view: Replaceable::new(view),
+            http_semaphore: Semaphore::new(Self::MAX_HTTP_REQUESTS).into(),
         };
 
         app.run().await
@@ -143,13 +156,11 @@ impl Tui {
         // Stream of terminal input events
         let mut input_stream = EventStream::new();
 
+        self.draw()?; // Initial draw
+
         // This loop is limited by the rate that messages come in, with a
         // minimum rate enforced by a timeout
         while self.should_run {
-            // ===== Draw Phase =====
-            // Draw *first* so initial UI state is rendered immediately
-            self.draw()?;
-
             // ===== Message Phase =====
             // Grab one message out of the queue and handle it. This will block
             // while the queue is empty so we don't waste CPU cycles. The
@@ -172,17 +183,29 @@ impl Tui {
                 },
                 _ = time::sleep(Self::TICK_TIME) => None,
             };
-            if let Some(message) = message {
+            let should_draw = if let Some(message) = message {
                 trace!(?message, "Handling message");
                 // If an error occurs, store it so we can show the user
                 if let Err(error) = self.handle_message(message) {
                     self.view.open_modal(error, ModalPriority::High);
                 }
-            }
+                true
+            } else {
+                // Since we have no messages, we were triggered by the tick
+                // timer. We only need to update if there are active HTTP
+                // requests
+                self.has_active_requests()
+            };
 
             // ===== Event Phase =====
             // Let the view handle all queued events
             self.view.handle_events();
+
+            // ===== Draw Phase =====
+            // Only draw if something's changed
+            if should_draw {
+                self.draw()?;
+            }
         }
 
         Ok(())
@@ -271,10 +294,16 @@ impl Tui {
                     on_complete,
                 )?;
             }
+            // This message exists just to trigger a draw
+            Message::TemplatePreviewComplete => {}
 
             Message::Quit => self.quit(),
         }
         Ok(())
+    }
+
+    fn has_active_requests(&self) -> bool {
+        self.http_semaphore.available_permits() < Self::MAX_HTTP_REQUESTS
     }
 
     /// Get a cheap clone of the message queue transmitter
@@ -489,7 +518,11 @@ impl Tui {
         // We can't use self.spawn here because HTTP errors are handled
         // differently from all other error types
         let database = self.database.clone();
+        let semaphore = Arc::clone(&self.http_semaphore);
         tokio::spawn(async move {
+            // Track this request so the main loop knows something is in flight
+            let permit =
+                semaphore.acquire().await.expect("HTTP semaphore closed");
             // Build the request
             let ticket = TuiContext::get()
                 .http_engine
@@ -509,6 +542,7 @@ impl Tui {
             let result = ticket.send(&database).await;
             messages_tx.send(Message::HttpComplete(result));
 
+            drop(permit);
             // By returning an empty result, we can use `?` to break out early.
             // `return` and `break` don't work in an async block :/
             Ok::<(), ()>(())
@@ -529,10 +563,13 @@ impl Tui {
         >,
     ) -> anyhow::Result<()> {
         let context = self.template_context(profile_id, true)?;
+        let messages_tx = self.messages_tx();
         tokio::spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render_chunks(&context).await;
             on_complete(chunks);
+            // Trigger a draw
+            messages_tx.send(Message::TemplatePreviewComplete);
         });
         Ok(())
     }

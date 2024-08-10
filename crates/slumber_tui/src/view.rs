@@ -1,6 +1,7 @@
 mod common;
 mod component;
 mod context;
+mod debug;
 mod draw;
 mod event;
 mod state;
@@ -16,9 +17,11 @@ pub use styles::Styles;
 pub use util::{Confirm, PreviewPrompter};
 
 use crate::{
+    context::TuiContext,
     message::{Message, MessageSender},
     view::{
         component::{Component, Root},
+        debug::DebugMonitor,
         event::{Event, Update},
         state::Notification,
     },
@@ -44,6 +47,9 @@ use tracing::{error, trace, trace_span};
 #[derive(Debug)]
 pub struct View {
     root: Component<Root>,
+    /// Populated iff the `debug` config field is enabled. This tracks view
+    /// metrics and displays them to the user.
+    debug_monitor: Option<DebugMonitor>,
 }
 
 impl View {
@@ -57,8 +63,16 @@ impl View {
             database,
             messages_tx,
         );
+
+        let debug_monitor = if TuiContext::get().config.debug {
+            Some(DebugMonitor::default())
+        } else {
+            None
+        };
+
         let mut view = Self {
             root: Root::new(&collection_file.collection).into(),
+            debug_monitor,
         };
         view.notify(format!(
             "Loaded collection from {}",
@@ -70,8 +84,17 @@ impl View {
     /// Draw the view to screen. This needs access to the input engine in order
     /// to render input bindings as help messages to the user.
     pub fn draw<'a>(&'a self, frame: &'a mut Frame) {
-        let chunk = frame.size();
-        self.root.draw(frame, (), chunk, true);
+        fn draw_impl(root: &Component<Root>, frame: &mut Frame) {
+            let chunk = frame.size();
+            root.draw(frame, (), chunk, true);
+        }
+
+        // If debug monitor is enabled, use it to capture the view duration
+        if let Some(debug_monitor) = &self.debug_monitor {
+            debug_monitor.draw(frame, |frame| draw_impl(&self.root, frame));
+        } else {
+            draw_impl(&self.root, frame);
+        }
     }
 
     /// Queue an event to update the request state for the given profile+recipe.

@@ -1,3 +1,4 @@
+mod debug;
 mod exchange_pane;
 mod help;
 mod history;

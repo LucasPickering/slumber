@@ -1,9 +1,11 @@
 use crate::{
+    context::TuiContext,
     message::Message,
     util::ResultReported,
     view::{
         common::modal::ModalQueue,
         component::{
+            debug::DebugMonitor,
             help::HelpFooter,
             history::History,
             misc::NotificationText,
@@ -38,6 +40,7 @@ pub struct Root {
     primary_view: Component<PrimaryView>,
     modal_queue: Component<ModalQueue>,
     notification_text: Option<Component<NotificationText>>,
+    debug_monitor: Component<DebugMonitor>,
 }
 
 impl Root {
@@ -55,6 +58,7 @@ impl Root {
             primary_view: primary_view.into(),
             modal_queue: Component::default(),
             notification_text: None,
+            debug_monitor: Default::default(),
         }
     }
 
@@ -193,16 +197,21 @@ impl Draw for Root {
         );
 
         // Footer
-        let footer = HelpFooter.generate();
+        let help_footer = HelpFooter.generate();
         let [notification_area, help_area] = Layout::horizontal([
             Constraint::Min(10),
-            Constraint::Length(footer.width() as u16),
+            Constraint::Length(help_footer.width() as u16),
         ])
         .areas(footer_area);
+        // If debug mode is enabled, replace help text with it
+        if TuiContext::get().config.debug {
+            self.debug_monitor.draw(frame, (), help_area, false);
+        } else {
+            frame.render_widget(help_footer, help_area);
+        }
         if let Some(notification_text) = &self.notification_text {
             notification_text.draw(frame, (), notification_area, false);
         }
-        frame.render_widget(footer, help_area);
 
         // Render modals last so they go on top
         self.modal_queue.draw(frame, (), frame.size(), true);

@@ -40,6 +40,8 @@ pub struct Config {
     pub input_bindings: IndexMap<Action, InputBinding>,
     /// Visual configuration for the TUI (e.g. colors)
     pub theme: Theme,
+    /// Enable debug monitor in TUI
+    pub debug: bool,
 }
 
 impl Config {
@@ -84,6 +86,7 @@ impl Default for Config {
             preview_templates: true,
             input_bindings: Default::default(),
             theme: Default::default(),
+            debug: false,
         }
     }
 }

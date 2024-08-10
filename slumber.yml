@@ -32,6 +32,9 @@ chains:
   image:
     source: !file
       path: ./static/slumber.png
+  big_file:
+    source: !file
+      path: Cargo.lock
 
 .ignore:
   base: &base
@@ -99,6 +102,12 @@ requests:
     body: !form_multipart
       filename: "logo.png"
       image: "{{chains.image}}"
+
+  big_file: !request
+    name: Big File
+    method: POST
+    url: "{{host}}/anything"
+    body: "{{chains.big_file}}"
 
   delay: !request
     <<: *base

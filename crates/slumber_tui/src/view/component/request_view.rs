@@ -9,11 +9,12 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Event, EventHandler, Update},
         state::StateCell,
+        util::highlight,
         Component, ModalPriority, ViewContext,
     },
 };
 use derive_more::Display;
-use ratatui::{layout::Layout, prelude::Constraint, Frame};
+use ratatui::{layout::Layout, prelude::Constraint, text::Text, Frame};
 use slumber_config::Action;
 use slumber_core::{
     http::{content_type::ContentType, RequestId, RequestRecord},
@@ -41,7 +42,7 @@ struct State {
     request: Arc<RequestRecord>,
     /// Persist the visible body, because it may vary from the actual body.
     /// `None` iff the request has no body
-    body: Option<String>,
+    body: Option<Text<'static>>,
 }
 
 /// Items in the actions popup menu
@@ -94,7 +95,7 @@ impl EventHandler for RequestView {
                     // don't support formatting/querying but that could change
                     if let Some(body) = self.state.get().and_then(|state| {
                         let body = state.body.as_ref()?;
-                        Some(body.to_owned())
+                        Some(body.to_string())
                     }) {
                         ViewContext::send_message(Message::CopyText(body));
                     }
@@ -120,11 +121,7 @@ impl Draw<RequestViewProps> for RequestView {
     ) {
         let state = self.state.get_or_update(props.request.id, || State {
             request: Arc::clone(&props.request),
-            body: props
-                .request
-                .body
-                .as_ref()
-                .map(|body| format!("{:#}", MaybeStr(body))),
+            body: init_body(&props.request),
         });
 
         let [url_area, headers_area, body_area] = Layout::vertical([
@@ -145,18 +142,27 @@ impl Draw<RequestViewProps> for RequestView {
             headers_area,
         );
         if let Some(body) = &state.body {
-            let content_type =
-                ContentType::from_headers(&props.request.headers).ok();
             self.body_text_window.draw(
                 frame,
                 TextWindowProps {
-                    text: body.generate(),
-                    content_type,
-                    has_search_box: false,
+                    text: body,
+                    margins: Default::default(),
                 },
                 body_area,
                 true,
             );
         }
     }
+}
+
+/// Calculate body text, including syntax highlighting. We have to clone the
+/// body to prevent a self-reference
+fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
+    let content_type = ContentType::from_headers(&request.headers).ok();
+    request.body.as_ref().map(|body| {
+        highlight::highlight_if(
+            content_type,
+            format!("{:#}", MaybeStr(body)).into(),
+        )
+    })
 }

@@ -22,8 +22,6 @@ use slumber_core::{
 #[derive(Debug)]
 pub enum RecipeBodyDisplay {
     Raw {
-        /// Needed for syntax highlighting
-        content_type: Option<ContentType>,
         preview: TemplatePreview,
         text_window: Component<TextWindow>,
     },
@@ -39,14 +37,14 @@ impl RecipeBodyDisplay {
     ) -> Self {
         match body {
             RecipeBody::Raw(body) => Self::Raw {
-                // Hypothetically we could grab the content type from the
-                // Content-Type header above and plumb it down here, but more
-                // effort than it's worth IMO. This gives users a solid reason
-                // to use !json anyway
-                content_type: None,
                 preview: TemplatePreview::new(
                     body.clone(),
                     selected_profile_id,
+                    // Hypothetically we could grab the content type from the
+                    // Content-Type header above and plumb it down here, but
+                    // more effort than it's worth IMO. This gives users a
+                    // solid reason to use !json anyway
+                    None,
                 ),
                 text_window: Component::default(),
             },
@@ -68,10 +66,10 @@ impl RecipeBodyDisplay {
                     .parse()
                     .expect("Unexpected template parse failure");
                 Self::Raw {
-                    content_type: Some(ContentType::Json),
                     preview: TemplatePreview::new(
                         template,
                         selected_profile_id,
+                        Some(ContentType::Json),
                     ),
                     text_window: Component::default(),
                 }
@@ -86,6 +84,7 @@ impl RecipeBodyDisplay {
                             TemplatePreview::new(
                                 value.clone(),
                                 selected_profile_id.clone(),
+                                None,
                             ),
                             FormRowToggleKey {
                                 recipe_id: recipe_id.clone(),
@@ -121,15 +120,15 @@ impl Draw for RecipeBodyDisplay {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         match self {
             RecipeBodyDisplay::Raw {
-                content_type,
                 preview,
                 text_window,
             } => text_window.draw(
                 frame,
                 TextWindowProps {
-                    text: preview.generate(),
-                    content_type: *content_type,
-                    has_search_box: false,
+                    // Do *not* call generate, because that clones the text and
+                    // we only need a reference
+                    text: &preview.text(),
+                    margins: Default::default(),
                 },
                 metadata.area(),
                 true,

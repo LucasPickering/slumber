@@ -59,6 +59,7 @@ impl RecipeDisplay {
                     TemplatePreview::new(
                         value.clone(),
                         selected_profile_id.cloned(),
+                        None,
                     ),
                     QueryRowToggleKey {
                         recipe_id: recipe.id.clone(),
@@ -76,6 +77,7 @@ impl RecipeDisplay {
                     TemplatePreview::new(
                         value.clone(),
                         selected_profile_id.cloned(),
+                        None,
                     ),
                     HeaderRowToggleKey {
                         recipe_id: recipe.id.clone(),
@@ -91,6 +93,7 @@ impl RecipeDisplay {
             url: TemplatePreview::new(
                 recipe.url.clone(),
                 selected_profile_id.cloned(),
+                None,
             ),
             query: PersistedLazy::new(
                 QueryRowKey(recipe.id.clone()),

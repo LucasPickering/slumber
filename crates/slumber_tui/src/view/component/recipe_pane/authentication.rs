@@ -29,11 +29,13 @@ impl AuthenticationDisplay {
                     username: TemplatePreview::new(
                         username.clone(),
                         selected_profile_id.cloned(),
+                        None,
                     ),
                     password: password.clone().map(|password| {
                         TemplatePreview::new(
                             password,
                             selected_profile_id.cloned(),
+                            None,
                         )
                     }),
                 }
@@ -42,6 +44,7 @@ impl AuthenticationDisplay {
                 AuthenticationDisplay::Bearer(TemplatePreview::new(
                     token.clone(),
                     selected_profile_id.cloned(),
+                    None,
                 ))
             }
         }

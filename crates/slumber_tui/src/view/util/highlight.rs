@@ -77,6 +77,19 @@ pub fn highlight(content_type: ContentType, mut text: Text<'_>) -> Text<'_> {
     })
 }
 
+/// Apply syntax highlighting if the content type is `Some`, otherwise just
+/// return the given text
+pub fn highlight_if(
+    content_type: Option<ContentType>,
+    text: Text<'_>,
+) -> Text<'_> {
+    if let Some(content_type) = content_type {
+        highlight(content_type, text)
+    } else {
+        text
+    }
+}
+
 /// Map [ContentType] to a syntax highlighting language
 fn get_config(content_type: ContentType) -> HighlightConfiguration {
     let mut config = match content_type {

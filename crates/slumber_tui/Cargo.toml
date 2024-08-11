@@ -21,7 +21,7 @@ indexmap = {workspace = true}
 itertools = {workspace = true}
 notify = {version = "6.1.1", default-features = false, features = ["macos_fsevent"]}
 persisted = {version = "0.2.2", features = ["serde"]}
-ratatui = {workspace = true, features = ["crossterm", "underline-color", "unstable-rendered-line-info"]}
+ratatui = {workspace = true, features = ["crossterm", "underline-color", "unstable-widget-ref"]}
 reqwest = {workspace = true}
 serde = {workspace = true}
 serde_json = {workspace = true}
@@ -34,6 +34,7 @@ tokio = {workspace = true, features = ["macros", "signal"]}
 tracing = {workspace = true}
 tree-sitter-highlight = "0.22.6"
 tree-sitter-json = "0.21.0"
+unicode-width = "0.1.13"
 uuid = {workspace = true}
 
 [dev-dependencies]

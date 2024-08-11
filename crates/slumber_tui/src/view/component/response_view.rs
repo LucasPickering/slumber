@@ -219,7 +219,9 @@ mod tests {
             body: b"\x01\x02\x03\xff".to_vec().into(),
             ..ResponseRecord::factory(())
         },
-        "01 02 03 ff"
+        // Remove newline after this fix:
+        // https://github.com/ratatui-org/ratatui/pull/1320
+        "01 02 03 ff\n"
     )]
     #[tokio::test]
     async fn test_copy_body(

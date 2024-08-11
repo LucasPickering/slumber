@@ -2093,7 +2093,7 @@ dependencies = [
 
 [[package]]
 name = "slumber"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "anyhow",
  "slumber_cli",
@@ -2106,7 +2106,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_cli"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2123,7 +2123,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_config"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -2140,7 +2140,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_core"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -2179,7 +2179,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_tui"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "anyhow",
  "chrono",

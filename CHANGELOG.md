@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [1.8.1] - 2024-08-11
+
 This release is focused on improving rendering performance. The TUI should generally feel more polished and responsive when working with large bodies, and CPU usage will be much lower.
 
 ### Added

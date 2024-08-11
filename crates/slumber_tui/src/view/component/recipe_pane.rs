@@ -15,6 +15,7 @@ use crate::{
     },
 };
 use derive_more::Display;
+use itertools::{Itertools, Position};
 use ratatui::{
     text::{Line, Text},
     Frame,
@@ -234,15 +235,17 @@ impl<'a> Generate for &'a Folder {
             folder: &'a Folder,
             depth: usize,
         ) {
-            let len = folder.children.len();
-            for (i, node) in folder.children.values().enumerate() {
+            for (position, node) in folder.children.values().with_position() {
                 let mut line = Line::default();
 
                 // Add decoration
                 for _ in 0..depth {
                     line.push_span("│ ");
                 }
-                line.push_span(if i < len - 1 { "├─" } else { "└─" });
+                line.push_span(match position {
+                    Position::First | Position::Middle => "├─",
+                    Position::Last | Position::Only => "└─",
+                });
 
                 line.push_span(node.name());
                 lines.push(line);

@@ -18,7 +18,7 @@ use crate::{
     view::{draw::Generate, state::Notification},
 };
 use chrono::{DateTime, Duration, Local, Utc};
-use itertools::Itertools;
+use itertools::{Itertools, Position};
 use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders},
@@ -204,16 +204,14 @@ impl Generate for &anyhow::Error {
         Self: 'this,
     {
         let chain = self.chain();
-        let len = chain.len();
         chain
+            .with_position()
             .enumerate()
-            .map::<Line, _>(|(i, error)| {
-                let icon = if i == 0 {
-                    "" // First
-                } else if i < len - 1 {
-                    "└┬" // Intermediate
-                } else {
-                    "└─" // Last
+            .map::<Line, _>(|(i, (position, error))| {
+                let icon = match position {
+                    Position::First | Position::Only => "",
+                    Position::Middle => "└┬",
+                    Position::Last => "└─",
                 };
                 format!(
                     "{indent:width$}{icon}{error}",

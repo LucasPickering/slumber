@@ -41,3 +41,6 @@ uuid = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}
+
+[package.metadata.release]
+tag = false

@@ -24,3 +24,6 @@ tracing = {workspace = true}
 [dev-dependencies]
 rstest = {workspace = true}
 serde_test = {workspace = true}
+
+[package.metadata.release]
+tag = false

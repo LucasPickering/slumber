@@ -22,3 +22,6 @@ serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}
 tracing = {workspace = true}
+
+[package.metadata.release]
+tag = false

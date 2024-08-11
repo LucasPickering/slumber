@@ -50,3 +50,6 @@ wiremock = {version = "0.6.1", default-features = false}
 
 [features]
 test = ["dep:rstest"]
+
+[package.metadata.release]
+tag = false

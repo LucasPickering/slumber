@@ -85,7 +85,7 @@ impl View {
     /// to render input bindings as help messages to the user.
     pub fn draw<'a>(&'a self, frame: &'a mut Frame) {
         fn draw_impl(root: &Component<Root>, frame: &mut Frame) {
-            let chunk = frame.size();
+            let chunk = frame.area();
             root.draw(frame, (), chunk, true);
         }
 

@@ -205,7 +205,7 @@ impl Draw for Root {
         frame.render_widget(footer, help_area);
 
         // Render modals last so they go on top
-        self.modal_queue.draw(frame, (), frame.size(), true);
+        self.modal_queue.draw(frame, (), frame.area(), true);
     }
 }
 

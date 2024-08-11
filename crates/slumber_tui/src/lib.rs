@@ -405,7 +405,7 @@ impl Tui {
         // subprocess took over the terminal and cut it loose if not, or add a
         // config field for it.
         self.terminal.draw(|frame| {
-            frame.render_widget("Waiting for editor to close...", frame.size());
+            frame.render_widget("Waiting for editor to close...", frame.area());
         })?;
         command.status().context(error_context)?;
         // If the editor was terminal-based it probably dropped us out of the

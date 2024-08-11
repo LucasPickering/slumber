@@ -29,7 +29,7 @@ impl DebugMonitor {
         // Draw in the bottom-right, on top of the help text
         let [_, area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
-                .areas(frame.size());
+                .areas(frame.area());
         let text = Text::from(format!(
             "FPS: {fps:.1} / Render: {duration}ms",
             duration = duration.as_millis()

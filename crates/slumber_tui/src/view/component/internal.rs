@@ -563,7 +563,7 @@ mod tests {
         mut component: Component<Branch>,
     ) {
         let mut frame = harness.terminal.get_frame();
-        let area = frame.size();
+        let area = frame.area();
         component.data().a.draw(&mut frame, (), area, true);
         component.data().b.draw(&mut frame, (), area, true);
         component.data().c.draw(&mut frame, (), area, true);
@@ -583,7 +583,7 @@ mod tests {
     ) {
         // We are visible but *not* in focus
         let mut frame = harness.terminal.get_frame();
-        let area = frame.size();
+        let area = frame.area();
         component.draw(
             &mut frame,
             Props {

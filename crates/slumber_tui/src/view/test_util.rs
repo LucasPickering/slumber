@@ -97,7 +97,7 @@ where
                 self.component.draw(
                     frame,
                     self.last_props.clone(),
-                    frame.size(),
+                    frame.area(),
                     true,
                 )
             })

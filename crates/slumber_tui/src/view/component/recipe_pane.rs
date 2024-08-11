@@ -233,14 +233,19 @@ impl<'a> Generate for &'a Folder {
         fn add_lines<'a>(
             lines: &mut Vec<Line<'a>>,
             folder: &'a Folder,
-            depth: usize,
+            parent_positions: &mut Vec<Position>,
         ) {
             for (position, node) in folder.children.values().with_position() {
                 let mut line = Line::default();
 
                 // Add decoration
-                for _ in 0..depth {
-                    line.push_span("│ ");
+                for parent_position in parent_positions.iter() {
+                    let padding = match parent_position {
+                        // Extend the parent's line down if it has more children
+                        Position::First | Position::Middle => "│ ",
+                        Position::Last | Position::Only => "  ",
+                    };
+                    line.push_span(padding);
                 }
                 line.push_span(match position {
                     Position::First | Position::Middle => "├─",
@@ -250,11 +255,78 @@ impl<'a> Generate for &'a Folder {
                 line.push_span(node.name());
                 lines.push(line);
                 if let RecipeNode::Folder(folder) = node {
-                    add_lines(lines, folder, depth + 1);
+                    parent_positions.push(position);
+                    add_lines(lines, folder, parent_positions);
+                    parent_positions.pop();
                 }
             }
         }
-        add_lines(&mut lines, self, 0);
+        add_lines(&mut lines, self, &mut Vec::new());
         lines.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use slumber_core::{
+        collection::Recipe,
+        test_util::{by_id, Factory},
+    };
+
+    #[test]
+    fn test_folder_tree() {
+        let folder = Folder {
+            id: "1f".into(),
+            name: None,
+            children: by_id([
+                RecipeNode::Recipe(Recipe::factory("1.1r")),
+                RecipeNode::Recipe(Recipe::factory("1.2r")),
+                // Nested folder
+                RecipeNode::Folder(Folder {
+                    id: "1.3f".into(),
+                    name: None,
+                    children: by_id([RecipeNode::Recipe(Recipe::factory(
+                        "1.3.1r",
+                    ))]),
+                }),
+                // Empty folder
+                RecipeNode::Folder(Folder {
+                    id: "1.4f".into(),
+                    name: None,
+                    children: Default::default(),
+                }),
+                // End with a nested folder to make sure the leftmost
+                // decorations don't appear
+                RecipeNode::Folder(Folder {
+                    id: "1.5f".into(),
+                    name: None,
+                    children: by_id([
+                        RecipeNode::Recipe(Recipe::factory("1.5.1r")),
+                        RecipeNode::Folder(Folder {
+                            id: "1.5.2f".into(),
+                            name: None,
+                            children: by_id([RecipeNode::Recipe(
+                                Recipe::factory("1.5.2.1r"),
+                            )]),
+                        }),
+                    ]),
+                }),
+            ]),
+        };
+
+        let expected = "\
+1f
+├─1.1r
+├─1.2r
+├─1.3f
+│ └─1.3.1r
+├─1.4f
+└─1.5f
+  ├─1.5.1r
+  └─1.5.2f
+    └─1.5.2.1r";
+        assert_eq!(folder.generate().to_string(), expected);
     }
 }

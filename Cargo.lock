@@ -2206,6 +2206,7 @@ dependencies = [
  "tracing",
  "tree-sitter-highlight",
  "tree-sitter-json",
+ "unicode-width",
  "uuid",
 ]
 

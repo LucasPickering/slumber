@@ -3,17 +3,19 @@
 use crate::view::{
     common::{
         text_box::TextBox,
-        text_window::{TextWindow, TextWindowProps},
+        text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
     },
-    draw::{Draw, DrawMetadata, Generate},
+    draw::{Draw, DrawMetadata},
     event::{Event, EventHandler, Update},
     state::StateCell,
+    util::highlight,
     Component, ViewContext,
 };
 use anyhow::Context;
 use persisted::PersistedContainer;
 use ratatui::{
     layout::{Constraint, Layout},
+    text::Text,
     Frame,
 };
 use serde_json_path::JsonPath;
@@ -22,7 +24,7 @@ use slumber_core::{
     http::{content_type::ContentType, query::Query, ResponseBody},
     util::{MaybeStr, ResultTraced},
 };
-use std::{cell::Cell, ops::Deref};
+use std::cell::Cell;
 
 /// Display response body as text, with a query box to filter it if the body has
 /// been parsed. The query state can be persisted by persisting this entire
@@ -31,7 +33,7 @@ use std::{cell::Cell, ops::Deref};
 pub struct QueryableBody {
     /// Visible text state. This needs to be in a cell because it's initialized
     /// from the body passed in via props
-    filtered_text: StateCell<Option<Query>, String>,
+    filtered_text: StateCell<Option<Query>, Text<'static>>,
     /// Store whether the body can be queried. True only if it's a recognized
     /// and parsed format
     query_available: Cell<bool>,
@@ -88,7 +90,7 @@ impl QueryableBody {
     /// Get visible body text. Return an owned value because that's what all
     /// consumers need anyway, and it makes the API simpler
     pub fn text(&self) -> Option<String> {
-        self.filtered_text.get().map(|text| text.to_owned())
+        self.filtered_text.get().map(|text| text.to_string())
     }
 }
 
@@ -162,14 +164,16 @@ impl<'a> Draw<QueryableBodyProps<'a>> for QueryableBody {
 
         // Draw the body
         let text = self.filtered_text.get_or_update(self.query.clone(), || {
-            init_state(props.body, self.query.as_ref())
+            init_text(props.content_type, props.body, self.query.as_ref())
         });
         self.text_window.draw(
             frame,
             TextWindowProps {
-                text: text.deref().generate(),
-                content_type: props.content_type,
-                has_search_box: query_available,
+                text: &text,
+                margins: ScrollbarMargins {
+                    bottom: 2, // Extra margin to jump over the search box
+                    ..Default::default()
+                },
             },
             body_area,
             true,
@@ -203,7 +207,12 @@ enum QueryCallback {
     Submit,
 }
 
-fn init_state(body: &ResponseBody, query: Option<&Query>) -> String {
+/// Calculate display text based on current body/query
+fn init_text(
+    content_type: Option<ContentType>,
+    body: &ResponseBody,
+    query: Option<&Query>,
+) -> Text<'static> {
     // Query and prettify text if possible. This involves a lot of cloning
     // because it makes stuff easier. If it becomes a bottleneck on large
     // responses it's fixable.
@@ -219,7 +228,8 @@ fn init_state(body: &ResponseBody, query: Option<&Query>) -> String {
         // Content couldn't be parsed, fall back to the raw text
         // If the text isn't UTF-8, we'll show a placeholder instead
         .unwrap_or_else(|| format!("{:#}", MaybeStr(body.bytes())));
-    body
+    // Apply syntax highlighting
+    highlight::highlight_if(content_type, body.into())
 }
 
 #[cfg(test)]
@@ -272,10 +282,11 @@ mod tests {
 
         // Assert state
         let data = component.data();
-        assert_eq!(
-            data.text().as_deref(),
-            Some(std::str::from_utf8(TEXT).unwrap())
-        );
+        // Remove newline after this fix:
+        // https://github.com/ratatui-org/ratatui/pull/1320
+        let mut expected = String::from_utf8(TEXT.to_owned()).unwrap();
+        expected.push('\n');
+        assert_eq!(data.text().as_deref(), Some(expected.as_str()));
         assert!(!data.query_available.get());
         assert_eq!(data.query, None);
 

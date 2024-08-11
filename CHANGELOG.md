@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+This release is focused on improving rendering performance. The TUI should generally feel more polished and responsive when working with large bodies, and CPU usage will be much lower.
+
 ### Added
 
 - Add `debug` configuration field, to enable developer information
@@ -17,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fix backlogged events when renders are slow
   - If renders are being particular slow, it was previously possible for input events (e.g. repeated scrolling events) to occur faster than the UI could keep up. This would lead to "lock out" behavior, where you'd stop scrolling and it'd take a while for the UI to catch up.
   - Now, the TUI will skip draws as necessary to keep up with the input queue. In practice the skipping should be hard to notice as it only occurs during rapid TUI movements anyway.
+- Improve rendering performance for large bodies and syntax highlighting
 
 ## [1.8.0] - 2024-08-09
 

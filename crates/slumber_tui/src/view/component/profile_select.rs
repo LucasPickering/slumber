@@ -314,6 +314,7 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
                         TemplatePreview::new(
                             template.clone(),
                             Some(profile_id.clone()),
+                            None,
                         ),
                     )
                 })

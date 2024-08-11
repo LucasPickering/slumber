@@ -1,67 +1,110 @@
 use crate::{
     context::TuiContext,
     message::Message,
-    view::{draw::Generate, ViewContext},
+    view::{draw::Generate, util::highlight, ViewContext},
 };
 use ratatui::{
     buffer::Buffer,
     prelude::Rect,
     style::Style,
     text::{Line, Span, Text},
-    widgets::{Paragraph, Widget},
+    widgets::Widget,
 };
 use slumber_core::{
     collection::ProfileId,
+    http::content_type::ContentType,
     template::{Template, TemplateChunk},
 };
 use std::{
     mem,
-    sync::{Arc, OnceLock},
+    ops::Deref,
+    sync::{Arc, Mutex},
 };
 
 /// A preview of a template string, which can show either the raw text or the
-/// rendered version. This switch is stored in render context, so it can be
-/// changed globally.
+/// rendered version. The global config is used to enable/disable previews.
 #[derive(Debug)]
 pub struct TemplatePreview {
-    /// Template previewing is enabled, render the template
-    template: Template,
-    /// Rendered chunks. On init we send a message which will trigger a task to
+    /// Text to display, which could be either the raw template, or the
+    /// rendered template. Either way, it may or may not be syntax
+    /// highlighted. On init we send a message which will trigger a task to
     /// start the render. When the task is done, it'll call a callback to set
-    /// this.
-    chunks: Arc<OnceLock<Vec<TemplateChunk>>>,
+    /// generate the text and cache it here. This means we don't have to
+    /// restitch the chunks or reapply highlighting on every render. Arc is
+    /// needed to make the callback 'static.
+    ///
+    /// This should only ever be written to once, but we can't use `OnceLock`
+    /// because it also gets an initial value. There should be effectively zero
+    /// contention on the mutex because of the single write, and reads being
+    /// single-threaded.
+    text: Arc<Mutex<Text<'static>>>,
 }
 
 impl TemplatePreview {
     /// Create a new template preview. This will spawn a background task to
     /// render the template, *if* template preview is enabled. Profile ID
-    /// defines which profile to use for the render.
-    pub fn new(template: Template, profile_id: Option<ProfileId>) -> Self {
-        let chunks = Arc::new(OnceLock::new());
+    /// defines which profile to use for the render. Optionally provide content
+    /// type to enable syntax highlighting, which will be applied to both
+    /// unrendered and rendered content.
+    pub fn new(
+        template: Template,
+        profile_id: Option<ProfileId>,
+        content_type: Option<ContentType>,
+    ) -> Self {
+        // Calculate raw text
+        let text = highlight::highlight_if(
+            content_type,
+            // We have to clone the template to detach the lifetime. We're
+            // choosing to pay one upfront cost here so we don't have to
+            // recompute the text on each render. Ideally we could hold onto
+            // the template and have this text reference it, but that would be
+            // self-referential
+            template.display().into_owned().into(),
+        );
+        let text = Arc::new(Mutex::new(text));
+
+        // Trigger a task to render the preview and write the answer back into
+        // the mutex
         if TuiContext::get().config.preview_templates {
-            let chunks = Arc::clone(&chunks);
+            let destination = Arc::clone(&text);
             let on_complete = move |c| {
-                // We know this won't be called twice, because:
-                // - This is the only place we modify the value, and this is the
-                //   constructor so never called twice per instance
-                // - This closure is cast to FnOnce so can't be called twice
-                chunks.set(c).expect("Template preview initialized twice")
+                Self::calculate_rendered_text(c, &destination, content_type)
             };
 
             ViewContext::send_message(Message::TemplatePreview {
-                // If this is a bottleneck we can Arc it
-                template: template.clone(),
+                template,
                 profile_id: profile_id.clone(),
                 on_complete: Box::new(on_complete),
             });
         }
 
-        Self { template, chunks }
+        Self { text }
+    }
+
+    /// Generate text from the rendered template, and replace the text in the
+    /// mutex
+    fn calculate_rendered_text(
+        chunks: Vec<TemplateChunk>,
+        destination: &Mutex<Text<'static>>,
+        content_type: Option<ContentType>,
+    ) {
+        let text = TextStitcher::stitch_chunks(&chunks);
+        let text = highlight::highlight_if(content_type, text);
+        *destination
+            .lock()
+            .expect("Template preview text lock is poisoned") = text;
+    }
+
+    pub fn text(&self) -> impl '_ + Deref<Target = Text<'static>> {
+        self.text
+            .lock()
+            .expect("Template preview text lock is poisoned")
     }
 }
 
+/// Clone internal text. Only call this for small pieces of text
 impl Generate for &TemplatePreview {
-    type Output<'this> = Text<'this>
+    type Output<'this> =  Text<'this>
     where
         Self: 'this;
 
@@ -69,19 +112,13 @@ impl Generate for &TemplatePreview {
     where
         Self: 'this,
     {
-        if let Some(chunks) = self.chunks.get() {
-            TextStitcher::stitch_chunks(chunks)
-        } else {
-            // Preview is either disabled or in progress; show the raw text
-            self.template.display().into()
-        }
+        self.text().clone()
     }
 }
 
 impl Widget for &TemplatePreview {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let text = self.generate();
-        Paragraph::new(text).render(area, buf)
+        self.text().deref().render(area, buf)
     }
 }
 
@@ -92,14 +129,14 @@ impl Widget for &TemplatePreview {
 ///
 /// See ratatui docs: <https://docs.rs/ratatui/latest/ratatui/text/index.html>
 #[derive(Debug, Default)]
-struct TextStitcher<'a> {
-    completed_lines: Vec<Line<'a>>,
-    next_line: Vec<Span<'a>>,
+struct TextStitcher {
+    completed_lines: Vec<Line<'static>>,
+    next_line: Vec<Span<'static>>,
 }
 
-impl<'a> TextStitcher<'a> {
+impl TextStitcher {
     /// Convert chunks into a series of spans, which can be turned into a line
-    fn stitch_chunks(chunks: &'a [TemplateChunk]) -> Text<'a> {
+    fn stitch_chunks(chunks: &[TemplateChunk]) -> Text<'static> {
         let styles = &TuiContext::get().styles;
 
         // Each chunk will get its own styling, but we can't just make each
@@ -110,7 +147,7 @@ impl<'a> TextStitcher<'a> {
         let mut stitcher = Self::default();
         for chunk in chunks {
             let chunk_text = Self::get_chunk_text(chunk);
-            let style = match &chunk {
+            let style = match chunk {
                 TemplateChunk::Raw(_) => Style::default(),
                 TemplateChunk::Rendered { .. } => styles.template_preview.text,
                 TemplateChunk::Error(_) => styles.template_preview.error,
@@ -123,45 +160,56 @@ impl<'a> TextStitcher<'a> {
 
     /// Add one chunk to the text. This will recursively split on any line
     /// breaks in the text until it reaches the end.
-    fn add_chunk(&mut self, chunk_text: &'a str, style: Style) {
+    fn add_chunk(&mut self, mut chunk_text: String, style: Style) {
         // If we've reached a line ending, push the line and start a new one.
         // Intentionally ignore \r; it won't cause any harm in the output text
-        match chunk_text.split_once('\n') {
-            Some((a, b)) => {
-                self.add_span(a, style);
+        match chunk_text.find('\n') {
+            Some(index) => {
+                // Exclude newline. +1 is safe because we know index points to
+                // a char and therefore is before the end of the string
+                let rest = chunk_text.split_off(index + 1);
+                let popped = chunk_text.pop(); // Pop the newline
+                debug_assert_eq!(popped, Some('\n'));
+
+                self.add_span(chunk_text, style);
                 self.end_line();
+
                 // Recursion!
-                self.add_chunk(b, style);
+                // If the newline was the last char, this chunk will be empty
+                if !rest.is_empty() {
+                    self.add_chunk(rest, style);
+                }
             }
             // This chunk has no line breaks, just add it and move on
             None => self.add_span(chunk_text, style),
         }
     }
 
-    /// Get the renderable text for a chunk of a template
-    fn get_chunk_text(chunk: &'a TemplateChunk) -> &'a str {
+    /// Get the renderable text for a chunk of a template. This will clone the
+    /// text out of the chunk, because it's all stashed behind Arcs
+    fn get_chunk_text(chunk: &TemplateChunk) -> String {
         match chunk {
-            TemplateChunk::Raw(text) => text,
+            TemplateChunk::Raw(text) => text.deref().clone(),
             TemplateChunk::Rendered { value, sensitive } => {
                 if *sensitive {
                     // Hide sensitive values. Ratatui has a Masked type, but
                     // it complicates the string ownership a lot and also
                     // exposes the length of the sensitive text
-                    "<sensitive>"
+                    "<sensitive>".into()
                 } else {
                     // We could potentially use MaybeStr to show binary data as
                     // hex, but that could get weird if there's text data in the
                     // template as well. This is simpler and prevents giant
                     // binary blobs from getting rendered in.
-                    std::str::from_utf8(value).unwrap_or("<binary>")
+                    std::str::from_utf8(value).unwrap_or("<binary>").to_owned()
                 }
             }
             // There's no good way to render the entire error inline
-            TemplateChunk::Error(_) => "Error",
+            TemplateChunk::Error(_) => "Error".into(),
         }
     }
 
-    fn add_span(&mut self, text: &'a str, style: Style) {
+    fn add_span(&mut self, text: String, style: Style) {
         if !text.is_empty() {
             self.next_line.push(Span::styled(text, style));
         }
@@ -176,7 +224,7 @@ impl<'a> TextStitcher<'a> {
     }
 
     /// Convert all lines into a text block
-    fn into_text(mut self) -> Text<'a> {
+    fn into_text(mut self) -> Text<'static> {
         self.end_line(); // Make sure to include whatever wasn't finished
         Text::from(self.completed_lines)
     }
@@ -187,6 +235,7 @@ mod tests {
     use super::*;
     use crate::test_util::{harness, TestHarness};
     use indexmap::indexmap;
+    use pretty_assertions::assert_eq;
     use rstest::rstest;
     use slumber_core::{
         collection::{Chain, ChainSource, Collection, Profile},

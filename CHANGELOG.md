@@ -20,6 +20,7 @@ This release is focused on improving rendering performance. The TUI should gener
   - If renders are being particular slow, it was previously possible for input events (e.g. repeated scrolling events) to occur faster than the UI could keep up. This would lead to "lock out" behavior, where you'd stop scrolling and it'd take a while for the UI to catch up.
   - Now, the TUI will skip draws as necessary to keep up with the input queue. In practice the skipping should be hard to notice as it only occurs during rapid TUI movements anyway.
 - Improve rendering performance for large bodies and syntax highlighting
+- Fix incorrect decoration in folder tree visualization
 
 ## [1.8.0] - 2024-08-09
 

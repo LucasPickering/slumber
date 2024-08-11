@@ -157,6 +157,17 @@ impl crate::test_util::Factory for Recipe {
     }
 }
 
+/// Create recipe with a fixed ID
+#[cfg(any(test, feature = "test"))]
+impl crate::test_util::Factory<&str> for Recipe {
+    fn factory(id: &str) -> Self {
+        Self {
+            id: id.into(),
+            ..Self::factory(())
+        }
+    }
+}
+
 /// A definition of how to make a request. This is *not* called `Request` in
 /// order to distinguish it from a single instance of an HTTP request. And it's
 /// not called `RequestTemplate` because the word "template" has a specific

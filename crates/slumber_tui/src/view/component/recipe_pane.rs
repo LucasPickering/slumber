@@ -1,6 +1,7 @@
 mod authentication;
 mod body;
 mod recipe;
+mod table;
 
 use crate::{
     context::TuiContext,

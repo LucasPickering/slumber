@@ -1,30 +1,21 @@
 use crate::view::{
-    common::{
-        table::{Table, ToggleRow},
-        tabs::Tabs,
-        template_preview::TemplatePreview,
-    },
+    common::{tabs::Tabs, template_preview::TemplatePreview},
     component::recipe_pane::{
-        authentication::AuthenticationDisplay, body::RecipeBodyDisplay,
+        authentication::AuthenticationDisplay,
+        body::RecipeBodyDisplay,
+        table::{RecipeFieldTable, RecipeFieldTableProps},
     },
-    context::{Persisted, PersistedKey, PersistedLazy},
-    draw::{Draw, DrawMetadata, Generate},
+    context::PersistedLazy,
+    draw::{Draw, DrawMetadata},
     event::EventHandler,
-    state::select::SelectState,
     Component,
 };
 use derive_more::Display;
-use itertools::Itertools;
 use persisted::SingletonKey;
-use ratatui::{
-    layout::Layout,
-    prelude::Constraint,
-    widgets::{Paragraph, Row, TableState},
-    Frame,
-};
+use ratatui::{layout::Layout, prelude::Constraint, widgets::Paragraph, Frame};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
-    collection::{HasId, Method, ProfileId, Recipe, RecipeId},
+    collection::{Method, ProfileId, Recipe, RecipeId},
     http::BuildOptions,
 };
 use strum::{EnumCount, EnumIter};
@@ -37,8 +28,8 @@ pub struct RecipeDisplay {
     tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
     url: TemplatePreview,
     method: Method,
-    query: Component<PersistedTable<QueryRowKey, QueryRowToggleKey>>,
-    headers: Component<PersistedTable<HeaderRowKey, HeaderRowToggleKey>>,
+    query: Component<RecipeFieldTable<QueryRowKey, QueryRowToggleKey>>,
+    headers: Component<RecipeFieldTable<HeaderRowKey, HeaderRowToggleKey>>,
     body: Option<Component<RecipeBodyDisplay>>,
     authentication: Option<Component<AuthenticationDisplay>>,
 }
@@ -50,43 +41,6 @@ impl RecipeDisplay {
         recipe: &Recipe,
         selected_profile_id: Option<&ProfileId>,
     ) -> Self {
-        let query_items = recipe
-            .query
-            .iter()
-            .map(|(param, value)| {
-                RowState::new(
-                    param.clone(),
-                    TemplatePreview::new(
-                        value.clone(),
-                        selected_profile_id.cloned(),
-                        None,
-                    ),
-                    QueryRowToggleKey {
-                        recipe_id: recipe.id.clone(),
-                        param: param.clone(),
-                    },
-                )
-            })
-            .collect();
-        let header_items = recipe
-            .headers
-            .iter()
-            .map(|(header, value)| {
-                RowState::new(
-                    header.clone(),
-                    TemplatePreview::new(
-                        value.clone(),
-                        selected_profile_id.cloned(),
-                        None,
-                    ),
-                    HeaderRowToggleKey {
-                        recipe_id: recipe.id.clone(),
-                        header: header.clone(),
-                    },
-                )
-            })
-            .collect();
-
         Self {
             tabs: Default::default(),
             method: recipe.method,
@@ -95,27 +49,39 @@ impl RecipeDisplay {
                 selected_profile_id.cloned(),
                 None,
             ),
-            query: PersistedLazy::new(
+            query: RecipeFieldTable::new(
                 QueryRowKey(recipe.id.clone()),
-                SelectState::builder(query_items)
-                    .on_toggle(RowState::toggle)
-                    .build(),
+                selected_profile_id,
+                recipe.query.iter().map(|(param, value)| {
+                    (
+                        param.clone(),
+                        value.clone(),
+                        QueryRowToggleKey {
+                            recipe_id: recipe.id.clone(),
+                            param: param.clone(),
+                        },
+                    )
+                }),
             )
             .into(),
-            headers: PersistedLazy::new(
+            headers: RecipeFieldTable::new(
                 HeaderRowKey(recipe.id.clone()),
-                SelectState::builder(header_items)
-                    .on_toggle(RowState::toggle)
-                    .build(),
+                selected_profile_id,
+                recipe.headers.iter().map(|(header, value)| {
+                    (
+                        header.clone(),
+                        value.clone(),
+                        HeaderRowToggleKey {
+                            recipe_id: recipe.id.clone(),
+                            header: header.clone(),
+                        },
+                    )
+                }),
             )
             .into(),
             body: recipe.body.as_ref().map(|body| {
-                RecipeBodyDisplay::new(
-                    body,
-                    selected_profile_id.cloned(),
-                    &recipe.id,
-                )
-                .into()
+                RecipeBodyDisplay::new(body, selected_profile_id, &recipe.id)
+                    .into()
             }),
             // Map authentication type
             authentication: recipe.authentication.as_ref().map(
@@ -132,33 +98,20 @@ impl RecipeDisplay {
 
     /// Generate a [BuildOptions] instance based on current UI state
     pub fn build_options(&self) -> BuildOptions {
-        /// Convert select state into the set of disabled keys
-        fn to_disabled_indexes<K: PersistedKey<Value = bool>>(
-            select_state: &SelectState<RowState<K>, TableState>,
-        ) -> Vec<usize> {
-            select_state
-                .items()
-                .iter()
-                .enumerate()
-                .filter(|(_, row)| !*row.value.enabled)
-                .map(|(i, _)| i)
-                .collect()
-        }
-
         let disabled_form_fields = self
             .body
             .as_ref()
             .and_then(|body| match body.data() {
                 RecipeBodyDisplay::Raw { .. } => None,
                 RecipeBodyDisplay::Form(form) => {
-                    Some(to_disabled_indexes(form.data()))
+                    Some(form.data().to_disabled_indexes())
                 }
             })
             .unwrap_or_default();
 
         BuildOptions {
-            disabled_headers: to_disabled_indexes(self.headers.data()),
-            disabled_query_parameters: to_disabled_indexes(self.query.data()),
+            disabled_headers: self.headers.data().to_disabled_indexes(),
+            disabled_query_parameters: self.query.data().to_disabled_indexes(),
             disabled_form_fields,
         }
     }
@@ -217,15 +170,19 @@ impl Draw for RecipeDisplay {
             }
             Tab::Query => self.query.draw(
                 frame,
-                to_table(self.query.data(), ["", "Parameter", "Value"])
-                    .generate(),
+                RecipeFieldTableProps {
+                    key_header: "Parameter",
+                    value_header: "Value",
+                },
                 content_area,
                 true,
             ),
             Tab::Headers => self.headers.draw(
                 frame,
-                to_table(self.headers.data(), ["", "Header", "Value"])
-                    .generate(),
+                RecipeFieldTableProps {
+                    key_header: "Header",
+                    value_header: "Value",
+                },
                 content_area,
                 true,
             ),
@@ -258,14 +215,6 @@ enum Tab {
     Authentication,
 }
 
-/// A table of toggleable key:value rows. This has two persisted states:
-/// - Track key of selected row (one entry per table)
-/// - Track toggle state of each row (one entry per row)
-pub type PersistedTable<RowSelectKey, RowToggleKey> = PersistedLazy<
-    RowSelectKey,
-    SelectState<RowState<RowToggleKey>, TableState>,
->;
-
 /// Persistence key for selected query param, per recipe. Value is the query
 /// param name
 #[derive(Debug, Serialize, persisted::PersistedKey)]
@@ -291,78 +240,4 @@ struct HeaderRowKey(RecipeId);
 struct HeaderRowToggleKey {
     recipe_id: RecipeId,
     header: String,
-}
-
-/// One row in the query/header table. Generic param is the persistence key to
-/// use for toggle state
-#[derive(Debug)]
-pub struct RowState<K: PersistedKey<Value = bool>> {
-    key: String,
-    value: TemplatePreview,
-    enabled: Persisted<K>,
-}
-
-impl<K: PersistedKey<Value = bool>> RowState<K> {
-    pub fn new(key: String, value: TemplatePreview, persisted_key: K) -> Self {
-        Self {
-            key,
-            value,
-            enabled: Persisted::new(persisted_key, true),
-        }
-    }
-
-    pub fn toggle(&mut self) {
-        *self.enabled.borrow_mut() ^= true;
-    }
-}
-
-/// Needed for SelectState persistence
-impl<K: PersistedKey<Value = bool>> HasId for RowState<K> {
-    type Id = String;
-
-    fn id(&self) -> &Self::Id {
-        &self.key
-    }
-
-    fn set_id(&mut self, id: Self::Id) {
-        self.key = id;
-    }
-}
-
-/// Needed for SelectState persistence
-impl<K> PartialEq<RowState<K>> for String
-where
-    K: PersistedKey<Value = bool>,
-{
-    fn eq(&self, row_state: &RowState<K>) -> bool {
-        self == &row_state.key
-    }
-}
-
-/// Convert table select state into a renderable table
-pub fn to_table<'a, K: PersistedKey<Value = bool>>(
-    state: &'a SelectState<RowState<K>, TableState>,
-    header: [&'a str; 3],
-) -> Table<'a, 3, Row<'a>> {
-    Table {
-        rows: state
-            .items()
-            .iter()
-            .map(|item| {
-                let item = &item.value;
-                ToggleRow::new(
-                    [item.key.as_str().into(), item.value.generate()],
-                    *item.enabled,
-                )
-                .generate()
-            })
-            .collect_vec(),
-        header: Some(header),
-        column_widths: &[
-            Constraint::Min(3),
-            Constraint::Percentage(50),
-            Constraint::Percentage(50),
-        ],
-        ..Default::default()
-    }
 }

@@ -3,11 +3,9 @@ use crate::view::{
         template_preview::TemplatePreview,
         text_window::{TextWindow, TextWindowProps},
     },
-    component::recipe_pane::recipe::{to_table, PersistedTable, RowState},
-    context::PersistedLazy,
-    draw::{Draw, DrawMetadata, Generate},
+    component::recipe_pane::table::{RecipeFieldTable, RecipeFieldTableProps},
+    draw::{Draw, DrawMetadata},
     event::EventHandler,
-    state::select::SelectState,
     Component,
 };
 use ratatui::Frame;
@@ -25,21 +23,21 @@ pub enum RecipeBodyDisplay {
         preview: TemplatePreview,
         text_window: Component<TextWindow>,
     },
-    Form(Component<PersistedTable<FormRowKey, FormRowToggleKey>>),
+    Form(Component<RecipeFieldTable<FormRowKey, FormRowToggleKey>>),
 }
 
 impl RecipeBodyDisplay {
     /// Build a component to display the body, based on the body type
     pub fn new(
         body: &RecipeBody,
-        selected_profile_id: Option<ProfileId>,
+        selected_profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
     ) -> Self {
         match body {
             RecipeBody::Raw(body) => Self::Raw {
                 preview: TemplatePreview::new(
                     body.clone(),
-                    selected_profile_id,
+                    selected_profile_id.cloned(),
                     // Hypothetically we could grab the content type from the
                     // Content-Type header above and plumb it down here, but
                     // more effort than it's worth IMO. This gives users a
@@ -68,7 +66,7 @@ impl RecipeBodyDisplay {
                 Self::Raw {
                     preview: TemplatePreview::new(
                         template,
-                        selected_profile_id,
+                        selected_profile_id.cloned(),
                         Some(ContentType::Json),
                     ),
                     text_window: Component::default(),
@@ -76,30 +74,21 @@ impl RecipeBodyDisplay {
             }
             RecipeBody::FormUrlencoded(fields)
             | RecipeBody::FormMultipart(fields) => {
-                let form_items = fields
-                    .iter()
-                    .map(|(field, value)| {
-                        RowState::new(
+                let inner = RecipeFieldTable::new(
+                    FormRowKey(recipe_id.clone()),
+                    selected_profile_id,
+                    fields.iter().map(|(field, value)| {
+                        (
                             field.clone(),
-                            TemplatePreview::new(
-                                value.clone(),
-                                selected_profile_id.clone(),
-                                None,
-                            ),
+                            value.clone(),
                             FormRowToggleKey {
                                 recipe_id: recipe_id.clone(),
                                 field: field.clone(),
                             },
                         )
-                    })
-                    .collect();
-                let select = SelectState::builder(form_items)
-                    .on_toggle(RowState::toggle)
-                    .build();
-                Self::Form(
-                    PersistedLazy::new(FormRowKey(recipe_id.clone()), select)
-                        .into(),
-                )
+                    }),
+                );
+                Self::Form(inner.into())
             }
         }
     }
@@ -135,7 +124,10 @@ impl Draw for RecipeBodyDisplay {
             ),
             RecipeBodyDisplay::Form(form) => form.draw(
                 frame,
-                to_table(form.data(), ["", "Field", "Value"]).generate(),
+                RecipeFieldTableProps {
+                    key_header: "Field",
+                    value_header: "Value",
+                },
                 metadata.area(),
                 true,
             ),

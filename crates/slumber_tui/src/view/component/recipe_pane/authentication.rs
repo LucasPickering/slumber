@@ -57,7 +57,7 @@ impl Draw for AuthenticationDisplay {
             AuthenticationDisplay::Basic { username, password } => {
                 let table = Table {
                     rows: vec![
-                        ["Type".into(), "Bearer".into()],
+                        ["Type".into(), "Basic".into()],
                         ["Username".into(), username.generate()],
                         [
                             "Password".into(),

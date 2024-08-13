@@ -12,7 +12,7 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, Update},
         state::select::SelectState,
-        ModalPriority, ViewContext,
+        ViewContext,
     },
 };
 use itertools::Itertools;
@@ -226,23 +226,20 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
     /// Open a modal to create or edit the value's temporary override
     fn open_edit_modal(&self) {
         let index = self.index;
-        ViewContext::open_modal(
-            TextBoxModal::new(
-                format!("Edit value for {}", self.key),
-                TextBox::default()
-                    // Edit as a raw template
-                    .default_value(self.value.display().into_owned())
-                    .validator(|value| Template::from_str(value).is_ok()),
-                move |value| {
-                    // Defer the state update into an event, so it can get &mut
-                    ViewContext::push_event(Event::new_local(SaveOverride {
-                        row_index: index,
-                        value,
-                    }))
-                },
-            ),
-            ModalPriority::Low,
-        );
+        ViewContext::open_modal(TextBoxModal::new(
+            format!("Edit value for {}", self.key),
+            TextBox::default()
+                // Edit as a raw template
+                .default_value(self.value.display().into_owned())
+                .validator(|value| Template::from_str(value).is_ok()),
+            move |value| {
+                // Defer the state update into an event, so it can get &mut
+                ViewContext::push_event(Event::new_local(SaveOverride {
+                    row_index: index,
+                    value,
+                }))
+            },
+        ));
     }
 
     /// Override the value template and re-render the preview

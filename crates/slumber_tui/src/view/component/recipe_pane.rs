@@ -12,7 +12,7 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Event, EventHandler, Update},
         state::StateCell,
-        Component, ModalPriority, ViewContext,
+        Component, ViewContext,
     },
 };
 use derive_more::Display;
@@ -72,15 +72,14 @@ impl EventHandler for RecipePane {
                 }
                 Action::OpenActions => {
                     let state = self.recipe_state.get_mut();
-                    ViewContext::open_modal(
-                        ActionsModal::new(RecipeMenuAction::disabled_actions(
+                    ViewContext::open_modal(ActionsModal::new(
+                        RecipeMenuAction::disabled_actions(
                             state.is_some(),
                             state
                                 .and_then(Option::as_mut)
                                 .is_some_and(|state| state.data().has_body()),
-                        )),
-                        ModalPriority::Low,
-                    )
+                        ),
+                    ))
                 }
                 _ => return Update::Propagate(event),
             }

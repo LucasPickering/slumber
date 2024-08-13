@@ -7,7 +7,7 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, Update},
         state::select::SelectState,
-        Component, ModalPriority, ViewContext,
+        Component, ViewContext,
     },
 };
 use derive_more::{Deref, DerefMut};
@@ -160,13 +160,12 @@ impl EventHandler for RecipeListPane {
                             .is_some()
                     })
                     .unwrap_or(false);
-                ViewContext::open_modal(
-                    ActionsModal::new(RecipeMenuAction::disabled_actions(
+                ViewContext::open_modal(ActionsModal::new(
+                    RecipeMenuAction::disabled_actions(
                         recipe.is_some(),
                         has_body,
-                    )),
-                    ModalPriority::Low,
-                )
+                    ),
+                ))
             }
             _ => return Update::Propagate(event),
         }

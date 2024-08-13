@@ -74,7 +74,9 @@ struct ResponseQueryPersistedKey(RecipeId);
 impl EventHandler for ResponseBodyView {
     fn update(&mut self, event: Event) -> Update {
         if let Some(Action::OpenActions) = event.action() {
-            ViewContext::open_modal_default::<ActionsModal<BodyMenuAction>>();
+            ViewContext::open_modal::<ActionsModal<BodyMenuAction>>(
+                Default::default(),
+            );
         } else if let Some(action) = event.local::<BodyMenuAction>() {
             match action {
                 BodyMenuAction::EditCollection => {

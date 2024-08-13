@@ -107,15 +107,8 @@ impl View {
 
     /// Queue an event to open a new modal. The input can be anything that
     /// converts to modal content
-    pub fn open_modal(
-        &mut self,
-        modal: impl IntoModal + 'static,
-        priority: ModalPriority,
-    ) {
-        ViewContext::push_event(Event::OpenModal {
-            modal: Box::new(modal.into_modal()),
-            priority,
-        });
+    pub fn open_modal(&mut self, modal: impl IntoModal + 'static) {
+        ViewContext::push_event(Event::OpenModal(Box::new(modal.into_modal())));
     }
 
     /// Queue an event to send an informational notification to the user

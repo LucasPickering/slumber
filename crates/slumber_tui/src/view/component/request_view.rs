@@ -10,7 +10,7 @@ use crate::{
         event::{Event, EventHandler, Update},
         state::StateCell,
         util::highlight,
-        Component, ModalPriority, ViewContext,
+        Component, ViewContext,
     },
 };
 use derive_more::Display;
@@ -74,10 +74,7 @@ impl EventHandler for RequestView {
             } else {
                 &[MenuAction::CopyBody]
             };
-            ViewContext::open_modal(
-                ActionsModal::new(disabled),
-                ModalPriority::Low,
-            );
+            ViewContext::open_modal(ActionsModal::new(disabled));
         } else if let Some(action) = event.local::<MenuAction>() {
             match action {
                 MenuAction::EditCollection => {

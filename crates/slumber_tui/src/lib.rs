@@ -21,7 +21,7 @@ use crate::{
     util::{
         get_editor_command, save_file, signals, Replaceable, ResultReported,
     },
-    view::{ModalPriority, PreviewPrompter, RequestState, View},
+    view::{PreviewPrompter, RequestState, View},
 };
 use anyhow::{anyhow, Context};
 use chrono::Utc;
@@ -187,7 +187,7 @@ impl Tui {
                 trace!(?message, "Handling message");
                 // If an error occurs, store it so we can show the user
                 if let Err(error) = self.handle_message(message) {
-                    self.view.open_modal(error, ModalPriority::High);
+                    self.view.open_modal(error);
                 }
 
                 // Skip draws if we have more messages to process. This prevents
@@ -249,9 +249,7 @@ impl Tui {
                 self.spawn(save_file(self.messages_tx(), default_path, data));
             }
 
-            Message::Error { error } => {
-                self.view.open_modal(error, ModalPriority::High)
-            }
+            Message::Error { error } => self.view.open_modal(error),
 
             // Manage HTTP life cycle
             Message::HttpBeginRequest(request_config) => {
@@ -284,10 +282,10 @@ impl Tui {
 
             Message::Notify(message) => self.view.notify(message),
             Message::PromptStart(prompt) => {
-                self.view.open_modal(prompt, ModalPriority::Low);
+                self.view.open_modal(prompt);
             }
             Message::ConfirmStart(confirm) => {
-                self.view.open_modal(confirm, ModalPriority::Low);
+                self.view.open_modal(confirm);
             }
 
             Message::TemplatePreview {

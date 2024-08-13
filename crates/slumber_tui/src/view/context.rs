@@ -3,7 +3,6 @@ use crate::{
     view::{
         common::modal::Modal,
         event::{Event, EventQueue},
-        ModalPriority,
     },
 };
 use persisted::PersistedStore;
@@ -107,16 +106,8 @@ impl ViewContext {
     }
 
     /// Open a modal
-    pub fn open_modal(modal: impl Modal + 'static, priority: ModalPriority) {
-        Self::push_event(Event::OpenModal {
-            modal: Box::new(modal),
-            priority,
-        });
-    }
-
-    /// Open a modal that implements `Default`, with low priority
-    pub fn open_modal_default<T: Modal + Default + 'static>() {
-        Self::open_modal(T::default(), ModalPriority::Low);
+    pub fn open_modal<M: 'static + Modal>(modal: M) {
+        Self::push_event(Event::OpenModal(Box::new(modal)));
     }
 
     /// Get a clone of the async message sender. Generally you should use

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Edit recipe values (query params, headers, etc.) in the TUI to provide one-off values
+  - Press `e` on any value you want to edit (you can [customize the key](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html))
+
 ## [1.8.1] - 2024-08-11
 
 This release is focused on improving rendering performance. The TUI should generally feel more polished and responsive when working with large bodies, and CPU usage will be much lower.

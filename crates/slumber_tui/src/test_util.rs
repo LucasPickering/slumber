@@ -126,7 +126,7 @@ macro_rules! assert_events {
             $(
                 let Some(event) = events.get(len) else {
                     panic!(
-                        "Expected event {expected} but queue is empty",
+                        "Expected event {expected} but reached end of queue",
                         expected = stringify!($pattern),
                     );
                 };

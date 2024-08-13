@@ -46,6 +46,14 @@ impl InputEngine {
         self.bindings.get(&action)
     }
 
+    /// Get the binding associated with a particular action as a string. If the
+    /// action is unbound, use a placeholder string instead
+    pub fn binding_display(&self, action: Action) -> String {
+        self.binding(action)
+            .map(InputBinding::to_string)
+            .unwrap_or_else(|| "<unbound>".to_owned())
+    }
+
     /// Append a hotkey hint to a label. If the given action is bound, adding
     /// a hint to the end of the given label. If unbound, return the label
     /// alone.
@@ -165,6 +173,7 @@ impl Default for InputEngine {
                 Action::Submit => KeyCode::Enter.into(),
                 Action::Toggle => KeyCode::Char(' ').into(),
                 Action::Cancel => KeyCode::Esc.into(),
+                Action::Edit => KeyCode::Char('e').into(),
                 Action::SelectProfileList => KeyCode::Char('p').into(),
                 Action::SelectRecipeList => KeyCode::Char('l').into(),
                 Action::SelectRecipe => KeyCode::Char('c').into(),

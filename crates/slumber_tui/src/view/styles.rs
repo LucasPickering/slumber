@@ -104,6 +104,8 @@ pub struct TextStyle {
     pub primary: Style,
     /// Text that means BAD BUSINESS
     pub error: Style,
+    /// Subtle text to provide a hint to the user
+    pub hint: Style,
 }
 
 /// Styles for TextBox component
@@ -184,6 +186,7 @@ impl Styles {
                     .bg(theme.primary_color),
                 primary: Style::default().fg(theme.primary_color),
                 error: Style::default().bg(theme.error_color),
+                hint: Style::default().fg(Color::DarkGray),
             },
             text_box: TextBoxStyle {
                 text: Style::default().bg(Color::DarkGray),

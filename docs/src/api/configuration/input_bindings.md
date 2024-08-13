@@ -54,6 +54,7 @@ input_bindings:
 | `submit`              | `enter`                     |
 | `toggle`              | `space`                     |
 | `cancel`              | `esc`                       |
+| `edit`                | `e`                         |
 | `history`             | `h`                         |
 | `search`              | `/`                         |
 | `reload_collection`   | `f5`                        |

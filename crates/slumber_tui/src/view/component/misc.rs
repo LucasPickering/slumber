@@ -11,7 +11,7 @@ use crate::view::{
     draw::{Draw, DrawMetadata, Generate},
     event::{Event, EventHandler, Update},
     state::Notification,
-    Confirm, ViewContext,
+    Confirm, ModalPriority, ViewContext,
 };
 use derive_more::Display;
 use ratatui::{
@@ -28,6 +28,10 @@ use strum::{EnumCount, EnumIter};
 pub struct ErrorModal(anyhow::Error);
 
 impl Modal for ErrorModal {
+    fn priority(&self) -> ModalPriority {
+        ModalPriority::High // beep beep coming through
+    }
+
     fn title(&self) -> Line<'_> {
         "Error".into()
     }

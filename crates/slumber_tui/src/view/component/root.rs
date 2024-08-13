@@ -15,7 +15,7 @@ use crate::{
         state::{
             request_store::RequestStore, RequestState, RequestStateSummary,
         },
-        Component, ModalPriority, ViewContext,
+        Component, ViewContext,
     },
 };
 use derive_more::From;
@@ -114,10 +114,11 @@ impl Root {
                 .map(RequestStateSummary::from)
                 .collect();
 
-            ViewContext::open_modal(
-                History::new(recipe_id, requests, self.selected_request.0),
-                ModalPriority::Low,
-            );
+            ViewContext::open_modal(History::new(
+                recipe_id,
+                requests,
+                self.selected_request.0,
+            ));
         }
         Ok(())
     }

@@ -12,7 +12,7 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, Update},
         state::{select::SelectState, StateCell},
-        Component, ModalPriority, ViewContext,
+        Component, ViewContext,
     },
 };
 use anyhow::anyhow;
@@ -91,14 +91,11 @@ impl ProfilePane {
 
     /// Open the profile list modal
     pub fn open_modal(&self) {
-        ViewContext::open_modal(
-            ProfileListModal::new(
-                // See self.profiles doc comment for why we need to clone
-                self.profiles.items().cloned().collect(),
-                self.profiles.selected().map(|profile| &profile.id),
-            ),
-            ModalPriority::Low,
-        );
+        ViewContext::open_modal(ProfileListModal::new(
+            // See self.profiles doc comment for why we need to clone
+            self.profiles.items().cloned().collect(),
+            self.profiles.selected().map(|profile| &profile.id),
+        ));
     }
 }
 

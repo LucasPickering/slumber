@@ -26,6 +26,13 @@ use tracing::trace;
 /// with dynamic dispatch, and therefore all modals must take the same props
 /// (none).
 pub trait Modal: Debug + Draw<()> + EventHandler {
+    /// Should this modal go to the front or back of the queue? Typically this
+    /// is static for a particular implementation, but it's defined as a method
+    /// for object-safetyability
+    fn priority(&self) -> ModalPriority {
+        ModalPriority::Low
+    }
+
     /// Text at the top of the modal
     fn title(&self) -> Line<'_>;
 
@@ -74,9 +81,9 @@ impl ModalQueue {
 
     /// Add a new modal, to either the beginning or end of the queue, depending
     /// on priority
-    pub fn open(&mut self, modal: Box<dyn Modal>, priority: ModalPriority) {
-        trace!(?priority, "Opening modal");
-        match priority {
+    pub fn open(&mut self, modal: Box<dyn Modal>) {
+        trace!(?modal, "Opening modal");
+        match modal.priority() {
             ModalPriority::Low => {
                 self.queue.push_back(modal.into());
             }
@@ -122,7 +129,7 @@ impl EventHandler for ModalQueue {
             } if self.is_open() => {}
 
             // Open a new modal
-            Event::OpenModal { modal, priority } => self.open(modal, priority),
+            Event::OpenModal(modal) => self.open(modal),
 
             _ => return Update::Propagate(event),
         }

@@ -2,7 +2,7 @@
 //! events (e.g. HTTP responses)
 
 use crate::view::{
-    common::modal::{Modal, ModalPriority},
+    common::modal::Modal,
     state::{Notification, RequestState},
     Component,
 };
@@ -112,11 +112,7 @@ pub enum Event {
     HttpSetState(RequestState),
 
     /// Show a modal to the user
-    OpenModal {
-        #[debug(skip)]
-        modal: Box<dyn Modal>,
-        priority: ModalPriority,
-    },
+    OpenModal(Box<dyn Modal>),
     /// Close the current modal. This is useful for the contents of the modal
     /// to implement custom close triggers.
     CloseModal,

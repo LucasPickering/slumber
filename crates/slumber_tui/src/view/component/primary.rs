@@ -291,11 +291,12 @@ impl EventHandler for PrimaryView {
                     }
                 }
                 Action::OpenActions => {
-                    ViewContext::open_modal_default::<ActionsModal<MenuAction>>(
+                    ViewContext::open_modal::<ActionsModal<MenuAction>>(
+                        Default::default(),
                     );
                 }
                 Action::OpenHelp => {
-                    ViewContext::open_modal_default::<HelpModal>();
+                    ViewContext::open_modal::<HelpModal>(Default::default());
                 }
 
                 // Pane hotkeys

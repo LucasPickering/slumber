@@ -340,7 +340,7 @@ fn call(f: &Option<impl Fn()>) {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, TestHarness},
+        test_util::{harness, terminal, TestHarness, TestTerminal},
         view::test_util::TestComponent,
     };
     use ratatui::text::Span;
@@ -394,12 +394,15 @@ mod tests {
 
     /// Test the basic interaction loop on the text box
     #[rstest]
-    fn test_interaction(#[with(10, 1)] harness: TestHarness) {
+    fn test_interaction(
+        _harness: TestHarness,
+        #[with(10, 1)] terminal: TestTerminal,
+    ) {
         let click_count = Counter::default();
         let submit_count = Counter::default();
         let cancel_count = Counter::default();
         let mut component = TestComponent::new(
-            harness,
+            &terminal,
             TextBox::default()
                 .on_click(click_count.callback())
                 .on_submit(submit_count.callback())
@@ -409,12 +412,12 @@ mod tests {
 
         // Assert initial state/view
         assert_state(&component.data().state, "", 0);
-        component.assert_buffer_lines([vec![cursor(" "), text("         ")]]);
+        terminal.assert_buffer_lines([vec![cursor(" "), text("         ")]]);
 
         // Type some text
         component.send_text("hello!").assert_empty();
         assert_state(&component.data().state, "hello!", 6);
-        component.assert_buffer_lines([vec![
+        terminal.assert_buffer_lines([vec![
             text("hello!"),
             cursor(" "),
             text("   "),
@@ -447,8 +450,12 @@ mod tests {
     /// Test text navigation and deleting. [TextState] has its own tests so
     /// we're mostly just testing that keys are mapped correctly
     #[rstest]
-    fn test_navigation(#[with(10, 1)] harness: TestHarness) {
-        let mut component = TestComponent::new(harness, TextBox::default(), ());
+    fn test_navigation(
+        _harness: TestHarness,
+        #[with(10, 1)] terminal: TestTerminal,
+    ) {
+        let mut component =
+            TestComponent::new(&terminal, TextBox::default(), ());
 
         // Type some text
         component.send_text("hello!").assert_empty();
@@ -475,27 +482,36 @@ mod tests {
     }
 
     #[rstest]
-    fn test_sensitive(#[with(6, 1)] harness: TestHarness) {
-        let mut component =
-            TestComponent::new(harness, TextBox::default().sensitive(true), ());
+    fn test_sensitive(
+        _harness: TestHarness,
+        #[with(6, 1)] terminal: TestTerminal,
+    ) {
+        let mut component = TestComponent::new(
+            &terminal,
+            TextBox::default().sensitive(true),
+            (),
+        );
 
         component.send_text("hello").assert_empty();
 
         assert_state(&component.data().state, "hello", 5);
-        component.assert_buffer_lines([vec![text("•••••"), cursor(" ")]]);
+        terminal.assert_buffer_lines([vec![text("•••••"), cursor(" ")]]);
     }
 
     #[rstest]
-    fn test_placeholder(#[with(6, 1)] harness: TestHarness) {
+    fn test_placeholder(
+        _harness: TestHarness,
+        #[with(6, 1)] terminal: TestTerminal,
+    ) {
         let component = TestComponent::new(
-            harness,
+            &terminal,
             TextBox::default().placeholder("hello"),
             (),
         );
 
         assert_state(&component.data().state, "", 0);
         let styles = &TuiContext::get().styles.text_box;
-        component.assert_buffer_lines([vec![
+        terminal.assert_buffer_lines([vec![
             cursor("h"),
             Span::styled("ello", styles.text.patch(styles.placeholder)),
             text(" "),
@@ -503,16 +519,19 @@ mod tests {
     }
 
     #[rstest]
-    fn test_validator(#[with(6, 1)] harness: TestHarness) {
+    fn test_validator(
+        _harness: TestHarness,
+        #[with(6, 1)] terminal: TestTerminal,
+    ) {
         let mut component = TestComponent::new(
-            harness,
+            &terminal,
             TextBox::default().validator(|text| text.len() <= 2),
             (),
         );
 
         // Valid text, everything is normal
         component.send_text("he").assert_empty();
-        component.assert_buffer_lines([vec![
+        terminal.assert_buffer_lines([vec![
             text("he"),
             cursor(" "),
             text("   "),
@@ -520,7 +539,7 @@ mod tests {
 
         // Invalid text, styling changes
         component.send_text("llo").assert_empty();
-        component.assert_buffer_lines([vec![
+        terminal.assert_buffer_lines([vec![
             Span::styled("hello", TuiContext::get().styles.text_box.invalid),
             cursor(" "),
         ]]);

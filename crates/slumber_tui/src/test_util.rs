@@ -5,16 +5,17 @@ use crate::{
     message::{Message, MessageSender},
     view::ViewContext,
 };
-use ratatui::{backend::TestBackend, Terminal};
+use ratatui::{backend::TestBackend, text::Line, Frame, Terminal};
 use rstest::fixture;
 use slumber_core::{
     collection::Collection, db::CollectionDatabase, test_util::Factory,
 };
+use std::{cell::RefCell, sync::Arc};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 /// Get a test harness, with a clean terminal etc. See [TestHarness].
 #[fixture]
-pub fn harness(terminal_width: u16, terminal_height: u16) -> TestHarness {
+pub fn harness() -> TestHarness {
     TuiContext::init_test();
     let (messages_tx, messages_rx) = mpsc::unbounded_channel();
     let messages_tx: MessageSender = messages_tx.into();
@@ -25,27 +26,12 @@ pub fn harness(terminal_width: u16, terminal_height: u16) -> TestHarness {
         database.clone(),
         messages_tx.clone(),
     );
-    let backend = TestBackend::new(terminal_width, terminal_height);
-    let terminal = Terminal::new(backend).unwrap();
     TestHarness {
         collection,
         database,
         messages_tx,
         messages_rx,
-        terminal,
     }
-}
-
-/// Terminal width in chars, for injection to [harness] fixture
-#[fixture]
-fn terminal_width() -> u16 {
-    40
-}
-
-/// Terminal height in chars, for injection to [harness] fixture
-#[fixture]
-fn terminal_height() -> u16 {
-    20
 }
 
 /// A container for all singleton types needed for tests. Most TUI tests will
@@ -55,7 +41,6 @@ pub struct TestHarness {
     // These are public because we don't care about external mutation
     pub collection: Arc<Collection>,
     pub database: CollectionDatabase,
-    pub terminal: Terminal<TestBackend>,
     messages_tx: MessageSender,
     messages_rx: UnboundedReceiver<Message>,
 }
@@ -79,6 +64,52 @@ impl TestHarness {
     /// Clear all messages in the queue
     pub fn clear_messages(&mut self) {
         while self.messages_rx.try_recv().is_ok() {}
+    }
+}
+
+/// Create a mock terminal, which can be written to for tests
+#[fixture]
+pub fn terminal(width: u16, height: u16) -> TestTerminal {
+    TestTerminal::new(width, height)
+}
+
+/// Terminal width in chars, for injection to [terminal] fixture
+#[fixture]
+fn width() -> u16 {
+    40
+}
+
+/// Terminal height in chars, for injection to [terminal] fixture
+#[fixture]
+fn height() -> u16 {
+    20
+}
+
+/// Wrapper around ratatui's terminal, to allow interior mutability. This is
+/// needed so we can test multiple components in parallel, with each component
+/// holding an immutable reference to the terminal. Mutable access is
+/// encapulated within [Self::draw], so overlapping mutations is impossible.
+#[derive(Clone)]
+pub struct TestTerminal(RefCell<Terminal<TestBackend>>);
+
+impl TestTerminal {
+    fn new(width: u16, height: u16) -> Self {
+        let backend = TestBackend::new(width, height);
+        let terminal = Terminal::new(backend).unwrap();
+        Self(terminal.into())
+    }
+
+    /// Alias for
+    /// [TestBackend::assert_buffer_lines](ratatui::backend::TestBackend::assert_buffer_lines)
+    pub fn assert_buffer_lines<'a>(
+        &self,
+        expected: impl IntoIterator<Item = impl Into<Line<'a>>>,
+    ) {
+        self.0.borrow().backend().assert_buffer_lines(expected)
+    }
+
+    pub fn draw(&self, f: impl FnOnce(&mut Frame)) {
+        self.0.borrow_mut().draw(f).unwrap();
     }
 }
 
@@ -110,4 +141,3 @@ macro_rules! assert_events {
     }
 }
 pub(crate) use assert_events;
-use std::sync::Arc;

@@ -179,13 +179,15 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{assert_events, harness, TestHarness};
+    use crate::test_util::{
+        assert_events, harness, terminal, TestHarness, TestTerminal,
+    };
     use rstest::rstest;
     use slumber_core::{collection::Collection, test_util::Factory};
 
     /// Test view handling and drawing during initial view setup
     #[rstest]
-    fn test_initial_draw(mut harness: TestHarness) {
+    fn test_initial_draw(harness: TestHarness, terminal: TestTerminal) {
         let collection = Collection::factory(());
         let collection_file = CollectionFile::factory(collection);
         let mut view = View::new(
@@ -210,7 +212,7 @@ mod tests {
         );
 
         // Nothing new
-        view.draw(&mut harness.terminal.get_frame());
+        terminal.draw(|frame| view.draw(frame));
         assert_events!(
             Event::HttpSelectRequest(None),
             Event::Local(_),

@@ -237,7 +237,7 @@ mod tests {
     use super::*;
     use crate::{
         context::TuiContext,
-        test_util::{harness, TestHarness},
+        test_util::{harness, terminal, TestHarness, TestTerminal},
         view::{context::PersistedLazy, test_util::TestComponent},
     };
     use crossterm::event::KeyCode;
@@ -269,10 +269,13 @@ mod tests {
 
     /// Render an unparsed body with no query box
     #[rstest]
-    fn test_unparsed(#[with(30, 2)] harness: TestHarness) {
+    fn test_unparsed(
+        _harness: TestHarness,
+        #[with(30, 2)] terminal: TestTerminal,
+    ) {
         let body = ResponseBody::new(TEXT.into());
         let component = TestComponent::new(
-            harness,
+            &terminal,
             QueryableBody::new(),
             QueryableBodyProps {
                 content_type: None,
@@ -291,7 +294,7 @@ mod tests {
         assert_eq!(data.query, None);
 
         // Assert view
-        component.assert_buffer_lines([
+        terminal.assert_buffer_lines([
             vec![gutter("1"), " {\"greeting\":\"hello\"}    ".into()],
             vec![gutter(" "), "                             ".into()],
         ]);
@@ -300,11 +303,12 @@ mod tests {
     /// Render a parsed body with query text box
     #[rstest]
     fn test_parsed(
-        #[with(32, 5)] harness: TestHarness,
+        _harness: TestHarness,
+        #[with(32, 5)] terminal: TestTerminal,
         json_response: ResponseRecord,
     ) {
         let mut component = TestComponent::new(
-            harness,
+            &terminal,
             QueryableBody::new(),
             QueryableBodyProps {
                 content_type: None,
@@ -321,7 +325,7 @@ mod tests {
             Some("{\n  \"greeting\": \"hello\"\n}")
         );
         let styles = &TuiContext::get().styles.text_box;
-        component.assert_buffer_lines([
+        terminal.assert_buffer_lines([
             vec![gutter("1"), " {                        ".into()],
             vec![gutter("2"), "   \"greeting\": \"hello\"".into()],
             vec![gutter("3"), " }                        ".into()],
@@ -351,7 +355,7 @@ mod tests {
         assert_eq!(data.query_text_box.data().text(), "$.greeting");
 
         // Check the view again
-        component.assert_buffer_lines([
+        terminal.assert_buffer_lines([
             vec![gutter("1"), " [                        ".into()],
             vec![gutter("2"), "   \"hello\"              ".into()],
             vec![gutter("3"), " ]                        ".into()],
@@ -367,7 +371,8 @@ mod tests {
     /// the DB. This tests the `PersistedContainer` implementation
     #[rstest]
     fn test_persistence(
-        #[with(30, 4)] harness: TestHarness,
+        _harness: TestHarness,
+        #[with(30, 4)] terminal: TestTerminal,
         json_response: ResponseRecord,
     ) {
         #[derive(Debug, Serialize, PersistedKey)]
@@ -381,7 +386,7 @@ mod tests {
         // in the box, so we just need to make sure state is initialized
         // correctly here
         let component = TestComponent::new(
-            harness,
+            &terminal,
             PersistedLazy::new(Key, QueryableBody::new()),
             QueryableBodyProps {
                 content_type: None,

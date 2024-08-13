@@ -437,7 +437,7 @@ where
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, TestHarness},
+        test_util::{harness, terminal, TestHarness, TestTerminal},
         view::{context::PersistedLazy, test_util::TestComponent, ViewContext},
     };
     use crossterm::event::KeyCode;
@@ -451,11 +451,12 @@ mod tests {
     /// Test going up and down in the list
     #[rstest]
     fn test_navigation(
-        harness: TestHarness,
+        _harness: TestHarness,
+        terminal: TestTerminal,
         items: (Vec<&'static str>, List<'static>),
     ) {
         let select = SelectState::builder(items.0).build();
-        let mut component = TestComponent::new(harness, select, items.1);
+        let mut component = TestComponent::new(&terminal, select, items.1);
         assert_eq!(component.data().selected(), Some(&"a"));
         component.send_key(KeyCode::Down).assert_empty();
         assert_eq!(component.data().selected(), Some(&"b"));
@@ -467,7 +468,8 @@ mod tests {
     /// Test on_select callback
     #[rstest]
     fn test_on_select(
-        harness: TestHarness,
+        _harness: TestHarness,
+        terminal: TestTerminal,
         items: (Vec<&'static str>, List<'static>),
     ) {
         // Track calls to the callback
@@ -477,7 +479,7 @@ mod tests {
             .disabled_items(&["c"])
             .on_select(move |item| tx.send(*item).unwrap())
             .build();
-        let mut component = TestComponent::new(harness, select, items.1);
+        let mut component = TestComponent::new(&terminal, select, items.1);
 
         assert_eq!(component.data().selected(), Some(&"a"));
         assert_eq!(rx.recv().unwrap(), "a");
@@ -492,7 +494,8 @@ mod tests {
     /// Test on_submit callback
     #[rstest]
     fn test_on_submit(
-        harness: TestHarness,
+        _harness: TestHarness,
+        terminal: TestTerminal,
         items: (Vec<&'static str>, List<'static>),
     ) {
         // Track calls to the callback
@@ -502,7 +505,7 @@ mod tests {
             .disabled_items(&["c"])
             .on_submit(move |item| tx.send(*item).unwrap())
             .build();
-        let mut component = TestComponent::new(harness, select, items.1);
+        let mut component = TestComponent::new(&terminal, select, items.1);
 
         component.send_key(KeyCode::Down).assert_empty();
         component.send_key(KeyCode::Enter).assert_empty();

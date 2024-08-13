@@ -306,7 +306,7 @@ impl Drop for DrawGuard {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, TestHarness},
+        test_util::{harness, terminal, TestHarness, TestTerminal},
         view::event::Update,
     };
     use crossterm::event::{
@@ -449,7 +449,8 @@ mod tests {
     /// change.
     #[rstest]
     fn test_render_component_tree(
-        mut harness: TestHarness,
+        _harness: TestHarness,
+        terminal: TestTerminal,
         mut component: Component<Branch>,
     ) {
         // One level of nesting
@@ -506,17 +507,18 @@ mod tests {
         assert_events(&mut component, [0, 0, 0, 0]);
 
         // Visible components get events
-        let mut frame = harness.terminal.get_frame();
-        component.draw(
-            &mut frame,
-            Props {
-                a: Mode::Focused,
-                b: Mode::Visible,
-                c: Mode::Hidden,
-            },
-            area,
-            true,
-        );
+        terminal.draw(|frame| {
+            component.draw(
+                frame,
+                Props {
+                    a: Mode::Focused,
+                    b: Mode::Visible,
+                    c: Mode::Hidden,
+                },
+                area,
+                true,
+            );
+        });
         // Root - inherited mouse event from c, which is hidden
         // a - keyboard + mouse
         // b - mouse
@@ -524,16 +526,18 @@ mod tests {
         assert_events(&mut component, [1, 2, 1, 0]);
 
         // Switch things up, make sure new state is reflected
-        component.draw(
-            &mut frame,
-            Props {
-                a: Mode::Visible,
-                b: Mode::Hidden,
-                c: Mode::Focused,
-            },
-            area,
-            true,
-        );
+        terminal.draw(|frame| {
+            component.draw(
+                frame,
+                Props {
+                    a: Mode::Visible,
+                    b: Mode::Hidden,
+                    c: Mode::Focused,
+                },
+                area,
+                true,
+            );
+        });
         // Root - inherited mouse event from b, which is hidden
         // a - mouse
         // b - hidden
@@ -541,16 +545,18 @@ mod tests {
         assert_events(&mut component, [1, 1, 0, 2]);
 
         // Hide all children, root should eat everything
-        component.draw(
-            &mut frame,
-            Props {
-                a: Mode::Hidden,
-                b: Mode::Hidden,
-                c: Mode::Hidden,
-            },
-            area,
-            true,
-        );
+        terminal.draw(|frame| {
+            component.draw(
+                frame,
+                Props {
+                    a: Mode::Hidden,
+                    b: Mode::Hidden,
+                    c: Mode::Hidden,
+                },
+                area,
+                true,
+            );
+        });
         assert_events(&mut component, [4, 0, 0, 0]);
     }
 
@@ -559,14 +565,16 @@ mod tests {
     /// happen in the wild, but it's good to have it be well-defined.
     #[rstest]
     fn test_parent_hidden(
-        mut harness: TestHarness,
+        _harness: TestHarness,
+        terminal: TestTerminal,
         mut component: Component<Branch>,
     ) {
-        let mut frame = harness.terminal.get_frame();
-        let area = frame.area();
-        component.data().a.draw(&mut frame, (), area, true);
-        component.data().b.draw(&mut frame, (), area, true);
-        component.data().c.draw(&mut frame, (), area, true);
+        terminal.draw(|frame| {
+            let area = frame.area();
+            component.data().a.draw(frame, (), area, true);
+            component.data().b.draw(frame, (), area, true);
+            component.data().c.draw(frame, (), area, true);
+        });
         // Event should *not* be handled because the parent is hidden
         assert_matches!(
             component.update_all(keyboard_event()),
@@ -578,22 +586,25 @@ mod tests {
     /// *not* receive focus-only events.
     #[rstest]
     fn test_parent_unfocused(
-        mut harness: TestHarness,
+        _harness: TestHarness,
+        terminal: TestTerminal,
         mut component: Component<Branch>,
     ) {
         // We are visible but *not* in focus
-        let mut frame = harness.terminal.get_frame();
-        let area = frame.area();
-        component.draw(
-            &mut frame,
-            Props {
-                a: Mode::Focused,
-                b: Mode::Visible,
-                c: Mode::Visible,
-            },
-            area,
-            false,
-        );
+        terminal.draw(|frame| {
+            let area = frame.area();
+            component.draw(
+                frame,
+                Props {
+                    a: Mode::Focused,
+                    b: Mode::Visible,
+                    c: Mode::Visible,
+                },
+                area,
+                false,
+            );
+        });
+
         // Event should *not* be handled because the parent is unfocused
         assert_matches!(
             component.update_all(keyboard_event()),

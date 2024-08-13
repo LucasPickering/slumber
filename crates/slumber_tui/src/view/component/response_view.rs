@@ -191,7 +191,7 @@ impl<'a> Draw<ResponseHeadersViewProps<'a>> for ResponseHeadersView {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, TestHarness},
+        test_util::{harness, terminal, TestHarness, TestTerminal},
         view::test_util::TestComponent,
     };
     use indexmap::indexmap;
@@ -225,7 +225,8 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_copy_body(
-        harness: TestHarness,
+        mut harness: TestHarness,
+        terminal: TestTerminal,
         #[case] response: ResponseRecord,
         #[case] expected_body: &str,
     ) {
@@ -235,7 +236,7 @@ mod tests {
             ..Exchange::factory(())
         };
         let mut component = TestComponent::new(
-            harness,
+            &terminal,
             ResponseBodyView::default(),
             ResponseBodyViewProps {
                 request_id: exchange.id,
@@ -249,7 +250,7 @@ mod tests {
             .assert_empty();
 
         let body = assert_matches!(
-            component.harness_mut().pop_message_now(),
+            harness.pop_message_now(),
             Message::CopyText(body) => body,
         );
         assert_eq!(body, expected_body);
@@ -290,7 +291,8 @@ mod tests {
     )]
     #[tokio::test]
     async fn test_save_file(
-        harness: TestHarness,
+        mut harness: TestHarness,
+        terminal: TestTerminal,
         #[case] response: ResponseRecord,
         #[case] expected_body: &[u8],
         #[case] expected_path: &str,
@@ -301,7 +303,7 @@ mod tests {
             ..Exchange::factory(())
         };
         let mut component = TestComponent::new(
-            harness,
+            &terminal,
             ResponseBodyView::default(),
             ResponseBodyViewProps {
                 request_id: exchange.id,
@@ -315,7 +317,7 @@ mod tests {
             .assert_empty();
 
         let (data, default_path) = assert_matches!(
-            component.harness_mut().pop_message_now(),
+            harness.pop_message_now(),
             Message::SaveFile { data, default_path } => (data, default_path),
         );
         assert_eq!(data, expected_body);

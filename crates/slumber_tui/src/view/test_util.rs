@@ -2,7 +2,7 @@
 
 use crate::{
     context::TuiContext,
-    test_util::TestHarness,
+    test_util::TestTerminal,
     view::{
         component::Component,
         context::ViewContext,
@@ -14,14 +14,14 @@ use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
 };
-use ratatui::text::Line;
 
 /// A wrapper around a component that makes it easy to test. This provides lots
 /// of methods for sending events to the component. The goal is to make
 /// realistic testing the easiest option, so component tests aren't contrived or
 /// verbose.
-pub struct TestComponent<T, Props> {
-    harness: TestHarness,
+pub struct TestComponent<'term, T, Props> {
+    /// Terminal to draw to
+    terminal: &'term TestTerminal,
     component: Component<T>,
     /// Whatever props were used for the most recent draw. We store these for
     /// convenience, because in most test cases we use the same props over and
@@ -32,7 +32,7 @@ pub struct TestComponent<T, Props> {
     last_props: Props,
 }
 
-impl<Props, T> TestComponent<T, Props>
+impl<'term, Props, T> TestComponent<'term, T, Props>
 where
     Props: Clone,
     T: Draw<Props> + EventHandler,
@@ -43,13 +43,16 @@ where
     /// reason, this constructor takes care of all the things you would
     /// immediately have to do anyway.
     ///
-    /// This takes a test harness so it can access the terminal. Most tests only
-    /// need to interact with a single component, so it's fine to pass ownership
-    /// of the harness.
-    pub fn new(harness: TestHarness, data: T, initial_props: Props) -> Self {
+    /// This takes a a reference to the terminal so it can draw without having
+    /// to plumb the terminal around to every draw call.
+    pub fn new(
+        terminal: &'term TestTerminal,
+        data: T,
+        initial_props: Props,
+    ) -> Self {
         let component: Component<T> = data.into();
         let mut slf = Self {
-            harness,
+            terminal,
             component,
             last_props: initial_props,
         };
@@ -62,26 +65,9 @@ where
         slf
     }
 
-    /// Get a mutable reference to the test harness
-    pub fn harness_mut(&mut self) -> &mut TestHarness {
-        &mut self.harness
-    }
-
     /// Get a reference to the wrapped component's inner data
     pub fn data(&self) -> &T {
         self.component.data()
-    }
-
-    /// Alias for
-    /// [TestBackend::assert_buffer_lines](ratatui::backend::TestBackend::assert_buffer_lines)
-    pub fn assert_buffer_lines<'a>(
-        &self,
-        expected: impl IntoIterator<Item = impl Into<Line<'a>>>,
-    ) {
-        self.harness
-            .terminal
-            .backend()
-            .assert_buffer_lines(expected)
     }
 
     /// Draw this component onto the terminal, using the entire terminal frame
@@ -91,17 +77,14 @@ where
         if let Some(props) = props {
             self.last_props = props;
         }
-        self.harness
-            .terminal
-            .draw(|frame| {
-                self.component.draw(
-                    frame,
-                    self.last_props.clone(),
-                    frame.area(),
-                    true,
-                )
-            })
-            .unwrap();
+        self.terminal.draw(|frame| {
+            self.component.draw(
+                frame,
+                self.last_props.clone(),
+                frame.area(),
+                true,
+            )
+        });
     }
 
     /// Drain events from the event queue, and handle them one-by-one. Return

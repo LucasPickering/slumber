@@ -76,7 +76,7 @@ impl RecipeBodyDisplay {
             | RecipeBody::FormMultipart(fields) => {
                 let inner = RecipeFieldTable::new(
                     FormRowKey(recipe_id.clone()),
-                    selected_profile_id,
+                    selected_profile_id.cloned(),
                     fields.iter().map(|(field, value)| {
                         (
                             field.clone(),

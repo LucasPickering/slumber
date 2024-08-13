@@ -37,9 +37,9 @@ impl Generate for HelpFooter {
 
         let text = actions
             .into_iter()
-            .filter_map(|action| {
-                let binding = tui_context.input_engine.binding(action)?;
-                Some(format!("{binding} {action}"))
+            .map(|action| {
+                let binding = tui_context.input_engine.binding_display(action);
+                format!("{binding} {action}")
             })
             .join(" / ");
 

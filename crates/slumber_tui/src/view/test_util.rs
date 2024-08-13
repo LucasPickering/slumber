@@ -4,9 +4,10 @@ use crate::{
     context::TuiContext,
     test_util::TestTerminal,
     view::{
+        common::modal::ModalQueue,
         component::Component,
         context::ViewContext,
-        draw::Draw,
+        draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
     },
 };
@@ -14,6 +15,7 @@ use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
 };
+use ratatui::Frame;
 
 /// A wrapper around a component that makes it easy to test. This provides lots
 /// of methods for sending events to the component. The goal is to make
@@ -217,5 +219,39 @@ impl PropagatedEvents {
             "Expected no propagated events, but got {:?}",
             self.0
         )
+    }
+}
+
+/// A wrapper component to pair a component with a modal queue. Useful when the
+/// component opens modals.
+pub struct WithModalQueue<T> {
+    inner: Component<T>,
+    modal_queue: Component<ModalQueue>,
+}
+
+impl<T> WithModalQueue<T> {
+    pub fn new(component: T) -> Self {
+        Self {
+            inner: component.into(),
+            modal_queue: ModalQueue::default().into(),
+        }
+    }
+
+    pub fn inner(&self) -> &T {
+        self.inner.data()
+    }
+}
+
+impl<T: EventHandler> EventHandler for WithModalQueue<T> {
+    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+        vec![self.modal_queue.as_child(), self.inner.as_child()]
+    }
+}
+
+impl<Props, T: Draw<Props>> Draw<Props> for WithModalQueue<T> {
+    fn draw(&self, frame: &mut Frame, props: Props, metadata: DrawMetadata) {
+        self.inner
+            .draw(frame, props, metadata.area(), metadata.has_focus());
+        self.modal_queue.draw(frame, (), metadata.area(), true);
     }
 }

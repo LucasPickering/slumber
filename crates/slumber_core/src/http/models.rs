@@ -9,6 +9,7 @@ use crate::{
         cereal,
         content_type::{ContentType, ResponseContent},
     },
+    template::Template,
     util::ResultTraced,
 };
 use anyhow::Context;
@@ -22,6 +23,7 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fmt::{Debug, Write},
     sync::{Arc, OnceLock},
 };
@@ -90,18 +92,59 @@ impl RequestSeed {
 ///
 /// These store *indexes* rather than keys because keys may not be necessarily
 /// unique (e.g. in the case of query params). Technically some could use keys
-/// and some could use indexes, but I chose consistency. I also chose `Vec` over
-/// `HashSet` because I expect these to be very small, so we don't need the
-/// overhead of hashing.
+/// and some could use indexes, but I chose consistency.
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct BuildOptions {
-    /// Which headers should be excluded?
-    pub disabled_headers: Vec<usize>,
-    /// Which query parameters should be excluded?
-    pub disabled_query_parameters: Vec<usize>,
-    /// For form bodies, which form fields should be excluded?
-    pub disabled_form_fields: Vec<usize>,
+    pub headers: BuildFieldOverrides,
+    pub query_parameters: BuildFieldOverrides,
+    pub form_fields: BuildFieldOverrides,
+}
+
+/// A collection of modifications made to a particular section of a recipe
+/// (query params, headers, etc.). See [BuildFieldOverride]
+#[derive(Clone, Debug, Default)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+pub struct BuildFieldOverrides {
+    overrides: HashMap<usize, BuildFieldOverride>,
+}
+
+impl BuildFieldOverrides {
+    /// Get the value to be used for a particular field, keyed by index. Return
+    /// `None` if the field should be dropped from the request, and use the
+    /// given default if no override is provided.
+    pub fn get<'a>(
+        &'a self,
+        index: usize,
+        default: &'a Template,
+    ) -> Option<&'a Template> {
+        match self.overrides.get(&index) {
+            Some(BuildFieldOverride::Omit) => None,
+            Some(BuildFieldOverride::Override(template)) => Some(template),
+            None => Some(default),
+        }
+    }
+}
+
+impl FromIterator<(usize, BuildFieldOverride)> for BuildFieldOverrides {
+    fn from_iter<T: IntoIterator<Item = (usize, BuildFieldOverride)>>(
+        iter: T,
+    ) -> Self {
+        Self {
+            overrides: HashMap::from_iter(iter),
+        }
+    }
+}
+
+/// Modifications made to a single field (query param, header, etc.) in a
+/// recipe
+#[derive(Clone, Debug)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+pub enum BuildFieldOverride {
+    /// Do not include this field in the recipe
+    Omit,
+    /// Replace the value for this field with a different template
+    Override(Template),
 }
 
 /// A request ready to be launched into through the stratosphere. This is

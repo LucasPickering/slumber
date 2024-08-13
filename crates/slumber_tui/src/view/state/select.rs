@@ -195,6 +195,11 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         self.items.iter()
     }
 
+    /// Get mutable references to all items in the list
+    pub fn items_mut(&mut self) -> &mut [SelectItem<Item>] {
+        &mut self.items
+    }
+
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }

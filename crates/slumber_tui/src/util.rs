@@ -6,8 +6,7 @@ use anyhow::{anyhow, Context};
 use derive_more::DerefMut;
 use futures::{future, FutureExt};
 use slumber_core::{
-    http::RequestError,
-    template::{ChainError, Prompt},
+    template::Prompt,
     util::{expand_home, ResultTraced},
 };
 use std::{
@@ -26,29 +25,20 @@ pub trait ResultReported<T, E>: Sized {
     fn reported(self, messages_tx: &MessageSender) -> Option<T>;
 }
 
-// This is deliberately *not* implemented for non-anyhow errors, because we only
-// want to trace errors that have full context attached
-impl<T> ResultReported<T, anyhow::Error> for anyhow::Result<T> {
+impl<T, E> ResultReported<T, E> for Result<T, E>
+where
+    E: Into<anyhow::Error>,
+{
     fn reported(self, messages_tx: &MessageSender) -> Option<T> {
         match self {
             Ok(value) => Some(value),
             Err(error) => {
-                messages_tx.send(Message::Error { error });
+                messages_tx.send(Message::Error {
+                    error: error.into(),
+                });
                 None
             }
         }
-    }
-}
-
-impl<T> ResultReported<T, RequestError> for Result<T, RequestError> {
-    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
-        self.map_err(anyhow::Error::from).reported(messages_tx)
-    }
-}
-
-impl<T> ResultReported<T, ChainError> for Result<T, ChainError> {
-    fn reported(self, messages_tx: &MessageSender) -> Option<T> {
-        self.map_err(anyhow::Error::from).reported(messages_tx)
     }
 }
 

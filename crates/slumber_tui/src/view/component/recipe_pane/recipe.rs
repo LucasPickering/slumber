@@ -1,19 +1,29 @@
-use crate::view::{
-    common::{tabs::Tabs, template_preview::TemplatePreview},
-    component::recipe_pane::{
-        authentication::AuthenticationDisplay,
-        body::RecipeBodyDisplay,
-        table::{RecipeFieldTable, RecipeFieldTableProps},
+use crate::{
+    context::TuiContext,
+    view::{
+        common::{tabs::Tabs, template_preview::TemplatePreview},
+        component::recipe_pane::{
+            authentication::AuthenticationDisplay,
+            body::RecipeBodyDisplay,
+            table::{RecipeFieldTable, RecipeFieldTableProps},
+        },
+        context::PersistedLazy,
+        draw::{Draw, DrawMetadata},
+        event::EventHandler,
+        Component,
     },
-    context::PersistedLazy,
-    draw::{Draw, DrawMetadata},
-    event::EventHandler,
-    Component,
 };
 use derive_more::Display;
 use persisted::SingletonKey;
-use ratatui::{layout::Layout, prelude::Constraint, widgets::Paragraph, Frame};
+use ratatui::{
+    layout::{Alignment, Layout},
+    prelude::Constraint,
+    text::Span,
+    widgets::Paragraph,
+    Frame,
+};
 use serde::{Deserialize, Serialize};
+use slumber_config::Action;
 use slumber_core::{
     collection::{Method, ProfileId, Recipe, RecipeId},
     http::BuildOptions,
@@ -51,7 +61,7 @@ impl RecipeDisplay {
             ),
             query: RecipeFieldTable::new(
                 QueryRowKey(recipe.id.clone()),
-                selected_profile_id,
+                selected_profile_id.cloned(),
                 recipe.query.iter().map(|(param, value)| {
                     (
                         param.clone(),
@@ -66,7 +76,7 @@ impl RecipeDisplay {
             .into(),
             headers: RecipeFieldTable::new(
                 HeaderRowKey(recipe.id.clone()),
-                selected_profile_id,
+                selected_profile_id.cloned(),
                 recipe.headers.iter().map(|(header, value)| {
                     (
                         header.clone(),
@@ -98,21 +108,21 @@ impl RecipeDisplay {
 
     /// Generate a [BuildOptions] instance based on current UI state
     pub fn build_options(&self) -> BuildOptions {
-        let disabled_form_fields = self
+        let form_fields = self
             .body
             .as_ref()
             .and_then(|body| match body.data() {
                 RecipeBodyDisplay::Raw { .. } => None,
                 RecipeBodyDisplay::Form(form) => {
-                    Some(form.data().to_disabled_indexes())
+                    Some(form.data().to_build_overrides())
                 }
             })
             .unwrap_or_default();
 
         BuildOptions {
-            disabled_headers: self.headers.data().to_disabled_indexes(),
-            disabled_query_parameters: self.query.data().to_disabled_indexes(),
-            disabled_form_fields,
+            headers: self.headers.data().to_build_overrides(),
+            query_parameters: self.query.data().to_build_overrides(),
+            form_fields,
         }
     }
 
@@ -138,15 +148,19 @@ impl EventHandler for RecipeDisplay {
 
 impl Draw for RecipeDisplay {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        let tui_context = TuiContext::get();
+
         // Render request contents
         let method = self.method.to_string();
 
-        let [metadata_area, tabs_area, content_area] = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(0),
-        ])
-        .areas(metadata.area());
+        let [metadata_area, tabs_area, content_area, footer_area] =
+            Layout::vertical([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .areas(metadata.area());
 
         let [method_area, url_area] = Layout::horizontal(
             // Method gets just as much as it needs, URL gets the rest
@@ -161,7 +175,20 @@ impl Draw for RecipeDisplay {
         // Navigation tabs
         self.tabs.draw(frame, (), tabs_area, true);
 
-        // Request content
+        // Helper footer
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                format!(
+                    "Press {} to edit value",
+                    tui_context.input_engine.binding_display(Action::Edit)
+                ),
+                tui_context.styles.text.hint,
+            ))
+            .alignment(Alignment::Right),
+            footer_area,
+        );
+
+        // Recipe content
         match self.tabs.data().selected() {
             Tab::Body => {
                 if let Some(body) = &self.body {

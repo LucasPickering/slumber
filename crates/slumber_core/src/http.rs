@@ -411,21 +411,20 @@ impl Recipe {
         options: &BuildOptions,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Vec<(String, String)>> {
-        let iter = self
-            .query
-            .iter()
-            .enumerate()
-            // Filter out disabled params. We do this by index because the keys
-            // aren't necessarily unique
-            .filter(|(i, _)| !options.disabled_query_parameters.contains(i))
-            .map(|(_, (k, v))| async move {
+        let iter = self.query.iter().enumerate().filter_map(|(i, (k, v))| {
+            // Look up and apply override. We do this by index because the
+            // keys aren't necessarily unique
+            let template = options.query_parameters.get(i, v)?;
+
+            Some(async move {
                 Ok::<_, anyhow::Error>((
                     k.clone(),
-                    v.render_string(template_context).await.context(
+                    template.render_string(template_context).await.context(
                         format!("Error rendering query parameter `{k}`"),
                     )?,
                 ))
-            });
+            })
+        });
         future::try_join_all(iter).await
     }
 
@@ -454,15 +453,17 @@ impl Recipe {
         }
 
         // Render headers in an iterator so we can parallelize
-        let iter = self
-            .headers
-            .iter()
-            .enumerate()
-            // Filter out disabled headers
-            .filter(|(i, _)| !options.disabled_headers.contains(i))
-            .map(move |(_, (header, value_template))| {
-                self.render_header(template_context, header, value_template)
-            });
+        let iter = self.headers.iter().enumerate().filter_map(
+            move |(i, (header, value_template))| {
+                // Look up and apply override. We do this by index because the
+                // keys aren't necessarily unique
+                let template = options.headers.get(i, value_template)?;
+
+                Some(async move {
+                    self.render_header(template_context, header, template).await
+                })
+            },
+        );
 
         let rendered = future::try_join_all(iter).await?;
         headers.reserve(rendered.len());
@@ -571,36 +572,40 @@ impl Recipe {
                     .into(),
             ),
             RecipeBody::FormUrlencoded(fields) => {
-                let iter = fields
-                    .iter()
-                    .enumerate()
-                    // Remove disabled fields
-                    .filter(|(i, _)| !options.disabled_form_fields.contains(i))
-                    .map(|(_, (k, v))| async move {
-                        Ok::<_, anyhow::Error>((
-                            k.clone(),
-                            v.render_string(template_context).await.context(
-                                format!("Error rendering form field `{k}`"),
-                            )?,
-                        ))
-                    });
+                let iter = fields.iter().enumerate().filter_map(
+                    |(i, (field, value_template))| {
+                        let template =
+                            options.form_fields.get(i, value_template)?;
+                        Some(async move {
+                            let value = template
+                                .render_string(template_context)
+                                .await
+                                .context(format!(
+                                    "Error rendering form field `{field}`"
+                                ))?;
+                            Ok::<_, anyhow::Error>((field.clone(), value))
+                        })
+                    },
+                );
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormUrlencoded(rendered)
             }
             RecipeBody::FormMultipart(fields) => {
-                let iter = fields
-                    .iter()
-                    .enumerate()
-                    // Remove disabled fields
-                    .filter(|(i, _)| !options.disabled_form_fields.contains(i))
-                    .map(|(_, (k, v))| async move {
-                        Ok::<_, anyhow::Error>((
-                            k.clone(),
-                            v.render(template_context).await.context(
-                                format!("Error rendering form field `{k}`"),
-                            )?,
-                        ))
-                    });
+                let iter = fields.iter().enumerate().filter_map(
+                    |(i, (field, value_template))| {
+                        let template =
+                            options.form_fields.get(i, value_template)?;
+                        Some(async move {
+                            let value = template
+                                .render(template_context)
+                                .await
+                                .context(format!(
+                                    "Error rendering form field `{field}`"
+                                ))?;
+                            Ok::<_, anyhow::Error>((field.clone(), value))
+                        })
+                    },
+                );
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormMultipart(rendered)
             }
@@ -1148,28 +1153,35 @@ mod tests {
         );
     }
 
-    /// Test disabling query params, headers, and form fields
+    /// Test disabling and overriding query params, headers, and form fields
     #[rstest]
     #[tokio::test]
     async fn test_build_options(http_engine: &HttpEngine) {
         let recipe = Recipe {
-            query: vec![
-                // Included
-                ("mode".into(), "sudo".into()),
-                ("fast".into(), "false".into()),
-                // Excluded
-                ("fast".into(), "true".into()),
-            ],
             headers: indexmap! {
                 // Included
                 "Accept".into() => "application/json".into(),
+                // Overidden
+                "Big-Guy".into() => "style1".into(),
                 // Excluded
                 "content-type".into() => "text/plain".into(),
             },
+            query: vec![
+                // Overridden
+                ("mode".into(), "regular".into()),
+                // Excluded
+                ("fast".into(), "false".into()),
+                // Included
+                ("fast".into(), "true".into()),
+            ],
             // This should implicitly set the content-type header
             body: Some(RecipeBody::FormUrlencoded(indexmap! {
+                // Included
                 "user_id".into() => "{{user_id}}".into(),
+                // Excluded
                 "token".into() => "{{token}}".into(),
+                // Overridden
+                "preference".into() => "large".into(),
             })),
             ..Recipe::factory(())
         };
@@ -1179,9 +1191,25 @@ mod tests {
         let seed = RequestSeed::new(
             recipe_id.clone(),
             BuildOptions {
-                disabled_headers: vec![1],
-                disabled_query_parameters: vec![2],
-                disabled_form_fields: vec![1],
+                headers: [
+                    (1, BuildFieldOverride::Override("style2".into())),
+                    (2, BuildFieldOverride::Omit),
+                ]
+                .into_iter()
+                .collect(),
+                query_parameters: [
+                    // Overridding template should get rendered
+                    (0, BuildFieldOverride::Override("{{mode}}".into())),
+                    (1, BuildFieldOverride::Omit),
+                ]
+                .into_iter()
+                .collect(),
+                form_fields: [
+                    (1, BuildFieldOverride::Omit),
+                    (2, BuildFieldOverride::Override("small".into())),
+                ]
+                .into_iter()
+                .collect(),
             },
         );
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
@@ -1193,14 +1221,17 @@ mod tests {
                 profile_id: template_context.selected_profile.clone(),
                 recipe_id,
                 method: Method::GET,
-                url: "http://localhost/url?mode=sudo&fast=false"
+                url: "http://localhost/url?mode=sudo&fast=true"
                     .parse()
                     .unwrap(),
                 headers: header_map([
                     ("accept", "application/json"),
+                    ("Big-Guy", "style2"),
+                    // It picked up the default content-type from the body,
+                    // because ours was excluded
                     ("content-type", "application/x-www-form-urlencoded"),
                 ]),
-                body: Some(b"user_id=1".as_slice().into()),
+                body: Some(b"user_id=1&preference=small".as_slice().into()),
             }
         );
     }

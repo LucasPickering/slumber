@@ -141,6 +141,9 @@ pub enum Action {
     Toggle,
     /// Close the current modal/dialog/etc.
     Cancel,
+    /// Trigger the workflow to provide a temporary override for a recipe value
+    /// (body/param/etc.)
+    Edit,
     /// Browse request history
     History,
     /// Start a search/filter operation

@@ -56,27 +56,34 @@ impl IntoModal for anyhow::Error {
     }
 }
 
-/// Inner state for the prompt modal
-#[derive(Debug)]
-pub struct PromptModal {
+/// A modal with a single text box. The user will either enter some text and
+/// submit it, or cancel.
+#[derive(derive_more::Debug)]
+pub struct TextBoxModal {
     /// Modal title, from the prompt message
     title: String,
-    /// Channel used to submit entered value
-    channel: PromptChannel<String>,
+    /// Little editor fucker
+    text_box: Component<TextBox>,
     /// Flag set before closing to indicate if we should submit in our own
     /// `on_close`. This is set from the text box's `on_submit`.
     submit: Rc<Cell<bool>>,
-    /// Little editor fucker
-    text_box: Component<TextBox>,
+    #[debug(skip)]
+    on_submit: Box<dyn 'static + FnOnce(String)>,
 }
 
-impl PromptModal {
-    pub fn new(prompt: Prompt) -> Self {
+impl TextBoxModal {
+    /// Create a modal that contains a single text box. You can customize the
+    /// text box as you want, but **the `on_cancel` and `on_submit`** callbacks
+    /// will be overridden**. Pass a separate `on_submit` instead (`on_cancel`
+    /// not supported for this modal).
+    pub fn new(
+        title: String,
+        text_box: TextBox,
+        on_submit: impl 'static + FnOnce(String),
+    ) -> Self {
         let submit = Rc::new(Cell::new(false));
         let submit_cell = Rc::clone(&submit);
-        let text_box = TextBox::default()
-            .sensitive(prompt.sensitive)
-            .default_value(prompt.default.unwrap_or_default())
+        let text_box = text_box
             // Make sure cancel gets propagated to close the modal
             .on_cancel(|| ViewContext::push_event(Event::CloseModal))
             .on_submit(move || {
@@ -89,15 +96,15 @@ impl PromptModal {
             })
             .into();
         Self {
-            title: prompt.message,
-            channel: prompt.channel,
-            submit,
+            title,
             text_box,
+            submit,
+            on_submit: Box::new(on_submit),
         }
     }
 }
 
-impl Modal for PromptModal {
+impl Modal for TextBoxModal {
     fn title(&self) -> Line<'_> {
         self.title.as_str().into()
     }
@@ -109,28 +116,35 @@ impl Modal for PromptModal {
     fn on_close(self: Box<Self>) {
         if self.submit.get() {
             // Return the user's value and close the prompt
-            self.channel.respond(self.text_box.into_data().into_text());
+            (self.on_submit)(self.text_box.into_data().into_text());
         }
     }
 }
 
-impl EventHandler for PromptModal {
+impl EventHandler for TextBoxModal {
     fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
         vec![self.text_box.as_child()]
     }
 }
 
-impl Draw for PromptModal {
+impl Draw for TextBoxModal {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         self.text_box.draw(frame, (), metadata.area(), true);
     }
 }
 
+/// Present a prompt as a modal to the user
 impl IntoModal for Prompt {
-    type Target = PromptModal;
+    type Target = TextBoxModal;
 
     fn into_modal(self) -> Self::Target {
-        PromptModal::new(self)
+        TextBoxModal::new(
+            self.message,
+            TextBox::default()
+                .sensitive(self.sensitive)
+                .default_value(self.default.unwrap_or_default()),
+            |response| self.channel.respond(response),
+        )
     }
 }
 

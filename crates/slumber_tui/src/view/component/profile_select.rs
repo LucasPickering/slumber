@@ -94,11 +94,7 @@ impl ProfilePane {
         ViewContext::open_modal(
             ProfileListModal::new(
                 // See self.profiles doc comment for why we need to clone
-                self.profiles
-                    .items()
-                    .iter()
-                    .map(|item| item.value.clone())
-                    .collect(),
+                self.profiles.items().cloned().collect(),
                 self.profiles.selected().map(|profile| &profile.id),
             ),
             ModalPriority::Low,

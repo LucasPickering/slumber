@@ -47,7 +47,7 @@ impl<'a, Item> List<'a, Item> {
 impl<'a, Item> From<&'a SelectState<Item>> for List<'a, &'a Item> {
     fn from(select: &'a SelectState<Item>) -> Self {
         Self {
-            items: select.items().iter().map(ListItem::from).collect(),
+            items: select.items_with_metadata().map(ListItem::from).collect(),
             phantom: PhantomData,
         }
     }
@@ -59,7 +59,7 @@ where
 {
     fn from(select: &'a FixedSelectState<Item>) -> Self {
         Self {
-            items: select.items().iter().map(ListItem::from).collect(),
+            items: select.items_with_metadata().map(ListItem::from).collect(),
             phantom: PhantomData,
         }
     }
@@ -110,7 +110,7 @@ impl<'a, T> From<&'a SelectItem<T>> for ListItem<&'a T> {
     fn from(item: &'a SelectItem<T>) -> Self {
         Self {
             value: &item.value,
-            disabled: item.disabled,
+            disabled: item.disabled(),
         }
     }
 }

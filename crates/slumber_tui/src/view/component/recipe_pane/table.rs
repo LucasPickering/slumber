@@ -75,9 +75,8 @@ where
         self.select
             .data()
             .items()
-            .iter()
             .enumerate()
-            .filter(|(_, row)| !*row.value.enabled)
+            .filter(|(_, row)| !*row.enabled)
             .map(|(i, _)| i)
             .collect()
     }
@@ -111,12 +110,10 @@ where
                 .select
                 .data()
                 .items()
-                .iter()
-                .map(|item| {
-                    let item = &item.value;
+                .map(|row| {
                     ToggleRow::new(
-                        [item.key.as_str().into(), item.value.generate()],
-                        *item.enabled,
+                        [row.key.as_str().into(), row.value.generate()],
+                        *row.enabled,
                     )
                     .generate()
                 })

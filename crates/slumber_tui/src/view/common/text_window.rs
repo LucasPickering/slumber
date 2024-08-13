@@ -249,7 +249,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, TestHarness},
+        test_util::{harness, terminal, TestHarness, TestTerminal},
         view::test_util::TestComponent,
     };
     use crossterm::event::{KeyCode, KeyModifiers};
@@ -257,11 +257,14 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    fn test_scroll(#[with(10, 4)] harness: TestHarness) {
+    fn test_scroll(
+        #[with(10, 4)] terminal: TestTerminal,
+        _harness: TestHarness,
+    ) {
         let text =
             Text::from("line 1\nline 2 is longer\nline 3\nline 4\nline 5");
         let mut component = TestComponent::new(
-            harness,
+            &terminal,
             TextWindow::default(),
             TextWindowProps {
                 text: &text,
@@ -272,7 +275,7 @@ mod tests {
                 },
             },
         );
-        component.assert_buffer_lines([
+        terminal.assert_buffer_lines([
             vec![line_num(1), " line 1 ▲".into()],
             vec![line_num(2), " line 2 █".into()],
             vec![line_num(3), " line 3 █".into()],
@@ -281,7 +284,7 @@ mod tests {
 
         // Scroll down
         component.send_key(KeyCode::Down).assert_empty();
-        component.assert_buffer_lines([
+        terminal.assert_buffer_lines([
             vec![line_num(2), " line 2 ▲".into()],
             vec![line_num(3), " line 3 █".into()],
             vec![line_num(4), " line 4 █".into()],
@@ -291,7 +294,7 @@ mod tests {
         // Scroll back up
         component.send_key(KeyCode::Up).assert_empty();
         component.send_key(KeyCode::Up).assert_empty(); // Does nothing
-        component.assert_buffer_lines([
+        terminal.assert_buffer_lines([
             vec![line_num(1), " line 1 ▲".into()],
             vec![line_num(2), " line 2 █".into()],
             vec![line_num(3), " line 3 █".into()],
@@ -308,7 +311,7 @@ mod tests {
         component
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
             .assert_empty();
-        component.assert_buffer_lines([
+        terminal.assert_buffer_lines([
             vec![line_num(1), " e 1    ▲".into()],
             vec![line_num(2), " e 2 is █".into()],
             vec![line_num(3), " e 3    █".into()],
@@ -328,7 +331,7 @@ mod tests {
         component
             .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
             .assert_empty(); // Does nothing
-        component.assert_buffer_lines([
+        terminal.assert_buffer_lines([
             vec![line_num(1), " line 1 ▲".into()],
             vec![line_num(2), " line 2 █".into()],
             vec![line_num(3), " line 3 █".into()],
@@ -337,10 +340,13 @@ mod tests {
     }
 
     #[rstest]
-    fn test_unicode(#[with(35, 3)] harness: TestHarness) {
+    fn test_unicode(
+        #[with(35, 3)] terminal: TestTerminal,
+        _harness: TestHarness,
+    ) {
         let text = Text::from("intro\n💚💙💜 this is a longer line\noutro");
-        let component = TestComponent::new(
-            harness,
+        TestComponent::new(
+            &terminal,
             TextWindow::default(),
             TextWindowProps {
                 text: &text,
@@ -351,7 +357,7 @@ mod tests {
                 },
             },
         );
-        component.assert_buffer_lines([
+        terminal.assert_buffer_lines([
             vec![line_num(1), " intro                            ".into()],
             vec![line_num(2), " 💚💙💜 this is a longer line    ".into()],
             vec![line_num(3), " outro                            ".into()],
@@ -359,10 +365,13 @@ mod tests {
     }
 
     #[rstest]
-    fn test_unicode_scroll(#[with(10, 2)] harness: TestHarness) {
+    fn test_unicode_scroll(
+        #[with(10, 2)] terminal: TestTerminal,
+        _harness: TestHarness,
+    ) {
         let text = Text::from("💚💙💜💚💙💜");
-        let component = TestComponent::new(
-            harness,
+        TestComponent::new(
+            &terminal,
             TextWindow::default(),
             TextWindowProps {
                 text: &text,
@@ -373,7 +382,7 @@ mod tests {
                 },
             },
         );
-        component.assert_buffer_lines([
+        terminal.assert_buffer_lines([
             vec![line_num(1), " 💚💙💜💚".into()],
             vec![line_num(0), " ◀■■■■══▶".into()],
         ]);

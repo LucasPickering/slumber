@@ -238,7 +238,7 @@ impl PersistedContainer for SelectedRequestId {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, TestHarness},
+        test_util::{harness, terminal, TestHarness, TestTerminal},
         view::test_util::TestComponent,
     };
     use crossterm::event::KeyCode;
@@ -249,7 +249,7 @@ mod tests {
     /// Test that, on first render, the view loads the most recent historical
     /// request for the first recipe+profile
     #[rstest]
-    fn test_preload_request(harness: TestHarness) {
+    fn test_preload_request(harness: TestHarness, terminal: TestTerminal) {
         // Add a request into the DB that we expect to preload
         let collection = Collection::factory(());
         let profile_id = collection.first_profile_id();
@@ -258,7 +258,8 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&exchange).unwrap();
 
-        let component = TestComponent::new(harness, Root::new(&collection), ());
+        let component =
+            TestComponent::new(&terminal, Root::new(&collection), ());
 
         // Make sure profile+recipe were preselected correctly
         let primary_view = component.data().primary_view.data();
@@ -276,7 +277,10 @@ mod tests {
     /// Test that, on first render, if there's a persisted request ID, we load
     /// up to that instead of selecting the first in the list
     #[rstest]
-    fn test_load_persisted_request(harness: TestHarness) {
+    fn test_load_persisted_request(
+        harness: TestHarness,
+        terminal: TestTerminal,
+    ) {
         let collection = Collection::factory(());
         let recipe_id = collection.first_recipe_id();
         let profile_id = collection.first_profile_id();
@@ -292,7 +296,8 @@ mod tests {
             &Some(old_exchange.id),
         );
 
-        let component = TestComponent::new(harness, Root::new(&collection), ());
+        let component =
+            TestComponent::new(&terminal, Root::new(&collection), ());
 
         // Make sure everything was preselected correctly
         assert_eq!(
@@ -312,7 +317,10 @@ mod tests {
     /// Test that if the persisted request ID isn't in the DB, we'll fall back
     /// to selecting the most recent request
     #[rstest]
-    fn test_persisted_request_missing(harness: TestHarness) {
+    fn test_persisted_request_missing(
+        harness: TestHarness,
+        terminal: TestTerminal,
+    ) {
         let collection = Collection::factory(());
         let recipe_id = collection.first_recipe_id();
         let profile_id = collection.first_profile_id();
@@ -331,7 +339,8 @@ mod tests {
             )
             .unwrap();
 
-        let component = TestComponent::new(harness, Root::new(&collection), ());
+        let component =
+            TestComponent::new(&terminal, Root::new(&collection), ());
 
         assert_eq!(
             component.data().selected_request(),
@@ -342,20 +351,17 @@ mod tests {
     }
 
     #[rstest]
-    fn test_edit_collection(harness: TestHarness) {
+    fn test_edit_collection(mut harness: TestHarness, terminal: TestTerminal) {
         let root = Root::new(&harness.collection);
-        let mut component = TestComponent::new(harness, root, ());
+        let mut component = TestComponent::new(&terminal, root, ());
 
-        component.harness_mut().clear_messages(); // Clear init junk
+        harness.clear_messages(); // Clear init junk
 
         // Event should be converted into a message appropriately
         // Open action menu
         component.send_key(KeyCode::Char('x')).assert_empty();
         // Select first action - Edit Collection
         component.send_key(KeyCode::Enter).assert_empty();
-        assert_matches!(
-            component.harness_mut().pop_message_now(),
-            Message::CollectionEdit
-        );
+        assert_matches!(harness.pop_message_now(), Message::CollectionEdit);
     }
 }

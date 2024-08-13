@@ -422,7 +422,7 @@ mod tests {
     use super::*;
     use crate::{
         message::{Message, RequestConfig},
-        test_util::{harness, TestHarness},
+        test_util::{harness, terminal, TestHarness, TestTerminal},
         view::test_util::TestComponent,
     };
     use persisted::PersistedStore;
@@ -430,25 +430,26 @@ mod tests {
     use slumber_core::{assert_matches, http::BuildOptions};
 
     /// Create component to be tested
-    fn create_component(
-        harness: TestHarness,
-    ) -> TestComponent<PrimaryView, PrimaryViewProps<'static>> {
+    fn create_component<'term>(
+        harness: &mut TestHarness,
+        terminal: &'term TestTerminal,
+    ) -> TestComponent<'term, PrimaryView, PrimaryViewProps<'static>> {
         let view = PrimaryView::new(&harness.collection);
-        let mut component = TestComponent::new(
-            harness,
+        let component = TestComponent::new(
+            &terminal,
             view,
             PrimaryViewProps {
                 selected_request: None,
             },
         );
         // Clear template preview messages so we can test what we want
-        component.harness_mut().clear_messages();
+        harness.clear_messages();
         component
     }
 
     /// Test selected pane and fullscreen mode loading from persistence
     #[rstest]
-    fn test_pane_persistence(harness: TestHarness) {
+    fn test_pane_persistence(mut harness: TestHarness, terminal: TestTerminal) {
         ViewContext::store_persisted(
             &SingletonKey::<PrimaryPane>::default(),
             &PrimaryPane::Exchange,
@@ -458,7 +459,7 @@ mod tests {
             &Some(FullscreenMode::Exchange),
         );
 
-        let component = create_component(harness);
+        let component = create_component(&mut harness, &terminal);
         assert_eq!(
             component.data().selected_pane.selected(),
             PrimaryPane::Exchange
@@ -472,19 +473,19 @@ mod tests {
     /// Test "Copy URL" action, which is available via the Recipe List or Recipe
     /// panes
     #[rstest]
-    fn test_copy_url(harness: TestHarness) {
+    fn test_copy_url(mut harness: TestHarness, terminal: TestTerminal) {
         let expected_config = RequestConfig {
             recipe_id: harness.collection.first_recipe_id().clone(),
             profile_id: Some(harness.collection.first_profile_id().clone()),
             options: BuildOptions::default(),
         };
-        let mut component = create_component(harness);
+        let mut component = create_component(&mut harness, &terminal);
         component
             .update_draw(Event::new_local(RecipeMenuAction::CopyUrl))
             .assert_empty();
 
         let request_config = assert_matches!(
-            component.harness_mut().pop_message_now(),
+            harness.pop_message_now(),
             Message::CopyRequestUrl(request_config) => request_config,
         );
         assert_eq!(request_config, expected_config);
@@ -493,19 +494,19 @@ mod tests {
     /// Test "Copy Body" action, which is available via the Recipe List or
     /// Recipe panes
     #[rstest]
-    fn test_copy_body(harness: TestHarness) {
+    fn test_copy_body(mut harness: TestHarness, terminal: TestTerminal) {
         let expected_config = RequestConfig {
             recipe_id: harness.collection.first_recipe_id().clone(),
             profile_id: Some(harness.collection.first_profile_id().clone()),
             options: BuildOptions::default(),
         };
-        let mut component = create_component(harness);
+        let mut component = create_component(&mut harness, &terminal);
         component
             .update_draw(Event::new_local(RecipeMenuAction::CopyBody))
             .assert_empty();
 
         let request_config = assert_matches!(
-            component.harness_mut().pop_message_now(),
+            harness.pop_message_now(),
             Message::CopyRequestBody(request_config) => request_config,
         );
         assert_eq!(request_config, expected_config);
@@ -514,19 +515,19 @@ mod tests {
     /// Test "Copy as cURL" action, which is available via the Recipe List or
     /// Recipe panes
     #[rstest]
-    fn test_copy_as_curl(harness: TestHarness) {
+    fn test_copy_as_curl(mut harness: TestHarness, terminal: TestTerminal) {
         let expected_config = RequestConfig {
             recipe_id: harness.collection.first_recipe_id().clone(),
             profile_id: Some(harness.collection.first_profile_id().clone()),
             options: BuildOptions::default(),
         };
-        let mut component = create_component(harness);
+        let mut component = create_component(&mut harness, &terminal);
         component
             .update_draw(Event::new_local(RecipeMenuAction::CopyCurl))
             .assert_empty();
 
         let request_config = assert_matches!(
-            component.harness_mut().pop_message_now(),
+            harness.pop_message_now(),
             Message::CopyRequestCurl(request_config) => request_config,
         );
         assert_eq!(request_config, expected_config);

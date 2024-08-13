@@ -78,20 +78,20 @@ impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
 
 impl<T: FixedSelect> Draw for ButtonGroup<T> {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        let items = self.select.items();
         // The button width is based on the longest button
-        let width = items
-            .iter()
-            .map(|button| button.value.to_string().len())
+        let width = self
+            .select
+            .items()
+            .map(|button| button.to_string().len())
             .max()
             .unwrap_or(0) as u16;
-        let (areas, _) =
-            Layout::horizontal(items.iter().map(|_| Constraint::Length(width)))
-                .flex(Flex::SpaceAround)
-                .split_with_spacers(metadata.area());
+        let (areas, _) = Layout::horizontal(
+            self.select.items().map(|_| Constraint::Length(width)),
+        )
+        .flex(Flex::SpaceAround)
+        .split_with_spacers(metadata.area());
 
-        for (button, area) in items.iter().zip(areas.iter()) {
-            let button = &button.value;
+        for (button, area) in self.select.items().zip(areas.iter()) {
             frame.render_widget(
                 Button {
                     text: &button.to_string(),

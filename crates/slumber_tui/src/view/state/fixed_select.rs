@@ -121,8 +121,15 @@ where
     }
 
     /// Get all items in the list
-    pub fn items(&self) -> &[SelectItem<Item>] {
+    pub fn items(&self) -> impl Iterator<Item = &Item> {
         self.inner.items()
+    }
+
+    /// Get all items in the list, including each one's metadata
+    pub fn items_with_metadata(
+        &self,
+    ) -> impl Iterator<Item = &SelectItem<Item>> {
+        self.inner.items_with_metadata()
     }
 
     /// Is the given item selected?

@@ -42,7 +42,13 @@ where
 pub struct SelectItem<T> {
     pub value: T,
     /// If an item is disabled, we'll skip over it during selections
-    pub disabled: bool,
+    disabled: bool,
+}
+
+impl<T> SelectItem<T> {
+    pub fn disabled(&self) -> bool {
+        self.disabled
+    }
 }
 
 /// Builder for [SelectState]. The main reason for the builder is to allow
@@ -178,8 +184,15 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     }
 
     /// Get all items in the list
-    pub fn items(&self) -> &[SelectItem<Item>] {
-        &self.items
+    pub fn items(&self) -> impl Iterator<Item = &Item> {
+        self.items.iter().map(|item| &item.value)
+    }
+
+    /// Get all items in the list, including each one's metadata
+    pub fn items_with_metadata(
+        &self,
+    ) -> impl Iterator<Item = &SelectItem<Item>> {
+        self.items.iter()
     }
 
     pub fn is_empty(&self) -> bool {

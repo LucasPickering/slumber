@@ -1,15 +1,18 @@
 //! Request/response body display component
 
-use crate::view::{
-    common::{
-        text_box::TextBox,
-        text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
+use crate::{
+    context::TuiContext,
+    view::{
+        common::{
+            text_box::TextBox,
+            text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
+        },
+        draw::{Draw, DrawMetadata},
+        event::{Event, EventHandler, Update},
+        state::StateCell,
+        util::highlight,
+        Component, ViewContext,
     },
-    draw::{Draw, DrawMetadata},
-    event::{Event, EventHandler, Update},
-    state::StateCell,
-    util::highlight,
-    Component, ViewContext,
 };
 use anyhow::Context;
 use persisted::PersistedContainer;
@@ -64,9 +67,11 @@ impl QueryableBody {
     /// persistence DB. This is optional because not all callers use the query
     /// box, or want to persist the value.
     pub fn new() -> Self {
+        let input_engine = &TuiContext::get().input_engine;
+        let binding = input_engine.binding_display(Action::Search);
+
         let text_box = TextBox::default()
-            // TODO use hint from input engine
-            .placeholder("'/' to filter body with JSONPath")
+            .placeholder(format!("'{binding}' to filter body with JSONPath"))
             .validator(|text| JsonPath::parse(text).is_ok())
             // Callback trigger an events, so we can modify our own state
             .on_click(|| {

@@ -135,10 +135,9 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                     .cloned(),
             },
             || match props.selected_recipe_node {
-                Some(RecipeNode::Recipe(recipe)) => Some(
-                    RecipeDisplay::new(recipe, props.selected_profile_id)
-                        .into(),
-                ),
+                Some(RecipeNode::Recipe(recipe)) => {
+                    Some(RecipeDisplay::new(recipe).into())
+                }
                 Some(RecipeNode::Folder(_)) | None => None,
             },
         );

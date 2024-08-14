@@ -11,7 +11,6 @@ use ratatui::{
     widgets::Widget,
 };
 use slumber_core::{
-    collection::ProfileId,
     http::content_type::ContentType,
     template::{Template, TemplateChunk},
 };
@@ -46,11 +45,7 @@ impl TemplatePreview {
     /// defines which profile to use for the render. Optionally provide content
     /// type to enable syntax highlighting, which will be applied to both
     /// unrendered and rendered content.
-    pub fn new(
-        template: Template,
-        profile_id: Option<ProfileId>,
-        content_type: Option<ContentType>,
-    ) -> Self {
+    pub fn new(template: Template, content_type: Option<ContentType>) -> Self {
         // Calculate raw text
         let text = highlight::highlight_if(
             content_type,
@@ -73,7 +68,6 @@ impl TemplatePreview {
 
             ViewContext::send_message(Message::TemplatePreview {
                 template,
-                profile_id: profile_id.clone(),
                 on_complete: Box::new(on_complete),
             });
         }

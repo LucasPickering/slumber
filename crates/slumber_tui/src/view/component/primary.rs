@@ -146,7 +146,7 @@ impl PrimaryView {
 
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.profile_pane.data().selected_profile()
+        self.profile_pane.data().selected_profile_id()
     }
 
     /// Draw the "normal" view, when nothing is fullscreened

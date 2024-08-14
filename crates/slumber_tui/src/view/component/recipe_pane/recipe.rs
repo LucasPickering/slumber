@@ -25,7 +25,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Method, ProfileId, Recipe, RecipeId},
+    collection::{Method, Recipe, RecipeId},
     http::BuildOptions,
 };
 use strum::{EnumCount, EnumIter};
@@ -47,21 +47,13 @@ pub struct RecipeDisplay {
 impl RecipeDisplay {
     /// Initialize new recipe state. Should be called whenever the recipe or
     /// profile changes
-    pub fn new(
-        recipe: &Recipe,
-        selected_profile_id: Option<&ProfileId>,
-    ) -> Self {
+    pub fn new(recipe: &Recipe) -> Self {
         Self {
             tabs: Default::default(),
             method: recipe.method,
-            url: TemplatePreview::new(
-                recipe.url.clone(),
-                selected_profile_id.cloned(),
-                None,
-            ),
+            url: TemplatePreview::new(recipe.url.clone(), None),
             query: RecipeFieldTable::new(
                 QueryRowKey(recipe.id.clone()),
-                selected_profile_id.cloned(),
                 recipe.query.iter().map(|(param, value)| {
                     (
                         param.clone(),
@@ -76,7 +68,6 @@ impl RecipeDisplay {
             .into(),
             headers: RecipeFieldTable::new(
                 HeaderRowKey(recipe.id.clone()),
-                selected_profile_id.cloned(),
                 recipe.headers.iter().map(|(header, value)| {
                     (
                         header.clone(),
@@ -89,18 +80,14 @@ impl RecipeDisplay {
                 }),
             )
             .into(),
-            body: recipe.body.as_ref().map(|body| {
-                RecipeBodyDisplay::new(body, selected_profile_id, &recipe.id)
-                    .into()
-            }),
+            body: recipe
+                .body
+                .as_ref()
+                .map(|body| RecipeBodyDisplay::new(body, &recipe.id).into()),
             // Map authentication type
             authentication: recipe.authentication.as_ref().map(
                 |authentication| {
-                    AuthenticationDisplay::new(
-                        authentication.clone(),
-                        selected_profile_id.cloned(),
-                    )
-                    .into()
+                    AuthenticationDisplay::new(authentication.clone()).into()
                 },
             ),
         }

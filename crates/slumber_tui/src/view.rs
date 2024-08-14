@@ -29,7 +29,10 @@ use crate::{
 use anyhow::anyhow;
 use ratatui::Frame;
 use slumber_config::Action;
-use slumber_core::{collection::CollectionFile, db::CollectionDatabase};
+use slumber_core::{
+    collection::{CollectionFile, ProfileId},
+    db::CollectionDatabase,
+};
 use std::{fmt::Debug, sync::Arc};
 use tracing::{error, trace, trace_span};
 
@@ -95,6 +98,11 @@ impl View {
         } else {
             draw_impl(&self.root, frame);
         }
+    }
+
+    /// ID of the selected profile. `None` iff the list is empty
+    pub fn selected_profile_id(&self) -> Option<&ProfileId> {
+        self.root.data().selected_profile_id()
     }
 
     /// Queue an event to update the request state for the given profile+recipe.

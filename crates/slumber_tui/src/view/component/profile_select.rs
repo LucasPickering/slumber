@@ -8,7 +8,7 @@ use crate::{
             list::List, modal::Modal, table::Table,
             template_preview::TemplatePreview, Pane,
         },
-        context::PersistedLazy,
+        context::Persisted,
         draw::{Draw, DrawMetadata, Generate},
         event::{Event, EventHandler, Update},
         state::{select::SelectState, StateCell},
@@ -35,34 +35,12 @@ use slumber_core::{
 /// profile list modal
 #[derive(Debug)]
 pub struct ProfilePane {
-    /// Even though we never use SelectState's event handling or selection
-    /// logic, this is the best way to store the state. We need to hang onto
-    /// the entire list of items so we can pass it down to the modal, and also
-    /// store which is selected. Some alternatives I considered:
-    ///
-    /// - Store a `Vec<Profile>` and `Option<ProfileId>` separately. This is
-    ///   basically the same as a SelectState, but requires bespoke logic to
-    ///   correctly handling select defaults, and handling when the persisted
-    ///   value goes missing (i.e. profile is deleted from the collection). It
-    ///   also complicates persistence a lot because of annoying orphan rule
-    ///   stuff.
-    /// - Share state between this struct and the modal using reference
-    ///   passing. This doesn't work because the select state in this struct
-    ///   and the modal can't be the same; when selecting a profile in the
-    ///   modal, we *don't* want to select it in the outer app until the user
-    ///   hits Enter. In addition, the modal has to be moved out into the modal
-    ///   queue in order to achieve the correct render and event handling
-    ///   ordering, which is incompatible with shared references.
-    /// - Share state via `Rc<RefCell<_>>`. This shares the same core problem
-    ///   as the previous issue, and also adds a ton of complexity with types
-    ///   and whatnot.
-    ///
-    /// In conclusion, this component and the modal *have* to have separate
-    /// state because the selected values shouldn't necessarily be in sync.
-    /// That, combined with the need to have 'static state in order to move it
-    /// into the modal, means duplicating SelectState and cloning the contents
-    /// is the best way to go.
-    profiles: PersistedLazy<SelectedProfileKey, SelectState<ProfileListItem>>,
+    /// Store just the ID of the selected profile. We'll load the full list
+    /// from the view context when opening the modal. It's not possible to
+    /// share selection state with the modal, because the two values aren't
+    /// necessarily the same: the user could highlight a profile without
+    /// actually selecting it.
+    selected_profile_id: Persisted<SelectedProfileKey>,
 }
 
 /// Persisted key for the ID of the selected profile
@@ -72,29 +50,35 @@ struct SelectedProfileKey;
 
 impl ProfilePane {
     pub fn new(profiles: &IndexMap<ProfileId, Profile>) -> Self {
-        let items = profiles
-            .values()
-            .map(|profile| ProfileListItem {
-                id: profile.id.clone(),
-                name: profile.name().to_owned(),
-            })
-            .collect();
-        let profiles = SelectState::builder(items).build();
+        let mut selected_profile_id =
+            Persisted::new_default(SelectedProfileKey);
+
+        // Two invalid cases we need to handle here:
+        // - Nothing is persisted but the map has values now
+        // - Persisted ID isn't in the map now
+        // In either case, just fall back to the first value in the map (or
+        // `None` if it's empty)
+        match &*selected_profile_id {
+            Some(id) if profiles.contains_key(id) => {}
+            _ => {
+                *selected_profile_id.borrow_mut() =
+                    profiles.first().map(|(id, _)| id.clone())
+            }
+        }
+
         Self {
-            profiles: PersistedLazy::new(SelectedProfileKey, profiles),
+            selected_profile_id,
         }
     }
 
-    pub fn selected_profile(&self) -> Option<&ProfileId> {
-        self.profiles.selected().map(ProfileListItem::id)
+    pub fn selected_profile_id(&self) -> Option<&ProfileId> {
+        self.selected_profile_id.as_ref()
     }
 
     /// Open the profile list modal
     pub fn open_modal(&self) {
         ViewContext::open_modal(ProfileListModal::new(
-            // See self.profiles doc comment for why we need to clone
-            self.profiles.items().cloned().collect(),
-            self.profiles.selected().map(|profile| &profile.id),
+            self.selected_profile_id.as_ref(),
         ));
     }
 }
@@ -105,7 +89,8 @@ impl EventHandler for ProfilePane {
             self.open_modal();
         } else if let Some(SelectProfile(profile_id)) = event.local() {
             // Handle message from the modal
-            self.profiles.select(profile_id);
+            *self.selected_profile_id.borrow_mut() = Some(profile_id.clone());
+            // Refresh template previews
             ViewContext::push_event(Event::HttpSelectRequest(None));
         } else {
             return Update::Propagate(event);
@@ -127,53 +112,19 @@ impl Draw for ProfilePane {
         frame.render_widget(&block, metadata.area());
         let area = block.inner(metadata.area());
 
+        // Grab global profile selection state
+        let collection = ViewContext::collection();
+        let selected_profile = (*self.selected_profile_id)
+            .as_ref()
+            .and_then(|profile_id| collection.profiles.get(profile_id));
         frame.render_widget(
-            if let Some(profile) = self.profiles.selected() {
-                &profile.name
+            if let Some(profile) = selected_profile {
+                profile.name()
             } else {
                 "No profiles defined"
             },
             area,
         );
-    }
-}
-
-/// Simplified version of [Profile], to be used in the display list. This
-/// only stores whatever data is necessary to render the list
-#[derive(Clone, Debug)]
-struct ProfileListItem {
-    id: ProfileId,
-    name: String,
-}
-
-impl HasId for ProfileListItem {
-    type Id = ProfileId;
-
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-
-    fn set_id(&mut self, id: Self::Id) {
-        self.id = id;
-    }
-}
-
-impl PartialEq<ProfileListItem> for ProfileId {
-    fn eq(&self, item: &ProfileListItem) -> bool {
-        self == item.id()
-    }
-}
-
-impl<'a> Generate for &'a ProfileListItem {
-    type Output<'this> = Text<'this>
-    where
-        Self: 'this;
-
-    fn generate<'this>(self) -> Self::Output<'this>
-    where
-        Self: 'this,
-    {
-        self.name.as_str().into()
     }
 }
 
@@ -190,10 +141,7 @@ struct ProfileListModal {
 }
 
 impl ProfileListModal {
-    pub fn new(
-        profiles: Vec<ProfileListItem>,
-        selected_profile: Option<&ProfileId>,
-    ) -> Self {
+    pub fn new(selected_profile_id: Option<&ProfileId>) -> Self {
         // Loaded request depends on the profile, so refresh on change
         fn on_submit(profile: &mut ProfileListItem) {
             // Close the modal *first*, so the parent can handle the
@@ -204,8 +152,14 @@ impl ProfileListModal {
             )));
         }
 
+        let profiles = ViewContext::collection()
+            .profiles
+            .values()
+            .map(ProfileListItem::from)
+            .collect();
+
         let select = SelectState::builder(profiles)
-            .preselect_opt(selected_profile)
+            .preselect_opt(selected_profile_id)
             .on_submit(on_submit)
             .build();
         Self {
@@ -267,6 +221,54 @@ impl Draw for ProfileListModal {
     }
 }
 
+/// Simplified version of [Profile], to be used in the display list. This
+/// only stores whatever data is necessary to render the list
+#[derive(Clone, Debug)]
+struct ProfileListItem {
+    id: ProfileId,
+    name: String,
+}
+
+impl HasId for ProfileListItem {
+    type Id = ProfileId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+
+    fn set_id(&mut self, id: Self::Id) {
+        self.id = id;
+    }
+}
+
+impl PartialEq<ProfileListItem> for ProfileId {
+    fn eq(&self, item: &ProfileListItem) -> bool {
+        self == item.id()
+    }
+}
+
+impl From<&Profile> for ProfileListItem {
+    fn from(profile: &Profile) -> Self {
+        Self {
+            id: profile.id.clone(),
+            name: profile.name().to_owned(),
+        }
+    }
+}
+
+impl<'a> Generate for &'a ProfileListItem {
+    type Output<'this> = Text<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        self.name.as_str().into()
+    }
+}
+
 /// Display the contents of a profile
 #[derive(Debug, Default)]
 struct ProfileDetail {
@@ -289,27 +291,20 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
         let profile_id = props.profile_id;
         let fields = self.fields.get_or_update(profile_id.clone(), || {
             let collection = ViewContext::collection();
-            let Some(profile) = collection
+            let Some(profile_data) = collection
                 .profiles
                 .get(profile_id)
                 // Failure is a logic error
                 .ok_or_else(|| anyhow!("No profile with ID `{profile_id}`"))
                 .reported(&ViewContext::messages_tx())
+                .map(|profile| &profile.data)
             else {
                 return Default::default();
             };
-            profile
-                .data
+            profile_data
                 .iter()
                 .map(|(key, template)| {
-                    (
-                        key.clone(),
-                        TemplatePreview::new(
-                            template.clone(),
-                            Some(profile_id.clone()),
-                            None,
-                        ),
-                    )
+                    (key.clone(), TemplatePreview::new(template.clone(), None))
                 })
                 .collect_vec()
         });
@@ -324,5 +319,45 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
             ..Default::default()
         };
         frame.render_widget(table.generate(), metadata.area());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_util::{harness, TestHarness};
+    use persisted::PersistedStore;
+    use rstest::rstest;
+    use slumber_core::test_util::{by_id, Factory};
+
+    use super::*;
+
+    /// Test various scenarios when loading the selected profile ID from
+    /// persistence
+    #[rstest]
+    #[case::empty(&[] , None, None)]
+    #[case::preselect(&["p1", "p2"] , None, Some("p1"))]
+    #[case::unknown(&["p1", "p2"] , Some("p3"), Some("p1"))]
+    #[case::unknown_empty(&[] , Some("p1"), None)]
+    #[case::persisted(&["p1", "p2"] , Some("p2"), Some("p2"))]
+    fn test_initial_profile(
+        _harness: TestHarness,
+        #[case] profile_ids: &[&str],
+        #[case] persisted_id: Option<&str>,
+        #[case] expected: Option<&str>,
+    ) {
+        let profiles = by_id(profile_ids.into_iter().map(|&id| Profile {
+            id: id.into(),
+            ..Profile::factory(())
+        }));
+        if let Some(persisted_id) = persisted_id {
+            ViewContext::store_persisted(
+                &SelectedProfileKey,
+                &Some(persisted_id.into()),
+            );
+        }
+
+        let expected = expected.map(ProfileId::from);
+        let component = ProfilePane::new(&profiles);
+        assert_eq!(*component.selected_profile_id, expected);
     }
 }

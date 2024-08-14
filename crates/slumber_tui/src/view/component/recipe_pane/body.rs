@@ -11,7 +11,7 @@ use crate::view::{
 use ratatui::Frame;
 use serde::Serialize;
 use slumber_core::{
-    collection::{ProfileId, RecipeBody, RecipeId},
+    collection::{RecipeBody, RecipeId},
     http::content_type::ContentType,
 };
 
@@ -28,16 +28,11 @@ pub enum RecipeBodyDisplay {
 
 impl RecipeBodyDisplay {
     /// Build a component to display the body, based on the body type
-    pub fn new(
-        body: &RecipeBody,
-        selected_profile_id: Option<&ProfileId>,
-        recipe_id: &RecipeId,
-    ) -> Self {
+    pub fn new(body: &RecipeBody, recipe_id: &RecipeId) -> Self {
         match body {
             RecipeBody::Raw(body) => Self::Raw {
                 preview: TemplatePreview::new(
                     body.clone(),
-                    selected_profile_id.cloned(),
                     // Hypothetically we could grab the content type from the
                     // Content-Type header above and plumb it down here, but
                     // more effort than it's worth IMO. This gives users a
@@ -66,7 +61,6 @@ impl RecipeBodyDisplay {
                 Self::Raw {
                     preview: TemplatePreview::new(
                         template,
-                        selected_profile_id.cloned(),
                         Some(ContentType::Json),
                     ),
                     text_window: Component::default(),
@@ -76,7 +70,6 @@ impl RecipeBodyDisplay {
             | RecipeBody::FormMultipart(fields) => {
                 let inner = RecipeFieldTable::new(
                     FormRowKey(recipe_id.clone()),
-                    selected_profile_id.cloned(),
                     fields.iter().map(|(field, value)| {
                         (
                             field.clone(),

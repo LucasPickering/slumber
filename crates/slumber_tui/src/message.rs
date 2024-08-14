@@ -122,7 +122,6 @@ pub enum Message {
     /// way back down the component tree.
     TemplatePreview {
         template: Template,
-        profile_id: Option<ProfileId>,
         #[debug(skip)]
         on_complete:
             Box<dyn 'static + Send + Sync + FnOnce(Vec<TemplateChunk>)>,

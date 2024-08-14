@@ -290,12 +290,16 @@ impl Tui {
 
             Message::TemplatePreview {
                 template,
-                profile_id,
                 on_complete,
             } => {
                 self.render_template_preview(
                     template,
-                    profile_id,
+                    // Note: there's a potential bug here, if the selected
+                    // profile changed since this message was queued. In
+                    // practice is extremely unlikely (potentially impossible),
+                    // and this shortcut saves us a lot of plumbing so it's
+                    // worth it
+                    self.view.selected_profile_id().cloned(),
                     on_complete,
                 )?;
             }

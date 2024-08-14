@@ -97,8 +97,8 @@ impl RecipeDisplay {
             authentication: recipe.authentication.as_ref().map(
                 |authentication| {
                     AuthenticationDisplay::new(
-                        authentication,
-                        selected_profile_id,
+                        authentication.clone(),
+                        selected_profile_id.cloned(),
                     )
                     .into()
                 },
@@ -108,6 +108,10 @@ impl RecipeDisplay {
 
     /// Generate a [BuildOptions] instance based on current UI state
     pub fn build_options(&self) -> BuildOptions {
+        let authentication = self
+            .authentication
+            .as_ref()
+            .and_then(|authentication| authentication.data().override_value());
         let form_fields = self
             .body
             .as_ref()
@@ -120,6 +124,7 @@ impl RecipeDisplay {
             .unwrap_or_default();
 
         BuildOptions {
+            authentication,
             headers: self.headers.data().to_build_overrides(),
             query_parameters: self.query.data().to_build_overrides(),
             form_fields,
@@ -139,6 +144,7 @@ impl EventHandler for RecipeDisplay {
             self.body.as_mut().map(Component::as_child),
             Some(self.query.as_child()),
             Some(self.headers.as_child()),
+            self.authentication.as_mut().map(Component::as_child),
         ]
         .into_iter()
         .flatten()

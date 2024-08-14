@@ -28,7 +28,6 @@ use slumber_core::{
     http::{BuildFieldOverride, BuildFieldOverrides},
     template::Template,
 };
-use std::str::FromStr;
 
 /// A table of key-value mappings. This is used in a new places in the recipe
 /// pane, and provides some common functionality:
@@ -231,7 +230,7 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
             TextBox::default()
                 // Edit as a raw template
                 .default_value(self.value.display().into_owned())
-                .validator(|value| Template::from_str(value).is_ok()),
+                .validator(|value| value.parse::<Template>().is_ok()),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
                 ViewContext::push_event(Event::new_local(SaveOverride {

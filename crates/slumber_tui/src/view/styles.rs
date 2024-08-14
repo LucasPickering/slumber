@@ -106,6 +106,8 @@ pub struct TextStyle {
     pub error: Style,
     /// Subtle text to provide a hint to the user
     pub hint: Style,
+    /// Text at the top of something
+    pub title: Style,
 }
 
 /// Styles for TextBox component
@@ -187,6 +189,7 @@ impl Styles {
                 primary: Style::default().fg(theme.primary_color),
                 error: Style::default().bg(theme.error_color),
                 hint: Style::default().fg(Color::DarkGray),
+                title: Style::default().add_modifier(Modifier::BOLD),
             },
             text_box: TextBoxStyle {
                 text: Style::default().bg(Color::DarkGray),

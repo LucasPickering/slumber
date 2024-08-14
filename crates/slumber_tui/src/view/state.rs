@@ -36,17 +36,18 @@ pub struct StateCell<K, V> {
 impl<K, V> StateCell<K, V> {
     /// Get the current state value, or a new value if the state is stale. State
     /// will be stale if it is uninitialized OR the key has changed. In either
-    /// case, `init` will be called to create a new value.
-    pub fn get_or_update(&self, key: K, init: impl FnOnce() -> V) -> Ref<'_, V>
+    /// case, `init` will be called to create a new value. The given key will be
+    /// cloned iff the state is updated, so that the key can be stored.
+    pub fn get_or_update(&self, key: &K, init: impl FnOnce() -> V) -> Ref<'_, V>
     where
-        K: PartialEq,
+        K: Clone + PartialEq,
     {
         let mut state = self.state.borrow_mut();
         match state.deref() {
-            Some(state) if state.0 == key => {}
+            Some(state) if &state.0 == key => {}
             _ => {
                 // (Re)create the state
-                *state = Some((key, init()));
+                *state = Some((key.clone(), init()));
             }
         }
         drop(state);

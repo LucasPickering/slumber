@@ -65,6 +65,7 @@ impl QueryableBody {
     /// box, or want to persist the value.
     pub fn new() -> Self {
         let text_box = TextBox::default()
+            // TODO use hint from input engine
             .placeholder("'/' to filter body with JSONPath")
             .validator(|text| JsonPath::parse(text).is_ok())
             // Callback trigger an events, so we can modify our own state
@@ -163,7 +164,7 @@ impl<'a> Draw<QueryableBodyProps<'a>> for QueryableBody {
         .areas(metadata.area());
 
         // Draw the body
-        let text = self.filtered_text.get_or_update(self.query.clone(), || {
+        let text = self.filtered_text.get_or_update(&self.query, || {
             init_text(props.content_type, props.body, self.query.as_ref())
         });
         self.text_window.draw(

@@ -144,7 +144,7 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
         metadata: DrawMetadata,
     ) {
         let response = &props.response;
-        let state = self.state.get_or_update(props.request_id, || State {
+        let state = self.state.get_or_update(&props.request_id, || State {
             response: Arc::clone(&props.response),
             body: PersistedLazy::new(
                 ResponseQueryPersistedKey(props.recipe_id.clone()),

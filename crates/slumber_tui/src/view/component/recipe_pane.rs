@@ -127,7 +127,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
         // would require reloading the whole collection which will reset
         // UI state.
         let recipe_state = self.recipe_state.get_or_update(
-            RecipeStateKey {
+            &RecipeStateKey {
                 selected_profile_id: props.selected_profile_id.cloned(),
                 recipe_id: props
                     .selected_recipe_node
@@ -165,7 +165,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
 }
 
 /// Template preview state will be recalculated when any of these fields change
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct RecipeStateKey {
     selected_profile_id: Option<ProfileId>,
     recipe_id: Option<RecipeId>,

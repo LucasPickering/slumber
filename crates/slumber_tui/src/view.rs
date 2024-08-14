@@ -137,17 +137,21 @@ impl View {
     }
 
     /// Drain all view events from the queue. The component three will process
-    /// events one by one. This should be called on every TUI loop
-    pub fn handle_events(&mut self) {
+    /// events one by one. This should be called on every TUI loop. Return
+    /// whether or not an event was handled.
+    pub fn handle_events(&mut self) -> bool {
         // If we haven't done first render yet, don't drain the queue. This can
         // happen after a collection reload, because of the structure of the
         // main loop
         if !self.root.is_visible() {
-            return;
+            return false;
         }
 
-        // It's possible for components to queue additional events
+        let mut handled = false;
+        // It's possible for components to queue additional events, so keep
+        // going until the queue is empty
         while let Some(event) = ViewContext::pop_event() {
+            handled = true;
             trace_span!("View event", ?event).in_scope(|| {
                 match self.root.update_all(event) {
                     Update::Consumed => {
@@ -160,6 +164,7 @@ impl View {
                 }
             });
         }
+        handled
     }
 
     /// Copy text to the user's clipboard, and notify them

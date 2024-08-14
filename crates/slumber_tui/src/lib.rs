@@ -183,34 +183,36 @@ impl Tui {
                 },
                 _ = time::sleep(Self::TICK_TIME) => None,
             };
-            let should_draw = if let Some(message) = message {
+
+            // We'll try to skip draws if nothing on the screen has changed, to
+            // limit idle CPU usage. If a request is running we always need to
+            // update though, because the timer will be ticking.
+            let mut needs_draw = self.has_active_requests();
+
+            if let Some(message) = message {
                 trace!(?message, "Handling message");
                 // If an error occurs, store it so we can show the user
                 if let Err(error) = self.handle_message(message) {
                     self.view.open_modal(error);
                 }
-
-                // Skip draws if we have more messages to process. This prevents
-                // us from falling behind the message queue, which can happen
-                // if the UI gets slow. Interactions will start to look jittery,
-                // but it's better than locking the user out
-                let has_more = !self.messages_rx.is_empty()
-                    || event::poll(Duration::from_millis(0)).unwrap_or(false);
-                !has_more
-            } else {
-                // Since we have no messages, we were triggered by the tick
-                // timer. We only need to update if there are active HTTP
-                // requests
-                self.has_active_requests()
+                needs_draw = true;
             };
 
             // ===== Event Phase =====
-            // Let the view handle all queued events
-            self.view.handle_events();
+            // Let the view handle all queued events. Trigger a draw if there
+            // was anything in the queue.
+            needs_draw |= self.view.handle_events();
 
             // ===== Draw Phase =====
-            // Only draw if something's changed
-            if should_draw {
+            // Only draw if something's changed. Skip draws if we have more
+            // messages to process. This prevents us from falling behind the
+            // message queue, which can happen if the UI gets slow. Interactions
+            // will start to look jittery, but it's better than locking the user
+            // out. We know the next loop iteration will also have a message to
+            // handle, so we don't have to worry about losing the draw entirely.
+            let has_more_messages = !self.messages_rx.is_empty()
+                || event::poll(Duration::from_millis(0)).unwrap_or(false);
+            if needs_draw && !has_more_messages {
                 self.draw()?;
             }
         }

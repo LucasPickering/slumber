@@ -286,8 +286,8 @@ impl crate::test_util::Factory for Chain {
 ///
 /// Type parameter allows this to be re-used for post-render purposes (with
 /// `T=String`).
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`

@@ -4,7 +4,7 @@
 //! exchange is incomplete or failed.
 
 use crate::{
-    collection::{ProfileId, RecipeId},
+    collection::{Authentication, ProfileId, RecipeId},
     http::{
         cereal,
         content_type::{ContentType, ResponseContent},
@@ -96,6 +96,9 @@ impl RequestSeed {
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct BuildOptions {
+    /// Authentication can be overridden, but not disabled. For simplicity,
+    /// the override is wholesale rather than by field.
+    pub authentication: Option<Authentication>,
     pub headers: BuildFieldOverrides,
     pub query_parameters: BuildFieldOverrides,
     pub form_fields: BuildFieldOverrides,

@@ -83,6 +83,10 @@ impl Template {
         };
         Self { chunks }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.chunks.is_empty()
+    }
 }
 
 #[cfg(any(test, feature = "test"))]

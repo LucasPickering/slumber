@@ -134,7 +134,7 @@ impl HttpEngine {
                 recipe.render_url(template_context),
                 recipe.render_query(options, template_context),
                 recipe.render_headers(options, template_context),
-                recipe.render_authentication(template_context),
+                recipe.render_authentication(options, template_context),
                 recipe.render_body(options, template_context),
             )?;
 
@@ -511,9 +511,14 @@ impl Recipe {
     /// data. This can be passed to [reqwest::RequestBuilder]
     async fn render_authentication(
         &self,
+        options: &BuildOptions,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Option<Authentication<String>>> {
-        match &self.authentication {
+        let authentication = options
+            .authentication
+            .as_ref()
+            .or(self.authentication.as_ref());
+        match authentication {
             Some(Authentication::Basic { username, password }) => {
                 let (username, password) = try_join!(
                     async {
@@ -1158,6 +1163,10 @@ mod tests {
     #[tokio::test]
     async fn test_build_options(http_engine: &HttpEngine) {
         let recipe = Recipe {
+            authentication: Some(Authentication::Basic {
+                username: "username".into(),
+                password: None,
+            }),
             headers: indexmap! {
                 // Included
                 "Accept".into() => "application/json".into(),
@@ -1191,6 +1200,10 @@ mod tests {
         let seed = RequestSeed::new(
             recipe_id.clone(),
             BuildOptions {
+                authentication: Some(Authentication::Basic {
+                    username: "{{username}}".into(),
+                    password: Some("{{password}}".into()),
+                }),
                 headers: [
                     (1, BuildFieldOverride::Override("style2".into())),
                     (2, BuildFieldOverride::Omit),
@@ -1225,6 +1238,7 @@ mod tests {
                     .parse()
                     .unwrap(),
                 headers: header_map([
+                    ("Authorization", "Basic dXNlcjpodW50ZXIy"),
                     ("accept", "application/json"),
                     ("Big-Guy", "style2"),
                     // It picked up the default content-type from the body,

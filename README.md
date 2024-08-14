@@ -2,10 +2,6 @@
 
 ![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)
 ![crates.io](https://img.shields.io/crates/v/slumber.svg)
-[![Discord chat][discord-badge]][discord-url]
-
-[discord-badge]: https://img.shields.io/discord/1236076369251926116.svg?logo=discord&style=flat-square
-[discord-url]: https://discord.gg/MQdCRDRs8t
 
 - [Home Page](https://slumber.lucaspickering.me)
 - [Installation](https://slumber.lucaspickering.me/artifacts/)

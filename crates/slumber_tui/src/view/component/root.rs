@@ -23,7 +23,10 @@ use persisted::{PersistedContainer, PersistedKey};
 use ratatui::{layout::Layout, prelude::Constraint, Frame};
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::{collection::Collection, http::RequestId};
+use slumber_core::{
+    collection::{Collection, ProfileId},
+    http::RequestId,
+};
 
 /// The root view component
 #[derive(Debug)]
@@ -56,6 +59,11 @@ impl Root {
             modal_queue: Component::default(),
             notification_text: None,
         }
+    }
+
+    /// ID of the selected profile. `None` iff the list is empty
+    pub fn selected_profile_id(&self) -> Option<&ProfileId> {
+        self.primary_view.data().selected_profile_id()
     }
 
     /// Select the given request. This will ensure the request data is loaded

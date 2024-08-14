@@ -24,7 +24,7 @@ use ratatui::{
 };
 use slumber_config::Action;
 use slumber_core::{
-    collection::{HasId, ProfileId},
+    collection::HasId,
     http::{BuildFieldOverride, BuildFieldOverrides},
     template::Template,
 };
@@ -49,8 +49,6 @@ where
             SelectState<RowState<RowToggleKey>, TableState>,
         >,
     >,
-    /// Needed for template previews
-    selected_profile_id: Option<ProfileId>,
 }
 
 impl<RowSelectKey, RowToggleKey> RecipeFieldTable<RowSelectKey, RowToggleKey>
@@ -60,7 +58,7 @@ where
 {
     pub fn new(
         select_key: RowSelectKey,
-        selected_profile_id: Option<ProfileId>,
+
         rows: impl IntoIterator<Item = (String, Template, RowToggleKey)>,
     ) -> Self {
         let items = rows
@@ -70,11 +68,7 @@ where
                 index: i, // This will be the unique ID for the row
                 key,
                 value: value.clone(),
-                preview: TemplatePreview::new(
-                    value,
-                    selected_profile_id.clone(),
-                    None,
-                ),
+                preview: TemplatePreview::new(value, None),
                 overridden: false,
                 enabled: Persisted::new(toggle_key, true),
             })
@@ -84,7 +78,6 @@ where
             .build();
         Self {
             select: PersistedLazy::new(select_key, select).into(),
-            selected_profile_id,
         }
     }
 
@@ -119,7 +112,7 @@ where
             // though, just to be sure we've got the right one.
             self.select.data_mut().items_mut()[*row_index]
                 .value
-                .set_override(self.selected_profile_id.clone(), value);
+                .set_override(value);
         } else {
             return Update::Propagate(event);
         }
@@ -242,11 +235,7 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
     }
 
     /// Override the value template and re-render the preview
-    fn set_override(
-        &mut self,
-        selected_profile_id: Option<ProfileId>,
-        override_value: &str,
-    ) {
+    fn set_override(&mut self, override_value: &str) {
         // The validator on the override text box enforces that it's a valid
         // template, so we expect this parse to succeed
         if let Some(template) = override_value
@@ -254,8 +243,7 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
             .reported(&ViewContext::messages_tx())
         {
             self.value = template.clone();
-            self.preview =
-                TemplatePreview::new(template, selected_profile_id, None);
+            self.preview = TemplatePreview::new(template, None);
             self.overridden = true;
         }
     }
@@ -350,7 +338,7 @@ mod tests {
         ];
         let mut component = TestComponent::new(
             &terminal,
-            RecipeFieldTable::new(TestRowKey(recipe_id.clone()), None, rows),
+            RecipeFieldTable::new(TestRowKey(recipe_id.clone()), rows),
             RecipeFieldTableProps {
                 key_header: "Key",
                 value_header: "Value",
@@ -411,7 +399,6 @@ mod tests {
             // We'll need a modal queue to handle the edit box
             WithModalQueue::new(RecipeFieldTable::new(
                 TestRowKey(recipe_id.clone()),
-                None,
                 rows,
             )),
             RecipeFieldTableProps {

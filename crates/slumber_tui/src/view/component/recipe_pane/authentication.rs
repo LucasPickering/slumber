@@ -21,10 +21,7 @@ use ratatui::{
     Frame,
 };
 use slumber_config::Action;
-use slumber_core::{
-    collection::{Authentication, ProfileId},
-    template::Template,
-};
+use slumber_core::{collection::Authentication, template::Template};
 use strum::{EnumCount, EnumIter};
 
 /// Display authentication settings for a recipe
@@ -32,19 +29,13 @@ use strum::{EnumCount, EnumIter};
 pub struct AuthenticationDisplay {
     state: State,
     overridden: bool,
-    /// Store this to recalculate previews after editing
-    selected_profile_id: Option<ProfileId>,
 }
 
 impl AuthenticationDisplay {
-    pub fn new(
-        authentication: Authentication,
-        selected_profile_id: Option<ProfileId>,
-    ) -> Self {
+    pub fn new(authentication: Authentication) -> Self {
         Self {
-            state: State::new(authentication, selected_profile_id.clone()),
+            state: State::new(authentication),
             overridden: false,
-            selected_profile_id,
         }
     }
 
@@ -101,11 +92,7 @@ impl AuthenticationDisplay {
         else {
             return;
         };
-        let preview = TemplatePreview::new(
-            template.clone(),
-            self.selected_profile_id.clone(),
-            None,
-        );
+        let preview = TemplatePreview::new(template.clone(), None);
         self.overridden = true;
         match &mut self.state {
             State::Basic {
@@ -234,17 +221,9 @@ enum State {
 }
 
 impl State {
-    fn new(
-        authentication: Authentication,
-        selected_profile_id: Option<ProfileId>,
-    ) -> Self {
-        let create_preview = |template: &Template| {
-            TemplatePreview::new(
-                template.clone(),
-                selected_profile_id.clone(),
-                None,
-            )
-        };
+    fn new(authentication: Authentication) -> Self {
+        let create_preview =
+            |template: &Template| TemplatePreview::new(template.clone(), None);
         match authentication {
             Authentication::Basic { username, password } => {
                 let username_preview = create_preview(&username);
@@ -317,10 +296,7 @@ mod tests {
         };
         let mut component = TestComponent::new(
             &terminal,
-            WithModalQueue::new(AuthenticationDisplay::new(
-                authentication,
-                None,
-            )),
+            WithModalQueue::new(AuthenticationDisplay::new(authentication)),
             (),
         );
 
@@ -364,10 +340,7 @@ mod tests {
         };
         let mut component = TestComponent::new(
             &terminal,
-            WithModalQueue::new(AuthenticationDisplay::new(
-                authentication,
-                None,
-            )),
+            WithModalQueue::new(AuthenticationDisplay::new(authentication)),
             (),
         );
 
@@ -391,10 +364,7 @@ mod tests {
         let authentication = Authentication::Bearer("i am a token".into());
         let mut component = TestComponent::new(
             &terminal,
-            WithModalQueue::new(AuthenticationDisplay::new(
-                authentication,
-                None,
-            )),
+            WithModalQueue::new(AuthenticationDisplay::new(authentication)),
             (),
         );
 

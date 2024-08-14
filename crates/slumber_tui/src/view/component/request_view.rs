@@ -116,7 +116,7 @@ impl Draw<RequestViewProps> for RequestView {
         props: RequestViewProps,
         metadata: DrawMetadata,
     ) {
-        let state = self.state.get_or_update(props.request.id, || State {
+        let state = self.state.get_or_update(&props.request.id, || State {
             request: Arc::clone(&props.request),
             body: init_body(&props.request),
         });

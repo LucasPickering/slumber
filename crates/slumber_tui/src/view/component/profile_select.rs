@@ -289,7 +289,7 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
         // Whenever the selected profile changes, rebuild the internal state.
         // This is needed because the template preview rendering is async.
         let profile_id = props.profile_id;
-        let fields = self.fields.get_or_update(profile_id.clone(), || {
+        let fields = self.fields.get_or_update(profile_id, || {
             let collection = ViewContext::collection();
             let Some(profile_data) = collection
                 .profiles

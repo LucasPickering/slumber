@@ -38,6 +38,7 @@ unicode-width = "0.1.13"
 uuid = {workspace = true}
 
 [dev-dependencies]
+env-guard = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}

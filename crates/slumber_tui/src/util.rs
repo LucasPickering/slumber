@@ -255,11 +255,12 @@ async fn confirm(messages_tx: &MessageSender, message: impl ToString) -> bool {
 mod tests {
     use super::*;
     use crate::test_util::{harness, TestHarness};
+    use env_guard::EnvGuard;
     use itertools::Itertools;
     use rstest::rstest;
     use slumber_core::{
         assert_err, assert_matches,
-        test_util::{temp_dir, EnvGuard, TempDir},
+        test_util::{temp_dir, TempDir},
     };
     use std::ffi::OsStr;
     use tokio::fs;

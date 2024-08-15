@@ -220,10 +220,11 @@ mod tests {
         },
         test_util::{
             by_id, header_map, http_engine, invalid_utf8_chain, temp_dir,
-            EnvGuard, Factory, TempDir, TestPrompter,
+            Factory, TempDir, TestPrompter,
         },
     };
     use chrono::Utc;
+    use env_guard::EnvGuard;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;

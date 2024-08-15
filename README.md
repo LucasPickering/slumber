@@ -1,7 +1,7 @@
 # Slumber
 
-![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)
-![crates.io](https://img.shields.io/crates/v/slumber.svg)
+[![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)](https://github.com/LucasPickering/slumber/actions)
+[![crates.io](https://img.shields.io/crates/v/slumber.svg)](https://crates.io/crates/slumber)
 
 - [Home Page](https://slumber.lucaspickering.me)
 - [Installation](https://slumber.lucaspickering.me/artifacts/)

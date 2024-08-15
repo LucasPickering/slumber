@@ -19,7 +19,7 @@ use anyhow::Context;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use slumber_core::util::{parse_yaml, DataDirectory, ResultTraced};
-use std::{fs, path::PathBuf};
+use std::{fs::File, path::PathBuf};
 use tracing::info;
 
 const FILE: &str = "config.yml";
@@ -61,8 +61,8 @@ impl Config {
         let path = Self::path();
         info!(?path, "Loading configuration file");
 
-        match fs::read(&path) {
-            Ok(bytes) => parse_yaml::<Self>(&bytes)
+        match File::open(&path) {
+            Ok(file) => parse_yaml::<Self>(&file)
                 .context(format!("Error loading configuration from {path:?}"))
                 .traced(),
             // An error here is probably just the file missing, so don't make

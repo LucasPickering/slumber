@@ -17,7 +17,7 @@ use itertools::Itertools;
 use std::{
     env,
     fmt::Debug,
-    fs,
+    fs::File,
     future::Future,
     path::{Path, PathBuf},
     sync::Arc,
@@ -165,8 +165,8 @@ async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
     // tokio::fs for this but that just uses std::fs underneath anyway.
     let result =
         task::spawn_blocking::<_, anyhow::Result<Collection>>(move || {
-            let bytes = fs::read(path)?;
-            let collection = parse_yaml(&bytes)?;
+            let file = File::open(path)?;
+            let collection = parse_yaml(&file)?;
             Ok(collection)
         })
         .await;
@@ -195,7 +195,7 @@ mod tests {
     use rstest::rstest;
     use serde::de::IgnoredAny;
     use serde_json::json;
-    use std::{fs::File, time::Duration};
+    use std::{fs, time::Duration};
 
     /// Test various cases of try_path
     #[rstest]

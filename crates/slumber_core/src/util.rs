@@ -15,6 +15,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::{self, Debug},
     hash::Hash,
+    io::Read,
     ops::Deref,
     sync::Arc,
 };
@@ -40,11 +41,12 @@ pub fn doc_link(path: &str) -> String {
     format!("{WEBSITE}/book/{path}.html")
 }
 
-/// Parse bytes (probably from a file) into YAML. This will merge any
-/// anchors/aliases.
-pub fn parse_yaml<T: DeserializeOwned>(bytes: &[u8]) -> serde_yaml::Result<T> {
+/// Parse bytes from a reader into YAML. This will merge any anchors/aliases.
+pub fn parse_yaml<T: DeserializeOwned>(
+    reader: impl Read,
+) -> serde_yaml::Result<T> {
     // Two-step parsing is required for anchor/alias merging
-    let mut yaml_value = serde_yaml::from_slice::<serde_yaml::Value>(bytes)?;
+    let mut yaml_value: serde_yaml::Value = serde_yaml::from_reader(reader)?;
     yaml_value.apply_merge()?;
     serde_yaml::from_value(yaml_value)
 }

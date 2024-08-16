@@ -224,7 +224,6 @@ mod tests {
         },
     };
     use chrono::Utc;
-    use env_guard::EnvGuard;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
@@ -779,7 +778,7 @@ mod tests {
         // This prevents tests from competing for environment variables, and
         // isolates us from the external env
         let result = {
-            let _guard = EnvGuard::lock([("TEST", env_value)]);
+            let _guard = env_lock::lock_env([("TEST", env_value)]);
             render!("{{chains.chain1}}", context)
         };
         assert_eq!(result.unwrap(), expected);
@@ -1095,7 +1094,7 @@ mod tests {
         // This prevents tests from competing for environ environment variables,
         // and isolates us from the external env
         let result = {
-            let _guard = EnvGuard::lock([("TEST", env_value)]);
+            let _guard = env_lock::lock_env([("TEST", env_value)]);
             render!("{{env.TEST}}", context)
         };
         assert_eq!(result.unwrap(), expected);

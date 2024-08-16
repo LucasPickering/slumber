@@ -519,10 +519,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
 
 [[package]]
-name = "env-guard"
-version = "0.1.0"
+name = "env-lock"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83d7deb3aca2fadee5bc4f1024c1ef9426b91c2b718fc98ae04564c0ed0b12d2"
+checksum = "1debf1b50da3e3685ac8afacc10fec00d5d23a78c31e80166a6375b7602f0ba9"
 
 [[package]]
 name = "equivalent"
@@ -2156,7 +2156,7 @@ dependencies = [
  "chrono",
  "derive_more",
  "dirs",
- "env-guard",
+ "env-lock",
  "futures",
  "indexmap",
  "itertools 0.13.0",
@@ -2193,7 +2193,7 @@ dependencies = [
  "cli-clipboard",
  "crossterm",
  "derive_more",
- "env-guard",
+ "env-lock",
  "futures",
  "indexmap",
  "itertools 0.13.0",

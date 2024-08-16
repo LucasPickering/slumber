@@ -255,7 +255,6 @@ async fn confirm(messages_tx: &MessageSender, message: impl ToString) -> bool {
 mod tests {
     use super::*;
     use crate::test_util::{harness, TestHarness};
-    use env_guard::EnvGuard;
     use itertools::Itertools;
     use rstest::rstest;
     use slumber_core::{
@@ -285,7 +284,7 @@ mod tests {
         // Make sure we're not competing with the other tests that want to set
         // these env vars
         let command = {
-            let _guard = EnvGuard::lock([
+            let _guard = env_lock::lock_env([
                 ("VISUAL", env_visual),
                 ("EDITOR", env_editor),
             ]);
@@ -311,8 +310,10 @@ mod tests {
         // Make sure we're not competing with the other tests that want to set
         // these env vars
         let result = {
-            let _guard =
-                EnvGuard::lock([("VISUAL", None::<String>), ("EDITOR", None)]);
+            let _guard = env_lock::lock_env([
+                ("VISUAL", None::<String>),
+                ("EDITOR", None),
+            ]);
             get_editor_command(Path::new("file.yml"))
         };
         assert_err!(result, "No editor configured");

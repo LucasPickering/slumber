@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Use correct binding for `search` action in the placeholder of the response filter textbox
   - Previously it was hardcoded to display the default of `/`
 - Fix response body filter not applying on new responses
+- Support quoted arguments in `$VISUAL`/`$EDITOR` commands
 
 ## [1.8.1] - 2024-08-11
 

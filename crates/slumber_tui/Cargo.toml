@@ -16,6 +16,7 @@ chrono = {workspace = true}
 cli-clipboard = "0.4.0"
 crossterm = {workspace = true, features = ["bracketed-paste", "windows", "events", "event-stream"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from"]}
+editor-command = "0.1.0"
 futures = {workspace = true}
 indexmap = {workspace = true}
 itertools = {workspace = true}
@@ -38,7 +39,6 @@ unicode-width = "0.1.13"
 uuid = {workspace = true}
 
 [dev-dependencies]
-env-lock = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}

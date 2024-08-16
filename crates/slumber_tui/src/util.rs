@@ -2,15 +2,16 @@ use crate::{
     message::{Message, MessageSender},
     view::Confirm,
 };
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use derive_more::DerefMut;
+use editor_command::EditorBuilder;
 use futures::{future, FutureExt};
 use slumber_core::{
     template::Prompt,
     util::{expand_home, ResultTraced},
 };
 use std::{
-    env, io,
+    io,
     ops::Deref,
     path::{Path, PathBuf},
     process::Command,
@@ -208,17 +209,11 @@ pub async fn save_file(
 /// Get a command to open the given file in the user's configured editor. Return
 /// an error if the user has no editor configured
 pub fn get_editor_command(file: &Path) -> anyhow::Result<Command> {
-    let command = env::var("VISUAL").or(env::var("EDITOR")).map_err(|_| {
-        anyhow!(
-            "No editor configured. Please set the `VISUAL` or `EDITOR` \
-            environment variable"
-        )
-    })?;
-    let mut splits = command.split(' ');
-    let editor = splits.next().expect("`split` returns at least one value");
-    let mut command = Command::new(editor);
-    command.args(splits).arg(file);
-    Ok(command)
+    EditorBuilder::new()
+        .environment()
+        .path(file)
+        .build()
+        .context("Error opening editor")
 }
 
 /// Ask the user for some text input and wait for a response. Return `None` if
@@ -255,69 +250,12 @@ async fn confirm(messages_tx: &MessageSender, message: impl ToString) -> bool {
 mod tests {
     use super::*;
     use crate::test_util::{harness, TestHarness};
-    use itertools::Itertools;
     use rstest::rstest;
     use slumber_core::{
-        assert_err, assert_matches,
+        assert_matches,
         test_util::{temp_dir, TempDir},
     };
-    use std::ffi::OsStr;
     use tokio::fs;
-
-    /// Test reading editor command from VISUAL/EDITOR env vars
-    #[rstest]
-    #[case::visual(Some("ted"), Some("fred"), "ted", &[])]
-    #[case::editor(None, Some("fred"), "fred", &[])]
-    #[case::with_args(None, Some("ned --wait 60s"), "ned", &["--wait", "60s"])]
-    // This case is actually a bug, but I don't think it's worth the effort of
-    // engineering around. I added this test case for completeness
-    #[case::with_args_quoted(
-        None, Some("ned '--wait 60s'"), "ned", &["'--wait", "60s'"],
-    )]
-    fn test_get_editor(
-        #[case] env_visual: Option<&str>,
-        #[case] env_editor: Option<&str>,
-        #[case] expected_program: &str,
-        #[case] expected_args: &[&str],
-    ) {
-        let file_name = "file.yml";
-        // Make sure we're not competing with the other tests that want to set
-        // these env vars
-        let command = {
-            let _guard = env_lock::lock_env([
-                ("VISUAL", env_visual),
-                ("EDITOR", env_editor),
-            ]);
-            get_editor_command(Path::new(file_name))
-        }
-        .unwrap();
-        let mut expected_args = expected_args.to_owned();
-        expected_args.push(file_name);
-        assert_eq!(command.get_program(), expected_program);
-        assert_eq!(
-            command
-                .get_args()
-                .filter_map(OsStr::to_str)
-                .collect_vec()
-                .as_slice(),
-            expected_args
-        );
-    }
-
-    /// Test when VISUAL/EDITOR env vars are empty
-    #[test]
-    fn test_get_editor_error() {
-        // Make sure we're not competing with the other tests that want to set
-        // these env vars
-        let result = {
-            let _guard = env_lock::lock_env([
-                ("VISUAL", None::<String>),
-                ("EDITOR", None),
-            ]);
-            get_editor_command(Path::new("file.yml"))
-        };
-        assert_err!(result, "No editor configured");
-    }
 
     /// Test various cases of save_file
     #[rstest]

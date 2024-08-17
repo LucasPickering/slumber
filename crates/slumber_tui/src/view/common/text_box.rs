@@ -7,7 +7,7 @@ use crate::{
         event::{Event, EventHandler, Update},
     },
 };
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers};
 use persisted::PersistedContainer;
 use ratatui::{
     layout::Rect,
@@ -126,37 +126,6 @@ impl TextBox {
             call(&self.on_submit);
         }
     }
-
-    /// Handle input key event to modify text/cursor state
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
-        match key_event.code {
-            // Don't handle keystrokes if the user is holding a modifier
-            KeyCode::Char(c)
-                if (key_event.modifiers - KeyModifiers::SHIFT).is_empty() =>
-            {
-                self.state.insert(c)
-            }
-            KeyCode::Backspace => self.state.delete_left(),
-            KeyCode::Delete => self.state.delete_right(),
-            KeyCode::Left => {
-                if key_event.modifiers == KeyModifiers::CONTROL {
-                    self.state.home();
-                } else {
-                    self.state.left();
-                }
-            }
-            KeyCode::Right => {
-                if key_event.modifiers == KeyModifiers::CONTROL {
-                    self.state.end();
-                } else {
-                    self.state.right();
-                }
-            }
-            KeyCode::Home => self.state.home(),
-            KeyCode::End => self.state.end(),
-            _ => {}
-        }
-    }
 }
 
 impl EventHandler for TextBox {
@@ -177,7 +146,35 @@ impl EventHandler for TextBox {
             Event::Input {
                 event: crossterm::event::Event::Key(key_event),
                 ..
-            } => self.handle_key_event(key_event),
+            } => match key_event.code {
+                // Don't handle keystrokes if the user is holding a modifier
+                KeyCode::Char(c)
+                    if (key_event.modifiers - KeyModifiers::SHIFT)
+                        .is_empty() =>
+                {
+                    self.state.insert(c)
+                }
+                KeyCode::Backspace => self.state.delete_left(),
+                KeyCode::Delete => self.state.delete_right(),
+                KeyCode::Left => {
+                    if key_event.modifiers == KeyModifiers::CONTROL {
+                        self.state.home();
+                    } else {
+                        self.state.left();
+                    }
+                }
+                KeyCode::Right => {
+                    if key_event.modifiers == KeyModifiers::CONTROL {
+                        self.state.end();
+                    } else {
+                        self.state.right();
+                    }
+                }
+                KeyCode::Home => self.state.home(),
+                KeyCode::End => self.state.end(),
+                // Propagate any keystrokes we don't handle (e.g. f keys)
+                _ => return Update::Propagate(event),
+            },
             _ => return Update::Propagate(event),
         }
         Update::Consumed
@@ -345,6 +342,7 @@ mod tests {
     };
     use ratatui::text::Span;
     use rstest::rstest;
+    use slumber_core::assert_matches;
     use std::{cell::Cell, rc::Rc};
 
     /// Create a span styled as the cursor
@@ -428,12 +426,16 @@ mod tests {
             .send_key_modifiers(KeyCode::Char('W'), KeyModifiers::SHIFT)
             .assert_empty();
         assert_state(&component.data().state, "hello!W", 7);
-        component
-            .send_key_modifiers(
-                KeyCode::Char('W'), // this is what crossterm actually sends
-                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-            )
-            .assert_empty();
+        assert_matches!(
+            component
+                .send_key_modifiers(
+                    KeyCode::Char('W'), /* this is what crossterm actually
+                                         * sends */
+                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                )
+                .events(),
+            &[Event::Input { .. }]
+        );
         assert_state(&component.data().state, "hello!W", 7);
 
         // Test callbacks

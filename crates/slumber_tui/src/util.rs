@@ -176,7 +176,7 @@ pub fn get_editor_command(file: &Path) -> anyhow::Result<Command> {
         .with_context(|| {
             format!(
                 "Error opening editor; see {}",
-                doc_link("/api/configuration/editor"),
+                doc_link("api/configuration/editor"),
             )
         })
 }

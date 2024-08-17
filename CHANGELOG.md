@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fix response body filter not applying on new responses
 - Support quoted arguments in editor commands
 - Fix certain UI values not persisting correctly
+- Propgated unconsumed key events from text boxes
+  - E.g. F5 will now refresh the collection while a text box is in focus
 
 ## [1.8.1] - 2024-08-11
 

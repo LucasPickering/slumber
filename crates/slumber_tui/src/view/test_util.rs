@@ -220,6 +220,11 @@ impl PropagatedEvents {
             self.0
         )
     }
+
+    /// Get propgated events as a slice
+    pub fn events(&self) -> &[Event] {
+        &self.0
+    }
 }
 
 /// A wrapper component to pair a component with a modal queue. Useful when the

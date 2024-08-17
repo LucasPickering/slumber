@@ -31,6 +31,9 @@ const FILE: &str = "config.yml";
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    /// Command to use for in-app editing. If provided, overrides
+    /// `VISUAL`/`EDITOR` environment variables
+    pub editor: Option<String>,
     /// TLS cert errors on these hostnames are ignored. Be careful!
     pub ignore_certificate_hosts: Vec<String>,
     /// Should templates be rendered inline in the UI, or should we show the
@@ -82,6 +85,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            editor: None,
             ignore_certificate_hosts: Default::default(),
             preview_templates: true,
             input_bindings: Default::default(),

@@ -1,4 +1,5 @@
 use crate::{
+    context::TuiContext,
     message::{Message, MessageSender},
     view::Confirm,
 };
@@ -8,7 +9,7 @@ use editor_command::EditorBuilder;
 use futures::{future, FutureExt};
 use slumber_core::{
     template::Prompt,
-    util::{expand_home, ResultTraced},
+    util::{doc_link, expand_home, ResultTraced},
 };
 use std::{
     io,
@@ -210,10 +211,18 @@ pub async fn save_file(
 /// an error if the user has no editor configured
 pub fn get_editor_command(file: &Path) -> anyhow::Result<Command> {
     EditorBuilder::new()
+        // Config field takes priority over environment variables
+        .source(TuiContext::get().config.editor.as_deref())
         .environment()
+        .source(Some("vim"))
         .path(file)
         .build()
-        .context("Error opening editor")
+        .with_context(|| {
+            format!(
+                "Error opening editor; see {}",
+                doc_link("/api/configuration/editor"),
+            )
+        })
 }
 
 /// Ask the user for some text input and wait for a response. Return `None` if

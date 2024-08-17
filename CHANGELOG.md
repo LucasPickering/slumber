@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Edit recipe values (query params, headers, etc.) in the TUI to provide one-off values
   - Press `e` on any value you want to edit (you can [customize the key](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html))
+- Add `editor` field to the config, allowing you to customize what editor Slumber opens for in-app editing
+  - [See docs for more](https://slumber.lucaspickering.me/book/api/configuration/editor.html)
+- Use `vim` as default editor if none is configured
 
 ### Fixed
 
@@ -17,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Use correct binding for `search` action in the placeholder of the response filter textbox
   - Previously it was hardcoded to display the default of `/`
 - Fix response body filter not applying on new responses
-- Support quoted arguments in `$VISUAL`/`$EDITOR` commands
+- Support quoted arguments in editor commands
 
 ## [1.8.1] - 2024-08-11
 

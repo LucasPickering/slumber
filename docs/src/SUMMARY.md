@@ -38,6 +38,7 @@
 - [Configuration](./api/configuration/index.md)
   - [Input Bindings](./api/configuration/input_bindings.md)
   - [Theme](./api/configuration/theme.md)
+  - [In-App Editing](./api/configuration/editor.md)
 
 # Troubleshooting
 

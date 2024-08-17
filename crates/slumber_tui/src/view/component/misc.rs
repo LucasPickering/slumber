@@ -9,7 +9,7 @@ use crate::view::{
     },
     component::Component,
     draw::{Draw, DrawMetadata, Generate},
-    event::{Event, EventHandler, Update},
+    event::{Child, Event, EventHandler, Update},
     state::Notification,
     Confirm, ModalPriority, ViewContext,
 };
@@ -126,8 +126,8 @@ impl Modal for TextBoxModal {
 }
 
 impl EventHandler for TextBoxModal {
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.text_box.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.text_box.to_child_mut()]
     }
 }
 
@@ -216,8 +216,8 @@ impl EventHandler for ConfirmModal {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.buttons.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.buttons.to_child_mut()]
     }
 }
 

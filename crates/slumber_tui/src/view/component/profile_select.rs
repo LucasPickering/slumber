@@ -10,7 +10,7 @@ use crate::{
         },
         context::Persisted,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         state::{select::SelectState, StateCell},
         Component, ViewContext,
     },
@@ -61,7 +61,7 @@ impl ProfilePane {
         match &*selected_profile_id {
             Some(id) if profiles.contains_key(id) => {}
             _ => {
-                *selected_profile_id.borrow_mut() =
+                *selected_profile_id.get_mut() =
                     profiles.first().map(|(id, _)| id.clone())
             }
         }
@@ -89,7 +89,7 @@ impl EventHandler for ProfilePane {
             self.open_modal();
         } else if let Some(SelectProfile(profile_id)) = event.local() {
             // Handle message from the modal
-            *self.selected_profile_id.borrow_mut() = Some(profile_id.clone());
+            *self.selected_profile_id.get_mut() = Some(profile_id.clone());
             // Refresh template previews
             ViewContext::push_event(Event::HttpSelectRequest(None));
         } else {
@@ -180,8 +180,8 @@ impl Modal for ProfileListModal {
 }
 
 impl EventHandler for ProfileListModal {
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.select.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.select.to_child_mut()]
     }
 }
 

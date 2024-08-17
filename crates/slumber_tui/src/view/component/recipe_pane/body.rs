@@ -5,7 +5,7 @@ use crate::view::{
     },
     component::recipe_pane::table::{RecipeFieldTable, RecipeFieldTableProps},
     draw::{Draw, DrawMetadata},
-    event::EventHandler,
+    event::{Child, EventHandler},
     Component,
 };
 use ratatui::Frame;
@@ -88,12 +88,12 @@ impl RecipeBodyDisplay {
 }
 
 impl EventHandler for RecipeBodyDisplay {
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
         match self {
             RecipeBodyDisplay::Raw { text_window, .. } => {
-                vec![text_window.as_child()]
+                vec![text_window.to_child_mut()]
             }
-            RecipeBodyDisplay::Form(form) => vec![form.as_child()],
+            RecipeBodyDisplay::Form(form) => vec![form.to_child_mut()],
         }
     }
 }

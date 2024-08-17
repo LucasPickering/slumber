@@ -8,7 +8,7 @@ use crate::{
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
         draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         state::StateCell,
         util::highlight,
         Component, ViewContext,
@@ -146,8 +146,11 @@ impl EventHandler for QueryableBody {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.query_text_box.as_child(), self.text_window.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![
+            self.query_text_box.to_child_mut(),
+            self.text_window.to_child_mut(),
+        ]
     }
 }
 
@@ -196,12 +199,12 @@ impl<'a> Draw<QueryableBodyProps<'a>> for QueryableBody {
 impl PersistedContainer for QueryableBody {
     type Value = String;
 
-    fn get_persisted(&self) -> Self::Value {
-        self.query_text_box.data().get_persisted()
+    fn get_to_persist(&self) -> Self::Value {
+        self.query_text_box.data().get_to_persist()
     }
 
-    fn set_persisted(&mut self, value: Self::Value) {
-        self.query_text_box.data_mut().set_persisted(value)
+    fn restore_persisted(&mut self, value: Self::Value) {
+        self.query_text_box.data_mut().restore_persisted(value)
     }
 }
 

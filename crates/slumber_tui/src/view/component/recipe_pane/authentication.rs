@@ -7,7 +7,7 @@ use crate::{
         },
         component::{misc::TextBoxModal, Component},
         draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         state::fixed_select::FixedSelectState,
         ViewContext,
     },
@@ -137,10 +137,10 @@ impl EventHandler for AuthenticationDisplay {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
         match &mut self.state {
             State::Basic { selected_field, .. } => {
-                vec![selected_field.as_child()]
+                vec![selected_field.to_child_mut()]
             }
             State::Bearer { .. } => vec![],
         }

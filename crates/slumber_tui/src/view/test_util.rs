@@ -8,7 +8,7 @@ use crate::{
         component::Component,
         context::ViewContext,
         draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, ToChild, Update},
     },
 };
 use crossterm::event::{
@@ -37,7 +37,7 @@ pub struct TestComponent<'term, T, Props> {
 impl<'term, Props, T> TestComponent<'term, T, Props>
 where
     Props: Clone,
-    T: Draw<Props> + EventHandler,
+    T: Draw<Props> + ToChild,
 {
     /// Create a new component, then draw it to the screen and drain the event
     /// queue. Components aren't useful until they've been drawn once, because
@@ -243,8 +243,8 @@ impl<T> WithModalQueue<T> {
 }
 
 impl<T: EventHandler> EventHandler for WithModalQueue<T> {
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.modal_queue.as_child(), self.inner.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.modal_queue.to_child_mut(), self.inner.to_child_mut()]
     }
 }
 

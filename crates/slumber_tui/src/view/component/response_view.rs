@@ -7,7 +7,7 @@ use crate::{
         component::queryable_body::{QueryableBody, QueryableBodyProps},
         context::PersistedLazy,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         state::StateCell,
         Component, ViewContext,
     },
@@ -127,9 +127,9 @@ impl EventHandler for ResponseBodyView {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
         if let Some(state) = self.state.get_mut() {
-            vec![state.body.as_child()]
+            vec![state.body.to_child_mut()]
         } else {
             vec![]
         }

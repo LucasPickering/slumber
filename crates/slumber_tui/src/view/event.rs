@@ -3,12 +3,20 @@
 
 use crate::view::{
     common::modal::Modal,
+    context::{PersistedKey, PersistedLazy, PersistedLazyRefMut},
     state::{Notification, RequestState},
     Component,
 };
+use persisted::PersistedContainer;
+use serde::{de::DeserializeOwned, Serialize};
 use slumber_config::Action;
 use slumber_core::http::RequestId;
-use std::{any::Any, collections::VecDeque, fmt::Debug, ops::DerefMut};
+use std::{
+    any::Any,
+    collections::VecDeque,
+    fmt::Debug,
+    ops::{Deref, DerefMut},
+};
 use tracing::trace;
 
 /// A UI element that can handle user/async input. This trait facilitates an
@@ -39,22 +47,95 @@ pub trait EventHandler {
     ///     - If it propagates, move on to the next child, and so on
     /// - If none of the children consume the event, go up the tree to the
     ///   parent and try again.
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
         Vec::new()
     }
 }
 
-impl<T> EventHandler for T
+// We can't do a blanket impl of EventHandler based on DerefMut because of the
+// PersistedLazy's custom ToChild impl, which interferes with the blanket
+// ToChild impl
+
+impl<'a> EventHandler for Child<'a> {
+    fn update(&mut self, event: Event) -> Update {
+        self.deref_mut().update(event)
+    }
+
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        self.deref_mut().children()
+    }
+}
+
+impl<'a, K, C> EventHandler for PersistedLazyRefMut<'a, K, C>
 where
-    T: DerefMut,
-    T::Target: EventHandler,
+    K: PersistedKey,
+    K::Value: Debug + PartialEq + Serialize + DeserializeOwned,
+    C: EventHandler + PersistedContainer<Value = K::Value>,
 {
     fn update(&mut self, event: Event) -> Update {
         self.deref_mut().update(event)
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
         self.deref_mut().children()
+    }
+}
+
+/// A wrapper for a dynamically dispatcher [EventHandler]. This is used to
+/// return a collection of event handlers from [EventHandler::children]. Almost
+/// all cases will use the [Borrowed](Self::Borrowed) variant, but
+/// [Owned](Self::Owned) is useful for types that need to wrap the mutable
+/// reference in some type of guard. See [ToChild].
+pub enum Child<'a> {
+    Borrowed(&'a mut dyn EventHandler),
+    Owned(Box<dyn 'a + EventHandler>),
+}
+
+impl<'a> Deref for Child<'a> {
+    type Target = dyn 'a + EventHandler;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Child::Borrowed(inner) => *inner,
+            Child::Owned(inner) => inner.deref(),
+        }
+    }
+}
+
+impl<'a> DerefMut for Child<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Child::Borrowed(inner) => *inner,
+            Child::Owned(inner) => inner.deref_mut(),
+        }
+    }
+}
+
+/// Abstraction to convert a component type into [Child], which is a wrapper for
+/// a trait object. For 99% of components the blanket implementation will cover
+/// this. This only needs to be implemented manually for types that need an
+/// extra step to extract mutable data.
+pub trait ToChild {
+    fn to_child_mut(&mut self) -> Child<'_>;
+}
+
+impl<T: EventHandler> ToChild for T {
+    fn to_child_mut(&mut self) -> Child<'_> {
+        Child::Borrowed(self)
+    }
+}
+
+/// A mutable reference to the contents of [PersistedLazy] must be wrapped in
+/// [PersistedLazyRefMut], which requires us to return an owned child rather
+/// than a borrowed one.
+impl<K, C> ToChild for PersistedLazy<K, C>
+where
+    K: PersistedKey,
+    K::Value: Debug + PartialEq + Serialize + DeserializeOwned,
+    C: EventHandler + PersistedContainer<Value = K::Value>,
+{
+    fn to_child_mut(&mut self) -> Child<'_> {
+        Child::Owned(Box::new(self.get_mut()))
     }
 }
 

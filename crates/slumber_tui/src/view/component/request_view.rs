@@ -7,7 +7,7 @@ use crate::{
             text_window::{TextWindow, TextWindowProps},
         },
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         state::StateCell,
         util::highlight,
         Component, ViewContext,
@@ -104,8 +104,8 @@ impl EventHandler for RequestView {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.body_text_window.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.body_text_window.to_child_mut()]
     }
 }
 

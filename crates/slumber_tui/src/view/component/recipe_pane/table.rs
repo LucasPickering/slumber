@@ -10,7 +10,7 @@ use crate::{
         component::{misc::TextBoxModal, Component},
         context::{Persisted, PersistedKey, PersistedLazy},
         draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         state::select::SelectState,
         ViewContext,
     },
@@ -110,7 +110,7 @@ where
             // because it shouldn't be possible to change the selection while
             // the edit modal is open. It's safer to re-grab the modal by index
             // though, just to be sure we've got the right one.
-            self.select.data_mut().items_mut()[*row_index]
+            self.select.data_mut().get_mut().items_mut()[*row_index]
                 .value
                 .set_override(value);
         } else {
@@ -119,8 +119,8 @@ where
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.select.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.select.to_child_mut()]
     }
 }
 
@@ -212,7 +212,7 @@ impl<K: PersistedKey<Value = bool>> Generate for &RowState<K> {
 
 impl<K: PersistedKey<Value = bool>> RowState<K> {
     fn toggle(&mut self) {
-        *self.enabled.borrow_mut() ^= true;
+        *self.enabled.get_mut() ^= true;
     }
 
     /// Open a modal to create or edit the value's temporary override

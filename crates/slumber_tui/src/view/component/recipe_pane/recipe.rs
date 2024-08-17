@@ -9,7 +9,7 @@ use crate::{
         },
         context::PersistedLazy,
         draw::{Draw, DrawMetadata},
-        event::EventHandler,
+        event::{Child, EventHandler},
         Component,
     },
 };
@@ -125,13 +125,13 @@ impl RecipeDisplay {
 }
 
 impl EventHandler for RecipeDisplay {
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
         [
-            Some(self.tabs.as_child()),
-            self.body.as_mut().map(Component::as_child),
-            Some(self.query.as_child()),
-            Some(self.headers.as_child()),
-            self.authentication.as_mut().map(Component::as_child),
+            Some(self.tabs.to_child_mut()),
+            self.body.as_mut().map(Component::to_child_mut),
+            Some(self.query.to_child_mut()),
+            Some(self.headers.to_child_mut()),
+            self.authentication.as_mut().map(Component::to_child_mut),
         ]
         .into_iter()
         .flatten()

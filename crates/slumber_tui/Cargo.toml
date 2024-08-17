@@ -21,7 +21,7 @@ futures = {workspace = true}
 indexmap = {workspace = true}
 itertools = {workspace = true}
 notify = {version = "6.1.1", default-features = false, features = ["macos_fsevent"]}
-persisted = {version = "0.2.2", features = ["serde"]}
+persisted = {version = "0.3.0", features = ["serde"]}
 ratatui = {workspace = true, features = ["crossterm", "underline-color", "unstable-widget-ref"]}
 reqwest = {workspace = true}
 serde = {workspace = true}

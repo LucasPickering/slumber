@@ -4,7 +4,7 @@
 
 use crate::view::{
     draw::{Draw, DrawMetadata},
-    event::{Event, EventHandler, Update},
+    event::{Child, Event, ToChild, Update},
 };
 use crossterm::event::MouseEvent;
 use derive_more::Display;
@@ -79,7 +79,7 @@ impl<T> Component<T> {
     /// consumes the event.
     pub fn update_all(&mut self, mut event: Event) -> Update
     where
-        T: EventHandler,
+        T: ToChild,
     {
         // If we can't handle the event, our children can't either
         if !self.should_handle(&event) {
@@ -87,7 +87,7 @@ impl<T> Component<T> {
         }
 
         // If we have a child, send them the event. If not, eat it ourselves
-        for mut child in self.data_mut().children() {
+        for mut child in self.data_mut().to_child_mut().children() {
             // Don't propgate to children that aren't visible or not in focus
             if child.should_handle(&event) {
                 // RECURSION
@@ -110,7 +110,7 @@ impl<T> Component<T> {
         // already traced in the root span, so don't dupe it.
         let span = trace_span!("Component handling", component = self.name());
         span.in_scope(|| {
-            let update = self.data_mut().update(event);
+            let update = self.data_mut().to_child_mut().update(event);
             trace!(?update);
             update
         })
@@ -166,16 +166,16 @@ impl<T> Component<T> {
             })
     }
 
-    /// Get a mutable reference to the inner value, but as a trait object.
-    /// Useful for returning from `[EventHandler::children]`.
-    pub fn as_child(&mut self) -> Component<&mut dyn EventHandler>
+    /// Get a `Component` wrapping a [Child], which holds an [EventHandler]
+    /// trait object. Useful for returning from `[EventHandler::children]`.
+    pub fn to_child_mut(&mut self) -> Component<Child<'_>>
     where
-        T: EventHandler,
+        T: ToChild,
     {
         Component {
             id: self.id,
             name: self.name,
-            inner: &mut self.inner,
+            inner: self.inner.to_child_mut(),
             metadata: self.metadata.clone(),
         }
     }
@@ -307,7 +307,7 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{harness, terminal, TestHarness, TestTerminal},
-        view::event::Update,
+        view::event::{EventHandler, Update},
     };
     use crossterm::event::{
         KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
@@ -354,8 +354,12 @@ mod tests {
             Update::Consumed
         }
 
-        fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-            vec![self.a.as_child(), self.b.as_child(), self.c.as_child()]
+        fn children(&mut self) -> Vec<Component<Child<'_>>> {
+            vec![
+                self.a.to_child_mut(),
+                self.b.to_child_mut(),
+                self.c.to_child_mut(),
+            ]
         }
     }
 

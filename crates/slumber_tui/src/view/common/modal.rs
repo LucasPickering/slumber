@@ -2,7 +2,7 @@ use crate::{
     context::TuiContext,
     view::{
         draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         util::centered_rect,
         Component,
     },
@@ -14,7 +14,7 @@ use ratatui::{
     Frame,
 };
 use slumber_config::Action;
-use std::{collections::VecDeque, fmt::Debug};
+use std::{collections::VecDeque, fmt::Debug, ops::DerefMut};
 use tracing::trace;
 
 /// A modal (AKA popup or dialog) is a high-priority element to be shown to the
@@ -42,6 +42,16 @@ pub trait Modal: Debug + Draw<()> + EventHandler {
     /// Optional callback when the modal is closed. Useful for finishing
     /// operations that require ownership of the modal data.
     fn on_close(self: Box<Self>) {}
+}
+
+impl EventHandler for Box<dyn Modal> {
+    fn update(&mut self, event: Event) -> Update {
+        self.deref_mut().update(event)
+    }
+
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        self.deref_mut().children()
+    }
 }
 
 /// Define how a type can be converted into a modal. Often times, implementors
@@ -136,10 +146,10 @@ impl EventHandler for ModalQueue {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
         self.queue
             .front_mut()
-            .map(Component::as_child)
+            .map(Component::to_child_mut)
             .into_iter()
             .collect()
     }

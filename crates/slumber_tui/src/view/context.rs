@@ -146,6 +146,10 @@ pub type Persisted<K> = persisted::Persisted<ViewContext, K>;
 /// Wrapper for [persisted::PersistedLazy] bound to our store
 pub type PersistedLazy<K, C> = persisted::PersistedLazy<ViewContext, K, C>;
 
+/// Wrapper for [persisted::PersistedLazyRefMut] bound to our store
+pub type PersistedLazyRefMut<'a, K, C> =
+    persisted::PersistedLazyRefMut<'a, ViewContext, K, C>;
+
 /// Persist UI state via the database. We have to be able to serialize keys to
 /// insert and lookup. We have to serialize values to insert, and deserialize
 /// them to retrieve.

@@ -320,11 +320,11 @@ impl TextState {
 impl PersistedContainer for TextBox {
     type Value = String;
 
-    fn get_persisted(&self) -> Self::Value {
+    fn get_to_persist(&self) -> Self::Value {
         self.state.text.clone()
     }
 
-    fn set_persisted(&mut self, value: Self::Value) {
+    fn restore_persisted(&mut self, value: Self::Value) {
         self.set_text(value);
     }
 }

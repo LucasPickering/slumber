@@ -5,7 +5,7 @@ use crate::{
         component::{primary::PrimaryPane, recipe_pane::RecipeMenuAction},
         context::{Persisted, PersistedLazy},
         draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         state::select::SelectState,
         Component, ViewContext,
     },
@@ -89,17 +89,15 @@ impl RecipeListPane {
         let changed = if let Some(folder) = folder {
             let collapsed = &mut self.collapsed;
             match state {
-                CollapseState::Expand => {
-                    collapsed.borrow_mut().remove(&folder.id)
-                }
+                CollapseState::Expand => collapsed.get_mut().remove(&folder.id),
                 CollapseState::Collapse => {
-                    collapsed.borrow_mut().insert(folder.id.clone())
+                    collapsed.get_mut().insert(folder.id.clone())
                 }
                 CollapseState::Toggle => {
                     if collapsed.contains(&folder.id) {
-                        collapsed.borrow_mut().remove(&folder.id);
+                        collapsed.get_mut().remove(&folder.id);
                     } else {
-                        collapsed.borrow_mut().insert(folder.id.clone());
+                        collapsed.get_mut().insert(folder.id.clone());
                     }
                     true
                 }
@@ -118,7 +116,7 @@ impl RecipeListPane {
             if let Some(selected) = select.selected() {
                 new_select_state.select(selected.id());
             }
-            **select = new_select_state;
+            *select.get_mut() = new_select_state;
         }
 
         changed
@@ -173,8 +171,8 @@ impl EventHandler for RecipeListPane {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.select.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.select.to_child_mut()]
     }
 }
 

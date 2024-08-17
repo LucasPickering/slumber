@@ -201,11 +201,11 @@ where
 {
     type Value = Item;
 
-    fn get_persisted(&self) -> Self::Value {
+    fn get_to_persist(&self) -> Self::Value {
         self.selected()
     }
 
-    fn set_persisted(&mut self, value: Self::Value) {
+    fn restore_persisted(&mut self, value: Self::Value) {
         // This will call the on_select callback if the item is in the list
         self.select(&value);
     }

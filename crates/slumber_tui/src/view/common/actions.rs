@@ -2,7 +2,7 @@ use crate::view::{
     common::{list::List, modal::Modal},
     component::Component,
     draw::{Draw, DrawMetadata, Generate},
-    event::{Event, EventHandler},
+    event::{Child, Event, EventHandler},
     state::fixed_select::{FixedSelect, FixedSelectState},
     ViewContext,
 };
@@ -63,8 +63,8 @@ where
 }
 
 impl<T: FixedSelect> EventHandler for ActionsModal<T> {
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.actions.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.actions.to_child_mut()]
     }
 }
 

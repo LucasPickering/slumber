@@ -10,7 +10,7 @@ use crate::{
         common::{actions::ActionsModal, Pane},
         component::{primary::PrimaryPane, recipe_pane::recipe::RecipeDisplay},
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         state::StateCell,
         Component, ViewContext,
     },
@@ -89,10 +89,10 @@ impl EventHandler for RecipePane {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
         self.recipe_state
             .get_mut()
-            .and_then(|state| Some(state.as_mut()?.as_child()))
+            .and_then(|state| Some(state.as_mut()?.to_child_mut()))
             .into_iter()
             .collect()
     }

@@ -5,7 +5,7 @@ use crate::{
         common::{list::List, modal::Modal},
         component::Component,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler},
+        event::{Child, Event, EventHandler},
         state::{select::SelectState, RequestStateSummary},
         ViewContext,
     },
@@ -76,8 +76,8 @@ impl Modal for History {
 }
 
 impl EventHandler for History {
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.select.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.select.to_child_mut()]
     }
 }
 

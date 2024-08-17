@@ -374,11 +374,11 @@ where
 {
     type Value = Option<Item::Id>;
 
-    fn get_persisted(&self) -> Self::Value {
+    fn get_to_persist(&self) -> Self::Value {
         self.selected().map(Item::id).cloned()
     }
 
-    fn set_persisted(&mut self, value: Self::Value) {
+    fn restore_persisted(&mut self, value: Self::Value) {
         // If we persisted `None`, we *don't* want to update state here. That
         // means the list was empty before persisting and it may now have data,
         // and we don't want to overwrite whatever was pre-selected

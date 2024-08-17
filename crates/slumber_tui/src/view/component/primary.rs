@@ -14,7 +14,7 @@ use crate::{
         },
         context::{Persisted, PersistedLazy},
         draw::{Draw, DrawMetadata, ToStringGenerate},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         state::{fixed_select::FixedSelectState, RequestState},
         Component, ViewContext,
     },
@@ -217,12 +217,12 @@ impl PrimaryView {
 
     fn toggle_fullscreen(&mut self, mode: FullscreenMode) {
         // If we're already in the given mode, exit
-        *self.fullscreen_mode.borrow_mut() =
-            if Some(mode) == *self.fullscreen_mode {
-                None
-            } else {
-                Some(mode)
-            };
+        *self.fullscreen_mode.get_mut() = if Some(mode) == *self.fullscreen_mode
+        {
+            None
+        } else {
+            Some(mode)
+        };
     }
 
     /// Exit fullscreen mode if it doesn't match the selected pane. This is
@@ -232,7 +232,7 @@ impl PrimaryView {
         match (self.selected_pane.selected(), *self.fullscreen_mode) {
             (PrimaryPane::Recipe, Some(FullscreenMode::Recipe))
             | (PrimaryPane::Exchange, Some(FullscreenMode::Exchange)) => {}
-            _ => *self.fullscreen_mode.borrow_mut() = None,
+            _ => *self.fullscreen_mode.get_mut() = None,
         }
     }
 
@@ -278,8 +278,8 @@ impl EventHandler for PrimaryView {
                 action: Some(action),
                 event: _,
             } => match action {
-                Action::PreviousPane => self.selected_pane.previous(),
-                Action::NextPane => self.selected_pane.next(),
+                Action::PreviousPane => self.selected_pane.get_mut().previous(),
+                Action::NextPane => self.selected_pane.get_mut().next(),
                 Action::Submit => {
                     // Send a request from anywhere
                     if let Some(config) =
@@ -303,14 +303,15 @@ impl EventHandler for PrimaryView {
                 Action::SelectProfileList => {
                     self.profile_pane.data().open_modal()
                 }
-                Action::SelectRecipeList => {
-                    self.selected_pane.select(&PrimaryPane::RecipeList)
-                }
+                Action::SelectRecipeList => self
+                    .selected_pane
+                    .get_mut()
+                    .select(&PrimaryPane::RecipeList),
                 Action::SelectRecipe => {
-                    self.selected_pane.select(&PrimaryPane::Recipe)
+                    self.selected_pane.get_mut().select(&PrimaryPane::Recipe)
                 }
                 Action::SelectResponse => {
-                    self.selected_pane.select(&PrimaryPane::Exchange)
+                    self.selected_pane.get_mut().select(&PrimaryPane::Exchange)
                 }
 
                 // Toggle fullscreen
@@ -329,7 +330,7 @@ impl EventHandler for PrimaryView {
                 }
                 // Exit fullscreen
                 Action::Cancel if self.fullscreen_mode.is_some() => {
-                    *self.fullscreen_mode.borrow_mut() = None;
+                    *self.fullscreen_mode.get_mut() = None;
                 }
                 _ => return Update::Propagate(event),
             },
@@ -339,7 +340,7 @@ impl EventHandler for PrimaryView {
                     self.maybe_exit_fullscreen();
                 } else if let Some(pane) = local.downcast_ref::<PrimaryPane>() {
                     // Children can select themselves by sending PrimaryPane
-                    self.selected_pane.select(pane);
+                    self.selected_pane.get_mut().select(pane);
                 } else if let Some(action) =
                     local.downcast_ref::<RecipeMenuAction>()
                 {
@@ -361,12 +362,12 @@ impl EventHandler for PrimaryView {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![
-            self.profile_pane.as_child(),
-            self.recipe_list_pane.as_child(),
-            self.recipe_pane.as_child(),
-            self.exchange_pane.as_child(),
+            self.profile_pane.to_child_mut(),
+            self.recipe_list_pane.to_child_mut(),
+            self.recipe_pane.to_child_mut(),
+            self.exchange_pane.to_child_mut(),
         ]
     }
 }

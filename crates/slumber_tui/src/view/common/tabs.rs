@@ -55,11 +55,11 @@ where
 {
     type Value = T;
 
-    fn get_persisted(&self) -> Self::Value {
-        self.tabs.get_persisted()
+    fn get_to_persist(&self) -> Self::Value {
+        self.tabs.get_to_persist()
     }
 
-    fn set_persisted(&mut self, value: Self::Value) {
-        self.tabs.set_persisted(value)
+    fn restore_persisted(&mut self, value: Self::Value) {
+        self.tabs.restore_persisted(value)
     }
 }

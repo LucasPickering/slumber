@@ -11,7 +11,7 @@ use crate::{
         },
         context::PersistedLazy,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         state::{
             request_store::RequestStore, RequestState, RequestStateSummary,
         },
@@ -99,7 +99,7 @@ impl Root {
             }
         };
 
-        *self.selected_request = get_id()?.into();
+        *self.selected_request.get_mut() = get_id()?.into();
         Ok(())
     }
 
@@ -145,7 +145,7 @@ impl EventHandler for Root {
                 let id = state.id();
                 // If this request is *new*, select it
                 if self.request_store.update(state) {
-                    *self.selected_request = Some(id).into();
+                    *self.selected_request.get_mut() = Some(id).into();
                 }
             }
 
@@ -179,8 +179,11 @@ impl EventHandler for Root {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
-        vec![self.modal_queue.as_child(), self.primary_view.as_child()]
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![
+            self.modal_queue.to_child_mut(),
+            self.primary_view.to_child_mut(),
+        ]
     }
 }
 
@@ -232,11 +235,11 @@ struct SelectedRequestId(Option<RequestId>);
 impl PersistedContainer for SelectedRequestId {
     type Value = Option<RequestId>;
 
-    fn get_persisted(&self) -> Self::Value {
+    fn get_to_persist(&self) -> Self::Value {
         self.0
     }
 
-    fn set_persisted(&mut self, request_id: Self::Value) {
+    fn restore_persisted(&mut self, request_id: Self::Value) {
         // We can't just set the value directly, because then the request won't
         // be loaded from the DB
         ViewContext::push_event(Event::HttpSelectRequest(request_id))

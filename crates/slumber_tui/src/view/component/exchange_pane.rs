@@ -13,7 +13,7 @@ use crate::{
         },
         context::PersistedLazy,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, Update},
         RequestState, ViewContext,
     },
 };
@@ -85,12 +85,12 @@ impl EventHandler for ExchangePane {
         Update::Consumed
     }
 
-    fn children(&mut self) -> Vec<Component<&mut dyn EventHandler>> {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![
-            self.request.as_child(),
-            self.response_body.as_child(),
+            self.request.to_child_mut(),
+            self.response_body.to_child_mut(),
             // Tabs last so the children get priority
-            self.tabs.as_child(),
+            self.tabs.to_child_mut(),
         ]
     }
 }

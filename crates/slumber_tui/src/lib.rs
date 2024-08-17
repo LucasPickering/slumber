@@ -18,9 +18,7 @@ mod view;
 use crate::{
     context::TuiContext,
     message::{Message, MessageSender, RequestConfig},
-    util::{
-        get_editor_command, save_file, signals, Replaceable, ResultReported,
-    },
+    util::{get_editor_command, save_file, signals, ResultReported},
     view::{PreviewPrompter, RequestState, View},
 };
 use anyhow::{anyhow, Context};
@@ -70,10 +68,7 @@ pub struct Tui {
     /// Transmitter for the async message queue, which can be freely cloned and
     /// passed around
     messages_tx: MessageSender,
-    /// Replaceable allows us to enforce that the view is dropped before being
-    /// recreated. The view persists its state on drop, so that has to happen
-    /// before the new one is created.
-    view: Replaceable<View>,
+    view: View,
     collection_file: CollectionFile,
     should_run: bool,
     /// Each active HTTP request should grab one permit from the semaphore. The
@@ -136,7 +131,7 @@ impl Tui {
             collection_file,
             should_run: true,
 
-            view: Replaceable::new(view),
+            view,
             http_semaphore: Semaphore::new(Self::MAX_HTTP_REQUESTS).into(),
         };
 
@@ -375,10 +370,7 @@ impl Tui {
         let database = self.database.clone();
         let messages_tx = self.messages_tx();
         let collection_file = &self.collection_file;
-        self.view.replace(move |old| {
-            drop(old);
-            View::new(collection_file, database, messages_tx)
-        });
+        self.view = View::new(collection_file, database, messages_tx);
     }
 
     /// GOODBYE

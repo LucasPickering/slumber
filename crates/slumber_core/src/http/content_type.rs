@@ -53,6 +53,13 @@ impl ContentType {
         }
     }
 
+    /// Get the MIME for this content type
+    pub fn to_mime(&self) -> Mime {
+        match self {
+            ContentType::Json => mime::APPLICATION_JSON,
+        }
+    }
+
     /// Guess content type from a file path based on its extension
     pub fn from_path(path: &Path) -> anyhow::Result<Self> {
         let extension = path

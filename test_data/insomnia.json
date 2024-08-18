@@ -124,7 +124,7 @@
       "method": "POST",
       "body": {
         "mimeType": "application/json",
-        "text": "{\n\t\"message\": \"hello!\"\n}"
+        "text": "{\n  \"message\": \"hello!\"\n}"
       },
       "preRequestScript": "",
       "parameters": [],

@@ -28,7 +28,7 @@ use openapiv3::{
     PathItem, PathStyle, Paths, ReferenceOr, RequestBody, Schema,
     SecurityScheme, Server,
 };
-use std::{cmp::Ordering, fs::File, iter, path::Path};
+use std::{fs::File, iter, path::Path};
 use strum::IntoEnumIterator;
 use tracing::{debug, error, info, warn};
 
@@ -503,11 +503,15 @@ impl<'a> RecipeBuilder<'a> {
                     .ok()
             })
             // Sort known content types first
-            .sorted_by(|body1, body2| match (body1, body2) {
-                (RecipeBody::Raw(_), RecipeBody::Raw(_)) => Ordering::Equal,
-                (RecipeBody::Raw(_), _) => Ordering::Greater,
-                (_, RecipeBody::Raw(_)) => Ordering::Less,
-                (_, _) => Ordering::Equal,
+            .sorted_by_key(|body| {
+                // This that *don't* match will sort first, because false < true
+                matches!(
+                    body,
+                    RecipeBody::Raw {
+                        content_type: None,
+                        ..
+                    }
+                )
             })
             .next();
 
@@ -620,7 +624,10 @@ impl<'a> RecipeBuilder<'a> {
                 "Unknown content type `{mime}` for body of recipe `{}`",
                 self.id
             );
-            Ok(RecipeBody::Raw(Template::raw(format!("{body:#}"))))
+            Ok(RecipeBody::Raw {
+                body: Template::raw(format!("{body:#}")),
+                content_type: None,
+            })
         }
     }
 }
@@ -709,7 +716,10 @@ mod tests {
                 ..Default::default()
             }
         )],
-        RecipeBody::Raw("{\n  \"field\": \"value\"\n}".into()),
+        RecipeBody::Raw {
+            body: "{\n  \"field\": \"value\"\n}".into(),
+            content_type: None
+        },
     )]
     // We can load from the `schema.example` field
     #[case::schema_example(
@@ -762,7 +772,7 @@ mod tests {
         )],
         RecipeBody::untemplated_json(json!({"field": "example"})),
     )]
-    // Known content type takes precendence over unknown ones
+    // Known content type takes precedence over unknown ones
     #[case::content_type_precedence(
         [
             (

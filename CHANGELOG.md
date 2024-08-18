@@ -22,6 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - [See docs for more](https://slumber.lucaspickering.me/book/api/configuration/editor.html)
 - Use `vim` as default editor if none is configured
 
+### Changed
+
+- `!json` bodies are now prettified when sent to the server
+
 ### Fixed
 
 - Fix Basic auth being label as Bearer auth in Recipe Authentication pane

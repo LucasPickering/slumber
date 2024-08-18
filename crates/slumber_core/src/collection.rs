@@ -462,11 +462,12 @@ mod tests {
                     method: Method::Post,
                     url: "{{host}}/anything/login".into(),
 
-                    body: Some(RecipeBody::Raw(
-                        "{\"username\": \"{{username}}\", \
+                    body: Some(RecipeBody::Raw {
+                        body: "{\"username\": \"{{username}}\", \
                         \"password\": \"{{chains.password}}\"}"
                             .into(),
-                    )),
+                        content_type: None,
+                    }),
                     authentication: None,
                     query: vec![
                         ("sudo".into(), "yes_please".into()),
@@ -498,12 +499,11 @@ mod tests {
                             name: Some("Modify User".into()),
                             method: Method::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-                            body: Some(RecipeBody::Json(
-                                json!({
-                                    "username": "new username"
-                                })
-                                .into(),
-                            )),
+                            body: Some(RecipeBody::Raw {
+                                body: json!({"username": "new username"})
+                                    .into(),
+                                content_type: Some(ContentType::Json),
+                            }),
                             authentication: Some(Authentication::Bearer(
                                 "{{chains.auth_token}}".into(),
                             )),
@@ -518,9 +518,11 @@ mod tests {
                             method: Method::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
 
-                            body: Some(RecipeBody::Json(
-                                json!(r#"{"warning": "NOT an object"}"#).into(),
-                            )),
+                            body: Some(RecipeBody::Raw {
+                                body: json!(r#"{"warning": "NOT an object"}"#)
+                                    .into(),
+                                content_type: Some(ContentType::Json),
+                            }),
                             authentication: Some(Authentication::Basic {
                                 username: "{{username}}".into(),
                                 password: Some("{{password}}".into()),

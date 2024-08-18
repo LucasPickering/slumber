@@ -5,10 +5,16 @@ use crate::{
         recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, Recipe,
         RecipeBody, RecipeId,
     },
+    http::content_type::ContentType,
     template::Template,
 };
+use anyhow::Context;
 use serde::{
-    de::{EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
+    de::{
+        self, EnumAccess, Error as _, MapAccess, SeqAccess, VariantAccess,
+        Visitor,
+    },
+    ser::Error as _,
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::{fmt::Display, hash::Hash, str::FromStr};
@@ -131,7 +137,7 @@ where
 
         fn visit_unit<E>(self) -> Result<Self::Value, E>
         where
-            E: Error,
+            E: de::Error,
         {
             Ok(Vec::new())
         }
@@ -145,20 +151,20 @@ where
             while let Some(value) = seq.next_element::<String>()? {
                 let (param, value) =
                     value.split_once('=').ok_or_else(|| {
-                        Error::custom(
+                        de::Error::custom(
                             "Query parameters must be in the form \
                             `\"<param>=<value>\"`",
                         )
                     })?;
 
                 if param.is_empty() {
-                    return Err(Error::custom(
+                    return Err(de::Error::custom(
                         "Query parameter name cannot be empty",
                     ));
                 }
 
                 let key = param.to_string();
-                let value = value.parse().map_err(Error::custom)?;
+                let value = value.parse().map_err(de::Error::custom)?;
 
                 query.push((key, value));
             }
@@ -205,13 +211,26 @@ impl Serialize for RecipeBody {
         // This involves a lot of duplication, but any abstraction will probably
         // just make it worse
         match self {
-            RecipeBody::Raw(template) => template.serialize(serializer),
-            RecipeBody::Json(value) => serializer.serialize_newtype_variant(
-                Self::STRUCT_NAME,
-                1,
-                Self::VARIANT_JSON,
-                value,
-            ),
+            RecipeBody::Raw {
+                body,
+                content_type: None,
+            } => body.serialize(serializer),
+            RecipeBody::Raw {
+                body,
+                content_type: Some(ContentType::Json),
+            } => {
+                // Reparse the body as JSON. Since it came from JSOn originally,
+                // it *shouldn't* fail to reparse
+                let json = serde_json::Value::from_str(&body.display())
+                    .context("Failed to reparse body as JSON")
+                    .map_err(S::Error::custom)?;
+                serializer.serialize_newtype_variant(
+                    Self::STRUCT_NAME,
+                    1,
+                    Self::VARIANT_JSON,
+                    &json,
+                )
+            }
             RecipeBody::FormUrlencoded(value) => serializer
                 .serialize_newtype_variant(
                     Self::STRUCT_NAME,
@@ -244,10 +263,13 @@ impl<'de> Deserialize<'de> for RecipeBody {
             ($func:ident, $type:ty) => {
                 fn $func<E>(self, v: $type) -> Result<Self::Value, E>
                 where
-                    E: Error,
+                    E: de::Error,
                 {
                     let template = v.to_string().parse().map_err(E::custom)?;
-                    Ok(RecipeBody::Raw(template))
+                    Ok(RecipeBody::Raw {
+                        body: template,
+                        content_type: None,
+                    })
                 }
             };
         }
@@ -281,7 +303,18 @@ impl<'de> Deserialize<'de> for RecipeBody {
                 let (tag, value) = data.variant::<String>()?;
                 match tag.as_str() {
                     RecipeBody::VARIANT_JSON => {
-                        Ok(RecipeBody::Json(value.newtype_variant()?))
+                        // Pretty print the JSON now and parse it as a template.
+                        // This is inefficient because we stringify the value
+                        // then immediately clone it during the parse :(
+                        let json: serde_json::Value =
+                            value.newtype_variant()?;
+                        let body = format!("{json:#}")
+                            .parse()
+                            .map_err(A::Error::custom)?;
+                        Ok(RecipeBody::Raw {
+                            body,
+                            content_type: Some(ContentType::Json),
+                        })
                     }
                     RecipeBody::VARIANT_FORM_URLENCODED => {
                         Ok(RecipeBody::FormUrlencoded(value.newtype_variant()?))
@@ -425,18 +458,28 @@ mod tests {
     /// of enums is a bit different, and we specifically only care about YAML.
     #[rstest]
     #[case::raw(
-        RecipeBody::Raw("{{user_id}}".into()),
+        RecipeBody::Raw { body: "{{user_id}}".into(), content_type: None },
         "{{user_id}}"
     )]
     #[case::json(
-        RecipeBody::Json(json!({"user": "{{user_id}}"}).into()),
+        RecipeBody::Raw {
+            body: serde_json::to_string_pretty(&json!({"user": "{{user_id}}"}))
+                .unwrap()
+                .into(),
+            content_type: Some(ContentType::Json),
+        },
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
             value: mapping([("user", "{{user_id}}")])
         })),
     )]
     #[case::json_nested(
-        RecipeBody::Json(json!(r#"{"warning": "NOT an object"}"#).into()),
+        RecipeBody::Raw {
+            body: serde_json::to_string_pretty(
+                &json!(r#"{"warning": "NOT an object"}"#)
+            ).unwrap().into(),
+            content_type: Some(ContentType::Json),
+        },
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
             value: r#"{"warning": "NOT an object"}"#.into()

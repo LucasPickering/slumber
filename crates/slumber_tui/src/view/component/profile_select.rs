@@ -345,7 +345,7 @@ mod tests {
         #[case] persisted_id: Option<&str>,
         #[case] expected: Option<&str>,
     ) {
-        let profiles = by_id(profile_ids.into_iter().map(|&id| Profile {
+        let profiles = by_id(profile_ids.iter().map(|&id| Profile {
             id: id.into(),
             ..Profile::factory(())
         }));

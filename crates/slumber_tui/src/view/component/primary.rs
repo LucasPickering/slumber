@@ -438,7 +438,7 @@ mod tests {
     ) -> TestComponent<'term, PrimaryView, PrimaryViewProps<'static>> {
         let view = PrimaryView::new(&harness.collection);
         let component = TestComponent::new(
-            &terminal,
+            terminal,
             view,
             PrimaryViewProps {
                 selected_request: None,

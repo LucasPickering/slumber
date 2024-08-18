@@ -13,7 +13,6 @@ version = "1.8.1"
 [dependencies]
 aho-corasick = "1.0.0"
 anyhow = "1.0.0"
-async-recursion = "1.1.1"
 async-trait = "0.1.81"
 bytes = {workspace = true, features = ["serde"]}
 chrono = {workspace = true, features = ["clock", "serde", "std"]}

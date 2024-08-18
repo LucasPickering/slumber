@@ -43,13 +43,13 @@ pub mod query;
 pub use models::*;
 
 use crate::{
-    collection::{Authentication, JsonBody, Method, Recipe, RecipeBody},
+    collection::{Authentication, Method, Recipe, RecipeBody},
     db::CollectionDatabase,
+    http::content_type::ContentType,
     template::{Template, TemplateContext},
     util::ResultTraced,
 };
 use anyhow::Context;
-use async_recursion::async_recursion;
 use bytes::Bytes;
 use chrono::Utc;
 use futures::{
@@ -561,19 +561,10 @@ impl Recipe {
         };
 
         let rendered = match body {
-            RecipeBody::Raw(body) => RenderedBody::Raw(
+            RecipeBody::Raw { body, .. } => RenderedBody::Raw(
                 body.render(template_context)
                     .await
                     .context("Error rendering body")?
-                    .into(),
-            ),
-            // Recursively render the JSON body
-            RecipeBody::Json(value) => RenderedBody::Raw(
-                value
-                    .render(template_context)
-                    .await
-                    .context("Error rendering body")?
-                    .to_string()
                     .into(),
             ),
             RecipeBody::FormUrlencoded(fields) => {
@@ -635,52 +626,15 @@ impl RecipeBody {
     /// according to the body
     fn mime(&self) -> Option<Mime> {
         match self {
-            RecipeBody::Raw(_)
+            RecipeBody::Raw { content_type, .. } => {
+                content_type.as_ref().map(ContentType::to_mime)
+            }
             // Do *not* set anything for these, because reqwest will do that
             // automatically and we don't want to interfere
-            | RecipeBody::FormUrlencoded(_)
-            | RecipeBody::FormMultipart(_) => None,
-            RecipeBody::Json(_) => Some(mime::APPLICATION_JSON),
+            RecipeBody::FormUrlencoded(_) | RecipeBody::FormMultipart(_) => {
+                None
+            }
         }
-    }
-}
-
-impl JsonBody {
-    /// Recursively render the JSON value. All string values will be rendered
-    /// as templates; other primitives remain the same.
-    #[async_recursion]
-    async fn render(
-        &self,
-        template_context: &TemplateContext,
-    ) -> anyhow::Result<serde_json::Value> {
-        let rendered = match self {
-            JsonBody::Null => serde_json::Value::Null,
-            JsonBody::Bool(b) => serde_json::Value::Bool(*b),
-            JsonBody::Number(n) => serde_json::Value::Number(n.clone()),
-            JsonBody::String(template) => serde_json::Value::String(
-                template.render_string(template_context).await?,
-            ),
-            JsonBody::Array(values) => serde_json::Value::Array(
-                try_join_all(
-                    values.iter().map(|value| value.render(template_context)),
-                )
-                .await?
-                .into_iter()
-                .collect(),
-            ),
-            JsonBody::Object(items) => serde_json::Value::Object(
-                try_join_all(items.iter().map(|(key, value)| async {
-                    Ok::<_, anyhow::Error>((
-                        key.clone(),
-                        value.render(template_context).await?,
-                    ))
-                }))
-                .await?
-                .into_iter()
-                .collect(),
-            ),
-        };
-        Ok(rendered)
     }
 }
 
@@ -933,14 +887,26 @@ mod tests {
     /// Test building just a body. URL/query/headers should *not* be built.
     #[rstest]
     #[case::raw(
-        RecipeBody::Raw(r#"{"group_id":"{{group_id}}"}"#.into()),
+        RecipeBody::Raw {
+            body: r#"{"group_id":"{{group_id}}"}"#.into(),
+            content_type: None,
+        },
         br#"{"group_id":"3"}"#
     )]
     #[case::json(
-        RecipeBody::Json(json!({"group_id": "{{group_id}}"}).into()),
-        br#"{"group_id":"3"}"#,
+        RecipeBody::Raw {
+            body: json!({"group_id": "{{group_id}}"}).into(),
+            content_type: Some(ContentType::Json),
+        },
+        b"{\n  \"group_id\": \"3\"\n}",
     )]
-    #[case::binary(RecipeBody::Raw("{{chains.binary}}".into()), b"\xc3\x28")]
+    #[case::binary(
+        RecipeBody::Raw {
+            body: "{{chains.binary}}".into(),
+            content_type: None,
+        },
+        b"\xc3\x28",
+    )]
     #[tokio::test]
     async fn test_build_body(
         http_engine: &HttpEngine,
@@ -1035,17 +1001,23 @@ mod tests {
     /// hypothetically vary from the request record.
     #[rstest]
     #[case::json(
-        RecipeBody::Json(json!({"group_id": "{{group_id}}"}).into()),
+        RecipeBody::Raw {
+            body: json!({"group_id": "{{group_id}}"}).into(),
+            content_type: Some(ContentType::Json),
+        },
         None,
-        Some(br#"{"group_id":"3"}"#.as_slice()),
+        Some(b"{\n  \"group_id\": \"3\"\n}".as_slice()),
         "^application/json$",
         &[],
     )]
     // Content-Type has been overridden by an explicit header
     #[case::json_content_type_override(
-        RecipeBody::Json(json!({"group_id": "{{group_id}}"}).into()),
+        RecipeBody::Raw {
+            body: json!({"group_id": "{{group_id}}"}).into(),
+            content_type: Some(ContentType::Json),
+        },
         Some("text/plain"),
-        Some(br#"{"group_id":"3"}"#.as_slice()),
+        Some(b"{\n  \"group_id\": \"3\"\n}".as_slice()),
         "^text/plain$",
         &[],
     )]

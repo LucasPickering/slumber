@@ -10,10 +10,7 @@ use crate::view::{
 };
 use ratatui::Frame;
 use serde::Serialize;
-use slumber_core::{
-    collection::{RecipeBody, RecipeId},
-    http::content_type::ContentType,
-};
+use slumber_core::collection::{RecipeBody, RecipeId};
 
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
@@ -30,7 +27,7 @@ impl RecipeBodyDisplay {
     /// Build a component to display the body, based on the body type
     pub fn new(body: &RecipeBody, recipe_id: &RecipeId) -> Self {
         match body {
-            RecipeBody::Raw(body) => Self::Raw {
+            RecipeBody::Raw { body, .. } => Self::Raw {
                 preview: TemplatePreview::new(
                     body.clone(),
                     // Hypothetically we could grab the content type from the
@@ -41,31 +38,6 @@ impl RecipeBodyDisplay {
                 ),
                 text_window: Component::default(),
             },
-            RecipeBody::Json(value) => {
-                // We want to pretty-print the JSON body. We *could* map from
-                // JsonBody<Template> -> JsonBody<TemplatePreview> then
-                // stringify that on every render, but then we'd have to
-                // implement JSON pretty printing ourselves. The easier method
-                // is to just turn this whole JSON struct into a single string
-                // (with unrendered templates), then parse that back as one big
-                // template. If it's stupid but it works, it's not stupid.
-                let value: serde_json::Value = value
-                    .map_ref(|template| template.display().to_string())
-                    .into();
-                let stringified = format!("{value:#}");
-                // This template is made of valid templates, surrounded by JSON
-                // syntax. In no world should that result in an invalid template
-                let template = stringified
-                    .parse()
-                    .expect("Unexpected template parse failure");
-                Self::Raw {
-                    preview: TemplatePreview::new(
-                        template,
-                        Some(ContentType::Json),
-                    ),
-                    text_window: Component::default(),
-                }
-            }
             RecipeBody::FormUrlencoded(fields)
             | RecipeBody::FormMultipart(fields) => {
                 let inner = RecipeFieldTable::new(

@@ -7,6 +7,7 @@ use crate::{
         Collection, Folder, HasId, Method, Profile, ProfileId, Recipe,
         RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
+    http::content_type::ContentType,
     template::{Identifier, Template},
     util::NEW_ISSUE_LINK,
 };
@@ -379,13 +380,10 @@ impl TryFrom<Body> for RecipeBody {
 
     fn try_from(body: Body) -> anyhow::Result<Self> {
         let body = if body.mime_type == mime::APPLICATION_JSON {
-            // Parse to JSON
-            let json = serde_json::from_str::<serde_json::Value>(
-                body.try_text()?.as_str(),
-            )
-            .context("Error parsing body as JSON")?;
-            // Convert to our own body
-            RecipeBody::untemplated_json(json)
+            RecipeBody::Raw {
+                body: Template::raw(body.try_text()?),
+                content_type: Some(ContentType::Json),
+            }
         } else if body.mime_type == mime::APPLICATION_WWW_FORM_URLENCODED {
             RecipeBody::FormUrlencoded(
                 body.params.into_iter().map(FormParam::into).collect(),
@@ -395,7 +393,10 @@ impl TryFrom<Body> for RecipeBody {
                 body.params.into_iter().map(FormParam::into).collect(),
             )
         } else {
-            RecipeBody::Raw(Template::raw(body.try_text()?))
+            RecipeBody::Raw {
+                body: Template::raw(body.try_text()?),
+                content_type: None,
+            }
         };
         Ok(body)
     }

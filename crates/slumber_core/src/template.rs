@@ -103,6 +103,13 @@ impl From<String> for Template {
     }
 }
 
+#[cfg(any(test, feature = "test"))]
+impl From<serde_json::Value> for Template {
+    fn from(value: serde_json::Value) -> Self {
+        format!("{value:#}").into()
+    }
+}
+
 /// An identifier that can be used in a template key. A valid identifier is
 /// any non-empty string that contains only alphanumeric characters, `-`, or
 /// `_`.

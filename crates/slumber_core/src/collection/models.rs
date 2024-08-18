@@ -305,9 +305,13 @@ pub enum Authentication<T = Template> {
 #[cfg_attr(test, derive(PartialEq))]
 pub enum RecipeBody {
     /// Plain string/bytes body
-    Raw(Template),
-    /// Strutured JSON, which will be stringified and sent as text
-    Json(JsonBody),
+    Raw {
+        body: Template,
+        /// For structured body types such as `!json`, we'll stringify during
+        /// deserialization then just store the content type. This makes
+        /// internal logic much simpler because we can just work with templates
+        content_type: Option<ContentType>,
+    },
     /// `application/x-www-form-urlencoded` fields. Values must be strings
     FormUrlencoded(IndexMap<String, Template>),
     /// `multipart/form-data` fields. Values can be binary
@@ -318,124 +322,20 @@ impl RecipeBody {
     /// Build a JSON body *without* parsing the internal strings as templates.
     /// Useful for importing from external formats.
     pub fn untemplated_json(value: serde_json::Value) -> Self {
-        Self::Json(JsonBody::<String>::from(value).map(Template::raw))
+        Self::Raw {
+            body: Template::raw(format!("{value:#}")),
+            content_type: Some(ContentType::Json),
+        }
     }
 }
 
 #[cfg(test)]
 impl From<&str> for RecipeBody {
     fn from(template: &str) -> Self {
-        Self::Raw(template.into())
-    }
-}
-
-/// A structured JSON recipe body. This corresponds directly to
-/// [serde_json::Value], but the value of the `String` variant is replaced with
-/// a generic param `S`. For recipes, `S = Template`, so that strings can be
-/// templatized. Other type params are used throughout the app to represent the
-/// result of certain transformations.
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
-#[serde(untagged)]
-pub enum JsonBody<S = Template> {
-    Null,
-    Bool(bool),
-    Number(serde_json::Number),
-    String(S),
-    Array(Vec<Self>),
-    Object(IndexMap<String, Self>),
-}
-
-impl<S> JsonBody<S> {
-    /// Map from `JsonBody<S>` to `JsonBody<T>` by recursively applying a
-    /// mapping function to each string value
-    pub fn map<T>(self, mapper: impl Copy + Fn(S) -> T) -> JsonBody<T> {
-        match self {
-            Self::Null => JsonBody::Null,
-            Self::Bool(b) => JsonBody::Bool(b),
-            Self::Number(n) => JsonBody::Number(n),
-            Self::String(template) => JsonBody::String(mapper(template)),
-            Self::Array(values) => JsonBody::Array(
-                values.into_iter().map(|value| value.map(mapper)).collect(),
-            ),
-            Self::Object(items) => JsonBody::Object(
-                items
-                    .into_iter()
-                    .map(|(key, value)| (key.clone(), value.map(mapper)))
-                    .collect(),
-            ),
+        Self::Raw {
+            body: template.into(),
+            content_type: None,
         }
-    }
-
-    /// Map from `&JsonBody<S>` to `JsonBody<T>` by recursively applying a
-    /// mapping function to each string value
-    pub fn map_ref<T>(&self, mapper: impl Copy + Fn(&S) -> T) -> JsonBody<T> {
-        match self {
-            Self::Null => JsonBody::Null,
-            Self::Bool(b) => JsonBody::Bool(*b),
-            Self::Number(n) => JsonBody::Number(n.clone()),
-            Self::String(template) => JsonBody::String(mapper(template)),
-            Self::Array(values) => JsonBody::Array(
-                values.iter().map(|value| value.map_ref(mapper)).collect(),
-            ),
-            Self::Object(items) => JsonBody::Object(
-                items
-                    .iter()
-                    .map(|(key, value)| (key.clone(), value.map_ref(mapper)))
-                    .collect(),
-            ),
-        }
-    }
-}
-
-/// If we're holding plain strings, we can easily convert to serde_json
-impl From<JsonBody<String>> for serde_json::Value {
-    fn from(value: JsonBody<String>) -> Self {
-        match value {
-            JsonBody::Null => serde_json::Value::Null,
-            JsonBody::Bool(b) => serde_json::Value::Bool(b),
-            JsonBody::Number(n) => serde_json::Value::Number(n.clone()),
-            JsonBody::String(s) => serde_json::Value::String(s),
-            JsonBody::Array(values) => serde_json::Value::Array(
-                values.into_iter().map(Self::from).collect(),
-            ),
-            JsonBody::Object(items) => serde_json::Value::Object(
-                items
-                    .into_iter()
-                    .map(|(key, value)| (key, value.into()))
-                    .collect(),
-            ),
-        }
-    }
-}
-
-/// Convert parsed JSON
-impl From<serde_json::Value> for JsonBody<String> {
-    fn from(value: serde_json::Value) -> Self {
-        match value {
-            serde_json::Value::Null => Self::Null,
-            serde_json::Value::Bool(b) => Self::Bool(b),
-            serde_json::Value::Number(n) => Self::Number(n),
-            serde_json::Value::String(s) => Self::String(s),
-            serde_json::Value::Array(values) => {
-                Self::Array(values.into_iter().map(Self::from).collect())
-            }
-            serde_json::Value::Object(items) => Self::Object(
-                items
-                    .into_iter()
-                    .map(|(key, value)| (key, value.into()))
-                    .collect(),
-            ),
-        }
-    }
-}
-
-/// Make it easier to construct JSON bodies in tests
-#[cfg(test)]
-impl From<serde_json::Value> for JsonBody<Template> {
-    fn from(value: serde_json::Value) -> Self {
-        let halfway: JsonBody<String> = value.into();
-        halfway.map(|s| s.parse().unwrap())
     }
 }
 

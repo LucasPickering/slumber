@@ -12,22 +12,20 @@ use serde::{
 use std::{borrow::Cow, fmt::Write, str::FromStr, sync::Arc};
 use winnow::{
     combinator::{
-        alt, cut_err, eof, not, preceded, repeat, repeat_till, terminated,
+        alt, cut_err, delimited, eof, not, peek, preceded, repeat, repeat_till,
+        terminated,
     },
     error::StrContext,
     token::{any, take_while},
     PResult, Parser,
 };
 
-/// Character used to escape other characters, converting their special meaning
-/// into raw text
-const ESCAPE: &str = "\\";
+/// Character used to escape keys
+const ESCAPE: &str = r#"\"#;
 /// Marks the start of a template key
 const KEY_OPEN: &str = "{{";
 /// Marks the end of a template key
 const KEY_CLOSE: &str = "}}";
-/// Any sequence that can be escaped to strip its semantic meaning
-const ESCAPABLE: [&str; 2] = [ESCAPE, KEY_OPEN];
 // Export these so they can be used in TemplateKey's Display impl
 pub const CHAIN_PREFIX: &str = "chains.";
 pub const ENV_PREFIX: &str = "env.";
@@ -50,20 +48,21 @@ impl Template {
     }
 
     /// Convert the template to a string. This will only allocate for escaped or
-    /// keyed templates.
+    /// keyed templates. This is guaranteed to return the exact string that was
+    /// parsed to create the template, and therefore will parse back to the same
+    /// template. If it doesn't, that's a bug.
     pub fn display(&self) -> Cow<'_, str> {
         let mut buf = String::new();
 
         // Re-stringify the template. For raw spans, we need to escape
-        // special characters to get them to re-parse correctly later.
+        // the key open sequence so it doesn't parse back as a key
         for chunk in &self.chunks {
             match chunk {
                 TemplateInputChunk::Raw(s) => {
                     let s = s.as_str();
-                    let searcher = AhoCorasick::new(ESCAPABLE)
+                    let searcher = AhoCorasick::new([KEY_OPEN])
                         .expect("Invalid search string");
-                    // Find each special sequence, and add a backslash
-                    // before it
+                    // Find each escape sequence, and add a backslash before it
                     let mut i = 0;
                     for m in searcher.find_iter(s) {
                         // Write everything before the special char, then
@@ -85,6 +84,12 @@ impl Template {
                     buf.push_str(&s[i..]);
                 }
                 TemplateInputChunk::Key(key) => {
+                    // If the previous chunk ends with a \, then we need to
+                    // escape THAT backslash so it doesn't escape us. Fight
+                    // backslashes with backslashes.
+                    if buf.ends_with(ESCAPE) {
+                        buf.push_str(ESCAPE);
+                    }
                     write!(&mut buf, "{KEY_OPEN}{key}{KEY_CLOSE}").unwrap();
                 }
             }
@@ -242,12 +247,18 @@ fn raw(input: &mut &str) -> PResult<Arc<String>> {
     .parse_next(input)
 }
 
-/// Match an escape sequence, e.g. `\\`` or `\{{`
+/// Match an escape sequence: `\{{` or `\\{{`. Other sequences involving
+/// backslashes will *not* be consumed here. They should be treated as normal
+/// text. This is to prevent modifying common escape sequences from whatever
+/// syntax may be within the template e.g. escaped quotes.
 fn escape_sequence<'a>(input: &mut &'a str) -> PResult<&'a str> {
-    alt(ESCAPABLE.map(|text| (ESCAPE, text)))
-        // Throw away the escape char
-        .map(|(_, right)| right)
-        .parse_next(input)
+    alt((
+        // \{{ -> {{
+        preceded(ESCAPE, KEY_OPEN),
+        // \\{{ -> \ (key open remains, to be parsed later)
+        delimited(ESCAPE, ESCAPE, peek(KEY_OPEN)),
+    ))
+    .parse_next(input)
 }
 
 /// Parse a template key
@@ -292,7 +303,7 @@ mod tests {
     use super::*;
     use crate::{assert_err, assert_matches};
     use rstest::rstest;
-    use serde_test::{assert_de_tokens, assert_ser_tokens, Token};
+    use serde_test::{assert_de_tokens, assert_tokens, Token};
 
     /// Build a template out of string chunks. Useful when you want to avoid
     /// parsing behavior
@@ -322,15 +333,17 @@ mod tests {
         TemplateInputChunk::Key(TemplateKey::Chain(chain_id.into()))
     }
 
-    /// Test parsing success cases
+    /// Test round tripping between raw strings and templates. Parse, display,
+    /// make sure we get the same thing back. Also check if stringification
+    /// allocated, to make sure optimizations work as intended.
     #[rstest]
-    #[case::empty("", tmpl([]))]
-    #[case::raw("raw", tmpl([raw("raw")]))]
-    #[case::unopened_key("unopened}}", tmpl([raw("unopened}}")]))]
-    #[case::field("{{field1}}", tmpl([key_field("field1")]))]
-    #[case::field_number_id("{{1}}", tmpl([key_field("1")]))]
-    #[case::chain("{{chains.chain1}}", tmpl([key_chain("chain1")]))]
-    #[case::env("{{env.ENV}}", tmpl([key_env("ENV")]))]
+    #[case::empty("", tmpl([]), false)]
+    #[case::raw("raw", tmpl([raw("raw")]), false)]
+    #[case::unopened_key("unopened}}", tmpl([raw("unopened}}")]), false)]
+    #[case::field("{{field1}}", tmpl([key_field("field1")]), true)]
+    #[case::field_number_id("{{1}}", tmpl([key_field("1")]), true)]
+    #[case::chain("{{chains.chain1}}", tmpl([key_chain("chain1")]), true)]
+    #[case::env("{{env.ENV}}", tmpl([key_env("ENV")]), true)]
     #[case::utf8(
         "intro\n{{user_id}} 💚💙💜 {{chains.chain}}\noutro\r\nmore outro",
         tmpl([
@@ -340,22 +353,55 @@ mod tests {
             key_chain("chain"),
             raw("\noutro\r\nmore outro"),
         ]),
+        true
     )]
-    #[case::binary(r#"\xc3\x28"#, tmpl([raw(r#"\xc3\x28"#)]))]
+    #[case::binary(r#"\xc3\x28"#, tmpl([raw(r#"\xc3\x28"#)]), false)]
     #[case::escape_key(
         r#"\{{escape}} {{field}} \{{escape}}"#,
         tmpl([raw("{{escape}} "), key_field("field"), raw(" {{escape}}")]),
+        true,
     )]
     #[case::escape_incomplete_key(
-        r#"escaped: \{{hello"#, tmpl([raw("escaped: {{hello")])
+        r#"escaped: \{{hello"#, tmpl([raw("escaped: {{hello")]), true
     )]
     #[case::escape_backslash(
-        r#"unescaped: \\{{user_id}}"#,
-        tmpl([raw(r#"unescaped: \"#), key_field("user_id")]),
+        // You should be able to put any number of backslashes before a key,
+        // and only one gets subtracted out (to escape the key)
+        r#"\\{{user_id}} \\\{{user_id}} \\\\{{user_id}}"#,
+        tmpl([
+            raw(r#"\"#),
+            key_field("user_id"),
+            raw(r#" \\"#),
+            key_field("user_id"),
+            raw(r#" \\\"#),
+            key_field("user_id"),
+        ]),
+        true,
     )]
-    fn test_parse(#[case] template: &str, #[case] expected: Template) {
-        let parsed: Template = template.parse().expect("Parsing failed");
-        assert_eq!(parsed, expected);
+    #[case::unescaped_backslashes(
+        // Standalone backslashes (not preceding a key) are left alone
+        r#""{\"escaped\": \"quotes\""#,
+        tmpl([raw(r#""{\"escaped\": \"quotes\""#)]),
+        false,
+    )]
+    fn test_parse_display(
+        #[case] input: &'static str,
+        #[case] expected: Template,
+        #[case] display_should_allocate: bool,
+    ) {
+        let parsed: Template = input.parse().expect("Parsing failed");
+        assert_eq!(parsed, expected, "incorrect parsed template");
+        let stringified = parsed.display();
+        assert_eq!(stringified, input, "incorrect stringified template");
+        // Make sure we didn't make any unexpected clones
+        if display_should_allocate {
+            assert_matches!(stringified, Cow::Owned(_));
+        } else {
+            assert_matches!(stringified, Cow::Borrowed(_));
+        }
+
+        // Make sure serialization/deserialization impls work too
+        assert_tokens(&expected, &[Token::Str(input)]);
     }
 
     /// Test parsing error cases. The error messages are not very descriptive
@@ -397,38 +443,6 @@ mod tests {
     fn test_raw(#[case] template: &str, #[case] expected: Template) {
         let escaped = Template::raw(template.into());
         assert_eq!(escaped, expected);
-    }
-
-    /// Test serialization and printing, which should escape raw chunks. Also
-    /// test that it only allocates when necessary
-    #[rstest]
-    #[case::empty(tmpl([]), "", false)]
-    #[case::raw(tmpl([raw("hello!")]), "hello!", false)]
-    #[case::field(tmpl([key_field("user_id")]), "{{user_id}}",true)]
-    #[case::env(tmpl([key_env("ENV1")]), "{{env.ENV1}}", true)]
-    #[case::chain(tmpl([key_chain("chain1")]), "{{chains.chain1}}", true)]
-    #[case::escape_key(
-        tmpl([raw(r#"esc: {{user_id}}"#)]), r#"esc: \{{user_id}}"#, true
-    )]
-    #[case::escape_backslash(
-        tmpl([raw(r#"esc: \"#), key_field("user_id")]),
-        r#"esc: \\{{user_id}}"#,
-        true // Escaping requires an allocation, since the text changes
-    )]
-    fn test_stringify(
-        #[case] template: Template,
-        #[case] expected: &'static str,
-        #[case] should_allocate: bool,
-    ) {
-        let s = template.display();
-        assert_eq!(s, expected);
-        // Make sure we didn't make any unexpected clones
-        if should_allocate {
-            assert_matches!(s, Cow::Owned(_));
-        } else {
-            assert_matches!(s, Cow::Borrowed(_));
-        }
-        assert_ser_tokens(&template, &[Token::String(expected)]);
     }
 
     /// Test deserialization, which has some additional logic on top of parsing

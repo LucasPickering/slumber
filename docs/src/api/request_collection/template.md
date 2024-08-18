@@ -22,17 +22,19 @@ In some scenarios you may want to use the `{{` sequence to represent those liter
 
 ```
 \{{this is raw text}}
+# Parses as ["\{{this is raw text}}"]
 ```
 
 If you want to represent a literal backslash before a template key, you can escape the backslash:
 
 ```
 \\{{field1}}
+# Parses as ["\", field("field1")]
 ```
 
-> Note: YAML also uses `\` as its escape character, meaning you'll need to double all backslashes: the firs to escape in YAML, the second to escape in Slumber.
+> Note: YAML also uses `\` as its escape character, meaning you'll need to double all backslashes: the first to escape in YAML, the second to escape in Slumber.
 
-Any other backslash (i.e. any backslash not followed by another backslash or `{{`) is treated literally.
+Any other backslash (i.e. any backslash not followed by another backslash or `{{`) is treated literally. **This is different from backslash behavior in most languages**. In most syntaxes, backslashes are _always_ part of an escape sequence, and literal backslashes need to be doubled up. In Slumber however, backslashes are just regular characters _except_ in these sequences `\{{` and `\\{{`. The reason for this is to eliminate the need to double all backslashes _in addition_ to the doubling already required by YAML. This allows you to write normal strings and have them parse as standard YAML, without having to think about the fact that Slumber is adding an additional layer of template parsing in the middle. In other words, this syntax is _intentionally_ esoteric, to prevent iterfering with nested syntax.
 
 ## Examples
 

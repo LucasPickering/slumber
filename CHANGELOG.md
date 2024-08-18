@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Breaking
+
+- Backslashes are no longer deduplicated during template parsing, except when immediately preceding a key open
+  - For example, previously `\\text` would parse as `\text`. It now parses as `\\text`
+  - Previously you could also write `\text`, and it would parse as `\text`. That behavior remains the same
+  - The goal of this change is to make backslash behavior more transparent and consistent
+  - For more info on the new behavior, [see the docs](https://slumber.lucaspickering.me/book/api/request_collection/template.html#escape-sequences)
+
 ### Added
 
 - Edit recipe values (query params, headers, etc.) in the TUI to provide one-off values

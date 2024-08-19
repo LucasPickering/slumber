@@ -43,6 +43,8 @@ pub struct TextWindowProps<'a> {
     /// Text to render. We take a reference because this component tends to
     /// contain a lot of text, and we don't want to force a clone on render
     pub text: &'a Text<'a>,
+    /// Extra text to render below the text window
+    pub footer: Option<Text<'a>>,
     pub margins: ScrollbarMargins,
 }
 
@@ -216,6 +218,25 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
         // Draw the text content
         self.render_chars(props.text, frame.buffer_mut(), text_area);
 
+        // Render the footer just below the text. If the text has maxed out the
+        // possible area, this will render beyond that. A bit hacky but in
+        // practice it works
+        if let Some(footer) = props.footer {
+            frame.render_widget(
+                footer,
+                Rect {
+                    x: text_area.x,
+                    y: text_area.y
+                        + (cmp::min(
+                            self.text_height.get(),
+                            self.window_height.get(),
+                        )) as u16,
+                    width: text_area.width,
+                    height: 1,
+                },
+            );
+        }
+
         // Scrollbars
         if has_vertical_scroll {
             frame.render_widget(
@@ -273,6 +294,7 @@ mod tests {
                     right: 0,
                     bottom: 0,
                 },
+                footer: None,
             },
         );
         terminal.assert_buffer_lines([
@@ -355,6 +377,7 @@ mod tests {
                     right: 0,
                     bottom: 0,
                 },
+                footer: None,
             },
         );
         terminal.assert_buffer_lines([
@@ -380,6 +403,7 @@ mod tests {
                     right: 0,
                     bottom: 0,
                 },
+                footer: None,
             },
         );
         terminal.assert_buffer_lines([

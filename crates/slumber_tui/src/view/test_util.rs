@@ -92,7 +92,7 @@ where
     /// Drain events from the event queue, and handle them one-by-one. Return
     /// the events that were propagated (i.e. not consumed by the component or
     /// its children), in the order they were queued/handled.
-    fn drain_events(&mut self) -> PropagatedEvents {
+    pub fn drain_events(&mut self) -> PropagatedEvents {
         // Safety check, prevent annoying bugs
         assert!(
             self.component.is_visible(),

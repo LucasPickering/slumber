@@ -1,25 +1,43 @@
-use crate::view::{
-    common::{
-        template_preview::TemplatePreview,
-        text_window::{TextWindow, TextWindowProps},
-    },
-    component::recipe_pane::table::{RecipeFieldTable, RecipeFieldTableProps},
-    draw::{Draw, DrawMetadata},
-    event::{Child, EventHandler},
-    Component,
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
 };
-use ratatui::Frame;
+
+use crate::{
+    context::TuiContext,
+    message::Message,
+    util::ResultReported,
+    view::{
+        common::{
+            template_preview::TemplatePreview,
+            text_window::{TextWindow, TextWindowProps},
+        },
+        component::recipe_pane::table::{
+            RecipeFieldTable, RecipeFieldTableProps,
+        },
+        draw::{Draw, DrawMetadata},
+        event::{Child, Event, EventHandler, Update},
+        Component, ViewContext,
+    },
+};
+use anyhow::Context;
+use ratatui::{style::Styled, Frame};
 use serde::Serialize;
-use slumber_core::collection::{RecipeBody, RecipeId};
+use slumber_config::Action;
+use slumber_core::{
+    collection::{RecipeBody, RecipeId},
+    http::content_type::ContentType,
+    template::Template,
+    util::ResultTraced,
+};
+use tracing::debug;
+use uuid::Uuid;
 
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
 #[derive(Debug)]
 pub enum RecipeBodyDisplay {
-    Raw {
-        preview: TemplatePreview,
-        text_window: Component<TextWindow>,
-    },
+    Raw(Component<RawBody>),
     Form(Component<RecipeFieldTable<FormRowKey, FormRowToggleKey>>),
 }
 
@@ -27,17 +45,9 @@ impl RecipeBodyDisplay {
     /// Build a component to display the body, based on the body type
     pub fn new(body: &RecipeBody, recipe_id: &RecipeId) -> Self {
         match body {
-            RecipeBody::Raw { body, .. } => Self::Raw {
-                preview: TemplatePreview::new(
-                    body.clone(),
-                    // Hypothetically we could grab the content type from the
-                    // Content-Type header above and plumb it down here, but
-                    // more effort than it's worth IMO. This gives users a
-                    // solid reason to use !json anyway
-                    None,
-                ),
-                text_window: Component::default(),
-            },
+            RecipeBody::Raw { body, content_type } => {
+                Self::Raw(RawBody::new(body.clone(), *content_type).into())
+            }
             RecipeBody::FormUrlencoded(fields)
             | RecipeBody::FormMultipart(fields) => {
                 let inner = RecipeFieldTable::new(
@@ -57,15 +67,28 @@ impl RecipeBodyDisplay {
             }
         }
     }
+
+    /// If the user has applied a temporary edit to the body, get the override
+    /// value. Return `None` to use the recipe's stock body.
+    pub fn override_value(&self) -> Option<RecipeBody> {
+        match self {
+            RecipeBodyDisplay::Raw(inner) if inner.data().overridden => {
+                let inner = inner.data();
+                Some(RecipeBody::Raw {
+                    body: inner.template.clone(),
+                    content_type: inner.content_type,
+                })
+            }
+            _ => None,
+        }
+    }
 }
 
 impl EventHandler for RecipeBodyDisplay {
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         match self {
-            RecipeBodyDisplay::Raw { text_window, .. } => {
-                vec![text_window.to_child_mut()]
-            }
-            RecipeBodyDisplay::Form(form) => vec![form.to_child_mut()],
+            Self::Raw(inner) => vec![inner.to_child_mut()],
+            Self::Form(form) => vec![form.to_child_mut()],
         }
     }
 }
@@ -73,20 +96,9 @@ impl EventHandler for RecipeBodyDisplay {
 impl Draw for RecipeBodyDisplay {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         match self {
-            RecipeBodyDisplay::Raw {
-                preview,
-                text_window,
-            } => text_window.draw(
-                frame,
-                TextWindowProps {
-                    // Do *not* call generate, because that clones the text and
-                    // we only need a reference
-                    text: &preview.text(),
-                    margins: Default::default(),
-                },
-                metadata.area(),
-                true,
-            ),
+            RecipeBodyDisplay::Raw(inner) => {
+                inner.draw(frame, (), metadata.area(), true)
+            }
             RecipeBodyDisplay::Form(form) => form.draw(
                 frame,
                 RecipeFieldTableProps {
@@ -97,6 +109,140 @@ impl Draw for RecipeBodyDisplay {
                 true,
             ),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct RawBody {
+    /// Template for the body. Store this separate from the preview so the
+    /// user can edit it. For JSON bodies, we don't have an original string
+    /// so use the prettified body
+    template: Template,
+    preview: TemplatePreview,
+    content_type: Option<ContentType>,
+    /// If false, the template is the original body from the collection. If
+    /// true, the user has made some edits.
+    overridden: bool,
+    text_window: Component<TextWindow>,
+}
+
+impl RawBody {
+    fn new(template: Template, content_type: Option<ContentType>) -> Self {
+        Self {
+            template: template.clone(),
+            preview: TemplatePreview::new(template.clone(), content_type),
+            content_type,
+            overridden: false,
+            text_window: Component::default(),
+        }
+    }
+
+    /// Send a message to open the body in an external editor. We have to write
+    /// the body to a temp file so the editor subprocess can access it. We'll
+    /// read it back later.
+    fn open_editor(&mut self) {
+        let path = env::temp_dir().join(format!("slumber-{}", Uuid::new_v4()));
+        debug!(?path, "Writing body to file for editing");
+        let Some(_) = fs::write(&path, self.template.display().as_bytes())
+            .with_context(|| {
+                format!("Error writing body to file {path:?} for editing")
+            })
+            .reported(&ViewContext::messages_tx())
+        else {
+            // Write failed
+            return;
+        };
+
+        ViewContext::send_message(Message::EditFile {
+            path,
+            on_complete: Box::new(|path| {
+                ViewContext::push_event(Event::new_local(SaveBodyOverride(
+                    path,
+                )));
+            }),
+        })
+    }
+
+    /// Read the user's edited body from the temp file we created, and rebuild
+    /// the body from that
+    fn set_override(&mut self, path: &Path) {
+        // Read the body back from the temp file we handed to the editor, then
+        // delete it to prevent cluttering the disk
+        debug!(?path, "Reading edited body from file");
+        let Some(body) = fs::read_to_string(path)
+            .with_context(|| {
+                format!("Error reading edited body from file {path:?}")
+            })
+            .reported(&ViewContext::messages_tx())
+        else {
+            // Read failed. It might be worth deleting the file here, but if the
+            // read failed it's very unlikely the delete would succeed
+            return;
+        };
+
+        // Clean up after ourselves
+        let _ = fs::remove_file(path)
+            .with_context(|| {
+                format!("Error writing body to file {path:?} for editing")
+            })
+            .traced();
+
+        let Some(template) = body
+            .parse::<Template>()
+            .reported(&ViewContext::messages_tx())
+        else {
+            // Whatever the user wrote isn't a valid template
+            return;
+        };
+
+        // Rebuild the whole struct just so we don't forget to init something
+        *self = Self {
+            template: template.clone(),
+            preview: TemplatePreview::new(template, self.content_type),
+            content_type: self.content_type,
+            overridden: true,
+            text_window: Default::default(),
+        };
+    }
+}
+
+impl EventHandler for RawBody {
+    fn update(&mut self, event: Event) -> Update {
+        if let Some(Action::Edit) = event.action() {
+            self.open_editor();
+        } else if let Some(SaveBodyOverride(path)) = event.local() {
+            self.set_override(path);
+        } else {
+            return Update::Propagate(event);
+        }
+        Update::Consumed
+    }
+
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.text_window.to_child_mut()]
+    }
+}
+
+impl Draw for RawBody {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        let styles = &TuiContext::get().styles;
+        let area = metadata.area();
+        self.text_window.draw(
+            frame,
+            TextWindowProps {
+                // Do *not* call generate, because that clones the text and
+                // we only need a reference
+                text: &self.preview.text(),
+                margins: Default::default(),
+                footer: if self.overridden {
+                    Some("(edited)".set_style(styles.text.hint).into())
+                } else {
+                    None
+                },
+            },
+            area,
+            true,
+        );
     }
 }
 
@@ -111,4 +257,60 @@ pub struct FormRowKey(RecipeId);
 pub struct FormRowToggleKey {
     recipe_id: RecipeId,
     field: String,
+}
+
+/// Local event to save a user's override body. Triggered from the on_complete
+/// callback when the user closes the editor.
+#[derive(Debug)]
+struct SaveBodyOverride(PathBuf);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        test_util::{harness, terminal, TestHarness, TestTerminal},
+        view::test_util::TestComponent,
+    };
+    use crossterm::event::KeyCode;
+    use rstest::rstest;
+    use slumber_core::{assert_matches, test_util::Factory};
+
+    #[rstest]
+    fn test_edit(mut harness: TestHarness, terminal: TestTerminal) {
+        let body: RecipeBody = RecipeBody::Raw {
+            body: "hello!".into(),
+            content_type: Some(ContentType::Json),
+        };
+        let mut component = TestComponent::new(
+            &terminal,
+            RecipeBodyDisplay::new(&body, &RecipeId::factory(())),
+            (),
+        );
+
+        // Check initial state
+        assert_eq!(component.data().override_value(), None);
+
+        // Open the editor
+        harness.clear_messages();
+        component.send_key(KeyCode::Char('e')).assert_empty();
+        let (path, on_complete) = assert_matches!(
+            harness.pop_message_now(),
+            Message::EditFile { path, on_complete } => (path, on_complete),
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"hello!");
+
+        // Simulate the editor modifying the file
+        fs::write(&path, "goodbye!").unwrap();
+        on_complete(path);
+        component.drain_events().assert_empty();
+
+        // Check initial state
+        assert_eq!(
+            component.data().override_value(),
+            Some(RecipeBody::Raw {
+                body: "goodbye!".into(),
+                content_type: Some(ContentType::Json),
+            })
+        );
+    }
 }

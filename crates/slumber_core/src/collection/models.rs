@@ -302,7 +302,7 @@ pub enum Authentication<T = Template> {
 /// uses the variant to determine not only how to serialize the body, but also
 /// other parameters of the request (e.g. the `Content-Type` header).
 #[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum RecipeBody {
     /// Plain string/bytes body
     Raw {
@@ -329,7 +329,7 @@ impl RecipeBody {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl From<&str> for RecipeBody {
     fn from(template: &str) -> Self {
         Self::Raw {

@@ -4,7 +4,7 @@
 //! exchange is incomplete or failed.
 
 use crate::{
-    collection::{Authentication, ProfileId, RecipeId},
+    collection::{Authentication, ProfileId, RecipeBody, RecipeId},
     http::{
         cereal,
         content_type::{ContentType, ResponseContent},
@@ -93,7 +93,7 @@ impl RequestSeed {
 /// These store *indexes* rather than keys because keys may not be necessarily
 /// unique (e.g. in the case of query params). Technically some could use keys
 /// and some could use indexes, but I chose consistency.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct BuildOptions {
     /// Authentication can be overridden, but not disabled. For simplicity,
@@ -102,11 +102,14 @@ pub struct BuildOptions {
     pub headers: BuildFieldOverrides,
     pub query_parameters: BuildFieldOverrides,
     pub form_fields: BuildFieldOverrides,
+    /// Override body. This should *not* be used for form bodies, since those
+    /// can be override on a field-by-field basis.
+    pub body: Option<RecipeBody>,
 }
 
 /// A collection of modifications made to a particular section of a recipe
 /// (query params, headers, etc.). See [BuildFieldOverride]
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct BuildFieldOverrides {
     overrides: HashMap<usize, BuildFieldOverride>,
@@ -141,7 +144,7 @@ impl FromIterator<(usize, BuildFieldOverride)> for BuildFieldOverrides {
 
 /// Modifications made to a single field (query param, header, etc.) in a
 /// recipe
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum BuildFieldOverride {
     /// Do not include this field in the recipe

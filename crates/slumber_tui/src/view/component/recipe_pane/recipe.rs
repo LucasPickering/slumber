@@ -103,18 +103,23 @@ impl RecipeDisplay {
             .body
             .as_ref()
             .and_then(|body| match body.data() {
-                RecipeBodyDisplay::Raw { .. } => None,
+                RecipeBodyDisplay::Raw(_) => None,
                 RecipeBodyDisplay::Form(form) => {
                     Some(form.data().to_build_overrides())
                 }
             })
             .unwrap_or_default();
+        let body = self
+            .body
+            .as_ref()
+            .and_then(|body| body.data().override_value());
 
         BuildOptions {
             authentication,
             headers: self.headers.data().to_build_overrides(),
             query_parameters: self.query.data().to_build_overrides(),
             form_fields,
+            body,
         }
     }
 

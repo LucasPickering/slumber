@@ -130,7 +130,7 @@ impl From<serde_json::Value> for Template {
 pub struct Identifier(String);
 
 /// A shortcut for creating identifiers from static strings. Since the string
-/// is static we know it must be valid; panic if not.
+/// is defined in code we're assuming it's valid.
 impl From<&'static str> for Identifier {
     fn from(value: &'static str) -> Self {
         Self(value.parse().unwrap())

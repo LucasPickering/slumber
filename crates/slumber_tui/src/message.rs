@@ -13,7 +13,7 @@ use slumber_core::{
     template::{Prompt, Prompter, Template, TemplateChunk},
     util::ResultTraced,
 };
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
@@ -73,6 +73,15 @@ pub enum Message {
     /// Copy some text to the clipboard
     CopyText(String),
 
+    /// Open a file in the user's external editor
+    EditFile {
+        path: PathBuf,
+        /// Function to call once the edit is done. The original path will be
+        /// passed back
+        #[debug(skip)]
+        on_complete: Callback<PathBuf>,
+    },
+
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
 
@@ -123,8 +132,7 @@ pub enum Message {
     TemplatePreview {
         template: Template,
         #[debug(skip)]
-        on_complete:
-            Box<dyn 'static + Send + Sync + FnOnce(Vec<TemplateChunk>)>,
+        on_complete: Callback<Vec<TemplateChunk>>,
     },
     /// An empty event to trigger a draw when a template preview is done being
     /// rendered. This is a bit hacky, but it's an explicit way to tell the TUI
@@ -132,8 +140,11 @@ pub enum Message {
     TemplatePreviewComplete,
 }
 
+/// A static callback included in a message
+pub type Callback<T> = Box<dyn 'static + Send + Sync + FnOnce(T)>;
+
 /// Configuration that defines how to render a request
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct RequestConfig {
     pub profile_id: Option<ProfileId>,

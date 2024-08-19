@@ -105,7 +105,9 @@ where
                 selected_row.open_edit_modal();
             }
             // Consume the event even if we have no rows, for consistency
-        } else if let Some(SaveOverride { row_index, value }) = event.local() {
+        } else if let Some(SaveRecipeTableOverride { row_index, value }) =
+            event.local()
+        {
             // The row we're modifying *should* still be the selected row,
             // because it shouldn't be possible to change the selection while
             // the edit modal is open. It's safer to re-grab the modal by index
@@ -226,10 +228,12 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
                 .validator(|value| value.parse::<Template>().is_ok()),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
-                ViewContext::push_event(Event::new_local(SaveOverride {
-                    row_index: index,
-                    value,
-                }))
+                ViewContext::push_event(Event::new_local(
+                    SaveRecipeTableOverride {
+                        row_index: index,
+                        value,
+                    },
+                ))
             },
         ));
     }
@@ -286,7 +290,7 @@ where
 /// Local event to modify a row's override template. Triggered from the edit
 /// modal
 #[derive(Debug)]
-struct SaveOverride {
+struct SaveRecipeTableOverride {
     row_index: usize,
     value: String,
 }

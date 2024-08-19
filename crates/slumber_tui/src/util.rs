@@ -12,11 +12,12 @@ use slumber_core::{
 };
 use std::{
     io,
+    ops::Deref,
     path::{Path, PathBuf},
     process::Command,
 };
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::oneshot};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Extension trait for [Result]
 pub trait ResultReported<T, E>: Sized {
@@ -32,10 +33,12 @@ where
     fn reported(self, messages_tx: &MessageSender) -> Option<T> {
         match self {
             Ok(value) => Some(value),
-            Err(error) => {
-                messages_tx.send(Message::Error {
-                    error: error.into(),
-                });
+            Err(err) => {
+                // Trace this too, because anything that should be shown to the
+                // user should also be logged
+                let err = err.into();
+                error!(error = err.deref());
+                messages_tx.send(Message::Error { error: err });
                 None
             }
         }

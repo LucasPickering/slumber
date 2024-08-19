@@ -556,7 +556,7 @@ impl Recipe {
         options: &BuildOptions,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Option<RenderedBody>> {
-        let Some(body) = &self.body else {
+        let Some(body) = options.body.as_ref().or(self.body.as_ref()) else {
             return Ok(None);
         };
 
@@ -1130,7 +1130,8 @@ mod tests {
         );
     }
 
-    /// Test disabling and overriding query params, headers, and form fields
+    /// Test disabling and overriding authentication, query params, headers, and
+    /// bodies
     #[rstest]
     #[tokio::test]
     async fn test_build_options(http_engine: &HttpEngine) {
@@ -1155,15 +1156,10 @@ mod tests {
                 // Included
                 ("fast".into(), "true".into()),
             ],
-            // This should implicitly set the content-type header
-            body: Some(RecipeBody::FormUrlencoded(indexmap! {
-                // Included
-                "user_id".into() => "{{user_id}}".into(),
-                // Excluded
-                "token".into() => "{{token}}".into(),
-                // Overridden
-                "preference".into() => "large".into(),
-            })),
+            body: Some(RecipeBody::Raw {
+                body: "{{username}}".into(),
+                content_type: Some(ContentType::Json),
+            }),
             ..Recipe::factory(())
         };
         let recipe_id = recipe.id.clone();
@@ -1189,12 +1185,10 @@ mod tests {
                 ]
                 .into_iter()
                 .collect(),
-                form_fields: [
-                    (1, BuildFieldOverride::Omit),
-                    (2, BuildFieldOverride::Override("small".into())),
-                ]
-                .into_iter()
-                .collect(),
+                body: Some("{{password}}".into()),
+                // Form field override has to be in a different test, because
+                // we're using a raw body
+                form_fields: Default::default(),
             },
         );
         let ticket = http_engine.build(seed, &template_context).await.unwrap();
@@ -1215,8 +1209,59 @@ mod tests {
                     ("Big-Guy", "style2"),
                     // It picked up the default content-type from the body,
                     // because ours was excluded
-                    ("content-type", "application/x-www-form-urlencoded"),
+                    ("content-type", "application/json"),
                 ]),
+                body: Some(b"hunter2".as_slice().into()),
+            }
+        );
+    }
+
+    /// Test overriding form body fields. This has to be a separate test
+    /// because it's incompatible with testing raw body overrides
+    #[rstest]
+    #[tokio::test]
+    async fn test_build_options_form(http_engine: &HttpEngine) {
+        let recipe = Recipe {
+            // This should implicitly set the content-type header
+            body: Some(RecipeBody::FormUrlencoded(indexmap! {
+                // Included
+                "user_id".into() => "{{user_id}}".into(),
+                // Excluded
+                "token".into() => "{{token}}".into(),
+                // Overridden
+                "preference".into() => "large".into(),
+            })),
+            ..Recipe::factory(())
+        };
+        let recipe_id = recipe.id.clone();
+        let template_context = template_context([recipe], []);
+
+        let seed = RequestSeed::new(
+            recipe_id.clone(),
+            BuildOptions {
+                form_fields: [
+                    (1, BuildFieldOverride::Omit),
+                    (2, BuildFieldOverride::Override("small".into())),
+                ]
+                .into_iter()
+                .collect(),
+                ..Default::default()
+            },
+        );
+        let ticket = http_engine.build(seed, &template_context).await.unwrap();
+
+        assert_eq!(
+            *ticket.record,
+            RequestRecord {
+                id: ticket.record.id,
+                profile_id: template_context.selected_profile.clone(),
+                recipe_id,
+                method: Method::GET,
+                url: "http://localhost/url".parse().unwrap(),
+                headers: header_map([(
+                    "content-type",
+                    "application/x-www-form-urlencoded"
+                ),]),
                 body: Some(b"user_id=1&preference=small".as_slice().into()),
             }
         );

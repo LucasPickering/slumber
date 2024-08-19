@@ -40,7 +40,7 @@ use slumber_core::{
 use std::{
     io::{self, Stdout},
     ops::Deref,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
@@ -230,7 +230,10 @@ impl Tui {
             Message::CollectionEndReload(collection) => {
                 self.reload_collection(collection)
             }
-            Message::CollectionEdit => self.edit_collection()?,
+            Message::CollectionEdit => {
+                let path = self.collection_file.path().to_owned();
+                self.edit_file(&path)?
+            }
 
             Message::CopyRequestUrl(request_config) => {
                 self.copy_request_url(request_config)?;
@@ -244,6 +247,11 @@ impl Tui {
             Message::CopyText(text) => self.view.copy_text(text),
             Message::SaveFile { default_path, data } => {
                 self.spawn(save_file(self.messages_tx(), default_path, data));
+            }
+
+            Message::EditFile { path, on_complete } => {
+                self.edit_file(&path)?;
+                on_complete(path);
             }
 
             Message::Error { error } => self.view.open_modal(error),
@@ -385,11 +393,10 @@ impl Tui {
         Ok(())
     }
 
-    /// Open the collection file in the user's configured editor. **This will
-    /// block the main thread**, because we assume we're opening a terminal
-    /// editor and therefore should yield the terminal to the editor.
-    fn edit_collection(&mut self) -> anyhow::Result<()> {
-        let path = self.collection_file.path();
+    /// Open a file in the user's configured editor. **This will  block the main
+    /// thread**, because we assume we're opening a terminal editor and
+    /// therefore should yield the terminal to the editor.
+    fn edit_file(&mut self, path: &Path) -> anyhow::Result<()> {
         let mut command = get_editor_command(path)?;
         let error_context =
             format!("Error spawning editor with command `{command:?}`");

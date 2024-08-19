@@ -96,6 +96,12 @@ impl TemplatePreview {
     }
 }
 
+impl From<Template> for TemplatePreview {
+    fn from(template: Template) -> Self {
+        Self::new(template, None)
+    }
+}
+
 /// Clone internal text. Only call this for small pieces of text
 impl Generate for &TemplatePreview {
     type Output<'this> =  Text<'this>

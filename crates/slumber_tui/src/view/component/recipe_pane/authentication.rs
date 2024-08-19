@@ -76,7 +76,9 @@ impl AuthenticationDisplay {
                 .validator(|value| value.parse::<Template>().is_ok()),
             |value| {
                 // Defer the state update into an event, so it can get &mut
-                ViewContext::push_event(Event::new_local(SaveOverride(value)))
+                ViewContext::push_event(Event::new_local(
+                    SaveAuthenticationOverride(value),
+                ))
             },
         ))
     }
@@ -129,7 +131,7 @@ impl EventHandler for AuthenticationDisplay {
     fn update(&mut self, event: Event) -> Update {
         if let Some(Action::Edit) = event.action() {
             self.open_edit_modal();
-        } else if let Some(SaveOverride(value)) = event.local() {
+        } else if let Some(SaveAuthenticationOverride(value)) = event.local() {
             self.set_override(value);
         } else {
             return Update::Propagate(event);
@@ -276,7 +278,7 @@ enum BasicFields {
 /// modal. These will be raw string values, consumer has to parse them to
 /// templates.
 #[derive(Debug)]
-struct SaveOverride(String);
+struct SaveAuthenticationOverride(String);
 
 #[cfg(test)]
 mod tests {

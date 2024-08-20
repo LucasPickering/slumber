@@ -38,7 +38,6 @@ slumber_config = {path = "./crates/slumber_config", version = "1.8.1" }
 slumber_core = {path = "./crates/slumber_core", version = "1.8.1" }
 slumber_tui = {path = "./crates/slumber_tui", version = "1.8.1" }
 strum = {version = "0.26.3", default-features = false}
-thiserror = "1.0.63"
 tokio = {version = "1.39.2", default-features = false}
 tracing = "0.1.40"
 uuid = {version = "1.10.0", default-features = false}

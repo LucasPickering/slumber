@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 5da7cbd1d4c1191c7ecb571e3d1ac8b73e4bfda8b8f8024a5b0fe74636c049aa # shrinks to template = Template { chunks: [Raw("{"), Key(Field(Identifier("a")))] }
+cc 54c67ac2c41a41eae30d6b5d2527db9dcff8067404394b666a7c0ad0ae619cb4 # shrinks to template = Template { chunks: [Raw("\\{"), Key(Field(Identifier("_")))] }

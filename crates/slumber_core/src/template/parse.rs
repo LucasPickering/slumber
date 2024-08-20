@@ -5,6 +5,8 @@ use crate::{
     template::{error::TemplateParseError, Identifier, Template, TemplateKey},
 };
 use aho_corasick::AhoCorasick;
+#[cfg(test)]
+use proptest::strategy::Strategy;
 use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize,
@@ -204,11 +206,17 @@ impl FromStr for Identifier {
 /// A parsed piece of a template. After parsing, each chunk is either raw text
 /// or a parsed key, ready to be rendered.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum TemplateInputChunk {
     /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
     /// stored in an `Arc` so we can share cheaply in each render, without
-    /// having to clone text. This works because templates are immutable.
-    Raw(Arc<String>),
+    /// having to clone text. This works because templates are immutable. Any
+    /// non-empty string is a valid raw chunk. This text represents what the
+    /// user wants to see, i.e. it does *not* including any escape chars.
+    Raw(
+        #[cfg_attr(test, proptest(strategy = "\".+\".prop_map(Arc::new)"))]
+        Arc<String>,
+    ),
     Key(TemplateKey),
 }
 
@@ -302,6 +310,7 @@ fn identifier(input: &mut &str) -> PResult<Identifier> {
 mod tests {
     use super::*;
     use crate::{assert_err, assert_matches};
+    use proptest::proptest;
     use rstest::rstest;
     use serde_test::{assert_de_tokens, assert_tokens, Token};
 
@@ -478,5 +487,15 @@ mod tests {
     #[should_panic]
     fn test_escape_identifier_empty() {
         Identifier::escape("");
+    }
+
+    proptest! {
+        #[test]
+        fn test_round_trip_prop(template: Template) {
+            let s = template.display();
+            let parsed = s.parse::<Template>()
+                .expect("Error parsing stringified template");
+            assert_eq!(parsed, template);
+        }
     }
 }

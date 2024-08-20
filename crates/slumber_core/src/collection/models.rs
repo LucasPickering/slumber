@@ -380,6 +380,7 @@ pub struct Chain {
     Serialize,
     Deserialize,
 )]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ChainId(#[deref(forward)] Identifier);
 
 impl<T: Into<Identifier>> From<T> for ChainId {

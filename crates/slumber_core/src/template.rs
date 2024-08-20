@@ -19,6 +19,8 @@ use crate::{
 };
 use derive_more::{Deref, Display};
 use indexmap::IndexMap;
+#[cfg(test)]
+use proptest::{arbitrary::any, strategy::Strategy};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -29,14 +31,23 @@ use std::sync::Arc;
 /// The original string is *not* stored. To recover the source string, use the
 /// [Display] implementation.
 ///
-/// Invariant: two templates with the same source string will have the same set
-/// of chunks
+/// Invariants:
+/// - Two templates with the same source string will have the same set of
+///   chunks, and vice versa
+/// - No two raw segments will ever be consecutive
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Template {
     /// Pre-parsed chunks of the template. For raw chunks we store the
     /// presentation text (which is not necessarily the source text, as escape
     /// sequences will be eliminated). For keys, just store the needed
     /// metadata.
+    #[cfg_attr(
+        test,
+        proptest(
+            strategy = "any::<Vec<TemplateInputChunk>>().prop_map(join_raw)"
+        )
+    )]
     chunks: Vec<TemplateInputChunk>,
 }
 
@@ -127,7 +138,10 @@ impl From<serde_json::Value> for Template {
     Serialize,
     Deserialize,
 )]
-pub struct Identifier(String);
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct Identifier(
+    #[cfg_attr(test, proptest(regex = "[a-zA-Z0-9-_]+"))] String,
+);
 
 /// A shortcut for creating identifiers from static strings. Since the string
 /// is defined in code we're assuming it's valid.
@@ -185,6 +199,7 @@ impl TemplateChunk {
 /// The `Display` impl here should return exactly what this was parsed from.
 /// This is important for matching override keys during rendering.
 #[derive(Clone, Debug, Display, PartialEq)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum TemplateKey {
     /// A plain field, which can come from the profile or an override
     Field(Identifier),
@@ -211,6 +226,33 @@ impl crate::test_util::Factory for TemplateContext {
             state: RenderGroupState::default(),
         }
     }
+}
+
+/// Join consecutive raw chunks in a generated template, to make it valid
+#[cfg(test)]
+fn join_raw(chunks: Vec<TemplateInputChunk>) -> Vec<TemplateInputChunk> {
+    let len = chunks.len();
+    chunks
+        .into_iter()
+        .fold(Vec::with_capacity(len), |mut chunks, chunk| {
+            match (chunks.last_mut(), chunk) {
+                // If previous and current are both raw, join them together
+                (
+                    Some(TemplateInputChunk::Raw(previous)),
+                    TemplateInputChunk::Raw(current),
+                ) => {
+                    // The current string is inside an Arc so we can't push
+                    // into it, we have to clone it out :(
+                    let mut concat =
+                        String::with_capacity(previous.len() + current.len());
+                    concat.push_str(previous);
+                    concat.push_str(&current);
+                    *previous = Arc::new(concat)
+                }
+                (_, chunk) => chunks.push(chunk),
+            }
+            chunks
+        })
 }
 
 #[cfg(test)]

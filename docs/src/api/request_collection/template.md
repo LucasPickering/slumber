@@ -18,23 +18,14 @@ There are several ways of sourcing templating values:
 
 ## Escape Sequences
 
-In some scenarios you may want to use the `{{` sequence to represent those literal characters, rather than the start of a template key. To achieve this, you can escape the sequence with a backslash `\`.
+In some scenarios you may want to use the `{{` sequence to represent those literal characters, rather than the start of a template key. To achieve this, you can escape the sequence with an underscore inside it, e.g. `{_{`. If you want the literal string `{_{`, then add an extra underscore: `{__{`.
 
-```
-\{{this is raw text}}
-# Parses as ["\{{this is raw text}}"]
-```
-
-If you want to represent a literal backslash before a template key, you can escape the backslash:
-
-```
-\\{{field1}}
-# Parses as ["\", field("field1")]
-```
-
-> Note: YAML also uses `\` as its escape character, meaning you'll need to double all backslashes: the first to escape in YAML, the second to escape in Slumber.
-
-Any other backslash (i.e. any backslash not followed by another backslash or `{{`) is treated literally. **This is different from backslash behavior in most languages**. In most syntaxes, backslashes are _always_ part of an escape sequence, and literal backslashes need to be doubled up. In Slumber however, backslashes are just regular characters _except_ in these sequences `\{{` and `\\{{`. The reason for this is to eliminate the need to double all backslashes _in addition_ to the doubling already required by YAML. This allows you to write normal strings and have them parse as standard YAML, without having to think about the fact that Slumber is adding an additional layer of template parsing in the middle. In other words, this syntax is _intentionally_ esoteric, to prevent iterfering with nested syntax.
+| Template                | Parses as                  |
+| ----------------------- | -------------------------- |
+| `{_{this is raw text}}` | `["{{this is raw text}}"]` |
+| `{_{{field1}}`          | `["{", field("field1")]`   |
+| `{__{{field1}}`         | `["{__", field("field1")]` |
+| `{_`                    | `["{_"]` (no escaping)     |
 
 ## Examples
 
@@ -55,8 +46,5 @@ Any other backslash (i.e. any backslash not followed by another backslash or `{{
 "hello, world!"
 ---
 # Escaped template key
-"\\{{this is raw text}}"
----
-# Escaped backslash
-"\\\\{{location}}"
+"{_{this is raw text}}"
 ```

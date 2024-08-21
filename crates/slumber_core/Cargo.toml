@@ -11,7 +11,6 @@ version = "1.8.1"
 # Rely on parent for rust-version
 
 [dependencies]
-aho-corasick = "1.0.0"
 anyhow = "1.0.0"
 async-trait = "0.1.81"
 bytes = {workspace = true, features = ["serde"]}
@@ -23,6 +22,7 @@ indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = "0.3.17"
 openapiv3 = "2.0.0"
+regex = {version = "1.10.5", default-features = false}
 reqwest = {workspace = true, features = ["multipart", "rustls-tls", "rustls-tls-native-roots"]}
 rmp-serde = "1.1.2"
 rstest = {workspace = true, optional = true}
@@ -45,7 +45,6 @@ env-lock = "0.1.0"
 pretty_assertions = {workspace = true}
 proptest = "1.5.0"
 proptest-derive = "0.5.0"
-regex = {version = "1.10.5", default-features = false}
 rstest = {workspace = true}
 serde_test = {workspace = true}
 wiremock = {version = "0.6.1", default-features = false}

@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc 5da7cbd1d4c1191c7ecb571e3d1ac8b73e4bfda8b8f8024a5b0fe74636c049aa # shrinks to template = Template { chunks: [Raw("{"), Key(Field(Identifier("a")))] }
 cc 54c67ac2c41a41eae30d6b5d2527db9dcff8067404394b666a7c0ad0ae619cb4 # shrinks to template = Template { chunks: [Raw("\\{"), Key(Field(Identifier("_")))] }
+cc 118b4b0567516b0ca07967894b8be053da5ed0cbe03ceca967ae411e12e305bc # shrinks to template = Template { chunks: [Raw("{{{")] }

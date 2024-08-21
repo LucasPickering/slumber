@@ -8,10 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Breaking
 
-- Backslashes are no longer deduplicated during template parsing, except when immediately preceding a key open
-  - For example, previously `\\text` would parse as `\text`. It now parses as `\\text`
-  - Previously you could also write `\text`, and it would parse as `\text`. That behavior remains the same
-  - The goal of this change is to make backslash behavior more transparent and consistent
+- Replace backslash escape sequence with a simpler scheme based on `_`
+  - For example, previously a key would be escaped as `\{{`. This introduced complexities around how to handle additional backslashes, and also required doubling up backslashes in YAML
+  - The new equivalent would be `{_{`, which parses as `{{`
+  - The goal of this change is to make escaping behavior simpler and more consistent
   - For more info on the new behavior, [see the docs](https://slumber.lucaspickering.me/book/api/request_collection/template.html#escape-sequences)
 
 ### Added

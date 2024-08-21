@@ -2232,7 +2232,6 @@ dependencies = [
 name = "slumber_core"
 version = "1.8.1"
 dependencies = [
- "aho-corasick",
  "anyhow",
  "async-trait",
  "bytes",

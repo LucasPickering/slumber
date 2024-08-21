@@ -1,5 +1,6 @@
 //! Generate strings (and bytes) from user-written templates with dynamic data
 
+mod cereal;
 mod error;
 mod parse;
 mod prompt;
@@ -1229,7 +1230,7 @@ mod tests {
     async fn test_render_escaped() {
         let context =
             profile_context(indexmap! { "user_id".into() => "user1".into() });
-        let template = r#"user: {{user_id}} escaped: \{{user_id}}"#;
+        let template = "user: {{user_id}} escaped: {_{user_id}}";
         assert_eq!(
             render!(template, context).unwrap(),
             "user: user1 escaped: {{user_id}}"

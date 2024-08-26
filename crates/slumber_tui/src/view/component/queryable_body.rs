@@ -248,7 +248,7 @@ mod tests {
     use crate::{
         context::TuiContext,
         test_util::{harness, terminal, TestHarness, TestTerminal},
-        view::{context::PersistedLazy, test_util::TestComponent},
+        view::{test_util::TestComponent, util::persistence::PersistedLazy},
     };
     use crossterm::event::KeyCode;
     use persisted::{PersistedKey, PersistedStore};

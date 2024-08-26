@@ -7,9 +7,9 @@ use crate::{
             body::RecipeBodyDisplay,
             table::{RecipeFieldTable, RecipeFieldTableProps},
         },
-        context::PersistedLazy,
         draw::{Draw, DrawMetadata},
         event::{Child, EventHandler},
+        util::persistence::PersistedLazy,
         Component,
     },
 };
@@ -80,10 +80,9 @@ impl RecipeDisplay {
                 }),
             )
             .into(),
-            body: recipe
-                .body
-                .as_ref()
-                .map(|body| RecipeBodyDisplay::new(body, &recipe.id).into()),
+            body: recipe.body.as_ref().map(|body| {
+                RecipeBodyDisplay::new(body, recipe.id.clone()).into()
+            }),
             // Map authentication type
             authentication: recipe.authentication.as_ref().map(
                 |authentication| {

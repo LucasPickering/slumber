@@ -3,12 +3,11 @@ use crate::{
     view::{
         common::modal::Modal,
         event::{Event, EventQueue},
+        util::persistence::RecipeOverrideStore,
     },
 };
-use persisted::PersistedStore;
-use serde::{de::DeserializeOwned, Serialize};
 use slumber_core::{collection::Collection, db::CollectionDatabase};
-use std::{cell::RefCell, fmt::Debug, sync::Arc};
+use std::{cell::RefCell, sync::Arc};
 
 /// Thread-local context container, which stores mutable state needed in the
 /// view thread. Until [TuiContext](crate::TuiContext), which stores
@@ -27,6 +26,10 @@ pub struct ViewContext {
     /// Persistence database. The TUI only ever needs to run DB ops related to
     /// our collection, so we can use a collection-restricted DB handle
     database: CollectionDatabase,
+    /// An alternative persistence store just for recipe overrides. These
+    /// values are only persisted within a single session, so they cannot
+    /// use the DB
+    recipe_override_store: RecipeOverrideStore,
     /// Queue of unhandled view events, which will be used to update view state
     event_queue: EventQueue,
     /// Sender to the async message queue, which is used to transmit data and
@@ -61,6 +64,7 @@ impl ViewContext {
             *context = Some(Self {
                 collection,
                 database,
+                recipe_override_store: Default::default(),
                 event_queue: EventQueue::default(),
                 messages_tx,
             })
@@ -93,6 +97,20 @@ impl ViewContext {
     /// Execute a function with access to the database
     pub fn with_database<T>(f: impl FnOnce(&CollectionDatabase) -> T) -> T {
         Self::with(|context| f(&context.database))
+    }
+
+    /// Execute a function with immutable access to the [RecipeOverideStore]
+    pub fn with_override_store<T>(
+        f: impl FnOnce(&RecipeOverrideStore) -> T,
+    ) -> T {
+        Self::with(|context| f(&context.recipe_override_store))
+    }
+
+    /// Execute a function with mutable access to the [RecipeOverideStore]
+    pub fn with_override_store_mut<T>(
+        f: impl FnOnce(&mut RecipeOverrideStore) -> T,
+    ) -> T {
+        Self::with_mut(|context| f(&mut context.recipe_override_store))
     }
 
     /// Queue a view event to be handled by the component tree
@@ -132,45 +150,6 @@ impl ViewContext {
             let refs: Vec<_> = context.event_queue.to_vec();
             f(refs.as_slice());
         })
-    }
-}
-
-/// Wrapper for [persisted::PersistedKey] that applies additional bounds
-/// necessary for our store
-pub trait PersistedKey: Debug + Serialize + persisted::PersistedKey {}
-impl<T: Debug + Serialize + persisted::PersistedKey> PersistedKey for T {}
-
-/// Wrapper for [persisted::Persisted] bound to our store
-pub type Persisted<K> = persisted::Persisted<ViewContext, K>;
-
-/// Wrapper for [persisted::PersistedLazy] bound to our store
-pub type PersistedLazy<K, C> = persisted::PersistedLazy<ViewContext, K, C>;
-
-/// Wrapper for [persisted::PersistedLazyRefMut] bound to our store
-pub type PersistedLazyRefMut<'a, K, C> =
-    persisted::PersistedLazyRefMut<'a, ViewContext, K, C>;
-
-/// Persist UI state via the database. We have to be able to serialize keys to
-/// insert and lookup. We have to serialize values to insert, and deserialize
-/// them to retrieve.
-impl<K> PersistedStore<K> for ViewContext
-where
-    K: PersistedKey,
-    K::Value: Debug + Serialize + DeserializeOwned,
-{
-    fn load_persisted(key: &K) -> Option<K::Value> {
-        Self::with_database(|database| database.get_ui(K::type_name(), key))
-            // Error is already traced in the DB, nothing to do with it here
-            .ok()
-            .flatten()
-    }
-
-    fn store_persisted(key: &K, value: &K::Value) {
-        Self::with_database(|database| {
-            database.set_ui(K::type_name(), key, value)
-        })
-        // Error is already traced in the DB, nothing to do with it here
-        .ok();
     }
 }
 

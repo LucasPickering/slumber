@@ -21,7 +21,7 @@ use unicode_width::UnicodeWidthStr;
 
 /// A scrollable (but not editable) block of text. Internal state will be
 /// updated on each render, to adjust to the text's width/height. Generally the
-/// parent should be storing an instant of [Text] and passing the same value to
+/// parent should be storing an instance of [Text] and passing the same value to
 /// this on each render. Generating the `Text` could potentially be expensive
 /// (especially if it includes syntax highlighting).
 #[derive(derive_more::Debug, Default)]

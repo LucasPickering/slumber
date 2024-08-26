@@ -3,10 +3,10 @@ use crate::{
     view::{
         common::{actions::ActionsModal, list::List, Pane},
         component::{primary::PrimaryPane, recipe_pane::RecipeMenuAction},
-        context::{Persisted, PersistedLazy},
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
         state::select::SelectState,
+        util::persistence::{Persisted, PersistedLazy},
         Component, ViewContext,
     },
 };

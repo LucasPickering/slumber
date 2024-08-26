@@ -12,10 +12,10 @@ use crate::{
             recipe_list::RecipeListPane,
             recipe_pane::{RecipeMenuAction, RecipePane, RecipePaneProps},
         },
-        context::{Persisted, PersistedLazy},
         draw::{Draw, DrawMetadata, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
         state::{fixed_select::FixedSelectState, RequestState},
+        util::persistence::{Persisted, PersistedLazy},
         Component, ViewContext,
     },
 };

@@ -11,9 +11,9 @@ use crate::{
             },
             Component,
         },
-        context::PersistedLazy,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
+        util::persistence::PersistedLazy,
         RequestState, ViewContext,
     },
 };

@@ -443,7 +443,10 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{harness, terminal, TestHarness, TestTerminal},
-        view::{context::PersistedLazy, test_util::TestComponent, ViewContext},
+        view::{
+            test_util::TestComponent, util::persistence::PersistedLazy,
+            ViewContext,
+        },
     };
     use crossterm::event::KeyCode;
     use persisted::{PersistedKey, PersistedStore};

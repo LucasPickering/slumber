@@ -92,7 +92,7 @@ where
     /// Drain events from the event queue, and handle them one-by-one. Return
     /// the events that were propagated (i.e. not consumed by the component or
     /// its children), in the order they were queued/handled.
-    pub fn drain_events(&mut self) -> PropagatedEvents {
+    fn drain_events(&mut self) -> PropagatedEvents {
         // Safety check, prevent annoying bugs
         assert!(
             self.component.is_visible(),
@@ -107,6 +107,18 @@ where
             }
         }
         PropagatedEvents(propagated)
+    }
+
+    /// Drain all events in the queue, then draw the component to the terminal.
+    ///
+    /// This similar to [update_draw](Self::update_draw), but doesn't require
+    /// you to queue a new event first. This is helpful in the rare occasions
+    /// where the UI needs to respond to some asyncronous event, such as a
+    /// callback that would normally be called by the main loop.
+    pub fn drain_draw(&mut self) -> PropagatedEvents {
+        let propagated = self.drain_events();
+        self.draw(None);
+        propagated
     }
 
     /// Put an event on the event queue, handle **all** events in the queue,
@@ -134,9 +146,7 @@ where
             )
         });
         ViewContext::push_event(event);
-        let propagated = self.drain_events();
-        self.draw(None);
-        propagated
+        self.drain_draw()
     }
 
     /// Push a terminal input event onto the event queue, then drain events and

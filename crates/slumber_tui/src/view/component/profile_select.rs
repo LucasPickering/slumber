@@ -8,10 +8,10 @@ use crate::{
             list::List, modal::Modal, table::Table,
             template_preview::TemplatePreview, Pane,
         },
-        context::Persisted,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
         state::{select::SelectState, StateCell},
+        util::persistence::Persisted,
         Component, ViewContext,
     },
 };

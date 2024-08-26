@@ -1,8 +1,3 @@
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-};
-
 use crate::{
     context::TuiContext,
     message::Message,
@@ -17,10 +12,14 @@ use crate::{
         },
         draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, Update},
+        util::persistence::{
+            RecipeOverrideContainer, RecipeOverrideKey, RecipeOverrideValue,
+        },
         Component, ViewContext,
     },
 };
 use anyhow::Context;
+use persisted::PersistedContainer;
 use ratatui::{style::Styled, Frame};
 use serde::Serialize;
 use slumber_config::Action;
@@ -30,6 +29,10 @@ use slumber_core::{
     template::Template,
     util::ResultTraced,
 };
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 use tracing::debug;
 use uuid::Uuid;
 
@@ -37,17 +40,21 @@ use uuid::Uuid;
 /// determines the representation
 #[derive(Debug)]
 pub enum RecipeBodyDisplay {
-    Raw(Component<RawBody>),
+    Raw(Component<RecipeOverrideContainer<RawBody>>),
     Form(Component<RecipeFieldTable<FormRowKey, FormRowToggleKey>>),
 }
 
 impl RecipeBodyDisplay {
     /// Build a component to display the body, based on the body type
-    pub fn new(body: &RecipeBody, recipe_id: &RecipeId) -> Self {
+    pub fn new(body: &RecipeBody, recipe_id: RecipeId) -> Self {
         match body {
-            RecipeBody::Raw { body, content_type } => {
-                Self::Raw(RawBody::new(body.clone(), *content_type).into())
-            }
+            RecipeBody::Raw { body, content_type } => Self::Raw(
+                RecipeOverrideContainer::new(
+                    RecipeOverrideKey::Body { recipe_id },
+                    RawBody::new(body.clone(), *content_type),
+                )
+                .into(),
+            ),
             RecipeBody::FormUrlencoded(fields)
             | RecipeBody::FormMultipart(fields) => {
                 let inner = RecipeFieldTable::new(
@@ -115,14 +122,11 @@ impl Draw for RecipeBodyDisplay {
 #[derive(Debug)]
 pub struct RawBody {
     /// Template for the body. Store this separate from the preview so the
-    /// user can edit it. For JSON bodies, we don't have an original string
-    /// so use the prettified body
+    /// user can edit it
     template: Template,
     preview: TemplatePreview,
-    content_type: Option<ContentType>,
-    /// If false, the template is the original body from the collection. If
-    /// true, the user has made some edits.
     overridden: bool,
+    content_type: Option<ContentType>,
     text_window: Component<TextWindow>,
 }
 
@@ -130,9 +134,9 @@ impl RawBody {
     fn new(template: Template, content_type: Option<ContentType>) -> Self {
         Self {
             template: template.clone(),
+            overridden: false,
             preview: TemplatePreview::new(template.clone(), content_type),
             content_type,
-            overridden: false,
             text_window: Component::default(),
         }
     }
@@ -165,7 +169,7 @@ impl RawBody {
 
     /// Read the user's edited body from the temp file we created, and rebuild
     /// the body from that
-    fn set_override(&mut self, path: &Path) {
+    fn load_override(&mut self, path: &Path) {
         // Read the body back from the temp file we handed to the editor, then
         // delete it to prevent cluttering the disk
         debug!(?path, "Reading edited body from file");
@@ -195,14 +199,15 @@ impl RawBody {
             return;
         };
 
-        // Rebuild the whole struct just so we don't forget to init something
-        *self = Self {
-            template: template.clone(),
-            preview: TemplatePreview::new(template, self.content_type),
-            content_type: self.content_type,
-            overridden: true,
-            text_window: Default::default(),
-        };
+        // Update state and regenerate the preview
+        self.set_override(template);
+    }
+
+    /// Override the body template and refresh the preview
+    fn set_override(&mut self, template: Template) {
+        self.template = template.clone();
+        self.overridden = true;
+        self.preview = TemplatePreview::new(template, self.content_type);
     }
 }
 
@@ -211,7 +216,7 @@ impl EventHandler for RawBody {
         if let Some(Action::Edit) = event.action() {
             self.open_editor();
         } else if let Some(SaveBodyOverride(path)) = event.local() {
-            self.set_override(path);
+            self.load_override(path);
         } else {
             return Update::Propagate(event);
         }
@@ -246,6 +251,24 @@ impl Draw for RawBody {
     }
 }
 
+impl PersistedContainer for RawBody {
+    type Value = RecipeOverrideValue;
+
+    fn get_to_persist(&self) -> Self::Value {
+        if self.overridden {
+            RecipeOverrideValue::Override(self.template.clone())
+        } else {
+            RecipeOverrideValue::Default
+        }
+    }
+
+    fn restore_persisted(&mut self, value: Self::Value) {
+        if let RecipeOverrideValue::Override(template) = value {
+            self.set_override(template);
+        }
+    }
+}
+
 /// Persistence key for selected form field, per recipe. Value is the field name
 #[derive(Debug, Serialize, persisted::PersistedKey)]
 #[persisted(Option<String>)]
@@ -269,26 +292,37 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{harness, terminal, TestHarness, TestTerminal},
-        view::test_util::TestComponent,
+        view::{
+            test_util::TestComponent, util::persistence::RecipeOverrideStore,
+        },
     };
     use crossterm::event::KeyCode;
+    use persisted::PersistedStore;
+    use ratatui::text::Span;
     use rstest::rstest;
     use slumber_core::{assert_matches, test_util::Factory};
 
+    /// Test editing the body, which should open a file for the user to edit,
+    /// then load the response
     #[rstest]
-    fn test_edit(mut harness: TestHarness, terminal: TestTerminal) {
+    fn test_edit(
+        mut harness: TestHarness,
+        #[with(10, 1)] terminal: TestTerminal,
+    ) {
         let body: RecipeBody = RecipeBody::Raw {
             body: "hello!".into(),
             content_type: Some(ContentType::Json),
         };
+        let recipe_id = RecipeId::factory(());
         let mut component = TestComponent::new(
             &terminal,
-            RecipeBodyDisplay::new(&body, &RecipeId::factory(())),
+            RecipeBodyDisplay::new(&body, recipe_id.clone()),
             (),
         );
 
         // Check initial state
         assert_eq!(component.data().override_value(), None);
+        terminal.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
 
         // Open the editor
         harness.clear_messages();
@@ -302,9 +336,8 @@ mod tests {
         // Simulate the editor modifying the file
         fs::write(&path, "goodbye!").unwrap();
         on_complete(path);
-        component.drain_events().assert_empty();
+        component.drain_draw().assert_empty();
 
-        // Check initial state
         assert_eq!(
             component.data().override_value(),
             Some(RecipeBody::Raw {
@@ -312,5 +345,49 @@ mod tests {
                 content_type: Some(ContentType::Json),
             })
         );
+        terminal.assert_buffer_lines([vec![gutter("1"), " goodbye!".into()]]);
+
+        // Persistence store should be updated
+        let persisted =
+            RecipeOverrideStore::load_persisted(&RecipeOverrideKey::Body {
+                recipe_id,
+            });
+        assert_eq!(
+            persisted,
+            Some(RecipeOverrideValue::Override("goodbye!".into()))
+        );
+    }
+
+    /// Template should be loaded from the persistence store on init
+    #[rstest]
+    fn test_persist_load(
+        _harness: TestHarness,
+        #[with(10, 1)] terminal: TestTerminal,
+    ) {
+        let recipe_id = RecipeId::factory(());
+        RecipeOverrideStore::store_persisted(
+            &RecipeOverrideKey::Body {
+                recipe_id: recipe_id.clone(),
+            },
+            &RecipeOverrideValue::Override("hello!".into()),
+        );
+
+        let body: RecipeBody = RecipeBody::Raw {
+            body: "".into(),
+            content_type: Some(ContentType::Json),
+        };
+        TestComponent::new(
+            &terminal,
+            RecipeBodyDisplay::new(&body, recipe_id),
+            (),
+        );
+
+        terminal.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
+    }
+
+    /// Style text to match the text window gutter
+    fn gutter(text: &str) -> Span {
+        let styles = &TuiContext::get().styles;
+        Span::styled(text, styles.text_window.gutter)
     }
 }

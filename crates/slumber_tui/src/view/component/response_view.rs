@@ -5,10 +5,10 @@ use crate::{
     view::{
         common::{actions::ActionsModal, header_table::HeaderTable},
         component::queryable_body::{QueryableBody, QueryableBodyProps},
-        context::PersistedLazy,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
         state::StateCell,
+        util::persistence::PersistedLazy,
         Component, ViewContext,
     },
 };

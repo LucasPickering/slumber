@@ -8,10 +8,10 @@ use crate::{
             text_box::TextBox,
         },
         component::{misc::TextBoxModal, Component},
-        context::{Persisted, PersistedKey, PersistedLazy},
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
         state::select::SelectState,
+        util::persistence::{Persisted, PersistedKey, PersistedLazy},
         ViewContext,
     },
 };

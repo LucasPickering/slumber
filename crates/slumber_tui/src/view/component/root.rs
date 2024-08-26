@@ -9,12 +9,12 @@ use crate::{
             misc::NotificationText,
             primary::{PrimaryView, PrimaryViewProps},
         },
-        context::PersistedLazy,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
         state::{
             request_store::RequestStore, RequestState, RequestStateSummary,
         },
+        util::persistence::PersistedLazy,
         Component, ViewContext,
     },
 };

@@ -3,12 +3,10 @@
 
 use crate::view::{
     common::modal::Modal,
-    context::{PersistedKey, PersistedLazy, PersistedLazyRefMut},
     state::{Notification, RequestState},
     Component,
 };
-use persisted::PersistedContainer;
-use serde::{de::DeserializeOwned, Serialize};
+use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
 use slumber_config::Action;
 use slumber_core::http::RequestId;
 use std::{
@@ -66,10 +64,11 @@ impl<'a> EventHandler for Child<'a> {
     }
 }
 
-impl<'a, K, C> EventHandler for PersistedLazyRefMut<'a, K, C>
+impl<'a, S, K, C> EventHandler for PersistedLazyRefMut<'a, S, K, C>
 where
-    K: PersistedKey,
-    K::Value: Debug + PartialEq + Serialize + DeserializeOwned,
+    S: PersistedStore<K>,
+    K: persisted::PersistedKey,
+    K::Value: Debug + PartialEq,
     C: EventHandler + PersistedContainer<Value = K::Value>,
 {
     fn update(&mut self, event: Event) -> Update {
@@ -81,7 +80,7 @@ where
     }
 }
 
-/// A wrapper for a dynamically dispatcher [EventHandler]. This is used to
+/// A wrapper for a dynamically dispatched [EventHandler]. This is used to
 /// return a collection of event handlers from [EventHandler::children]. Almost
 /// all cases will use the [Borrowed](Self::Borrowed) variant, but
 /// [Owned](Self::Owned) is useful for types that need to wrap the mutable
@@ -128,10 +127,11 @@ impl<T: EventHandler> ToChild for T {
 /// A mutable reference to the contents of [PersistedLazy] must be wrapped in
 /// [PersistedLazyRefMut], which requires us to return an owned child rather
 /// than a borrowed one.
-impl<K, C> ToChild for PersistedLazy<K, C>
+impl<S, K, C> ToChild for persisted::PersistedLazy<S, K, C>
 where
-    K: PersistedKey,
-    K::Value: Debug + PartialEq + Serialize + DeserializeOwned,
+    S: PersistedStore<K>,
+    K: persisted::PersistedKey,
+    K::Value: Debug + PartialEq,
     C: EventHandler + PersistedContainer<Value = K::Value>,
 {
     fn to_child_mut(&mut self) -> Child<'_> {

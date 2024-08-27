@@ -251,7 +251,9 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{harness, terminal, TestHarness, TestTerminal},
-        view::test_util::TestComponent,
+        view::{
+            test_util::TestComponent, util::persistence::DatabasePersistedStore,
+        },
     };
     use crossterm::event::KeyCode;
     use persisted::PersistedStore;
@@ -303,7 +305,7 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&old_exchange).unwrap();
         harness.database.insert_exchange(&new_exchange).unwrap();
-        ViewContext::store_persisted(
+        DatabasePersistedStore::store_persisted(
             &SelectedRequestKey,
             &Some(old_exchange.id),
         );

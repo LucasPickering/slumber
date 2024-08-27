@@ -324,7 +324,10 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_util::{harness, TestHarness};
+    use crate::{
+        test_util::{harness, TestHarness},
+        view::util::persistence::DatabasePersistedStore,
+    };
     use persisted::PersistedStore;
     use rstest::rstest;
     use slumber_core::test_util::{by_id, Factory};
@@ -350,7 +353,7 @@ mod tests {
             ..Profile::factory(())
         }));
         if let Some(persisted_id) = persisted_id {
-            ViewContext::store_persisted(
+            DatabasePersistedStore::store_persisted(
                 &SelectedProfileKey,
                 &Some(persisted_id.into()),
             );

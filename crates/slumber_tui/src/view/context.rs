@@ -2,8 +2,8 @@ use crate::{
     message::{Message, MessageSender},
     view::{
         common::modal::Modal,
+        component::RecipeOverrideStore,
         event::{Event, EventQueue},
-        util::persistence::RecipeOverrideStore,
     },
 };
 use slumber_core::{collection::Collection, db::CollectionDatabase};

@@ -14,3 +14,5 @@ mod root;
 
 pub use internal::Component;
 pub use root::Root;
+// Exported for the view context
+pub use recipe_pane::RecipeOverrideStore;

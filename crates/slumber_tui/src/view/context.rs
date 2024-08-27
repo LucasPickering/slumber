@@ -8,6 +8,7 @@ use crate::{
 };
 use slumber_core::{collection::Collection, db::CollectionDatabase};
 use std::{cell::RefCell, sync::Arc};
+use tracing::debug;
 
 /// Thread-local context container, which stores mutable state needed in the
 /// view thread. Until [TuiContext](crate::TuiContext), which stores
@@ -60,6 +61,7 @@ impl ViewContext {
         database: CollectionDatabase,
         messages_tx: MessageSender,
     ) {
+        debug!("Initializing view context");
         Self::INSTANCE.with_borrow_mut(|context| {
             *context = Some(Self {
                 collection,

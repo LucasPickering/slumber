@@ -5,9 +5,7 @@ use crate::{
     view::{
         common::text_window::{TextWindow, TextWindowProps},
         component::recipe_pane::{
-            persistence::{
-                RecipeOverrideContainer, RecipeOverrideKey, RecipeTemplate,
-            },
+            persistence::{RecipeOverrideKey, RecipeTemplate},
             table::{RecipeFieldTable, RecipeFieldTableProps},
         },
         draw::{Draw, DrawMetadata},
@@ -71,7 +69,9 @@ impl RecipeBodyDisplay {
     /// value. Return `None` to use the recipe's stock body.
     pub fn override_value(&self) -> Option<RecipeBody> {
         match self {
-            RecipeBodyDisplay::Raw(inner) if inner.data().body.overridden() => {
+            RecipeBodyDisplay::Raw(inner)
+                if inner.data().body.is_overridden() =>
+            {
                 let inner = inner.data();
                 Some(RecipeBody::Raw {
                     body: inner.body.template().clone(),
@@ -113,7 +113,7 @@ impl Draw for RecipeBodyDisplay {
 
 #[derive(Debug)]
 pub struct RawBody {
-    body: RecipeOverrideContainer,
+    body: RecipeTemplate,
     text_window: Component<TextWindow>,
 }
 
@@ -124,9 +124,10 @@ impl RawBody {
         content_type: Option<ContentType>,
     ) -> Self {
         Self {
-            body: RecipeOverrideContainer::new(
-                RecipeOverrideKey::Body { recipe_id },
-                RecipeTemplate::new(template, content_type),
+            body: RecipeTemplate::new(
+                RecipeOverrideKey::body(recipe_id),
+                template,
+                content_type,
             ),
             text_window: Component::default(),
         }
@@ -192,7 +193,7 @@ impl RawBody {
         };
 
         // Update state and regenerate the preview
-        self.body.get_mut().set_override(template);
+        self.body.set_override(template);
     }
 }
 
@@ -224,7 +225,7 @@ impl Draw for RawBody {
                 // we only need a reference
                 text: &self.body.preview().text(),
                 margins: Default::default(),
-                footer: if self.body.overridden() {
+                footer: if self.body.is_overridden() {
                     Some("(edited)".set_style(styles.text.hint).into())
                 } else {
                     None
@@ -318,10 +319,9 @@ mod tests {
         terminal.assert_buffer_lines([vec![gutter("1"), " goodbye!".into()]]);
 
         // Persistence store should be updated
-        let persisted =
-            RecipeOverrideStore::load_persisted(&RecipeOverrideKey::Body {
-                recipe_id,
-            });
+        let persisted = RecipeOverrideStore::load_persisted(
+            &RecipeOverrideKey::body(recipe_id),
+        );
         assert_eq!(
             persisted,
             Some(RecipeOverrideValue::Override("goodbye!".into()))
@@ -330,15 +330,13 @@ mod tests {
 
     /// Template should be loaded from the persistence store on init
     #[rstest]
-    fn test_persist_load(
+    fn test_persisted_load(
         _harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {
         let recipe_id = RecipeId::factory(());
         RecipeOverrideStore::store_persisted(
-            &RecipeOverrideKey::Body {
-                recipe_id: recipe_id.clone(),
-            },
+            &RecipeOverrideKey::body(recipe_id.clone()),
             &RecipeOverrideValue::Override("hello!".into()),
         );
 
@@ -346,12 +344,19 @@ mod tests {
             body: "".into(),
             content_type: Some(ContentType::Json),
         };
-        TestComponent::new(
+        let component = TestComponent::new(
             &terminal,
             RecipeBodyDisplay::new(&body, recipe_id),
             (),
         );
 
+        assert_eq!(
+            component.data().override_value(),
+            Some(RecipeBody::Raw {
+                body: "hello!".into(),
+                content_type: Some(ContentType::Json),
+            })
+        );
         terminal.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
     }
 

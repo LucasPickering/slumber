@@ -86,7 +86,11 @@ impl RecipeDisplay {
             // Map authentication type
             authentication: recipe.authentication.as_ref().map(
                 |authentication| {
-                    AuthenticationDisplay::new(authentication.clone()).into()
+                    AuthenticationDisplay::new(
+                        recipe.id.clone(),
+                        authentication.clone(),
+                    )
+                    .into()
                 },
             ),
         }

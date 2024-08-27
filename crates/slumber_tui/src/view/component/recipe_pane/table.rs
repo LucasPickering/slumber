@@ -4,10 +4,13 @@ use crate::{
     view::{
         common::{
             table::{Table, ToggleRow},
-            template_preview::TemplatePreview,
             text_box::TextBox,
         },
-        component::{misc::TextBoxModal, Component},
+        component::{
+            misc::TextBoxModal,
+            recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
+            Component,
+        },
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
         state::select::SelectState,
@@ -58,18 +61,21 @@ where
 {
     pub fn new(
         select_key: RowSelectKey,
-
-        rows: impl IntoIterator<Item = (String, Template, RowToggleKey)>,
+        rows: impl IntoIterator<
+            Item = (String, Template, RecipeOverrideKey, RowToggleKey),
+        >,
     ) -> Self {
         let items = rows
             .into_iter()
             .enumerate()
-            .map(|(i, (key, value, toggle_key))| RowState {
+            .map(|(i, (key, template, override_key, toggle_key))| RowState {
                 index: i, // This will be the unique ID for the row
                 key,
-                value: value.clone(),
-                preview: TemplatePreview::new(value, None),
-                overridden: false,
+                value: RecipeTemplate::new(
+                    override_key,
+                    template.clone(),
+                    None,
+                ),
                 enabled: Persisted::new(toggle_key, true),
             })
             .collect();
@@ -178,12 +184,9 @@ struct RowState<K: PersistedKey<Value = bool>> {
     /// duplicated within one table (e.g. query params), but this is how we
     /// link instances of a row across collection reloads.
     key: String,
-    /// We hang onto the source template so we can edit it
-    value: Template,
-    preview: TemplatePreview,
-    /// Has the user modified the template? If so we'll provide this as an
-    /// override when generating build options
-    overridden: bool,
+    /// Value template. This includes functionality to make it editable, and
+    /// persist the edited value within the current session
+    value: RecipeTemplate,
     /// Is the row enabled/included? This is persisted by row *key* rather than
     /// index, which **may not be unique**. E.g. a query param could be
     /// duplicated. This means duplicated keys will all get the same persisted
@@ -203,8 +206,8 @@ impl<K: PersistedKey<Value = bool>> Generate for &RowState<K> {
         Self: 'this,
     {
         let styles = &TuiContext::get().styles;
-        let mut preview_text = self.preview.generate();
-        if self.overridden {
+        let mut preview_text = self.value.preview().generate();
+        if self.value.is_overridden() {
             preview_text.push_span(Span::styled(" (edited)", styles.text.hint));
         }
         ToggleRow::new([self.key.as_str().into(), preview_text], *self.enabled)
@@ -224,7 +227,7 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
             format!("Edit value for {}", self.key),
             TextBox::default()
                 // Edit as a raw template
-                .default_value(self.value.display().into_owned())
+                .default_value(self.value.template().display().into_owned())
                 .validator(|value| value.parse::<Template>().is_ok()),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
@@ -246,9 +249,7 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
             .parse::<Template>()
             .reported(&ViewContext::messages_tx())
         {
-            self.value = template.clone();
-            self.preview = TemplatePreview::new(template, None);
-            self.overridden = true;
+            self.value.set_override(template);
         }
     }
 
@@ -256,8 +257,8 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
     fn to_build_override(&self) -> Option<BuildFieldOverride> {
         if !*self.enabled {
             Some(BuildFieldOverride::Omit)
-        } else if self.overridden {
-            Some(BuildFieldOverride::Override(self.value.clone()))
+        } else if self.value.is_overridden() {
+            Some(BuildFieldOverride::Override(self.value.template().clone()))
         } else {
             None
         }
@@ -300,9 +301,16 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{harness, terminal, TestHarness, TestTerminal},
-        view::test_util::{TestComponent, WithModalQueue},
+        view::{
+            component::{
+                recipe_pane::persistence::RecipeOverrideValue,
+                RecipeOverrideStore,
+            },
+            test_util::{TestComponent, WithModalQueue},
+        },
     };
     use crossterm::event::KeyCode;
+    use persisted::PersistedStore;
     use rstest::rstest;
     use serde::Serialize;
     use slumber_core::{collection::RecipeId, test_util::Factory};
@@ -326,6 +334,7 @@ mod tests {
             (
                 "row0".into(),
                 "value0".into(),
+                RecipeOverrideKey::query_param(recipe_id.clone(), 0),
                 TestRowToggleKey {
                     recipe_id: recipe_id.clone(),
                     key: "row0".into(),
@@ -334,6 +343,7 @@ mod tests {
             (
                 "row1".into(),
                 "value1".into(),
+                RecipeOverrideKey::query_param(recipe_id.clone(), 1),
                 TestRowToggleKey {
                     recipe_id: recipe_id.clone(),
                     key: "row1".into(),
@@ -384,6 +394,7 @@ mod tests {
             (
                 "row0".into(),
                 "value0".into(),
+                RecipeOverrideKey::query_param(recipe_id.clone(), 0),
                 TestRowToggleKey {
                     recipe_id: recipe_id.clone(),
                     key: "row0".into(),
@@ -392,6 +403,7 @@ mod tests {
             (
                 "row1".into(),
                 "value1".into(),
+                RecipeOverrideKey::query_param(recipe_id.clone(), 1),
                 TestRowToggleKey {
                     recipe_id: recipe_id.clone(),
                     key: "row1".into(),
@@ -426,13 +438,69 @@ mod tests {
         let selected_row =
             component.data().inner().select.data().selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
-        assert!(selected_row.overridden);
-        assert_eq!(selected_row.value.display(), "value1!!!");
+        assert!(selected_row.value.is_overridden());
+        assert_eq!(selected_row.value.template().display(), "value1!!!");
         assert_eq!(
             component.data().inner().to_build_overrides(),
             [(1, BuildFieldOverride::Override("value1!!!".into()))]
                 .into_iter()
                 .collect(),
+        );
+    }
+
+    /// Override templates should be loaded from the store on init
+    #[rstest]
+    fn test_persisted_override(_harness: TestHarness, terminal: TestTerminal) {
+        let recipe_id = RecipeId::factory(());
+        RecipeOverrideStore::store_persisted(
+            &RecipeOverrideKey::query_param(recipe_id.clone(), 0),
+            &RecipeOverrideValue::Override("p0".into()),
+        );
+        RecipeOverrideStore::store_persisted(
+            &RecipeOverrideKey::query_param(recipe_id.clone(), 1),
+            &RecipeOverrideValue::Override("p1".into()),
+        );
+        let rows = [
+            (
+                "row0".into(),
+                "".into(),
+                RecipeOverrideKey::query_param(recipe_id.clone(), 0),
+                TestRowToggleKey {
+                    recipe_id: recipe_id.clone(),
+                    key: "row0".into(),
+                },
+            ),
+            (
+                "row1".into(),
+                "".into(),
+                RecipeOverrideKey::query_param(recipe_id.clone(), 1),
+                TestRowToggleKey {
+                    recipe_id: recipe_id.clone(),
+                    key: "row1".into(),
+                },
+            ),
+        ];
+        let component = TestComponent::new(
+            &terminal,
+            // We'll need a modal queue to handle the edit box
+            WithModalQueue::new(RecipeFieldTable::new(
+                TestRowKey(recipe_id.clone()),
+                rows,
+            )),
+            RecipeFieldTableProps {
+                key_header: "Key",
+                value_header: "Value",
+            },
+        );
+
+        assert_eq!(
+            component.data().inner().to_build_overrides(),
+            [
+                (0, BuildFieldOverride::Override("p0".into())),
+                (1, BuildFieldOverride::Override("p1".into()))
+            ]
+            .into_iter()
+            .collect(),
         );
     }
 }

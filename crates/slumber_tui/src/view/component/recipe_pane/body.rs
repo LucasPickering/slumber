@@ -49,10 +49,11 @@ impl RecipeBodyDisplay {
             | RecipeBody::FormMultipart(fields) => {
                 let inner = RecipeFieldTable::new(
                     FormRowKey(recipe_id.clone()),
-                    fields.iter().map(|(field, value)| {
+                    fields.iter().enumerate().map(|(i, (field, value))| {
                         (
                             field.clone(),
                             value.clone(),
+                            RecipeOverrideKey::form_field(recipe_id.clone(), i),
                             FormRowToggleKey {
                                 recipe_id: recipe_id.clone(),
                                 field: field.clone(),
@@ -328,9 +329,9 @@ mod tests {
         );
     }
 
-    /// Template should be loaded from the persistence store on init
+    /// Override template should be loaded from the persistence store on init
     #[rstest]
-    fn test_persisted_load(
+    fn test_persisted_override(
         _harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {

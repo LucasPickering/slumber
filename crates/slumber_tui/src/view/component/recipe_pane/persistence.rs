@@ -179,6 +179,36 @@ impl RecipeOverrideKey {
             recipe_id,
         }
     }
+
+    /// Get a unique key for a query parameter. This can use index instead of
+    /// param name because it's only used within one session, and params can't
+    /// be added/reordered/removed without reloading the collection.
+    pub fn query_param(recipe_id: RecipeId, index: usize) -> Self {
+        Self {
+            kind: RecipeOverrideKeyKind::QueryParam(index),
+            recipe_id,
+        }
+    }
+
+    /// Get a unique key for a header. This can use index instead of
+    /// param name because it's only used within one session, and params can't
+    /// be added/reordered/removed without reloading the collection.
+    pub fn header(recipe_id: RecipeId, index: usize) -> Self {
+        Self {
+            kind: RecipeOverrideKeyKind::Header(index),
+            recipe_id,
+        }
+    }
+
+    /// Get a unique key for a form field. This can use index instead of
+    /// param name because it's only used within one session, and params can't
+    /// be added/reordered/removed without reloading the collection.
+    pub fn form_field(recipe_id: RecipeId, index: usize) -> Self {
+        Self {
+            kind: RecipeOverrideKeyKind::FormField(index),
+            recipe_id,
+        }
+    }
 }
 
 /// Different kinds of recipe fields that can be persisted. This is exposed only
@@ -189,4 +219,7 @@ enum RecipeOverrideKeyKind {
     AuthenticationBasicUsername,
     AuthenticationBasicPassword,
     AuthenticationBearerToken,
+    QueryParam(usize),
+    Header(usize),
+    FormField(usize),
 }

@@ -5,6 +5,7 @@ use crate::{
         component::recipe_pane::{
             authentication::AuthenticationDisplay,
             body::RecipeBodyDisplay,
+            persistence::RecipeOverrideKey,
             table::{RecipeFieldTable, RecipeFieldTableProps},
         },
         draw::{Draw, DrawMetadata},
@@ -54,10 +55,11 @@ impl RecipeDisplay {
             url: TemplatePreview::new(recipe.url.clone(), None),
             query: RecipeFieldTable::new(
                 QueryRowKey(recipe.id.clone()),
-                recipe.query.iter().map(|(param, value)| {
+                recipe.query.iter().enumerate().map(|(i, (param, value))| {
                     (
                         param.clone(),
                         value.clone(),
+                        RecipeOverrideKey::query_param(recipe.id.clone(), i),
                         QueryRowToggleKey {
                             recipe_id: recipe.id.clone(),
                             param: param.clone(),
@@ -68,16 +70,19 @@ impl RecipeDisplay {
             .into(),
             headers: RecipeFieldTable::new(
                 HeaderRowKey(recipe.id.clone()),
-                recipe.headers.iter().map(|(header, value)| {
-                    (
-                        header.clone(),
-                        value.clone(),
-                        HeaderRowToggleKey {
-                            recipe_id: recipe.id.clone(),
-                            header: header.clone(),
-                        },
-                    )
-                }),
+                recipe.headers.iter().enumerate().map(
+                    |(i, (header, value))| {
+                        (
+                            header.clone(),
+                            value.clone(),
+                            RecipeOverrideKey::header(recipe.id.clone(), i),
+                            HeaderRowToggleKey {
+                                recipe_id: recipe.id.clone(),
+                                header: header.clone(),
+                            },
+                        )
+                    },
+                ),
             )
             .into(),
             body: recipe.body.as_ref().map(|body| {

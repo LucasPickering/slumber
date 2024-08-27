@@ -373,8 +373,7 @@ impl Tui {
     fn reload_collection(&mut self, collection: Collection) {
         self.collection_file.collection = collection.into();
 
-        // Rebuild the whole view, because tons of things can change. Drop the
-        // old one *first* to make sure UI state is saved before being restored
+        // Rebuild the whole view, because tons of things can change
         let database = self.database.clone();
         let messages_tx = self.messages_tx();
         let collection_file = &self.collection_file;

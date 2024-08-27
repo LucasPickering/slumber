@@ -3,23 +3,19 @@ use crate::{
     message::Message,
     util::ResultReported,
     view::{
-        common::{
-            template_preview::TemplatePreview,
-            text_window::{TextWindow, TextWindowProps},
-        },
-        component::recipe_pane::table::{
-            RecipeFieldTable, RecipeFieldTableProps,
+        common::text_window::{TextWindow, TextWindowProps},
+        component::recipe_pane::{
+            persistence::{
+                RecipeOverrideContainer, RecipeOverrideKey, RecipeTemplate,
+            },
+            table::{RecipeFieldTable, RecipeFieldTableProps},
         },
         draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, Update},
-        util::persistence::{
-            RecipeOverrideContainer, RecipeOverrideKey, RecipeOverrideValue,
-        },
         Component, ViewContext,
     },
 };
 use anyhow::Context;
-use persisted::PersistedContainer;
 use ratatui::{style::Styled, Frame};
 use serde::Serialize;
 use slumber_config::Action;
@@ -40,7 +36,7 @@ use uuid::Uuid;
 /// determines the representation
 #[derive(Debug)]
 pub enum RecipeBodyDisplay {
-    Raw(Component<RecipeOverrideContainer<RawBody>>),
+    Raw(Component<RawBody>),
     Form(Component<RecipeFieldTable<FormRowKey, FormRowToggleKey>>),
 }
 
@@ -49,11 +45,7 @@ impl RecipeBodyDisplay {
     pub fn new(body: &RecipeBody, recipe_id: RecipeId) -> Self {
         match body {
             RecipeBody::Raw { body, content_type } => Self::Raw(
-                RecipeOverrideContainer::new(
-                    RecipeOverrideKey::Body { recipe_id },
-                    RawBody::new(body.clone(), *content_type),
-                )
-                .into(),
+                RawBody::new(recipe_id, body.clone(), *content_type).into(),
             ),
             RecipeBody::FormUrlencoded(fields)
             | RecipeBody::FormMultipart(fields) => {
@@ -79,11 +71,11 @@ impl RecipeBodyDisplay {
     /// value. Return `None` to use the recipe's stock body.
     pub fn override_value(&self) -> Option<RecipeBody> {
         match self {
-            RecipeBodyDisplay::Raw(inner) if inner.data().overridden => {
+            RecipeBodyDisplay::Raw(inner) if inner.data().body.overridden() => {
                 let inner = inner.data();
                 Some(RecipeBody::Raw {
-                    body: inner.template.clone(),
-                    content_type: inner.content_type,
+                    body: inner.body.template().clone(),
+                    content_type: inner.body.content_type(),
                 })
             }
             _ => None,
@@ -121,22 +113,21 @@ impl Draw for RecipeBodyDisplay {
 
 #[derive(Debug)]
 pub struct RawBody {
-    /// Template for the body. Store this separate from the preview so the
-    /// user can edit it
-    template: Template,
-    preview: TemplatePreview,
-    overridden: bool,
-    content_type: Option<ContentType>,
+    body: RecipeOverrideContainer,
     text_window: Component<TextWindow>,
 }
 
 impl RawBody {
-    fn new(template: Template, content_type: Option<ContentType>) -> Self {
+    fn new(
+        recipe_id: RecipeId,
+        template: Template,
+        content_type: Option<ContentType>,
+    ) -> Self {
         Self {
-            template: template.clone(),
-            overridden: false,
-            preview: TemplatePreview::new(template.clone(), content_type),
-            content_type,
+            body: RecipeOverrideContainer::new(
+                RecipeOverrideKey::Body { recipe_id },
+                RecipeTemplate::new(template, content_type),
+            ),
             text_window: Component::default(),
         }
     }
@@ -147,11 +138,12 @@ impl RawBody {
     fn open_editor(&mut self) {
         let path = env::temp_dir().join(format!("slumber-{}", Uuid::new_v4()));
         debug!(?path, "Writing body to file for editing");
-        let Some(_) = fs::write(&path, self.template.display().as_bytes())
-            .with_context(|| {
-                format!("Error writing body to file {path:?} for editing")
-            })
-            .reported(&ViewContext::messages_tx())
+        let Some(_) =
+            fs::write(&path, self.body.template().display().as_bytes())
+                .with_context(|| {
+                    format!("Error writing body to file {path:?} for editing")
+                })
+                .reported(&ViewContext::messages_tx())
         else {
             // Write failed
             return;
@@ -200,14 +192,7 @@ impl RawBody {
         };
 
         // Update state and regenerate the preview
-        self.set_override(template);
-    }
-
-    /// Override the body template and refresh the preview
-    fn set_override(&mut self, template: Template) {
-        self.template = template.clone();
-        self.overridden = true;
-        self.preview = TemplatePreview::new(template, self.content_type);
+        self.body.get_mut().set_override(template);
     }
 }
 
@@ -237,9 +222,9 @@ impl Draw for RawBody {
             TextWindowProps {
                 // Do *not* call generate, because that clones the text and
                 // we only need a reference
-                text: &self.preview.text(),
+                text: &self.body.preview().text(),
                 margins: Default::default(),
-                footer: if self.overridden {
+                footer: if self.body.overridden() {
                     Some("(edited)".set_style(styles.text.hint).into())
                 } else {
                     None
@@ -248,24 +233,6 @@ impl Draw for RawBody {
             area,
             true,
         );
-    }
-}
-
-impl PersistedContainer for RawBody {
-    type Value = RecipeOverrideValue;
-
-    fn get_to_persist(&self) -> Self::Value {
-        if self.overridden {
-            RecipeOverrideValue::Override(self.template.clone())
-        } else {
-            RecipeOverrideValue::Default
-        }
-    }
-
-    fn restore_persisted(&mut self, value: Self::Value) {
-        if let RecipeOverrideValue::Override(template) = value {
-            self.set_override(template);
-        }
     }
 }
 
@@ -293,7 +260,10 @@ mod tests {
     use crate::{
         test_util::{harness, terminal, TestHarness, TestTerminal},
         view::{
-            test_util::TestComponent, util::persistence::RecipeOverrideStore,
+            component::recipe_pane::persistence::{
+                RecipeOverrideStore, RecipeOverrideValue,
+            },
+            test_util::TestComponent,
         },
     };
     use crossterm::event::KeyCode;

@@ -444,8 +444,8 @@ mod tests {
     use crate::{
         test_util::{harness, terminal, TestHarness, TestTerminal},
         view::{
-            test_util::TestComponent, util::persistence::PersistedLazy,
-            ViewContext,
+            test_util::TestComponent,
+            util::persistence::{DatabasePersistedStore, PersistedLazy},
         },
     };
     use crossterm::event::KeyCode;
@@ -555,7 +555,10 @@ mod tests {
         let profile_id = ProfileId::factory(());
         let profile = ProfileItem(profile_id.clone());
 
-        ViewContext::store_persisted(&Key, &Some(profile_id.clone()));
+        DatabasePersistedStore::store_persisted(
+            &Key,
+            &Some(profile_id.clone()),
+        );
 
         let pid = profile_id.clone();
         let select = PersistedLazy::new(

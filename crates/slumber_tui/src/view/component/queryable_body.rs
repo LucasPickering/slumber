@@ -248,7 +248,10 @@ mod tests {
     use crate::{
         context::TuiContext,
         test_util::{harness, terminal, TestHarness, TestTerminal},
-        view::{test_util::TestComponent, util::persistence::PersistedLazy},
+        view::{
+            test_util::TestComponent,
+            util::persistence::{DatabasePersistedStore, PersistedLazy},
+        },
     };
     use crossterm::event::KeyCode;
     use persisted::{PersistedKey, PersistedStore};
@@ -390,7 +393,7 @@ mod tests {
         struct Key;
 
         // Add initial query to the DB
-        ViewContext::store_persisted(&Key, &"$.greeting".to_owned());
+        DatabasePersistedStore::store_persisted(&Key, &"$.greeting".to_owned());
 
         // We already have another test to check that querying works via typing
         // in the box, so we just need to make sure state is initialized

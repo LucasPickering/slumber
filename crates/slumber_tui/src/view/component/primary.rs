@@ -425,7 +425,9 @@ mod tests {
     use crate::{
         message::{Message, RequestConfig},
         test_util::{harness, terminal, TestHarness, TestTerminal},
-        view::test_util::TestComponent,
+        view::{
+            test_util::TestComponent, util::persistence::DatabasePersistedStore,
+        },
     };
     use persisted::PersistedStore;
     use rstest::rstest;
@@ -452,11 +454,11 @@ mod tests {
     /// Test selected pane and fullscreen mode loading from persistence
     #[rstest]
     fn test_pane_persistence(mut harness: TestHarness, terminal: TestTerminal) {
-        ViewContext::store_persisted(
+        DatabasePersistedStore::store_persisted(
             &SingletonKey::<PrimaryPane>::default(),
             &PrimaryPane::Exchange,
         );
-        ViewContext::store_persisted(
+        DatabasePersistedStore::store_persisted(
             &FullscreenModeKey,
             &Some(FullscreenMode::Exchange),
         );

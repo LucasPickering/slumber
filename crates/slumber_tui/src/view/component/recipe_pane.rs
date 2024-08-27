@@ -1,7 +1,10 @@
 mod authentication;
 mod body;
+mod persistence;
 mod recipe;
 mod table;
+
+pub use persistence::RecipeOverrideStore;
 
 use crate::{
     context::TuiContext,

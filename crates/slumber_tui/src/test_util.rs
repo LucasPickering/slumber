@@ -5,7 +5,12 @@ use crate::{
     message::{Message, MessageSender},
     view::ViewContext,
 };
-use ratatui::{backend::TestBackend, text::Line, Frame, Terminal};
+use ratatui::{
+    backend::TestBackend,
+    layout::{Position, Rect},
+    text::Line,
+    Frame, Terminal,
+};
 use rstest::fixture;
 use slumber_core::{
     collection::Collection, db::CollectionDatabase, test_util::Factory,
@@ -97,6 +102,14 @@ impl TestTerminal {
         let backend = TestBackend::new(width, height);
         let terminal = Terminal::new(backend).unwrap();
         Self(terminal.into())
+    }
+
+    pub fn area(&self) -> Rect {
+        self.0
+            .borrow()
+            .size()
+            .map(|size| (Position::default(), size).into())
+            .unwrap_or_default()
     }
 
     /// Alias for

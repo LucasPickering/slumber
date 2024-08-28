@@ -36,7 +36,6 @@ Here's the full list of changes:
 - Move logs back to a shared file
   - They had been split into one file per session, which made them hard to find
   - The file is now eventually deleted once it exceeds a certain size
-  - PID is now included in each log line to help disambiguate between parallel sessions
 
 ### Fixed
 

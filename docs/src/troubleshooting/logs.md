@@ -1,12 +1,10 @@
 # Logs
 
-Each Slumber session logs information and events to a log file. This can often be helpful in debugging bugs and other issues with the app. Each session of Slumber logs to its own file, and files are stored in a temporary directory so they are automatically cleaned up periodically by the operating system.
+Each Slumber session logs information and events to a log file. This can often be helpful in debugging bugs and other issues with the app. All sessions of Slumber log to the same file. Currently there is no easy to way disambiguate between logs from parallel sessions :(
 
 ## Finding the Log File
 
-To find the path to a particular TUI session's log file, hit the `?` to open the help dialog. It will be listed under the General section. To find logs for a CLI command, pass the `--log` argument and it will be printed at startup.
-
-> Note: Each Slumber session, including each invocation of the CLI, will log to its own file. That means there's no easy way to retroactively find the logs for a CLI command if you didn't pass `--log`. Instead, you can find the log directory with `slumber show paths`, then search each log file in that directory to find the one associated with the command in question. If the thing you're debugging is reproducible though, it's easier just to run it again with `--log`.
+To find the path to the log file, hit the `?` to open the help dialog. It will be listed under the General section. Alternatively, run the command `slumber show paths`.
 
 Once you have the path to a log file, you can watch the logs with `tail -f <log file>`, or get the entire log contents with `cat <log file>`.
 

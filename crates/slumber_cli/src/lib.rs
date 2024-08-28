@@ -48,10 +48,6 @@ pub struct GlobalArgs {
     /// (in this order): slumber.yml, slumber.yaml, .slumber.yml, .slumber.yaml
     #[clap(long, short)]
     pub file: Option<PathBuf>,
-    /// Print the path to the log file for this session, before running the
-    /// given subcommand
-    #[clap(long)]
-    pub log: bool,
 }
 
 /// A CLI subcommand

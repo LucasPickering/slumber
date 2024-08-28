@@ -2,7 +2,7 @@ use anyhow::Context;
 use derive_more::Display;
 use std::{
     borrow::Cow,
-    fs::{self, OpenOptions},
+    fs,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -10,7 +10,6 @@ use std::{
 // Store directories statically so we can create them once at startup and access
 // them subsequently anywhere
 static DATA_DIRECTORY: OnceLock<DataDirectory> = OnceLock::new();
-static TEMP_DIRECTORY: OnceLock<TempDirectory> = OnceLock::new();
 
 /// The root data directory. All files that Slumber creates on the system should
 /// live here.
@@ -62,87 +61,15 @@ impl DataDirectory {
     pub fn file(&self, path: impl AsRef<Path>) -> PathBuf {
         self.0.join(path)
     }
-}
 
-/// A singleton temporary directory, which should be used to store ephemeral
-/// data such as logs. This directory *is* unique to Slumber, but is *not*
-/// unique to this particular process.
-#[derive(Debug, Display)]
-#[display("{}", path.display())]
-pub struct TempDirectory {
-    path: PathBuf,
-    /// Absolute path to the log file
-    log_file: PathBuf,
-}
-
-impl TempDirectory {
-    /// Initialize the temporary directory. The directory is *not* guaranteed to
-    /// be empty or unique to this process, per [std::env::temp_dir]. It
-    /// *will* however include a `slumber/` suffix so it's safe to assume
-    /// everything in the directory is Slumber-related. Use [Self::get] to get
-    /// the created directory.
-    pub fn init() -> anyhow::Result<()> {
-        // Create the temp dir
-        let path = Self::get_directory()?;
-
-        // Log files can get re-used, so wipe out the existing one
-        let log_file = path.join(Self::log_file_name());
-        OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&log_file)
-            .with_context(|| format!("Error creating log file {log_file:?}"))?;
-
-        TEMP_DIRECTORY
-            .set(Self { path, log_file })
-            .expect("Temporary directory is already initialized");
-        Ok(())
+    /// Build a path to the log file
+    pub fn log_file(&self) -> PathBuf {
+        self.file("slumber.log")
     }
 
-    /// Use a static directory for dev, so stuff can be found easily
-    #[cfg(debug_assertions)]
-    fn get_directory() -> anyhow::Result<PathBuf> {
-        Ok(DataDirectory::get_directory())
-    }
-
-    #[cfg(not(debug_assertions))]
-    fn get_directory() -> anyhow::Result<PathBuf> {
-        let path = std::env::temp_dir().join("slumber");
-        fs::create_dir_all(&path).with_context(|| {
-            format!("Error creating temporary directory {path:?}")
-        })?;
-        Ok(path)
-    }
-
-    /// Use a static log file for dev, so it can be found easily
-    #[cfg(debug_assertions)]
-    fn log_file_name() -> PathBuf {
-        "slumber.log".into()
-    }
-
-    /// Use a dynamic log file for release, so concurrent sessions don't log on
-    /// top of each other. The PID will be included in the file name, so it's
-    /// unique and predictable.
-    #[cfg(not(debug_assertions))]
-    fn log_file_name() -> PathBuf {
-        format!("slumber.{pid}.log", pid = std::process::id()).into()
-    }
-
-    /// Get a reference to the global directory for temporary data. See
-    /// [Self::init] for more info.
-    pub fn get() -> &'static Self {
-        TEMP_DIRECTORY
-            .get()
-            .expect("Temporary directory is not initialized")
-    }
-
-    /// Get the path to this session's log file. This will create a new file
-    /// that's guaranteed to have a unique name. Each session gets its own file
-    /// in the temp directory, so that multiple sessions don't intersperse their
-    /// logs.
-    pub fn log(&self) -> &PathBuf {
-        &self.log_file
+    /// Build a path to the backup log file
+    pub fn log_file_old(&self) -> PathBuf {
+        self.file("slumber.log.old")
     }
 }
 

@@ -43,6 +43,7 @@ Here's the full list of changes:
 - Propgated unconsumed key events from text boxes
   - E.g. F5 will now refresh the collection while a text box is in focus
 - Redraw TUI when terminal is resized
+- Clamp text window scroll state when window is resized or text changes
 
 ## [1.8.1] - 2024-08-11
 

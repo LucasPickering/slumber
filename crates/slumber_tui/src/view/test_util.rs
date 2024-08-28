@@ -15,7 +15,7 @@ use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
 };
-use ratatui::Frame;
+use ratatui::{layout::Rect, Frame};
 
 /// A wrapper around a component that makes it easy to test. This provides lots
 /// of methods for sending events to the component. The goal is to make
@@ -24,14 +24,18 @@ use ratatui::Frame;
 pub struct TestComponent<'term, T, Props> {
     /// Terminal to draw to
     terminal: &'term TestTerminal,
+    /// The area the component will be drawn to. This defaults to the whole
+    /// terminal but can be modified to test things like resizes, using
+    /// [Self::set_area]
+    area: Rect,
     component: Component<T>,
     /// Whatever props were used for the most recent draw. We store these for
     /// convenience, because in most test cases we use the same props over and
     /// over, and just care about changes in response to events. This requires
     /// that `Props` implements `Clone`, but that's not a problem for most
     /// components since props typically just contain identifiers, references,
-    /// and primitives.
-    last_props: Props,
+    /// and primitives. Modify using [Self::set_props].
+    props: Props,
 }
 
 impl<'term, Props, T> TestComponent<'term, T, Props>
@@ -55,11 +59,12 @@ where
         let component: Component<T> = data.into();
         let mut slf = Self {
             terminal,
+            area: terminal.area(),
             component,
-            last_props: initial_props,
+            props: initial_props,
         };
         // Do an initial draw to set up state, then handle any triggered events
-        slf.draw(None);
+        slf.draw();
         // Ignore any propagated events from initialization. Maybe we *should*
         // be checking these, but the mechanics of that aren't smooth. Punting
         // for now
@@ -67,25 +72,33 @@ where
         slf
     }
 
+    /// Modify the area the component will be drawn to
+    pub fn set_area(&mut self, area: Rect) {
+        self.area = area;
+    }
+
+    /// Set props to be used for future draws
+    pub fn set_props(&mut self, props: Props) {
+        self.props = props;
+    }
+
     /// Get a reference to the wrapped component's inner data
     pub fn data(&self) -> &T {
         self.component.data()
     }
 
+    /// Get a mutable  reference to the wrapped component's inner data
+    pub fn data_mut(&mut self) -> &mut T {
+        self.component.data_mut()
+    }
+
     /// Draw this component onto the terminal, using the entire terminal frame
     /// as the draw area. If props are given, use them for the draw. If not,
     /// use the same props from the last draw.
-    fn draw(&mut self, props: Option<Props>) {
-        if let Some(props) = props {
-            self.last_props = props;
-        }
+    fn draw(&mut self) {
         self.terminal.draw(|frame| {
-            self.component.draw(
-                frame,
-                self.last_props.clone(),
-                frame.area(),
-                true,
-            )
+            self.component
+                .draw(frame, self.props.clone(), self.area, true)
         });
     }
 
@@ -117,7 +130,7 @@ where
     /// callback that would normally be called by the main loop.
     pub fn drain_draw(&mut self) -> PropagatedEvents {
         let propagated = self.drain_events();
-        self.draw(None);
+        self.draw();
         propagated
     }
 

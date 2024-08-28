@@ -26,8 +26,10 @@ use unicode_width::UnicodeWidthStr;
 /// (especially if it includes syntax highlighting).
 #[derive(derive_more::Debug, Default)]
 pub struct TextWindow {
-    offset_x: usize,
-    offset_y: usize,
+    /// Horizontal scroll
+    offset_x: Cell<usize>,
+    /// Vertical scroll
+    offset_y: Cell<usize>,
     /// How wide is the full text content?
     text_width: Cell<usize>,
     /// How tall is the full text content?
@@ -85,26 +87,36 @@ impl TextWindow {
     }
 
     fn scroll_up(&mut self, lines: usize) {
-        self.offset_y = self.offset_y.saturating_sub(lines);
+        *self.offset_y.get_mut() = self.offset_y.get().saturating_sub(lines);
     }
 
     fn scroll_down(&mut self, lines: usize) {
-        self.offset_y = cmp::min(self.offset_y + lines, self.max_scroll_line());
+        *self.offset_y.get_mut() =
+            cmp::min(self.offset_y.get() + lines, self.max_scroll_line());
     }
 
     /// Scroll to a specific line number. The target line will end up as close
     /// to the top of the page as possible
     fn scroll_to(&mut self, line: usize) {
-        self.offset_y = cmp::min(line, self.max_scroll_line());
+        *self.offset_y.get_mut() = cmp::min(line, self.max_scroll_line());
     }
 
     fn scroll_left(&mut self, columns: usize) {
-        self.offset_x = self.offset_x.saturating_sub(columns);
+        *self.offset_x.get_mut() = self.offset_x.get().saturating_sub(columns);
     }
 
     fn scroll_right(&mut self, columns: usize) {
-        self.offset_x =
-            cmp::min(self.offset_x + columns, self.max_scroll_column());
+        *self.offset_x.get_mut() =
+            cmp::min(self.offset_x.get() + columns, self.max_scroll_column());
+    }
+
+    /// Ensure the scroll state is valid. Called on every render, in case the
+    /// text size or draw area changed
+    fn clamp_scroll(&self) {
+        self.offset_x
+            .set(cmp::min(self.offset_x.get(), self.max_scroll_column()));
+        self.offset_y
+            .set(cmp::min(self.offset_y.get(), self.max_scroll_line()));
     }
 
     /// Render the visible text into the window. The Paragraph widget provides
@@ -120,13 +132,13 @@ impl TextWindow {
         let lines = text
             .lines
             .iter()
-            .skip(self.offset_y)
+            .skip(self.offset_y.get())
             .take(self.window_height.get())
             .enumerate();
         for (y, line) in lines {
             let graphemes = line
                 .styled_graphemes(Style::default())
-                .skip(self.offset_x)
+                .skip(self.offset_x.get())
                 .take(self.window_width.get());
             let mut x = 0;
             for StyledGrapheme { symbol, style } in graphemes {
@@ -200,8 +212,11 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
         self.window_width.set(text_area.width as usize);
         self.window_height.set(text_area.height as usize);
 
+        // Scroll state could become invalid if window size or text changes
+        self.clamp_scroll();
+
         // Draw line numbers in the gutter
-        let first_line = self.offset_y + 1;
+        let first_line = self.offset_y.get() + 1;
         let last_line =
             cmp::min(first_line + self.window_height.get() - 1, text_height);
         frame.render_widget(
@@ -242,7 +257,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
             frame.render_widget(
                 Scrollbar {
                     content_length: self.text_height.get(),
-                    offset: self.offset_y,
+                    offset: self.offset_y.get(),
                     // We substracted the margin from the text area before, so
                     // we have to add that back now
                     margin: props.margins.right,
@@ -255,7 +270,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
             frame.render_widget(
                 Scrollbar {
                     content_length: self.text_width.get(),
-                    offset: self.offset_x,
+                    offset: self.offset_x.get(),
                     orientation: ScrollbarOrientation::HorizontalBottom,
                     // See note on other scrollbar for +1
                     margin: props.margins.bottom,
@@ -410,6 +425,88 @@ mod tests {
             vec![line_num(1), " 💚💙💜💚".into()],
             vec![line_num(0), " ◀■■■■══▶".into()],
         ]);
+    }
+
+    /// Shrinking text reduces the maximum scroll. Scroll state should
+    /// automatically be clamped to match
+    #[rstest]
+    fn test_shrink_text(
+        #[with(10, 3)] terminal: TestTerminal,
+        _harness: TestHarness,
+    ) {
+        let text = ["1 this is a long line", "2", "3", "4", "5"]
+            .join("\n")
+            .into();
+        let mut component = TestComponent::new(
+            &terminal,
+            TextWindow::default(),
+            TextWindowProps {
+                text: &text,
+                // Don't overflow the frame
+                margins: ScrollbarMargins {
+                    right: 0,
+                    bottom: 0,
+                },
+                footer: None,
+            },
+        );
+
+        // Scroll out a bit
+        component.data_mut().scroll_down(2);
+        component.data_mut().scroll_right(10);
+        assert_eq!(component.data().offset_x.get(), 10);
+        assert_eq!(component.data().offset_y.get(), 2);
+
+        let text = ["1 less long line", "2", "3", "4"].join("\n").into();
+        component.set_props(TextWindowProps {
+            text: &text,
+            margins: ScrollbarMargins {
+                right: 0,
+                bottom: 0,
+            },
+            footer: None,
+        });
+        component.drain_draw().assert_empty();
+
+        assert_eq!(component.data().offset_x.get(), 8);
+        assert_eq!(component.data().offset_y.get(), 1);
+    }
+
+    /// Growing the window reduces the maximum scroll. Scroll state should
+    /// automatically be clamped to match
+    #[rstest]
+    fn test_grow_window(terminal: TestTerminal, _harness: TestHarness) {
+        let text = ["1 this is a long line", "2", "3", "4", "5"]
+            .join("\n")
+            .into();
+        let mut component = TestComponent::new(
+            &terminal,
+            TextWindow::default(),
+            TextWindowProps {
+                text: &text,
+                // Don't overflow the frame
+                margins: ScrollbarMargins {
+                    right: 0,
+                    bottom: 0,
+                },
+                footer: None,
+            },
+        );
+
+        component.set_area(Rect::new(0, 0, 10, 3));
+        component.drain_draw().assert_empty();
+
+        // Scroll out a bit
+        component.data_mut().scroll_down(2);
+        component.data_mut().scroll_right(10);
+        assert_eq!(component.data().offset_x.get(), 10);
+        assert_eq!(component.data().offset_y.get(), 2);
+
+        component.set_area(Rect::new(0, 0, 15, 4));
+        component.drain_draw().assert_empty();
+
+        assert_eq!(component.data().offset_x.get(), 8);
+        assert_eq!(component.data().offset_y.get(), 1);
     }
 
     /// Style some text as gutter line numbers

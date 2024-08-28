@@ -42,6 +42,7 @@ Here's the full list of changes:
 - Fix certain UI values not persisting correctly
 - Propgated unconsumed key events from text boxes
   - E.g. F5 will now refresh the collection while a text box is in focus
+- Redraw TUI when terminal is resized
 
 ## [1.8.1] - 2024-08-11
 

@@ -114,7 +114,6 @@ impl InputEngine {
             event,
             Event::FocusGained
                 | Event::FocusLost
-                | Event::Resize(_, _)
                 // Windows sends a release event that causes double triggers
                 // https://github.com/LucasPickering/slumber/issues/226
                 | Event::Key(KeyEvent {
@@ -313,7 +312,6 @@ mod tests {
     #[rstest]
     #[case::focus_gained(Event::FocusGained)]
     #[case::focus_lost(Event::FocusLost)]
-    #[case::resize(Event::Resize(10, 10))]
     #[case::key_release(key_event(
         KeyEventKind::Release,
         KeyCode::Enter,

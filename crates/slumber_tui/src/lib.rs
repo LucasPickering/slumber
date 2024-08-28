@@ -24,7 +24,9 @@ use crate::{
 use anyhow::{anyhow, Context};
 use chrono::Utc;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, EventStream},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, EventStream,
+    },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::{Future, StreamExt};
@@ -281,6 +283,13 @@ impl Tui {
                 action: Some(Action::ForceQuit),
                 ..
             } => self.quit(),
+            Message::Input {
+                event: Event::Resize(_, _),
+                ..
+            } => {
+                // Immediately redraw the screen
+                self.draw()?;
+            }
             Message::Input { event, action } => {
                 self.view.handle_input(event, action);
             }

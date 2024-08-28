@@ -29,21 +29,6 @@ pub struct List<'a, Item> {
     phantom: PhantomData<&'a ()>,
 }
 
-impl<'a, Item> List<'a, Item> {
-    pub fn from_iter(items: impl 'a + IntoIterator<Item = Item>) -> Self {
-        Self {
-            items: items
-                .into_iter()
-                .map(|value| ListItem {
-                    value,
-                    disabled: false,
-                })
-                .collect(),
-            phantom: PhantomData,
-        }
-    }
-}
-
 impl<'a, Item> From<&'a SelectState<Item>> for List<'a, &'a Item> {
     fn from(select: &'a SelectState<Item>) -> Self {
         Self {

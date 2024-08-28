@@ -14,7 +14,7 @@ use ratatui::{
     Frame,
 };
 use slumber_config::{Action, Config, InputBinding};
-use slumber_core::util::TempDirectory;
+use slumber_core::util::DataDirectory;
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -100,7 +100,11 @@ impl Draw for HelpModal {
                 ("Configuration", Config::path().display().to_string().into()),
                 (
                     "Log",
-                    TempDirectory::get().log().display().to_string().into(),
+                    DataDirectory::get()
+                        .log_file()
+                        .display()
+                        .to_string()
+                        .into(),
                 ),
                 (
                     "Collection",

@@ -3,9 +3,7 @@ use clap::Parser;
 use serde::Serialize;
 use slumber_config::Config;
 use slumber_core::{
-    collection::CollectionFile,
-    db::Database,
-    util::{DataDirectory, TempDirectory},
+    collection::CollectionFile, db::Database, util::DataDirectory,
 };
 use std::{borrow::Cow, path::Path, process::ExitCode};
 
@@ -32,8 +30,9 @@ impl Subcommand for ShowCommand {
             ShowTarget::Paths => {
                 let collection_path =
                     CollectionFile::try_path(None, global.file);
-                println!("Data directory: {}", DataDirectory::get());
-                println!("Temporary directory: {}", TempDirectory::get());
+                let data_dir = DataDirectory::get();
+                println!("Data directory: {}", data_dir);
+                println!("Log file: {}", data_dir.log_file().display());
                 println!("Config: {}", Config::path().display());
                 println!("Database: {}", Database::path().display());
                 println!(

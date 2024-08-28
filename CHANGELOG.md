@@ -19,6 +19,8 @@ Here's the full list of changes:
   - The new equivalent would be `{_{`, which parses as `{{`
   - The goal of this change is to make escaping behavior simpler and more consistent
   - For more info on the new behavior, [see the docs](https://slumber.lucaspickering.me/book/api/request_collection/template.html#escape-sequences)
+- Remove `--log` CLI argument
+  - See note on log files in Changed section for why this is no longer necessary
 
 ### Added
 
@@ -31,6 +33,10 @@ Here's the full list of changes:
 
 - `!json` bodies are now prettified when sent to the server
 - Use `vim` as default editor if none is configured
+- Move logs back to a shared file
+  - They had been split into one file per session, which made them hard to find
+  - The file is now eventually deleted once it exceeds a certain size
+  - PID is now included in each log line to help disambiguate between parallel sessions
 
 ### Fixed
 

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+2.0 is headlined by a highly requested feature: one-off edits to recipes! If you need to tweak a query parameter or edit a body, but don't want to modify your collection file, you can now highlight the value in question and hit `e` to modify it. The override will be retained until you modify the collection file or exit Slumber, at which point it will revert to
+
+Aside from the major new feature, there is one breaking change, to the escape syntax of templates. The old backslash-based syntax was fraught with edge cases and unpredictable behavior. This new syntax is simpler to use, simpler to implement, and much more bulletproof. This syntax was rare to use to begin with, so **most people will be unimpacted by this change.**
+
+Here's the full list of changes:
+
 ### Breaking
 
 - Replace backslash escape sequence with a simpler scheme based on `_`
@@ -20,11 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Press `e` on any value you want to edit (you can [customize the key](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html))
 - Add `editor` field to the config, allowing you to customize what editor Slumber opens for in-app editing
   - [See docs for more](https://slumber.lucaspickering.me/book/api/configuration/editor.html)
-- Use `vim` as default editor if none is configured
 
 ### Changed
 
 - `!json` bodies are now prettified when sent to the server
+- Use `vim` as default editor if none is configured
 
 ### Fixed
 

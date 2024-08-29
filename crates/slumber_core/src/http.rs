@@ -324,7 +324,7 @@ impl RequestTicket {
         let id = self.record.id;
 
         // Capture the rest of this method in a span
-        let _ = info_span!("HTTP request", request_id = %id, ?self).entered();
+        let _ = info_span!("HTTP request", request_id = %id).entered();
 
         // This start time will be accurate because the request doesn't launch
         // until this whole future is awaited

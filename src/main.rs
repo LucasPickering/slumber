@@ -63,7 +63,9 @@ fn initialize_tracing(console_output: bool) {
     let targets: Targets = std::env::var("RUST_LOG")
         .ok()
         .and_then(|env| env.parse().ok())
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            Targets::new().with_target("slumber", LevelFilter::WARN)
+        });
     let file_subscriber = log_file.map(|log_file| {
         // Include PID
         // https://github.com/tokio-rs/tracing/pull/2655

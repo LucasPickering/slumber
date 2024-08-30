@@ -15,7 +15,6 @@ use slumber_core::{
     template::{Template, TemplateChunk},
 };
 use std::{
-    mem,
     ops::Deref,
     sync::{Arc, Mutex},
 };
@@ -130,8 +129,7 @@ impl Widget for &TemplatePreview {
 /// See ratatui docs: <https://docs.rs/ratatui/latest/ratatui/text/index.html>
 #[derive(Debug, Default)]
 struct TextStitcher {
-    completed_lines: Vec<Line<'static>>,
-    next_line: Vec<Span<'static>>,
+    text: Text<'static>,
 }
 
 impl TextStitcher {
@@ -155,33 +153,40 @@ impl TextStitcher {
 
             stitcher.add_chunk(chunk_text, style);
         }
-        stitcher.into_text()
+        stitcher.text
     }
 
     /// Add one chunk to the text. This will recursively split on any line
     /// breaks in the text until it reaches the end.
-    fn add_chunk(&mut self, mut chunk_text: String, style: Style) {
-        // If we've reached a line ending, push the line and start a new one.
-        // Intentionally ignore \r; it won't cause any harm in the output text
-        match chunk_text.find('\n') {
-            Some(index) => {
-                // Exclude newline. +1 is safe because we know index points to
-                // a char and therefore is before the end of the string
-                let rest = chunk_text.split_off(index + 1);
-                let popped = chunk_text.pop(); // Pop the newline
-                debug_assert_eq!(popped, Some('\n'));
+    fn add_chunk(&mut self, chunk_text: String, style: Style) {
+        let ends_in_newline = chunk_text.ends_with("\n");
 
-                self.add_span(chunk_text, style);
-                self.end_line();
-
-                // Recursion!
-                // If the newline was the last char, this chunk will be empty
-                if !rest.is_empty() {
-                    self.add_chunk(rest, style);
-                }
+        // The first line should extend the final line of the current text,
+        // because there isn't necessarily a line break between chunks
+        let mut lines = chunk_text.lines();
+        if let Some(first_line) = lines.next() {
+            if !first_line.is_empty() {
+                self.text
+                    .push_span(Span::styled(first_line.to_owned(), style));
             }
-            // This chunk has no line breaks, just add it and move on
-            None => self.add_span(chunk_text, style),
+        }
+        self.text.extend(lines.map(|line| {
+            // If the text is empty, push an empty line instead of a line with
+            // a single empty chunk
+            if line.is_empty() {
+                Line::default()
+            } else {
+                // Push a span instead of a whole line, because if this is the
+                // last line, the next chunk may extend it
+                Span::styled(line.to_owned(), style).into()
+            }
+        }));
+
+        // std::lines throws away trailing newlines, but we care about them
+        // because the next chunk needs to go on a new line. We also care about
+        // keeping trailing newlines at the end of HTTP bodies, for correctness
+        if ends_in_newline {
+            self.text.push_line(Line::default());
         }
     }
 
@@ -208,26 +213,6 @@ impl TextStitcher {
             TemplateChunk::Error(_) => "Error".into(),
         }
     }
-
-    fn add_span(&mut self, text: String, style: Style) {
-        if !text.is_empty() {
-            self.next_line.push(Span::styled(text, style));
-        }
-    }
-
-    /// Add the current line to the accumulator, and start a new one
-    fn end_line(&mut self) {
-        if !self.next_line.is_empty() {
-            self.completed_lines
-                .push(mem::take(&mut self.next_line).into());
-        }
-    }
-
-    /// Convert all lines into a text block
-    fn into_text(mut self) -> Text<'static> {
-        self.end_line(); // Make sure to include whatever wasn't finished
-        Text::from(self.completed_lines)
-    }
 }
 
 #[cfg(test)]
@@ -248,20 +233,25 @@ mod tests {
     #[case::line_breaks(
         // Test these cases related to line breaks:
         // - Line break within a raw chunk
+        // - Chunk is just a line break
         // - Line break within a rendered chunk
         // - Line break at chunk boundary
         // - NO line break at chunk boundary
-        "intro\n{{user_id}} 💚💙💜 {{unknown}}\noutro\r\nmore outro",
+        // - Consecutive line breaks
+        "intro\n{{simple}}\n{{emoji}} 💚💙💜 {{unknown}}\n\noutro\r\nmore outro\n",
         vec![
             Line::from("intro"),
+            Line::from(rendered("ww")),
             Line::from(rendered("🧡")),
             Line::from(vec![
                 rendered("💛"),
                 Span::raw(" 💚💙💜 "),
                 error("Error"),
             ]),
-            Line::from("outro\r"), // \r shouldn't create any issues
+            Line::from(""),
+            Line::from("outro"),
             Line::from("more outro"),
+            Line::from(""), // Trailing newline
         ]
     )]
     #[case::binary(
@@ -275,7 +265,10 @@ mod tests {
         #[case] template: Template,
         #[case] expected: Vec<Line<'static>>,
     ) {
-        let profile_data = indexmap! { "user_id".into() => "🧡\n💛".into() };
+        let profile_data = indexmap! {
+            "simple".into() => "ww".into(),
+            "emoji".into() => "🧡\n💛".into()
+        };
         let profile = Profile {
             data: profile_data,
             ..Profile::factory(())

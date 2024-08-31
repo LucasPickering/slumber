@@ -10,7 +10,7 @@ use slumber_core::{
     http::{
         BuildOptions, Exchange, RequestBuildError, RequestError, RequestRecord,
     },
-    template::{Prompt, Prompter, Template, TemplateChunk},
+    template::{Prompt, Prompter, Select, Template, TemplateChunk},
     util::ResultTraced,
 };
 use std::{path::PathBuf, sync::Arc};
@@ -44,6 +44,10 @@ impl MessageSender {
 impl Prompter for MessageSender {
     fn prompt(&self, prompt: Prompt) {
         self.send(Message::PromptStart(prompt));
+    }
+
+    fn select(&self, _select: Select) {
+        unimplemented!("Select prompts not yet implemented");
     }
 }
 

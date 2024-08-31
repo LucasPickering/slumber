@@ -19,6 +19,9 @@ pub trait Prompter: Debug + Send + Sync {
     /// If an error occurs while prompting the user, just drop the returner.
     /// The implementor is responsible for logging the error as appropriate.
     fn prompt(&self, prompt: Prompt);
+
+    /// Ask the user to pick an item for a list of choices
+    fn select(&self, select: Select);
 }
 
 /// Data defining a prompt which should be presented to the user
@@ -30,6 +33,17 @@ pub struct Prompt {
     pub default: Option<String>,
     /// Should the value the user is typing be masked? E.g. password input
     pub sensitive: bool,
+    /// How the prompter will pass the answer back
+    pub channel: PromptChannel<String>,
+}
+
+/// A list of options to present to the user
+#[derive(Debug)]
+pub struct Select {
+    /// Tell the user what we're asking for
+    pub message: String,
+    /// List of choices the user can pick from
+    pub options: Vec<String>,
     /// How the prompter will pass the answer back
     pub channel: PromptChannel<String>,
 }

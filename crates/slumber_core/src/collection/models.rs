@@ -420,6 +420,13 @@ pub enum ChainSource {
         #[serde(default)]
         section: ChainRequestSection,
     },
+    /// Prompt the user to select a value from a list
+    Select {
+        /// Descriptor to show to the user
+        message: Option<Template>,
+        /// List of options to choose from
+        options: Vec<Template>,
+    },
 }
 
 /// Test-only helpers

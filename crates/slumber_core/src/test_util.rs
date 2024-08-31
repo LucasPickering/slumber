@@ -3,7 +3,7 @@
 use crate::{
     collection::{ChainSource, HasId},
     http::{HttpEngine, HttpEngineConfig},
-    template::{Prompt, Prompter},
+    template::{Prompt, Prompter, Select},
     util::{get_repo_root, ResultTraced},
 };
 use anyhow::Context;
@@ -118,6 +118,13 @@ impl Prompter for TestPrompter {
             prompt.channel.respond(value.clone())
         } else if let Some(default) = prompt.default {
             prompt.channel.respond(default);
+        }
+    }
+
+    fn select(&self, select: Select) {
+        let index = self.index.fetch_add(1, Ordering::Relaxed);
+        if let Some(value) = self.responses.get(index) {
+            select.channel.respond(value.clone())
         }
     }
 }

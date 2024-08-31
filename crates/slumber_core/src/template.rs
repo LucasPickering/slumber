@@ -7,7 +7,7 @@ mod prompt;
 mod render;
 
 pub use error::{ChainError, TemplateError, TriggeredRequestError};
-pub use prompt::{Prompt, PromptChannel, Prompter};
+pub use prompt::{Prompt, PromptChannel, Prompter, Select};
 
 use crate::{
     collection::{ChainId, Collection, ProfileId},
@@ -942,7 +942,63 @@ mod tests {
 
         assert_err!(
             render!("{{chains.chain1}}", context),
-            "No response from prompt"
+            "No response from prompt/select"
+        );
+    }
+
+    #[rstest]
+    #[case::no_chains(vec!["foo!", "bar!"], Some("bar!"), "bar!")]
+    #[tokio::test]
+    async fn test_chain_select(
+        #[case] options: Vec<&str>,
+        #[case] response: Option<&str>,
+        #[case] expected: &str,
+    ) {
+        let sut_chain = Chain {
+            source: ChainSource::Select {
+                message: Some("password".into()),
+                options: options.into_iter().map(|s| s.into()).collect(),
+            },
+            ..Chain::factory(())
+        };
+
+        // Test value from prompter
+        let context = TemplateContext {
+            collection: Collection {
+                chains: by_id([sut_chain]),
+                ..Collection::factory(())
+            }
+            .into(),
+
+            prompter: Box::new(TestPrompter::new(response)),
+            ..TemplateContext::factory(())
+        };
+        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn test_chain_select_error() {
+        let chain = Chain {
+            source: ChainSource::Select {
+                message: Some("password".into()),
+                options: vec!["foo".into(), "bar".into()],
+            },
+            ..Chain::factory(())
+        };
+        let context = TemplateContext {
+            collection: Collection {
+                chains: by_id([chain]),
+                ..Collection::factory(())
+            }
+            .into(),
+            // Prompter gives no response
+            prompter: Box::<TestPrompter>::default(),
+            ..TemplateContext::factory(())
+        };
+
+        assert_err!(
+            render!("{{chains.chain1}}", context),
+            "No response from prompt/select"
         );
     }
 

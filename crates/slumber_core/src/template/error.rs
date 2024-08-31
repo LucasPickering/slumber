@@ -175,7 +175,7 @@ pub enum ChainError {
 
     /// Never got a response from the prompt channel. Do *not* store the
     /// `RecvError` here, because it provides useless extra output to the user.
-    #[error("No response from prompt")]
+    #[error("No response from prompt/select")]
     PromptNoResponse,
 
     /// A bubbled-error from rendering a nested template in the chain arguments

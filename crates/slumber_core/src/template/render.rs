@@ -8,8 +8,8 @@ use crate::{
     http::{content_type::ContentType, Exchange, RequestSeed, ResponseRecord},
     template::{
         error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
-        Prompt, Template, TemplateChunk, TemplateContext, TemplateError,
-        TemplateKey,
+        Prompt, Select, Template, TemplateChunk, TemplateContext,
+        TemplateError, TemplateKey,
     },
     util::{expand_home, FutureCache, FutureCacheOutcome, ResultTraced},
 };
@@ -390,6 +390,17 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                         .await?;
                     (value, content_type)
                 }
+                ChainSource::Select { message, options } => (
+                    self.render_select(
+                        context,
+                        stack,
+                        message.as_ref(),
+                        options,
+                    )
+                    .await?
+                    .into_bytes(),
+                    None,
+                ),
             };
             // If the user provided a content type, prefer that over the
             // detected one
@@ -722,6 +733,48 @@ impl<'a> ChainTemplateSource<'a> {
             sensitive,
             channel: tx.into(),
         });
+        rx.await.map_err(|_| ChainError::PromptNoResponse)
+    }
+
+    async fn render_select(
+        &self,
+        context: &'a TemplateContext,
+        stack: &mut RenderKeyStack<'a>,
+        message: Option<&'a Template>,
+        options: &'a [Template],
+    ) -> Result<String, ChainError> {
+        let (tx, rx) = oneshot::channel();
+        let message = if let Some(template) = message {
+            template
+                .render_chain_config("message", context, stack)
+                .await?
+        } else {
+            self.chain_id.to_string()
+        };
+
+        let options = future::try_join_all(options.iter().enumerate().map(
+            |(i, template)| {
+                // Fork the local state, one copy for each new branch
+                let mut stack = stack.clone();
+                async move {
+                    template
+                        .render_chain_config(
+                            format!("options[{i}]"),
+                            context,
+                            &mut stack,
+                        )
+                        .await
+                }
+            },
+        ))
+        .await?;
+
+        context.prompter.select(Select {
+            message,
+            options,
+            channel: tx.into(),
+        });
+
         rx.await.map_err(|_| ChainError::PromptNoResponse)
     }
 }

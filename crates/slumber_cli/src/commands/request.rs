@@ -9,7 +9,7 @@ use slumber_core::{
     collection::{CollectionFile, ProfileId, RecipeId},
     db::{CollectionDatabase, Database},
     http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
-    template::{Prompt, Prompter, TemplateContext, TemplateError},
+    template::{Prompt, Prompter, Select, TemplateContext, TemplateError},
     util::ResultTraced,
 };
 use std::{
@@ -225,6 +225,10 @@ impl Prompter for CliPrompter {
         {
             prompt.channel.respond(value);
         }
+    }
+
+    fn select(&self, _select: Select) {
+        unimplemented!("Select prompts not yet implemented");
     }
 }
 

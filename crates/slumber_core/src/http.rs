@@ -62,6 +62,7 @@ use reqwest::{
     multipart::{Form, Part},
     Client, RequestBuilder, Response, Url,
 };
+use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, sync::Arc};
 use tracing::{info, info_span};
 
@@ -80,16 +81,17 @@ pub struct HttpEngine {
     /// for. If the user didn't specify any (99.9% of cases), don't bother
     /// creating a client because it's expensive.
     danger_client: Option<(Client, HashSet<String>)>,
+    large_body_size: usize,
 }
 
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
-    pub fn new(ignore_certificate_hosts: &[String]) -> Self {
+    pub fn new(config: &HttpEngineConfig) -> Self {
         let client = Client::builder()
             .user_agent(USER_AGENT)
             .build()
             .expect("Error building reqwest client");
-        let danger_client = if ignore_certificate_hosts.is_empty() {
+        let danger_client = if config.ignore_certificate_hosts.is_empty() {
             None
         } else {
             Some((
@@ -98,12 +100,13 @@ impl HttpEngine {
                     .danger_accept_invalid_certs(true)
                     .build()
                     .expect("Error building reqwest client"),
-                ignore_certificate_hosts.iter().cloned().collect(),
+                config.ignore_certificate_hosts.iter().cloned().collect(),
             ))
         };
         Self {
             client,
             danger_client,
+            large_body_size: config.large_body_size,
         }
     }
 
@@ -166,6 +169,7 @@ impl HttpEngine {
                 seed,
                 template_context.selected_profile.clone(),
                 &request,
+                self.large_body_size,
             )
             .into(),
             client: client.clone(),
@@ -284,7 +288,25 @@ impl HttpEngine {
 
 impl Default for HttpEngine {
     fn default() -> Self {
-        Self::new(&[])
+        Self::new(&HttpEngineConfig::default())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HttpEngineConfig {
+    /// TLS cert errors on these hostnames are ignored. Be careful!
+    pub ignore_certificate_hosts: Vec<String>,
+    /// Request/response bodies over this size are treated differently, for
+    /// performance reasons
+    pub large_body_size: usize,
+}
+
+impl Default for HttpEngineConfig {
+    fn default() -> Self {
+        Self {
+            ignore_certificate_hosts: Default::default(),
+            large_body_size: 1000 * 1000, // 1MB
+        }
     }
 }
 

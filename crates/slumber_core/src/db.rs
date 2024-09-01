@@ -355,7 +355,7 @@ impl CollectionDatabase {
                     ":method": exchange.request.method.as_str(),
                     ":url": exchange.request.url.as_str(),
                     ":request_headers": SqlWrap(&exchange.request.headers),
-                    ":request_body": exchange.request.body.as_deref(),
+                    ":request_body": exchange.request.body(),
 
                     ":status_code": exchange.response.status.as_u16(),
                     ":response_headers": SqlWrap(&exchange.response.headers),

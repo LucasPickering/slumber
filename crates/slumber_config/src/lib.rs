@@ -18,7 +18,10 @@ pub use theme::Theme;
 use anyhow::Context;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use slumber_core::util::{parse_yaml, DataDirectory, ResultTraced};
+use slumber_core::{
+    http::HttpEngineConfig,
+    util::{parse_yaml, DataDirectory, ResultTraced},
+};
 use std::{fs::File, path::PathBuf};
 use tracing::info;
 
@@ -34,8 +37,7 @@ pub struct Config {
     /// Command to use for in-app editing. If provided, overrides
     /// `VISUAL`/`EDITOR` environment variables
     pub editor: Option<String>,
-    /// TLS cert errors on these hostnames are ignored. Be careful!
-    pub ignore_certificate_hosts: Vec<String>,
+    pub http: HttpEngineConfig,
     /// Should templates be rendered inline in the UI, or should we show the
     /// raw text?
     pub preview_templates: bool,
@@ -86,7 +88,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             editor: None,
-            ignore_certificate_hosts: Default::default(),
+            http: HttpEngineConfig::default(),
             preview_templates: true,
             input_bindings: Default::default(),
             theme: Default::default(),

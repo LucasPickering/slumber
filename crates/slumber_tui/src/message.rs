@@ -46,8 +46,8 @@ impl Prompter for MessageSender {
         self.send(Message::PromptStart(prompt));
     }
 
-    fn select(&self, _select: Select) {
-        unimplemented!("Select prompts not yet implemented");
+    fn select(&self, select: Select) {
+        self.send(Message::SelectStart(select));
     }
 }
 
@@ -113,6 +113,10 @@ pub enum Message {
     /// Show a prompt to the user, asking for some input. Use the included
     /// channel to return the value.
     PromptStart(Prompt),
+
+    /// Show a select list to the user, asking them to choose an item
+    /// Use the included channel to return the selection.
+    SelectStart(Select),
 
     /// Exit the program
     Quit,

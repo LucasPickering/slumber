@@ -302,6 +302,9 @@ impl Tui {
             Message::PromptStart(prompt) => {
                 self.view.open_modal(prompt);
             }
+            Message::SelectStart(select) => {
+                self.view.open_modal(select);
+            }
             Message::ConfirmStart(confirm) => {
                 self.view.open_modal(confirm);
             }

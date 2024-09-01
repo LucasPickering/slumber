@@ -1,7 +1,7 @@
 use crate::{util::HeaderDisplay, GlobalArgs, Subcommand};
 use anyhow::{anyhow, Context};
 use clap::Parser;
-use dialoguer::{Input, Password};
+use dialoguer::{Input, Password, Select as DialoguerSelect};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
@@ -227,8 +227,18 @@ impl Prompter for CliPrompter {
         }
     }
 
-    fn select(&self, _select: Select) {
-        unimplemented!("Select prompts not yet implemented");
+    fn select(&self, select: Select) {
+        let result = DialoguerSelect::new()
+            .with_prompt(select.message)
+            .items(&select.options)
+            .interact();
+
+        // If we failed to read the value, print an error and report nothing
+        if let Ok(value) =
+            result.context("Error reading value from select").traced()
+        {
+            select.channel.respond(select.options[value].clone());
+        }
     }
 }
 

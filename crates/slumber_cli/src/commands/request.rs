@@ -153,7 +153,7 @@ impl BuildRequestCommand {
         let collection_file = CollectionFile::load(collection_path).await?;
         let collection = collection_file.collection;
         let config = Config::load()?;
-        let http_engine = HttpEngine::new(&config.ignore_certificate_hosts);
+        let http_engine = HttpEngine::new(&config.http);
 
         // Validate profile ID, so we can provide a good error if it's invalid
         if let Some(profile_id) = &self.profile {

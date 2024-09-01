@@ -1,4 +1,5 @@
 use crate::{
+    context::TuiContext,
     message::Message,
     view::{
         common::{
@@ -18,7 +19,7 @@ use ratatui::{layout::Layout, prelude::Constraint, text::Text, Frame};
 use slumber_config::Action;
 use slumber_core::{
     http::{content_type::ContentType, RequestId, RequestRecord},
-    util::MaybeStr,
+    util::{format_byte_size, MaybeStr},
 };
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
@@ -157,10 +158,35 @@ impl Draw<RequestViewProps> for RequestView {
 /// body to prevent a self-reference
 fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
     let content_type = ContentType::from_headers(&request.headers).ok();
-    request.body.as_ref().map(|body| {
-        highlight::highlight_if(
-            content_type,
-            format!("{:#}", MaybeStr(body)).into(),
-        )
-    })
+    request
+        .body()
+        .map(|body| {
+            highlight::highlight_if(
+                content_type,
+                format!("{:#}", MaybeStr(body)).into(),
+            )
+        })
+        .or_else(|| {
+            // No body available: check if it's because the recipe has no body,
+            // or if we threw it away. This will have some false
+            // positives/negatives if the recipe had a body added/removed, but
+            // it's good enough
+            let collection = ViewContext::collection();
+            let recipe =
+                collection.recipes.get(&request.recipe_id)?.recipe()?;
+            if recipe.body.is_some() {
+                let config = &TuiContext::get().config;
+
+                Some(
+                    format!(
+                        "Body not available. Streamed bodies, or bodies over \
+                        {}, are not persisted",
+                        format_byte_size(config.http.large_body_size)
+                    )
+                    .into(),
+                )
+            } else {
+                None
+            }
+        })
 }

@@ -45,7 +45,7 @@ impl TuiContext {
     fn new(config: Config) -> Self {
         let styles = Styles::new(&config.theme);
         let input_engine = InputEngine::new(config.input_bindings.clone());
-        let http_engine = HttpEngine::new(&config.ignore_certificate_hosts);
+        let http_engine = HttpEngine::new(&config.http);
         Self {
             config,
             styles,

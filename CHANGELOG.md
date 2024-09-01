@@ -50,6 +50,7 @@ Here's the full list of changes:
 - Redraw TUI when terminal is resized
 - Clamp text window scroll state when window is resized or text changes
 - Fix extraneous input events when exiting Vim [#351](https://github.com/LucasPickering/slumber/issues/351)
+- Improve performance and fix crashes when handling large request/response bodies [#356](https://github.com/LucasPickering/slumber/issues/356)
 
 ## [1.8.1] - 2024-08-11
 

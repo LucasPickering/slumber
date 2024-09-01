@@ -19,7 +19,7 @@ use derive_more::{Display, From, FromStr};
 use mime::Mime;
 use reqwest::{
     header::{self, HeaderMap},
-    Client, Method, Request, StatusCode, Url,
+    Body, Client, Method, Request, StatusCode, Url,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -247,7 +247,8 @@ pub struct RequestRecord {
     pub url: Url,
     #[serde(with = "cereal::serde_header_map")]
     pub headers: HeaderMap,
-    /// Body content as bytes. This should be decoded as needed
+    /// Body content as bytes. This should be decoded as needed. This will
+    /// **not** be populated for bodies that are above the "large" threshold.
     pub body: Option<Bytes>,
 }
 
@@ -265,6 +266,7 @@ impl RequestRecord {
         seed: RequestSeed,
         profile_id: Option<ProfileId>,
         request: &Request,
+        max_body_size: usize,
     ) -> Self {
         Self {
             id: seed.id,
@@ -274,11 +276,15 @@ impl RequestRecord {
             method: request.method().clone(),
             url: request.url().clone(),
             headers: request.headers().clone(),
-            body: request.body().and_then(|body| {
-                // Stream bodies are just thrown away for now
-                // https://github.com/LucasPickering/slumber/issues/256
-                Some(body.as_bytes()?.to_owned().into())
-            }),
+            body: request
+                .body()
+                // Stream bodies and bodies over a certain size threshold are
+                // thrown away. Storing request bodies in general doesn't
+                // provide a ton of value, so we shouldn't do it at the expense
+                // of performance
+                .and_then(Body::as_bytes)
+                .filter(|body| body.len() <= max_body_size)
+                .map(|body| body.to_owned().into()),
         }
     }
 
@@ -306,6 +312,10 @@ impl RequestRecord {
         }
 
         Ok(buf)
+    }
+
+    pub fn body(&self) -> Option<&[u8]> {
+        self.body.as_deref()
     }
 
     /// Get the body of the request, decoded as UTF-8. Returns an error if the

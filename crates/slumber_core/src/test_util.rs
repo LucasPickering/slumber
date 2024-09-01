@@ -2,7 +2,7 @@
 
 use crate::{
     collection::{ChainSource, HasId},
-    http::HttpEngine,
+    http::{HttpEngine, HttpEngineConfig},
     template::{Prompt, Prompter},
     util::{get_repo_root, ResultTraced},
 };
@@ -61,7 +61,10 @@ pub fn temp_dir() -> TempDir {
 #[fixture]
 #[once]
 pub fn http_engine() -> HttpEngine {
-    HttpEngine::new(&["danger".to_owned()])
+    HttpEngine::new(&HttpEngineConfig {
+        ignore_certificate_hosts: vec!["danger".to_owned()],
+        ..Default::default()
+    })
 }
 
 /// Guard for a temporary directory. Create the directory on creation, delete

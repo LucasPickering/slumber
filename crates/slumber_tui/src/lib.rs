@@ -18,7 +18,10 @@ mod view;
 use crate::{
     context::TuiContext,
     message::{Message, MessageSender, RequestConfig},
-    util::{get_editor_command, save_file, signals, ResultReported},
+    util::{
+        clear_event_buffer, get_editor_command, save_file, signals,
+        ResultReported,
+    },
     view::{PreviewPrompter, RequestState, View},
 };
 use anyhow::{anyhow, Context};
@@ -29,7 +32,7 @@ use crossterm::{
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use futures::{Future, StreamExt};
+use futures::StreamExt;
 use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use slumber_config::{Action, Config};
@@ -40,6 +43,7 @@ use slumber_core::{
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
 use std::{
+    future::Future,
     io::{self, Stdout},
     ops::Deref,
     path::{Path, PathBuf},
@@ -418,11 +422,18 @@ impl Tui {
         self.terminal.draw(|frame| {
             frame.render_widget("Waiting for editor to close...", frame.area());
         })?;
+
+        let mut stdout = io::stdout();
+        crossterm::execute!(stdout, LeaveAlternateScreen)?;
         command.status().context(error_context)?;
-        // If the editor was terminal-based it probably dropped us out of the
-        // alternate screen when it closed, so get back in there. This is
-        // idempotent so no harm in doing it
-        crossterm::execute!(io::stdout(), EnterAlternateScreen)?;
+        // Some editors *cough* vim *cough* dump garbage to the event buffer on
+        // exit. I've never figured out what actually causes it, but a simple
+        // solution is to dump all events in the buffer before returning to
+        // Slumber. It's possible we lose some real user input here (e.g. if
+        // other events were queued behind the event to open the editor).
+        clear_event_buffer();
+        crossterm::execute!(stdout, EnterAlternateScreen)?;
+
         // Redraw immediately. The main loop will probably be in the tick
         // timeout when we go back to it, so that adds a 250ms delay to
         // redrawing the screen that we want to skip.

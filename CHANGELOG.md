@@ -49,6 +49,7 @@ Here's the full list of changes:
   - E.g. F5 will now refresh the collection while a text box is in focus
 - Redraw TUI when terminal is resized
 - Clamp text window scroll state when window is resized or text changes
+- Fix extraneous input events when exiting Vim [#351](https://github.com/LucasPickering/slumber/issues/351)
 
 ## [1.8.1] - 2024-08-11
 

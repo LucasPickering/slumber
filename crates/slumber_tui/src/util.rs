@@ -4,6 +4,7 @@ use crate::{
     view::Confirm,
 };
 use anyhow::Context;
+use crossterm::event;
 use editor_command::EditorBuilder;
 use futures::{future, FutureExt};
 use slumber_core::{
@@ -15,6 +16,7 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
     process::Command,
+    time::Duration,
 };
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::oneshot};
 use tracing::{debug, error, info, warn};
@@ -42,6 +44,13 @@ where
                 None
             }
         }
+    }
+}
+
+/// Clear all input events in the terminal event buffer
+pub fn clear_event_buffer() {
+    while let Ok(true) = event::poll(Duration::from_millis(0)) {
+        let _ = event::read();
     }
 }
 

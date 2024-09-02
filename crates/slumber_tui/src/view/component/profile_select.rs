@@ -146,7 +146,7 @@ impl ProfileListModal {
         fn on_submit(profile: &mut ProfileListItem) {
             // Close the modal *first*, so the parent can handle the
             // callback event. Jank but it works
-            ViewContext::push_event(Event::CloseModal);
+            ViewContext::push_event(Event::CloseModal { submitted: true });
             ViewContext::push_event(Event::new_local(SelectProfile(
                 profile.id.clone(),
             )));

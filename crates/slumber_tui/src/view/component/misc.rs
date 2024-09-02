@@ -21,8 +21,7 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
     Frame,
 };
-use slumber_core::template::{Prompt, PromptChannel, Select};
-use std::{cell::Cell, fmt::Debug, rc::Rc};
+use slumber_core::template::{Prompt, Select};
 use strum::{EnumCount, EnumIter};
 
 #[derive(Debug)]
@@ -69,9 +68,6 @@ pub struct TextBoxModal {
     title: String,
     /// Little editor fucker
     text_box: Component<TextBox>,
-    /// Flag set before closing to indicate if we should submit in our own
-    /// `on_close`. This is set from the text box's `on_submit`.
-    submit: Rc<Cell<bool>>,
     #[debug(skip)]
     on_submit: Box<dyn 'static + FnOnce(String)>,
 }
@@ -86,24 +82,20 @@ impl TextBoxModal {
         text_box: TextBox,
         on_submit: impl 'static + FnOnce(String),
     ) -> Self {
-        let submit = Rc::new(Cell::new(false));
-        let submit_cell = Rc::clone(&submit);
         let text_box = text_box
             // Make sure cancel gets propagated to close the modal
-            .on_cancel(|| ViewContext::push_event(Event::CloseModal))
+            .on_cancel(|| {
+                ViewContext::push_event(Event::CloseModal { submitted: false })
+            })
             .on_submit(move || {
                 // We have to defer submission to on_close, because we need the
-                // owned value of `self.prompt`. We could have just put that in
-                // a refcell, but this felt a bit cleaner because we know this
-                // submitter will only be called once.
-                submit_cell.set(true);
-                ViewContext::push_event(Event::CloseModal);
+                // owned value of `self.prompt`
+                ViewContext::push_event(Event::CloseModal { submitted: true });
             })
             .into();
         Self {
             title,
             text_box,
-            submit,
             on_submit: Box::new(on_submit),
         }
     }
@@ -118,8 +110,8 @@ impl Modal for TextBoxModal {
         (Constraint::Percentage(60), Constraint::Length(1))
     }
 
-    fn on_close(self: Box<Self>) {
-        if self.submit.get() {
+    fn on_close(self: Box<Self>, submitted: bool) {
+        if submitted {
             // Return the user's value and close the prompt
             (self.on_submit)(self.text_box.into_data().into_text());
         }
@@ -161,9 +153,6 @@ pub struct SelectListModal {
     title: String,
     /// List of options to present to the user
     options: Component<SelectState<String>>,
-    /// Flag set before closing to indicate if we should submit in our own
-    /// `on_close`. This is set from the text box's `on_submit`.
-    submit: Rc<Cell<bool>>,
     #[debug(skip)]
     on_submit: Box<dyn 'static + FnOnce(String)>,
 }
@@ -175,21 +164,16 @@ impl SelectListModal {
         options: Vec<String>,
         on_submit: impl 'static + FnOnce(String),
     ) -> Self {
-        // The underlying SelectState may close the modal
-        // either because the user selected a value or left the modal
-        // We use `submit` to inform our modal that the user selected a value
-        let submit = Rc::new(Cell::new(false));
-        let submit_cell = Rc::clone(&submit);
         Self {
             title,
             options: SelectState::builder(options)
-                .on_submit(move |_selection| {
-                    submit_cell.set(true);
-                    ViewContext::push_event(Event::CloseModal);
+                .on_submit(move |_| {
+                    ViewContext::push_event(Event::CloseModal {
+                        submitted: true,
+                    });
                 })
                 .build()
                 .into(),
-            submit,
             on_submit: Box::new(on_submit),
         }
     }
@@ -214,10 +198,10 @@ impl Modal for SelectListModal {
         )
     }
 
-    fn on_close(self: Box<Self>) {
+    fn on_close(self: Box<Self>, submitted: bool) {
         // The modal is closed, but only submit the value if it was closed
         // because the user selected a value (submitted).
-        if self.submit.get() {
+        if submitted {
             // Return the user's value and close the prompt
             (self.on_submit)(self.options.data().selected().unwrap().clone());
         }
@@ -259,15 +243,17 @@ impl IntoModal for Select {
 }
 
 /// Inner state for the prompt modal
-#[derive(Debug)]
+#[derive(derive_more::Debug)]
 pub struct ConfirmModal {
     /// Modal title, from the prompt message
     title: String,
-    /// Channel used to submit yes/no. This is an option so we can take the
-    /// value when a submission is given, and then close the modal. It should
-    /// only ever be taken once.
-    channel: Option<PromptChannel<bool>>,
     buttons: Component<ButtonGroup<ConfirmButton>>,
+    /// Store which answer was selected during submission. Answering no is
+    /// semantically different from not answering, so we can't just check the
+    /// `submitted` flag in `on_close`
+    answer: bool,
+    #[debug(skip)]
+    on_submit: Box<dyn 'static + FnOnce(bool)>,
 }
 
 /// Buttons in the confirmation modal
@@ -281,11 +267,12 @@ enum ConfirmButton {
 }
 
 impl ConfirmModal {
-    pub fn new(confirm: Confirm) -> Self {
+    pub fn new(title: String, on_submit: impl 'static + FnOnce(bool)) -> Self {
         Self {
-            title: confirm.message,
-            channel: Some(confirm.channel),
+            title,
             buttons: Default::default(),
+            on_submit: Box::new(on_submit),
+            answer: false,
         }
     }
 }
@@ -302,6 +289,12 @@ impl Modal for ConfirmModal {
             Constraint::Length(1),
         )
     }
+
+    fn on_close(self: Box<Self>, submitted: bool) {
+        if submitted {
+            (self.on_submit)(self.answer);
+        }
+    }
 }
 
 impl EventHandler for ConfirmModal {
@@ -310,15 +303,9 @@ impl EventHandler for ConfirmModal {
         let Some(button) = event.local::<ConfirmButton>() else {
             return Update::Propagate(event);
         };
-        // Channel *should* always be available here, because after handling
-        // this event for the first time we close the modal. Hypothetically we
-        // could get two submissions in rapid succession though, so ignore
-        // subsequent ones.
-        if let Some(channel) = self.channel.take() {
-            channel.respond(*button == ConfirmButton::Yes);
-        }
 
-        ViewContext::push_event(Event::CloseModal);
+        self.answer = *button == ConfirmButton::Yes;
+        ViewContext::push_event(Event::CloseModal { submitted: true });
         Update::Consumed
     }
 
@@ -337,7 +324,9 @@ impl IntoModal for Confirm {
     type Target = ConfirmModal;
 
     fn into_modal(self) -> Self::Target {
-        ConfirmModal::new(self)
+        ConfirmModal::new(self.message, |response| {
+            self.channel.respond(response)
+        })
     }
 }
 

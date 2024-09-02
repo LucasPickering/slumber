@@ -40,8 +40,9 @@ pub trait Modal: Debug + Draw<()> + EventHandler {
     fn dimensions(&self) -> (Constraint, Constraint);
 
     /// Optional callback when the modal is closed. Useful for finishing
-    /// operations that require ownership of the modal data.
-    fn on_close(self: Box<Self>) {}
+    /// operations that require ownership of the modal data. Submitted flag is
+    /// set based on the correspond flag in the `CloseModal` event.
+    fn on_close(self: Box<Self>, _submitted: bool) {}
 }
 
 impl EventHandler for Box<dyn Modal> {
@@ -103,10 +104,12 @@ impl ModalQueue {
         }
     }
 
-    /// Close the current modal, and return the closed modal if any
-    pub fn close(&mut self) -> Option<Box<dyn Modal>> {
+    /// Close the current modal
+    fn close(&mut self, submitted: bool) {
         trace!("Closing modal");
-        self.queue.pop_front().map(Component::into_data)
+        if let Some(modal) = self.queue.pop_front().map(Component::into_data) {
+            modal.on_close(submitted);
+        }
     }
 }
 
@@ -119,16 +122,18 @@ impl EventHandler for ModalQueue {
                 // Enter to close is a convenience thing, modals may override.
                 // We eat the Quit action here because it's (hopefully)
                 // intuitive and consistent with other TUIs
-                action: Some(Action::Cancel | Action::Quit | Action::Submit),
+                action:
+                    Some(
+                        action @ (Action::Cancel
+                        | Action::Quit
+                        | Action::Submit),
+                    ),
                 event: _,
+            } if self.is_open() => {
+                self.close(action == Action::Submit);
             }
-            | Event::CloseModal => {
-                match self.close() {
-                    // Inform the modal of its terminal status
-                    Some(modal) => modal.on_close(),
-                    // Modal wasn't open, so don't consume the event
-                    None => return Update::Propagate(event),
-                }
+            Event::CloseModal { submitted } if self.is_open() => {
+                self.close(submitted);
             }
 
             // If open, eat all cursor events so they don't get sent to

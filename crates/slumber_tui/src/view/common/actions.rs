@@ -28,7 +28,7 @@ impl<T: FixedSelect> ActionsModal<T> {
         let on_submit = move |action: &mut T| {
             // Close the modal *first*, so the parent can handle the
             // callback event. Jank but it works
-            ViewContext::push_event(Event::CloseModal);
+            ViewContext::push_event(Event::CloseModal { submitted: true });
             ViewContext::push_event(Event::new_local(*action));
         };
 

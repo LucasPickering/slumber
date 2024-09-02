@@ -28,6 +28,15 @@ chains:
     source: !prompt
       message: Password
     sensitive: true
+  select_value:
+    source: !select
+      message: Select a value
+      options:
+        - foo
+        - bar
+        - baz
+        - a really really really really long option
+        - "{{chains.username}}"
   auth_token:
     source: !request
       recipe: login
@@ -63,6 +72,7 @@ requests:
     body: !form_urlencoded
       username: "{{username}}"
       password: "{{chains.password}}"
+      selectedValue: "{{chains.select_value}}"
 
   users: !folder
     name: Users

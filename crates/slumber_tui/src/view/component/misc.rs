@@ -4,23 +4,24 @@
 use crate::view::{
     common::{
         button::ButtonGroup,
+        list::List,
         modal::{IntoModal, Modal},
         text_box::TextBox,
     },
     component::Component,
     draw::{Draw, DrawMetadata, Generate},
     event::{Child, Event, EventHandler, Update},
-    state::Notification,
+    state::{select::SelectState, Notification},
     Confirm, ModalPriority, ViewContext,
 };
 use derive_more::Display;
 use ratatui::{
     prelude::Constraint,
-    text::Line,
+    text::{Line, Text},
     widgets::{Paragraph, Wrap},
     Frame,
 };
-use slumber_core::template::{Prompt, PromptChannel};
+use slumber_core::template::{Prompt, PromptChannel, Select};
 use std::{cell::Cell, fmt::Debug, rc::Rc};
 use strum::{EnumCount, EnumIter};
 
@@ -149,6 +150,111 @@ impl IntoModal for Prompt {
                 .default_value(self.default.unwrap_or_default()),
             |response| self.channel.respond(response),
         )
+    }
+}
+
+/// A modal that presents a list of simple string options to the user.
+/// The user will select one of the options and submit it, or cancel.
+#[derive(derive_more::Debug)]
+pub struct SelectListModal {
+    /// Modal title, from the select message
+    title: String,
+    /// List of options to present to the user
+    options: Component<SelectState<String>>,
+    /// Flag set before closing to indicate if we should submit in our own
+    /// `on_close`. This is set from the text box's `on_submit`.
+    submit: Rc<Cell<bool>>,
+    #[debug(skip)]
+    on_submit: Box<dyn 'static + FnOnce(String)>,
+}
+
+impl SelectListModal {
+    /// Create a modal that contains a list of options.
+    pub fn new(
+        title: String,
+        options: Vec<String>,
+        on_submit: impl 'static + FnOnce(String),
+    ) -> Self {
+        // The underlying SelectState may close the modal
+        // either because the user selected a value or left the modal
+        // We use `submit` to inform our modal that the user selected a value
+        let submit = Rc::new(Cell::new(false));
+        let submit_cell = Rc::clone(&submit);
+        Self {
+            title,
+            options: SelectState::builder(options)
+                .on_submit(move |_selection| {
+                    submit_cell.set(true);
+                    ViewContext::push_event(Event::CloseModal);
+                })
+                .build()
+                .into(),
+            submit,
+            on_submit: Box::new(on_submit),
+        }
+    }
+}
+
+impl Modal for SelectListModal {
+    fn title(&self) -> Line<'_> {
+        self.title.as_str().into()
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        // Do some simple math to size the select modal correctly to our
+        // underlying data
+        let options = self.options.data();
+        let longest_option =
+            options.items().map(|s| s.len()).max().unwrap_or(10);
+        // find our widest string to appropriately set width
+        let width = std::cmp::max(self.title.len(), longest_option);
+        (
+            Constraint::Length(width as u16),
+            Constraint::Length(options.len().min(20) as u16),
+        )
+    }
+
+    fn on_close(self: Box<Self>) {
+        // The modal is closed, but only submit the value if it was closed
+        // because the user selected a value (submitted).
+        if self.submit.get() {
+            // Return the user's value and close the prompt
+            (self.on_submit)(self.options.data().selected().unwrap().clone());
+        }
+    }
+}
+
+impl EventHandler for SelectListModal {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.options.to_child_mut()]
+    }
+}
+
+impl Draw for SelectListModal {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        // Empty state
+        let options = self.options.data();
+        if options.is_empty() {
+            frame.render_widget(
+                Text::from(vec!["No options defined!".into()]),
+                metadata.area(),
+            );
+            return;
+        }
+
+        self.options
+            .draw(frame, List::from(options), metadata.area(), true);
+    }
+}
+
+/// Present a select list as a modal to the user
+impl IntoModal for Select {
+    type Target = SelectListModal;
+
+    fn into_modal(self) -> Self::Target {
+        SelectListModal::new(self.message, self.options, |response| {
+            self.channel.respond(response)
+        })
     }
 }
 

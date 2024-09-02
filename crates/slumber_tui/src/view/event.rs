@@ -195,8 +195,14 @@ pub enum Event {
     /// Show a modal to the user
     OpenModal(Box<dyn Modal>),
     /// Close the current modal. This is useful for the contents of the modal
-    /// to implement custom close triggers.
-    CloseModal,
+    /// to implement custom close triggers
+    CloseModal {
+        /// Some modals have a concept of submission, and want to execute
+        /// certain one-time code during close, conditional on whether the
+        /// modal was submitted or cancelled. For modals without submissions,
+        /// this is `false`.
+        submitted: bool,
+    },
 
     /// Tell the user something informational
     Notify(Notification),

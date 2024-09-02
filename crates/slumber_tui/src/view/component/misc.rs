@@ -197,7 +197,7 @@ impl SelectListModal {
 
 impl Modal for SelectListModal {
     fn title(&self) -> Line<'_> {
-        self.title.clone().into()
+        self.title.as_str().into()
     }
 
     fn dimensions(&self) -> (Constraint, Constraint) {
@@ -210,7 +210,7 @@ impl Modal for SelectListModal {
         let width = std::cmp::max(self.title.len(), longest_option);
         (
             Constraint::Length(width as u16),
-            Constraint::Length(options.len() as u16),
+            Constraint::Length(options.len().min(20) as u16),
         )
     }
 

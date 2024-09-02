@@ -227,7 +227,7 @@ impl Prompter for CliPrompter {
         }
     }
 
-    fn select(&self, select: Select) {
+    fn select(&self, mut select: Select) {
         let result = DialoguerSelect::new()
             .with_prompt(select.message)
             .items(&select.options)
@@ -237,7 +237,7 @@ impl Prompter for CliPrompter {
         if let Ok(value) =
             result.context("Error reading value from select").traced()
         {
-            select.channel.respond(select.options[value].clone());
+            select.channel.respond(select.options.swap_remove(value));
         }
     }
 }

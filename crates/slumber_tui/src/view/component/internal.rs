@@ -46,7 +46,7 @@ thread_local! {
 /// in the past where the inner component is drawn without this pass through
 /// layer, which means the component area isn't tracked. That means cursor
 /// events aren't handled.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Component<T> {
     /// Unique random identifier for this component, to reference it in global
     /// state
@@ -218,6 +218,13 @@ impl<T> Component<T> {
 
         self.inner.draw(frame, props, metadata);
         drop(guard); // Make sure guard stays alive until here
+    }
+}
+
+// Derive impl doesn't work because the constructor gets the correct name
+impl<T: Default> Default for Component<T> {
+    fn default() -> Self {
+        Self::new(T::default())
     }
 }
 

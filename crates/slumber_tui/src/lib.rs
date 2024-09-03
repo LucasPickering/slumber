@@ -27,9 +27,7 @@ use crate::{
 use anyhow::{anyhow, Context};
 use chrono::Utc;
 use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, EventStream,
-    },
+    event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::StreamExt;
@@ -205,15 +203,7 @@ impl Tui {
             needs_draw |= self.view.handle_events();
 
             // ===== Draw Phase =====
-            // Only draw if something's changed. Skip draws if we have more
-            // messages to process. This prevents us from falling behind the
-            // message queue, which can happen if the UI gets slow. Interactions
-            // will start to look jittery, but it's better than locking the user
-            // out. We know the next loop iteration will also have a message to
-            // handle, so we don't have to worry about losing the draw entirely.
-            let has_more_messages = !self.messages_rx.is_empty()
-                || event::poll(Duration::from_millis(0)).unwrap_or(false);
-            if needs_draw && !has_more_messages {
+            if needs_draw {
                 self.draw()?;
             }
         }

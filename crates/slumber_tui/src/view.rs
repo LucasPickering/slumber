@@ -34,7 +34,7 @@ use slumber_core::{
     db::CollectionDatabase,
 };
 use std::{fmt::Debug, sync::Arc};
-use tracing::{error, trace, trace_span};
+use tracing::{debug, trace_span, warn};
 
 /// Primary entrypoint for the view. This contains the main draw functions, as
 /// well as bindings for externally modifying the view state. We use a component
@@ -155,11 +155,11 @@ impl View {
             trace_span!("View event", ?event).in_scope(|| {
                 match self.root.update_all(event) {
                     Update::Consumed => {
-                        trace!("View event consumed")
+                        debug!("View event consumed")
                     }
                     // Consumer didn't eat the event - huh?
                     Update::Propagate(_) => {
-                        error!("View event was unhandled");
+                        warn!("View event was unhandled");
                     }
                 }
             });

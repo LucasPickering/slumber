@@ -14,7 +14,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
 };
-use tracing::{trace, trace_span, warn};
+use tracing::{instrument, trace, trace_span, warn};
 use uuid::Uuid;
 
 thread_local! {
@@ -77,6 +77,7 @@ impl<T> Component<T> {
     /// Handle an event for this component *or* its children, starting at the
     /// lowest descendant. Recursively walk up the tree until a component
     /// consumes the event.
+    #[instrument(skip_all, fields(component = self.name()))]
     pub fn update_all(&mut self, mut event: Event) -> Update
     where
         T: ToChild,
@@ -86,31 +87,29 @@ impl<T> Component<T> {
             return Update::Propagate(event);
         }
 
+        let mut self_dyn = self.data_mut().to_child_mut();
+
         // If we have a child, send them the event. If not, eat it ourselves
-        for mut child in self.data_mut().to_child_mut().children() {
-            // Don't propgate to children that aren't visible or not in focus
-            if child.should_handle(&event) {
-                // RECURSION
-                let update = child.update_all(event);
-                match update {
-                    Update::Propagate(returned) => {
-                        // Keep going to the next child. The propgated event
-                        // *should* just be whatever we passed in, but we have
-                        // no way of verifying that
-                        event = returned;
-                    }
-                    Update::Consumed => {
-                        return update;
-                    }
+        for mut child in self_dyn.children() {
+            // RECURSION
+            let update = child.update_all(event);
+            match update {
+                Update::Propagate(returned) => {
+                    // Keep going to the next child. The propgated event
+                    // *should* just be whatever we passed in, but we have
+                    // no way of verifying that
+                    event = returned;
+                }
+                Update::Consumed => {
+                    return update;
                 }
             }
         }
 
         // None of our children handled it, we'll take it ourselves. Event is
         // already traced in the root span, so don't dupe it.
-        let span = trace_span!("Component handling", component = self.name());
-        span.in_scope(|| {
-            let update = self.data_mut().to_child_mut().update(event);
+        (trace_span!("component.update")).in_scope(|| {
+            let update = self_dyn.update(event);
             trace!(?update);
             update
         })
@@ -126,6 +125,7 @@ impl<T> Component<T> {
         // If this component isn't currently in the visible tree, it shouldn't
         // handle any events
         if !self.is_visible() {
+            trace!("Skipping component, not visible");
             return false;
         }
 

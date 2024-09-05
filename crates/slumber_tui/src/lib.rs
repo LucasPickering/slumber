@@ -281,7 +281,10 @@ impl Tui {
                 event: Event::Resize(_, _),
                 ..
             } => {
-                // Immediately redraw the screen
+                // Redraw the entire screen. There are certain scenarios where
+                // the terminal gets cleared but ratatui's (e.g. waking from
+                // sleep) buffer doesn't, so the two get out of sync
+                self.terminal.clear()?;
                 self.draw()?;
             }
             Message::Input { event, action } => {

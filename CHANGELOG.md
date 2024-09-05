@@ -28,6 +28,8 @@ Here's the full list of changes:
   - Press `e` on any value you want to edit (you can [customize the key](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html))
 - Add `editor` field to the config, allowing you to customize what editor Slumber opens for in-app editing
   - [See docs for more](https://slumber.lucaspickering.me/book/api/configuration/editor.html)
+- Add `!select` ChainSource type, allowing your collection to prompt the user to select a value from a static list
+  - [See docs for more](https://slumber.lucaspickering.me/book/api/request_collection/chain_source.html#select)
 
 ### Changed
 

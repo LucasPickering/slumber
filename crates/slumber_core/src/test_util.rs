@@ -121,10 +121,38 @@ impl Prompter for TestPrompter {
         }
     }
 
-    fn select(&self, select: Select) {
+    fn select(&self, _select: Select) {
+        unimplemented!("TestPrompter does not support selects")
+    }
+}
+
+/// Response to selects with zero or more values in sequence
+#[derive(Debug, Default)]
+pub struct TestSelectPrompter {
+    /// Index within the contained select to grab response for
+    responses: Vec<usize>,
+    /// Track where in the sequence of responses we are
+    index: AtomicUsize,
+}
+
+impl TestSelectPrompter {
+    pub fn new<T: Into<usize>>(responses: impl IntoIterator<Item = T>) -> Self {
+        Self {
+            responses: responses.into_iter().map(T::into).collect(),
+            index: 0.into(),
+        }
+    }
+}
+
+impl Prompter for TestSelectPrompter {
+    fn prompt(&self, _prompt: Prompt) {
+        unimplemented!("TestSelectPrompter does not support prompts")
+    }
+
+    fn select(&self, mut select: Select) {
         let index = self.index.fetch_add(1, Ordering::Relaxed);
         if let Some(value) = self.responses.get(index) {
-            select.channel.respond(value.clone())
+            select.channel.respond(select.options.swap_remove(*value))
         }
     }
 }

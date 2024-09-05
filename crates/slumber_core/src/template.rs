@@ -270,7 +270,7 @@ mod tests {
         },
         test_util::{
             by_id, header_map, http_engine, invalid_utf8_chain, temp_dir,
-            Factory, TempDir, TestPrompter,
+            Factory, TempDir, TestPrompter, TestSelectPrompter,
         },
     };
     use chrono::Utc;
@@ -947,33 +947,46 @@ mod tests {
     }
 
     #[rstest]
-    #[case::no_chains(vec!["foo!", "bar!"], Some("bar!"), "bar!")]
+    #[case::no_chains(vec!["foo!", "bar!"], 0, "foo!")]
+    #[case::chains_0(vec!["foo!", "{{chains.command}}"], 0, "foo!")]
+    #[case::chains_1(vec!["foo!", "{{chains.command}}"], 1, "command_output")]
     #[tokio::test]
     async fn test_chain_select(
         #[case] options: Vec<&str>,
-        #[case] response: Option<&str>,
+        #[case] index: usize,
         #[case] expected: &str,
     ) {
         let sut_chain = Chain {
+            id: "sut".into(),
             source: ChainSource::Select {
                 message: Some("password".into()),
-                options: options.into_iter().map(|s| s.into()).collect(),
+                options: options
+                    .clone()
+                    .into_iter()
+                    .map(|s| s.into())
+                    .collect(),
             },
             ..Chain::factory(())
         };
 
-        // Test value from prompter
+        let command_chain = Chain {
+            id: "command".into(),
+            source: ChainSource::command(["echo", "command_output"]),
+            trim: ChainOutputTrim::Both,
+            ..Chain::factory(())
+        };
+
         let context = TemplateContext {
             collection: Collection {
-                chains: by_id([sut_chain]),
+                chains: by_id([sut_chain, command_chain]),
                 ..Collection::factory(())
             }
             .into(),
-
-            prompter: Box::new(TestPrompter::new(response)),
+            prompter: Box::new(TestSelectPrompter::new(vec![index])),
             ..TemplateContext::factory(())
         };
-        assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
+
+        assert_eq!(render!("{{chains.sut}}", context).unwrap(), expected);
     }
 
     #[tokio::test]
@@ -992,7 +1005,7 @@ mod tests {
             }
             .into(),
             // Prompter gives no response
-            prompter: Box::<TestPrompter>::default(),
+            prompter: Box::<TestSelectPrompter>::default(),
             ..TemplateContext::factory(())
         };
 

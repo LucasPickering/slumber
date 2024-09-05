@@ -33,6 +33,7 @@ message: Enter Password
 | `!env`     | [`ChainSource::Environment`](#environment-variable) | Value of an envionrment variable, or empty string if undefined  |
 | `!file`    | [`ChainSource::File`](#file)                        | Contents of the file                                            |
 | `!prompt`  | [`ChainSource::Prompt`](#prompt)                    | Value entered by the user                                       |
+| `!select`  | [`ChainSource::Select`](#select)                    | User selects a value from a list                                |
 
 ### Request
 
@@ -135,4 +136,13 @@ Prompt the user for input to use as the rendered value.
 | Field     | Type       | Description                                                                                                                                   | Default  |
 | --------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | `message` | `Template` | Descriptive prompt for the user                                                                                                               | Chain ID |
-| `default` | `Template` | Value to pre-populated the prompt textbox. **Note**: Dur to a library limitation, not supported on chains with `sensitive: true` _in the CLI_ | `null`   |
+| `default` | `Template` | Value to pre-populated the prompt textbox. **Note**: Due to a library limitation, not supported on chains with `sensitive: true` _in the CLI_ | `null`   |
+
+### Select
+
+Prompt the user to select a defined value from a list.
+
+| Field     | Type          | Description                             | Default  |
+| --------- | ------------- | --------------------------------------- | -------- |
+| `message` | `Template`    | Descriptive prompt for the user         | Chain ID |
+| `options` | `Template[]`  | List of options to present to the user  | Required |

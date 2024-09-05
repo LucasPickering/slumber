@@ -41,6 +41,15 @@ password:
     message: Enter Password
   sensitive: true
 ---
+# Prompt the user to select a value from a static list
+fruit:
+  souce: !select
+    message: Select Fruit
+    options:
+      - apple
+      - banana
+      - guava
+---
 # Use a value from another response
 # Assume the request recipe with ID `login` returns a body like `{"token": "foo"}`
 auth_token:

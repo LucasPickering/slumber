@@ -6,9 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
-2.0 is headlined by a highly requested feature: one-off edits to recipes! If you need to tweak a query parameter or edit a body, but don't want to modify your collection file, you can now highlight the value in question and hit `e` to modify it. The override will be retained until you modify the collection file or exit Slumber, at which point it will revert to
+2.0 is headlined by a highly requested feature: one-off edits to recipes! If you need to tweak a query parameter or edit a body, but don't want to modify your collection file, you can now highlight the value in question and hit `e` to modify it. The override will be retained until you modify the collection file or exit Slumber, at which point it will revert to its original value.
 
-Aside from the major new feature, there is one breaking change, to the escape syntax of templates. The old backslash-based syntax was fraught with edge cases and unpredictable behavior. This new syntax is simpler to use, simpler to implement, and much more bulletproof. This syntax was rare to use to begin with, so **most people will be unimpacted by this change.**
+Aside from the major new feature, there is one breaking change to the escape syntax of templates. The old backslash-based syntax was fraught with edge cases and unpredictable behavior. This new syntax is simpler to use, simpler to implement, and much more bulletproof. This syntax was rare to use to begin with, so **most people will be unimpacted by this change.**
 
 Here's the full list of changes:
 
@@ -28,7 +28,7 @@ Here's the full list of changes:
   - Press `e` on any value you want to edit (you can [customize the key](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html))
 - Add `editor` field to the config, allowing you to customize what editor Slumber opens for in-app editing
   - [See docs for more](https://slumber.lucaspickering.me/book/api/configuration/editor.html)
-- Add `!select` ChainSource type, allowing your collection to prompt the user to select a value from a static list
+- Add `!select` chain type, allowing your collection to prompt the user to select a value from a static list (thanks @anussel5559)
   - [See docs for more](https://slumber.lucaspickering.me/book/api/request_collection/chain_source.html#select)
 
 ### Changed
@@ -47,12 +47,13 @@ Here's the full list of changes:
 - Fix response body filter not applying on new responses
 - Support quoted arguments in editor commands
 - Fix certain UI values not persisting correctly
-- Propgated unconsumed key events from text boxes
+- Propagate unconsumed key events from text boxes
   - E.g. F5 will now refresh the collection while a text box is in focus
 - Redraw TUI when terminal is resized
 - Clamp text window scroll state when window is resized or text changes
 - Fix extraneous input events when exiting Vim [#351](https://github.com/LucasPickering/slumber/issues/351)
 - Improve performance and fix crashes when handling large request/response bodies [#356](https://github.com/LucasPickering/slumber/issues/356)
+  - Further improvements for large bodies will be coming in the future
 
 ## [1.8.1] - 2024-08-11
 

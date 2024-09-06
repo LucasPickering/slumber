@@ -2,6 +2,7 @@
 
 [![Test CI](https://github.com/github/docs/actions/workflows/test.yml/badge.svg)](https://github.com/LucasPickering/slumber/actions)
 [![crates.io](https://img.shields.io/crates/v/slumber.svg)](https://crates.io/crates/slumber)
+[![Sponsor](https://img.shields.io/github/sponsors/LucasPickering?logo=github)](https://github.com/sponsors/LucasPickering)
 
 - [Home Page](https://slumber.lucaspickering.me)
 - [Installation](https://slumber.lucaspickering.me/artifacts/)

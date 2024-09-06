@@ -46,12 +46,10 @@ Sleep 0.5s
 Down 1
 Sleep 0.5s
 Enter
+Type "r"
 Sleep 2s
 
 # Search response
-Type "r"
-Sleep 2s
 Type "/$.headers"
 Enter
 Sleep 2s
-

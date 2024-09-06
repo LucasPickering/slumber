@@ -15,6 +15,7 @@ Sleep 2s
 Type "l"
 Show
 
+# Send login request
 Sleep 1s
 Enter
 Sleep 0.5s
@@ -22,10 +23,32 @@ Type "password"
 Sleep 0.5s
 Enter
 Sleep 2s
-Down 4
-Sleep 2s
+Down 2
+
+# Edit param for get_users
+Sleep 1s
+Type "c"
+Sleep 0.5s
+Right
+Sleep 0.5s
+Type "e"
+Sleep 0.5s
+Backspace 3
+Sleep 0.5s
+Type "baz"
+Sleep 0.5s
+Enter
+Sleep 0.5s
+
+# Send get_users request
+Enter
+Sleep 0.5s
+Down 1
+Sleep 0.5s
 Enter
 Sleep 2s
+
+# Search response
 Type "r"
 Sleep 2s
 Type "/$.headers"

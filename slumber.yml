@@ -72,7 +72,6 @@ requests:
     body: !form_urlencoded
       username: "{{username}}"
       password: "{{chains.password}}"
-      selectedValue: "{{chains.select_value}}"
 
   users: !folder
     name: Users
@@ -84,6 +83,7 @@ requests:
         url: "{{host}}/get"
         query:
           - foo=bar
+          - select={{chains.select_value}}
 
       get_user: !request
         <<: *base

@@ -113,6 +113,12 @@ Execute a command and use its stdout as the rendered value.
 | `command` | `Template[]` | Command to execute, in the format `[program, ...arguments]` | Required |
 | `stdin`   | `Template`   | Standard input which will be piped into the command         | None     |
 
+```yaml
+username:
+  source: !command
+    command: [whoami]
+```
+
 ### Environment Variable
 
 Load a value from an environment variable.
@@ -120,6 +126,14 @@ Load a value from an environment variable.
 | Field      | Type       | Description      | Default  |
 | ---------- | ---------- | ---------------- | -------- |
 | `variable` | `Template` | Variable to load | Required |
+
+#### Examples
+
+```yaml
+current_dir:
+  source: !env
+    variable: PWD
+```
 
 ### File
 
@@ -129,20 +143,49 @@ Read a file and use its contents as the rendered value.
 | ------ | ---------- | -------------------------------------------------------- | -------- |
 | `path` | `Template` | Path of the file to load (relative to current directory) | Required |
 
+#### Examples
+
+```yaml
+username:
+  source: !file
+    path: ./username.txt
+```
+
 ### Prompt
 
-Prompt the user for input to use as the rendered value.
+Prompt the user for text input to use as the rendered value.
 
 | Field     | Type       | Description                                                                                                                                   | Default  |
 | --------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | `message` | `Template` | Descriptive prompt for the user                                                                                                               | Chain ID |
 | `default` | `Template` | Value to pre-populated the prompt textbox. **Note**: Due to a library limitation, not supported on chains with `sensitive: true` _in the CLI_ | `null`   |
 
+#### Examples
+
+```yaml
+password:
+  source: !prompt
+    message: Enter Password
+  sensitive: true
+```
+
 ### Select
 
 Prompt the user to select a defined value from a list.
 
-| Field     | Type          | Description                             | Default  |
-| --------- | ------------- | --------------------------------------- | -------- |
-| `message` | `Template`    | Descriptive prompt for the user         | Chain ID |
-| `options` | `Template[]`  | List of options to present to the user  | Required |
+| Field     | Type         | Description                            | Default  |
+| --------- | ------------ | -------------------------------------- | -------- |
+| `message` | `Template`   | Descriptive prompt for the user        | Chain ID |
+| `options` | `Template[]` | List of options to present to the user | Required |
+
+#### Examples
+
+```yaml
+fruit:
+  souce: !select
+    message: Select Fruit
+    options:
+      - apple
+      - banana
+      - guava
+```

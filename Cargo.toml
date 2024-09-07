@@ -33,10 +33,10 @@ serde_json = {version = "1.0.120", default-features = false}
 serde_json_path = "0.6.3"
 serde_test = "1.0.176"
 serde_yaml = {version = "0.9.0", default-features = false}
-slumber_cli = {path = "./crates/slumber_cli", version = "2.0.0" }
-slumber_config = {path = "./crates/slumber_config", version = "2.0.0" }
-slumber_core = {path = "./crates/slumber_core", version = "2.0.0" }
-slumber_tui = {path = "./crates/slumber_tui", version = "2.0.0" }
+slumber_cli = {path = "./crates/slumber_cli", version = "2.0.0"}
+slumber_config = {path = "./crates/slumber_config", version = "2.0.0"}
+slumber_core = {path = "./crates/slumber_core", version = "2.0.0"}
+slumber_tui = {path = "./crates/slumber_tui", version = "2.0.0"}
 strum = {version = "0.26.3", default-features = false}
 tokio = {version = "1.39.2", default-features = false}
 tracing = "0.1.40"
@@ -77,7 +77,7 @@ targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-
 # Publish jobs to run in CI
 publish-jobs = ["homebrew"]
 # Which actions to run on pull requests
-pr-run-mode = "skip"
+pr-run-mode = "plan"
 # Whether to install an updater program
 install-updater = false
 # Path that installers should place binaries in

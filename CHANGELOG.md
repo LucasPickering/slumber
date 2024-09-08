@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- Updated the Configuration docs to remove the non-existent `slumber show dir` command
+
 ## [2.0.0] - 2024-09-06
 
 2.0 is headlined by a highly requested feature: one-off edits to recipes! If you need to tweak a query parameter or edit a body, but don't want to modify your collection file, you can now highlight the value in question and hit `e` to modify it. The override will be retained until you modify the collection file or exit Slumber, at which point it will revert to its original value.

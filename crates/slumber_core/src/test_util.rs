@@ -136,9 +136,9 @@ pub struct TestSelectPrompter {
 }
 
 impl TestSelectPrompter {
-    pub fn new<T: Into<usize>>(responses: impl IntoIterator<Item = T>) -> Self {
+    pub fn new(responses: impl IntoIterator<Item = usize>) -> Self {
         Self {
-            responses: responses.into_iter().map(T::into).collect(),
+            responses: responses.into_iter().collect(),
             index: 0.into(),
         }
     }

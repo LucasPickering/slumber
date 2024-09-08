@@ -3,7 +3,7 @@
 use crate::{
     collection::{
         ChainId, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
-        ChainSource, RecipeId,
+        ChainSource, RecipeId, SelectOptions,
     },
     http::{content_type::ContentType, Exchange, RequestSeed, ResponseRecord},
     template::{
@@ -741,7 +741,7 @@ impl<'a> ChainTemplateSource<'a> {
         context: &'a TemplateContext,
         stack: &mut RenderKeyStack<'a>,
         message: Option<&'a Template>,
-        options: &'a [Template],
+        options: &'a SelectOptions,
     ) -> Result<String, ChainError> {
         let (tx, rx) = oneshot::channel();
         let message = if let Some(template) = message {
@@ -752,26 +752,78 @@ impl<'a> ChainTemplateSource<'a> {
             self.chain_id.to_string()
         };
 
-        let options = future::try_join_all(options.iter().enumerate().map(
-            |(i, template)| {
-                // Fork the local state, one copy for each new branch
-                let mut stack = stack.clone();
-                async move {
-                    template
-                        .render_chain_config(
-                            format!("options[{i}]"),
-                            context,
-                            &mut stack,
-                        )
-                        .await
-                }
-            },
-        ))
-        .await?;
+        let resolved_options: Vec<String> = match options {
+            SelectOptions::Fixed(options) => {
+                future::try_join_all(options.iter().enumerate().map(
+                    |(i, template)| {
+                        // Fork the local state, one copy for each new branch
+                        let mut stack = stack.clone();
+                        async move {
+                            template
+                                .render_chain_config(
+                                    format!("options[{i}]"),
+                                    context,
+                                    &mut stack,
+                                )
+                                .await
+                        }
+                    },
+                ))
+                .await?
+            }
+            SelectOptions::Dynamic { source, selector } => {
+                // Render source to a string
+                let source = source
+                    .render_chain_config("source", context, stack)
+                    .await?;
+
+                // the above render_chain_config will always parse the output of
+                // the chain as a string, but we'll need to
+                // parse back to JSON to execute the JSONPath
+                // query against it.
+                let source_json: serde_json::Value =
+                    serde_json::from_str(&source).map_err(|error| {
+                        ChainError::DynamicSelectOptions {
+                            error: Arc::new(error),
+                        }
+                    })?;
+
+                let options = match (selector, source_json) {
+                    // A selector and raw JSON value means we execute
+                    // the selector
+                    (Some(selector), value) => Ok(selector
+                        .query_list(&value)
+                        .into_iter()
+                        .cloned()
+                        .collect()),
+                    // No selector, but a JSON array means we're good to go!
+                    (None, serde_json::Value::Array(options)) => Ok(options),
+
+                    (None, _) => Err(ChainError::DynamicOptionsInvalid),
+                }?;
+
+                // Convert all values to strings, for convenience. THis may be a
+                // bit wonky for nexted objects/arrays, but it
+                // should be obvious to the user what's going on so
+                // it's better than returning an error
+                options
+                    .iter()
+                    .map(|value| {
+                        // if the value is already a string, avoid calling
+                        // to_string on it since that would wrap the string
+                        // in another set of quotes.
+                        match value {
+                            serde_json::Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        }
+                    })
+                    .collect()
+            }
+        };
 
         context.prompter.select(Select {
             message,
-            options,
+            options: resolved_options,
             channel: tx.into(),
         });
 

@@ -232,7 +232,7 @@ fn init_text(
             // Body is a known content type so we parsed it - apply a query if
             // necessary and prettify the output
             query
-                .map(|query| query.query(parsed_body).prettify())
+                .map(|query| query.query_content(parsed_body).prettify())
                 .unwrap_or_else(|| parsed_body.prettify())
         })
         // Content couldn't be parsed, fall back to the raw text

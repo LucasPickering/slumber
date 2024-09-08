@@ -178,6 +178,20 @@ pub enum ChainError {
     #[error("No response from prompt/select")]
     PromptNoResponse,
 
+    /// We hit some sort of deserialization error while trying to build dynamic
+    /// options
+    #[error("Dynamic option list failed to deserialize as JSON")]
+    DynamicSelectOptions {
+        #[source]
+        error: Arc<serde_json::Error>,
+    },
+
+    #[error(
+        "Dynamic select options are invalid. Source must be an array or a \
+        selector must be provided."
+    )]
+    DynamicOptionsInvalid,
+
     /// A bubbled-error from rendering a nested template in the chain arguments
     #[error("Rendering nested template for field `{field}`")]
     Nested {

@@ -425,7 +425,22 @@ pub enum ChainSource {
         /// Descriptor to show to the user
         message: Option<Template>,
         /// List of options to choose from
-        options: Vec<Template>,
+        options: SelectOptions,
+    },
+}
+
+/// Static or dynamic list of options for a select chain
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(rename_all = "snake_case", deny_unknown_fields, untagged)]
+pub enum SelectOptions {
+    Fixed(Vec<Template>),
+    /// Dynamic requires a source (often a chain) that either returns a JSON
+    /// array OR a JSON object, in which case we'll use selector to query
+    /// and find the array to parse in to the list of options
+    Dynamic {
+        source: Template,
+        selector: Option<Query>,
     },
 }
 

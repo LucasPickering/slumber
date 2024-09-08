@@ -43,7 +43,7 @@ Here's the full list of changes:
 
 ### Fixed
 
-- Fix Basic auth being label as Bearer auth in Recipe Authentication pane
+- Fix basic auth being label as bearer auth in Recipe Authentication pane
 - Use correct binding for `search` action in the placeholder of the response filter textbox
   - Previously it was hardcoded to display the default of `/`
 - Fix response body filter not applying on new responses

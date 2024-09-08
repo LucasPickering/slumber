@@ -37,6 +37,12 @@ chains:
         - baz
         - a really really really really long option
         - "{{chains.username}}"
+  select_dynamic:
+    source: !select
+      message: Select a value
+      options:
+        source: "{{chains.auth_token}}"
+        selector: $[*]
   auth_token:
     source: !request
       recipe: login
@@ -83,7 +89,7 @@ requests:
         url: "{{host}}/get"
         query:
           - foo=bar
-          - select={{chains.select_value}}
+          - select={{chains.select_dynamic}}
 
       get_user: !request
         <<: *base

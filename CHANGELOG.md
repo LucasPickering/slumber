@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
 - Updated the Configuration docs to remove the non-existent `slumber show dir` command
 
 ## [2.0.0] - 2024-09-06

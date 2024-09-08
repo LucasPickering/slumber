@@ -4,7 +4,7 @@ Configuration provides _application_-level settings, as opposed to collection-le
 
 ## Location & Creation
 
-Configuration is stored in the Slumber root directory, under the file `config.yml`. To find the root directory, you can run:
+Configuration is stored in the Slumber root directory, under the file `config.yml`. To find the config file, you can run:
 
 ```sh
 slumber show paths

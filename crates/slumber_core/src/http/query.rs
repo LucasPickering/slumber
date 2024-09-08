@@ -3,7 +3,7 @@
 use crate::http::content_type::ResponseContent;
 use derive_more::{Display, FromStr};
 use serde::{Deserialize, Serialize};
-use serde_json_path::{ExactlyOneError, JsonPath};
+use serde_json_path::{ExactlyOneError, JsonPath, NodeList};
 use std::borrow::Cow;
 use thiserror::Error;
 
@@ -17,7 +17,7 @@ impl Query {
     /// Apply a query to some content, returning the result in the original
     /// format. This will convert to a common format, apply the query, then
     /// convert back.
-    pub fn query(
+    pub fn query_content(
         &self,
         value: &dyn ResponseContent,
     ) -> Box<dyn ResponseContent> {
@@ -28,6 +28,11 @@ impl Query {
             self.0.query(&json_value).into_iter().cloned().collect(),
         );
         content_type.parse_json(Cow::Owned(queried))
+    }
+
+    /// Apply a query to some content, returning a list of results.
+    pub fn query_list<'a>(&self, value: &'a serde_json::Value) -> NodeList<'a> {
+        self.0.query(value)
     }
 
     /// Apply a query to some content, returning a string. The query should

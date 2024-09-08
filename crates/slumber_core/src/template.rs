@@ -263,7 +263,7 @@ mod tests {
         assert_err,
         collection::{
             Chain, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
-            ChainSource, Profile, Recipe, RecipeId,
+            ChainSource, Profile, Recipe, RecipeId, SelectOptions,
         },
         http::{
             content_type::ContentType, Exchange, RequestRecord, ResponseRecord,
@@ -276,7 +276,7 @@ mod tests {
     use chrono::Utc;
     use indexmap::indexmap;
     use rstest::rstest;
-    use serde_json::json;
+    use serde_json::{json, Value};
     use std::time::Duration;
     use tokio::fs;
     use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
@@ -947,12 +947,12 @@ mod tests {
     }
 
     #[rstest]
-    #[case::no_chains(vec!["foo!", "bar!"], 0, "foo!")]
-    #[case::chains_0(vec!["foo!", "{{chains.command}}"], 0, "foo!")]
-    #[case::chains_1(vec!["foo!", "{{chains.command}}"], 1, "command_output")]
+    #[case::no_chains(SelectOptions::Fixed(vec!["foo!".into(), "bar!".into()]), 0, "foo!")]
+    #[case::chains_0(SelectOptions::Fixed(vec!["foo!".into(), "{{chains.command}}".into()]), 0, "foo!")]
+    #[case::chains_1(SelectOptions::Fixed(vec!["foo!".into(), "{{chains.command}}".into()]), 1, "command_output")]
     #[tokio::test]
-    async fn test_chain_select(
-        #[case] options: Vec<&str>,
+    async fn test_chain_fixed_select(
+        #[case] options: SelectOptions,
         #[case] index: usize,
         #[case] expected: &str,
     ) {
@@ -960,11 +960,7 @@ mod tests {
             id: "sut".into(),
             source: ChainSource::Select {
                 message: Some("password".into()),
-                options: options
-                    .clone()
-                    .into_iter()
-                    .map(|s| s.into())
-                    .collect(),
+                options,
             },
             ..Chain::factory(())
         };
@@ -989,12 +985,109 @@ mod tests {
         assert_eq!(render!("{{chains.sut}}", context).unwrap(), expected);
     }
 
+    #[rstest]
+    #[case::dynamic_select_selector_0(
+        SelectOptions::Dynamic { source: "{{chains.request}}".into(), selector: Some("$.array[*]".parse().unwrap())},
+        json!({"array": ["foo", "bar"]}),
+        0,
+        "foo"
+    )]
+    #[case::dynamic_select_selector_1(
+        SelectOptions::Dynamic { source: "{{chains.request}}".into(), selector: Some("$.array[*]".parse().unwrap())},
+        json!({"array": ["foo", "bar"]}),
+        1,
+        "bar"
+    )]
+    #[case::dynamic_select_0(
+        SelectOptions::Dynamic { source: "{{chains.request}}".into(), selector: None},
+        json!(["foo", "bar"]),
+        0,
+        "foo"
+    )]
+    #[case::dynamic_select_1(
+        SelectOptions::Dynamic { source: "{{chains.request}}".into(), selector: None},
+        json!(["foo", "bar"]),
+        1,
+        "bar"
+    )]
+    #[tokio::test]
+    async fn test_chain_dynamic_select(
+        #[case] options: SelectOptions,
+        #[case] chain_json: Value,
+        #[case] index: usize,
+        #[case] expected: &str,
+    ) {
+        let profile = Profile {
+            data: indexmap! {"header".into() => "Token".into()},
+            ..Profile::factory(())
+        };
+        let recipe = Recipe {
+            ..Recipe::factory(())
+        };
+
+        let sut_chain = Chain {
+            id: "sut".into(),
+            source: ChainSource::Select {
+                message: Some("password".into()),
+                options,
+            },
+            ..Chain::factory(())
+        };
+
+        let request_chain = Chain {
+            id: "request".into(),
+            source: ChainSource::Request {
+                recipe: recipe.id.clone(),
+                trigger: Default::default(),
+                section: Default::default(),
+            },
+            selector: None,
+            content_type: Some(ContentType::Json),
+            ..Chain::factory(())
+        };
+
+        let database = CollectionDatabase::factory(());
+
+        let response_headers =
+            header_map(indexmap! {"Token" => "Secret Value"});
+
+        let request = RequestRecord {
+            recipe_id: recipe.id.clone(),
+            profile_id: Some(profile.id.clone()),
+            ..RequestRecord::factory(())
+        };
+        let response = ResponseRecord {
+            body: chain_json.to_string().into_bytes().into(),
+            headers: response_headers,
+            ..ResponseRecord::factory(())
+        };
+        database
+            .insert_exchange(&Exchange::factory((request, response)))
+            .unwrap();
+
+        let context = TemplateContext {
+            selected_profile: Some(profile.id.clone()),
+            collection: Collection {
+                recipes: by_id([recipe]).into(),
+                chains: by_id([sut_chain, request_chain]),
+                profiles: by_id([profile]),
+                ..Collection::factory(())
+            }
+            .into(),
+            database,
+            prompter: Box::new(TestSelectPrompter::new(vec![index])),
+            ..TemplateContext::factory(())
+        };
+
+        assert_eq!(render!("{{chains.sut}}", context).unwrap(), expected);
+    }
+
     #[tokio::test]
     async fn test_chain_select_error() {
         let chain = Chain {
             source: ChainSource::Select {
                 message: Some("password".into()),
-                options: vec!["foo".into(), "bar".into()],
+                options: SelectOptions::Fixed(vec!["foo".into(), "bar".into()]),
             },
             ..Chain::factory(())
         };
@@ -1013,6 +1106,51 @@ mod tests {
             render!("{{chains.chain1}}", context),
             "No response from prompt/select"
         );
+    }
+
+    #[rstest]
+    #[case::invalid_json(
+        "not json",
+        "Dynamic option list failed to deserialize as JSON"
+    )]
+    #[case::not_array(
+        "{\"a\": 3}",
+        "Dynamic select options are invalid. Source must be an array or a \
+        selector must be provided."
+    )]
+    #[tokio::test]
+    async fn test_chain_select_dynamic_error(
+        #[case] input: &str,
+        #[case] expected_error: &str,
+    ) {
+        let sut_chain = Chain {
+            source: ChainSource::Select {
+                message: Some("password".into()),
+                options: SelectOptions::Dynamic {
+                    source: "{{chains.command}}".into(),
+                    selector: None,
+                },
+            },
+            ..Chain::factory(())
+        };
+
+        let command_chain = Chain {
+            id: "command".into(),
+            source: ChainSource::command(["echo", input]),
+            ..Chain::factory(())
+        };
+
+        let context = TemplateContext {
+            collection: Collection {
+                chains: by_id([sut_chain, command_chain]),
+                ..Collection::factory(())
+            }
+            .into(),
+            prompter: Box::new(TestSelectPrompter::new(vec![0usize])),
+            ..TemplateContext::factory(())
+        };
+
+        assert_err!(render!("{{chains.chain1}}", context), expected_error);
     }
 
     /// Test that a chain being used twice only computes the chain once

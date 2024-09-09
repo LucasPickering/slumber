@@ -6,9 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Use `SLUMBER_CONFIG_PATH` to customize configuration (_not_ collection) file path [#370](https://github.com/LucasPickering/slumber/issues/370)
+
 ### Fixed
 
-- Updated the Configuration docs to remove the non-existent `slumber show dir` command
+- Updated the Configuration docs to remove the non-existent `slumber show dir` command (thanks @SVendittelli)
 
 ## [2.0.0] - 2024-09-06
 

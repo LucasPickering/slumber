@@ -2218,6 +2218,8 @@ dependencies = [
  "anyhow",
  "crossterm",
  "derive_more",
+ "dirs",
+ "env-lock",
  "indexmap",
  "itertools 0.13.0",
  "ratatui",

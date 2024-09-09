@@ -20,11 +20,12 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     http::HttpEngineConfig,
-    util::{parse_yaml, DataDirectory, ResultTraced},
+    util::{expand_home, parse_yaml, DataDirectory, ResultTraced},
 };
-use std::{fs::File, path::PathBuf};
+use std::{env, fs::File, path::PathBuf};
 use tracing::info;
 
+const PATH_ENV_VAR: &str = "SLUMBER_CONFIG_PATH";
 const FILE: &str = "config.yml";
 
 /// App-level configuration, which is global across all sessions and
@@ -52,7 +53,9 @@ pub struct Config {
 impl Config {
     /// Path to the configuration file
     pub fn path() -> PathBuf {
-        DataDirectory::get().file(FILE)
+        env::var(PATH_ENV_VAR)
+            .map(|path| expand_home(PathBuf::from(path)).into_owned())
+            .unwrap_or_else(|_| DataDirectory::get().file(FILE))
     }
 
     /// Load configuration from the file, if present. If not, just return a
@@ -94,5 +97,23 @@ impl Default for Config {
             theme: Default::default(),
             debug: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_custom_config_path() {
+        let _guard = env_lock::lock_env([(
+            PATH_ENV_VAR,
+            Some("~/dotfiles/slumber.yml"),
+        )]);
+        // Note: tilde is NOT expanded here; we expect the shell to do that
+        assert_eq!(
+            Config::path(),
+            dirs::home_dir().unwrap().join("dotfiles/slumber.yml")
+        );
     }
 }

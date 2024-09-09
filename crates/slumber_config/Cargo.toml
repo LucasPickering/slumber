@@ -22,6 +22,8 @@ slumber_core = {workspace = true}
 tracing = {workspace = true}
 
 [dev-dependencies]
+dirs = {workspace = true}
+env-lock = {workspace = true}
 rstest = {workspace = true}
 serde_test = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}

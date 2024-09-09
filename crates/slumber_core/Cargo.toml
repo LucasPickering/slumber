@@ -16,7 +16,7 @@ async-trait = "0.1.81"
 bytes = {workspace = true, features = ["serde"]}
 chrono = {workspace = true, features = ["clock", "serde", "std"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from", "from_str"]}
-dirs = "5.0.1"
+dirs = {workspace = true}
 futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
@@ -41,7 +41,7 @@ uuid = {workspace = true, features = ["serde", "v4"]}
 winnow = "0.6.16"
 
 [dev-dependencies]
-env-lock = "0.1.0"
+env-lock = {workspace = true}
 pretty_assertions = {workspace = true}
 proptest = "1.5.0"
 proptest-derive = "0.5.0"

@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Use `SLUMBER_CONFIG_PATH` to customize configuration (_not_ collection) file path [#370](https://github.com/LucasPickering/slumber/issues/370)
+- Add a dynamic variant to `!select` chain type, allowing your collection to present a list of values driven from the output of another chain. (thanks @anussel5559)
+  - [See docs for more](https://slumber.lucaspickering.me/book/api/request_collection/chain_source.html#select)
 
 ### Fixed
 

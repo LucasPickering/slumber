@@ -173,10 +173,19 @@ password:
 
 Prompt the user to select a defined value from a list.
 
-| Field     | Type         | Description                            | Default  |
-| --------- | ------------ | -------------------------------------- | -------- |
-| `message` | `Template`   | Descriptive prompt for the user        | Chain ID |
-| `options` | `Template[]` | List of options to present to the user | Required |
+| Field     | Type                               | Description                            | Default  |
+| --------- | ---------------------------------- | -------------------------------------- | -------- |
+| `message` | `Template`                         | Descriptive prompt for the user        | Chain ID |
+| `options` | [`SelectOptions`](#Select-options) | List of options to present to the user | Required |
+
+#### Select Options
+
+The list of options to present to the user. This can be a static list of values or a dynamic configuration to generate the list of options.
+
+| Variant   | Type                                              | Description                                                  |
+| --------- | ------------------------------------------------- | ------------------------------------------------------------ |
+| `fixed`   | `Template[]`                                      | A fixed list of options                                      |
+| `dynamic` | [`DynamicSelectOptions`](#dynamic-select-options) | A dynamic configuration used to generate the list of options |
 
 #### Examples
 
@@ -188,4 +197,21 @@ fruit:
       - apple
       - banana
       - guava
+dynamic_fruit:
+  source: !select
+    message: Select Fruit
+    options:
+      # Assume this respones body looks like: {"fruits": ["apple", "guava", "pear"]}
+      source: "{{chains.request_fruit}}"
+      selector: $.fruits[*]
 ```
+
+### Dynamic Select Options
+
+This defines a dynamic configuration used to generate the list of options in a select chain. The `source` output could be any JSON value, in which case a `selector` must be used to filter to a JSON array.
+If the `source` output is already a JSON array, no selector is required.
+
+| Field      | Type                                                                                   | Description                                                                        | Default  |
+| ---------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------- |
+| `source`   | `Template`                                                                             | The source of the data to drive the list of options.                               | Required |
+| `selector` | [`JSONPath`](https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html) | A JSONPath expression to filter down to a JSON array.                              | `null`   |

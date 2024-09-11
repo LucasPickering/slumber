@@ -430,9 +430,8 @@ pub enum ChainSource {
 }
 
 /// Static or dynamic list of options for a select chain
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields, untagged)]
 pub enum SelectOptions {
     Fixed(Vec<Template>),
     /// Dynamic requires a source (often a chain) that either returns a JSON

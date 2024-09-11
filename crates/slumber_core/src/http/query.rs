@@ -89,6 +89,13 @@ impl From<ExactlyOneError> for QueryError {
 }
 
 #[cfg(test)]
+impl From<&str> for Query {
+    fn from(value: &str) -> Self {
+        Self(value.parse().unwrap())
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{assert_err, http::content_type::Json};

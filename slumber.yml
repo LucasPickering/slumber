@@ -40,7 +40,7 @@ chains:
   select_dynamic:
     source: !select
       message: Select a value
-      options:
+      options: !dynamic
         source: "{{chains.auth_token}}"
         selector: $[*]
   auth_token:

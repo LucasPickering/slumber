@@ -107,6 +107,7 @@ impl Generate for &RequestStateSummary {
                 Span::styled("Build error", styles.text.error)
             }
             RequestStateSummary::Loading { .. } => "Loading...".into(),
+            RequestStateSummary::Cancelled { .. } => "Cancelled".into(),
             RequestStateSummary::Response(exchange) => {
                 exchange.status.generate()
             }

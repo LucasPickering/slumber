@@ -1,6 +1,6 @@
 //! Types for managing HTTP state in the TUI
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use itertools::Itertools;
 use reqwest::StatusCode;
 use slumber_core::{
@@ -15,6 +15,8 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     sync::Arc,
 };
+use tokio::task::JoinHandle;
+use tracing::{error, warn};
 
 /// Simple in-memory "database" for request state. This serves a few purposes:
 ///
@@ -54,10 +56,143 @@ impl RequestStore {
         self.requests.get(&id)
     }
 
-    /// Update state of an in-progress HTTP request. Return `true` if the
-    /// request is **new** in the state, i.e. it's the initial insert
-    pub fn update(&mut self, state: RequestState) -> bool {
-        self.requests.insert(state.id(), state).is_none()
+    /// Insert a new request. This will construct a [RequestState::Building]
+    pub fn start(
+        &mut self,
+        id: RequestId,
+        profile_id: Option<ProfileId>,
+        recipe_id: RecipeId,
+        join_handle: JoinHandle<()>,
+    ) {
+        let state = RequestState::Building {
+            id,
+            start_time: Utc::now(),
+            profile_id,
+            recipe_id,
+            join_handle,
+        };
+        self.requests.insert(id, state);
+    }
+
+    /// Mark a request as loading
+    pub fn loading(&mut self, request: Arc<RequestRecord>) {
+        self.replace(request.id, |state| {
+            // Requests should go building->loading, but it's possible it got
+            // cancelled right before this was called
+            if let RequestState::Building { join_handle, .. } = state {
+                RequestState::Loading {
+                    request,
+                    // Reset timer
+                    start_time: Utc::now(),
+                    join_handle,
+                }
+            } else {
+                // Can't create loading state since we don't have a join handle
+                warn!(
+                    request = ?state,
+                    "Cannot mark request as loading: not in building state",
+                );
+                state
+            }
+        });
+    }
+
+    /// Mark a request as failed because of a build error
+    pub fn build_error(&mut self, error: RequestBuildError) {
+        // Use replace just to help catch bugs
+        self.replace(error.id, |state| {
+            // This indicates a bug or race condition (e.g. build cancelled as
+            // it finished). Error should always take precedence
+            if !matches!(state, RequestState::Building { .. }) {
+                warn!(
+                    request = ?state,
+                    "Unexpected prior state for request build error",
+                );
+            }
+
+            RequestState::BuildError { error }
+        });
+    }
+
+    /// Mark a request as successful, i.e. we received a response
+    pub fn response(&mut self, exchange: Exchange) {
+        // Use replace just to help catch bugs
+        self.replace(exchange.id, |state| {
+            // This indicates a bug or race condition (e.g. request cancelled as
+            // it finished). Success should always take precedence
+            if !matches!(state, RequestState::Loading { .. }) {
+                warn!(
+                    request = ?state,
+                    "Unexpected prior state for request response",
+                );
+            }
+
+            RequestState::response(exchange)
+        });
+    }
+
+    /// Mark a request as failed because of an HTTP error
+    pub fn request_error(&mut self, error: RequestError) {
+        // Use replace just to help catch bugs
+        self.replace(error.request.id, |state| {
+            // This indicates a bug or race condition (e.g. request cancelled as
+            // it failed). Error should always take precedence
+            if !matches!(state, RequestState::Loading { .. }) {
+                warn!(
+                    request = ?state,
+                    "Unexpected prior state for request error",
+                );
+            }
+
+            RequestState::RequestError { error }
+        });
+    }
+
+    /// Cancel a request that is either building or loading. If it's in any
+    /// other state, it will be left alone.
+    pub fn cancel(&mut self, id: RequestId) {
+        let end_time = Utc::now();
+        self.replace(id, |state| match state {
+            RequestState::Building {
+                id,
+                start_time,
+                profile_id,
+                recipe_id,
+                join_handle,
+            } => {
+                join_handle.abort();
+                RequestState::Cancelled {
+                    id,
+                    recipe_id,
+                    profile_id,
+                    start_time,
+                    end_time,
+                }
+            }
+            RequestState::Loading {
+                request,
+                start_time,
+                join_handle,
+            } => {
+                join_handle.abort();
+                RequestState::Cancelled {
+                    id,
+                    recipe_id: request.recipe_id.clone(),
+                    profile_id: request.profile_id.clone(),
+                    start_time,
+                    end_time,
+                }
+            }
+            state => {
+                // If the request failed/finished while the cancel event was
+                // queued, don't do anything
+                warn!(
+                    request = ?state,
+                    "Cannot cancel request: not in building/loading state",
+                );
+                state
+            }
+        });
     }
 
     /// Load a request from the database by ID. If already present in the store,
@@ -142,13 +277,37 @@ impl RequestStore {
             .unique_by(RequestStateSummary::id);
         Ok(iter)
     }
+
+    /// Replace a request state in the store with new state, by mapping it
+    /// through a function. This assumes the request state is supposed to be in
+    /// the state, so it logs a message if it isn't (panics in debug mode). This
+    /// should be used for all state updates whether or not you need the
+    /// previous state. This will help catch bugs in debug mode.
+    fn replace(
+        &mut self,
+        id: RequestId,
+        f: impl FnOnce(RequestState) -> RequestState,
+    ) {
+        // Remove the existing value, map it, then reinsert. We need to remove
+        // the value first so we can pass ownership to the fn
+        if let Some(state) = self.requests.remove(&id) {
+            self.requests.insert(id, f(state));
+        } else if cfg!(debug_assertions) {
+            // Only crash in dev. In prd this bug shouldn't be fatal
+            panic!("Cannot replace request {id}: not in store");
+        } else {
+            // This indicates a logic error. We shouldn't ever hit a code
+            // path that calls this fn if the request isn't
+            // in the store at all.
+            error!(%id, "Cannot replace request: not in store");
+        }
+    }
 }
 
 /// State of an HTTP response, which can be in various states of
 /// completion/failure. Each request *recipe* should have one request state
 /// stored in the view at a time.
 #[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
 pub enum RequestState {
     /// The request is being built. Typically this is very fast, but can be
     /// slow if a chain source takes a while.
@@ -157,6 +316,7 @@ pub enum RequestState {
         start_time: DateTime<Utc>,
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
+        join_handle: JoinHandle<()>,
     },
 
     /// Something went wrong during the build :(
@@ -170,6 +330,16 @@ pub enum RequestState {
         /// pointer to the request as well
         request: Arc<RequestRecord>,
         start_time: DateTime<Utc>,
+        join_handle: JoinHandle<()>,
+    },
+
+    /// User cancelled the request mid-flight
+    Cancelled {
+        id: RequestId,
+        recipe_id: RecipeId,
+        profile_id: Option<ProfileId>,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
     },
 
     /// A resolved HTTP response, with all content loaded and ready to be
@@ -181,26 +351,6 @@ pub enum RequestState {
     RequestError { error: RequestError },
 }
 
-/// Metadata derived from a request. The request can be in progress, completed,
-/// or failed.
-#[derive(Debug)]
-pub struct RequestMetadata {
-    /// When was the request launched?
-    pub start_time: DateTime<Utc>,
-    /// Elapsed time for the active request. If pending, this is a running
-    /// total. Otherwise end time - start time.
-    pub duration: Duration,
-}
-
-/// Metadata derived from a response. This is only available for requests that
-/// have completed successfully.
-#[derive(Debug)]
-pub struct ResponseMetadata {
-    pub status: StatusCode,
-    /// Size of the response *body*
-    pub size: usize,
-}
-
 impl RequestState {
     /// Unique ID for this request, which will be retained throughout its life
     /// cycle
@@ -209,6 +359,7 @@ impl RequestState {
             Self::Building { id, .. } => *id,
             Self::BuildError { error, .. } => error.id,
             Self::Loading { request, .. } => request.id,
+            Self::Cancelled { id, .. } => *id,
             Self::RequestError { error } => error.request.id,
             Self::Response { exchange, .. } => exchange.id,
         }
@@ -220,6 +371,7 @@ impl RequestState {
             Self::Building { profile_id, .. } => profile_id.as_ref(),
             Self::BuildError { error } => error.profile_id.as_ref(),
             Self::Loading { request, .. } => request.profile_id.as_ref(),
+            Self::Cancelled { profile_id, .. } => profile_id.as_ref(),
             Self::RequestError { error } => error.request.profile_id.as_ref(),
             Self::Response { exchange, .. } => {
                 exchange.request.profile_id.as_ref()
@@ -233,6 +385,7 @@ impl RequestState {
             Self::Building { recipe_id, .. } => recipe_id,
             Self::BuildError { error } => &error.recipe_id,
             Self::Loading { request, .. } => &request.recipe_id,
+            Self::Cancelled { recipe_id, .. } => recipe_id,
             Self::RequestError { error } => &error.request.recipe_id,
             Self::Response { exchange, .. } => &exchange.request.recipe_id,
         }
@@ -265,6 +418,11 @@ impl RequestState {
                         end_time,
                         ..
                     },
+            }
+            | Self::Cancelled {
+                start_time,
+                end_time,
+                ..
             } => RequestMetadata {
                 start_time: *start_time,
                 duration: *end_time - *start_time,
@@ -291,17 +449,6 @@ impl RequestState {
         }
     }
 
-    /// Create a loading state with the current timestamp. This will generally
-    /// be slightly off from when the request was actually launched, but it
-    /// shouldn't matter. See [crate::http::RequestTicket::send] for why it
-    /// can't report a start time back to us.
-    pub fn loading(request: Arc<RequestRecord>) -> Self {
-        Self::Loading {
-            request,
-            start_time: Utc::now(),
-        }
-    }
-
     /// Create a request state from a completed response. This is **expensive**,
     /// don't call it unless you need the value.
     pub fn response(exchange: Exchange) -> Self {
@@ -311,6 +458,106 @@ impl RequestState {
         exchange.response.parse_body();
         Self::Response { exchange }
     }
+}
+
+#[cfg(test)]
+impl PartialEq for RequestState {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Building {
+                    id: l_id,
+                    start_time: l_start_time,
+                    profile_id: l_profile_id,
+                    recipe_id: l_recipe_id,
+                    join_handle: _,
+                },
+                Self::Building {
+                    id: r_id,
+                    start_time: r_start_time,
+                    profile_id: r_profile_id,
+                    recipe_id: r_recipe_id,
+                    join_handle: _,
+                },
+            ) => {
+                l_id == r_id
+                    && l_start_time == r_start_time
+                    && l_profile_id == r_profile_id
+                    && l_recipe_id == r_recipe_id
+            }
+            (
+                Self::BuildError { error: l_error },
+                Self::BuildError { error: r_error },
+            ) => l_error == r_error,
+            (
+                Self::Loading {
+                    request: l_request,
+                    start_time: l_start_time,
+                    join_handle: _,
+                },
+                Self::Loading {
+                    request: r_request,
+                    start_time: r_start_time,
+                    join_handle: _,
+                },
+            ) => l_request == r_request && l_start_time == r_start_time,
+            (
+                Self::Cancelled {
+                    id: l_id,
+                    recipe_id: l_recipe_id,
+                    profile_id: l_profile_id,
+                    start_time: l_start_time,
+                    end_time: l_end_time,
+                },
+                Self::Cancelled {
+                    id: r_id,
+                    recipe_id: r_recipe_id,
+                    profile_id: r_profile_id,
+                    start_time: r_start_time,
+                    end_time: r_end_time,
+                },
+            ) => {
+                l_id == r_id
+                    && l_recipe_id == r_recipe_id
+                    && l_profile_id == r_profile_id
+                    && l_start_time == r_start_time
+                    && l_end_time == r_end_time
+            }
+            (
+                Self::Response {
+                    exchange: l_exchange,
+                },
+                Self::Response {
+                    exchange: r_exchange,
+                },
+            ) => l_exchange == r_exchange,
+            (
+                Self::RequestError { error: l_error },
+                Self::RequestError { error: r_error },
+            ) => l_error == r_error,
+            _ => false,
+        }
+    }
+}
+
+/// Metadata derived from a request. The request can be in progress, completed,
+/// or failed.
+#[derive(Debug)]
+pub struct RequestMetadata {
+    /// When was the request launched?
+    pub start_time: DateTime<Utc>,
+    /// Elapsed time for the active request. If pending, this is a running
+    /// total. Otherwise end time - start time.
+    pub duration: TimeDelta,
+}
+
+/// Metadata derived from a response. This is only available for requests that
+/// have completed successfully.
+#[derive(Debug)]
+pub struct ResponseMetadata {
+    pub status: StatusCode,
+    /// Size of the response *body*
+    pub size: usize,
 }
 
 /// A simplified version of [RequestState], which only stores metadata. This is
@@ -331,6 +578,11 @@ pub enum RequestStateSummary {
         id: RequestId,
         start_time: DateTime<Utc>,
     },
+    Cancelled {
+        id: RequestId,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    },
     Response(ExchangeSummary),
     RequestError {
         id: RequestId,
@@ -344,6 +596,7 @@ impl RequestStateSummary {
             Self::Building { id, .. }
             | Self::BuildError { id, .. }
             | Self::Loading { id, .. }
+            | Self::Cancelled { id, .. }
             | Self::RequestError { id, .. } => *id,
             Self::Response(exchange) => exchange.id,
         }
@@ -360,6 +613,9 @@ impl RequestStateSummary {
                 start_time: time, ..
             }
             | Self::Loading {
+                start_time: time, ..
+            }
+            | Self::Cancelled {
                 start_time: time, ..
             }
             | Self::RequestError { time, .. } => *time,
@@ -388,6 +644,16 @@ impl From<&RequestState> for RequestStateSummary {
                 id: request.id,
                 start_time: *start_time,
             },
+            RequestState::Cancelled {
+                id,
+                start_time,
+                end_time,
+                ..
+            } => Self::Cancelled {
+                id: *id,
+                start_time: *start_time,
+                end_time: *end_time,
+            },
             RequestState::Response { exchange } => {
                 Self::Response(exchange.into())
             }
@@ -411,7 +677,14 @@ mod tests {
         http::{Exchange, RequestBuildError, RequestError, RequestRecord},
         test_util::Factory,
     };
-    use std::sync::Arc;
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+        time::Duration,
+    };
+    use tokio::time;
 
     #[rstest]
     fn test_get() {
@@ -428,41 +701,143 @@ mod tests {
         assert_eq!(store.get(RequestId::new()), None);
     }
 
+    /// building->loading->success
     #[rstest]
-    fn test_update() {
+    #[tokio::test]
+    async fn test_life_cycle_success() {
         let mut store = RequestStore::new(CollectionDatabase::factory(()));
         let exchange = Exchange::factory(());
         let id = exchange.id;
 
         // Update for each state in the life cycle
-        assert!(store.update(RequestState::Building {
+        store.start(
             id,
-            start_time: exchange.start_time,
-            profile_id: exchange.request.profile_id.clone(),
-            recipe_id: exchange.request.recipe_id.clone()
-        }));
+            exchange.request.profile_id.clone(),
+            exchange.request.recipe_id.clone(),
+            tokio::spawn(async {}),
+        );
         assert_matches!(store.get(id), Some(RequestState::Building { .. }));
 
-        assert!(!store.update(RequestState::Loading {
-            request: Arc::clone(&exchange.request),
-            start_time: exchange.start_time,
-        }));
+        store.loading(Arc::clone(&exchange.request));
         assert_matches!(store.get(id), Some(RequestState::Loading { .. }));
 
-        assert!(!store.update(RequestState::response(exchange)));
+        store.response(exchange);
         assert_matches!(store.get(id), Some(RequestState::Response { .. }));
 
         // Insert a new request, just to make sure it's independent
         let exchange2 = Exchange::factory(());
         let id2 = exchange2.id;
-        assert!(store.update(RequestState::Building {
-            id: id2,
-            start_time: exchange2.start_time,
-            profile_id: exchange2.request.profile_id.clone(),
-            recipe_id: exchange2.request.recipe_id.clone()
-        }));
+        store.start(
+            id2,
+            exchange2.request.profile_id.clone(),
+            exchange2.request.recipe_id.clone(),
+            tokio::spawn(async {}),
+        );
         assert_matches!(store.get(id), Some(RequestState::Response { .. }));
         assert_matches!(store.get(id2), Some(RequestState::Building { .. }));
+    }
+
+    /// building->error
+    #[rstest]
+    #[tokio::test]
+    async fn test_life_cycle_build_error() {
+        let mut store = RequestStore::new(CollectionDatabase::factory(()));
+        let exchange = Exchange::factory(());
+        let id = exchange.id;
+        let profile_id = &exchange.request.profile_id;
+        let recipe_id = &exchange.request.recipe_id;
+
+        store.start(
+            id,
+            profile_id.clone(),
+            recipe_id.clone(),
+            tokio::spawn(async {}),
+        );
+        assert_matches!(store.get(id), Some(RequestState::Building { .. }));
+
+        store.build_error(RequestBuildError {
+            profile_id: profile_id.clone(),
+            recipe_id: recipe_id.clone(),
+            id,
+            start_time: Utc::now(),
+            end_time: Utc::now(),
+            error: anyhow!("oh no!"),
+        });
+        assert_matches!(store.get(id), Some(RequestState::BuildError { .. }));
+    }
+
+    /// building->loading->error
+    #[rstest]
+    #[tokio::test]
+    async fn test_life_cycle_request_error() {
+        let mut store = RequestStore::new(CollectionDatabase::factory(()));
+        let exchange = Exchange::factory(());
+        let id = exchange.id;
+        let profile_id = &exchange.request.profile_id;
+        let recipe_id = &exchange.request.recipe_id;
+
+        store.start(
+            id,
+            profile_id.clone(),
+            recipe_id.clone(),
+            tokio::spawn(async {}),
+        );
+        assert_matches!(store.get(id), Some(RequestState::Building { .. }));
+
+        store.loading(Arc::clone(&exchange.request));
+        assert_matches!(store.get(id), Some(RequestState::Loading { .. }));
+
+        store.request_error(RequestError {
+            error: anyhow!("oh no!"),
+            request: exchange.request,
+            start_time: Utc::now(),
+            end_time: Utc::now(),
+        });
+        assert_matches!(store.get(id), Some(RequestState::RequestError { .. }));
+    }
+
+    /// building->cancelled and loading->cancelled
+    #[rstest]
+    #[tokio::test]
+    async fn test_life_cycle_cancel() {
+        let mut store = RequestStore::new(CollectionDatabase::factory(()));
+        let exchange = Exchange::factory(());
+        let id = exchange.id;
+        let profile_id = &exchange.request.profile_id;
+        let recipe_id = &exchange.request.recipe_id;
+
+        // This flag confirms that neither future ever finishes
+        let future_finished: Arc<AtomicBool> = Default::default();
+
+        let ff = Arc::clone(&future_finished);
+        store.start(
+            id,
+            profile_id.clone(),
+            recipe_id.clone(),
+            tokio::spawn(async move {
+                time::sleep(Duration::from_secs(1)).await;
+                ff.store(true, Ordering::Relaxed);
+            }),
+        );
+        store.cancel(id);
+        assert_matches!(store.get(id), Some(RequestState::Cancelled { .. }));
+        assert!(!future_finished.load(Ordering::Relaxed));
+
+        let ff = Arc::clone(&future_finished);
+        store.start(
+            id,
+            profile_id.clone(),
+            recipe_id.clone(),
+            tokio::spawn(async move {
+                time::sleep(Duration::from_secs(1)).await;
+                ff.store(true, Ordering::Relaxed);
+            }),
+        );
+        store.loading(exchange.request);
+        assert_matches!(store.get(id), Some(RequestState::Loading { .. }));
+        store.cancel(id);
+        assert_matches!(store.get(id), Some(RequestState::Cancelled { .. }));
+        assert!(!future_finished.load(Ordering::Relaxed));
     }
 
     #[rstest]
@@ -539,7 +914,6 @@ mod tests {
     /// request that's not in the DB (i.e. in a state other than completed)
     #[rstest]
     fn test_load_latest_local(harness: TestHarness) {
-        let mut store = harness.request_store.borrow_mut();
         let profile_id = ProfileId::factory(());
         let recipe_id = RecipeId::factory(());
 
@@ -547,23 +921,21 @@ mod tests {
         create_exchange(&harness, Some(&profile_id), Some(&recipe_id));
 
         // This is what we should see
-        let request_record = Arc::new(RequestRecord::factory((
-            Some(profile_id.clone()),
-            recipe_id.clone(),
-        )));
+        let exchange =
+            Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
+        let request_id = exchange.id;
 
-        store.update(RequestState::loading(Arc::clone(&request_record)));
-        assert_eq!(
-            store
-                .load_latest(Some(&profile_id), &recipe_id)
-                .unwrap()
-                .map(RequestState::id),
-            Some(request_record.id)
-        );
+        let mut store = harness.request_store.borrow_mut();
+        store
+            .requests
+            .insert(exchange.id, RequestState::response(exchange));
+        let loaded = store.load_latest(Some(&profile_id), &recipe_id).unwrap();
+        assert_eq!(loaded.map(RequestState::id), Some(request_id));
     }
 
     #[rstest]
-    fn test_load_summaries(harness: TestHarness) {
+    #[tokio::test]
+    async fn test_load_summaries(harness: TestHarness) {
         let mut store = harness.request_store.borrow_mut();
         let profile_id = ProfileId::factory(());
         let recipe_id = RecipeId::factory(());
@@ -581,65 +953,77 @@ mod tests {
         // Pre-load one from the DB, to make sure it gets de-duped
         let exchange = exchanges.pop().unwrap();
         let response_id = exchange.id;
-        store.update(RequestState::response(exchange));
+        store
+            .requests
+            .insert(exchange.id, RequestState::response(exchange));
 
         let building_id = RequestId::new();
-        store.update(RequestState::Building {
-            id: building_id,
-            start_time: Utc::now(),
-            profile_id: Some(profile_id.clone()),
-            recipe_id: recipe_id.clone(),
-        });
+        store.start(
+            building_id,
+            Some(profile_id.clone()),
+            recipe_id.clone(),
+            tokio::spawn(async {}),
+        );
 
         let build_error_id = RequestId::new();
-        store.update(RequestState::BuildError {
-            error: RequestBuildError {
-                profile_id: Some(profile_id.clone()),
-                recipe_id: recipe_id.clone(),
-                id: build_error_id,
-                start_time: Utc::now(),
-                end_time: Utc::now(),
-                error: anyhow!("oh no!"),
+        store.requests.insert(
+            build_error_id,
+            RequestState::BuildError {
+                error: RequestBuildError {
+                    profile_id: Some(profile_id.clone()),
+                    recipe_id: recipe_id.clone(),
+                    id: build_error_id,
+                    start_time: Utc::now(),
+                    end_time: Utc::now(),
+                    error: anyhow!("oh no!"),
+                },
             },
-        });
+        );
 
         let request = RequestRecord::factory((
             Some(profile_id.clone()),
             recipe_id.clone(),
         ));
         let loading_id = request.id;
-        store.update(RequestState::Loading {
-            request: request.into(),
-            start_time: Utc::now(),
-        });
+        store.requests.insert(
+            loading_id,
+            RequestState::Loading {
+                request: request.into(),
+                start_time: Utc::now(),
+                join_handle: tokio::spawn(async {}),
+            },
+        );
 
         let request = RequestRecord::factory((
             Some(profile_id.clone()),
             recipe_id.clone(),
         ));
         let request_error_id = request.id;
-        store.update(RequestState::RequestError {
-            error: RequestError {
-                error: anyhow!("oh no!"),
-                request: request.into(),
-                start_time: Utc::now(),
-                end_time: Utc::now(),
+        store.requests.insert(
+            request_error_id,
+            RequestState::RequestError {
+                error: RequestError {
+                    error: anyhow!("oh no!"),
+                    request: request.into(),
+                    start_time: Utc::now(),
+                    end_time: Utc::now(),
+                },
             },
-        });
+        );
 
         // Neither of these should appear
-        store.update(RequestState::Building {
-            id: RequestId::new(),
-            start_time: Utc::now(),
-            profile_id: Some(ProfileId::factory(())),
-            recipe_id: recipe_id.clone(),
-        });
-        store.update(RequestState::Building {
-            id: RequestId::new(),
-            start_time: Utc::now(),
-            profile_id: Some(profile_id.clone()),
-            recipe_id: RecipeId::factory(()),
-        });
+        store.start(
+            RequestId::new(),
+            Some(ProfileId::factory(())),
+            recipe_id.clone(),
+            tokio::spawn(async {}),
+        );
+        store.start(
+            RequestId::new(),
+            Some(profile_id.clone()),
+            RecipeId::factory(()),
+            tokio::spawn(async {}),
+        );
 
         // It's really annoying to do a full equality comparison because we'd
         // have to re-create each piece of data (they don't impl Clone), so

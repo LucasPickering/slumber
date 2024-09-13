@@ -207,6 +207,9 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
                     }
                 }
             }
+            Some(RequestState::Cancelled { .. }) => {
+                frame.render_widget("Request cancelled", content_area)
+            }
             Some(RequestState::Response { exchange }) => {
                 render_tabs(frame);
                 match selected_tab {

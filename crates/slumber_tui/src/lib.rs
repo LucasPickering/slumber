@@ -18,7 +18,7 @@ mod view;
 
 use crate::{
     context::TuiContext,
-    http::{RequestState, RequestStore},
+    http::RequestStore,
     message::{Message, MessageSender, RequestConfig},
     util::{
         clear_event_buffer, get_editor_command, save_file, signals,
@@ -27,7 +27,6 @@ use crate::{
     view::{PreviewPrompter, UpdateContext, View},
 };
 use anyhow::{anyhow, Context};
-use chrono::Utc;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
@@ -252,18 +251,17 @@ impl Tui {
                 self.send_request(request_config)?
             }
             Message::HttpBuildError { error } => {
-                self.request_store
-                    .update(RequestState::BuildError { error });
+                self.request_store.build_error(error);
             }
             Message::HttpLoading { request } => {
-                self.request_store.update(RequestState::loading(request));
+                self.request_store.loading(request);
             }
-            Message::HttpComplete(result) => {
-                let state = match result {
-                    Ok(exchange) => RequestState::response(exchange),
-                    Err(error) => RequestState::RequestError { error },
-                };
-                self.request_store.update(state);
+            Message::HttpComplete(result) => match result {
+                Ok(exchange) => self.request_store.response(exchange),
+                Err(error) => self.request_store.request_error(error),
+            },
+            Message::HttpCancel(request_id) => {
+                self.request_store.cancel(request_id)
             }
 
             // Force quit short-circuits the view/message cycle, to make sure
@@ -523,21 +521,13 @@ impl Tui {
             self.template_context(profile_id.clone(), false)?;
         let messages_tx = self.messages_tx();
 
-        // Mark request state as building
         let seed = RequestSeed::new(recipe_id.clone(), options);
-        self.request_store.update(RequestState::Building {
-            id: seed.id,
-            start_time: Utc::now(),
-            profile_id,
-            recipe_id,
-        });
-        // New requests should get shown in the UI
-        self.view.select_request(&mut self.request_store, seed.id);
+        let request_id = seed.id;
 
         // We can't use self.spawn here because HTTP errors are handled
         // differently from all other error types
         let database = self.database.clone();
-        tokio::spawn(async move {
+        let join_handle = tokio::spawn(async move {
             // Build the request
             let result = TuiContext::get()
                 .http_engine
@@ -561,6 +551,19 @@ impl Tui {
             let result = ticket.send(&database).await;
             messages_tx.send(Message::HttpComplete(result));
         });
+
+        // Add the new request to the store. This has to go after spawning the
+        // task so we can include the join handle (for cancellation)
+        self.request_store.start(
+            request_id,
+            profile_id,
+            recipe_id,
+            join_handle,
+        );
+
+        // New requests should get shown in the UI
+        self.view
+            .select_request(&mut self.request_store, request_id);
 
         Ok(())
     }

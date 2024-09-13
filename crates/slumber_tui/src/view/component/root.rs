@@ -7,7 +7,7 @@ use crate::{
         component::{
             help::HelpFooter,
             history::History,
-            misc::NotificationText,
+            misc::{ConfirmModal, NotificationText},
             primary::{PrimaryView, PrimaryViewProps},
         },
         context::UpdateContext,
@@ -148,6 +148,20 @@ impl EventHandler for Root {
                 Action::History => {
                     self.open_history(context.request_store)
                         .reported(&ViewContext::messages_tx());
+                }
+                Action::Cancel => {
+                    if let Some(request_id) = self.selected_request_id.0 {
+                        ViewContext::open_modal(ConfirmModal::new(
+                            "Cancel request?".into(),
+                            move |response| {
+                                if response {
+                                    ViewContext::send_message(
+                                        Message::HttpCancel(request_id),
+                                    );
+                                }
+                            },
+                        ))
+                    }
                 }
                 Action::Quit => ViewContext::send_message(Message::Quit),
                 Action::ReloadCollection => {

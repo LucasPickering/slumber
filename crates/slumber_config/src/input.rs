@@ -139,7 +139,7 @@ pub enum Action {
     Submit,
     /// Toggle checkbox and similar components on/off
     Toggle,
-    /// Close the current modal/dialog/etc.
+    /// Close the current modal/dialog/etc. OR cancel a request
     Cancel,
     /// Trigger the workflow to provide a temporary override for a recipe value
     /// (body/param/etc.)

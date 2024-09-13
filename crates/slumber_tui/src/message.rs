@@ -8,7 +8,8 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
-        BuildOptions, Exchange, RequestBuildError, RequestError, RequestRecord,
+        BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
+        RequestRecord,
     },
     template::{Prompt, Prompter, Select, Template, TemplateChunk},
     util::ResultTraced,
@@ -99,6 +100,8 @@ pub enum Message {
     /// recipe ID here because it's in the inner container already. Combining
     /// these two cases saves a bit of boilerplate.
     HttpComplete(Result<Exchange, RequestError>),
+    /// Cancel an HTTP request
+    HttpCancel(RequestId),
 
     /// User input from the terminal
     Input {

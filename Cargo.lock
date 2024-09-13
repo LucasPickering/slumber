@@ -2201,13 +2201,18 @@ dependencies = [
  "anyhow",
  "clap",
  "dialoguer",
+ "env-lock",
  "indexmap",
  "itertools 0.13.0",
+ "pretty_assertions",
  "reqwest",
+ "rstest",
  "serde",
+ "serde_json",
  "serde_yaml",
  "slumber_config",
  "slumber_core",
+ "tokio",
  "tracing",
 ]
 

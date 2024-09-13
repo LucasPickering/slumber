@@ -17,10 +17,11 @@
 
 # CLI Commands
 
-- [slumber request](./cli/request.md)
-- [slumber import](./cli/import.md)
-- [slumber generate](./cli/generate.md)
 - [slumber collections](./cli/collections.md)
+- [slumber generate](./cli/generate.md)
+- [slumber import](./cli/import.md)
+- [slumber new](./cli/new.md)
+- [slumber request](./cli/request.md)
 - [slumber show](./cli/show.md)
 
 # API Reference

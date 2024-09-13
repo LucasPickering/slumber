@@ -22,7 +22,7 @@ use strum::{EnumIter, IntoEnumIterator};
 /// This deliberately does not implement `Clone`, because it could potentially
 /// be very large. Instead, it's hidden behind an `Arc` by `CollectionFile`.
 #[derive(Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
@@ -43,7 +43,7 @@ pub struct Collection {
 
 /// Mutually exclusive hot-swappable config group
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
@@ -101,7 +101,7 @@ impl crate::test_util::Factory for ProfileId {
 
 /// A gathering of like-minded recipes and/or folders
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Folder {
     #[serde(skip)] // This will be auto-populated from the map key
@@ -173,7 +173,7 @@ impl crate::test_util::Factory<&str> for Recipe {
 /// not called `RequestTemplate` because the word "template" has a specific
 /// meaning related to string interpolation.
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
@@ -232,7 +232,7 @@ impl crate::test_util::Factory for RecipeId {
 #[derive(
     Copy, Clone, Debug, Display, EnumIter, FromStr, Serialize, Deserialize,
 )]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(into = "String", try_from = "String")]
 pub enum Method {
     #[display("CONNECT")]
@@ -343,7 +343,7 @@ impl From<&str> for RecipeBody {
 /// is the middleman: it defines where and how to pull the value, then recipes
 /// can use it in a template via `{{chains.<chain_id>}}`.
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Chain {
     #[serde(skip)] // This will be auto-populated from the map key
@@ -391,7 +391,7 @@ impl<T: Into<Identifier>> From<T> for ChainId {
 
 /// The source of data for a chain
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainSource {
     /// Run an external command to get a result
@@ -431,7 +431,7 @@ pub enum ChainSource {
 
 /// Static or dynamic list of options for a select chain
 #[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum SelectOptions {
     Fixed(Vec<Template>),
     /// Dynamic requires a source (often a chain) that either returns a JSON
@@ -457,7 +457,7 @@ impl ChainSource {
 
 /// The component of the response to use as the chain source
 #[derive(Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainRequestSection {
     #[default]
@@ -470,7 +470,7 @@ pub enum ChainRequestSection {
 /// Define when a recipe with a chained request should auto-execute the
 /// dependency request.
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainRequestTrigger {
     /// Never trigger the request. This is the default because upstream
@@ -489,7 +489,7 @@ pub enum ChainRequestTrigger {
 
 /// Trim whitespace from rendered output
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainOutputTrim {
     /// Do not trim the output

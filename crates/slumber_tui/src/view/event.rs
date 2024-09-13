@@ -2,8 +2,7 @@
 //! events (e.g. HTTP responses)
 
 use crate::view::{
-    common::modal::Modal,
-    state::{Notification, RequestState},
+    common::modal::Modal, context::UpdateContext, state::Notification,
     Component,
 };
 use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
@@ -26,7 +25,7 @@ pub trait EventHandler {
     /// Returned outcome indicates whether the event was consumed, or it should
     /// be propgated to our parent. Use [EventQueue] to queue subsequent events,
     /// and the given message sender to queue async messages.
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         Update::Propagate(event)
     }
 
@@ -55,8 +54,8 @@ pub trait EventHandler {
 // ToChild impl
 
 impl<'a> EventHandler for Child<'a> {
-    fn update(&mut self, event: Event) -> Update {
-        self.deref_mut().update(event)
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+        self.deref_mut().update(context, event)
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -71,8 +70,8 @@ where
     K::Value: Debug + PartialEq,
     C: EventHandler + PersistedContainer<Value = K::Value>,
 {
-    fn update(&mut self, event: Event) -> Update {
-        self.deref_mut().update(event)
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+        self.deref_mut().update(context, event)
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -189,8 +188,6 @@ pub enum Event {
     /// specific request. If not, get the most recent for the current
     /// profile+recipe.
     HttpSelectRequest(Option<RequestId>),
-    /// Update the state of an in-progress HTTP request
-    HttpSetState(RequestState),
 
     /// Show a modal to the user
     OpenModal(Box<dyn Modal>),

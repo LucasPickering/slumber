@@ -1,12 +1,20 @@
-use crate::view::{
-    context::ViewContext, state::RequestStateSummary, RequestState,
-};
+//! Types for managing HTTP state in the TUI
+
+use chrono::{DateTime, Duration, Utc};
 use itertools::Itertools;
+use reqwest::StatusCode;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
-    http::RequestId,
+    db::CollectionDatabase,
+    http::{
+        Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
+        RequestRecord,
+    },
 };
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    sync::Arc,
+};
 
 /// Simple in-memory "database" for request state. This serves a few purposes:
 ///
@@ -20,12 +28,27 @@ use std::collections::{hash_map::Entry, HashMap};
 ///
 /// These operations are generally fallible only when the underlying DB
 /// operation fails.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RequestStore {
+    database: CollectionDatabase,
     requests: HashMap<RequestId, RequestState>,
 }
 
 impl RequestStore {
+    pub fn new(database: CollectionDatabase) -> Self {
+        Self {
+            database,
+            requests: Default::default(),
+        }
+    }
+
+    /// Are any requests in flight?
+    pub fn has_active_requests(&self) -> bool {
+        self.requests
+            .values()
+            .any(|state| matches!(state, RequestState::Loading { .. }))
+    }
+
     /// Get request state by ID
     pub fn get(&self, id: RequestId) -> Option<&RequestState> {
         self.requests.get(&id)
@@ -47,12 +70,10 @@ impl RequestStore {
     ) -> anyhow::Result<Option<&RequestState>> {
         let request = match self.requests.entry(id) {
             Entry::Occupied(entry) => Some(entry.into_mut()),
-            Entry::Vacant(entry) => {
-                ViewContext::with_database(|database| database.get_request(id))?
-                    .map(|exchange| {
-                        entry.insert(RequestState::response(exchange))
-                    })
-            }
+            Entry::Vacant(entry) => self
+                .database
+                .get_request(id)?
+                .map(|exchange| entry.insert(RequestState::response(exchange))),
         };
         Ok(request.map(|r| &*r))
     }
@@ -65,9 +86,8 @@ impl RequestStore {
         recipe_id: &RecipeId,
     ) -> anyhow::Result<Option<&RequestState>> {
         // Get the latest record in the DB
-        let exchange = ViewContext::with_database(|database| {
-            database.get_latest_request(profile_id, recipe_id)
-        })?;
+        let exchange =
+            self.database.get_latest_request(profile_id, recipe_id)?;
         if let Some(exchange) = exchange {
             // Cache this record if it isn't already
             self.requests
@@ -102,9 +122,7 @@ impl RequestStore {
     ) -> anyhow::Result<impl 'a + Iterator<Item = RequestStateSummary>> {
         // Load summaries from the DB. We do *not* want to insert these into the
         // store, because they don't include request/response data
-        let loaded = ViewContext::with_database(|database| {
-            database.get_all_requests(profile_id, recipe_id)
-        })?;
+        let loaded = self.database.get_all_requests(profile_id, recipe_id)?;
 
         // Find what we have in memory already
         let iter = self
@@ -126,6 +144,261 @@ impl RequestStore {
     }
 }
 
+/// State of an HTTP response, which can be in various states of
+/// completion/failure. Each request *recipe* should have one request state
+/// stored in the view at a time.
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum RequestState {
+    /// The request is being built. Typically this is very fast, but can be
+    /// slow if a chain source takes a while.
+    Building {
+        id: RequestId,
+        start_time: DateTime<Utc>,
+        profile_id: Option<ProfileId>,
+        recipe_id: RecipeId,
+    },
+
+    /// Something went wrong during the build :(
+    BuildError { error: RequestBuildError },
+
+    /// Request is in flight, or is *about* to be sent. There's no way to
+    /// initiate a request that doesn't immediately launch it, so Loading is
+    /// the initial state.
+    Loading {
+        /// This needs an Arc so the success/failure state can maintain a
+        /// pointer to the request as well
+        request: Arc<RequestRecord>,
+        start_time: DateTime<Utc>,
+    },
+
+    /// A resolved HTTP response, with all content loaded and ready to be
+    /// displayed. This does *not necessarily* have a 2xx/3xx status code, any
+    /// received response is considered a "success".
+    Response { exchange: Exchange },
+
+    /// Error occurred sending the request or receiving the response.
+    RequestError { error: RequestError },
+}
+
+/// Metadata derived from a request. The request can be in progress, completed,
+/// or failed.
+#[derive(Debug)]
+pub struct RequestMetadata {
+    /// When was the request launched?
+    pub start_time: DateTime<Utc>,
+    /// Elapsed time for the active request. If pending, this is a running
+    /// total. Otherwise end time - start time.
+    pub duration: Duration,
+}
+
+/// Metadata derived from a response. This is only available for requests that
+/// have completed successfully.
+#[derive(Debug)]
+pub struct ResponseMetadata {
+    pub status: StatusCode,
+    /// Size of the response *body*
+    pub size: usize,
+}
+
+impl RequestState {
+    /// Unique ID for this request, which will be retained throughout its life
+    /// cycle
+    pub fn id(&self) -> RequestId {
+        match self {
+            Self::Building { id, .. } => *id,
+            Self::BuildError { error, .. } => error.id,
+            Self::Loading { request, .. } => request.id,
+            Self::RequestError { error } => error.request.id,
+            Self::Response { exchange, .. } => exchange.id,
+        }
+    }
+
+    /// The profile that the request was rendered from
+    pub fn profile_id(&self) -> Option<&ProfileId> {
+        match self {
+            Self::Building { profile_id, .. } => profile_id.as_ref(),
+            Self::BuildError { error } => error.profile_id.as_ref(),
+            Self::Loading { request, .. } => request.profile_id.as_ref(),
+            Self::RequestError { error } => error.request.profile_id.as_ref(),
+            Self::Response { exchange, .. } => {
+                exchange.request.profile_id.as_ref()
+            }
+        }
+    }
+
+    /// The recipe that the request was rendered from
+    pub fn recipe_id(&self) -> &RecipeId {
+        match self {
+            Self::Building { recipe_id, .. } => recipe_id,
+            Self::BuildError { error } => &error.recipe_id,
+            Self::Loading { request, .. } => &request.recipe_id,
+            Self::RequestError { error } => &error.request.recipe_id,
+            Self::Response { exchange, .. } => &exchange.request.recipe_id,
+        }
+    }
+
+    /// Get metadata about a request. Return `None` if the request hasn't been
+    /// successfully built (yet)
+    pub fn request_metadata(&self) -> RequestMetadata {
+        match self {
+            // In-progress states
+            Self::Building { start_time, .. }
+            | Self::Loading { start_time, .. } => RequestMetadata {
+                start_time: *start_time,
+                duration: Utc::now() - start_time,
+            },
+
+            // Error states
+            Self::BuildError {
+                error:
+                    RequestBuildError {
+                        start_time,
+                        end_time,
+                        ..
+                    },
+            }
+            | Self::RequestError {
+                error:
+                    RequestError {
+                        start_time,
+                        end_time,
+                        ..
+                    },
+            } => RequestMetadata {
+                start_time: *start_time,
+                duration: *end_time - *start_time,
+            },
+
+            // Completed
+            Self::Response { exchange, .. } => RequestMetadata {
+                start_time: exchange.start_time,
+                duration: exchange.duration(),
+            },
+        }
+    }
+
+    /// Get metadata about the request. Return `None` if the response hasn't
+    /// been received, or the request failed.
+    pub fn response_metadata(&self) -> Option<ResponseMetadata> {
+        if let RequestState::Response { exchange } = self {
+            Some(ResponseMetadata {
+                status: exchange.response.status,
+                size: exchange.response.body.size(),
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Create a loading state with the current timestamp. This will generally
+    /// be slightly off from when the request was actually launched, but it
+    /// shouldn't matter. See [crate::http::RequestTicket::send] for why it
+    /// can't report a start time back to us.
+    pub fn loading(request: Arc<RequestRecord>) -> Self {
+        Self::Loading {
+            request,
+            start_time: Utc::now(),
+        }
+    }
+
+    /// Create a request state from a completed response. This is **expensive**,
+    /// don't call it unless you need the value.
+    pub fn response(exchange: Exchange) -> Self {
+        // Pre-parse the body so the view doesn't have to do it. We're in the
+        // main thread still here though so large bodies may take a while. Maybe
+        // we want to punt this into a separate task?
+        exchange.response.parse_body();
+        Self::Response { exchange }
+    }
+}
+
+/// A simplified version of [RequestState], which only stores metadata. This is
+/// useful when you want to show a list of requests and don't need the entire
+/// request/response data for each one.
+#[derive(Debug)]
+pub enum RequestStateSummary {
+    Building {
+        id: RequestId,
+        start_time: DateTime<Utc>,
+    },
+    BuildError {
+        id: RequestId,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    },
+    Loading {
+        id: RequestId,
+        start_time: DateTime<Utc>,
+    },
+    Response(ExchangeSummary),
+    RequestError {
+        id: RequestId,
+        time: DateTime<Utc>,
+    },
+}
+
+impl RequestStateSummary {
+    pub fn id(&self) -> RequestId {
+        match self {
+            Self::Building { id, .. }
+            | Self::BuildError { id, .. }
+            | Self::Loading { id, .. }
+            | Self::RequestError { id, .. } => *id,
+            Self::Response(exchange) => exchange.id,
+        }
+    }
+
+    /// Get the time of the request state. For in-flight or completed requests,
+    /// this is when it *started*.
+    pub fn time(&self) -> DateTime<Utc> {
+        match self {
+            Self::Building {
+                start_time: time, ..
+            }
+            | Self::BuildError {
+                start_time: time, ..
+            }
+            | Self::Loading {
+                start_time: time, ..
+            }
+            | Self::RequestError { time, .. } => *time,
+            Self::Response(exchange) => exchange.start_time,
+        }
+    }
+}
+
+impl From<&RequestState> for RequestStateSummary {
+    fn from(state: &RequestState) -> Self {
+        match state {
+            RequestState::Building { id, start_time, .. } => Self::Building {
+                id: *id,
+                start_time: *start_time,
+            },
+            RequestState::BuildError { error } => Self::BuildError {
+                id: error.id,
+                start_time: error.start_time,
+                end_time: error.end_time,
+            },
+            RequestState::Loading {
+                request,
+                start_time,
+                ..
+            } => Self::Loading {
+                id: request.id,
+                start_time: *start_time,
+            },
+            RequestState::Response { exchange } => {
+                Self::Response(exchange.into())
+            }
+            RequestState::RequestError { error } => Self::RequestError {
+                id: error.request.id,
+                time: error.start_time,
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,11 +413,11 @@ mod tests {
     };
     use std::sync::Arc;
 
-    #[test]
+    #[rstest]
     fn test_get() {
+        let mut store = RequestStore::new(CollectionDatabase::factory(()));
         let exchange = Exchange::factory(());
         let id = exchange.id;
-        let mut store = RequestStore::default();
         store
             .requests
             .insert(exchange.id, RequestState::response(exchange));
@@ -155,11 +428,11 @@ mod tests {
         assert_eq!(store.get(RequestId::new()), None);
     }
 
-    #[test]
+    #[rstest]
     fn test_update() {
+        let mut store = RequestStore::new(CollectionDatabase::factory(()));
         let exchange = Exchange::factory(());
         let id = exchange.id;
-        let mut store = RequestStore::default();
 
         // Update for each state in the life cycle
         assert!(store.update(RequestState::Building {
@@ -194,21 +467,21 @@ mod tests {
 
     #[rstest]
     fn test_load(harness: TestHarness) {
-        let mut store = RequestStore::default();
+        let mut store = harness.request_store.borrow_mut();
 
         // Generally we would expect this to be in the DB, but in this case omit
         // it so we can ensure the store *isn't* going to the DB for it
         let present_exchange = Exchange::factory(());
         let present_id = present_exchange.id;
+        store
+            .requests
+            .insert(present_id, RequestState::response(present_exchange));
 
         let missing_exchange = Exchange::factory(());
         let missing_id = missing_exchange.id;
         harness.database.insert_exchange(&missing_exchange).unwrap();
 
         // Already in store, don't fetch
-        store
-            .requests
-            .insert(present_id, RequestState::response(present_exchange));
         assert_matches!(
             store.get(present_id),
             Some(RequestState::Response { .. })
@@ -239,6 +512,7 @@ mod tests {
 
     #[rstest]
     fn test_load_latest(harness: TestHarness) {
+        let mut store = harness.request_store.borrow_mut();
         let profile_id = ProfileId::factory(());
         let recipe_id = RecipeId::factory(());
 
@@ -249,7 +523,6 @@ mod tests {
         let expected_exchange =
             create_exchange(&harness, Some(&profile_id), Some(&recipe_id));
 
-        let mut store = RequestStore::default();
         assert_eq!(
             store.load_latest(Some(&profile_id), &recipe_id).unwrap(),
             Some(&RequestState::response(expected_exchange))
@@ -266,6 +539,7 @@ mod tests {
     /// request that's not in the DB (i.e. in a state other than completed)
     #[rstest]
     fn test_load_latest_local(harness: TestHarness) {
+        let mut store = harness.request_store.borrow_mut();
         let profile_id = ProfileId::factory(());
         let recipe_id = RecipeId::factory(());
 
@@ -278,7 +552,6 @@ mod tests {
             recipe_id.clone(),
         )));
 
-        let mut store = RequestStore::default();
         store.update(RequestState::loading(Arc::clone(&request_record)));
         assert_eq!(
             store
@@ -291,6 +564,7 @@ mod tests {
 
     #[rstest]
     fn test_load_summaries(harness: TestHarness) {
+        let mut store = harness.request_store.borrow_mut();
         let profile_id = ProfileId::factory(());
         let recipe_id = RecipeId::factory(());
 
@@ -304,8 +578,6 @@ mod tests {
         create_exchange(&harness, Some(&profile_id), None);
 
         // Add one request of each possible state. We expect to get em all back
-        let mut store = RequestStore::default();
-
         // Pre-load one from the DB, to make sure it gets de-duped
         let exchange = exchanges.pop().unwrap();
         let response_id = exchange.id;

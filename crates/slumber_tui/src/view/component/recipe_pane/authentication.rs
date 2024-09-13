@@ -8,6 +8,7 @@ use crate::{
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
             Component,
         },
+        context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
         state::fixed_select::FixedSelectState,
@@ -88,7 +89,7 @@ impl AuthenticationDisplay {
 }
 
 impl EventHandler for AuthenticationDisplay {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::Edit) = event.action() {
             self.0.open_edit_modal();
         } else if let Some(SaveAuthenticationOverride(value)) = event.local() {
@@ -285,12 +286,13 @@ mod tests {
     use slumber_core::test_util::Factory;
 
     #[rstest]
-    fn test_edit_basic(_harness: TestHarness, terminal: TestTerminal) {
+    fn test_edit_basic(harness: TestHarness, terminal: TestTerminal) {
         let authentication = Authentication::Basic {
             username: "user1".into(),
             password: Some("hunter2".into()),
         };
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             WithModalQueue::new(AuthenticationDisplay::new(
                 RecipeId::factory(()),
@@ -330,7 +332,7 @@ mod tests {
 
     #[rstest]
     fn test_edit_basic_empty_password(
-        _harness: TestHarness,
+        harness: TestHarness,
         terminal: TestTerminal,
     ) {
         let authentication = Authentication::Basic {
@@ -338,6 +340,7 @@ mod tests {
             password: None,
         };
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             WithModalQueue::new(AuthenticationDisplay::new(
                 RecipeId::factory(()),
@@ -362,9 +365,10 @@ mod tests {
     }
 
     #[rstest]
-    fn test_edit_bearer(_harness: TestHarness, terminal: TestTerminal) {
+    fn test_edit_bearer(harness: TestHarness, terminal: TestTerminal) {
         let authentication = Authentication::Bearer("i am a token".into());
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             WithModalQueue::new(AuthenticationDisplay::new(
                 RecipeId::factory(()),
@@ -388,10 +392,7 @@ mod tests {
 
     /// Basic auth fields should load persisted overrides
     #[rstest]
-    fn test_persisted_load_basic(
-        _harness: TestHarness,
-        terminal: TestTerminal,
-    ) {
+    fn test_persisted_load_basic(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         RecipeOverrideStore::store_persisted(
             &RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
@@ -406,6 +407,7 @@ mod tests {
             password: None,
         };
         let component = TestComponent::new(
+            &harness,
             &terminal,
             AuthenticationDisplay::new(recipe_id, authentication),
             (),
@@ -423,7 +425,7 @@ mod tests {
     /// Basic auth fields should load persisted overrides
     #[rstest]
     fn test_persisted_load_bearer(
-        _harness: TestHarness,
+        harness: TestHarness,
         terminal: TestTerminal,
     ) {
         let recipe_id = RecipeId::factory(());
@@ -433,6 +435,7 @@ mod tests {
         );
         let authentication = Authentication::Bearer("".into());
         let component = TestComponent::new(
+            &harness,
             &terminal,
             AuthenticationDisplay::new(recipe_id, authentication),
             (),

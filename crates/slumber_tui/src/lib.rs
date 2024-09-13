@@ -8,6 +8,7 @@
 //! do so at your own risk of breakage.
 
 mod context;
+mod http;
 mod input;
 mod message;
 #[cfg(test)]
@@ -17,12 +18,13 @@ mod view;
 
 use crate::{
     context::TuiContext,
+    http::{RequestState, RequestStore},
     message::{Message, MessageSender, RequestConfig},
     util::{
         clear_event_buffer, get_editor_command, save_file, signals,
         ResultReported,
     },
-    view::{PreviewPrompter, RequestState, View},
+    view::{PreviewPrompter, UpdateContext, View},
 };
 use anyhow::{anyhow, Context};
 use chrono::Utc;
@@ -50,10 +52,7 @@ use std::{
 };
 use tokio::{
     select,
-    sync::{
-        mpsc::{self, UnboundedReceiver},
-        Semaphore,
-    },
+    sync::mpsc::{self, UnboundedReceiver},
     time,
 };
 use tracing::{debug, error, info, trace};
@@ -75,12 +74,7 @@ pub struct Tui {
     view: View,
     collection_file: CollectionFile,
     should_run: bool,
-    /// Each active HTTP request should grab one permit from the semaphore. The
-    /// primary purpose of this is to track whether any requests are in-flight.
-    ///
-    /// This is probably overkill because we could just use an `AtomicU8`, but
-    /// it simplifies the semantics of incrementing/decrementing correctly.
-    http_semaphore: Arc<Semaphore>,
+    request_store: RequestStore,
 }
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -88,9 +82,6 @@ type Term = Terminal<CrosstermBackend<Stdout>>;
 impl Tui {
     /// Rough **maximum** time for each iteration of the main loop
     const TICK_TIME: Duration = Duration::from_millis(250);
-    /// Maximum number of concurrent HTTP requests. This limit is fairly
-    /// arbitrary; in practice we don't ever expect to hit it.
-    const MAX_HTTP_REQUESTS: usize = 100;
 
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
@@ -126,6 +117,8 @@ impl Tui {
         // `Tui`.
         let terminal = initialize_terminal()?;
 
+        let request_store = RequestStore::new(database.clone());
+
         let app = Tui {
             terminal,
             database,
@@ -136,7 +129,7 @@ impl Tui {
             should_run: true,
 
             view,
-            http_semaphore: Semaphore::new(Self::MAX_HTTP_REQUESTS).into(),
+            request_store,
         };
 
         app.run().await
@@ -186,7 +179,7 @@ impl Tui {
             // We'll try to skip draws if nothing on the screen has changed, to
             // limit idle CPU usage. If a request is running we always need to
             // update though, because the timer will be ticking.
-            let mut needs_draw = self.has_active_requests();
+            let mut needs_draw = self.request_store.has_active_requests();
 
             if let Some(message) = message {
                 trace!(?message, "Handling message");
@@ -200,7 +193,9 @@ impl Tui {
             // ===== Event Phase =====
             // Let the view handle all queued events. Trigger a draw if there
             // was anything in the queue.
-            needs_draw |= self.view.handle_events();
+            needs_draw |= self.view.handle_events(UpdateContext {
+                request_store: &mut self.request_store,
+            });
 
             // ===== Draw Phase =====
             if needs_draw {
@@ -257,18 +252,18 @@ impl Tui {
                 self.send_request(request_config)?
             }
             Message::HttpBuildError { error } => {
-                self.view
-                    .set_request_state(RequestState::BuildError { error });
+                self.request_store
+                    .update(RequestState::BuildError { error });
             }
             Message::HttpLoading { request } => {
-                self.view.set_request_state(RequestState::loading(request))
+                self.request_store.update(RequestState::loading(request));
             }
             Message::HttpComplete(result) => {
                 let state = match result {
                     Ok(exchange) => RequestState::response(exchange),
                     Err(error) => RequestState::RequestError { error },
                 };
-                self.view.set_request_state(state);
+                self.request_store.update(state);
             }
 
             // Force quit short-circuits the view/message cycle, to make sure
@@ -323,10 +318,6 @@ impl Tui {
             Message::Quit => self.quit(),
         }
         Ok(())
-    }
-
-    fn has_active_requests(&self) -> bool {
-        self.http_semaphore.available_permits() < Self::MAX_HTTP_REQUESTS
     }
 
     /// Get a cheap clone of the message queue transmitter
@@ -397,7 +388,8 @@ impl Tui {
 
     /// Draw the view onto the screen
     fn draw(&mut self) -> anyhow::Result<()> {
-        self.terminal.draw(|frame| self.view.draw(frame))?;
+        self.terminal
+            .draw(|frame| self.view.draw(frame, &self.request_store))?;
         Ok(())
     }
 
@@ -532,31 +524,33 @@ impl Tui {
         let messages_tx = self.messages_tx();
 
         // Mark request state as building
-        let initialized = RequestSeed::new(recipe_id.clone(), options);
-        self.view.set_request_state(RequestState::Building {
-            id: initialized.id,
+        let seed = RequestSeed::new(recipe_id.clone(), options);
+        self.request_store.update(RequestState::Building {
+            id: seed.id,
             start_time: Utc::now(),
             profile_id,
             recipe_id,
         });
+        // New requests should get shown in the UI
+        self.view.select_request(&mut self.request_store, seed.id);
 
         // We can't use self.spawn here because HTTP errors are handled
         // differently from all other error types
         let database = self.database.clone();
-        let semaphore = Arc::clone(&self.http_semaphore);
         tokio::spawn(async move {
-            // Track this request so the main loop knows something is in flight
-            let permit =
-                semaphore.acquire().await.expect("HTTP semaphore closed");
             // Build the request
-            let ticket = TuiContext::get()
+            let result = TuiContext::get()
                 .http_engine
-                .build(initialized, &template_context)
-                .await
-                .map_err(|error| {
+                .build(seed, &template_context)
+                .await;
+            let ticket = match result {
+                Ok(ticket) => ticket,
+                Err(error) => {
                     // Report the error, but don't actually return anything
                     messages_tx.send(Message::HttpBuildError { error });
-                })?;
+                    return;
+                }
+            };
 
             // Report liftoff
             messages_tx.send(Message::HttpLoading {
@@ -566,11 +560,6 @@ impl Tui {
             // Send the request and report the result to the main thread
             let result = ticket.send(&database).await;
             messages_tx.send(Message::HttpComplete(result));
-
-            drop(permit);
-            // By returning an empty result, we can use `?` to break out early.
-            // `return` and `break` don't work in an async block :/
-            Ok::<(), ()>(())
         });
 
         Ok(())

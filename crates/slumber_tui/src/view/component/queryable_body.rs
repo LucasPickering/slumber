@@ -7,6 +7,7 @@ use crate::{
             text_box::TextBox,
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
+        context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, Update},
         state::StateCell,
@@ -107,7 +108,7 @@ impl Default for QueryableBody {
 }
 
 impl EventHandler for QueryableBody {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::Search) = event.action() {
             if self.query_available.get() {
                 self.query_focused = true;
@@ -283,11 +284,12 @@ mod tests {
     /// Render an unparsed body with no query box
     #[rstest]
     fn test_unparsed(
-        _harness: TestHarness,
+        harness: TestHarness,
         #[with(30, 2)] terminal: TestTerminal,
     ) {
         let body = ResponseBody::new(TEXT.into());
         let component = TestComponent::new(
+            &harness,
             &terminal,
             QueryableBody::new(),
             QueryableBodyProps {
@@ -316,11 +318,12 @@ mod tests {
     /// Render a parsed body with query text box
     #[rstest]
     fn test_parsed(
-        _harness: TestHarness,
+        harness: TestHarness,
         #[with(32, 5)] terminal: TestTerminal,
         json_response: ResponseRecord,
     ) {
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             QueryableBody::new(),
             QueryableBodyProps {
@@ -384,7 +387,7 @@ mod tests {
     /// the DB. This tests the `PersistedContainer` implementation
     #[rstest]
     fn test_persistence(
-        _harness: TestHarness,
+        harness: TestHarness,
         #[with(30, 4)] terminal: TestTerminal,
         json_response: ResponseRecord,
     ) {
@@ -399,6 +402,7 @@ mod tests {
         // in the box, so we just need to make sure state is initialized
         // correctly here
         let component = TestComponent::new(
+            &harness,
             &terminal,
             PersistedLazy::new(Key, QueryableBody::new()),
             QueryableBodyProps {

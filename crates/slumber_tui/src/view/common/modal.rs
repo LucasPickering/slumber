@@ -1,6 +1,7 @@
 use crate::{
     context::TuiContext,
     view::{
+        context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, Update},
         util::centered_rect,
@@ -46,8 +47,8 @@ pub trait Modal: Debug + Draw<()> + EventHandler {
 }
 
 impl EventHandler for Box<dyn Modal> {
-    fn update(&mut self, event: Event) -> Update {
-        self.deref_mut().update(event)
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+        self.deref_mut().update(context, event)
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -114,7 +115,7 @@ impl ModalQueue {
 }
 
 impl EventHandler for ModalQueue {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Close the active modal. If there's no modal open, we'll propagate
             // the event down

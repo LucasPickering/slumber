@@ -12,6 +12,7 @@ use crate::{
     view::{
         common::{actions::ActionsModal, Pane},
         component::{primary::PrimaryPane, recipe_pane::recipe::RecipeDisplay},
+        context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
         state::StateCell,
@@ -65,7 +66,7 @@ impl RecipePane {
 }
 
 impl EventHandler for RecipePane {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(action) = event.action() {
             match action {
                 Action::LeftClick => {

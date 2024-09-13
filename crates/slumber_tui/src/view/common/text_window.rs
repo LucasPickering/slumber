@@ -2,6 +2,7 @@ use crate::{
     context::TuiContext,
     view::{
         common::scrollbar::Scrollbar,
+        context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
     },
@@ -155,7 +156,7 @@ impl TextWindow {
 }
 
 impl EventHandler for TextWindow {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };
@@ -295,11 +296,12 @@ mod tests {
     #[rstest]
     fn test_scroll(
         #[with(10, 4)] terminal: TestTerminal,
-        _harness: TestHarness,
+        harness: TestHarness,
     ) {
         let text =
             Text::from("line 1\nline 2 is longer\nline 3\nline 4\nline 5");
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             TextWindow::default(),
             TextWindowProps {
@@ -379,10 +381,11 @@ mod tests {
     #[rstest]
     fn test_unicode(
         #[with(35, 3)] terminal: TestTerminal,
-        _harness: TestHarness,
+        harness: TestHarness,
     ) {
         let text = Text::from("intro\n💚💙💜 this is a longer line\noutro");
         TestComponent::new(
+            &harness,
             &terminal,
             TextWindow::default(),
             TextWindowProps {
@@ -405,10 +408,11 @@ mod tests {
     #[rstest]
     fn test_unicode_scroll(
         #[with(10, 2)] terminal: TestTerminal,
-        _harness: TestHarness,
+        harness: TestHarness,
     ) {
         let text = Text::from("💚💙💜💚💙💜");
         TestComponent::new(
+            &harness,
             &terminal,
             TextWindow::default(),
             TextWindowProps {
@@ -432,12 +436,13 @@ mod tests {
     #[rstest]
     fn test_shrink_text(
         #[with(10, 3)] terminal: TestTerminal,
-        _harness: TestHarness,
+        harness: TestHarness,
     ) {
         let text = ["1 this is a long line", "2", "3", "4", "5"]
             .join("\n")
             .into();
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             TextWindow::default(),
             TextWindowProps {
@@ -475,11 +480,12 @@ mod tests {
     /// Growing the window reduces the maximum scroll. Scroll state should
     /// automatically be clamped to match
     #[rstest]
-    fn test_grow_window(terminal: TestTerminal, _harness: TestHarness) {
+    fn test_grow_window(terminal: TestTerminal, harness: TestHarness) {
         let text = ["1 this is a long line", "2", "3", "4", "5"]
             .join("\n")
             .into();
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             TextWindow::default(),
             TextWindowProps {

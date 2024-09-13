@@ -3,6 +3,7 @@ use crate::{
     view::{
         common::{actions::ActionsModal, list::List, Pane},
         component::{primary::PrimaryPane, recipe_pane::RecipeMenuAction},
+        context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
         state::select::SelectState,
@@ -124,7 +125,7 @@ impl RecipeListPane {
 }
 
 impl EventHandler for RecipeListPane {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };

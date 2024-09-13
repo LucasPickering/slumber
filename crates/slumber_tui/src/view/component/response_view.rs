@@ -5,6 +5,7 @@ use crate::{
     view::{
         common::{actions::ActionsModal, header_table::HeaderTable},
         component::queryable_body::{QueryableBody, QueryableBodyProps},
+        context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
         state::StateCell,
@@ -72,7 +73,7 @@ struct State {
 struct ResponseQueryPersistedKey(RecipeId);
 
 impl EventHandler for ResponseBodyView {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::OpenActions) = event.action() {
             ViewContext::open_modal::<ActionsModal<BodyMenuAction>>(
                 Default::default(),
@@ -238,6 +239,7 @@ mod tests {
             ..Exchange::factory(())
         };
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             ResponseBodyView::default(),
             ResponseBodyViewProps {
@@ -305,6 +307,7 @@ mod tests {
             ..Exchange::factory(())
         };
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             ResponseBodyView::default(),
             ResponseBodyViewProps {

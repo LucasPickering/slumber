@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add a dynamic variant to `!select` chain type, allowing your collection to present a list of values driven from the output of another chain. (thanks @anussel5559)
   - [See docs for more](https://slumber.lucaspickering.me/book/api/request_collection/chain_source.html#select)
 - Cancel in-flight requests with the `cancel` action (bound to escape by default)
+- Add `slumber new` subcommand to generate new collection files [#376](https://github.com/LucasPickering/slumber/issues/376)
 
 ### Fixed
 

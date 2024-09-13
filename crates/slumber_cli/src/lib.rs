@@ -12,8 +12,8 @@ mod util;
 
 use crate::commands::{
     collections::CollectionsCommand, generate::GenerateCommand,
-    history::HistoryCommand, import::ImportCommand, request::RequestCommand,
-    show::ShowCommand,
+    history::HistoryCommand, import::ImportCommand, new::NewCommand,
+    request::RequestCommand, show::ShowCommand,
 };
 use clap::Parser;
 use std::{path::PathBuf, process::ExitCode};
@@ -53,11 +53,12 @@ pub struct GlobalArgs {
 /// A CLI subcommand
 #[derive(Clone, Debug, clap::Subcommand)]
 pub enum CliCommand {
-    Request(RequestCommand),
-    Generate(GenerateCommand),
-    Import(ImportCommand),
     Collections(CollectionsCommand),
+    Generate(GenerateCommand),
     History(HistoryCommand),
+    Import(ImportCommand),
+    New(NewCommand),
+    Request(RequestCommand),
     Show(ShowCommand),
 }
 
@@ -65,11 +66,12 @@ impl CliCommand {
     /// Execute this CLI subcommand
     pub async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self {
-            Self::Generate(command) => command.execute(global).await,
-            Self::Request(command) => command.execute(global).await,
-            Self::Import(command) => command.execute(global).await,
             Self::Collections(command) => command.execute(global).await,
+            Self::Generate(command) => command.execute(global).await,
             Self::History(command) => command.execute(global).await,
+            Self::Import(command) => command.execute(global).await,
+            Self::New(command) => command.execute(global).await,
+            Self::Request(command) => command.execute(global).await,
             Self::Show(command) => command.execute(global).await,
         }
     }

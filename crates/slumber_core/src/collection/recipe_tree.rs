@@ -17,7 +17,7 @@ use thiserror::Error;
 /// lot simpler. In reality it's unlikely they would want to give two things
 /// the same ID anyway.
 #[derive(derive_more::Debug, Default)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct RecipeTree {
     /// Tree structure storing all the folder/recipe data
     tree: IndexMap<RecipeId, RecipeNode>,
@@ -32,12 +32,12 @@ pub struct RecipeTree {
 /// A path into the recipe tree. Every constructed path is assumed to be valid,
 /// which must be enforced by the creator.
 #[derive(Clone, Debug, From)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct RecipeLookupKey(Vec<RecipeId>);
 
 /// A node in the recipe tree, either a folder or recipe
 #[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum RecipeNode {

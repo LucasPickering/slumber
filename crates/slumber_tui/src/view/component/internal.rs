@@ -3,6 +3,7 @@
 //! component state.
 
 use crate::view::{
+    context::UpdateContext,
     draw::{Draw, DrawMetadata},
     event::{Child, Event, ToChild, Update},
 };
@@ -78,7 +79,11 @@ impl<T> Component<T> {
     /// lowest descendant. Recursively walk up the tree until a component
     /// consumes the event.
     #[instrument(skip_all, fields(component = self.name()))]
-    pub fn update_all(&mut self, mut event: Event) -> Update
+    pub fn update_all(
+        &mut self,
+        context: &mut UpdateContext,
+        mut event: Event,
+    ) -> Update
     where
         T: ToChild,
     {
@@ -92,7 +97,7 @@ impl<T> Component<T> {
         // If we have a child, send them the event. If not, eat it ourselves
         for mut child in self_dyn.children() {
             // RECURSION
-            let update = child.update_all(event);
+            let update = child.update_all(context, event);
             match update {
                 Update::Propagate(returned) => {
                     // Keep going to the next child. The propgated event
@@ -109,7 +114,7 @@ impl<T> Component<T> {
         // None of our children handled it, we'll take it ourselves. Event is
         // already traced in the root span, so don't dupe it.
         (trace_span!("component.update")).in_scope(|| {
-            let update = self_dyn.update(event);
+            let update = self_dyn.update(context, event);
             trace!(?update);
             update
         })
@@ -356,7 +361,7 @@ mod tests {
     }
 
     impl EventHandler for Branch {
-        fn update(&mut self, _: Event) -> Update {
+        fn update(&mut self, _: &mut UpdateContext, _: Event) -> Update {
             self.count += 1;
             Update::Consumed
         }
@@ -410,7 +415,7 @@ mod tests {
     }
 
     impl EventHandler for Leaf {
-        fn update(&mut self, _: Event) -> Update {
+        fn update(&mut self, _: &mut UpdateContext, _: Event) -> Update {
             self.count += 1;
             Update::Consumed
         }
@@ -460,7 +465,7 @@ mod tests {
     /// change.
     #[rstest]
     fn test_render_component_tree(
-        _harness: TestHarness,
+        harness: TestHarness,
         terminal: TestTerminal,
         mut component: Component<Branch>,
     ) {
@@ -484,8 +489,11 @@ mod tests {
                     mouse_event(c_coords),
                 ];
                 // Now visible components get events
+                let mut update_context = UpdateContext {
+                    request_store: &mut harness.request_store.borrow_mut(),
+                };
                 for event in events {
-                    component.update_all(event);
+                    component.update_all(&mut update_context, event);
                 }
                 let [expected_root, expected_a, expected_b, expected_c] =
                     expected_counts;
@@ -576,7 +584,7 @@ mod tests {
     /// happen in the wild, but it's good to have it be well-defined.
     #[rstest]
     fn test_parent_hidden(
-        _harness: TestHarness,
+        harness: TestHarness,
         terminal: TestTerminal,
         mut component: Component<Branch>,
     ) {
@@ -588,7 +596,12 @@ mod tests {
         });
         // Event should *not* be handled because the parent is hidden
         assert_matches!(
-            component.update_all(keyboard_event()),
+            component.update_all(
+                &mut UpdateContext {
+                    request_store: &mut harness.request_store.borrow_mut(),
+                },
+                keyboard_event()
+            ),
             Update::Propagate(_)
         );
     }
@@ -597,7 +610,7 @@ mod tests {
     /// *not* receive focus-only events.
     #[rstest]
     fn test_parent_unfocused(
-        _harness: TestHarness,
+        harness: TestHarness,
         terminal: TestTerminal,
         mut component: Component<Branch>,
     ) {
@@ -618,7 +631,12 @@ mod tests {
 
         // Event should *not* be handled because the parent is unfocused
         assert_matches!(
-            component.update_all(keyboard_event()),
+            component.update_all(
+                &mut UpdateContext {
+                    request_store: &mut harness.request_store.borrow_mut(),
+                },
+                keyboard_event()
+            ),
             Update::Propagate(_)
         );
     }

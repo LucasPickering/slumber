@@ -8,6 +8,7 @@ use crate::{
             list::List, modal::Modal, table::Table,
             template_preview::TemplatePreview, Pane,
         },
+        context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
         state::{select::SelectState, StateCell},
@@ -84,7 +85,7 @@ impl ProfilePane {
 }
 
 impl EventHandler for ProfilePane {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::LeftClick) = event.action() {
             self.open_modal();
         } else if let Some(SelectProfile(profile_id)) = event.local() {

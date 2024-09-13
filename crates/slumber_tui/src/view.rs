@@ -11,16 +11,17 @@ pub mod test_util;
 mod util;
 
 pub use common::modal::{IntoModal, ModalPriority};
-pub use context::ViewContext;
-pub use state::RequestState;
+pub use context::{UpdateContext, ViewContext};
 pub use styles::Styles;
 pub use util::{Confirm, PreviewPrompter};
 
 use crate::{
     context::TuiContext,
+    http::{RequestState, RequestStore},
     message::{Message, MessageSender},
+    util::ResultReported,
     view::{
-        component::{Component, Root},
+        component::{Component, Root, RootProps},
         debug::DebugMonitor,
         event::{Event, Update},
         state::Notification,
@@ -32,6 +33,7 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{CollectionFile, ProfileId},
     db::CollectionDatabase,
+    http::RequestId,
 };
 use std::{fmt::Debug, sync::Arc};
 use tracing::{debug, trace_span, warn};
@@ -86,17 +88,27 @@ impl View {
 
     /// Draw the view to screen. This needs access to the input engine in order
     /// to render input bindings as help messages to the user.
-    pub fn draw<'a>(&'a self, frame: &'a mut Frame) {
-        fn draw_impl(root: &Component<Root>, frame: &mut Frame) {
+    pub fn draw<'a>(
+        &'a self,
+        frame: &'a mut Frame,
+        request_store: &'a RequestStore,
+    ) {
+        fn draw_impl(
+            root: &Component<Root>,
+            frame: &mut Frame,
+            request_store: &RequestStore,
+        ) {
             let chunk = frame.area();
-            root.draw(frame, (), chunk, true);
+            root.draw(frame, RootProps { request_store }, chunk, true);
         }
 
         // If debug monitor is enabled, use it to capture the view duration
         if let Some(debug_monitor) = &self.debug_monitor {
-            debug_monitor.draw(frame, |frame| draw_impl(&self.root, frame));
+            debug_monitor.draw(frame, |frame| {
+                draw_impl(&self.root, frame, request_store)
+            });
         } else {
-            draw_impl(&self.root, frame);
+            draw_impl(&self.root, frame, request_store);
         }
     }
 
@@ -105,12 +117,16 @@ impl View {
         self.root.data().selected_profile_id()
     }
 
-    /// Queue an event to update the request state for the given profile+recipe.
-    /// The state will only be updated if this is a new request or it
-    /// matches the current request for this recipe. We only store one
-    /// request per profile+recipe at a time.
-    pub fn set_request_state(&mut self, state: RequestState) {
-        ViewContext::push_event(Event::HttpSetState(state));
+    /// Select a particular request
+    pub fn select_request(
+        &mut self,
+        request_store: &mut RequestStore,
+        request_id: RequestId,
+    ) {
+        self.root
+            .data_mut()
+            .select_request(request_store, Some(request_id))
+            .reported(&ViewContext::messages_tx());
     }
 
     /// Queue an event to open a new modal. The input can be anything that
@@ -139,7 +155,7 @@ impl View {
     /// Drain all view events from the queue. The component three will process
     /// events one by one. This should be called on every TUI loop. Return
     /// whether or not an event was handled.
-    pub fn handle_events(&mut self) -> bool {
+    pub fn handle_events(&mut self, mut context: UpdateContext) -> bool {
         // If we haven't done first render yet, don't drain the queue. This can
         // happen after a collection reload, because of the structure of the
         // main loop
@@ -153,7 +169,7 @@ impl View {
         while let Some(event) = ViewContext::pop_event() {
             handled = true;
             trace_span!("View event", ?event).in_scope(|| {
-                match self.root.update_all(event) {
+                match self.root.update_all(&mut context, event) {
                     Update::Consumed => {
                         debug!("View event consumed")
                     }
@@ -210,7 +226,10 @@ mod tests {
         );
 
         // Events should *still* be in the queue, because we haven't drawn yet
-        view.handle_events();
+        let mut request_store = harness.request_store.borrow_mut();
+        view.handle_events(UpdateContext {
+            request_store: &mut request_store,
+        });
         assert_events!(
             Event::HttpSelectRequest(None),
             Event::Local(_),
@@ -218,7 +237,7 @@ mod tests {
         );
 
         // Nothing new
-        terminal.draw(|frame| view.draw(frame));
+        terminal.draw(|frame| view.draw(frame, &request_store));
         assert_events!(
             Event::HttpSelectRequest(None),
             Event::Local(_),
@@ -226,7 +245,9 @@ mod tests {
         );
 
         // *Now* the queue is drained
-        view.handle_events();
+        view.handle_events(UpdateContext {
+            request_store: &mut request_store,
+        });
         assert_events!();
     }
 }

@@ -11,6 +11,7 @@ use crate::{
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
             Component,
         },
+        context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
         state::select::SelectState,
@@ -105,7 +106,7 @@ where
     RowSelectKey: PersistedKey<Value = Option<String>>,
     RowToggleKey: PersistedKey<Value = bool>,
 {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::Edit) = event.action() {
             if let Some(selected_row) = self.select.data().selected() {
                 selected_row.open_edit_modal();
@@ -328,7 +329,7 @@ mod tests {
 
     /// User can hide a row from the recipe
     #[rstest]
-    fn test_disabled_row(_harness: TestHarness, terminal: TestTerminal) {
+    fn test_disabled_row(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         let rows = [
             (
@@ -351,6 +352,7 @@ mod tests {
             ),
         ];
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             RecipeFieldTable::new(TestRowKey(recipe_id.clone()), rows),
             RecipeFieldTableProps {
@@ -388,7 +390,7 @@ mod tests {
 
     /// User can edit the value for a row
     #[rstest]
-    fn test_override_row(_harness: TestHarness, terminal: TestTerminal) {
+    fn test_override_row(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         let rows = [
             (
@@ -411,6 +413,7 @@ mod tests {
             ),
         ];
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             // We'll need a modal queue to handle the edit box
             WithModalQueue::new(RecipeFieldTable::new(
@@ -450,7 +453,7 @@ mod tests {
 
     /// Override templates should be loaded from the store on init
     #[rstest]
-    fn test_persisted_override(_harness: TestHarness, terminal: TestTerminal) {
+    fn test_persisted_override(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
         RecipeOverrideStore::store_persisted(
             &RecipeOverrideKey::query_param(recipe_id.clone(), 0),
@@ -481,6 +484,7 @@ mod tests {
             ),
         ];
         let component = TestComponent::new(
+            &harness,
             &terminal,
             // We'll need a modal queue to handle the edit box
             WithModalQueue::new(RecipeFieldTable::new(

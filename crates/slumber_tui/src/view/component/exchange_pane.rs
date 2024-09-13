@@ -11,6 +11,7 @@ use crate::{
             },
             Component,
         },
+        context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
         util::persistence::PersistedLazy,
@@ -73,7 +74,7 @@ enum Tab {
 }
 
 impl EventHandler for ExchangePane {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         match event.action() {
             Some(Action::LeftClick) => {
                 ViewContext::push_event(Event::new_local(

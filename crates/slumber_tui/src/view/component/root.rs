@@ -1,4 +1,5 @@
 use crate::{
+    http::{RequestState, RequestStateSummary, RequestStore},
     message::Message,
     util::ResultReported,
     view::{
@@ -9,11 +10,9 @@ use crate::{
             misc::NotificationText,
             primary::{PrimaryView, PrimaryViewProps},
         },
+        context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, Update},
-        state::{
-            request_store::RequestStore, RequestState, RequestStateSummary,
-        },
         util::persistence::PersistedLazy,
         Component, ViewContext,
     },
@@ -32,10 +31,8 @@ use slumber_core::{
 #[derive(Debug)]
 pub struct Root {
     // ===== Own State =====
-    /// Track and cache in-progress and completed requests
-    request_store: RequestStore,
     /// Which request are we showing in the request/response panel?
-    selected_request: PersistedLazy<SelectedRequestKey, SelectedRequestId>,
+    selected_request_id: PersistedLazy<SelectedRequestKey, SelectedRequestId>,
 
     // ==== Children =====
     primary_view: Component<PrimaryView>,
@@ -48,11 +45,11 @@ impl Root {
         // Load the selected request *second*, so it will take precedence over
         // the event that attempts to load the latest request for the recipe
         let primary_view = PrimaryView::new(collection);
-        let selected_request = PersistedLazy::new_default(SelectedRequestKey);
+        let selected_request_id =
+            PersistedLazy::new_default(SelectedRequestKey);
         Self {
             // State
-            request_store: RequestStore::default(),
-            selected_request,
+            selected_request_id,
 
             // Children
             primary_view: primary_view.into(),
@@ -66,10 +63,16 @@ impl Root {
         self.primary_view.data().selected_profile_id()
     }
 
+    /// What request should be shown in the request/response pane right now?
+    fn selected_request_id(&self) -> Option<RequestId> {
+        self.selected_request_id.0
+    }
+
     /// Select the given request. This will ensure the request data is loaded
     /// in memory.
-    fn select_request(
+    pub fn select_request(
         &mut self,
+        request_store: &mut RequestStore,
         request_id: Option<RequestId>,
     ) -> anyhow::Result<()> {
         let primary_view = self.primary_view.data();
@@ -79,9 +82,7 @@ impl Root {
                 // This will return `None` if the ID wasn't in the DB, which
                 // probably means we had a loading/failed request selected
                 // before reload, so it's gone. Fall back to the top of the list
-                if let Some(request_state) =
-                    self.request_store.load(request_id)?
-                {
+                if let Some(request_state) = request_store.load(request_id)? {
                     return Ok(Some(request_state.id()));
                 }
             }
@@ -90,8 +91,7 @@ impl Root {
             // current recipe+profile
             if let Some(recipe_id) = primary_view.selected_recipe_id() {
                 let profile_id = primary_view.selected_profile_id();
-                Ok(self
-                    .request_store
+                Ok(request_store
                     .load_latest(profile_id, recipe_id)?
                     .map(RequestState::id))
             } else {
@@ -99,25 +99,20 @@ impl Root {
             }
         };
 
-        *self.selected_request.get_mut() = get_id()?.into();
+        *self.selected_request_id.get_mut() = get_id()?.into();
         Ok(())
-    }
-
-    /// What request should be shown in the request/response pane right now?
-    fn selected_request(&self) -> Option<&RequestState> {
-        self.selected_request
-            .0
-            .and_then(|request_id| self.request_store.get(request_id))
     }
 
     /// Open the history modal for current recipe+profile. Return an error if
     /// the harness.database load failed.
-    fn open_history(&mut self) -> anyhow::Result<()> {
+    fn open_history(
+        &mut self,
+        request_store: &mut RequestStore,
+    ) -> anyhow::Result<()> {
         let primary_view = self.primary_view.data();
         if let Some(recipe_id) = primary_view.selected_recipe_id() {
             // Make sure all requests for this profile+recipe are loaded
-            let requests = self
-                .request_store
+            let requests = request_store
                 .load_summaries(primary_view.selected_profile_id(), recipe_id)?
                 .map(RequestStateSummary::from)
                 .collect();
@@ -125,7 +120,7 @@ impl Root {
             ViewContext::open_modal(History::new(
                 recipe_id,
                 requests,
-                self.selected_request.0,
+                self.selected_request_id(),
             ));
         }
         Ok(())
@@ -133,20 +128,12 @@ impl Root {
 }
 
 impl EventHandler for Root {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
         match event {
             // Set selected request, and load it from the DB if needed
             Event::HttpSelectRequest(request_id) => {
-                self.select_request(request_id)
+                self.select_request(context.request_store, request_id)
                     .reported(&ViewContext::messages_tx());
-            }
-            // Update state of in-progress HTTP request
-            Event::HttpSetState(state) => {
-                let id = state.id();
-                // If this request is *new*, select it
-                if self.request_store.update(state) {
-                    *self.selected_request.get_mut() = Some(id).into();
-                }
             }
 
             Event::Notify(notification) => {
@@ -158,9 +145,9 @@ impl EventHandler for Root {
                 action: Some(action),
                 ..
             } => match action {
-                // Handle history here because we have stored request state
                 Action::History => {
-                    self.open_history().reported(&ViewContext::messages_tx());
+                    self.open_history(context.request_store)
+                        .reported(&ViewContext::messages_tx());
                 }
                 Action::Quit => ViewContext::send_message(Message::Quit),
                 Action::ReloadCollection => {
@@ -187,19 +174,25 @@ impl EventHandler for Root {
     }
 }
 
-impl Draw for Root {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+impl<'a> Draw<RootProps<'a>> for Root {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: RootProps,
+        metadata: DrawMetadata,
+    ) {
         // Create layout
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
 
         // Main content
+        let selected_request = self
+            .selected_request_id()
+            .and_then(|id| props.request_store.get(id));
         self.primary_view.draw(
             frame,
-            PrimaryViewProps {
-                selected_request: self.selected_request(),
-            },
+            PrimaryViewProps { selected_request },
             main_area,
             !self.modal_queue.data().is_open(),
         );
@@ -219,6 +212,15 @@ impl Draw for Root {
         // Render modals last so they go on top
         self.modal_queue.draw(frame, (), frame.area(), true);
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct RootProps<'a> {
+    /// Access the in-memory cache of requests/responses. This arguably should
+    /// go in the ViewContext, but by passing it as a ref here we avoid sync
+    /// primitives on this. It's only needed in the top level of the view so it
+    /// never has to get drilled down.
+    pub request_store: &'a RequestStore,
 }
 
 /// Persistence key for the selected request
@@ -265,6 +267,7 @@ mod tests {
     #[rstest]
     fn test_preload_request(harness: TestHarness, terminal: TestTerminal) {
         // Add a request into the DB that we expect to preload
+        let request_store = RequestStore::new(harness.database.clone());
         let collection = Collection::factory(());
         let profile_id = collection.first_profile_id();
         let recipe_id = collection.first_recipe_id();
@@ -272,17 +275,20 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&exchange).unwrap();
 
-        let component =
-            TestComponent::new(&terminal, Root::new(&collection), ());
+        let component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&collection),
+            RootProps {
+                request_store: &request_store,
+            },
+        );
 
         // Make sure profile+recipe were preselected correctly
         let primary_view = component.data().primary_view.data();
         assert_eq!(primary_view.selected_profile_id(), Some(profile_id));
         assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
-        assert_eq!(
-            component.data().selected_request(),
-            Some(&RequestState::Response { exchange })
-        );
+        assert_eq!(component.data().selected_request_id(), Some(exchange.id));
 
         // It'd be nice to assert on the view but it's just too complicated to
         // be worth mocking the whole thing out
@@ -295,6 +301,7 @@ mod tests {
         harness: TestHarness,
         terminal: TestTerminal,
     ) {
+        let request_store = RequestStore::new(harness.database.clone());
         let collection = Collection::factory(());
         let recipe_id = collection.first_recipe_id();
         let profile_id = collection.first_profile_id();
@@ -310,8 +317,14 @@ mod tests {
             &Some(old_exchange.id),
         );
 
-        let component =
-            TestComponent::new(&terminal, Root::new(&collection), ());
+        let component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&collection),
+            RootProps {
+                request_store: &request_store,
+            },
+        );
 
         // Make sure everything was preselected correctly
         assert_eq!(
@@ -323,7 +336,7 @@ mod tests {
             Some(recipe_id)
         );
         assert_eq!(
-            component.data().selected_request().map(|state| state.id()),
+            component.data().selected_request_id(),
             Some(old_exchange.id)
         );
     }
@@ -335,6 +348,7 @@ mod tests {
         harness: TestHarness,
         terminal: TestTerminal,
     ) {
+        let request_store = RequestStore::new(harness.database.clone());
         let collection = Collection::factory(());
         let recipe_id = collection.first_recipe_id();
         let profile_id = collection.first_profile_id();
@@ -353,21 +367,33 @@ mod tests {
             )
             .unwrap();
 
-        let component =
-            TestComponent::new(&terminal, Root::new(&collection), ());
+        let component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&collection),
+            RootProps {
+                request_store: &request_store,
+            },
+        );
 
         assert_eq!(
-            component.data().selected_request(),
-            Some(&RequestState::Response {
-                exchange: new_exchange
-            })
+            component.data().selected_request_id(),
+            Some(new_exchange.id)
         );
     }
 
     #[rstest]
     fn test_edit_collection(mut harness: TestHarness, terminal: TestTerminal) {
+        let request_store = RequestStore::new(harness.database.clone());
         let root = Root::new(&harness.collection);
-        let mut component = TestComponent::new(&terminal, root, ());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            root,
+            RootProps {
+                request_store: &request_store,
+            },
+        );
 
         harness.clear_messages(); // Clear init junk
 

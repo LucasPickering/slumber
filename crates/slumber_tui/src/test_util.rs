@@ -2,6 +2,7 @@
 
 use crate::{
     context::TuiContext,
+    http::RequestStore,
     message::{Message, MessageSender},
     view::ViewContext,
 };
@@ -15,7 +16,7 @@ use rstest::fixture;
 use slumber_core::{
     collection::Collection, db::CollectionDatabase, test_util::Factory,
 };
-use std::{cell::RefCell, sync::Arc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 /// Get a test harness, with a clean terminal etc. See [TestHarness].
@@ -26,6 +27,8 @@ pub fn harness() -> TestHarness {
     let messages_tx: MessageSender = messages_tx.into();
     let collection = Collection::factory(()).into();
     let database = CollectionDatabase::factory(());
+    let request_store =
+        Rc::new(RefCell::new(RequestStore::new(database.clone())));
     ViewContext::init(
         Arc::clone(&collection),
         database.clone(),
@@ -34,6 +37,7 @@ pub fn harness() -> TestHarness {
     TestHarness {
         collection,
         database,
+        request_store,
         messages_tx,
         messages_rx,
     }
@@ -46,6 +50,9 @@ pub struct TestHarness {
     // These are public because we don't care about external mutation
     pub collection: Arc<Collection>,
     pub database: CollectionDatabase,
+    /// `RefCell` needed so multiple components can hang onto this at once.
+    /// Otherwise we would have to pass it to every single draw and update fn.
+    pub request_store: Rc<RefCell<RequestStore>>,
     messages_tx: MessageSender,
     messages_rx: UnboundedReceiver<Message>,
 }

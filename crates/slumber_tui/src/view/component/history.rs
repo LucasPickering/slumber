@@ -1,12 +1,13 @@
 use crate::{
     context::TuiContext,
+    http::RequestStateSummary,
     util::ResultReported,
     view::{
         common::{list::List, modal::Modal},
         component::Component,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler},
-        state::{select::SelectState, RequestStateSummary},
+        state::select::SelectState,
         ViewContext,
     },
 };

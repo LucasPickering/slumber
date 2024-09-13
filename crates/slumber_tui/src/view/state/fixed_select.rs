@@ -1,4 +1,5 @@
 use crate::view::{
+    context::UpdateContext,
     draw::{Draw, DrawMetadata},
     event::{Event, EventHandler, Update},
     state::select::{
@@ -177,8 +178,8 @@ where
     Item: FixedSelect,
     State: Debug + SelectStateData,
 {
-    fn update(&mut self, event: Event) -> Update {
-        self.inner.update(event)
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+        self.inner.update(context, event)
     }
 }
 

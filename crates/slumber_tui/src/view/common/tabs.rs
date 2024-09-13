@@ -1,6 +1,7 @@
 use crate::{
     context::TuiContext,
     view::{
+        context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
         state::fixed_select::{FixedSelect, FixedSelectState},
@@ -24,7 +25,7 @@ impl<T: FixedSelect> Tabs<T> {
 }
 
 impl<T: FixedSelect> EventHandler for Tabs<T> {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };

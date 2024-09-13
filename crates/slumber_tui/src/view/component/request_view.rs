@@ -7,6 +7,7 @@ use crate::{
             header_table::HeaderTable,
             text_window::{TextWindow, TextWindowProps},
         },
+        context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
         state::StateCell,
@@ -63,7 +64,7 @@ enum MenuAction {
 impl ToStringGenerate for MenuAction {}
 
 impl EventHandler for RequestView {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::OpenActions) = event.action() {
             let disabled = if self
                 .state

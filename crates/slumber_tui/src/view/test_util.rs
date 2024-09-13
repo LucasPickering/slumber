@@ -2,13 +2,15 @@
 
 use crate::{
     context::TuiContext,
-    test_util::TestTerminal,
+    http::RequestStore,
+    test_util::{TestHarness, TestTerminal},
     view::{
         common::modal::ModalQueue,
         component::Component,
         context::ViewContext,
         draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, ToChild, Update},
+        UpdateContext,
     },
 };
 use crossterm::event::{
@@ -16,6 +18,7 @@ use crossterm::event::{
     MouseEvent, MouseEventKind,
 };
 use ratatui::{layout::Rect, Frame};
+use std::{cell::RefCell, rc::Rc};
 
 /// A wrapper around a component that makes it easy to test. This provides lots
 /// of methods for sending events to the component. The goal is to make
@@ -24,6 +27,7 @@ use ratatui::{layout::Rect, Frame};
 pub struct TestComponent<'term, T, Props> {
     /// Terminal to draw to
     terminal: &'term TestTerminal,
+    request_store: Rc<RefCell<RequestStore>>,
     /// The area the component will be drawn to. This defaults to the whole
     /// terminal but can be modified to test things like resizes, using
     /// [Self::set_area]
@@ -52,6 +56,7 @@ where
     /// This takes a a reference to the terminal so it can draw without having
     /// to plumb the terminal around to every draw call.
     pub fn new(
+        harness: &TestHarness,
         terminal: &'term TestTerminal,
         data: T,
         initial_props: Props,
@@ -59,6 +64,7 @@ where
         let component: Component<T> = data.into();
         let mut slf = Self {
             terminal,
+            request_store: Rc::clone(&harness.request_store),
             area: terminal.area(),
             component,
             props: initial_props,
@@ -114,8 +120,13 @@ where
         );
 
         let mut propagated = Vec::new();
+        let mut update_context = UpdateContext {
+            request_store: &mut self.request_store.borrow_mut(),
+        };
         while let Some(event) = ViewContext::pop_event() {
-            if let Update::Propagate(event) = self.component.update_all(event) {
+            if let Update::Propagate(event) =
+                self.component.update_all(&mut update_context, event)
+            {
                 propagated.push(event);
             }
         }

@@ -1,6 +1,7 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
+    http::RequestState,
     message::Message,
     util::ResultReported,
     view::{
@@ -12,9 +13,10 @@ use crate::{
             recipe_list::RecipeListPane,
             recipe_pane::{RecipeMenuAction, RecipePane, RecipePaneProps},
         },
+        context::UpdateContext,
         draw::{Draw, DrawMetadata, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
-        state::{fixed_select::FixedSelectState, RequestState},
+        state::fixed_select::FixedSelectState,
         util::persistence::{Persisted, PersistedLazy},
         Component, ViewContext,
     },
@@ -271,7 +273,7 @@ impl PrimaryView {
 }
 
 impl EventHandler for PrimaryView {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         match &event {
             // Input messages
             Event::Input {
@@ -440,6 +442,7 @@ mod tests {
     ) -> TestComponent<'term, PrimaryView, PrimaryViewProps<'static>> {
         let view = PrimaryView::new(&harness.collection);
         let component = TestComponent::new(
+            harness,
             terminal,
             view,
             PrimaryViewProps {

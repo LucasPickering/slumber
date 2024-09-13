@@ -1,4 +1,5 @@
 use crate::{
+    http::RequestStore,
     message::{Message, MessageSender},
     view::{
         common::modal::Modal,
@@ -153,6 +154,12 @@ impl ViewContext {
             f(refs.as_slice());
         })
     }
+}
+
+/// External data passed to [EventHandler::update]. This holds data that cannot
+/// be held in [ViewContext], typically because of borrowing reasons.
+pub struct UpdateContext<'a> {
+    pub request_store: &'a mut RequestStore,
 }
 
 #[cfg(test)]

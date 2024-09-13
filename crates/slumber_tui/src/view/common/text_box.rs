@@ -3,6 +3,7 @@
 use crate::{
     context::TuiContext,
     view::{
+        context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
     },
@@ -129,7 +130,7 @@ impl TextBox {
 }
 
 impl EventHandler for TextBox {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         match event {
             Event::Input {
                 action: Some(Action::Submit),
@@ -393,13 +394,14 @@ mod tests {
     /// Test the basic interaction loop on the text box
     #[rstest]
     fn test_interaction(
-        _harness: TestHarness,
+        harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {
         let click_count = Counter::default();
         let submit_count = Counter::default();
         let cancel_count = Counter::default();
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             TextBox::default()
                 .on_click(click_count.callback())
@@ -453,11 +455,11 @@ mod tests {
     /// we're mostly just testing that keys are mapped correctly
     #[rstest]
     fn test_navigation(
-        _harness: TestHarness,
+        harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {
         let mut component =
-            TestComponent::new(&terminal, TextBox::default(), ());
+            TestComponent::new(&harness, &terminal, TextBox::default(), ());
 
         // Type some text
         component.send_text("hello!").assert_empty();
@@ -485,10 +487,11 @@ mod tests {
 
     #[rstest]
     fn test_sensitive(
-        _harness: TestHarness,
+        harness: TestHarness,
         #[with(6, 1)] terminal: TestTerminal,
     ) {
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             TextBox::default().sensitive(true),
             (),
@@ -502,10 +505,11 @@ mod tests {
 
     #[rstest]
     fn test_placeholder(
-        _harness: TestHarness,
+        harness: TestHarness,
         #[with(6, 1)] terminal: TestTerminal,
     ) {
         let component = TestComponent::new(
+            &harness,
             &terminal,
             TextBox::default().placeholder("hello"),
             (),
@@ -522,10 +526,11 @@ mod tests {
 
     #[rstest]
     fn test_validator(
-        _harness: TestHarness,
+        harness: TestHarness,
         #[with(6, 1)] terminal: TestTerminal,
     ) {
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             TextBox::default().validator(|text| text.len() <= 2),
             (),

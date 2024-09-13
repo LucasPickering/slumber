@@ -9,6 +9,7 @@ use crate::view::{
         text_box::TextBox,
     },
     component::Component,
+    context::UpdateContext,
     draw::{Draw, DrawMetadata, Generate},
     event::{Child, Event, EventHandler, Update},
     state::{select::SelectState, Notification},
@@ -298,7 +299,7 @@ impl Modal for ConfirmModal {
 }
 
 impl EventHandler for ConfirmModal {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         // When user selects a button, send the response and close
         let Some(button) = event.local::<ConfirmButton>() else {
             return Update::Propagate(event);

@@ -8,6 +8,7 @@ use crate::{
             persistence::{RecipeOverrideKey, RecipeTemplate},
             table::{RecipeFieldTable, RecipeFieldTableProps},
         },
+        context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, Update},
         Component, ViewContext,
@@ -199,7 +200,7 @@ impl RawBody {
 }
 
 impl EventHandler for RawBody {
-    fn update(&mut self, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::Edit) = event.action() {
             self.open_editor();
         } else if let Some(SaveBodyOverride(path)) = event.local() {
@@ -287,6 +288,7 @@ mod tests {
         };
         let recipe_id = RecipeId::factory(());
         let mut component = TestComponent::new(
+            &harness,
             &terminal,
             RecipeBodyDisplay::new(&body, recipe_id.clone()),
             (),
@@ -332,7 +334,7 @@ mod tests {
     /// Override template should be loaded from the persistence store on init
     #[rstest]
     fn test_persisted_override(
-        _harness: TestHarness,
+        harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {
         let recipe_id = RecipeId::factory(());
@@ -346,6 +348,7 @@ mod tests {
             content_type: Some(ContentType::Json),
         };
         let component = TestComponent::new(
+            &harness,
             &terminal,
             RecipeBodyDisplay::new(&body, recipe_id),
             (),

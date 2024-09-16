@@ -106,6 +106,7 @@ fn build_profiles(servers: Vec<Server>) -> IndexMap<ProfileId, Profile> {
                     // will be the same value, but we provide it for
                     // discoverability; the user may want to rename it
                     name: Some(url),
+                    default: false,
                     data,
                 },
             )

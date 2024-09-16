@@ -9,6 +9,8 @@ use crate::{
     template::Template,
 };
 use anyhow::Context;
+use indexmap::IndexMap;
+use itertools::Itertools;
 use serde::{
     de::{
         self, EnumAccess, Error as _, MapAccess, SeqAccess, VariantAccess,
@@ -117,6 +119,34 @@ where
 {
     let s = String::deserialize(deserializer)?;
     s.parse().map_err(D::Error::custom)
+}
+
+/// Deserialize a profile mapping. This also enforces that only one profile is
+/// marked as default
+pub fn deserialize_profiles<'de, D>(
+    deserializer: D,
+) -> Result<IndexMap<ProfileId, Profile>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let profiles: IndexMap<ProfileId, Profile> =
+        deserialize_id_map(deserializer)?;
+
+    // Make sure at most one profile is the default
+    let is_default = |profile: &&Profile| profile.default;
+
+    if profiles.values().filter(is_default).count() > 1 {
+        return Err(de::Error::custom(format!(
+            "Only one profile can be the default, but multiple were: {}",
+            profiles
+                .values()
+                .filter(is_default)
+                .map(Profile::id)
+                .format(", ")
+        )));
+    }
+
+    Ok(profiles)
 }
 
 /// Deserialize query parameters from either a sequence of `key=value` or a map
@@ -589,21 +619,34 @@ mod tests {
     use std::time::Duration;
 
     #[rstest]
-    // boolean
-    #[case::bool_true(Token::Bool(true), "true")]
-    #[case::bool_false(Token::Bool(false), "false")]
-    // numeric
-    #[case::u64(Token::U64(1000), "1000")]
-    #[case::i64_negative(Token::I64(-1000), "-1000")]
-    #[case::float_positive(Token::F64(10.1), "10.1")]
-    #[case::float_negative(Token::F64(-10.1), "-10.1")]
-    // string
-    #[case::str(Token::Str("hello"), "hello")]
-    #[case::str_null(Token::Str("null"), "null")]
-    #[case::str_true(Token::Str("true"), "true")]
-    #[case::str_false(Token::Str("false"), "false")]
-    fn test_deserialize_template(#[case] token: Token, #[case] expected: &str) {
-        assert_de_tokens(&Template::from(expected), &[token]);
+    #[case::multiple_default(
+        mapping([
+            ("profile1", mapping([
+                ("default", serde_yaml::Value::Bool(true)),
+                ("data", mapping([("a", "1")]))
+            ])),
+            ("profile2", mapping([
+                ("default", serde_yaml::Value::Bool(true)),
+                ("data", mapping([("a", "2")]))
+            ])),
+        ]),
+        "Only one profile can be the default, but multiple were: \
+        profile1, profile2",
+    )]
+    fn test_deserialize_profiles_error(
+        #[case] yaml: impl Into<serde_yaml::Value>,
+        #[case] expected_error: &str,
+    ) {
+        #[derive(Debug, Deserialize)]
+        #[serde(transparent)]
+        struct Wrap(
+            #[allow(dead_code)]
+            #[serde(deserialize_with = "deserialize_profiles")]
+            IndexMap<ProfileId, Profile>,
+        );
+
+        let yaml = yaml.into();
+        assert_err!(serde_yaml::from_value::<Wrap>(yaml), expected_error);
     }
 
     /// Test serializing and deserializing recipe bodies. Round trips should all

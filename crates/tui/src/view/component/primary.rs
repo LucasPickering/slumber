@@ -108,7 +108,7 @@ impl ToStringGenerate for MenuAction {}
 
 impl PrimaryView {
     pub fn new(collection: &Collection) -> Self {
-        let profile_pane = ProfilePane::new(&collection.profiles).into();
+        let profile_pane = ProfilePane::new(collection).into();
         let recipe_list_pane = RecipeListPane::new(&collection.recipes).into();
         let selected_pane = FixedSelectState::builder()
             // Changing panes kicks us out of fullscreen

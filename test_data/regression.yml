@@ -18,6 +18,7 @@ profiles:
       user_guid: abc123
   profile2:
     name: Profile 2
+    default: true
     data:
       <<: *base_profile_data
 

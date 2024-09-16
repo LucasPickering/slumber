@@ -61,7 +61,9 @@ pub struct BuildRequestCommand {
     /// ID of the recipe to render into a request
     recipe_id: RecipeId,
 
-    /// ID of the profile to pull template values from
+    /// ID of the profile to pull template values from. If omitted and the
+    /// collection has default profile defined, use that profile. Otherwise,
+    /// profile data will not be available.
     #[clap(long = "profile", short)]
     profile: Option<ProfileId>,
 
@@ -165,10 +167,16 @@ impl BuildRequestCommand {
             })?;
         }
 
+        // Fall back to default profile if defined in the collection
+        let selected_profile = self.profile.or_else(|| {
+            let default_profile = collection.default_profile()?;
+            Some(default_profile.id.clone())
+        });
+
         // Build the request
         let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
         let template_context = TemplateContext {
-            selected_profile: self.profile.clone(),
+            selected_profile,
             collection,
             // Passing the HTTP engine is how we tell the template renderer that
             // it's ok to execute subrequests during render

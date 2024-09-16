@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - [See docs for more](https://slumber.lucaspickering.me/book/api/request_collection/chain_source.html#select)
 - Cancel in-flight requests with the `cancel` action (bound to escape by default)
 - Add `slumber new` subcommand to generate new collection files [#376](https://github.com/LucasPickering/slumber/issues/376)
+- Add `default` field to profiles
+  - When using the CLI, the `--profile` argument can be omitted to use the default profile
 
 ### Fixed
 

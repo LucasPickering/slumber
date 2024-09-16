@@ -284,20 +284,6 @@ impl Resource {
     }
 }
 
-impl From<Environment> for Profile {
-    fn from(environment: Environment) -> Self {
-        Profile {
-            id: environment.id.into(),
-            name: Some(environment.name),
-            data: environment
-                .data
-                .into_iter()
-                .map(|(k, v)| (k, Template::raw(v)))
-                .collect(),
-        }
-    }
-}
-
 impl From<RequestGroup> for RecipeNode {
     fn from(folder: RequestGroup) -> Self {
         RecipeNode::Folder(Folder {
@@ -484,6 +470,7 @@ fn build_profiles(
                 Profile {
                     id,
                     name: Some(environment.name),
+                    default: false,
                     data,
                 },
             )

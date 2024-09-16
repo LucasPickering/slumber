@@ -17,7 +17,6 @@ use crate::{
     },
 };
 use anyhow::anyhow;
-use indexmap::IndexMap;
 use itertools::Itertools;
 use persisted::PersistedKey;
 use ratatui::{
@@ -28,7 +27,7 @@ use ratatui::{
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{HasId, Profile, ProfileId},
+    collection::{Collection, HasId, Profile, ProfileId},
     util::doc_link,
 };
 
@@ -50,20 +49,25 @@ pub struct ProfilePane {
 struct SelectedProfileKey;
 
 impl ProfilePane {
-    pub fn new(profiles: &IndexMap<ProfileId, Profile>) -> Self {
+    pub fn new(collection: &Collection) -> Self {
         let mut selected_profile_id =
             Persisted::new_default(SelectedProfileKey);
 
         // Two invalid cases we need to handle here:
         // - Nothing is persisted but the map has values now
         // - Persisted ID isn't in the map now
-        // In either case, just fall back to the first value in the map (or
-        // `None` if it's empty)
+        // In either case, just fall back to:
+        // - Default profile if available
+        // - First profile if available
+        // - `None` if map is empty
         match &*selected_profile_id {
-            Some(id) if profiles.contains_key(id) => {}
+            Some(id) if collection.profiles.contains_key(id) => {}
             _ => {
-                *selected_profile_id.get_mut() =
-                    profiles.first().map(|(id, _)| id.clone())
+                *selected_profile_id.get_mut() = collection
+                    .default_profile()
+                    .or(collection.profiles.values().next())
+                    .map(Profile::id)
+                    .cloned()
             }
         }
 
@@ -339,10 +343,10 @@ mod tests {
     /// persistence
     #[rstest]
     #[case::empty(&[] , None, None)]
-    #[case::preselect(&["p1", "p2"] , None, Some("p1"))]
-    #[case::unknown(&["p1", "p2"] , Some("p3"), Some("p1"))]
+    #[case::preselect(&["p1", "p2", "default"] , None, Some("default"))]
+    #[case::unknown(&["p1", "p2", "default"] , Some("p3"), Some("default"))]
     #[case::unknown_empty(&[] , Some("p1"), None)]
-    #[case::persisted(&["p1", "p2"] , Some("p2"), Some("p2"))]
+    #[case::persisted(&["p1", "p2", "default"] , Some("p2"), Some("p2"))]
     fn test_initial_profile(
         _harness: TestHarness,
         #[case] profile_ids: &[&str],
@@ -351,6 +355,7 @@ mod tests {
     ) {
         let profiles = by_id(profile_ids.iter().map(|&id| Profile {
             id: id.into(),
+            default: id == "default",
             ..Profile::factory(())
         }));
         if let Some(persisted_id) = persisted_id {
@@ -361,7 +366,10 @@ mod tests {
         }
 
         let expected = expected.map(ProfileId::from);
-        let component = ProfilePane::new(&profiles);
+        let component = ProfilePane::new(&Collection {
+            profiles,
+            ..Collection::factory(())
+        });
         assert_eq!(*component.selected_profile_id, expected);
     }
 }

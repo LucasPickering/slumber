@@ -78,7 +78,7 @@ impl<T> Component<T> {
     /// Handle an event for this component *or* its children, starting at the
     /// lowest descendant. Recursively walk up the tree until a component
     /// consumes the event.
-    #[instrument(skip_all, fields(component = self.name()))]
+    #[instrument(level = "trace", skip_all, fields(component = self.name()))]
     pub fn update_all(
         &mut self,
         context: &mut UpdateContext,

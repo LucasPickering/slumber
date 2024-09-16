@@ -38,7 +38,7 @@ use strum::{EnumCount, EnumIter};
 pub struct RecipePane {
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
-    recipe_state: StateCell<RecipeStateKey, Option<Component<RecipeDisplay>>>,
+    recipe_state: StateCell<RecipeStateKey, Component<Option<RecipeDisplay>>>,
 }
 
 #[derive(Clone)]
@@ -56,7 +56,7 @@ impl RecipePane {
         let recipe_id = state_key.recipe_id.clone()?;
         let profile_id = state_key.selected_profile_id.clone();
         let recipe_state = self.recipe_state.get()?;
-        let options = recipe_state.as_ref()?.data().build_options();
+        let options = recipe_state.data().as_ref()?.build_options();
         Some(RequestConfig {
             recipe_id,
             profile_id,
@@ -80,8 +80,8 @@ impl EventHandler for RecipePane {
                         RecipeMenuAction::disabled_actions(
                             state.is_some(),
                             state
-                                .and_then(Option::as_mut)
-                                .is_some_and(|state| state.data().has_body()),
+                                .and_then(|state| state.data().as_ref())
+                                .is_some_and(|state| state.has_body()),
                         ),
                     ))
                 }
@@ -96,7 +96,7 @@ impl EventHandler for RecipePane {
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         self.recipe_state
             .get_mut()
-            .and_then(|state| Some(state.as_mut()?.to_child_mut()))
+            .map(|state| state.to_child_mut())
             .into_iter()
             .collect()
     }
@@ -138,11 +138,14 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                     .map(RecipeNode::id)
                     .cloned(),
             },
-            || match props.selected_recipe_node {
-                Some(RecipeNode::Recipe(recipe)) => {
-                    Some(RecipeDisplay::new(recipe).into())
+            || {
+                match props.selected_recipe_node {
+                    Some(RecipeNode::Recipe(recipe)) => {
+                        Some(RecipeDisplay::new(recipe))
+                    }
+                    Some(RecipeNode::Folder(_)) | None => None,
                 }
-                Some(RecipeNode::Folder(_)) | None => None,
+                .into()
             },
         );
 
@@ -158,11 +161,7 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                 frame.render_widget(folder.generate(), inner_area);
             }
             Some(RecipeNode::Recipe(_)) => {
-                // Unwrap is safe because we just initialized state above
-                recipe_state
-                    .as_ref()
-                    .unwrap()
-                    .draw(frame, (), inner_area, true)
+                recipe_state.draw_opt(frame, (), inner_area, true)
             }
         };
     }

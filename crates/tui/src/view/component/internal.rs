@@ -215,14 +215,42 @@ impl<T> Component<T> {
     ) where
         T: Draw<Props>,
     {
+        self.draw_inner(frame, props, area, has_focus, &self.inner);
+    }
+
+    fn draw_inner<D: Draw<Props>, Props>(
+        &self,
+        frame: &mut Frame,
+        props: Props,
+        area: Rect,
+        has_focus: bool,
+        inner: &D,
+    ) {
         let guard = DrawGuard::new(self.id);
 
         // Update internal state for event handling
         let metadata = DrawMetadata::new_dangerous(area, has_focus);
         self.metadata.set(metadata);
 
-        self.inner.draw(frame, props, metadata);
+        inner.draw(frame, props, metadata);
         drop(guard); // Make sure guard stays alive until here
+    }
+}
+
+impl<T> Component<Option<T>> {
+    /// For components with optional data, draw the contents if present
+    pub fn draw_opt<Props>(
+        &self,
+        frame: &mut Frame,
+        props: Props,
+        area: Rect,
+        has_focus: bool,
+    ) where
+        T: Draw<Props>,
+    {
+        if let Some(inner) = &self.inner {
+            self.draw_inner(frame, props, area, has_focus, inner);
+        }
     }
 }
 

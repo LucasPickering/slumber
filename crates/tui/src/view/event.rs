@@ -49,6 +49,17 @@ pub trait EventHandler {
     }
 }
 
+/// Enable `Component<Option<T>>` with an empty event handler
+impl<T: EventHandler> EventHandler for Option<T> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+        Update::Propagate(event)
+    }
+
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        Vec::new()
+    }
+}
+
 // We can't do a blanket impl of EventHandler based on DerefMut because of the
 // PersistedLazy's custom ToChild impl, which interferes with the blanket
 // ToChild impl

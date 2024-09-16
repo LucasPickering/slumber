@@ -116,7 +116,7 @@ impl Template {
     }
 
     /// Internal version of [Self::render_chunks] with local render state
-    #[instrument(skip_all, fields(template = %self.display()))]
+    #[instrument(level = "debug", skip_all, fields(template = %self.display()))]
     async fn render_chunks_impl<'a>(
         &'a self,
         context: &'a TemplateContext,

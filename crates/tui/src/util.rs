@@ -9,7 +9,7 @@ use editor_command::EditorBuilder;
 use futures::{future, FutureExt};
 use slumber_core::{
     template::Prompt,
-    util::{doc_link, expand_home, ResultTraced},
+    util::{doc_link, paths::expand_home, ResultTraced},
 };
 use std::{
     io,

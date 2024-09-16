@@ -1,76 +1,74 @@
-use anyhow::Context;
-use derive_more::Display;
+use anyhow::{anyhow, Context};
 use std::{
     borrow::Cow,
     fs,
     path::{Path, PathBuf},
-    sync::OnceLock,
 };
 
-// Store directories statically so we can create them once at startup and access
-// them subsequently anywhere
-static DATA_DIRECTORY: OnceLock<DataDirectory> = OnceLock::new();
+/// Get the path of the directory to contain the config file (e.g. the
+/// database). **Directory may not exist yet**, caller must create it.
+pub fn config_directory() -> PathBuf {
+    // Config dir will be present on all platforms
+    // https://docs.rs/dirs/5.0.1/dirs/fn.config_dir.html
+    debug_or(dirs::config_dir().unwrap().join("slumber"))
+}
 
-/// The root data directory. All files that Slumber creates on the system should
-/// live here.
-#[derive(Debug, Display)]
-#[display("{}", _0.display())]
-pub struct DataDirectory(PathBuf);
+/// Get the path of the directory to data files (e.g. the database). **Directory
+/// may not exist yet**, caller must create it.
+pub fn data_directory() -> PathBuf {
+    // Data dir will be present on all platforms
+    // https://docs.rs/dirs/latest/dirs/fn.data_dir.html
+    debug_or(dirs::data_dir().unwrap().join("slumber"))
+}
 
-impl DataDirectory {
-    /// Initialize directory for all generated files. The path is contextual:
-    /// - In development, use a directory from the crate root
-    /// - In release, use a platform-specific directory in the user's home
-    ///
-    /// This will create the directory, and return an error if that fails
-    pub fn init() -> anyhow::Result<()> {
-        let path = Self::get_directory();
+/// Get the path of the directory to contain log files. **Directory
+/// may not exist yet**, caller must create it.
+pub fn log_directory() -> PathBuf {
+    // State dir is only present on windows, but cache dir will be present on
+    // all platforms
+    // https://docs.rs/dirs/latest/dirs/fn.state_dir.html
+    // https://docs.rs/dirs/latest/dirs/fn.cache_dir.html
+    debug_or(
+        dirs::state_dir()
+            .unwrap_or_else(|| dirs::cache_dir().unwrap())
+            .join("slumber"),
+    )
+}
 
-        // Create the dir
-        fs::create_dir_all(&path).with_context(|| {
-            format!("Error creating data directory {path:?}")
-        })?;
+/// Get the path to the primary log file. **Parent direct may not exist yet,**
+/// caller must create it.
+pub fn log_file() -> PathBuf {
+    log_directory().join("slumber.log")
+}
 
-        DATA_DIRECTORY
-            .set(Self(path))
-            .expect("Temporary directory is already initialized");
-        Ok(())
-    }
+/// Get the path to the backup log file **Parent direct may not exist yet,**
+/// caller must create it.
+pub fn log_file_old() -> PathBuf {
+    log_directory().join("slumber.log.old")
+}
 
+/// In debug mode, use a local directory for all files. In release, use the
+/// given path.
+fn debug_or(path: PathBuf) -> PathBuf {
     #[cfg(debug_assertions)]
-    fn get_directory() -> PathBuf {
+    {
+        let _ = path; // Remove unused warning
         get_repo_root().join("data/")
     }
-
     #[cfg(not(debug_assertions))]
-    fn get_directory() -> PathBuf {
-        // According to the docs, this dir will be present on all platforms
-        // https://docs.rs/dirs/latest/dirs/fn.data_dir.html
-        dirs::data_dir().unwrap().join("slumber")
+    {
+        path
     }
+}
 
-    /// Get a reference to the global directory for permanent data. See
-    /// [Self::init] for more info.
-    pub fn get() -> &'static Self {
-        DATA_DIRECTORY
-            .get()
-            .expect("Temporary directory is not initialized")
-    }
-
-    /// Build a path to a file in this directory
-    pub fn file(&self, path: impl AsRef<Path>) -> PathBuf {
-        self.0.join(path)
-    }
-
-    /// Build a path to the log file
-    pub fn log_file(&self) -> PathBuf {
-        self.file("slumber.log")
-    }
-
-    /// Build a path to the backup log file
-    pub fn log_file_old(&self) -> PathBuf {
-        self.file("slumber.log.old")
-    }
+/// Ensure the parent directory of a file path exists
+pub fn create_parent(path: &Path) -> anyhow::Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        anyhow!("Cannot create directory for path {path:?}; it has no parent")
+    })?;
+    fs::create_dir_all(parent)
+        .context("Error creating directory {parent:?}")?;
+    Ok(())
 }
 
 /// Get path to the root of the git repo. This is needed because this crate
@@ -81,7 +79,7 @@ impl DataDirectory {
 #[cfg(any(debug_assertions, test))]
 pub(crate) fn get_repo_root() -> &'static Path {
     use crate::util::ResultTraced;
-    use std::process::Command;
+    use std::{process::Command, sync::OnceLock};
 
     static CACHE: OnceLock<PathBuf> = OnceLock::new();
 

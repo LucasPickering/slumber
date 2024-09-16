@@ -4,7 +4,7 @@ use crate::{
     collection::{ChainSource, HasId},
     http::{HttpEngine, HttpEngineConfig},
     template::{Prompt, Prompter, Select},
-    util::{get_repo_root, ResultTraced},
+    util::{paths::get_repo_root, ResultTraced},
 };
 use anyhow::Context;
 use derive_more::Deref;

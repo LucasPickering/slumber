@@ -4,13 +4,23 @@ Configuration provides _application_-level settings, as opposed to collection-le
 
 ## Location & Creation
 
-By default, configuration is stored in the Slumber root directory, under the file `config.yml`. To find the config file, you can run:
+By default, configuration is stored in a platform-specific configuration directory, according to [dirs::config_dir](https://docs.rs/dirs/latest/dirs/fn.config_dir.html).
+
+| Platform | Path                                                   |
+| -------- | ------------------------------------------------------ |
+| Linux    | `$HOME/.config/slumber/config.yml`                     |
+| MacOS    | `$HOME/Library/Application Support/slumber/config.yml` |
+| Windows  | `C:\Users\<User>\AppData\Roaming\slumber\config.yml`   |
+
+You can also find the config path by running:
 
 ```sh
 slumber show paths
 ```
 
-If the root directory doesn't exist yet, you can create it yourself or have Slumber create it by simply starting the TUI.
+If the config directory doesn't exist yet, Slumber will create it automatically when starting the TUI for the first time.
+
+> Note: Prior to version 2.1.0, Slumber stored configuration in a different location on Linux (`~/.local/share/slumber/config.yml`). If that file exists on your system, **it will be used in place of the newer location.** For more context, see [issue #371](https://github.com/LucasPickering/slumber/issues/371).
 
 You can change the location of the config file by setting the environment variable `SLUMBER_CONFIG_PATH`. For example:
 

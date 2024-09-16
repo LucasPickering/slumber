@@ -8,7 +8,7 @@ use crate::{
     collection::{ProfileId, RecipeId},
     db::convert::{CollectionPath, JsonEncoded, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
-    util::{DataDirectory, ResultTraced},
+    util::{paths, ResultTraced},
 };
 use anyhow::{anyhow, Context};
 use derive_more::Display;
@@ -54,6 +54,8 @@ impl Database {
     /// not after that.
     pub fn load() -> anyhow::Result<Self> {
         let path = Self::path();
+        paths::create_parent(&path)?;
+
         info!(?path, "Loading database");
         let mut connection = Connection::open(path)?;
         connection.pragma_update(
@@ -71,7 +73,7 @@ impl Database {
 
     /// Path to the database file
     pub fn path() -> PathBuf {
-        DataDirectory::get().file(Self::FILE)
+        paths::data_directory().join(Self::FILE)
     }
 
     /// Apply database migrations
@@ -505,7 +507,7 @@ impl crate::test_util::Factory for Database {
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for CollectionDatabase {
     fn factory(_: ()) -> Self {
-        use crate::util::get_repo_root;
+        use crate::util::paths::get_repo_root;
         Database::factory(())
             .into_collection(&get_repo_root().join("slumber.yml"))
             .expect("Error initializing DB collection")
@@ -515,7 +517,7 @@ impl crate::test_util::Factory for CollectionDatabase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{test_util::Factory, util::get_repo_root};
+    use crate::{test_util::Factory, util::paths::get_repo_root};
     use itertools::Itertools;
     use std::collections::HashMap;
 

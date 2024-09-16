@@ -3,7 +3,7 @@
 
 use anyhow::Context;
 use slumber_cli::Args;
-use slumber_core::util::{DataDirectory, ResultTraced};
+use slumber_core::util::{paths, ResultTraced};
 use slumber_tui::Tui;
 use std::{
     fs::{self, File, OpenOptions},
@@ -17,7 +17,6 @@ use tracing_subscriber::{filter::Targets, fmt::format::FmtSpan, prelude::*};
 async fn main() -> anyhow::Result<ExitCode> {
     // Global initialization
     let args = Args::parse();
-    DataDirectory::init()?;
 
     initialize_tracing(args.subcommand.is_some());
 
@@ -104,8 +103,8 @@ fn initialize_tracing(console_output: bool) {
 /// backup path.
 fn initialize_log_file() -> anyhow::Result<File> {
     const MAX_FILE_SIZE: u64 = 1000 * 1000; // 1MB
-    let data_directory = DataDirectory::get();
-    let path = data_directory.log_file();
+    let path = paths::log_file();
+    paths::create_parent(&path)?;
 
     if fs::metadata(&path)
         .map_or(false, |metadata| metadata.len() > MAX_FILE_SIZE)
@@ -113,7 +112,7 @@ fn initialize_log_file() -> anyhow::Result<File> {
         // Rename new->old, overwriting old. If that fails, just delete new so
         // it doesn't grow indefinitely. Failure shouldn't stop us from logging
         // though
-        let _ = fs::rename(&path, data_directory.log_file_old())
+        let _ = fs::rename(&path, paths::log_file_old())
             .or_else(|_| fs::remove_file(&path));
     }
 

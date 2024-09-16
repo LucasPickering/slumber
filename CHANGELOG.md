@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add `default` field to profiles
   - When using the CLI, the `--profile` argument can be omitted to use the default profile
 
+### Changed
+
+- Update file locations to adhere to XDG spec on Linux [#371](https://github.com/LucasPickering/slumber/issues/371)
+  - Move config file to [config dir](https://docs.rs/dirs/latest/dirs/fn.config_dir.html), which remains the same on MacOS/Windows but changes on Linux. For backward compatibility, the previous path ([data dir](https://docs.rs/dirs/latest/dirs/fn.data_dir.html)) will be checked and used if present
+  - Move log files to [state dir](https://docs.rs/dirs/latest/dirs/fn.state_dir.html) on Linux and [cache dir](https://docs.rs/dirs/latest/dirs/fn.cache_dir.html) on MacOS/Windows
+  - Database file remains in [data dir](https://docs.rs/dirs/latest/dirs/fn.data_dir.html) on all platforms
+- Create config file on startup if it doesn't exist
+- If config file fails to load during TUI startup, display an error and fall back to the default, rather than crashing
+
 ### Fixed
 
 - Updated the Configuration docs to remove the non-existent `slumber show dir` command (thanks @SVendittelli)

@@ -11,7 +11,7 @@ use crate::{
         Prompt, Select, Template, TemplateChunk, TemplateContext,
         TemplateError, TemplateKey,
     },
-    util::{expand_home, FutureCache, FutureCacheOutcome, ResultTraced},
+    util::{paths::expand_home, FutureCache, FutureCacheOutcome, ResultTraced},
 };
 use async_trait::async_trait;
 use chrono::Utc;

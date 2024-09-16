@@ -91,10 +91,13 @@ impl Tui {
         // ===== Initialize global state =====
         // This stuff only needs to be set up *once per session*
 
-        let config = Config::load()?;
         // Create a message queue for handling async tasks
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx = MessageSender::new(messages_tx);
+
+        // Load config file. Failure shouldn't be fatal since we can fall back
+        // to default, just show an error to the user
+        let config = Config::load().reported(&messages_tx).unwrap_or_default();
         // Load a database for this particular collection
         let database = Database::load()?.into_collection(&collection_path)?;
         // Initialize global view context

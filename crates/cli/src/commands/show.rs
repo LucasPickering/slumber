@@ -2,9 +2,7 @@ use crate::{GlobalArgs, Subcommand};
 use clap::Parser;
 use serde::Serialize;
 use slumber_config::Config;
-use slumber_core::{
-    collection::CollectionFile, db::Database, util::DataDirectory,
-};
+use slumber_core::{collection::CollectionFile, db::Database, util::paths};
 use std::{borrow::Cow, path::Path, process::ExitCode};
 
 /// Print meta information about Slumber (config, collections, etc.)
@@ -30,11 +28,9 @@ impl Subcommand for ShowCommand {
             ShowTarget::Paths => {
                 let collection_path =
                     CollectionFile::try_path(None, global.file);
-                let data_dir = DataDirectory::get();
-                println!("Data directory: {}", data_dir);
-                println!("Log file: {}", data_dir.log_file().display());
                 println!("Config: {}", Config::path().display());
                 println!("Database: {}", Database::path().display());
+                println!("Log file: {}", paths::log_file().display());
                 println!(
                     "Collection: {}",
                     collection_path

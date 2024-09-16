@@ -1,8 +1,6 @@
 //! Miscellaneous utility constants/types/functions
 
-mod paths;
-
-pub use crate::util::paths::*;
+pub mod paths;
 
 use crate::{http::RequestError, template::ChainError};
 use chrono::{

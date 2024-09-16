@@ -20,9 +20,13 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     http::HttpEngineConfig,
-    util::{expand_home, parse_yaml, DataDirectory, ResultTraced},
+    util::{
+        parse_yaml,
+        paths::{self, create_parent, expand_home},
+        ResultTraced,
+    },
 };
-use std::{env, fs::File, path::PathBuf};
+use std::{env, fs::OpenOptions, path::PathBuf};
 use tracing::info;
 
 const PATH_ENV_VAR: &str = "SLUMBER_CONFIG_PATH";
@@ -51,11 +55,25 @@ pub struct Config {
 }
 
 impl Config {
-    /// Path to the configuration file
+    /// Path to the configuration file, in this precedence:
+    /// - Value of `$SLUMBER_CONFIG_PATH`
+    /// - `$DATA_DIR/slumber/config.yml` **if the file exists**, where
+    ///   `$DATA_DIR` is defined by [dirs::data_dir]. This is a legacy location,
+    ///   supported for backward compatibility only. See this issue for more:
+    ///   https://github.com/LucasPickering/slumber/issues/371
+    /// - `$CONFIG_DIR/slumber/config.yml`, where `$CONFIG_DIR` is defined by
+    ///   [dirs::config_dir]
     pub fn path() -> PathBuf {
-        env::var(PATH_ENV_VAR)
-            .map(|path| expand_home(PathBuf::from(path)).into_owned())
-            .unwrap_or_else(|_| DataDirectory::get().file(FILE))
+        if let Ok(path) = env::var(PATH_ENV_VAR) {
+            return expand_home(PathBuf::from(path)).into_owned();
+        }
+
+        let legacy_path = paths::data_directory().join(FILE);
+        if legacy_path.is_file() {
+            return legacy_path;
+        }
+
+        paths::config_directory().join(FILE)
     }
 
     /// Load configuration from the file, if present. If not, just return a
@@ -67,23 +85,24 @@ impl Config {
     /// can specify their own types
     pub fn load() -> anyhow::Result<Self> {
         let path = Self::path();
+        create_parent(&path)?;
+
         info!(?path, "Loading configuration file");
 
-        match File::open(&path) {
-            Ok(file) => parse_yaml::<Self>(&file)
-                .context(format!("Error loading configuration from {path:?}"))
-                .traced(),
-            // An error here is probably just the file missing, so don't make
-            // a big stink about it
-            Err(error) => {
-                info!(
-                    ?path,
-                    error = &error as &dyn std::error::Error,
-                    "Error reading configuration file"
-                );
-                Ok(Self::default())
-            }
-        }
+        // Open the config file, creating it if it doesn't exist. This will
+        // never create the legacy file, because the file must already exist in
+        // order for the legacy location to be used.
+        (|| {
+            let file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .read(true)
+                .open(&path)?;
+            let config = parse_yaml::<Self>(&file)?;
+            Ok::<_, anyhow::Error>(config)
+        })()
+        .context(format!("Error loading configuration from {path:?}"))
+        .traced()
     }
 }
 

@@ -325,7 +325,7 @@ mod tests {
         db::convert::{CollectionPath, JsonEncoded},
         http::{RequestRecord, ResponseRecord},
         test_util::Factory,
-        util::get_repo_root,
+        util::paths::get_repo_root,
     };
     use itertools::Itertools;
     use reqwest::{Method, StatusCode};

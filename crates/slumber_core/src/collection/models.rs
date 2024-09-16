@@ -186,10 +186,7 @@ pub struct Recipe {
     pub url: Template,
     pub body: Option<RecipeBody>,
     pub authentication: Option<Authentication>,
-    #[serde(
-        default,
-        deserialize_with = "cereal::deserialize_query_parameters"
-    )]
+    #[serde(default, with = "cereal::serde_query_parameters")]
     pub query: Vec<(String, Template)>,
     #[serde(default)]
     pub headers: IndexMap<String, Template>,

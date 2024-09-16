@@ -119,76 +119,96 @@ where
     s.parse().map_err(D::Error::custom)
 }
 
-/// Deserialize query parameters from either a sequence of `key=value` or a
-/// map of `key: value`
-pub fn deserialize_query_parameters<'de, D>(
-    deserializer: D,
-) -> Result<Vec<(String, Template)>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct QueryParametersVisitor;
+/// Deserialize query parameters from either a sequence of `key=value` or a map
+/// of `key: value`. Serialie back to a sequence `key=value`, since that will
+/// always support duplicate keys
+pub mod serde_query_parameters {
+    use super::*;
+    use serde::ser::SerializeSeq;
 
-    impl<'de> Visitor<'de> for QueryParametersVisitor {
-        type Value = Vec<(String, Template)>;
-
-        fn expecting(
-            &self,
-            formatter: &mut std::fmt::Formatter,
-        ) -> std::fmt::Result {
-            formatter.write_str("sequence of \"<param>=<value>\" or map")
+    pub fn serialize<S>(
+        query_parameters: &Vec<(String, Template)>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(query_parameters.len()))?;
+        for (param, value) in query_parameters {
+            seq.serialize_element(&format!("{param}={}", value.display()))?;
         }
-
-        fn visit_unit<E>(self) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            Ok(Vec::new())
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            let mut query: Vec<(String, Template)> =
-                Vec::with_capacity(seq.size_hint().unwrap_or(5));
-            while let Some(value) = seq.next_element::<String>()? {
-                let (param, value) =
-                    value.split_once('=').ok_or_else(|| {
-                        de::Error::custom(
-                            "Query parameters must be in the form \
-                            `\"<param>=<value>\"`",
-                        )
-                    })?;
-
-                if param.is_empty() {
-                    return Err(de::Error::custom(
-                        "Query parameter name cannot be empty",
-                    ));
-                }
-
-                let key = param.to_string();
-                let value = value.parse().map_err(de::Error::custom)?;
-
-                query.push((key, value));
-            }
-            Ok(query)
-        }
-
-        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-        where
-            A: MapAccess<'de>,
-        {
-            let mut query: Vec<(String, Template)> =
-                Vec::with_capacity(map.size_hint().unwrap_or(5));
-            while let Some((key, value)) = map.next_entry()? {
-                query.push((key, value));
-            }
-            Ok(query)
-        }
+        seq.end()
     }
 
-    deserializer.deserialize_any(QueryParametersVisitor)
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<Vec<(String, Template)>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct QueryParametersVisitor;
+
+        impl<'de> Visitor<'de> for QueryParametersVisitor {
+            type Value = Vec<(String, Template)>;
+
+            fn expecting(
+                &self,
+                formatter: &mut std::fmt::Formatter,
+            ) -> std::fmt::Result {
+                formatter.write_str("sequence of \"<param>=<value>\" or map")
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Vec::new())
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut query: Vec<(String, Template)> =
+                    Vec::with_capacity(seq.size_hint().unwrap_or(5));
+                while let Some(value) = seq.next_element::<String>()? {
+                    let (param, value) =
+                        value.split_once('=').ok_or_else(|| {
+                            de::Error::custom(
+                                "Query parameters must be in the form \
+                                `\"<param>=<value>\"`",
+                            )
+                        })?;
+
+                    if param.is_empty() {
+                        return Err(de::Error::custom(
+                            "Query parameter name cannot be empty",
+                        ));
+                    }
+
+                    let key = param.to_string();
+                    let value = value.parse().map_err(de::Error::custom)?;
+
+                    query.push((key, value));
+                }
+                Ok(query)
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let mut query: Vec<(String, Template)> =
+                    Vec::with_capacity(map.size_hint().unwrap_or(5));
+                while let Some((key, value)) = map.next_entry()? {
+                    query.push((key, value));
+                }
+                Ok(query)
+            }
+        }
+
+        deserializer.deserialize_any(QueryParametersVisitor)
+    }
 }
 
 impl RecipeBody {
@@ -772,7 +792,9 @@ mod tests {
         );
     }
 
-    /// Test deserializing query parameters from list or mapping form
+    /// Test serializing/deserializing query parameters. There are multiple
+    /// input formats but only one output format, so we have to test
+    /// serialization and deserialization separately here
     #[rstest]
     #[case::list(
         &[
@@ -781,7 +803,13 @@ mod tests {
             Token::Str("param=value"),
             Token::SeqEnd,
         ],
-        vec![("param", "{{value}}"), ("param", "value")]
+        vec![("param", "{{value}}"), ("param", "value")],
+        &[
+            Token::Seq { len: Some(2) },
+            Token::Str("param={{value}}"),
+            Token::Str("param=value"),
+            Token::SeqEnd,
+        ],
     )]
     #[case::map(
         &[
@@ -790,29 +818,37 @@ mod tests {
             Token::Str("{{value}}"),
             Token::MapEnd,
         ],
-        vec![("param", "{{value}}")]
+        vec![("param", "{{value}}")],
+        &[
+            Token::Seq { len: Some(1) },
+            Token::Str("param={{value}}"),
+            Token::SeqEnd,
+        ],
     )]
-    #[case::unit(&[Token::Unit], vec![])]
+    #[case::unit(
+        &[Token::Unit],
+        vec![],
+        &[Token::Seq { len: Some(0) }, Token::SeqEnd],
+    )]
     fn test_deserialize_query_parameters(
-        #[case] tokens: &[Token],
-        #[case] expected: Vec<(&str, &str)>,
+        #[case] input_tokens: &[Token],
+        #[case] expected_value: Vec<(&str, &str)>,
+        #[case] expected_tokens: &[Token],
     ) {
-        #[derive(Debug, PartialEq, Deserialize)]
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
         #[serde(transparent)]
         struct Wrap(
-            #[serde(deserialize_with = "deserialize_query_parameters")]
-            Vec<(String, Template)>,
+            #[serde(with = "serde_query_parameters")] Vec<(String, Template)>,
         );
 
-        assert_de_tokens::<Wrap>(
-            &Wrap(
-                expected
-                    .into_iter()
-                    .map(|(param, value)| (param.into(), value.into()))
-                    .collect(),
-            ),
-            tokens,
+        let expected_value = Wrap(
+            expected_value
+                .into_iter()
+                .map(|(param, value)| (param.into(), value.into()))
+                .collect(),
         );
+        assert_de_tokens::<Wrap>(&expected_value, input_tokens);
+        assert_ser_tokens(&expected_value, expected_tokens);
     }
 
     /// A wrapper that forces serde_test to use our custom serialize/deserialize

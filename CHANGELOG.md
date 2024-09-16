@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Updated the Configuration docs to remove the non-existent `slumber show dir` command (thanks @SVendittelli)
 - Retain all request history when collection file is reloaded
   - Previously, pending and failed requests were lost on reload within a single session. These will still be lost when a session is exited.
+- Fix serialization of query parameter lists
 
 ## [2.0.0] - 2024-09-06
 

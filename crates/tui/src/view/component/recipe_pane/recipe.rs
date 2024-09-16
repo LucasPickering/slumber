@@ -41,8 +41,8 @@ pub struct RecipeDisplay {
     method: Method,
     query: Component<RecipeFieldTable<QueryRowKey, QueryRowToggleKey>>,
     headers: Component<RecipeFieldTable<HeaderRowKey, HeaderRowToggleKey>>,
-    body: Option<Component<RecipeBodyDisplay>>,
-    authentication: Option<Component<AuthenticationDisplay>>,
+    body: Component<Option<RecipeBodyDisplay>>,
+    authentication: Component<Option<AuthenticationDisplay>>,
 }
 
 impl RecipeDisplay {
@@ -85,19 +85,22 @@ impl RecipeDisplay {
                 ),
             )
             .into(),
-            body: recipe.body.as_ref().map(|body| {
-                RecipeBodyDisplay::new(body, recipe.id.clone()).into()
-            }),
+            body: recipe
+                .body
+                .as_ref()
+                .map(|body| RecipeBodyDisplay::new(body, recipe.id.clone()))
+                .into(),
             // Map authentication type
-            authentication: recipe.authentication.as_ref().map(
-                |authentication| {
+            authentication: recipe
+                .authentication
+                .as_ref()
+                .map(|authentication| {
                     AuthenticationDisplay::new(
                         recipe.id.clone(),
                         authentication.clone(),
                     )
-                    .into()
-                },
-            ),
+                })
+                .into(),
         }
     }
 
@@ -105,12 +108,14 @@ impl RecipeDisplay {
     pub fn build_options(&self) -> BuildOptions {
         let authentication = self
             .authentication
+            .data()
             .as_ref()
-            .and_then(|authentication| authentication.data().override_value());
+            .and_then(|authentication| authentication.override_value());
         let form_fields = self
             .body
+            .data()
             .as_ref()
-            .and_then(|body| match body.data() {
+            .and_then(|body| match body {
                 RecipeBodyDisplay::Raw(_) => None,
                 RecipeBodyDisplay::Form(form) => {
                     Some(form.data().to_build_overrides())
@@ -119,8 +124,9 @@ impl RecipeDisplay {
             .unwrap_or_default();
         let body = self
             .body
+            .data()
             .as_ref()
-            .and_then(|body| body.data().override_value());
+            .and_then(|body| body.override_value());
 
         BuildOptions {
             authentication,
@@ -133,22 +139,19 @@ impl RecipeDisplay {
 
     /// Does the recipe have a body defined?
     pub fn has_body(&self) -> bool {
-        self.body.is_some()
+        self.body.data().is_some()
     }
 }
 
 impl EventHandler for RecipeDisplay {
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        [
-            Some(self.tabs.to_child_mut()),
-            self.body.as_mut().map(Component::to_child_mut),
-            Some(self.query.to_child_mut()),
-            Some(self.headers.to_child_mut()),
-            self.authentication.as_mut().map(Component::to_child_mut),
+        vec![
+            self.tabs.to_child_mut(),
+            self.body.to_child_mut(),
+            self.query.to_child_mut(),
+            self.headers.to_child_mut(),
+            self.authentication.to_child_mut(),
         ]
-        .into_iter()
-        .flatten()
-        .collect()
     }
 }
 
@@ -196,11 +199,7 @@ impl Draw for RecipeDisplay {
 
         // Recipe content
         match self.tabs.data().selected() {
-            Tab::Body => {
-                if let Some(body) = &self.body {
-                    body.draw(frame, (), content_area, true);
-                }
-            }
+            Tab::Body => self.body.draw_opt(frame, (), content_area, true),
             Tab::Query => self.query.draw(
                 frame,
                 RecipeFieldTableProps {
@@ -220,9 +219,7 @@ impl Draw for RecipeDisplay {
                 true,
             ),
             Tab::Authentication => {
-                if let Some(authentication) = &self.authentication {
-                    authentication.draw(frame, (), content_area, true)
-                }
+                self.authentication.draw_opt(frame, (), content_area, true)
             }
         }
     }

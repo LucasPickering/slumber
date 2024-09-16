@@ -37,7 +37,7 @@ pub struct Root {
     // ==== Children =====
     primary_view: Component<PrimaryView>,
     modal_queue: Component<ModalQueue>,
-    notification_text: Option<Component<NotificationText>>,
+    notification_text: Component<Option<NotificationText>>,
 }
 
 impl Root {
@@ -54,7 +54,7 @@ impl Root {
             // Children
             primary_view: primary_view.into(),
             modal_queue: Component::default(),
-            notification_text: None,
+            notification_text: Component::default(),
         }
     }
 
@@ -138,7 +138,7 @@ impl EventHandler for Root {
 
             Event::Notify(notification) => {
                 self.notification_text =
-                    Some(NotificationText::new(notification).into())
+                    Some(NotificationText::new(notification)).into()
             }
 
             Event::Input {
@@ -218,9 +218,8 @@ impl<'a> Draw<RootProps<'a>> for Root {
             Constraint::Length(footer.width() as u16),
         ])
         .areas(footer_area);
-        if let Some(notification_text) = &self.notification_text {
-            notification_text.draw(frame, (), notification_area, false);
-        }
+        self.notification_text
+            .draw_opt(frame, (), notification_area, false);
         frame.render_widget(footer, help_area);
 
         // Render modals last so they go on top

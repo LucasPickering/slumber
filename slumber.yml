@@ -5,6 +5,7 @@
 profiles:
   works:
     name: This Works
+    default: true
     data:
       host: https://httpbin.org
       username: xX{{chains.username}}Xx

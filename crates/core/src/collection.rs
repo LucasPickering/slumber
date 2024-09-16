@@ -256,6 +256,7 @@ mod tests {
                 Profile {
                     id: "profile1".into(),
                     name: Some("Profile 1".into()),
+                    default: false,
                     data: indexmap! {
                         "user_guid".into() => "abc123".into(),
                         "username".into() => "xX{{chains.username}}Xx".into(),
@@ -266,6 +267,7 @@ mod tests {
                 Profile {
                     id: "profile2".into(),
                     name: Some("Profile 2".into()),
+                    default: true,
                     data: indexmap! {
                         "host".into() => "https://httpbin.org".into(),
 

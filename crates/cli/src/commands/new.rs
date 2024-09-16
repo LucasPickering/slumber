@@ -106,6 +106,7 @@ mod tests {
             profiles: by_id([Profile {
                 id: "example".into(),
                 name: Some("Example Profile".into()),
+                default: false,
                 data: indexmap! {
                     "host".into() => "https://httpbin.org".into()
                 },

@@ -25,7 +25,7 @@ use strum::{EnumIter, IntoEnumIterator};
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
 pub struct Collection {
-    #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
+    #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
     pub profiles: IndexMap<ProfileId, Profile>,
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
     pub chains: IndexMap<ChainId, Chain>,
@@ -49,6 +49,12 @@ pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
     pub name: Option<String>,
+    /// For the CLI, use this profile when no `--profile` flag is passed. For
+    /// the TUI, select this profile by default from the list. Only one profile
+    /// in the collection can be marked as default. This is enforced by a
+    /// custom deserializer function.
+    #[serde(default)]
+    pub default: bool,
     pub data: IndexMap<String, Template>,
 }
 
@@ -56,6 +62,10 @@ impl Profile {
     /// Get a presentable name for this profile
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
+    }
+
+    pub fn default(&self) -> bool {
+        self.default
     }
 }
 
@@ -65,6 +75,7 @@ impl crate::test_util::Factory for Profile {
         Self {
             id: ProfileId::factory(()),
             name: None,
+            default: false,
             data: IndexMap::new(),
         }
     }
@@ -498,6 +509,14 @@ pub enum ChainOutputTrim {
     End,
     /// Trim the start and end of the output
     Both,
+}
+
+impl Collection {
+    /// Get the profile marked as `default: true`, if any. At most one profile
+    /// can be marked as default.
+    pub fn default_profile(&self) -> Option<&Profile> {
+        self.profiles.values().find(|profile| profile.default)
+    }
 }
 
 /// Test-only helpers

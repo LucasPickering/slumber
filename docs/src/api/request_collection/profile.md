@@ -4,10 +4,11 @@ A profile is a collection of static template values. It's useful for configuring
 
 ## Fields
 
-| Field  | Type                                         | Description                       | Default                |
-| ------ | -------------------------------------------- | --------------------------------- | ---------------------- |
-| `name` | `string`                                     | Descriptive name to use in the UI | Value of key in parent |
-| `data` | [`mapping[string, Template]`](./template.md) | Fields, mapped to their values    | `{}`                   |
+| Field     | Type                                         | Description                                                 | Default                |
+| --------- | -------------------------------------------- | ----------------------------------------------------------- | ---------------------- |
+| `name`    | `string`                                     | Descriptive name to use in the UI                           | Value of key in parent |
+| `default` | `boolean`                                    | Use this profile in the CLI when `--profile` isn't provided | `null`                 |
+| `data`    | [`mapping[string, Template]`](./template.md) | Fields, mapped to their values                              | `{}`                   |
 
 ## Examples
 

@@ -51,12 +51,20 @@ pub trait EventHandler {
 
 /// Enable `Component<Option<T>>` with an empty event handler
 impl<T: EventHandler> EventHandler for Option<T> {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        Update::Propagate(event)
+    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+        if let Some(inner) = self.as_mut() {
+            inner.update(context, event)
+        } else {
+            Update::Propagate(event)
+        }
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        Vec::new()
+        if let Some(inner) = self.as_mut() {
+            inner.children()
+        } else {
+            vec![]
+        }
     }
 }
 

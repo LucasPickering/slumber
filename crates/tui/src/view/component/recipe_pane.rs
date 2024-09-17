@@ -94,11 +94,11 @@ impl EventHandler for RecipePane {
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        self.recipe_state
-            .get_mut()
-            .map(|state| state.to_child_mut())
-            .into_iter()
-            .collect()
+        if let Some(state) = self.recipe_state.get_mut() {
+            vec![state.to_child_mut()]
+        } else {
+            vec![]
+        }
     }
 }
 

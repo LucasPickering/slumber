@@ -74,10 +74,10 @@ impl RecipeTemplate {
         Self(PersistedLazy::new(
             persisted_key,
             RecipeTemplateInner {
-                template: template.clone(),
+                original_template: template.clone(),
+                override_template: None,
                 preview: TemplatePreview::new(template, content_type),
                 content_type,
-                is_overridden: false,
             },
         ))
     }
@@ -87,8 +87,14 @@ impl RecipeTemplate {
         self.0.get_mut().set_override(template);
     }
 
+    /// Reset the template override to the default from the recipe, and
+    /// recompute the template preview
+    pub fn reset_override(&mut self) {
+        self.0.get_mut().reset_override();
+    }
+
     pub fn template(&self) -> &Template {
-        &self.0.template
+        self.0.template()
     }
 
     pub fn preview(&self) -> &TemplatePreview {
@@ -100,7 +106,7 @@ impl RecipeTemplate {
     }
 
     pub fn is_overridden(&self) -> bool {
-        self.0.is_overridden
+        self.0.override_template.is_some()
     }
 }
 
@@ -109,18 +115,33 @@ impl RecipeTemplate {
 /// [set_override](Self::set_override) when needed.
 #[derive(Debug)]
 struct RecipeTemplateInner {
-    template: Template,
+    original_template: Template,
+    override_template: Option<Template>,
     preview: TemplatePreview,
     /// Retain this so we can rebuild the preview with it
     content_type: Option<ContentType>,
-    is_overridden: bool,
 }
 
 impl RecipeTemplateInner {
+    fn template(&self) -> &Template {
+        self.override_template
+            .as_ref()
+            .unwrap_or(&self.original_template)
+    }
+
     fn set_override(&mut self, template: Template) {
-        self.template = template.clone();
-        self.is_overridden = true;
-        self.preview = TemplatePreview::new(template, self.content_type);
+        self.override_template = Some(template);
+        self.render_preview();
+    }
+
+    fn reset_override(&mut self) {
+        self.override_template = None;
+        self.render_preview();
+    }
+
+    fn render_preview(&mut self) {
+        self.preview =
+            TemplatePreview::new(self.template().clone(), self.content_type);
     }
 }
 
@@ -128,10 +149,9 @@ impl PersistedContainer for RecipeTemplateInner {
     type Value = RecipeOverrideValue;
 
     fn get_to_persist(&self) -> Self::Value {
-        if self.is_overridden {
-            RecipeOverrideValue::Override(self.template.clone())
-        } else {
-            RecipeOverrideValue::Default
+        match &self.override_template {
+            Some(template) => RecipeOverrideValue::Override(template.clone()),
+            None => RecipeOverrideValue::Default,
         }
     }
 

@@ -188,8 +188,9 @@ impl Draw for RecipeDisplay {
         frame.render_widget(
             Paragraph::new(Span::styled(
                 format!(
-                    "Press {} to edit value",
-                    tui_context.input_engine.binding_display(Action::Edit)
+                    "Press {} to edit value, {} to reset",
+                    tui_context.input_engine.binding_display(Action::Edit),
+                    tui_context.input_engine.binding_display(Action::Reset),
                 ),
                 tui_context.styles.text.hint,
             ))

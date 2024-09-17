@@ -107,11 +107,18 @@ where
     RowToggleKey: PersistedKey<Value = bool>,
 {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(Action::Edit) = event.action() {
+        let action = event.action();
+        if let Some(Action::Edit) = action {
             if let Some(selected_row) = self.select.data().selected() {
                 selected_row.open_edit_modal();
             }
             // Consume the event even if we have no rows, for consistency
+        } else if let Some(Action::Reset) = action {
+            if let Some(selected_row) =
+                self.select.data_mut().get_mut().selected_mut()
+            {
+                selected_row.value.reset_override();
+            }
         } else if let Some(SaveRecipeTableOverride { row_index, value }) =
             event.local()
         {
@@ -449,6 +456,12 @@ mod tests {
                 .into_iter()
                 .collect(),
         );
+
+        // Reset edited state
+        component.send_key(KeyCode::Char('r')).assert_empty();
+        let selected_row =
+            component.data().inner().select.data().selected().unwrap();
+        assert!(!selected_row.value.is_overridden());
     }
 
     /// Override templates should be loaded from the store on init

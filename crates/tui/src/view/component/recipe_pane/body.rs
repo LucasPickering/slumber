@@ -201,8 +201,11 @@ impl RawBody {
 
 impl EventHandler for RawBody {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(Action::Edit) = event.action() {
+        let action = event.action();
+        if let Some(Action::Edit) = action {
             self.open_editor();
+        } else if let Some(Action::Reset) = action {
+            self.body.reset_override();
         } else if let Some(SaveBodyOverride(path)) = event.local() {
             self.load_override(path);
         } else {
@@ -329,6 +332,10 @@ mod tests {
             persisted,
             Some(RecipeOverrideValue::Override("goodbye!".into()))
         );
+
+        // Reset edited state
+        component.send_key(KeyCode::Char('r')).assert_empty();
+        assert_eq!(component.data().override_value(), None);
     }
 
     /// Override template should be loaded from the persistence store on init

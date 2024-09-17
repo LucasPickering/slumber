@@ -90,8 +90,11 @@ impl AuthenticationDisplay {
 
 impl EventHandler for AuthenticationDisplay {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(Action::Edit) = event.action() {
+        let action = event.action();
+        if let Some(Action::Edit) = action {
             self.0.open_edit_modal();
+        } else if let Some(Action::Reset) = action {
+            self.0.reset_override();
         } else if let Some(SaveAuthenticationOverride(value)) = event.local() {
             self.0.set_override(value);
         } else {
@@ -249,6 +252,28 @@ impl State {
             }
         }
     }
+
+    /// Reset the value template override to the default from the recipe, and
+    /// recompute the template preview
+    fn reset_override(&mut self) {
+        match self {
+            Self::Basic {
+                username,
+                password,
+                selected_field,
+            } => match selected_field.data().selected() {
+                BasicFields::Username => {
+                    username.reset_override();
+                }
+                BasicFields::Password => {
+                    password.reset_override();
+                }
+            },
+            Self::Bearer { token } => {
+                token.reset_override();
+            }
+        }
+    }
 }
 
 /// Fields in a basic auth form
@@ -316,6 +341,10 @@ mod tests {
             })
         );
 
+        // Reset username
+        component.send_key(KeyCode::Char('r')).assert_empty();
+        assert_eq!(component.data().inner().override_value(), None);
+
         // Edit password
         component.send_key(KeyCode::Down).assert_empty();
         component.send_key(KeyCode::Char('e')).assert_empty();
@@ -324,10 +353,14 @@ mod tests {
         assert_eq!(
             component.data().inner().override_value(),
             Some(Authentication::Basic {
-                username: "user1!!!".into(),
+                username: "user1".into(),
                 password: Some("hunter2???".into())
             })
         );
+
+        // Reset password
+        component.send_key(KeyCode::Char('r')).assert_empty();
+        assert_eq!(component.data().inner().override_value(), None);
     }
 
     #[rstest]
@@ -388,6 +421,10 @@ mod tests {
             component.data().inner().override_value(),
             Some(Authentication::Bearer("i am a token!!!".into()))
         );
+
+        // Reset token
+        component.send_key(KeyCode::Char('r')).assert_empty();
+        assert_eq!(component.data().inner().override_value(), None);
     }
 
     /// Basic auth fields should load persisted overrides

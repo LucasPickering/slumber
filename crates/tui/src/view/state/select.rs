@@ -217,8 +217,14 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     /// Get the currently selected item (if any)
     pub fn selected(&self) -> Option<&Item> {
         self.items
-            .get(self.state.borrow().selected()?)
+            .get(self.selected_index()?)
             .map(|item| &item.value)
+    }
+
+    /// Mutable reference to the currently selected item (if any)
+    pub fn selected_mut(&mut self) -> Option<&mut Item> {
+        let index = self.selected_index()?;
+        self.items.get_mut(index).map(|item| &mut item.value)
     }
 
     /// Select an item by value. Context is required for callbacks. Generally

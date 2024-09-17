@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add `slumber new` subcommand to generate new collection files [#376](https://github.com/LucasPickering/slumber/issues/376)
 - Add `default` field to profiles
   - When using the CLI, the `--profile` argument can be omitted to use the default profile
+- Reset edited recipe values to their default using `r`
+  - You can [customize the key](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html) to whatever you want
 
 ### Changed
 

@@ -144,6 +144,8 @@ pub enum Action {
     /// Trigger the workflow to provide a temporary override for a recipe value
     /// (body/param/etc.)
     Edit,
+    /// Reset temporary recipe override to its default value
+    Reset,
     /// Browse request history
     History,
     /// Start a search/filter operation

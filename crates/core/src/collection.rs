@@ -192,6 +192,7 @@ mod tests {
     };
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
+    use proptest::proptest;
     use rstest::rstest;
     use serde::de::IgnoredAny;
     use serde_json::json;
@@ -556,5 +557,18 @@ mod tests {
             _ignore: IgnoredAny,
         };
         assert_eq!(*loaded, expected);
+    }
+
+    proptest! {
+        #[test]
+        fn test_round_trip_prop(collection: Collection) {
+            // Generate a collection, serialize it, deserialize it. We should
+            // always get the same collection back
+            let serialized = serde_yaml::to_string(&collection)
+                .expect("Error serializing collection");
+            let deserialized: Collection = serde_yaml::from_str(&serialized)
+                .expect("Error deserializing collection");
+            assert_eq!(deserialized, collection);
+        }
     }
 }

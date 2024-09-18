@@ -12,7 +12,9 @@ use indexmap::IndexMap;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
 use std::{
-    env, fs,
+    env,
+    fmt::Debug,
+    fs,
     path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
 };

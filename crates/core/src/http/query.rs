@@ -10,8 +10,13 @@ use thiserror::Error;
 /// A wrapper around a JSONPath. This combines some common behavior, and will
 /// make it easy to swap out the query language in the future if necessary.
 #[derive(Clone, Debug, Display, FromStr, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(transparent)]
-pub struct Query(JsonPath);
+pub struct Query(
+    // Generating a valid JSONPath would be hard, and we have no need to test
+    // this external code, so just use a default path
+    #[cfg_attr(test, proptest(value = "JsonPath::default()"))] JsonPath,
+);
 
 impl Query {
     /// Apply a query to some content, returning the result in the original

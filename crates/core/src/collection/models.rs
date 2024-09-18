@@ -1,5 +1,7 @@
 //! The plain data types that make up a request collection
 
+#[cfg(test)]
+use crate::proptest_util::{index_map, query_parameters, recipe_tree};
 use crate::{
     collection::{
         cereal,
@@ -23,27 +25,33 @@ use strum::{EnumIter, IntoEnumIterator};
 /// be very large. Instead, it's hidden behind an `Arc` by `CollectionFile`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(deny_unknown_fields)]
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
+    #[cfg_attr(test, proptest(strategy = "index_map(0..5)"))]
     pub profiles: IndexMap<ProfileId, Profile>,
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
+    #[cfg_attr(test, proptest(strategy = "index_map(0..10)"))]
     pub chains: IndexMap<ChainId, Chain>,
     /// Internally we call these recipes, but to a user `requests` is more
     /// intuitive
     #[serde(default, rename = "requests")]
+    #[cfg_attr(test, proptest(strategy = "recipe_tree()"))]
     pub recipes: RecipeTree,
     /// A hack-ish to allow users to add arbitrary data to their collection
     /// file without triggering a unknown field error. Ideally we could
     /// ignore anything that starts with `.` (recursively) but that
     /// requires a custom serde impl for each type, or changes to the macro
     #[serde(default, skip_serializing, rename = ".ignore")]
+    #[cfg_attr(test, proptest(value = "serde::de::IgnoredAny"))]
     pub _ignore: serde::de::IgnoredAny,
 }
 
 /// Mutually exclusive hot-swappable config group
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
@@ -55,6 +63,7 @@ pub struct Profile {
     /// custom deserializer function.
     #[serde(default)]
     pub default: bool,
+    #[cfg_attr(test, proptest(strategy = "index_map(0..5)"))]
     pub data: IndexMap<String, Template>,
 }
 
@@ -94,6 +103,7 @@ impl crate::test_util::Factory for Profile {
     Serialize,
     Deserialize,
 )]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ProfileId(String);
 
 #[cfg(any(test, feature = "test"))]
@@ -185,6 +195,7 @@ impl crate::test_util::Factory<&str> for Recipe {
 /// meaning related to string interpolation.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(deny_unknown_fields)]
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
@@ -198,8 +209,10 @@ pub struct Recipe {
     pub body: Option<RecipeBody>,
     pub authentication: Option<Authentication>,
     #[serde(default, with = "cereal::serde_query_parameters")]
+    #[cfg_attr(test, proptest(strategy = "query_parameters()"))]
     pub query: Vec<(String, Template)>,
     #[serde(default)]
+    #[cfg_attr(test, proptest(strategy = "index_map(0..10)"))]
     pub headers: IndexMap<String, Template>,
 }
 
@@ -216,6 +229,7 @@ pub struct Recipe {
     Serialize,
     Deserialize,
 )]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct RecipeId(String);
 
 #[cfg(any(test, feature = "test"))]
@@ -241,6 +255,7 @@ impl crate::test_util::Factory for RecipeId {
     Copy, Clone, Debug, Display, EnumIter, FromStr, Serialize, Deserialize,
 )]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(into = "String", try_from = "String")]
 pub enum Method {
     #[display("CONNECT")]
@@ -296,6 +311,7 @@ impl crate::test_util::Factory for Chain {
 /// `T=String`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`
@@ -311,6 +327,7 @@ pub enum Authentication<T = Template> {
 /// other parameters of the request (e.g. the `Content-Type` header).
 #[derive(Debug)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum RecipeBody {
     /// Plain string/bytes body
     Raw {
@@ -321,9 +338,15 @@ pub enum RecipeBody {
         content_type: Option<ContentType>,
     },
     /// `application/x-www-form-urlencoded` fields. Values must be strings
-    FormUrlencoded(IndexMap<String, Template>),
+    FormUrlencoded(
+        #[cfg_attr(test, proptest(strategy = "index_map(0..5)"))]
+        IndexMap<String, Template>,
+    ),
     /// `multipart/form-data` fields. Values can be binary
-    FormMultipart(IndexMap<String, Template>),
+    FormMultipart(
+        #[cfg_attr(test, proptest(strategy = "index_map(0..5)"))]
+        IndexMap<String, Template>,
+    ),
 }
 
 impl RecipeBody {
@@ -352,6 +375,7 @@ impl From<&str> for RecipeBody {
 /// can use it in a template via `{{chains.<chain_id>}}`.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(deny_unknown_fields)]
 pub struct Chain {
     #[serde(skip)] // This will be auto-populated from the map key
@@ -400,6 +424,7 @@ impl<T: Into<Identifier>> From<T> for ChainId {
 /// The source of data for a chain
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainSource {
     /// Run an external command to get a result
@@ -440,6 +465,7 @@ pub enum ChainSource {
 /// Static or dynamic list of options for a select chain
 #[derive(Debug)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum SelectOptions {
     Fixed(Vec<Template>),
     /// Dynamic requires a source (often a chain) that either returns a JSON
@@ -466,6 +492,7 @@ impl ChainSource {
 /// The component of the response to use as the chain source
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainRequestSection {
     #[default]
@@ -479,6 +506,7 @@ pub enum ChainRequestSection {
 /// dependency request.
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainRequestTrigger {
     /// Never trigger the request. This is the default because upstream
@@ -498,6 +526,7 @@ pub enum ChainRequestTrigger {
 /// Trim whitespace from rendered output
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum ChainOutputTrim {
     /// Do not trim the output

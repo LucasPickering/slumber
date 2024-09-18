@@ -26,6 +26,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Database file remains in [data dir](https://docs.rs/dirs/latest/dirs/fn.data_dir.html) on all platforms
 - Create config file on startup if it doesn't exist
 - If config file fails to load during TUI startup, display an error and fall back to the default, rather than crashing
+- De-deprecate `{{env.VARIABLE}}` template sources
+  - They'll remain as a simpler alternative to `!env` chains
 
 ### Fixed
 

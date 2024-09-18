@@ -208,7 +208,6 @@ pub enum TemplateKey {
     #[display("{CHAIN_PREFIX}{_0}")]
     Chain(ChainId),
     /// A value pulled from the process environment
-    /// DEPRECATED: To be removed in 2.0, replaced by !env chain source
     #[display("{ENV_PREFIX}{_0}")]
     Environment(Identifier),
 }

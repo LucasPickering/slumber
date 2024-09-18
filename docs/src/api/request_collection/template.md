@@ -10,11 +10,11 @@ For more detail on usage and examples, see the [user guide page on templates](..
 
 There are several ways of sourcing templating values:
 
-| Source                        | Syntax                | Description                                                                                                              | Default          |
-| ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------- |
-| [Profile](./profile.md) Field | `{{field_name}}`      | Static value from a profile                                                                                              | Error if unknown |
-| Environment Variable          | `{{env.VARIABLE}}`    | Environment variable from parent shell/process. **Deprecated in favor of the [`!env` chain source](./chain_source.md).** | `""`             |
-| [Chain](./chain.md)           | `{{chains.chain_id}}` | Complex chained value                                                                                                    | Error if unknown |
+| Source                        | Syntax                | Description                                    | Default          |
+| ----------------------------- | --------------------- | ---------------------------------------------- | ---------------- |
+| [Profile](./profile.md) Field | `{{field_name}}`      | Static value from a profile                    | Error if unknown |
+| Environment Variable          | `{{env.VARIABLE}}`    | Environment variable from parent shell/process | `""`             |
+| [Chain](./chain.md)           | `{{chains.chain_id}}` | Complex chained value                          | Error if unknown |
 
 ## Escape Sequences
 

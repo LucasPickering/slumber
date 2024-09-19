@@ -1,10 +1,9 @@
 //! Utilities for querying HTTP response data
 
-use crate::http::content_type::ResponseContent;
+use crate::{collection::SelectorMode, http::content_type::ResponseContent};
 use derive_more::{Display, FromStr};
 use serde::{Deserialize, Serialize};
-use serde_json_path::{ExactlyOneError, JsonPath, NodeList};
-use std::borrow::Cow;
+use serde_json_path::{ExactlyOneError, JsonPath};
 use thiserror::Error;
 
 /// A wrapper around a JSONPath. This combines some common behavior, and will
@@ -15,8 +14,8 @@ pub struct Query(JsonPath);
 
 impl Query {
     /// Apply a query to some content, returning the result in the original
-    /// format. This will convert to a common format, apply the query, then
-    /// convert back.
+    /// format. This will convert to a common format (JSON), apply the query,
+    /// then convert back.
     pub fn query_content(
         &self,
         value: &dyn ResponseContent,
@@ -27,12 +26,7 @@ impl Query {
         let queried = serde_json::Value::Array(
             self.0.query(&json_value).into_iter().cloned().collect(),
         );
-        content_type.parse_json(Cow::Owned(queried))
-    }
-
-    /// Apply a query to some content, returning a list of results.
-    pub fn query_list<'a>(&self, value: &'a serde_json::Value) -> NodeList<'a> {
-        self.0.query(value)
+        content_type.parse_json(queried)
     }
 
     /// Apply a query to some content, returning a string. The query should
@@ -41,6 +35,7 @@ impl Query {
     /// then stringified.
     pub fn query_to_string(
         &self,
+        mode: SelectorMode,
         value: &dyn ResponseContent,
     ) -> Result<String, QueryError> {
         let content_type = value.content_type();
@@ -48,43 +43,21 @@ impl Query {
         // All content types get converted to JSON for querying, then converted
         // back. This is fucky but we need *some* common format
         let json_value = value.to_json();
-        let queried = self.0.query(&json_value).exactly_one()?;
+        let node_list = self.0.query(&json_value);
 
-        // If we got a scalar value, use that. Otherwise convert back to the
-        // input content type to re-stringify
-        let stringified = match queried {
-            serde_json::Value::Null => "".into(),
-            serde_json::Value::Number(n) => n.to_string(),
-            serde_json::Value::Bool(b) => b.to_string(),
-            serde_json::Value::String(s) => s.clone(),
-            serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-                content_type.parse_json(Cow::Borrowed(queried)).to_string()
+        let stringified = match mode {
+            SelectorMode::Auto => match node_list.len() {
+                0 => return Err(QueryError::NoResults),
+                1 => content_type.value_to_string(node_list.first().unwrap()),
+                2.. => content_type.vec_to_string(&node_list.all()),
+            },
+            SelectorMode::Single => {
+                content_type.value_to_string(node_list.exactly_one()?)
             }
+            SelectorMode::Array => content_type.vec_to_string(&node_list.all()),
         };
 
         Ok(stringified)
-    }
-}
-
-/// A remapping of [serde_json_path::ExactlyOneError]. This is a simplified
-/// version that implements `Clone`, which makes it easier to use within
-/// template errors.
-#[derive(Copy, Clone, Debug, Error)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum QueryError {
-    /// Got either 0 or 2+ results for JSON path query
-    #[error("Expected exactly one result from query, but got {actual_count}")]
-    InvalidResult { actual_count: usize },
-}
-
-impl From<ExactlyOneError> for QueryError {
-    fn from(error: ExactlyOneError) -> Self {
-        match error {
-            ExactlyOneError::Empty => Self::InvalidResult { actual_count: 0 },
-            ExactlyOneError::MoreThanOne(n) => {
-                Self::InvalidResult { actual_count: n }
-            }
-        }
     }
 }
 
@@ -95,6 +68,30 @@ impl From<&str> for Query {
     }
 }
 
+/// A remapping of [serde_json_path::ExactlyOneError]. This is a simplified
+/// version that implements `Clone`, which makes it easier to use within
+/// template errors.
+#[derive(Copy, Clone, Debug, Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum QueryError {
+    #[error("No results from JSONPath query")]
+    NoResults,
+    /// Got either 0 or 2+ results for JSON path query
+    #[error("Expected exactly one result from query, but got {actual_count}")]
+    TooManyResults { actual_count: usize },
+}
+
+impl From<ExactlyOneError> for QueryError {
+    fn from(error: ExactlyOneError) -> Self {
+        match error {
+            ExactlyOneError::Empty => Self::NoResults,
+            ExactlyOneError::MoreThanOne(n) => {
+                Self::TooManyResults { actual_count: n }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,39 +99,91 @@ mod tests {
     use rstest::rstest;
     use serde_json::json;
 
+    /// Test how `query_to_string` handles different types of values returned as
+    /// *single results* of a query
     #[rstest]
-    #[case::root("$", json(json!({"test": "hi!"})), r#"{"test":"hi!"}"#)]
-    #[case::string("$.test", json(json!({"test": "hi!"})), "hi!")]
-    #[case::int("$.test", json(json!({"test": 3})), "3")]
-    #[case::bool("$.test", json(json!({"test": true})), "true")]
-    fn test_query_to_string(
+    #[case::root(
+        "$",
+        r#"{"array":["hi",1],"bool":true,"int":3,"object":{"a":1,"b":2},"string":"hi!"}"#,
+    )]
+    #[case::string("$.string", "hi!")]
+    #[case::int("$.int", "3")]
+    #[case::bool("$.bool", "true")]
+    #[case::array("$.array", r#"["hi",1]"#)]
+    #[case::object("$.object", r#"{"a":1,"b":2}"#)]
+    fn test_query_to_string_types(#[case] query: &str, #[case] expected: &str) {
+        let content = json(json!({
+            "int": 3,
+            "bool": true,
+            "string": "hi!",
+            "array": ["hi", 1],
+            "object": {"a": 1, "b": 2},
+        }));
+        let query = Query::from_str(query).unwrap();
+        let out = query
+            .query_to_string(SelectorMode::Single, &*content)
+            .unwrap();
+        assert_eq!(out, expected);
+    }
+
+    /// Test how `query_to_string` handles different query modes
+    #[rstest]
+    #[case::scalar_single(SelectorMode::Single, "$[0].name", "apple")]
+    #[case::scalar_auto(SelectorMode::Auto, "$[0].name", "apple")]
+    #[case::multiple_auto(
+        SelectorMode::Auto,
+        "$[*].name",
+        r#"["apple","guava","pear"]"#
+    )]
+    #[case::none_array(SelectorMode::Array, "$[*].id", "[]")]
+    #[case::single_array(SelectorMode::Array, "$[0].name", r#"["apple"]"#)]
+    #[case::multiple_array(
+        SelectorMode::Array,
+        "$[*].name",
+        r#"["apple","guava","pear"]"#
+    )]
+    fn test_query_to_string_modes(
+        #[case] mode: SelectorMode,
         #[case] query: &str,
-        #[case] content: Box<dyn ResponseContent>,
         #[case] expected: &str,
     ) {
+        let content = json(json!([
+            {"name": "apple"},
+            {"name": "guava"},
+            {"name": "pear"},
+        ]));
         let query = Query::from_str(query).unwrap();
-        let out = query.query_to_string(&*content).unwrap();
+        let out = query.query_to_string(mode, &*content).unwrap();
         assert_eq!(out, expected);
     }
 
     #[rstest]
-    #[case::too_many_results(
+    #[case::too_many_results_single(
+        SelectorMode::Single,
         "$[*]",
         json(json!([1, 2])),
         "Expected exactly one result from query, but got 2",
     )]
-    #[case::no_results(
+    #[case::no_results_auto(
+        SelectorMode::Auto,
         "$[*]",
         json(json!([])),
-        "Expected exactly one result from query, but got 0",
+        "No results from JSONPath query",
+    )]
+    #[case::no_results_single(
+        SelectorMode::Single,
+        "$[*]",
+        json(json!([])),
+        "No results from JSONPath query",
     )]
     fn test_query_to_string_error(
+        #[case] mode: SelectorMode,
         #[case] query: &str,
         #[case] content: Box<dyn ResponseContent>,
         #[case] expected_err: &str,
     ) {
         let query = Query::from_str(query).unwrap();
-        assert_err!(query.query_to_string(&*content), expected_err);
+        assert_err!(query.query_to_string(mode, &*content), expected_err);
     }
 
     /// Helper to create JSON content

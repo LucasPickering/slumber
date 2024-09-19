@@ -5,7 +5,7 @@ use crate::{
     collection::{
         self, cereal::deserialize_from_str, Chain, ChainId, ChainSource,
         Collection, Folder, HasId, Method, Profile, ProfileId, Recipe,
-        RecipeBody, RecipeId, RecipeNode, RecipeTree,
+        RecipeBody, RecipeId, RecipeNode, RecipeTree, SelectorMode,
     },
     http::content_type::ContentType,
     template::{Identifier, Template},
@@ -513,6 +513,7 @@ fn build_chains(requests: &[Request]) -> IndexMap<ChainId, Chain> {
                         },
                         sensitive: false,
                         selector: None,
+                        selector_mode: SelectorMode::default(),
                         content_type: None,
                         trim: Default::default(),
                     },

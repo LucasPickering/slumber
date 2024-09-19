@@ -282,6 +282,7 @@ impl crate::test_util::Factory for Chain {
             },
             sensitive: false,
             selector: None,
+            selector_mode: SelectorMode::default(),
             content_type: None,
             trim: ChainOutputTrim::default(),
         }
@@ -364,6 +365,9 @@ pub struct Chain {
     /// regardless of the content type. Non-JSON values will be converted to
     /// JSON, then converted back.
     pub selector: Option<Query>,
+    /// Control selector behavior relative to number of query results
+    #[serde(default)]
+    pub selector_mode: SelectorMode,
     /// Hard-code the content type of the response. Only needed if a selector
     /// is given and the content type can't be dynamically determined
     /// correctly. This is needed if the chain source is not an HTTP
@@ -438,17 +442,13 @@ pub enum ChainSource {
 }
 
 /// Static or dynamic list of options for a select chain
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(untagged)]
 pub enum SelectOptions {
     Fixed(Vec<Template>),
-    /// Dynamic requires a source (often a chain) that either returns a JSON
-    /// array OR a JSON object, in which case we'll use selector to query
-    /// and find the array to parse in to the list of options
-    Dynamic {
-        source: Template,
-        selector: Option<Query>,
-    },
+    /// Render a template, then parse its output as a JSON array to get options
+    Dynamic(Template),
 }
 
 /// Test-only helpers
@@ -493,6 +493,26 @@ pub enum ChainRequestTrigger {
     Expire(#[serde(with = "cereal::serde_duration")] Duration),
     /// Trigger the request every time the dependent request is rendered
     Always,
+}
+
+/// Control how a JSONPath selector returns 0 vs 1 vs 2+ results
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum SelectorMode {
+    /// 0 - Error
+    /// 1 - Single result, without wrapping quotes
+    /// 2 - JSON array
+    #[default]
+    Auto,
+    /// 0 - Error
+    /// 1 - Single result, without wrapping quotes
+    /// 2 - Error
+    Single,
+    /// 0 - JSON array
+    /// 1 - JSON array
+    /// 2 - JSON array
+    Array,
 }
 
 /// Trim whitespace from rendered output

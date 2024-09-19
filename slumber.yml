@@ -41,9 +41,12 @@ chains:
   select_dynamic:
     source: !select
       message: Select a value
-      options: !dynamic
-        source: "{{chains.auth_token}}"
-        selector: $[*]
+      options: "{{chains.login_form_values}}"
+  login_form_values:
+    source: !request
+      recipe: login
+    selector: $.form[*]
+    selector_mode: array
   auth_token:
     source: !request
       recipe: login

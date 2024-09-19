@@ -417,7 +417,9 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                             error: error.into(),
                         }
                     })?;
-                selector.query_to_string(&*value)?.into_bytes()
+                selector
+                    .query_to_string(chain.selector_mode, &*value)?
+                    .into_bytes()
             } else {
                 value
             };
@@ -771,49 +773,31 @@ impl<'a> ChainTemplateSource<'a> {
                 ))
                 .await?
             }
-            SelectOptions::Dynamic { source, selector } => {
+            SelectOptions::Dynamic(source) => {
                 // Render source to a string
                 let source = source
                     .render_chain_config("source", context, stack)
                     .await?;
 
-                // the above render_chain_config will always parse the output of
-                // the chain as a string, but we'll need to
-                // parse back to JSON to execute the JSONPath
-                // query against it.
-                let source_json: serde_json::Value =
+                // Parse the rendered content as a JSON array
+                let options: Vec<serde_json::Value> =
                     serde_json::from_str(&source).map_err(|error| {
                         ChainError::DynamicSelectOptions {
                             error: Arc::new(error),
                         }
                     })?;
 
-                let options = match (selector, source_json) {
-                    // A selector and raw JSON value means we execute
-                    // the selector
-                    (Some(selector), value) => Ok(selector
-                        .query_list(&value)
-                        .into_iter()
-                        .cloned()
-                        .collect()),
-                    // No selector, but a JSON array means we're good to go!
-                    (None, serde_json::Value::Array(options)) => Ok(options),
-
-                    (None, _) => Err(ChainError::DynamicOptionsInvalid),
-                }?;
-
-                // Convert all values to strings, for convenience. THis may be a
-                // bit wonky for nexted objects/arrays, but it
-                // should be obvious to the user what's going on so
-                // it's better than returning an error
+                // Convert all values to strings, for convenience. This may be a
+                // bit wonky for nexted objects/arrays, but it should be obvious
+                // to the user what's going on so it's better than erroring
                 options
-                    .iter()
+                    .into_iter()
                     .map(|value| {
                         // if the value is already a string, avoid calling
                         // to_string on it since that would wrap the string
                         // in another set of quotes.
                         match value {
-                            serde_json::Value::String(s) => s.clone(),
+                            serde_json::Value::String(s) => s,
                             other => other.to_string(),
                         }
                     })

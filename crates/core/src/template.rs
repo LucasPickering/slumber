@@ -275,7 +275,7 @@ mod tests {
     use chrono::Utc;
     use indexmap::indexmap;
     use rstest::rstest;
-    use serde_json::{json, Value};
+    use serde_json::json;
     use std::time::Duration;
     use tokio::fs;
     use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
@@ -565,7 +565,7 @@ mod tests {
         }),
         "Parsing response: expected ident at line 1 column 2",
     )]
-    // Query returned multiple results
+    // Query returned no results
     #[case::query_multiple_results(
         Chain {
             source: ChainSource::Request {
@@ -573,7 +573,7 @@ mod tests {
                 trigger: Default::default(),
                 section:Default::default()
             },
-            selector: Some("$.*".parse().unwrap()),
+            selector: Some("$.bogus".parse().unwrap()),
             content_type: Some(ContentType::Json),
             ..Chain::factory(())
         },
@@ -585,7 +585,7 @@ mod tests {
             }.into(),
             ..Exchange::factory(RecipeId::from("recipe1"))
         }),
-        "Expected exactly one result",
+        "No results from JSONPath query",
     )]
     #[tokio::test]
     async fn test_chain_request_error(
@@ -946,9 +946,19 @@ mod tests {
     }
 
     #[rstest]
-    #[case::no_chains(SelectOptions::Fixed(vec!["foo!".into(), "bar!".into()]), 0, "foo!")]
-    #[case::chains_0(SelectOptions::Fixed(vec!["foo!".into(), "{{chains.command}}".into()]), 0, "foo!")]
-    #[case::chains_1(SelectOptions::Fixed(vec!["foo!".into(), "{{chains.command}}".into()]), 1, "command_output")]
+    #[case::no_chains(
+        SelectOptions::Fixed(vec!["foo!".into(), "bar!".into()]), 0, "foo!",
+    )]
+    #[case::chains_first(
+        SelectOptions::Fixed(vec!["foo!".into(), "{{chains.command}}".into()]),
+        0,
+        "foo!",
+    )]
+    #[case::chains_second(
+        SelectOptions::Fixed(vec!["foo!".into(), "{{chains.command}}".into()]),
+        1,
+        "command_output",
+    )]
     #[tokio::test]
     async fn test_chain_fixed_select(
         #[case] options: SelectOptions,
@@ -985,34 +995,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::dynamic_select_selector_0(
-        SelectOptions::Dynamic { source: "{{chains.request}}".into(), selector: Some("$.array[*]".parse().unwrap())},
-        json!({"array": ["foo", "bar"]}),
-        0,
-        "foo"
-    )]
-    #[case::dynamic_select_selector_1(
-        SelectOptions::Dynamic { source: "{{chains.request}}".into(), selector: Some("$.array[*]".parse().unwrap())},
-        json!({"array": ["foo", "bar"]}),
-        1,
-        "bar"
-    )]
-    #[case::dynamic_select_0(
-        SelectOptions::Dynamic { source: "{{chains.request}}".into(), selector: None},
-        json!(["foo", "bar"]),
-        0,
-        "foo"
-    )]
-    #[case::dynamic_select_1(
-        SelectOptions::Dynamic { source: "{{chains.request}}".into(), selector: None},
-        json!(["foo", "bar"]),
-        1,
-        "bar"
-    )]
+    #[case::dynamic_select_first(0, "foo")]
+    #[case::dynamic_select_second(1, "bar")]
     #[tokio::test]
     async fn test_chain_dynamic_select(
-        #[case] options: SelectOptions,
-        #[case] chain_json: Value,
         #[case] index: usize,
         #[case] expected: &str,
     ) {
@@ -1028,7 +1014,7 @@ mod tests {
             id: "sut".into(),
             source: ChainSource::Select {
                 message: Some("password".into()),
-                options,
+                options: SelectOptions::Dynamic("{{chains.request}}".into()),
             },
             ..Chain::factory(())
         };
@@ -1056,7 +1042,7 @@ mod tests {
             ..RequestRecord::factory(())
         };
         let response = ResponseRecord {
-            body: chain_json.to_string().into_bytes().into(),
+            body: json!(["foo", "bar"]).to_string().into_bytes().into(),
             headers: response_headers,
             ..ResponseRecord::factory(())
         };
@@ -1108,14 +1094,14 @@ mod tests {
     }
 
     #[rstest]
-    #[case::invalid_json(
+    #[case::json_string(
         "not json",
         "Dynamic option list failed to deserialize as JSON"
     )]
-    #[case::not_array(
+    #[case::json_object(
         "{\"a\": 3}",
-        "Dynamic select options are invalid. Source must be an array or a \
-        selector must be provided."
+        "Dynamic option list failed to deserialize as JSON: \
+        invalid type: map, expected a sequence"
     )]
     #[tokio::test]
     async fn test_chain_select_dynamic_error(
@@ -1125,10 +1111,7 @@ mod tests {
         let sut_chain = Chain {
             source: ChainSource::Select {
                 message: Some("password".into()),
-                options: SelectOptions::Dynamic {
-                    source: "{{chains.command}}".into(),
-                    selector: None,
-                },
+                options: SelectOptions::Dynamic("{{chains.command}}".into()),
             },
             ..Chain::factory(())
         };

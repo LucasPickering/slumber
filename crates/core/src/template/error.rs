@@ -186,13 +186,8 @@ pub enum ChainError {
         error: Arc<serde_json::Error>,
     },
 
-    #[error(
-        "Dynamic select options are invalid. Source must be an array or a \
-        selector must be provided."
-    )]
-    DynamicOptionsInvalid,
-
-    /// A bubbled-error from rendering a nested template in the chain arguments
+    /// A bubbled-up error from rendering a nested template in the chain
+    /// arguments
     #[error("Rendering nested template for field `{field}`")]
     Nested {
         /// Specific field that contained the error, to give the user context

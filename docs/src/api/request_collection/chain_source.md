@@ -180,38 +180,33 @@ Prompt the user to select a defined value from a list.
 
 #### Select Options
 
-The list of options to present to the user. This can be a static list of values or a dynamic configuration to generate the list of options.
+The list of options to present to the user. This can be a static list of values or a dynamic template to generate the list of options.
 
-| Variant   | Type                                              | Description                                                  |
-| --------- | ------------------------------------------------- | ------------------------------------------------------------ |
-| `fixed`   | `Template[]`                                      | A fixed list of options                                      |
-| `dynamic` | [`DynamicSelectOptions`](#dynamic-select-options) | A dynamic configuration used to generate the list of options |
+| Variant   | Type         | Description                               |
+| --------- | ------------ | ----------------------------------------- |
+| `fixed`   | `Template[]` | Fixed list of options                     |
+| `dynamic` | `Template`   | Template that renders to a **JSON array** |
 
 #### Examples
 
 ```yaml
 fruit:
-  souce: !select
+  source: !select
     message: Select Fruit
     options:
       - apple
       - banana
       - guava
+fruit_response:
+  source: !request
+    recipe: list_fruit
+  # Assume this response body looks like:
+  # [{ "name": "apple" }, { "name": "guava" }, { "name": "pear" }]
+  selector: $[*].name
 dynamic_fruit:
   source: !select
     message: Select Fruit
-    options:
-      # Assume this respones body looks like: {"fruits": ["apple", "guava", "pear"]}
-      source: "{{chains.request_fruit}}"
-      selector: $.fruits[*]
+    # This option is powerful when combined with the `selector` field on an
+    # upstream chain
+    options: "{{chains.fruit_response}}"
 ```
-
-### Dynamic Select Options
-
-This defines a dynamic configuration used to generate the list of options in a select chain. The `source` output could be any JSON value, in which case a `selector` must be used to filter to a JSON array.
-If the `source` output is already a JSON array, no selector is required.
-
-| Field      | Type                                                                                   | Description                                                                        | Default  |
-| ---------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------- |
-| `source`   | `Template`                                                                             | The source of the data to drive the list of options.                               | Required |
-| `selector` | [`JSONPath`](https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html) | A JSONPath expression to filter down to a JSON array.                              | `null`   |

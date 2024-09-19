@@ -94,15 +94,31 @@ impl ContentType {
     }
 
     /// Convert content from JSON into this format. Valid JSON should be valid
-    /// in any other format too, so this is infallible. This takes a `Cow`
-    /// because some formats may need an owned JSON value while others may not.
-    /// You should pass an owned value if you have it, but it's not necessary.
+    /// in any other format too, so this is infallible.
     pub fn parse_json(
         self,
-        content: Cow<'_, serde_json::Value>,
+        content: serde_json::Value,
     ) -> Box<dyn ResponseContent> {
         match self {
-            Self::Json => Box::new(Json(content.into_owned())),
+            Self::Json => Box::new(Json(content)),
+        }
+    }
+
+    /// Stringify a single JSON value into this format
+    pub fn value_to_string(self, value: &serde_json::Value) -> String {
+        match self {
+            ContentType::Json => match value {
+                serde_json::Value::Null => "".into(),
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            },
+        }
+    }
+
+    /// Stringify a list of JSON values into this format
+    pub fn vec_to_string(self, values: &Vec<&serde_json::Value>) -> String {
+        match self {
+            ContentType::Json => serde_json::to_string(&values).unwrap(),
         }
     }
 

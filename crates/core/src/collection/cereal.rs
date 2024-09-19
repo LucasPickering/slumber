@@ -3,9 +3,9 @@
 use crate::{
     collection::{
         recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, Recipe,
-        RecipeBody, RecipeId, SelectOptions,
+        RecipeBody, RecipeId,
     },
-    http::{content_type::ContentType, query::Query},
+    http::content_type::ContentType,
     template::Template,
 };
 use anyhow::Context;
@@ -16,14 +16,10 @@ use serde::{
         self, EnumAccess, Error as _, MapAccess, SeqAccess, VariantAccess,
         Visitor,
     },
-    ser::{Error as _, SerializeStructVariant},
+    ser::Error as _,
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::{
-    fmt::{self, Display},
-    hash::Hash,
-    str::FromStr,
-};
+use std::{fmt::Display, hash::Hash, str::FromStr};
 
 /// A type that has an `id` field. This is ripe for a derive macro, maybe a fun
 /// project some day?
@@ -388,135 +384,6 @@ impl<'de> Deserialize<'de> for RecipeBody {
     }
 }
 
-impl SelectOptions {
-    // Constants for serialize/deserialization. Typically these are generated
-    // by macros, but we need custom implementation
-    const STRUCT_NAME: &'static str = "SelectOptions";
-    const VARIANT_DYNAMIC: &'static str = "dynamic";
-    const ALL_VARIANTS: &'static [&'static str] = &[Self::VARIANT_DYNAMIC];
-    const DYNAMIC_FIELD_SOURCE: &'static str = "source";
-    const DYNAMIC_FIELD_SELECTOR: &'static str = "selector";
-    const ALL_DYNAMIC_FIELDS: &'static [&'static str] =
-        &[Self::DYNAMIC_FIELD_SOURCE, Self::DYNAMIC_FIELD_SELECTOR];
-}
-
-/// Serialize [SelectOptions] to a list of templates or tagged struct
-impl Serialize for SelectOptions {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            // Fixed options are serialized as a plain list, for convenience
-            SelectOptions::Fixed(options) => options.serialize(serializer),
-            // Dynamic options become a tagged struct
-            SelectOptions::Dynamic { source, selector } => {
-                let mut state = serializer.serialize_struct_variant(
-                    Self::STRUCT_NAME,
-                    1,
-                    Self::VARIANT_DYNAMIC,
-                    Self::ALL_DYNAMIC_FIELDS.len(),
-                )?;
-                state.serialize_field(Self::DYNAMIC_FIELD_SOURCE, &source)?;
-                state
-                    .serialize_field(Self::DYNAMIC_FIELD_SELECTOR, &selector)?;
-                state.end()
-            }
-        }
-    }
-}
-
-/// Deserialize a list of templates or tagged struct to [SelectOptions]
-impl<'de> Deserialize<'de> for SelectOptions {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct SelectOptionsVisitor;
-
-        impl<'de> Visitor<'de> for SelectOptionsVisitor {
-            type Value = SelectOptions;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("array of templates or !dynamic tag")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                // Parse sequence as fixed options
-                let mut options =
-                    Vec::with_capacity(seq.size_hint().unwrap_or(5));
-                while let Some(value) = seq.next_element::<Template>()? {
-                    options.push(value);
-                }
-                Ok(SelectOptions::Fixed(options))
-            }
-
-            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
-            where
-                A: EnumAccess<'de>,
-            {
-                let (tag, value) = data.variant::<String>()?;
-                match tag.as_str() {
-                    SelectOptions::VARIANT_DYNAMIC => value.struct_variant(
-                        SelectOptions::ALL_DYNAMIC_FIELDS,
-                        DynamicSelectOptionsVisitor,
-                    ),
-                    other => Err(A::Error::unknown_variant(
-                        other,
-                        SelectOptions::ALL_VARIANTS,
-                    )),
-                }
-            }
-        }
-
-        /// Parse the !dynamic struct
-        struct DynamicSelectOptionsVisitor;
-
-        impl<'de> Visitor<'de> for DynamicSelectOptionsVisitor {
-            type Value = SelectOptions;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct variant SelectOptions::Dynamic")
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let mut source: Option<Template> = None; // Required
-                let mut selector: Option<Query> = None; // Optional
-                while let Some(key) = map.next_key::<String>()? {
-                    match key.as_str() {
-                        SelectOptions::DYNAMIC_FIELD_SOURCE => {
-                            source = Some(map.next_value()?);
-                        }
-                        SelectOptions::DYNAMIC_FIELD_SELECTOR => {
-                            selector = map.next_value()?;
-                        }
-                        other => {
-                            return Err(A::Error::unknown_field(
-                                other,
-                                SelectOptions::ALL_DYNAMIC_FIELDS,
-                            ));
-                        }
-                    }
-                }
-                Ok(SelectOptions::Dynamic {
-                    source: source.ok_or(de::Error::missing_field(
-                        SelectOptions::DYNAMIC_FIELD_SOURCE,
-                    ))?,
-                    selector,
-                })
-            }
-        }
-
-        deserializer.deserialize_any(SelectOptionsVisitor)
-    }
-}
-
 /// Serialize/deserialize a duration with unit shorthand. This does *not* handle
 /// subsecond precision. Supported units are:
 /// - s
@@ -708,92 +575,6 @@ mod tests {
             serde_yaml::from_value::<RecipeBody>(yaml).unwrap(),
             body,
             "Deserialization mismatch"
-        );
-    }
-
-    /// Test serializing from/deserializing to [SelectOptions]. Fixed lists
-    /// go to/from a flat array. Dynamic lists are a map tagged with `!dynamic`.
-    #[rstest]
-    #[case::empty_array(SelectOptions::Fixed(vec![]), Vec::<String>::new())]
-    #[case::fixed(
-        SelectOptions::Fixed(vec!["{{user_id}}".into(), "apple".into()]),
-        vec!["{{user_id}}", "apple"],
-    )]
-    #[case::dynamic(
-        SelectOptions::Dynamic {
-            source: "{{dynamic_options}}".into(),
-            selector: None,
-        },
-        serde_yaml::Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new("dynamic"),
-            value: mapping([
-                ("source", serde_yaml::Value::String("{{dynamic_options}}".into())),
-                ("selector", serde_yaml::Value::Null),
-            ])
-        })),
-    )]
-    #[case::dynamic_with_selector(
-        SelectOptions::Dynamic {
-            source: "{{dynamic_options}}".into(),
-            selector: Some("$.fruits".into()),
-        },
-        serde_yaml::Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new("dynamic"),
-            value: mapping([
-                ("source", "{{dynamic_options}}"), ("selector", "$.fruits"),
-            ])
-        })),
-    )]
-    fn test_serde_select_options(
-        #[case] options: SelectOptions,
-        #[case] yaml: impl Into<serde_yaml::Value>,
-    ) {
-        let yaml = yaml.into();
-        assert_eq!(
-            serde_yaml::to_value(&options).unwrap(),
-            yaml,
-            "Serialization mismatch"
-        );
-        assert_eq!(
-            serde_yaml::from_value::<SelectOptions>(yaml).unwrap(),
-            options,
-            "Deserialization mismatch"
-        );
-    }
-
-    #[rstest]
-    #[case::invalid_tag(
-        serde_yaml::Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new("fixed"),
-            value: vec!["apple"].into(),
-        })),
-        "unknown variant `fixed`, expected `dynamic`",
-    )]
-    #[case::dynamic_untagged(
-        mapping([("source", "{{options}}"), ("selector", "$.a")]),
-        "invalid type: map, expected array of templates or !dynamic tag",
-    )]
-    #[case::dynamic_missing_field(
-        serde_yaml::Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new("dynamic"),
-            value: mapping([("selector", "$.a")]),
-        })),
-        "missing field `source`",
-    )]
-    #[case::dynamic_extra_field(
-        serde_yaml::Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new("dynamic"),
-            value: mapping([("source", ""), ("extra", "")]),
-        })),
-        "unknown field `extra`, expected `source` or `selector`",
-    )]
-    fn test_deserialize_select_options_error(
-        #[case] yaml: impl Into<serde_yaml::Value>,
-        #[case] expected_error: &str,
-    ) {
-        assert_err!(
-            serde_yaml::from_value::<SelectOptions>(yaml.into()),
-            expected_error
         );
     }
 

@@ -17,6 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - When using the CLI, the `--profile` argument can be omitted to use the default profile
 - Reset edited recipe values to their default using `r`
   - You can [customize the key](https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html) to whatever you want
+- Add `selector_mode` field to chains, to control how single vs multiple results from a JSONPath selector are handled
+  - Previously, if a selector returned multiple results, an error was returned. Now, the result list will be rendered as a JSON array. To return to the previous behavior, set `selector_mode: single` in your chain.
+  - [See docs for more](https://slumber.lucaspickering.me/book/api/request_collection/chain.html#selector-mode)
 
 ### Changed
 

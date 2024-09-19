@@ -841,18 +841,14 @@ mod tests {
     #[rstest]
     #[case::list(
         &[
-            Token::Seq { len: None },
-            Token::Str("param={{value}}"),
-            Token::Str("param=value"),
-            Token::SeqEnd,
-        ],
-        vec![("param", "{{value}}"), ("param", "value")],
-        &[
             Token::Seq { len: Some(2) },
             Token::Str("param={{value}}"),
             Token::Str("param=value"),
+            Token::Str("%3D param %3D=%3Dvalue"),
             Token::SeqEnd,
         ],
+        vec![("param", "{{value}}"), ("param", "value"), ("= param =", "=value")],
+        None,
     )]
     #[case::map(
         &[
@@ -862,21 +858,22 @@ mod tests {
             Token::MapEnd,
         ],
         vec![("param", "{{value}}")],
-        &[
+        Some([
             Token::Seq { len: Some(1) },
             Token::Str("param={{value}}"),
             Token::SeqEnd,
-        ],
+        ].as_slice()),
     )]
     #[case::unit(
         &[Token::Unit],
         vec![],
-        &[Token::Seq { len: Some(0) }, Token::SeqEnd],
+        Some([Token::Seq { len: Some(0) }, Token::SeqEnd].as_slice()),
     )]
-    fn test_deserialize_query_parameters(
+    fn test_serde_query_parameters(
         #[case] input_tokens: &[Token],
         #[case] expected_value: Vec<(&str, &str)>,
-        #[case] expected_tokens: &[Token],
+        // None to use same as input tokens
+        #[case] expected_tokens: Option<&[Token]>,
     ) {
         #[derive(Debug, PartialEq, Serialize, Deserialize)]
         #[serde(transparent)]
@@ -891,6 +888,7 @@ mod tests {
                 .collect(),
         );
         assert_de_tokens::<Wrap>(&expected_value, input_tokens);
+        let expected_tokens = expected_tokens.unwrap_or(input_tokens);
         assert_ser_tokens(&expected_value, expected_tokens);
     }
 

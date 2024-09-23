@@ -342,7 +342,7 @@ mod tests {
         );
 
         // Reset username
-        component.send_key(KeyCode::Char('r')).assert_empty();
+        component.send_key(KeyCode::Char('z')).assert_empty();
         assert_eq!(component.data().inner().override_value(), None);
 
         // Edit password
@@ -359,7 +359,7 @@ mod tests {
         );
 
         // Reset password
-        component.send_key(KeyCode::Char('r')).assert_empty();
+        component.send_key(KeyCode::Char('z')).assert_empty();
         assert_eq!(component.data().inner().override_value(), None);
     }
 
@@ -423,7 +423,7 @@ mod tests {
         );
 
         // Reset token
-        component.send_key(KeyCode::Char('r')).assert_empty();
+        component.send_key(KeyCode::Char('z')).assert_empty();
         assert_eq!(component.data().inner().override_value(), None);
     }
 

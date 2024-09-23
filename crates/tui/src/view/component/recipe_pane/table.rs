@@ -458,7 +458,7 @@ mod tests {
         );
 
         // Reset edited state
-        component.send_key(KeyCode::Char('r')).assert_empty();
+        component.send_key(KeyCode::Char('z')).assert_empty();
         let selected_row =
             component.data().inner().select.data().selected().unwrap();
         assert!(!selected_row.value.is_overridden());

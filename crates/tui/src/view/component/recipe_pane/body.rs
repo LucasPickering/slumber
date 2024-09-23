@@ -3,7 +3,7 @@ use crate::{
     message::Message,
     util::ResultReported,
     view::{
-        common::text_window::{TextWindow, TextWindowProps},
+        common::text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         component::recipe_pane::{
             persistence::{RecipeOverrideKey, RecipeTemplate},
             table::{RecipeFieldTable, RecipeFieldTableProps},
@@ -229,7 +229,10 @@ impl Draw for RawBody {
                 // Do *not* call generate, because that clones the text and
                 // we only need a reference
                 text: &self.body.preview().text(),
-                margins: Default::default(),
+                margins: ScrollbarMargins {
+                    right: 1,
+                    bottom: 2, // Extra buffer for edit/reset note
+                },
                 footer: if self.body.is_overridden() {
                     Some("(edited)".set_style(styles.text.hint).into())
                 } else {

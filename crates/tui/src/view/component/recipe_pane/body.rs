@@ -337,7 +337,7 @@ mod tests {
         );
 
         // Reset edited state
-        component.send_key(KeyCode::Char('r')).assert_empty();
+        component.send_key(KeyCode::Char('z')).assert_empty();
         assert_eq!(component.data().override_value(), None);
     }
 

@@ -38,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Retain all request history when collection file is reloaded
   - Previously, pending and failed requests were lost on reload within a single session. These will still be lost when a session is exited.
 - Fix serialization of query parameter lists
+- Don't update UI for useless events (e.g. cursor moves)
 
 ## [2.0.0] - 2024-09-06
 

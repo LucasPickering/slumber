@@ -31,7 +31,7 @@ use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use futures::StreamExt;
+use futures::{pin_mut, StreamExt};
 use notify::{event::ModifyKind, RecursiveMode, Watcher};
 use ratatui::{prelude::CrosstermBackend, Terminal};
 use slumber_config::{Action, Config};
@@ -148,7 +148,14 @@ impl Tui {
 
         let input_engine = &TuiContext::get().input_engine;
         // Stream of terminal input events
-        let mut input_stream = EventStream::new();
+        let input_stream =
+            // Events that don't map to a message (cursor move, focus, etc.)
+            // should be filtered out entirely so they don't trigger any updates
+            EventStream::new().filter_map(|event_result| async move {
+                let event = event_result.expect("Error reading terminal input");
+                input_engine.event_to_message(event)
+            });
+        pin_mut!(input_stream);
 
         self.draw()?; // Initial draw
 
@@ -160,11 +167,11 @@ impl Tui {
             // while the queue is empty so we don't waste CPU cycles. The
             // timeout here makes sure we don't block forever, so things like
             // time displays during in-flight requests will update.
+
             let message = select! {
-                event_result = input_stream.next() => {
-                    if let Some(event) = event_result {
-                        let event = event.expect("Error reading terminal input");
-                        input_engine.event_to_message(event)
+                event_option = input_stream.next() => {
+                    if let Some(event) = event_option {
+                        Some(event)
                     } else {
                         // We ran out of input, just end the program
                         break;

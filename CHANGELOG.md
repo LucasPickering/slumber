@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [2.1.0] - 2024-09-27
+
 ### Added
 
 - Use `SLUMBER_CONFIG_PATH` to customize configuration (_not_ collection) file path [#370](https://github.com/LucasPickering/slumber/issues/370)

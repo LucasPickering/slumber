@@ -7,7 +7,7 @@ keywords = ["rest", "http", "terminal", "tui"]
 license = "MIT"
 name = "slumber"
 repository = "https://github.com/LucasPickering/slumber"
-version = "2.0.0"
+version = "2.1.0"
 # Keep in sync w/ rust-toolchain.toml
 rust-version = "1.80.0"
 
@@ -35,10 +35,10 @@ serde_json = {version = "1.0.120", default-features = false}
 serde_json_path = "0.6.3"
 serde_test = "1.0.176"
 serde_yaml = {version = "0.9.0", default-features = false}
-slumber_cli = {path = "./crates/cli", version = "2.0.0"}
-slumber_config = {path = "./crates/config", version = "2.0.0"}
-slumber_core = {path = "./crates/core", version = "2.0.0"}
-slumber_tui = {path = "./crates/tui", version = "2.0.0"}
+slumber_cli = {path = "./crates/cli", version = "2.1.0" }
+slumber_config = {path = "./crates/config", version = "2.1.0" }
+slumber_core = {path = "./crates/core", version = "2.1.0" }
+slumber_tui = {path = "./crates/tui", version = "2.1.0" }
 strum = {version = "0.26.3", default-features = false}
 tokio = {version = "1.39.2", default-features = false}
 tracing = "0.1.40"

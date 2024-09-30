@@ -15,6 +15,9 @@ chains:
   token:
     source: !file
       path: ./api_token.txt
+  fish_id:
+    source: !prompt
+      message: Fish ID
 
 requests:
   list_fish: !request
@@ -50,6 +53,9 @@ chains:
   token:
     source: !file
       path: ./api_token.txt
+  fish_id:
+    source: !prompt
+      message: Fish ID
 
 # This is needed to tell Slumber not to complain about an unknown key
 .ignore:
@@ -89,6 +95,9 @@ chains:
   token:
     source: !file
       path: ./api_token.txt
+  fish_id:
+    source: !prompt
+      message: Fish ID
 
 .ignore:
   request_base: &request_base

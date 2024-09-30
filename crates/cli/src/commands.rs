@@ -1,4 +1,5 @@
 pub mod collections;
+pub mod complete;
 pub mod generate;
 pub mod history;
 pub mod import;

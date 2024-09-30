@@ -636,10 +636,7 @@ impl<'a> RecipeBuilder<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        collection::{Collection, CollectionFile},
-        test_util::test_data_dir,
-    };
+    use crate::{collection::Collection, test_util::test_data_dir};
     use indexmap::indexmap;
     use openapiv3::{Example, Schema, SchemaData, SchemaKind, Type};
     use pretty_assertions::assert_eq;
@@ -656,17 +653,14 @@ mod tests {
 
     /// Catch-all test for openapiv3 import
     #[rstest]
-    #[tokio::test]
-    async fn test_openapiv3_import(test_data_dir: PathBuf) {
+    fn test_openapiv3_import(test_data_dir: PathBuf) {
         let imported =
             Collection::from_openapi(test_data_dir.join(OPENAPIV3_FILE))
                 .unwrap();
         let expected =
-            CollectionFile::load(test_data_dir.join(OPENAPIV3_IMPORTED_FILE))
-                .await
-                .unwrap()
-                .collection;
-        assert_eq!(imported, *expected);
+            Collection::load(&test_data_dir.join(OPENAPIV3_IMPORTED_FILE))
+                .unwrap();
+        assert_eq!(imported, expected);
     }
 
     /// Test various cases of [RequestBuilder::process_body]

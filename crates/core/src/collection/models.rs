@@ -7,14 +7,16 @@ use crate::{
     },
     http::{content_type::ContentType, query::Query},
     template::{Identifier, Template},
+    util::{parse_yaml, ResultTraced},
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From, FromStr};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{fs::File, path::PathBuf, time::Duration};
 use strum::{EnumIter, IntoEnumIterator};
+use tracing::info;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
@@ -39,6 +41,23 @@ pub struct Collection {
     /// requires a custom serde impl for each type, or changes to the macro
     #[serde(default, skip_serializing, rename = ".ignore")]
     pub _ignore: serde::de::IgnoredAny,
+}
+
+impl Collection {
+    /// Load collection from a file
+    pub fn load(path: &PathBuf) -> anyhow::Result<Self> {
+        info!(?path, "Loading collection file");
+
+        let load = || {
+            let file = File::open(path)?;
+            let collection = parse_yaml(&file)?;
+            Ok::<_, anyhow::Error>(collection)
+        };
+
+        load()
+            .context(format!("Error loading data from {path:?}"))
+            .traced()
+    }
 }
 
 /// Mutually exclusive hot-swappable config group

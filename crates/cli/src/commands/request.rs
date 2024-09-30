@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{CollectionFile, ProfileId, RecipeId},
+    collection::{Collection, CollectionFile, ProfileId, RecipeId},
     db::{CollectionDatabase, Database},
     http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
     template::{Prompt, Prompter, Select, TemplateContext, TemplateError},
@@ -152,8 +152,7 @@ impl BuildRequestCommand {
     ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
         let collection_path = CollectionFile::try_path(None, global.file)?;
         let database = Database::load()?.into_collection(&collection_path)?;
-        let collection_file = CollectionFile::load(collection_path).await?;
-        let collection = collection_file.collection;
+        let collection = Collection::load(&collection_path)?;
         let config = Config::load()?;
         let http_engine = HttpEngine::new(&config.http);
 
@@ -177,7 +176,7 @@ impl BuildRequestCommand {
         let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
         let template_context = TemplateContext {
             selected_profile,
-            collection,
+            collection: collection.into(),
             // Passing the HTTP engine is how we tell the template renderer that
             // it's ok to execute subrequests during render
             http_engine: if trigger_dependencies {

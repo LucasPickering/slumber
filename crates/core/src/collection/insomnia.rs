@@ -603,7 +603,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{collection::CollectionFile, test_util::test_data_dir};
+    use crate::test_util::test_data_dir;
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
@@ -620,17 +620,14 @@ mod tests {
 
     /// Catch-all test for insomnia import
     #[rstest]
-    #[tokio::test]
-    async fn test_insomnia_import(test_data_dir: PathBuf) {
+    fn test_insomnia_import(test_data_dir: PathBuf) {
         let imported =
             Collection::from_insomnia(test_data_dir.join(INSOMNIA_FILE))
                 .unwrap();
         let expected =
-            CollectionFile::load(test_data_dir.join(INSOMNIA_IMPORTED_FILE))
-                .await
-                .unwrap()
-                .collection;
-        assert_eq!(imported, *expected);
+            Collection::load(&test_data_dir.join(INSOMNIA_IMPORTED_FILE))
+                .unwrap();
+        assert_eq!(imported, expected);
     }
 
     #[test]

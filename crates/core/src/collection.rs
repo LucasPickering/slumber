@@ -11,19 +11,17 @@ pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 
-use crate::util::{parse_yaml, ResultTraced};
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use itertools::Itertools;
 use std::{
     env,
     fmt::Debug,
-    fs::File,
     future::Future,
     path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::task;
-use tracing::{info, trace, warn};
+use tracing::{trace, warn};
 
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
@@ -157,29 +155,11 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 /// Load a collection from the given file. Takes an owned path because it
 /// needs to be passed to a future
 async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
-    info!(?path, "Loading collection file");
-    // A bit pessimistic, huh... This gets around some lifetime struggles
-    let error_context = format!("Error loading data from {path:?}");
-
     // YAML parsing is blocking so do it in a different thread. We could use
     // tokio::fs for this but that just uses std::fs underneath anyway.
-    let result =
-        task::spawn_blocking::<_, anyhow::Result<Collection>>(move || {
-            let file = File::open(path)?;
-            let collection = parse_yaml(&file)?;
-            Ok(collection)
-        })
-        .await;
-
-    // Flatten the join error result into the inner task result. Result::flatten
-    // is experimental :(
-    // https://doc.rust-lang.org/std/result/enum.Result.html#method.flatten
-    let result = match result {
-        Ok(result) => result,
-        Err(error) => Err(error.into()),
-    };
-
-    result.context(error_context).traced()
+    task::spawn_blocking(move || Collection::load(&path))
+        .await
+        .expect("TODO")
 }
 
 #[cfg(test)]
@@ -195,7 +175,7 @@ mod tests {
     use rstest::rstest;
     use serde::de::IgnoredAny;
     use serde_json::json;
-    use std::{fs, time::Duration};
+    use std::{fs, fs::File, time::Duration};
 
     /// Test various cases of try_path
     #[rstest]

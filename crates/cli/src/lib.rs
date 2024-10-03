@@ -18,11 +18,14 @@ use crate::commands::{
 use clap::Parser;
 use std::{path::PathBuf, process::ExitCode};
 
+const COMMAND_NAME: &str = "slumber";
+
 #[derive(Debug, Parser)]
 #[clap(
     author,
     version,
     about,
+    name = COMMAND_NAME,
     long_about = "Configurable HTTP client with both TUI and CLI interfaces"
 )]
 pub struct Args {

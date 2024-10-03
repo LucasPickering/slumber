@@ -1,10 +1,8 @@
-use crate::{Args, GlobalArgs, Subcommand};
+use crate::{Args, GlobalArgs, Subcommand, COMMAND_NAME};
 use anyhow::anyhow;
 use clap::{CommandFactory, Parser};
 use clap_complete::Shell;
 use std::{io, process::ExitCode};
-
-const COMMAND_NAME: &str = "slumber";
 
 /// Generate shell completions
 #[derive(Clone, Debug, Parser)]

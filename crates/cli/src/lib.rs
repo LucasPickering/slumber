@@ -11,7 +11,7 @@ mod commands;
 mod util;
 
 use crate::commands::{
-    collections::CollectionsCommand, complete::CompleteCommand,
+    collections::CollectionsCommand, completions::CompletionsCommand,
     generate::GenerateCommand, history::HistoryCommand, import::ImportCommand,
     new::NewCommand, request::RequestCommand, show::ShowCommand,
 };
@@ -57,7 +57,7 @@ pub struct GlobalArgs {
 #[derive(Clone, Debug, clap::Subcommand)]
 pub enum CliCommand {
     Collections(CollectionsCommand),
-    Complete(CompleteCommand),
+    Completions(CompletionsCommand),
     Generate(GenerateCommand),
     History(HistoryCommand),
     Import(ImportCommand),
@@ -71,7 +71,7 @@ impl CliCommand {
     pub async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self {
             Self::Collections(command) => command.execute(global).await,
-            Self::Complete(command) => command.execute(global).await,
+            Self::Completions(command) => command.execute(global).await,
             Self::Generate(command) => command.execute(global).await,
             Self::History(command) => command.execute(global).await,
             Self::Import(command) => command.execute(global).await,

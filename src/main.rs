@@ -16,6 +16,7 @@ use tracing_subscriber::{filter::Targets, fmt::format::FmtSpan, prelude::*};
 #[tokio::main]
 async fn main() -> anyhow::Result<ExitCode> {
     // Global initialization
+    Args::complete(); // If COMPLETE var is enabled, process will stop here
     let args = Args::parse();
 
     initialize_tracing(args.subcommand.is_some());

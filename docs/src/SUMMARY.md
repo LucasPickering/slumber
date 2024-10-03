@@ -45,4 +45,5 @@
 
 - [Logs](./troubleshooting/logs.md)
 - [Lost Request History](./troubleshooting/lost_history.md)
+- [Shell Completions](./troubleshooting/shell_completions.md)
 - [TLS Certificate Errors](./troubleshooting/tls.md)

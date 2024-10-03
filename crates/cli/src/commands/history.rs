@@ -1,6 +1,11 @@
-use crate::{util::HeaderDisplay, GlobalArgs, Subcommand};
+use crate::{
+    completions::{complete_profile, complete_recipe},
+    util::HeaderDisplay,
+    GlobalArgs, Subcommand,
+};
 use anyhow::anyhow;
-use clap::Parser;
+use clap::{Parser, ValueHint};
+use clap_complete::ArgValueCompleter;
 use dialoguer::console::Style;
 use slumber_core::{
     collection::{CollectionFile, ProfileId, RecipeId},
@@ -25,16 +30,29 @@ enum HistorySubcommand {
     #[command(visible_alias = "ls")]
     List {
         /// Recipe to query for
+        #[clap(add = ArgValueCompleter::new(complete_recipe))]
         recipe: RecipeId,
 
         /// Profile to query for. If omitted, query for requests with no
         /// profile
-        #[clap(long = "profile", short)]
+        #[clap(
+            long = "profile",
+            short,
+            add = ArgValueCompleter::new(complete_profile),
+        )]
         profile: Option<ProfileId>,
     },
 
-    /// Print an entire request/response by ID
-    Get { request: RequestId },
+    /// Print an entire request/response
+    Get {
+        // Disable completion for this arg. We could load all the request IDs
+        // from the DB, but that's not worth the effort since this is an
+        // unstable command still and people will rarely be typing an ID by
+        // hand, they'll typically just copy paste
+        /// ID of the request/response to print
+        #[clap(value_hint = ValueHint::Other)]
+        request: RequestId,
+    },
 }
 
 impl Subcommand for HistoryCommand {

@@ -1,6 +1,11 @@
-use crate::{util::HeaderDisplay, GlobalArgs, Subcommand};
+use crate::{
+    completions::{complete_profile, complete_recipe},
+    util::HeaderDisplay,
+    GlobalArgs, Subcommand,
+};
 use anyhow::{anyhow, Context};
-use clap::Parser;
+use clap::{Parser, ValueHint};
+use clap_complete::ArgValueCompleter;
 use dialoguer::{Input, Password, Select as DialoguerSelect};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -59,12 +64,17 @@ pub struct RequestCommand {
 #[derive(Clone, Debug, Parser)]
 pub struct BuildRequestCommand {
     /// ID of the recipe to render into a request
+    #[clap(add = ArgValueCompleter::new(complete_recipe))]
     recipe_id: RecipeId,
 
     /// ID of the profile to pull template values from. If omitted and the
     /// collection has default profile defined, use that profile. Otherwise,
     /// profile data will not be available.
-    #[clap(long = "profile", short)]
+    #[clap(
+        long = "profile",
+        short,
+        add = ArgValueCompleter::new(complete_profile),
+    )]
     profile: Option<ProfileId>,
 
     /// List of key=value template field overrides
@@ -72,6 +82,8 @@ pub struct BuildRequestCommand {
         long = "override",
         short = 'o',
         value_parser = parse_key_val::<String, String>,
+        // There's no reasonable way of doing completions on this, so disable
+        value_hint = ValueHint::Other,
     )]
     overrides: Vec<(String, String)>,
 }

@@ -11,7 +11,7 @@ pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use itertools::Itertools;
 use std::{
     env,
@@ -159,7 +159,8 @@ async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
     // tokio::fs for this but that just uses std::fs underneath anyway.
     task::spawn_blocking(move || Collection::load(&path))
         .await
-        .expect("TODO")
+        // This error only occurs if the task panics
+        .context("Error parsing collection")?
 }
 
 #[cfg(test)]

@@ -8,14 +8,16 @@
 //! do so at your own risk of breakage.
 
 mod commands;
+mod completions;
 mod util;
 
 use crate::commands::{
-    collections::CollectionsCommand, completions::CompletionsCommand,
-    generate::GenerateCommand, history::HistoryCommand, import::ImportCommand,
-    new::NewCommand, request::RequestCommand, show::ShowCommand,
+    collections::CollectionsCommand, generate::GenerateCommand,
+    history::HistoryCommand, import::ImportCommand, new::NewCommand,
+    request::RequestCommand, show::ShowCommand,
 };
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::CompleteEnv;
 use std::{path::PathBuf, process::ExitCode};
 
 const COMMAND_NAME: &str = "slumber";
@@ -37,6 +39,12 @@ pub struct Args {
 }
 
 impl Args {
+    /// Check if we're in shell completion mode, which is set via the `COMPLETE`
+    /// env var. If so, this will print completions then exit the process
+    pub fn complete() {
+        CompleteEnv::with_factory(Args::command).complete();
+    }
+
     /// Alias for [clap::Parser::parse]
     pub fn parse() -> Self {
         <Self as Parser>::parse()
@@ -57,7 +65,6 @@ pub struct GlobalArgs {
 #[derive(Clone, Debug, clap::Subcommand)]
 pub enum CliCommand {
     Collections(CollectionsCommand),
-    Completions(CompletionsCommand),
     Generate(GenerateCommand),
     History(HistoryCommand),
     Import(ImportCommand),
@@ -71,7 +78,6 @@ impl CliCommand {
     pub async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self {
             Self::Collections(command) => command.execute(global).await,
-            Self::Completions(command) => command.execute(global).await,
             Self::Generate(command) => command.execute(global).await,
             Self::History(command) => command.execute(global).await,
             Self::Import(command) => command.execute(global).await,

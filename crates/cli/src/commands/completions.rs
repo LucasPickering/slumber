@@ -6,13 +6,13 @@ use std::{io, process::ExitCode};
 
 /// Generate shell completions
 #[derive(Clone, Debug, Parser)]
-pub struct CompleteCommand {
+pub struct CompletionsCommand {
     /// Shell type. Default to $SHELL
     #[clap(long)]
     shell: Option<Shell>,
 }
 
-impl Subcommand for CompleteCommand {
+impl Subcommand for CompletionsCommand {
     async fn execute(self, _: GlobalArgs) -> anyhow::Result<ExitCode> {
         let shell = self
             .shell

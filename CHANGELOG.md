@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add `slumber completions` subcommand
+  - Right now only static completions are available (e.g. subcommands). In the future I am to add dynamic completions based on your collection file (e.g. recipe and profile IDs)
+
 ## [2.1.0] - 2024-09-27
 
 ### Added

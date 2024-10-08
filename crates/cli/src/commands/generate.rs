@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 /// Render a request and generate an equivalent for a third-party client
 #[derive(Clone, Debug, Parser)]
-#[clap(alias = "gen")]
+#[clap(visible_alias = "gen")]
 pub struct GenerateCommand {
     format: GenerateFormat,
     #[clap(flatten)]

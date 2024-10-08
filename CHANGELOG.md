@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add shell completions, accessed by enabling the `COMPLETE` environment variable
   - For example, adding `COMPLETE=fish slumber | source` to your `fish.config` will enable completions for fish
   - [See docs](https://slumber.lucaspickering.me/book/troubleshooting/shell_completions.html) for more info and a list of supported shells
+- Add `slumber gen` alias to `--help` documentation
 
 ## [2.1.0] - 2024-09-27
 

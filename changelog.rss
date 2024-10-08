@@ -1,0 +1,699 @@
+<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>slumber Changelog</title><link>http://127.0.0.1:7979/changelog</link><description>Changelog information for slumber</description><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><atom:link href="http://127.0.0.1:7979/changelog.rss" rel="self"/><item><title>2.1.0 - 2024-09-27</title><link>http://127.0.0.1:7979/changelog/v2.1.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v2.1.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Use <code>SLUMBER_CONFIG_PATH</code> to customize configuration (<em>not</em> collection) file path <a href="https://github.com/LucasPickering/slumber/issues/370" rel="noopener noreferrer">#370</a></li>
+<li>Add a dynamic variant to <code>!select</code> chain type, allowing your collection to present a list of values driven from the output of another chain. (thanks @anussel5559)
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/chain_source.html#select" rel="noopener noreferrer">See docs for more</a></li>
+</ul>
+</li>
+<li>Cancel in-flight requests with the <code>cancel</code> action (bound to escape by default)</li>
+<li>Add <code>slumber new</code> subcommand to generate new collection files <a href="https://github.com/LucasPickering/slumber/issues/376" rel="noopener noreferrer">#376</a></li>
+<li>Add <code>default</code> field to profiles
+<ul>
+<li>When using the CLI, the <code>--profile</code> argument can be omitted to use the default profile</li>
+</ul>
+</li>
+<li>Reset edited recipe values to their default using <code>z</code>
+<ul>
+<li>You can <a href="https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html" rel="noopener noreferrer">customize the key</a> to whatever you want</li>
+</ul>
+</li>
+<li>Add <code>selector_mode</code> field to chains, to control how single vs multiple results from a JSONPath selector are handled
+<ul>
+<li>Previously, if a selector returned multiple results, an error was returned. Now, the result list will be rendered as a JSON array. To return to the previous behavior, set <code>selector_mode: single</code> in your chain.</li>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/chain.html#selector-mode" rel="noopener noreferrer">See docs for more</a></li>
+</ul>
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Update file locations to adhere to XDG spec on Linux <a href="https://github.com/LucasPickering/slumber/issues/371" rel="noopener noreferrer">#371</a>
+<ul>
+<li>Move config file to <a href="https://docs.rs/dirs/latest/dirs/fn.config_dir.html" rel="noopener noreferrer">config dir</a>, which remains the same on MacOS/Windows but changes on Linux. For backward compatibility, the previous path (<a href="https://docs.rs/dirs/latest/dirs/fn.data_dir.html" rel="noopener noreferrer">data dir</a>) will be checked and used if present</li>
+<li>Move log files to <a href="https://docs.rs/dirs/latest/dirs/fn.state_dir.html" rel="noopener noreferrer">state dir</a> on Linux and <a href="https://docs.rs/dirs/latest/dirs/fn.cache_dir.html" rel="noopener noreferrer">cache dir</a> on MacOS/Windows</li>
+<li>Database file remains in <a href="https://docs.rs/dirs/latest/dirs/fn.data_dir.html" rel="noopener noreferrer">data dir</a> on all platforms</li>
+</ul>
+</li>
+<li>Create config file on startup if it doesn't exist</li>
+<li>If config file fails to load during TUI startup, display an error and fall back to the default, rather than crashing</li>
+<li>De-deprecate <code>{{env.VARIABLE}}</code> template sources
+<ul>
+<li>They'll remain as a simpler alternative to <code>!env</code> chains</li>
+</ul>
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Updated the Configuration docs to remove the non-existent <code>slumber show dir</code> command (thanks @SVendittelli)</li>
+<li>Retain all request history when collection file is reloaded
+<ul>
+<li>Previously, pending and failed requests were lost on reload within a single session. These will still be lost when a session is exited.</li>
+</ul>
+</li>
+<li>Fix serialization of query parameter lists</li>
+<li>Don't update UI for useless events (e.g. cursor moves)</li>
+</ul>
+]]></content:encoded></item><item><title>2.0.0 - 2024-09-06</title><link>http://127.0.0.1:7979/changelog/v2.0.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v2.0.0</guid><content:encoded><![CDATA[<p>2.0 is headlined by a highly requested feature: one-off edits to recipes! If you need to tweak a query parameter or edit a body, but don't want to modify your collection file, you can now highlight the value in question and hit <code>e</code> to modify it. The override will be retained until you modify the collection file or exit Slumber, at which point it will revert to its original value.</p>
+<p>Aside from the major new feature, there is one breaking change to the escape syntax of templates. The old backslash-based syntax was fraught with edge cases and unpredictable behavior. This new syntax is simpler to use, simpler to implement, and much more bulletproof. This syntax was rare to use to begin with, so <strong>most people will be unimpacted by this change.</strong></p>
+<p>Here's the full list of changes:</p>
+<h3>Breaking</h3>
+<ul>
+<li>Replace backslash escape sequence with a simpler scheme based on <code>_</code>
+<ul>
+<li>For example, previously a key would be escaped as <code>\{{</code>. This introduced complexities around how to handle additional backslashes, and also required doubling up backslashes in YAML</li>
+<li>The new equivalent would be <code>{_{</code>, which parses as <code>{{</code></li>
+<li>The goal of this change is to make escaping behavior simpler and more consistent</li>
+<li>For more info on the new behavior, <a href="https://slumber.lucaspickering.me/book/api/request_collection/template.html#escape-sequences" rel="noopener noreferrer">see the docs</a></li>
+</ul>
+</li>
+<li>Remove <code>--log</code> CLI argument
+<ul>
+<li>See note on log files in Changed section for why this is no longer necessary</li>
+</ul>
+</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li>Edit recipe values (query params, headers, etc.) in the TUI to provide one-off values
+<ul>
+<li>Press <code>e</code> on any value you want to edit (you can <a href="https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html" rel="noopener noreferrer">customize the key</a>)</li>
+</ul>
+</li>
+<li>Add <code>editor</code> field to the config, allowing you to customize what editor Slumber opens for in-app editing
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/api/configuration/editor.html" rel="noopener noreferrer">See docs for more</a></li>
+</ul>
+</li>
+<li>Add <code>!select</code> chain type, allowing your collection to prompt the user to select a value from a static list (thanks @anussel5559)
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/chain_source.html#select" rel="noopener noreferrer">See docs for more</a></li>
+</ul>
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li><code>!json</code> bodies are now prettified when sent to the server</li>
+<li>Use <code>vim</code> as default editor if none is configured</li>
+<li>Move logs back to a shared file
+<ul>
+<li>They had been split into one file per session, which made them hard to find</li>
+<li>The file is now eventually deleted once it exceeds a certain size</li>
+</ul>
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fix basic auth being label as bearer auth in Recipe Authentication pane</li>
+<li>Use correct binding for <code>search</code> action in the placeholder of the response filter textbox
+<ul>
+<li>Previously it was hardcoded to display the default of <code>/</code></li>
+</ul>
+</li>
+<li>Fix response body filter not applying on new responses</li>
+<li>Support quoted arguments in editor commands</li>
+<li>Fix certain UI values not persisting correctly</li>
+<li>Propagate unconsumed key events from text boxes
+<ul>
+<li>E.g. F5 will now refresh the collection while a text box is in focus</li>
+</ul>
+</li>
+<li>Redraw TUI when terminal is resized</li>
+<li>Clamp text window scroll state when window is resized or text changes</li>
+<li>Fix extraneous input events when exiting Vim <a href="https://github.com/LucasPickering/slumber/issues/351" rel="noopener noreferrer">#351</a></li>
+<li>Improve performance and fix crashes when handling large request/response bodies <a href="https://github.com/LucasPickering/slumber/issues/356" rel="noopener noreferrer">#356</a>
+<ul>
+<li>Further improvements for large bodies will be coming in the future</li>
+</ul>
+</li>
+</ul>
+]]></content:encoded></item><item><title>1.8.0 - 2024-08-09</title><link>http://127.0.0.1:7979/changelog/v1.8.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.8.0</guid><content:encoded><![CDATA[<p>The highlight (no pun intended) of this release is syntax highlighting. Beyond that, the release contains a variety of small fixes and improvements.</p>
+<h3>Added</h3>
+<ul>
+<li>Add syntax highlighting to recipe, request, and response display <a href="https://github.com/LucasPickering/slumber/issues/264" rel="noopener noreferrer">#264</a></li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Change layout of internal database for request and UI state storage
+<ul>
+<li>This <em>shouldn't</em> have any user impact, it's just a technical improvement. If you notice any issues such as missing or incorrect request history, please <a href="https://github.com/LucasPickering/slumber/issues/new?assignees=&amp;labels=bug&amp;projects=&amp;template=bug_report.md" rel="noopener noreferrer">let me know</a></li>
+</ul>
+</li>
+<li>Upgrade to Rust 1.80</li>
+<li>Disable unavailable menu actions <a href="https://github.com/LucasPickering/slumber/issues/222" rel="noopener noreferrer">#222</a></li>
+<li>Support template for header names in the <code>section</code> field of <code>!request</code> chains</li>
+<li>Expand <code>~</code> to the home directory in <code>!file</code> chain sources and when saving response body as a file</li>
+<li>Ignore key events with additional key modifiers
+<ul>
+<li>For example, an action bound to <code>w</code> will no longer match <code>ctrl w</code></li>
+</ul>
+</li>
+<li>Actions can now be unbound by specifying an empty binding
+<ul>
+<li>For example, binding <code>submit: []</code> will make the submit action inaccessible</li>
+</ul>
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fix <code>cargo install slumber</code> when not using <code>--locked</code></li>
+<li>Don't type in text boxes when modifiers keys (other than shift) are enabled
+<ul>
+<li>Should mitigate some potential confusing behavior when using terminal key sequences</li>
+</ul>
+</li>
+<li>Query parameter and header toggle rows no longer lose their state when switching profiles</li>
+</ul>
+]]></content:encoded></item><item><title>1.7.0 - 2024-07-22</title><link>http://127.0.0.1:7979/changelog/v1.7.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.7.0</guid><content:encoded><![CDATA[<p>This release focuses on minor fixes and improvements. There are no new major features or added functionality.</p>
+<h3>Added</h3>
+<ul>
+<li>Add global <code>--log</code> argument to CLI, to print the log file being used for that invocation</li>
+</ul>
+<h3>Changes</h3>
+<ul>
+<li>Checkbox row state and folder expand/collapse state are now toggled via the spacebar instead of enter
+<ul>
+<li>Enter now sends a request from anywhere. While this change may be annoying, it will hopefully be more intuitive in the long run.</li>
+<li>This can be rebound (<a href="https://slumber.lucaspickering.me/book/api/configuration/input_bindings.html" rel="noopener noreferrer">see docs</a>)</li>
+</ul>
+</li>
+<li>Show folder tree in recipe pane when a folder is selected</li>
+<li>Don't exit body filter text box on Enter <a href="https://github.com/LucasPickering/slumber/issues/270" rel="noopener noreferrer">#270</a></li>
+<li>Show elapsed time for failed requests (e.g. in case of network error)</li>
+</ul>
+<h3>Fixes</h3>
+<ul>
+<li>Fix latest request not being pre-selected correctly if it's not a successful response</li>
+<li>Detect infinite loops in chain configuration templates</li>
+<li>Duplicated chains in a recipe will only be rendered once <a href="https://github.com/LucasPickering/slumber/issues/118" rel="noopener noreferrer">#118</a></li>
+<li>Never trigger chained requests when rendering template previews in the TUI</li>
+<li>Use a different log file for each session <a href="https://github.com/LucasPickering/slumber/issues/61" rel="noopener noreferrer">#61</a></li>
+</ul>
+]]></content:encoded></item><item><title>1.6.0 - 2024-07-07</title><link>http://127.0.0.1:7979/changelog/v1.6.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.6.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Initial support for importing collections from an OpenAPIv3 specification <a href="https://github.com/LucasPickering/slumber/issues/106" rel="noopener noreferrer">#106</a>
+<ul>
+<li>Currently only OpenAPI 3.0 (not 3.1) is supported. Please try this out and give feedback if anything doesn't work.</li>
+</ul>
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Allow escaping keys in templates <a href="https://github.com/LucasPickering/slumber/issues/149" rel="noopener noreferrer">#149</a>
+<ul>
+<li>While this is technically a breaking change, this is not a major version bump because it's extremely unlikely that this will break anything in practice for a user</li>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/template.html#escape-sequences" rel="noopener noreferrer">See docs</a></li>
+</ul>
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Support TLS certificates in native certificate store <a href="https://github.com/LucasPickering/slumber/issues/275" rel="noopener noreferrer">#275</a></li>
+</ul>
+]]></content:encoded></item><item><title>1.5.0 - 2024-06-17</title><link>http://127.0.0.1:7979/changelog/v1.5.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.5.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add <code>!env</code> chain source, for loading environment variables
+<ul>
+<li>This is intended to replace the existing <code>{{env.VARIABLE}}</code> syntax, which is now deprecated and will be removed in the future</li>
+</ul>
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>"Edit Collection" action now uses the editor set in <code>$VISUAL</code>/<code>$EDITOR</code> instead of whatever editor you have set as default for <code>.yaml</code>/<code>.yml</code> files <a href="https://github.com/LucasPickering/slumber/issues/262" rel="noopener noreferrer">#262</a>
+<ul>
+<li>In most cases this means you'll now get <code>vim</code> instead of VSCode or another GUI editor</li>
+<li>Closing the editor will return you to Slumber, meaning you can stay in the terminal the entire time</li>
+</ul>
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Environment variables in <code>{{env.VARIABLE}}</code> templates are now loaded as strings according to the OS encoding, as opposed to always being decoded as UTF-8</li>
+</ul>
+]]></content:encoded></item><item><title>Version 1.5.0-beta.1</title><link>http://127.0.0.1:7979/changelog/v1.5.0-beta.1</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.5.0-beta.1</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add <code>!env</code> chain source, for loading environment variables
+<ul>
+<li>This is intended to replace the existing <code>{{env.VARIABLE}}</code> syntax, which is now deprecated and will be removed in the future</li>
+</ul>
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>"Edit Collection" action now uses the editor set in <code>$VISUAL</code>/<code>$EDITOR</code> instead of whatever editor you have set as default for <code>.yaml</code>/<code>.yml</code> files <a href="https://github.com/LucasPickering/slumber/issues/262" rel="noopener noreferrer">#262</a>
+<ul>
+<li>In most cases this means you'll now get <code>vim</code> instead of VSCode or another GUI editor</li>
+<li>Closing the editor will return you to Slumber, meaning you can stay in the terminal the entire time</li>
+</ul>
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Environment variables in <code>{{env.VARIABLE}}</code> templates are now loaded as strings according to the OS encoding, as opposed to always being decoded as UTF-8</li>
+</ul>
+]]></content:encoded></item><item><title>1.4.0 - 2024-06-11</title><link>http://127.0.0.1:7979/changelog/v1.4.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.4.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Structured bodies can now be defined with tags on the <code>body</code> field of a recipe, making it more convenient to construct bodies of common types. Supported types are:
+<ul>
+<li><code>!json</code> <a href="https://github.com/LucasPickering/slumber/issues/242" rel="noopener noreferrer">#242</a></li>
+<li><code>!form_urlencoded</code> <a href="https://github.com/LucasPickering/slumber/issues/244" rel="noopener noreferrer">#244</a></li>
+<li><code>!form_multipart</code> <a href="https://github.com/LucasPickering/slumber/issues/243" rel="noopener noreferrer">#243</a></li>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/recipe_body.html" rel="noopener noreferrer">See docs</a> for usage instructions</li>
+</ul>
+</li>
+<li>Support multiple instances of the same query param <a href="https://github.com/LucasPickering/slumber/issues/245" rel="noopener noreferrer">#245</a> (@maksimowiczm)
+<ul>
+<li>Query params can now be defined as a list of <code>&lt;param&gt;=&lt;value&gt;</code> entries</li>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/query_parameters.html" rel="noopener noreferrer">See docs</a></li>
+</ul>
+</li>
+<li>Templates can now render binary values in certain contexts
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/user_guide/templates.html#binary-templates" rel="noopener noreferrer">See docs</a></li>
+</ul>
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>When a modal/dialog is open <code>q</code> now exits the dialog instead of the entire app</li>
+<li>Upgrade to Rust 1.76</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fix "Unknown request ID" error showing on startup <a href="https://github.com/LucasPickering/slumber/issues/238" rel="noopener noreferrer">#238</a></li>
+</ul>
+]]></content:encoded></item><item><title>1.3.2 - 2024-05-27</title><link>http://127.0.0.1:7979/changelog/v1.3.2</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.3.2</guid><content:encoded><![CDATA[<h3>Changed</h3>
+<ul>
+<li>Show "Copy URL", "Copy Body" and "Copy as cURL" actions from the Recipe list <a href="https://github.com/LucasPickering/slumber/issues/224" rel="noopener noreferrer">#224</a>
+<ul>
+<li>Previously this was only available in the Recipe detail pane</li>
+</ul>
+</li>
+<li>Fix Edit Collection action in menu</li>
+<li>Persist response body query text box contents
+<ul>
+<li>Previously it would reset whenever you made a new request or changed recipes</li>
+</ul>
+</li>
+</ul>
+]]></content:encoded></item><item><title>1.3.1 - 2024-05-21</title><link>http://127.0.0.1:7979/changelog/v1.3.1</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.3.1</guid><content:encoded><![CDATA[<h3>Fixed</h3>
+<ul>
+<li>Fix double key events on Windows <a href="https://github.com/LucasPickering/slumber/issues/226" rel="noopener noreferrer">#226</a></li>
+</ul>
+]]></content:encoded></item><item><title>1.3.0 - 2024-05-17</title><link>http://127.0.0.1:7979/changelog/v1.3.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.3.0</guid><content:encoded><![CDATA[<p>The biggest feature in this release is the ability to browse request history. Slumber has already had the ability to <em>track</em> history, meaning all your history since you started using it will already be there! In addition, this release contains some UI improvements, as well as some pretty major internal refactors to enable these UI changes. These will also make future UI improvements easier and faster to implement.</p>
+<h3>Added</h3>
+<ul>
+<li>Request history is now browsable! <a href="https://github.com/LucasPickering/slumber/issues/55" rel="noopener noreferrer">#55</a></li>
+<li>Add scrollbars to lists and text windows <a href="https://github.com/LucasPickering/slumber/issues/220" rel="noopener noreferrer">#220</a></li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Merge request &amp; response panes
+<ul>
+<li>The request pane often isn't needed, so it doesn't deserve top-level space</li>
+</ul>
+</li>
+<li>Mouse events (e.g. scrolling) are now sent to unfocused elements</li>
+</ul>
+]]></content:encoded></item><item><title>1.2.1 - 2024-05-11</title><link>http://127.0.0.1:7979/changelog/v1.2.1</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.2.1</guid><content:encoded><![CDATA[<h3>Fixed</h3>
+<ul>
+<li>Fix profile not being selected on initial startup</li>
+</ul>
+]]></content:encoded></item><item><title>1.2.0 - 2024-05-10</title><link>http://127.0.0.1:7979/changelog/v1.2.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.2.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add <code>trim</code> option to chains, to trim leading/trailing whitespace <a href="https://github.com/LucasPickering/slumber/issues/153" rel="noopener noreferrer">#153</a>
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/api/request_collection/chain.html#chain-output-trim" rel="noopener noreferrer">See docs</a></li>
+</ul>
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Use colored background for status codes
+<ul>
+<li>This includes a new theme field, <code>success_color</code></li>
+</ul>
+</li>
+<li>Improve hierarchy presentation of errors</li>
+<li>Convert profile list into a popup modal</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Exit fullscreen mode when changing panes</li>
+<li>Support scrolling on more lists/tables</li>
+</ul>
+]]></content:encoded></item><item><title>1.1.0 - 2024-05-05</title><link>http://127.0.0.1:7979/changelog/v1.1.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.1.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add <code>section</code> field to <code>!request</code> chain values, to allow chaining response headers rather than body (<a href="https://github.com/LucasPickering/slumber/issues/184" rel="noopener noreferrer">#184</a>)</li>
+<li>Add action to save response body to file (<a href="https://github.com/LucasPickering/slumber/issues/183" rel="noopener noreferrer">#183</a>)</li>
+<li>Add <code>theme</code> field to the config, to configure colors (<a href="https://github.com/LucasPickering/slumber/issues/193" rel="noopener noreferrer">#193</a>)
+<ul>
+<li><a href="https://slumber.lucaspickering.me/book/api/configuration/theme.html" rel="noopener noreferrer">See docs</a> for more info</li>
+</ul>
+</li>
+<li>Add <code>stdin</code> option to command chains (<a href="https://github.com/LucasPickering/slumber/issues/190" rel="noopener noreferrer">#190</a>)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Reduce UI latency under certain scenarios
+<ul>
+<li>Previously some actions would feel laggy because of an inherent 250ms delay in processing some events</li>
+</ul>
+</li>
+<li>Search parent directories for collection file (<a href="https://github.com/LucasPickering/slumber/issues/194" rel="noopener noreferrer">#194</a>)</li>
+<li>Use thicker borders for selected pane and modals</li>
+<li>Change default TUI colors to blue and yellow</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fix Slumber going into zombie mode and CPU spiking to 100% under certain closure scenarios (<a href="https://github.com/LucasPickering/slumber/issues/136" rel="noopener noreferrer">#136</a>)</li>
+<li>Fix historical request/response no loading on first render (<a href="https://github.com/LucasPickering/slumber/issues/199" rel="noopener noreferrer">#199</a>)</li>
+</ul>
+]]></content:encoded></item><item><title>1.0.1 - 2024-04-27</title><link>http://127.0.0.1:7979/changelog/v1.0.1</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.0.1</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add two new build targets to releases: <code>x86_64-pc-windows-msvc</code> and <code>x86_64-unknown-linux-musl</code></li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fix build on Windows (<a href="https://github.com/LucasPickering/slumber/issues/180" rel="noopener noreferrer">#180</a>)
+<ul>
+<li>I can't guarantee it <em>works</em> on Windows since I don't have a machine to test on, but it at least compiles now</li>
+</ul>
+</li>
+</ul>
+]]></content:encoded></item><item><title>1.0.0 - 2024-04-25</title><link>http://127.0.0.1:7979/changelog/v1.0.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v1.0.0</guid><content:encoded><![CDATA[<h3>Breaking</h3>
+<ul>
+<li>Rename collection file parameter on all CLI commands from <code>--collection</code>/<code>-c</code> to <code>--file</code>/<code>-f</code>
+<ul>
+<li>The goal here is to be more intuitive/predictable, since <code>-f</code> is much more common in similar programs (e.g. docker-compose)</li>
+</ul>
+</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li>Support booleans and numbers for query values (<a href="https://github.com/LucasPickering/slumber/issues/141" rel="noopener noreferrer">#141</a>)</li>
+<li>Add <code>default</code> field to <code>!prompt</code> chains, which allows setting a pre-populated value for the prompt textbox</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Folders can now be collapsed in the recipe list (<a href="https://github.com/LucasPickering/slumber/issues/155" rel="noopener noreferrer">#155</a>)</li>
+<li>Improvements to Insomnia import (<a href="https://github.com/LucasPickering/slumber/issues/12" rel="noopener noreferrer">#12</a>)</li>
+<li>Rename <code>import-experimental</code> command to <code>import</code>
+<ul>
+<li>It's official now! It's still going to get continuted improvement though</li>
+</ul>
+</li>
+<li>Show <code>WARN</code>/<code>ERROR</code> log output for CLI commands</li>
+<li>Validate recipe <code>method</code> field during deserialization instead of on request init
+<ul>
+<li>This means you'll get an error on startup if your method is invalid, instead of when you go to run the request</li>
+<li>This is not a breaking change because if you had an incorrect HTTP method, the request still didn't <em>work</em> before, it just broke later</li>
+</ul>
+</li>
+<li>Arguments to chains are now treated as templates (<a href="https://github.com/LucasPickering/slumber/issues/151" rel="noopener noreferrer">#151</a>)
+<ul>
+<li>Support fields are <code>path</code> for <code>!file</code> chains, <code>command</code> for <code>!command</code> chains, and <code>message</code> for <code>!prompt</code> chains</li>
+<li>This means you can now <em>really</em> chain chains together!</li>
+</ul>
+</li>
+</ul>
+]]></content:encoded></item><item><title>0.18.0 - 2024-04-18</title><link>http://127.0.0.1:7979/changelog/v0.18.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.18.0</guid><content:encoded><![CDATA[<h3>Breaking</h3>
+<ul>
+<li>All existing recipes must be tagged with <code>!request</code> in the collection file
+<ul>
+<li>This is necessary to differentiate from the new <code>!folder</code> type</li>
+</ul>
+</li>
+<li>Profile values are always treated as templates now
+<ul>
+<li>Any profile values that were previously the "raw" variant (the default) that contain template syntax (e.g. <code>{{user_id}}</code>) will now be rendered as templates. In reality this is very unlikely, so this probably isn't going to break your setup</li>
+<li>If you have an existing profile value tagged with <code>!template</code> it <strong>won't</strong> break, but it will no longer do anything</li>
+</ul>
+</li>
+<li>Unknown fields in config/collection files will now be rejected (<a href="https://github.com/LucasPickering/slumber/issues/154" rel="noopener noreferrer">#154</a>)
+<ul>
+<li>In most cases this field is a mistake, so this is meant to make debugging easier</li>
+<li>If you have an intentional unknown field, you can now nest it under <code>.ignore</code> to ignore it</li>
+</ul>
+</li>
+<li>Replace <code>slumber show dir</code> with <code>slumber show paths</code></li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li>Request recipes can now be organized into folders (<a href="https://github.com/LucasPickering/slumber/issues/60" rel="noopener noreferrer">#60</a>)
+<ul>
+<li>See <a href="https://slumber.lucaspickering.me/book/api/request_collection/request_recipe.html#folder-fields" rel="noopener noreferrer">the docs</a> for usage examples</li>
+</ul>
+</li>
+<li>Add <code>slumber show config</code> and <code>slumber show collection</code> subcommands</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Prevent infinite recursion in templates
+<ul>
+<li>It now triggers a helpful error instead of a panic</li>
+</ul>
+</li>
+<li>Support additional key codes for input mapping, including media keys</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Multiple spaces between modifiers/key codes in a key combination are now ignored</li>
+</ul>
+]]></content:encoded></item><item><title>0.17.0 - 2024-04-08</title><link>http://127.0.0.1:7979/changelog/v0.17.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.17.0</guid><content:encoded><![CDATA[<h3>Breaking</h3>
+<ul>
+<li>All variants of the <code>Chain.source</code> field are now maps
+<ul>
+<li>This is to support the next request auto-execution feature, as well as future proofing for additional chain configuration</li>
+</ul>
+</li>
+<li>Remove <code>send_request</code> keybinding
+<ul>
+<li>The <code>submit</code> keybinding is now used to send requests from all panes (except the profile pane)</li>
+<li>This is only a breaking change if you have <code>send_request</code> remapped in your config file</li>
+</ul>
+</li>
+</ul>
+<p>Follow this mapping to update:</p>
+<pre style="background-color:#263238;"><span style="font-style:italic;color:#546e7a;"># Before
+</span><span style="color:#f07178;">chains</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">auth_token</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!request </span><span style="color:#c3e88d;">login
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">username</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!command </span><span style="color:#89ddff;">["</span><span style="color:#c3e88d;">echo</span><span style="color:#89ddff;">", "</span><span style="color:#c3e88d;">-n</span><span style="color:#89ddff;">", "</span><span style="color:#c3e88d;">hello</span><span style="color:#89ddff;">"]
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">username</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!file </span><span style="color:#c3e88d;">./username.txt
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">password</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!prompt </span><span style="color:#c3e88d;">Enter Password
+</span><span style="color:#eeffff;">---
+</span><span style="font-style:italic;color:#546e7a;"># After
+</span><span style="color:#f07178;">chains</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">auth_token</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!request
+</span><span style="color:#eeffff;">      </span><span style="color:#f07178;">recipe</span><span style="color:#89ddff;">: </span><span style="color:#c3e88d;">login
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">username</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!command
+</span><span style="color:#eeffff;">      </span><span style="color:#f07178;">command</span><span style="color:#89ddff;">: ["</span><span style="color:#c3e88d;">echo</span><span style="color:#89ddff;">", "</span><span style="color:#c3e88d;">-n</span><span style="color:#89ddff;">", "</span><span style="color:#c3e88d;">hello</span><span style="color:#89ddff;">"]
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">username</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!file
+</span><span style="color:#eeffff;">      </span><span style="color:#f07178;">path</span><span style="color:#89ddff;">: </span><span style="color:#c3e88d;">./username.txt
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">password</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!prompt
+</span><span style="color:#eeffff;">      </span><span style="color:#f07178;">message</span><span style="color:#89ddff;">: </span><span style="color:#c3e88d;">Enter Password
+</span></pre>
+
+<h3>Added</h3>
+<ul>
+<li>Chained requests can now be auto-executed according to various criteria (<a href="https://github.com/LucasPickering/slumber/issues/140" rel="noopener noreferrer">#140</a>)
+<ul>
+<li>See <a href="https://slumber.lucaspickering.me/book/user_guide/chaining_requests.html" rel="noopener noreferrer">the docs</a> for more</li>
+</ul>
+</li>
+<li>Add Authentication tab to recipe pane (<a href="https://github.com/LucasPickering/slumber/issues/144" rel="noopener noreferrer">#144</a>)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Don't print full stack trace for failed CLI commands</li>
+</ul>
+]]></content:encoded></item><item><title>0.16.0 - 2024-04-01</title><link>http://127.0.0.1:7979/changelog/v0.16.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.16.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add support for custom keybindings (<a href="https://github.com/LucasPickering/slumber/issues/137" rel="noopener noreferrer">#137</a>)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fix request body not updating in UI when changing recipe</li>
+</ul>
+]]></content:encoded></item><item><title>0.15.0 - 2024-03-24</title><link>http://127.0.0.1:7979/changelog/v0.15.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.15.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add horizontal scrolling to response body (<a href="https://github.com/LucasPickering/slumber/issues/111" rel="noopener noreferrer">#111</a>)
+<ul>
+<li>Use shift+left and shift+right</li>
+</ul>
+</li>
+<li>Add app version to help modal</li>
+<li>Add "Copy as cURL" action to recipe menu (<a href="https://github.com/LucasPickering/slumber/issues/123" rel="noopener noreferrer">#123</a>)</li>
+<li>Add hotkeys to select different panes</li>
+<li>Add pane for rendered request</li>
+<li>Show response size in Response pane (<a href="https://github.com/LucasPickering/slumber/issues/129" rel="noopener noreferrer">#129</a>)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Run prompts while rendering request URL/body to be copied</li>
+<li>Improve UI design of profile pane</li>
+<li>Show raw bytes for binary responses</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Reset response body query when changing recipes (<a href="https://github.com/LucasPickering/slumber/issues/133" rel="noopener noreferrer">#133</a>)</li>
+</ul>
+]]></content:encoded></item><item><title>0.14.0 - 2024-03-18</title><link>http://127.0.0.1:7979/changelog/v0.14.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.14.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add config option <code>ignore_certificate_hosts</code> (<a href="https://github.com/LucasPickering/slumber/issues/109" rel="noopener noreferrer">#109</a>)</li>
+<li>Add menu action to open collection file in editor (<a href="https://github.com/LucasPickering/slumber/issues/105" rel="noopener noreferrer">#105</a>)</li>
+<li>Add <code>authentication</code> field to request recipe (<a href="https://github.com/LucasPickering/slumber/issues/110" rel="noopener noreferrer">#110</a>)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fix prompt in TUI always rendering as sensitive (<a href="https://github.com/LucasPickering/slumber/issues/108" rel="noopener noreferrer">#108</a>)</li>
+<li>Fix content type identification for extended JSON MIME types (<a href="https://github.com/LucasPickering/slumber/issues/103" rel="noopener noreferrer">#103</a>)</li>
+<li>Use named records in binary blobs in the local DB
+<ul>
+<li>This required wiping out existing binary blobs, meaning <strong>all request history and UI state will be lost on upgrade</strong></li>
+</ul>
+</li>
+<li>Fix basic auth in Insomnia import</li>
+</ul>
+]]></content:encoded></item><item><title>0.13.1 - 2024-03-07</title><link>http://127.0.0.1:7979/changelog/v0.13.1</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.13.1</guid><content:encoded><![CDATA[<h3>Changed</h3>
+<ul>
+<li>Move checkbox to left side of toggle tables</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fix scrolling on response body pane</li>
+</ul>
+]]></content:encoded></item><item><title>0.13.0 - 2024-02-21</title><link>http://127.0.0.1:7979/changelog/v0.13.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.13.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>New informational flags to <code>slumber request</code>
+<ul>
+<li><code>--exit-status</code> to set exit code based on response status (<a href="https://github.com/LucasPickering/slumber/issues/97" rel="noopener noreferrer">#97</a>)</li>
+<li><code>--status</code>, <code>--headers</code>, and <code>--no-body</code> to control printed output</li>
+</ul>
+</li>
+<li>Filter response via JSONPath (<a href="https://github.com/LucasPickering/slumber/issues/78" rel="noopener noreferrer">#78</a>)</li>
+</ul>
+]]></content:encoded></item><item><title>0.12.1 - 2024-01-22</title><link>http://127.0.0.1:7979/changelog/v0.12.1</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.12.1</guid><content:encoded><![CDATA[<h3>Changed</h3>
+<ul>
+<li>Improved styling of toggled table rows</li>
+</ul>
+]]></content:encoded></item><item><title>0.12.0 - 2024-01-07</title><link>http://127.0.0.1:7979/changelog/v0.12.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.12.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Move app-level configuration into a file (<a href="https://github.com/LucasPickering/slumber/issues/89" rel="noopener noreferrer">#89</a>)
+<ul>
+<li>Right now the only supported field is <code>preview_templates</code></li>
+</ul>
+</li>
+<li>Toggle query parameters and headers in recipe pane (<a href="https://github.com/LucasPickering/slumber/issues/30" rel="noopener noreferrer">#30</a>)
+<ul>
+<li>You can easily enable/disable parameters and headers without having to modify the collection file now</li>
+</ul>
+</li>
+<li>Add Copy URL action, to get the full URL that a request will generate (<a href="https://github.com/LucasPickering/slumber/issues/93" rel="noopener noreferrer">#93</a>)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Show profile contents while in the profile list (<a href="https://github.com/LucasPickering/slumber/issues/26" rel="noopener noreferrer">#26</a>)</li>
+<li>Remove settings modal in favor of the settings file
+<ul>
+<li>Supporting changing configuration values during a session adds a lot of complexity</li>
+</ul>
+</li>
+</ul>
+]]></content:encoded></item><item><title>0.11.0 - 2023-12-20</title><link>http://127.0.0.1:7979/changelog/v0.11.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.11.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add action to copy entire request/response body (<a href="https://github.com/LucasPickering/slumber/issues/45" rel="noopener noreferrer">#74</a>)</li>
+<li>Persist UI state between sessions (<a href="https://github.com/LucasPickering/slumber/issues/39" rel="noopener noreferrer">#39</a>)</li>
+<li>Text window can be controlled with PgUp/PgDown/Home/End (<a href="https://github.com/LucasPickering/slumber/issues/77" rel="noopener noreferrer">#77</a>)</li>
+<li>Add back manual reload keybinding (R)
+<ul>
+<li>Mostly for development purposes</li>
+</ul>
+</li>
+<li>Add collection ID/path to help modal (<a href="https://github.com/LucasPickering/slumber/issues/59" rel="noopener noreferrer">#59</a>)
+<ul>
+<li>Also add collection ID to terminal title</li>
+</ul>
+</li>
+<li>Add new docs for templates and collection reuse (<a href="https://github.com/LucasPickering/slumber/issues/67" rel="noopener noreferrer">#67</a>)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>[BREAKING] Key profiles/chains/requests by ID in collection file</li>
+<li>[BREAKING] Merge request history into a single DB file
+<ul>
+<li>Request history (and UI state) will be lost</li>
+</ul>
+</li>
+<li>[BREAKING] <code>show</code> subcommand now takes a <code>target</code> argument
+<ul>
+<li>Right now the only option is <code>slumber show dir</code>, which has the same behavior as the old <code>slumber show</code> (except now it prints the bare directory)</li>
+</ul>
+</li>
+<li>[BREAKING] Remove option to toggle cursor capture
+<ul>
+<li>Turns out it's not that useful, since most terminals provide override behavior</li>
+</ul>
+</li>
+<li>Filter request history by profile (<a href="https://github.com/LucasPickering/slumber/issues/74" rel="noopener noreferrer">#74</a>)</li>
+<li>Hide sensitive chain values in preview</li>
+<li>Change fullscreen keybinding from F11 to F
+<ul>
+<li>F11 in some cases is eaten by the IDE or OS, which is annoying</li>
+</ul>
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Don't require collection file to be present for <code>show</code> subcommand (<a href="https://github.com/LucasPickering/slumber/issues/62" rel="noopener noreferrer">#62</a>)</li>
+<li>Fix state file being created in root Slumber directory if collection file is invalid (<a href="https://github.com/LucasPickering/slumber/issues/71" rel="noopener noreferrer">#71</a>)</li>
+<li>Fix pane cycling while in fullscreen (<a href="https://github.com/LucasPickering/slumber/issues/76" rel="noopener noreferrer">#76</a>)</li>
+</ul>
+]]></content:encoded></item><item><title>Version 0.10.0-beta.3</title><link>http://127.0.0.1:7979/changelog/v0.10.0-beta.3</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.10.0-beta.3</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add shell completions, accessed by enabling the <code>COMPLETE</code> environment variable
+<ul>
+<li>For example, adding <code>COMPLETE=fish slumber | source</code> to your <code>fish.config</code> will enable completions for fish</li>
+<li><a href="https://slumber.lucaspickering.me/book/troubleshooting/shell_completions.html" rel="noopener noreferrer">See docs</a> for more info and a list of supported shells</li>
+</ul>
+</li>
+</ul>
+]]></content:encoded></item><item><title>Version 0.10.0-beta.2</title><link>http://127.0.0.1:7979/changelog/v0.10.0-beta.2</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.10.0-beta.2</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add shell completions, accessed by enabling the <code>COMPLETE</code> environment variable
+<ul>
+<li>For example, adding <code>COMPLETE=fish slumber | source</code> to your <code>fish.config</code> will enable completions for fish</li>
+<li><a href="https://slumber.lucaspickering.me/book/troubleshooting/shell_completions.html" rel="noopener noreferrer">See docs</a> for more info and a list of supported shells</li>
+</ul>
+</li>
+</ul>
+]]></content:encoded></item><item><title>Version 0.10.0-beta.1</title><link>http://127.0.0.1:7979/changelog/v0.10.0-beta.1</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.10.0-beta.1</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add shell completions, accessed by enabling the <code>COMPLETE</code> environment variable
+<ul>
+<li>For example, adding <code>COMPLETE=fish slumber | source</code> to your <code>fish.config</code> will enable completions for fish</li>
+<li><a href="https://slumber.lucaspickering.me/book/troubleshooting/shell_completions.html" rel="noopener noreferrer">See docs</a> for more info and a list of supported shells</li>
+</ul>
+</li>
+</ul>
+]]></content:encoded></item><item><title>0.9.0 - 2023-11-28</title><link>http://127.0.0.1:7979/changelog/v0.9.0</link><category domain="https://github.com/LucasPickering/slumber">slumber Changelog</category><guid>http://127.0.0.1:7979/changelog/v0.9.0</guid><content:encoded><![CDATA[<h3>Added</h3>
+<ul>
+<li>Add setting to toggle cursor capture</li>
+<li>Add help modal</li>
+<li>Add cursor navigation</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Always show help text in footer, regardless of notification state</li>
+<li>Add highlight border to fullscreened pane</li>
+<li>Allow exiting fullscreen mode with ESC</li>
+</ul>
+]]></content:encoded></item></channel></rss>

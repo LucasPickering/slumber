@@ -8,6 +8,7 @@ use chrono::{
     DateTime, Duration, Local, Utc,
 };
 use derive_more::{DerefMut, Display};
+use resolve::ResolveReferences;
 use serde::de::DeserializeOwned;
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -40,13 +41,13 @@ pub fn doc_link(path: &str) -> String {
 }
 
 /// Parse bytes from a reader into YAML. This will merge any anchors/aliases.
-pub fn parse_yaml<T: DeserializeOwned>(
-    reader: impl Read,
-) -> serde_yaml::Result<T> {
+pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
     // Two-step parsing is required for anchor/alias merging
     let mut yaml_value: serde_yaml::Value = serde_yaml::from_reader(reader)?;
     yaml_value.apply_merge()?;
-    serde_yaml::from_value(yaml_value)
+    yaml_value.resolve_references()?;
+    let parsed = serde_yaml::from_value(yaml_value)?;
+    Ok(parsed)
 }
 
 /// Format a datetime for the user

@@ -59,13 +59,6 @@ chains:
     source: !file
       path: Cargo.lock
 
-.ignore:
-  base: &base
-    authentication: !bearer "{{chains.auth_token}}"
-    headers:
-      Accept: application/json
-      Content-Type: application/json
-
 requests:
   login: !request
     method: POST
@@ -83,11 +76,20 @@ requests:
       username: "{{username}}"
       password: "{{chains.password}}"
 
+  base: !request
+    authentication: !bearer "{{chains.auth_token}}"
+    method: GET
+    url: ""
+    headers:
+      Accept: application/json
+      Content-Type: application/json
+
+  login_again: !ref "#/requests/login"
+
   users: !folder
     name: Users
     requests:
       get_users: !request
-        <<: *base
         name: Get Users
         method: GET
         url: "{{host}}/get"
@@ -96,16 +98,18 @@ requests:
           - select={{chains.select_dynamic}}
 
       get_user: !request
-        <<: *base
         name: Get User
         method: GET
         url: "{{host}}/anything/{{user_guid}}"
+        authentication: !ref "#/requests/base/authentication"
+        headers: !ref "#/requests/base/headers"
 
       modify_user: !request
-        <<: *base
         name: Modify User
         method: PUT
         url: "{{host}}/anything/{{user_guid}}"
+        authentication: !ref "#/requests/base/authentication"
+        headers: !ref "#/requests/base/headers"
         body:
           !json {
             "new_username": "user formerly known as {{chains.username}}",
@@ -116,16 +120,20 @@ requests:
           }
 
   get_image: !request
-    headers:
-      Accept: image/png
     name: Get Image
     method: GET
     url: "{{host}}/image"
+    authentication: !ref "#/requests/base/authentication"
+    # TODO headers should be extensible
+    headers:
+      Accept: image/png
 
   upload_image: !request
     name: Upload Image
     method: POST
     url: "{{host}}/anything/image"
+    authentication: !ref "#/requests/base/authentication"
+    headers: !ref "#/requests/base/headers"
     body: !form_multipart
       filename: "logo.png"
       image: "{{chains.image}}"
@@ -134,10 +142,13 @@ requests:
     name: Big File
     method: POST
     url: "{{host}}/anything"
+    authentication: !ref "#/requests/base/authentication"
+    headers: !ref "#/requests/base/headers"
     body: !json { data: "{{chains.big_file}}" }
 
   delay: !request
-    <<: *base
     name: Delay
     method: GET
     url: "{{host}}/delay/5"
+    authentication: !ref "#/requests/base/authentication"
+    headers: !ref "#/requests/base/headers"

@@ -89,8 +89,11 @@ impl InputEngine {
                 self.bindings
                     .iter()
                     .find(|(_, binding)| binding.matches(key))
-                    .inspect(|(action,binding)| {
-                        trace!(event = ?key, ?action, ?binding, "Matched key event to binding");
+                    .inspect(|(action, binding)| {
+                        trace!(
+                            event = ?key, ?action, ?binding,
+                            "Matched key event to binding"
+                        );
                     })
                     .map(|(action, _)| *action)
             }

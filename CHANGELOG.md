@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Fix error loading requests with empty header values from history [#400](https://github.com/LucasPickering/slumber/issues/400)
+- Fix input bindings involving `shift` and a character (e.g. `shift g`) [#401](https://github.com/LucasPickering/slumber/issues/401)
 
 ## [2.1.0] - 2024-09-27
 

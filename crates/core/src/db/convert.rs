@@ -302,6 +302,9 @@ impl<'a> ToSql for SqlWrap<&'a HeaderMap> {
 
 impl FromSql for SqlWrap<HeaderMap> {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        // There's no easy way to re-use the header parsing logic from the http
+        // crate, so we have to reimplement it ourselves
+
         fn header_line(
             input: &mut &[u8],
         ) -> PResult<(HeaderName, HeaderValue)> {
@@ -312,7 +315,7 @@ impl FromSql for SqlWrap<HeaderMap> {
                     HEADER_FIELD_DELIM,
                 ),
                 terminated(
-                    take_while(1.., |c| c != HEADER_LINE_DELIM)
+                    take_while(0.., |c| c != HEADER_LINE_DELIM)
                         .try_map(HeaderValue::from_bytes),
                     HEADER_LINE_DELIM,
                 ),

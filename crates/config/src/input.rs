@@ -260,7 +260,17 @@ impl KeyCombination {
     const SEPARATOR: char = ' ';
 
     pub fn matches(self, event: &KeyEvent) -> bool {
-        event.code == self.code && event.modifiers == self.modifiers
+        // For char codes, terminal may report the code as caps
+        fn to_lowercase(code: KeyCode) -> KeyCode {
+            if let KeyCode::Char(c) = code {
+                KeyCode::Char(c.to_ascii_lowercase())
+            } else {
+                code
+            }
+        }
+
+        to_lowercase(event.code) == to_lowercase(self.code)
+            && event.modifiers == self.modifiers
     }
 }
 
@@ -401,7 +411,7 @@ fn stringify_key_modifier(modifier: KeyModifiers) -> Cow<'static, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::MediaKeyCode;
+    use crossterm::event::{KeyEventKind, KeyEventState, MediaKeyCode};
     use rstest::rstest;
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
     use slumber_core::assert_err;
@@ -458,6 +468,50 @@ mod tests {
         #[case] expected_error: &str,
     ) {
         assert_err!(input.parse::<KeyCombination>(), expected_error);
+    }
+
+    #[rstest]
+    #[case::char_only("g", KeyCode::Char('g'), KeyModifiers::NONE, true)]
+    #[case::extra_modifier("g", KeyCode::Char('G'), KeyModifiers::SHIFT, false)]
+    // Terminal may report the key code as caps if shift is pressed
+    #[case::caps_input(
+        "shift g",
+        KeyCode::Char('G'),
+        KeyModifiers::SHIFT,
+        true
+    )]
+    #[case::caps_binding(
+        "shift G",
+        KeyCode::Char('g'),
+        KeyModifiers::SHIFT,
+        true
+    )]
+    #[case::multiple_modifiers(
+        "ctrl shift end",
+        KeyCode::End,
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        true,
+    )]
+    #[case::missing_modifier(
+        "ctrl shift end",
+        KeyCode::End,
+        KeyModifiers::SHIFT,
+        false
+    )]
+    fn test_key_combination_matches(
+        #[case] combination: &str,
+        #[case] code: KeyCode,
+        #[case] modifiers: KeyModifiers,
+        #[case] match_expected: bool,
+    ) {
+        let combination: KeyCombination = combination.parse().unwrap();
+        let event = KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        };
+        assert_eq!(combination.matches(&event), match_expected);
     }
 
     /// Test stringifying/parsing key codes

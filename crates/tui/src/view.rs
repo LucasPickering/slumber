@@ -36,7 +36,7 @@ use slumber_core::{
     http::RequestId,
 };
 use std::{fmt::Debug, sync::Arc};
-use tracing::{debug, trace_span, warn};
+use tracing::{trace, trace_span, warn};
 
 /// Primary entrypoint for the view. This contains the main draw functions, as
 /// well as bindings for externally modifying the view state. We use a component
@@ -171,7 +171,7 @@ impl View {
             trace_span!("View event", ?event).in_scope(|| {
                 match self.root.update_all(&mut context, event) {
                     Update::Consumed => {
-                        debug!("View event consumed")
+                        trace!("View event consumed")
                     }
                     // Consumer didn't eat the event - huh?
                     Update::Propagate(_) => {

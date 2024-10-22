@@ -57,7 +57,7 @@ chains:
       path: ./static/slumber.png
   big_file:
     source: !file
-      path: Cargo.lock
+      path: data/large.json
 
 .ignore:
   base: &base

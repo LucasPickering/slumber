@@ -454,27 +454,26 @@ impl ResponseRecord {
     /// Attempt to parse the body of this response, and store it in the body
     /// struct. If parsing fails, we'll store `None` instead.
     pub fn parse_body(&self) {
-        let body = ContentType::parse_response(self)
-            .context("Error parsing response body")
-            .traced()
-            .ok();
-        // Store whether we succeeded or not, so we know not to try again
-        if self.body.parsed.set(body).is_err() {
-            // Unfortunately we don't have any helpful context to include here.
-            // The body could potentially be huge so don't log it.
-            error!("Response body parsed twice");
+        // TODO update comments
+        if self.body.parsed.get().is_none() {
+            let body = ContentType::parse_response(self)
+                .context("Error parsing response body")
+                .traced()
+                .ok();
+            // Store whether we succeeded or not, so we know not to try again
+            if self.body.parsed.set(body).is_err() {
+                // Unfortunately we don't have any helpful context to include
+                // here. The body could potentially be huge so
+                // don't log it.
+                error!("Response body parsed twice");
+            }
         }
     }
 
     /// Get the content type of the response body, according to the
     /// `Content-Type` header
     pub fn content_type(&self) -> Option<ContentType> {
-        // If we've parsed the body, we'll have the content type present. If
-        // not, check the header now
-        self.body
-            .parsed()
-            .map(|content| content.content_type())
-            .or_else(|| ContentType::from_headers(&self.headers).ok())
+        ContentType::from_headers(&self.headers).ok()
     }
 
     /// Get a suggested file name for the content of this response. First we'll

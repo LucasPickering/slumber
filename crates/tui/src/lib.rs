@@ -52,7 +52,7 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::{self, UnboundedReceiver},
-    time,
+    task, time,
 };
 use tracing::{debug, error, info, trace};
 
@@ -320,8 +320,17 @@ impl Tui {
                     on_complete,
                 )?;
             }
+            Message::SpawnBlocking { task } => {
+                let messages_tx = self.messages_tx();
+                task::spawn_blocking(move || {
+                    task();
+                    // We assume the task changed something in state, so redraw
+                    // when it's done
+                    messages_tx.send(Message::Refresh);
+                });
+            }
             // This message exists just to trigger a draw
-            Message::TemplatePreviewComplete => {}
+            Message::Refresh => {}
 
             Message::Quit => self.quit(),
         }
@@ -596,7 +605,7 @@ impl Tui {
             let chunks = template.render_chunks(&context).await;
             on_complete(chunks);
             // Trigger a draw
-            messages_tx.send(Message::TemplatePreviewComplete);
+            messages_tx.send(Message::Refresh);
         });
         Ok(())
     }

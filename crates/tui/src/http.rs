@@ -449,13 +449,8 @@ impl RequestState {
         }
     }
 
-    /// Create a request state from a completed response. This is **expensive**,
-    /// don't call it unless you need the value.
+    /// Create a request state from a completed response
     pub fn response(exchange: Exchange) -> Self {
-        // Pre-parse the body so the view doesn't have to do it. We're in the
-        // main thread still here though so large bodies may take a while. Maybe
-        // we want to punt this into a separate task?
-        exchange.response.parse_body();
         Self::Response { exchange }
     }
 }

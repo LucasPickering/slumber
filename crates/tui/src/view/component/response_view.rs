@@ -37,7 +37,8 @@ pub struct ResponseBodyView {
 pub struct ResponseBodyViewProps<'a> {
     pub request_id: RequestId,
     pub recipe_id: &'a RecipeId,
-    pub response: Arc<ResponseRecord>,
+    /// Arc passed in so we can clone it and store it locally as needed
+    pub response: &'a Arc<ResponseRecord>,
 }
 
 /// Items in the actions popup menu for the Body
@@ -97,19 +98,16 @@ impl EventHandler for ResponseBodyView {
                     // For text, use whatever is visible to the user. For
                     // binary, use the raw value
                     if let Some(state) = self.state.get() {
-                        // If we've parsed the body, then save exactly what the
-                        // user sees. Otherwise, save the raw bytes. This is
-                        // going to clone the whole body, which could be big.
-                        // If we need to optimize this, we would have to shove
-                        // all querying to the main data storage, so the main
-                        // loop can access it directly to be written.
-                        let data = if state.response.body.parsed().is_some() {
-                            state
-                                .body
-                                .data()
-                                .text()
-                                .unwrap_or_default()
-                                .into_bytes()
+                        // If the user is looking at real text, save exactly
+                        // what they see. If it's binary, text() will return
+                        // None so we should save the raw bytes. This is going
+                        // to clone the whole body, which could be big. If we
+                        // need to optimize this, we would have to shove all
+                        // querying to the main data storage, so the main loop
+                        // can access it directly to be written.
+                        let data = if let Some(text) = state.body.data().text()
+                        {
+                            text.into_bytes()
                         } else {
                             state.response.body.bytes().to_vec()
                         };
@@ -144,9 +142,8 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
         props: ResponseBodyViewProps,
         metadata: DrawMetadata,
     ) {
-        let response = &props.response;
         let state = self.state.get_or_update(&props.request_id, || State {
-            response: Arc::clone(&props.response),
+            response: Arc::clone(props.response),
             body: PersistedLazy::new(
                 ResponseQueryPersistedKey(props.recipe_id.clone()),
                 QueryableBody::new(),
@@ -157,8 +154,7 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
         state.body.draw(
             frame,
             QueryableBodyProps {
-                content_type: response.content_type(),
-                body: &response.body,
+                response: props.response,
             },
             metadata.area(),
             true,
@@ -245,7 +241,7 @@ mod tests {
             ResponseBodyViewProps {
                 request_id: exchange.id,
                 recipe_id: &exchange.request.recipe_id,
-                response: exchange.response,
+                response: &exchange.response,
             },
         );
 
@@ -313,7 +309,7 @@ mod tests {
             ResponseBodyViewProps {
                 request_id: exchange.id,
                 recipe_id: &exchange.request.recipe_id,
-                response: exchange.response,
+                response: &exchange.response,
             },
         );
 

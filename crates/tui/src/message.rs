@@ -145,14 +145,20 @@ pub enum Message {
         #[debug(skip)]
         on_complete: Callback<Vec<TemplateChunk>>,
     },
+    /// TODO
+    SpawnBlocking {
+        #[debug(skip)]
+        task: Box<dyn 'static + FnOnce() + Send + Sync>,
+    },
     /// An empty event to trigger a draw when a template preview is done being
     /// rendered. This is a bit hacky, but it's an explicit way to tell the TUI
     /// "we know something in the view has changed asyncronously".
-    TemplatePreviewComplete,
+    /// TODO update comment
+    Refresh,
 }
 
 /// A static callback included in a message
-pub type Callback<T> = Box<dyn 'static + Send + Sync + FnOnce(T)>;
+pub type Callback<T> = Box<dyn 'static + FnOnce(T) + Send + Sync>;
 
 /// Configuration that defines how to render a request
 #[derive(Debug)]

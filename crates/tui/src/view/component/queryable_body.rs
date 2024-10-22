@@ -2,6 +2,7 @@
 
 use crate::{
     context::TuiContext,
+    message::Message,
     view::{
         common::{
             text_box::TextBox,
@@ -25,10 +26,16 @@ use ratatui::{
 use serde_json_path::JsonPath;
 use slumber_config::Action;
 use slumber_core::{
-    http::{content_type::ContentType, query::Query, ResponseBody},
+    http::{query::Query, ResponseRecord},
     util::{MaybeStr, ResultTraced},
 };
-use std::cell::Cell;
+use std::{
+    cell::Cell,
+    sync::{Arc, OnceLock},
+};
+
+// TODO rename to ResponseBodyView
+// TODO fix scrolling slow on large body
 
 /// Display response body as text, with a query box to filter it if the body has
 /// been parsed. The query state can be persisted by persisting this entire
@@ -37,7 +44,8 @@ use std::cell::Cell;
 pub struct QueryableBody {
     /// Visible text state. This needs to be in a cell because it's initialized
     /// from the body passed in via props
-    filtered_text: StateCell<Option<Query>, Text<'static>>,
+    /// TODO update comment
+    filtered_text: StateCell<Option<Query>, Arc<OnceLock<BodyText>>>,
     /// Store whether the body can be queried. True only if it's a recognized
     /// and parsed format
     query_available: Cell<bool>,
@@ -54,13 +62,15 @@ pub struct QueryableBody {
 #[derive(Clone)]
 pub struct QueryableBodyProps<'a> {
     /// Type of the body content; include for syntax highlighting
-    pub content_type: Option<ContentType>,
+    // pub content_type: Option<ContentType>,
     /// Body content. Theoretically this component isn't specific to responses,
     /// but that's the only place where it's used currently so we specifically
     /// accept a response body. By keeping it 90% agnostic (i.e. not accepting
     /// a full response), it makes it easier to adapt in the future if we want
     /// to make request bodies queryable as well.
-    pub body: &'a ResponseBody,
+    // pub body: &'a ResponseBody,
+    /// TODO
+    pub response: &'a Arc<ResponseRecord>,
 }
 
 impl QueryableBody {
@@ -94,10 +104,18 @@ impl QueryableBody {
         }
     }
 
-    /// Get visible body text. Return an owned value because that's what all
-    /// consumers need anyway, and it makes the API simpler
+    /// Get visible body text, if the body is text. For binary bodies, return
+    /// `None`. Return an owned value because that's what all consumers need
+    /// anyway, and it makes the API simpler
     pub fn text(&self) -> Option<String> {
-        self.filtered_text.get().map(|text| text.to_string())
+        // TODO return raw body text if parsed isn't available yet
+        let lock = self.filtered_text.get()?;
+        let text = lock.get()?;
+        if text.is_binary {
+            None
+        } else {
+            Some(text.text.to_string())
+        }
     }
 }
 
@@ -163,7 +181,7 @@ impl<'a> Draw<QueryableBodyProps<'a>> for QueryableBody {
         metadata: DrawMetadata,
     ) {
         // Body can only be queried if it's been parsed
-        let query_available = props.body.parsed().is_some();
+        let query_available = props.response.body.parsed().is_some();
         self.query_available.set(query_available);
 
         let [body_area, query_area] = Layout::vertical([
@@ -173,13 +191,20 @@ impl<'a> Draw<QueryableBodyProps<'a>> for QueryableBody {
         .areas(metadata.area());
 
         // Draw the body
-        let text = self.filtered_text.get_or_update(&self.query, || {
-            init_text(props.content_type, props.body, self.query.as_ref())
+        let text_lock = self.filtered_text.get_or_update(&self.query, || {
+            init_text(props.response, self.query.clone())
         });
+        let text = if let Some(body_text) = text_lock.get() {
+            &body_text.text
+        } else {
+            // If the pretty body isn't available yet, fall back to the raw text
+            // TODO handle non-text case
+            &props.response.body.text().unwrap_or("").into()
+        };
         self.text_window.draw(
             frame,
             TextWindowProps {
-                text: &text,
+                text,
                 margins: ScrollbarMargins {
                     bottom: 2, // Extra margin to jump over the search box
                     ..Default::default()
@@ -218,29 +243,69 @@ enum QueryCallback {
     Submit,
 }
 
+#[derive(Debug)]
+struct BodyText {
+    text: Text<'static>,
+    is_binary: bool,
+}
+
 /// Calculate display text based on current body/query
 fn init_text(
-    content_type: Option<ContentType>,
-    body: &ResponseBody,
-    query: Option<&Query>,
-) -> Text<'static> {
-    // Query and prettify text if possible. This involves a lot of cloning
-    // because it makes stuff easier. If it becomes a bottleneck on large
-    // responses it's fixable.
-    let body = body
-        .parsed()
-        .map(|parsed_body| {
-            // Body is a known content type so we parsed it - apply a query if
-            // necessary and prettify the output
-            query
-                .map(|query| query.query_content(parsed_body).prettify())
-                .unwrap_or_else(|| parsed_body.prettify())
-        })
-        // Content couldn't be parsed, fall back to the raw text
-        // If the text isn't UTF-8, we'll show a placeholder instead
-        .unwrap_or_else(|| format!("{:#}", MaybeStr(body.bytes())));
-    // Apply syntax highlighting
-    highlight::highlight_if(content_type, body.into())
+    response: &Arc<ResponseRecord>,
+    query: Option<Query>,
+) -> Arc<OnceLock<BodyText>> {
+    // Parsing/prettification/highlighting could be expensive so do it on a
+    // background thread. We _could_ do this inline for small bodies, but the
+    // cost of pushing it to another thread is so low that it's worth making
+    // sure we never block the render
+    let lock = Arc::new(OnceLock::new());
+    let response = Arc::clone(response);
+    let lock2 = Arc::clone(&lock);
+    let task = move || {
+        response.parse_body(); // TODO comment
+
+        // Query and prettify text if possible. This involves a lot of cloning
+        // because it makes stuff easier. If it becomes a bottleneck on large
+        // responses it's fixable.
+        // TODO fix cloning!
+        let body = response
+            .body
+            .parsed()
+            .map(|parsed_body| {
+                // Body is a known content type so we parsed it - apply a query
+                // if necessary and prettify the output
+                query
+                    .map(|query| query.query_content(parsed_body).prettify())
+                    .unwrap_or_else(|| parsed_body.prettify())
+            })
+            // Content couldn't be parsed, fall back to the raw text
+            // If the text isn't UTF-8, we'll show a placeholder instead
+            .unwrap_or_else(|| {
+                format!("{:#}", MaybeStr(response.body.bytes()))
+            });
+
+        // Disable syntax highlighting for large bodies, because it gets really
+        // expensive. We're running in a background thread so it doesn't block
+        // still, but it does use a ton of CPU for a few seconds which is not
+        // worth it
+        let config = &TuiContext::get().config;
+        let text = if body.len() <= config.http.large_body_size {
+            highlight::highlight_if(response.content_type(), body.into())
+        } else {
+            body.into()
+        };
+
+        lock2
+            .set(BodyText {
+                text,
+                is_binary: false, // TODO
+            })
+            .expect("Lock should only be set once");
+    };
+    ViewContext::send_message(Message::SpawnBlocking {
+        task: Box::new(task),
+    });
+    lock
 }
 
 #[cfg(test)]
@@ -260,7 +325,10 @@ mod tests {
     use reqwest::StatusCode;
     use rstest::{fixture, rstest};
     use serde::Serialize;
-    use slumber_core::{http::ResponseRecord, test_util::header_map};
+    use slumber_core::{
+        http::{ResponseBody, ResponseRecord},
+        test_util::header_map,
+    };
 
     const TEXT: &[u8] = b"{\"greeting\":\"hello\"}";
 

@@ -13,7 +13,7 @@ version = "2.2.0"
 [dependencies]
 anyhow = {workspace = true}
 clap = {version = "4.4.2", features = ["derive"]}
-clap_complete = { version = "4.5.29", features = ["unstable-dynamic"] }
+clap_complete = {version = "4.5.29", features = ["unstable-dynamic"]}
 dialoguer = {version = "0.11.0", default-features = false, features = ["password"]}
 indexmap = {workspace = true}
 itertools = {workspace = true}
@@ -28,7 +28,6 @@ tracing = {workspace = true}
 env-lock = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
-serde_json = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}
 tokio = {workspace = true, features = ["rt", "macros"]}
 

@@ -49,7 +49,6 @@ mod tests {
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use serde_json::json;
     use slumber_core::{
         collection::{
             Chain, ChainSource, Collection, Folder, Method, Profile, Recipe,
@@ -138,7 +137,8 @@ mod tests {
                         method: Method::Post,
                         url: "{{host}}/anything".into(),
                         body: Some(RecipeBody::Raw {
-                            body: json!({"data": "{{chains.example}}"}).into(),
+                            body: "{\n  \"data\": \"{{chains.example}}\"\n}"
+                                .into(),
                             content_type: Some(ContentType::Json),
                         }),
                         ..Recipe::factory(())

@@ -29,7 +29,7 @@ rstest = {workspace = true, optional = true}
 rusqlite = {version = "0.31.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
 rusqlite_migration = "1.2.0"
 serde = {workspace = true, features = ["derive"]}
-serde_json = {workspace = true}
+serde_json = {version = "1.0.120", default-features = false, features = ["preserve_order"]}
 serde_json_path = "0.6.3"
 serde_yaml = {workspace = true}
 strum = {workspace = true, features = ["derive"]}

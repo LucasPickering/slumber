@@ -113,11 +113,11 @@ mod tests {
     #[case::object("$.object", r#"{"a":1,"b":2}"#)]
     fn test_query_to_string_types(#[case] query: &str, #[case] expected: &str) {
         let content = json(json!({
-            "int": 3,
-            "bool": true,
-            "string": "hi!",
             "array": ["hi", 1],
+            "bool": true,
+            "int": 3,
             "object": {"a": 1, "b": 2},
+            "string": "hi!",
         }));
         let query = Query::from_str(query).unwrap();
         let out = query

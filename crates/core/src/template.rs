@@ -425,11 +425,11 @@ mod tests {
 
         let database = CollectionDatabase::factory(());
         let response_body = json!({
-            "string": "Hello World!",
-            "number": 6,
-            "bool": false,
             "array": [1, 2],
+            "bool": false,
+            "number": 6,
             "object": {"a": 1},
+            "string": "Hello World!",
         });
         let response_headers =
             header_map(indexmap! {"Token" => "Secret Value"});

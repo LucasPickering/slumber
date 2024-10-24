@@ -302,6 +302,15 @@ pub struct HttpEngineConfig {
     pub large_body_size: usize,
 }
 
+impl HttpEngineConfig {
+    /// Is the given size (e.g. request or response body size) larger than the
+    /// configured "large" body size? Large bodies are treated differently, for
+    /// performance reasons.
+    pub fn is_large(&self, size: usize) -> bool {
+        size > self.large_body_size
+    }
+}
+
 impl Default for HttpEngineConfig {
     fn default() -> Self {
         Self {

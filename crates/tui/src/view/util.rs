@@ -3,7 +3,11 @@
 pub mod highlight;
 pub mod persistence;
 
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use itertools::Itertools;
+use ratatui::{
+    layout::{Constraint, Direction, Layout, Rect},
+    text::{Line, Text},
+};
 use slumber_core::template::{Prompt, PromptChannel, Prompter, Select};
 
 /// A data structure for representation a yes/no confirmation. This is similar
@@ -61,4 +65,15 @@ pub fn centered_rect(
         .direction(Direction::Horizontal)
         .constraints([buffer_x, width, buffer_x].as_ref())
         .split(columns[1])[1]
+}
+
+/// Convert a `&str` to an **owned** `Text` object. This is functionally the
+/// same as `s.to_owned().into()`, but prevents having to clone the entire text
+/// twice (once to create the `String` and again when breaking it apart into
+/// lines).
+pub fn str_to_text(s: &str) -> Text<'static> {
+    s.lines()
+        .map(|line| Line::from(line.to_owned()))
+        .collect_vec()
+        .into()
 }

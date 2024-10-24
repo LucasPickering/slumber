@@ -22,7 +22,8 @@ use derive_more::Display;
 use persisted::SingletonKey;
 use ratatui::{
     layout::{Alignment, Constraint, Layout},
-    text::Line,
+    style::Style,
+    text::{Line, Span},
     widgets::block::Title,
     Frame,
 };
@@ -103,7 +104,10 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
         props: ExchangePaneProps<'a>,
         metadata: DrawMetadata,
     ) {
-        let input_engine = &TuiContext::get().input_engine;
+        let tui_context = TuiContext::get();
+        let config = &tui_context.config;
+        let input_engine = &tui_context.input_engine;
+        let styles = &tui_context.styles;
         let title =
             input_engine.add_hint("Request / Response", Action::SelectResponse);
         let mut block = Pane {
@@ -167,7 +171,16 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
                 Line::from(vec![
                     metadata.status.generate(),
                     " ".into(),
-                    format_byte_size(metadata.size).into(),
+                    Span::styled(
+                        format_byte_size(metadata.size),
+                        // Show some dangerous styling for large bodies, to
+                        // indicate that something is different
+                        if config.http.is_large(metadata.size) {
+                            styles.text.error
+                        } else {
+                            Style::default()
+                        },
+                    ),
                 ])
                 .alignment(Alignment::Right),
                 metadata_area,

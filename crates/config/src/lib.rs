@@ -42,6 +42,7 @@ pub struct Config {
     /// Command to use for in-app editing. If provided, overrides
     /// `VISUAL`/`EDITOR` environment variables
     pub editor: Option<String>,
+    #[serde(flatten)]
     pub http: HttpEngineConfig,
     /// Should templates be rendered inline in the UI, or should we show the
     /// raw text?

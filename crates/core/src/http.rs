@@ -293,6 +293,7 @@ impl Default for HttpEngine {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct HttpEngineConfig {
     /// TLS cert errors on these hostnames are ignored. Be careful!
     pub ignore_certificate_hosts: Vec<String>,

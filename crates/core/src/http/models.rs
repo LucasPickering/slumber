@@ -460,8 +460,10 @@ impl ResponseRecord {
             .ok();
         // Store whether we succeeded or not, so we know not to try again
         if self.body.parsed.set(body).is_err() {
-            // Unfortunately we don't have any helpful context to include here.
-            // The body could potentially be huge so don't log it.
+            // This indicates a logic error, because this should only be
+            // called once, when the response is first received.
+            // Unfortunately we don't have any helpful context to include
+            // here. The body could potentially be huge so don't log it.
             error!("Response body parsed twice");
         }
     }
@@ -515,8 +517,9 @@ pub struct ResponseBody {
     /// Raw body
     data: Bytes,
     /// For responses of a known content type, we can parse the body into a
-    /// real data structure. This is populated *eagerly*. Call
-    /// [ResponseRecord::parse_body] to set the parsed body.
+    /// real data structure. This is populated manually; Call
+    /// [ResponseRecord::parse_body] to set the parsed body. This uses a lock
+    /// so it can be parsed and populated in a background thread.
     #[serde(skip)]
     parsed: OnceLock<Option<Box<dyn ResponseContent>>>,
 }

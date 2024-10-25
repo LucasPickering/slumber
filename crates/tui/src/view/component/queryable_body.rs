@@ -11,7 +11,7 @@ use crate::{
         draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, Update},
         state::StateCell,
-        util::highlight,
+        util::{highlight, str_to_text},
         Component, ViewContext,
     },
 };
@@ -173,8 +173,9 @@ impl<'a> Draw<QueryableBodyProps<'a>> for QueryableBody {
         .areas(metadata.area());
 
         // Draw the body
+        let body = props.body;
         let text = self.filtered_text.get_or_update(&self.query, || {
-            init_text(props.content_type, props.body, self.query.as_ref())
+            init_text(props.content_type, body, self.query.as_ref())
         });
         self.text_window.draw(
             frame,
@@ -224,6 +225,24 @@ fn init_text(
     body: &ResponseBody,
     query: Option<&Query>,
 ) -> Text<'static> {
+    // For bodies over the "large" size, skip prettification and
+    // highlighting because it's slow. We could try to push this work
+    // into a background thread instead, but there's way to kill those
+    // threads so we could end up piling up a lot of work. It also burns
+    // a lot of CPU, regardless of where it's run
+    //
+    // We don't show a hint to the user in this case because it's not
+    // worth the screen real estate
+    if TuiContext::get().config.http.is_large(body.size()) {
+        return if let Some(text) = body.text() {
+            str_to_text(text)
+        } else {
+            // Showing binary content is a bit of a novelty, there's not much
+            // value in it. For large bodies it's not worth the CPU cycles
+            "<binary>".into()
+        };
+    }
+
     // Query and prettify text if possible. This involves a lot of cloning
     // because it makes stuff easier. If it becomes a bottleneck on large
     // responses it's fixable.

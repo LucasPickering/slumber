@@ -293,12 +293,22 @@ impl Default for HttpEngine {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct HttpEngineConfig {
     /// TLS cert errors on these hostnames are ignored. Be careful!
     pub ignore_certificate_hosts: Vec<String>,
     /// Request/response bodies over this size are treated differently, for
     /// performance reasons
     pub large_body_size: usize,
+}
+
+impl HttpEngineConfig {
+    /// Is the given size (e.g. request or response body size) larger than the
+    /// configured "large" body size? Large bodies are treated differently, for
+    /// performance reasons.
+    pub fn is_large(&self, size: usize) -> bool {
+        size > self.large_body_size
+    }
 }
 
 impl Default for HttpEngineConfig {

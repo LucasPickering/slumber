@@ -36,5 +36,6 @@ SLUMBER_CONFIG_PATH=~/dotfiles/slumber.yml slumber
 | `editor`                   | `string`                            | Command to use when opening files for in-app editing. [More info](./editor.md)                    | `VISUAL`/`EDITOR` env vars |
 | `ignore_certificate_hosts` | `string[]`                          | Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md) | `[]`                       |
 | `input_bindings`           | `mapping[Action, KeyCombination[]]` | Override default input bindings. [More info](./input_bindings.md)                                 | `{}`                       |
+| `large_body_size`          | `number`                            | Size over which request/response bodies are not formatted/highlighted, for performance (bytes)    | `1000000` (1 MB)           |
 | `preview_templates`        | `boolean`                           | Render template values in the TUI? If false, the raw template will be shown.                      | `true`                     |
 | `theme`                    | [`Theme`](./theme.md)               | Visual customizations                                                                             | `{}`                       |

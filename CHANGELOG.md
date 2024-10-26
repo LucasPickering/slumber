@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Preserve key order of objects in JSON responses [#405](https://github.com/LucasPickering/slumber/issues/405)
 
+### Fixed
+
+- Fixed `ignore_certificate_hosts` and `large_body_size` fields not being loaded from config
+
 ## [2.2.0] - 2024-10-22
 
 ### Added

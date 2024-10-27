@@ -15,7 +15,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     sync::Arc,
 };
-use tokio::task::JoinHandle;
+use tokio::task::{self, JoinHandle};
 use tracing::{error, warn};
 
 /// Simple in-memory "database" for request state. This serves a few purposes:
@@ -449,13 +449,19 @@ impl RequestState {
         }
     }
 
-    /// Create a request state from a completed response. This is **expensive**,
-    /// don't call it unless you need the value.
+    /// Create a request state from a completed response. This will trigger
+    /// parsing of the response in a background task, so the call is expensive
+    /// but not blocking.
     pub fn response(exchange: Exchange) -> Self {
-        // Pre-parse the body so the view doesn't have to do it. We're in the
-        // main thread still here though so large bodies may take a while. Maybe
-        // we want to punt this into a separate task?
-        exchange.response.parse_body();
+        // Pre-parse the body so the view doesn't have to do it. Using a
+        // separate branch for tests is a huge hack, but background tasks makes
+        // testing much harder.
+        if cfg!(test) {
+            exchange.response.parse_body();
+        } else {
+            let response = Arc::clone(&exchange.response);
+            task::spawn_blocking(move || response.parse_body());
+        }
         Self::Response { exchange }
     }
 }

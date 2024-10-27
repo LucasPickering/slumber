@@ -439,6 +439,11 @@ chains:
 ### Changed
 
 - Don't print full stack trace for failed CLI commands
+- Disable formatting and highlighting for response bodies over 1MB (size threshold customizable [in the config](https://slumber.lucaspickering.me/book/api/configuration/index.html))
+
+### Fixes
+
+- Improve performance of handling large response bodies
 
 ## [0.16.0] - 2024-04-01
 

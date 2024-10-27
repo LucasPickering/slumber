@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Fixed `ignore_certificate_hosts` and `large_body_size` fields not being loaded from config
+- Improve performance of large response bodies [#356](https://github.com/LucasPickering/slumber/issues/356)
+  - This includes disabling prettyification and syntax highlighting on bodies over 1 MB (this size is configurable, via the `large_body_size` [config field](https://slumber.lucaspickering.me/book/api/configuration/index.html))
+  - Loading a large response body should no longer cause the UI to freeze or low framerate
 
 ## [2.2.0] - 2024-10-22
 

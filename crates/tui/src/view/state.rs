@@ -6,6 +6,7 @@ pub mod select;
 use chrono::{DateTime, Utc};
 use derive_more::Deref;
 use std::cell::{Ref, RefCell};
+use uuid::Uuid;
 
 /// An internally mutable cell for UI state. Certain state needs to be updated
 /// during the draw phase, typically because it's derived from parent data
@@ -81,6 +82,34 @@ impl<K, V> Default for StateCell<K, V> {
         Self {
             state: RefCell::new(None),
         }
+    }
+}
+
+/// A uniquely identified immutable value. Useful for detecting changes in
+/// values that are expensive to do full comparisons on.
+#[derive(Debug, Deref)]
+pub struct Identified<T> {
+    id: Uuid,
+    #[deref]
+    value: T,
+}
+
+impl<T> Identified<T> {
+    pub fn new(value: T) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            value,
+        }
+    }
+
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
+}
+
+impl<T> From<T> for Identified<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::{
     context::TuiContext,
     message::Message,
-    view::{draw::Generate, util::highlight, ViewContext},
+    view::{draw::Generate, state::Identified, util::highlight, ViewContext},
 };
 use ratatui::{
     buffer::Buffer,
@@ -35,7 +35,7 @@ pub struct TemplatePreview {
     /// because it also gets an initial value. There should be effectively zero
     /// contention on the mutex because of the single write, and reads being
     /// single-threaded.
-    text: Arc<Mutex<Text<'static>>>,
+    text: Arc<Mutex<Identified<Text<'static>>>>,
 }
 
 impl TemplatePreview {
@@ -46,7 +46,7 @@ impl TemplatePreview {
     /// unrendered and rendered content.
     pub fn new(template: Template, content_type: Option<ContentType>) -> Self {
         // Calculate raw text
-        let text = highlight::highlight_if(
+        let text: Identified<Text> = highlight::highlight_if(
             content_type,
             // We have to clone the template to detach the lifetime. We're
             // choosing to pay one upfront cost here so we don't have to
@@ -54,7 +54,8 @@ impl TemplatePreview {
             // the template and have this text reference it, but that would be
             // self-referential
             template.display().into_owned().into(),
-        );
+        )
+        .into();
         let text = Arc::new(Mutex::new(text));
 
         // Trigger a task to render the preview and write the answer back into
@@ -78,17 +79,17 @@ impl TemplatePreview {
     /// mutex
     fn calculate_rendered_text(
         chunks: Vec<TemplateChunk>,
-        destination: &Mutex<Text<'static>>,
+        destination: &Mutex<Identified<Text<'static>>>,
         content_type: Option<ContentType>,
     ) {
         let text = TextStitcher::stitch_chunks(&chunks);
         let text = highlight::highlight_if(content_type, text);
         *destination
             .lock()
-            .expect("Template preview text lock is poisoned") = text;
+            .expect("Template preview text lock is poisoned") = text.into();
     }
 
-    pub fn text(&self) -> impl '_ + Deref<Target = Text<'static>> {
+    pub fn text(&self) -> impl '_ + Deref<Target = Identified<Text<'static>>> {
         self.text
             .lock()
             .expect("Template preview text lock is poisoned")
@@ -103,7 +104,8 @@ impl From<Template> for TemplatePreview {
 
 /// Clone internal text. Only call this for small pieces of text
 impl Generate for &TemplatePreview {
-    type Output<'this> =  Text<'this>
+    type Output<'this>
+        = Text<'this>
     where
         Self: 'this;
 
@@ -117,7 +119,7 @@ impl Generate for &TemplatePreview {
 
 impl Widget for &TemplatePreview {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        self.text().deref().render(area, buf)
+        (&**self.text()).render(area, buf)
     }
 }
 

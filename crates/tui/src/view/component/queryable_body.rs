@@ -10,7 +10,7 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, Update},
-        state::StateCell,
+        state::{Identified, StateCell},
         util::{highlight, str_to_text},
         Component, ViewContext,
     },
@@ -37,7 +37,7 @@ use std::cell::Cell;
 pub struct QueryableBody {
     /// Visible text state. This needs to be in a cell because it's initialized
     /// from the body passed in via props
-    filtered_text: StateCell<Option<Query>, Text<'static>>,
+    filtered_text: StateCell<Option<Query>, Identified<Text<'static>>>,
     /// Store whether the body can be queried. True only if it's a recognized
     /// and parsed format
     query_available: Cell<bool>,
@@ -224,42 +224,43 @@ fn init_text(
     content_type: Option<ContentType>,
     body: &ResponseBody,
     query: Option<&Query>,
-) -> Text<'static> {
-    // For bodies over the "large" size, skip prettification and
-    // highlighting because it's slow. We could try to push this work
-    // into a background thread instead, but there's way to kill those
-    // threads so we could end up piling up a lot of work. It also burns
-    // a lot of CPU, regardless of where it's run
-    //
-    // We don't show a hint to the user in this case because it's not
-    // worth the screen real estate
-    if TuiContext::get().config.http.is_large(body.size()) {
-        return if let Some(text) = body.text() {
+) -> Identified<Text<'static>> {
+    let text = if TuiContext::get().config.http.is_large(body.size()) {
+        // For bodies over the "large" size, skip prettification and
+        // highlighting because it's slow. We could try to push this work
+        // into a background thread instead, but there's way to kill those
+        // threads so we could end up piling up a lot of work. It also burns
+        // a lot of CPU, regardless of where it's run
+        //
+        // We don't show a hint to the user in this case because it's not
+        // worth the screen real estate
+        if let Some(text) = body.text() {
             str_to_text(text)
         } else {
             // Showing binary content is a bit of a novelty, there's not much
             // value in it. For large bodies it's not worth the CPU cycles
             "<binary>".into()
-        };
-    }
-
-    // Query and prettify text if possible. This involves a lot of cloning
-    // because it makes stuff easier. If it becomes a bottleneck on large
-    // responses it's fixable.
-    let body = body
-        .parsed()
-        .map(|parsed_body| {
-            // Body is a known content type so we parsed it - apply a query if
-            // necessary and prettify the output
-            query
-                .map(|query| query.query_content(parsed_body).prettify())
-                .unwrap_or_else(|| parsed_body.prettify())
-        })
-        // Content couldn't be parsed, fall back to the raw text
-        // If the text isn't UTF-8, we'll show a placeholder instead
-        .unwrap_or_else(|| format!("{:#}", MaybeStr(body.bytes())));
-    // Apply syntax highlighting
-    highlight::highlight_if(content_type, body.into())
+        }
+    } else {
+        // Query and prettify text if possible. This involves a lot of cloning
+        // because it makes stuff easier. If it becomes a bottleneck on large
+        // responses it's fixable.
+        let body = body
+            .parsed()
+            .map(|parsed_body| {
+                // Body is a known content type so we parsed it - apply a query
+                // if necessary and prettify the output
+                query
+                    .map(|query| query.query_content(parsed_body).prettify())
+                    .unwrap_or_else(|| parsed_body.prettify())
+            })
+            // Content couldn't be parsed, fall back to the raw text
+            // If the text isn't UTF-8, we'll show a placeholder instead
+            .unwrap_or_else(|| format!("{:#}", MaybeStr(body.bytes())));
+        // Apply syntax highlighting
+        highlight::highlight_if(content_type, body.into())
+    };
+    text.into()
 }
 
 #[cfg(test)]

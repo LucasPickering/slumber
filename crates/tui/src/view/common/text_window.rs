@@ -5,6 +5,7 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Event, EventHandler, Update},
+        state::{Identified, StateCell},
     },
 };
 use ratatui::{
@@ -19,6 +20,7 @@ use ratatui::{
 use slumber_config::Action;
 use std::{cell::Cell, cmp};
 use unicode_width::UnicodeWidthStr;
+use uuid::Uuid;
 
 /// A scrollable (but not editable) block of text. Internal state will be
 /// updated on each render, to adjust to the text's width/height. Generally the
@@ -27,14 +29,13 @@ use unicode_width::UnicodeWidthStr;
 /// (especially if it includes syntax highlighting).
 #[derive(derive_more::Debug, Default)]
 pub struct TextWindow {
+    /// Cache the size of the text window, because it's expensive to calculate.
+    /// Checking the width of a text requires counting all its graphemes.
+    text_size: StateCell<Uuid, TextSize>,
     /// Horizontal scroll
     offset_x: Cell<usize>,
     /// Vertical scroll
     offset_y: Cell<usize>,
-    /// How wide is the full text content?
-    text_width: Cell<usize>,
-    /// How tall is the full text content?
-    text_height: Cell<usize>,
     /// How wide is the visible text area, excluding gutter/scrollbars?
     window_width: Cell<usize>,
     /// How tall is the visible text area, exluding gutter/scrollbars?
@@ -45,7 +46,7 @@ pub struct TextWindow {
 pub struct TextWindowProps<'a> {
     /// Text to render. We take a reference because this component tends to
     /// contain a lot of text, and we don't want to force a clone on render
-    pub text: &'a Text<'a>,
+    pub text: &'a Identified<Text<'a>>,
     /// Extra text to render below the text window
     pub footer: Option<Text<'a>>,
     pub margins: ScrollbarMargins,
@@ -70,21 +71,35 @@ impl Default for ScrollbarMargins {
     }
 }
 
+#[derive(Debug, Default)]
+struct TextSize {
+    /// Number of graphemes in the longest line in the text
+    width: usize,
+    /// Number of lines in the text
+    height: usize,
+}
+
 impl TextWindow {
     /// Get the final line that we can't scroll past. This will be the first
     /// line of the last page of text
     fn max_scroll_line(&self) -> usize {
-        self.text_height
+        let text_height = self
+            .text_size
             .get()
-            .saturating_sub(self.window_height.get())
+            .map(|state| state.height)
+            .unwrap_or_default();
+        text_height.saturating_sub(self.window_height.get())
     }
 
     /// Get the final column that we can't scroll (horizontally) past. This will
     /// be the left edge of the rightmost "page" of text
     fn max_scroll_column(&self) -> usize {
-        self.text_width
+        let text_width = self
+            .text_size
             .get()
-            .saturating_sub(self.window_width.get())
+            .map(|state| state.width)
+            .unwrap_or_default();
+        text_width.saturating_sub(self.window_width.get())
     }
 
     fn scroll_up(&mut self, lines: usize) {
@@ -137,6 +152,11 @@ impl TextWindow {
             .take(self.window_height.get())
             .enumerate();
         for (y, line) in lines {
+            // This could be expensive if we're skipping a lot of graphemes,
+            // i.e. scrolled far to the right in a wide body. Fortunately that's
+            // a niche use case so not optimized for yet. To fix this we would
+            // have to map grapheme number -> byte offset and cache that,
+            // because skipping bytes is O(1) instead of O(n)
             let graphemes = line
                 .styled_graphemes(Style::default())
                 .skip(self.offset_x.get())
@@ -185,31 +205,39 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
     ) {
         let styles = &TuiContext::get().styles;
 
-        // Assume no line wrapping when calculating line count
-        // Note: Paragraph has methods for this, but that requires an owned copy
-        // of Text, which involves a lot of cloning
-        let text_height = props.text.lines.len();
-        let text_width = props
-            .text
-            .lines
-            .iter()
-            .map(Line::width)
-            .max()
-            .unwrap_or_default();
+        let text_state = self.text_size.get_or_update(&props.text.id(), || {
+            // Note: Paragraph has methods for this, but that requires an
+            // owned copy of Text, which involves a lot of cloning
+
+            // This counts _graphemes_, not bytes, so it's O(n)
+            let text_width = props
+                .text
+                .lines
+                .iter()
+                .map(Line::width)
+                .max()
+                .unwrap_or_default();
+            // Assume no line wrapping when calculating line count
+            let text_height = props.text.lines.len();
+            TextSize {
+                width: text_width,
+                height: text_height,
+            }
+        });
 
         let [gutter_area, _, text_area] = Layout::horizontal([
             // Size gutter based on width of max line number
-            Constraint::Length((text_height as f32).log10().floor() as u16 + 1),
+            Constraint::Length(
+                (text_state.height as f32).log10().floor() as u16 + 1,
+            ),
             Constraint::Length(1), // Spacer
             Constraint::Min(0),
         ])
         .areas(metadata.area());
-        let has_vertical_scroll = text_height > text_area.height as usize;
-        let has_horizontal_scroll = text_width > text_area.width as usize;
+        let has_vertical_scroll = text_state.height > text_area.height as usize;
+        let has_horizontal_scroll = text_state.width > text_area.width as usize;
 
         // Store text and window sizes for calculations in the update code
-        self.text_width.set(text_width);
-        self.text_height.set(text_height);
         self.window_width.set(text_area.width as usize);
         self.window_height.set(text_area.height as usize);
 
@@ -218,8 +246,10 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
 
         // Draw line numbers in the gutter
         let first_line = self.offset_y.get() + 1;
-        let last_line =
-            cmp::min(first_line + self.window_height.get() - 1, text_height);
+        let last_line = cmp::min(
+            first_line + self.window_height.get() - 1,
+            text_state.height,
+        );
         frame.render_widget(
             Paragraph::new(
                 (first_line..=last_line)
@@ -244,7 +274,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
                     x: text_area.x,
                     y: text_area.y
                         + (cmp::min(
-                            self.text_height.get(),
+                            text_state.height,
                             self.window_height.get(),
                         )) as u16,
                     width: text_area.width,
@@ -257,7 +287,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
         if has_vertical_scroll {
             frame.render_widget(
                 Scrollbar {
-                    content_length: self.text_height.get(),
+                    content_length: text_state.height,
                     offset: self.offset_y.get(),
                     // We substracted the margin from the text area before, so
                     // we have to add that back now
@@ -270,7 +300,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
         if has_horizontal_scroll {
             frame.render_widget(
                 Scrollbar {
-                    content_length: self.text_width.get(),
+                    content_length: text_state.width,
                     offset: self.offset_x.get(),
                     orientation: ScrollbarOrientation::HorizontalBottom,
                     // See note on other scrollbar for +1
@@ -299,7 +329,8 @@ mod tests {
         harness: TestHarness,
     ) {
         let text =
-            Text::from("line 1\nline 2 is longer\nline 3\nline 4\nline 5");
+            Text::from("line 1\nline 2 is longer\nline 3\nline 4\nline 5")
+                .into();
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -383,7 +414,8 @@ mod tests {
         #[with(35, 3)] terminal: TestTerminal,
         harness: TestHarness,
     ) {
-        let text = Text::from("intro\n💚💙💜 this is a longer line\noutro");
+        let text =
+            Text::from("intro\n💚💙💜 this is a longer line\noutro").into();
         TestComponent::new(
             &harness,
             &terminal,
@@ -410,7 +442,7 @@ mod tests {
         #[with(10, 2)] terminal: TestTerminal,
         harness: TestHarness,
     ) {
-        let text = Text::from("💚💙💜💚💙💜");
+        let text = Text::raw("💚💙💜💚💙💜").into();
         TestComponent::new(
             &harness,
             &terminal,
@@ -438,9 +470,9 @@ mod tests {
         #[with(10, 3)] terminal: TestTerminal,
         harness: TestHarness,
     ) {
-        let text = ["1 this is a long line", "2", "3", "4", "5"]
-            .join("\n")
-            .into();
+        let text =
+            Text::from_iter(["1 this is a long line", "2", "3", "4", "5"])
+                .into();
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -462,7 +494,7 @@ mod tests {
         assert_eq!(component.data().offset_x.get(), 10);
         assert_eq!(component.data().offset_y.get(), 2);
 
-        let text = ["1 less long line", "2", "3", "4"].join("\n").into();
+        let text = Text::from_iter(["1 less long line", "2", "3", "4"]).into();
         component.set_props(TextWindowProps {
             text: &text,
             margins: ScrollbarMargins {
@@ -481,9 +513,9 @@ mod tests {
     /// automatically be clamped to match
     #[rstest]
     fn test_grow_window(terminal: TestTerminal, harness: TestHarness) {
-        let text = ["1 this is a long line", "2", "3", "4", "5"]
-            .join("\n")
-            .into();
+        let text =
+            Text::from_iter(["1 this is a long line", "2", "3", "4", "5"])
+                .into();
         let mut component = TestComponent::new(
             &harness,
             &terminal,

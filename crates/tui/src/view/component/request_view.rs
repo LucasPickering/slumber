@@ -10,7 +10,7 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
-        state::StateCell,
+        state::{Identified, StateCell},
         util::highlight,
         Component, ViewContext,
     },
@@ -44,7 +44,7 @@ struct State {
     request: Arc<RequestRecord>,
     /// Persist the visible body, because it may vary from the actual body.
     /// `None` iff the request has no body
-    body: Option<Text<'static>>,
+    body: Option<Identified<Text<'static>>>,
 }
 
 /// Items in the actions popup menu
@@ -157,7 +157,7 @@ impl Draw<RequestViewProps> for RequestView {
 
 /// Calculate body text, including syntax highlighting. We have to clone the
 /// body to prevent a self-reference
-fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
+fn init_body(request: &RequestRecord) -> Option<Identified<Text<'static>>> {
     let content_type = ContentType::from_headers(&request.headers).ok();
     request
         .body()
@@ -166,6 +166,7 @@ fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
                 content_type,
                 format!("{:#}", MaybeStr(body)).into(),
             )
+            .into()
         })
         .or_else(|| {
             // No body available: check if it's because the recipe has no body,
@@ -179,11 +180,11 @@ fn init_body(request: &RequestRecord) -> Option<Text<'static>> {
                 let config = &TuiContext::get().config;
 
                 Some(
-                    format!(
+                    Text::raw(format!(
                         "Body not available. Streamed bodies, or bodies over \
                         {}, are not persisted",
                         format_byte_size(config.http.large_body_size)
-                    )
+                    ))
                     .into(),
                 )
             } else {

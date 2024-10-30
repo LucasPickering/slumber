@@ -129,7 +129,7 @@ This release is focused on improving rendering performance. The TUI should gener
 ### Fixed
 
 - Reduce CPU usage while idling
-  - Previously, Slumber would re-render every 250ms while idling, which could lead to high CPU usage, dependending on what's on the screen. Now it will only update when changes occur, meaning idle CPU usage will be nearly 0
+  - Previously, Slumber would re-render every 250ms while idling, which could lead to high CPU usage, depending on what's on the screen. Now it will only update when changes occur, meaning idle CPU usage will be nearly 0
 - Fix backlogged events when renders are slow
   - If renders are being particular slow, it was previously possible for input events (e.g. repeated scrolling events) to occur faster than the UI could keep up. This would lead to "lock out" behavior, where you'd stop scrolling and it'd take a while for the UI to catch up.
   - Now, the TUI will skip draws as necessary to keep up with the input queue. In practice the skipping should be hard to notice as it only occurs during rapid TUI movements anyway.
@@ -354,7 +354,7 @@ The biggest feature in this release is the ability to browse request history. Sl
 - Folders can now be collapsed in the recipe list ([#155](https://github.com/LucasPickering/slumber/issues/155))
 - Improvements to Insomnia import ([#12](https://github.com/LucasPickering/slumber/issues/12))
 - Rename `import-experimental` command to `import`
-  - It's official now! It's still going to get continuted improvement though
+  - It's official now! It's still going to get continued improvement though
 - Show `WARN`/`ERROR` log output for CLI commands
 - Validate recipe `method` field during deserialization instead of on request init
   - This means you'll get an error on startup if your method is invalid, instead of when you go to run the request

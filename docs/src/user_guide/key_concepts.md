@@ -8,7 +8,7 @@ The collection is the main form of configuration. It defines a set of request re
 
 ## [Request Recipe](../api/request_collection/request_recipe.md)
 
-A recipe defines which HTTP requests Slumber can make. A recipe generally correponds to one endpoint on an API, although you can create as many recipes per endpoint as you'd like.
+A recipe defines which HTTP requests Slumber can make. A recipe generally corresponds to one endpoint on an API, although you can create as many recipes per endpoint as you'd like.
 
 ## [Template](./templates.md)
 

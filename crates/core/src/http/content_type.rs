@@ -140,7 +140,7 @@ pub trait ResponseContent: Debug + Display + Send + Sync {
     fn prettify(&self) -> String;
 
     /// Convert the content to JSON. JSON is the common language used for
-    /// querying intenally, so everything needs to be convertible to/from JSON.
+    /// querying internally, so everything needs to be convertible to/from JSON.
     fn to_json(&self) -> Cow<'_, serde_json::Value>;
 
     /// Facilitate downcasting generic parsed bodies to concrete types for tests

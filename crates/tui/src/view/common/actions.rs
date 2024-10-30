@@ -22,7 +22,7 @@ pub struct ActionsModal<T: FixedSelect> {
 }
 
 impl<T: FixedSelect> ActionsModal<T> {
-    /// Create a new actions modal, optionall disabling certain actions based on
+    /// Create a new actions modal, optional disabling certain actions based on
     /// some external condition(s).
     pub fn new(disabled_actions: &[T]) -> Self {
         let on_submit = move |action: &mut T| {

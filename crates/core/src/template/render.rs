@@ -142,7 +142,7 @@ impl Template {
                     );
                     Ok(RenderedChunk {
                         value: value.clone().into_bytes().into(),
-                        // The overriden value *could* be marked
+                        // The overridden value *could* be marked
                         // sensitive, but we're taking a shortcut and
                         // assuming it isn't
                         sensitive: false,

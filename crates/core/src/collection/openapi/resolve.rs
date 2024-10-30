@@ -175,7 +175,7 @@ impl ReferenceResolver {
 fn parse_reference<T: ComponentKind>(
     reference: &str,
 ) -> Result<&str, ResolveError> {
-    // This reutrns a pretty unhelpful error if the reference has a file at the
+    // This returns a pretty unhelpful error if the reference has a file at the
     // beginning. It's a "valid" reference but we don't know how to parse it.
     // These references are supposed to be valid URIs so we could use a URI
     // parser instead.

@@ -38,7 +38,7 @@ pub struct TextWindow {
     offset_y: Cell<usize>,
     /// How wide is the visible text area, excluding gutter/scrollbars?
     window_width: Cell<usize>,
-    /// How tall is the visible text area, exluding gutter/scrollbars?
+    /// How tall is the visible text area, excluding gutter/scrollbars?
     window_height: Cell<usize>,
 }
 
@@ -289,7 +289,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
                 Scrollbar {
                     content_length: text_state.height,
                     offset: self.offset_y.get(),
-                    // We substracted the margin from the text area before, so
+                    // We subtracted the margin from the text area before, so
                     // we have to add that back now
                     margin: props.margins.right,
                     ..Default::default()

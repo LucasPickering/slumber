@@ -167,7 +167,7 @@ enum State {
         username: RecipeTemplate,
         /// This field is optional in the actual recipe, but it's a lot easier
         /// if we just replace `None` with an empty template. This allows the
-        /// user to edit it and makes rendering easier. It's functionaly
+        /// user to edit it and makes rendering easier. It's functionally
         /// equivalent when building the request.
         password: RecipeTemplate,
         /// Track which field is selected, for editability

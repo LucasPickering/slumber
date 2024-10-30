@@ -157,7 +157,7 @@ pub enum Message {
     },
     /// An empty event to trigger a draw when a template preview is done being
     /// rendered. This is a bit hacky, but it's an explicit way to tell the TUI
-    /// "we know something in the view has changed asyncronously".
+    /// "we know something in the view has changed asynchronously".
     TemplatePreviewComplete,
 }
 

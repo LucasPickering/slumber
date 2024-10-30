@@ -355,7 +355,7 @@ impl Tui {
         self.messages_tx.clone()
     }
 
-    /// Spawn a task to listen in the backgrouns for quit signals
+    /// Spawn a task to listen in the background for quit signals
     fn listen_for_signals(&self) {
         let messages_tx = self.messages_tx();
         self.spawn(async move {

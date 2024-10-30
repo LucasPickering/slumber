@@ -100,7 +100,7 @@ impl<T> Component<T> {
             let update = child.update_all(context, event);
             match update {
                 Update::Propagate(returned) => {
-                    // Keep going to the next child. The propgated event
+                    // Keep going to the next child. The propagated event
                     // *should* just be whatever we passed in, but we have
                     // no way of verifying that
                     event = returned;

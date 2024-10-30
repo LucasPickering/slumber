@@ -60,7 +60,7 @@ password:
 ---
 # Prompt the user to select a value from a static list
 fruit:
-  souce: !select
+  source: !select
     message: Select Fruit
     options:
       - apple

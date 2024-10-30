@@ -324,7 +324,7 @@ pub enum Authentication<T = Template> {
     Bearer(T),
 }
 
-/// Template for a request body. `Raw` is the "default" variant, which repesents
+/// Template for a request body. `Raw` is the "default" variant, which represents
 /// a single string (parsed as a template). Other variants can be used for
 /// convenience, to construct complex bodies in common formats. The HTTP engine
 /// uses the variant to determine not only how to serialize the body, but also

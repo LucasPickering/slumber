@@ -36,7 +36,7 @@ pub fn highlight(content_type: ContentType, mut text: Text<'_>) -> Text<'_> {
             .entry(content_type)
             .or_insert_with(|| get_config(content_type));
 
-        // Each line in the input correponds to one line in the output, so we
+        // Each line in the input corresponds to one line in the output, so we
         // can mutate each line inline
         for line in &mut text.lines {
             // Join the line into a single string so we can pass it to the
@@ -165,7 +165,7 @@ impl HighlightName {
 }
 
 /// Join all text in a line into a single string. For single-span lines (the
-/// most common scneario by far), we'll just return the one span without a
+/// most common scenario by far), we'll just return the one span without a
 /// clone.
 fn join_line<'a>(line: &Line<'a>) -> Cow<'a, str> {
     if line.spans.is_empty() {

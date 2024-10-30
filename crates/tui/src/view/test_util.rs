@@ -137,7 +137,7 @@ where
     ///
     /// This similar to [update_draw](Self::update_draw), but doesn't require
     /// you to queue a new event first. This is helpful in the rare occasions
-    /// where the UI needs to respond to some asyncronous event, such as a
+    /// where the UI needs to respond to some asynchronous event, such as a
     /// callback that would normally be called by the main loop.
     pub fn drain_draw(&mut self) -> PropagatedEvents {
         let propagated = self.drain_events();
@@ -255,7 +255,7 @@ impl PropagatedEvents {
         )
     }
 
-    /// Get propgated events as a slice
+    /// Get propagated events as a slice
     pub fn events(&self) -> &[Event] {
         &self.0
     }

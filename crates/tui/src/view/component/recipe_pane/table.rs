@@ -88,7 +88,7 @@ where
         }
     }
 
-    /// Get the set of disabled/overriden rows for this table
+    /// Get the set of disabled/overridden rows for this table
     pub fn to_build_overrides(&self) -> BuildFieldOverrides {
         self.select
             .data()

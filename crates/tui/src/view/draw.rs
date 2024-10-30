@@ -5,7 +5,7 @@ use std::{fmt::Display, ops::Deref};
 
 /// Something that can be drawn onto screen as one or more TUI widgets.
 ///
-/// Conceptually this is bascially part of `Component`, but having it separate
+/// Conceptually this is basically part of `Component`, but having it separate
 /// allows the `Props` associated type. Otherwise, there's no way to make a
 /// trait object from `Component` across components with different props.
 ///
@@ -20,7 +20,7 @@ pub trait Draw<Props = ()> {
     /// Draw the component into the frame. This generally should not be called
     /// directly. Instead, use
     /// [Component::draw](crate::view::component::Component::draw), which
-    /// will handle additional metadata management before defering to this
+    /// will handle additional metadata management before deferring to this
     /// method for the actual draw.
     fn draw(&self, frame: &mut Frame, props: Props, metadata: DrawMetadata);
 }

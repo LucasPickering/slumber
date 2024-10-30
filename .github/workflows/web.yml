@@ -39,10 +39,10 @@ jobs:
     name: Build and deploy site and docs
     runs-on: ubuntu-latest
     env:
-      ORANDA_VERSION: v0.5.0
+      ORANDA_VERSION: v0.6.5
     steps:
       # Setup
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           lfs: true
@@ -59,7 +59,7 @@ jobs:
           oranda build
 
       - name: Check HTML for broken internal links
-        uses: untitaker/hyperlink@0.1.29
+        uses: untitaker/hyperlink@0.1.42
         with:
           args: ./public
 
@@ -71,7 +71,7 @@ jobs:
       # go into repo's settings > pages and set "deploy from branch: gh-pages"
       # the other defaults work fine.
       - name: Deploy to Github Pages
-        uses: JamesIves/github-pages-deploy-action@v4.4.1
+        uses: JamesIves/github-pages-deploy-action@v4.6.8
         # ONLY if we're on master (so no PRs or feature branches allowed!)
         if: ${{ github.ref == 'refs/heads/master' }}
         with:

@@ -23,8 +23,8 @@ use tracing::trace;
 pub trait EventHandler {
     /// Update the state of *just* this component according to the event.
     /// Returned outcome indicates whether the event was consumed, or it should
-    /// be propagated to our parent. Use [EventQueue] to queue subsequent events,
-    /// and the given message sender to queue async messages.
+    /// be propagated to our parent. Use [EventQueue] to queue subsequent
+    /// events, and the given message sender to queue async messages.
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         Update::Propagate(event)
     }

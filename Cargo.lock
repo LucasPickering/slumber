@@ -2308,6 +2308,7 @@ name = "slumber_tui"
 version = "2.2.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "chrono",
  "cli-clipboard",
  "crossterm",

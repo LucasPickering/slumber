@@ -63,7 +63,7 @@ use reqwest::{
     Client, RequestBuilder, Response, Url,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 use tracing::{info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
@@ -375,7 +375,7 @@ impl RequestTicket {
                 let exchange = Exchange {
                     id,
                     request: self.record,
-                    response: Arc::new(response),
+                    response,
                     start_time,
                     end_time,
                 };
@@ -1362,7 +1362,7 @@ mod tests {
             .to_str()
             .unwrap();
         assert_eq!(
-            *exchange.response,
+            exchange.response,
             ResponseRecord {
                 status: StatusCode::OK,
                 headers: header_map([

@@ -5,7 +5,7 @@
 //! not a value, use [ContentType]. If you want to parse dynamically based on
 //! the response's metadata, use [ResponseRecord::parse_body].
 
-use crate::{http::ResponseRecord, util::Mapping};
+use crate::util::Mapping;
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From};
 use mime::{Mime, APPLICATION, JSON};
@@ -121,15 +121,6 @@ impl ContentType {
             ContentType::Json => serde_json::to_string(&values).unwrap(),
         }
     }
-
-    /// Helper for parsing the body of a response. Use
-    /// [ResponseRecord::parse_body] for external usage.
-    pub(super) fn parse_response(
-        response: &ResponseRecord,
-    ) -> anyhow::Result<Box<dyn ResponseContent>> {
-        let content_type = Self::from_headers(&response.headers)?;
-        content_type.parse_content(response.body.bytes())
-    }
 }
 
 /// A response content type that we know how to parse. This is defined as a
@@ -188,7 +179,7 @@ impl ResponseContent for Json {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert_err, test_util::Factory};
+    use crate::{assert_err, http::ResponseRecord, test_util::Factory};
     use reqwest::header::{
         HeaderMap, HeaderValue, InvalidHeaderValue, CONTENT_TYPE,
     };
@@ -261,8 +252,11 @@ mod tests {
             body: body.into(),
             ..ResponseRecord::factory(())
         };
+        let content_type =
+            ContentType::from_headers(&response.headers).unwrap();
         assert_eq!(
-            ContentType::parse_response(&response)
+            content_type
+                .parse_content(response.body.bytes())
                 .unwrap()
                 .deref()
                 // Downcast the result to desired type
@@ -303,7 +297,10 @@ mod tests {
             body: body.into(),
             ..ResponseRecord::factory(())
         };
-        assert_err!(ContentType::parse_response(&response), expected_error);
+        let result = ContentType::from_headers(&response.headers).and_then(
+            |content_type| content_type.parse_content(response.body.bytes()),
+        );
+        assert_err!(result, expected_error);
     }
 
     /// Create header map with the given value for the content-type header

@@ -236,7 +236,7 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
                                 ResponseBodyViewProps {
                                     request_id: exchange.id,
                                     recipe_id: &exchange.request.recipe_id,
-                                    response: Arc::clone(&exchange.response),
+                                    response: &exchange.response,
                                 },
                                 content_area,
                                 true,

@@ -14,7 +14,7 @@ use rusqlite::{
 };
 use rusqlite_migration::{HookResult, Migrations, M};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{path::PathBuf, sync::Arc};
+use std::{ops::Deref, path::PathBuf, sync::Arc};
 use tracing::info;
 
 /// Get all DB migrations in history
@@ -128,7 +128,7 @@ fn migrate_requests_v2_up(transaction: &Transaction) -> HookResult {
             end_time: row.get("end_time")?,
             // Deserialize from bytes
             request: Arc::new(row.get::<_, ByteEncoded<_>>("request")?.0),
-            response: Arc::new(row.get::<_, ByteEncoded<_>>("response")?.0),
+            response: row.get::<_, ByteEncoded<_>>("response")?.0,
         };
         Ok((collection_id, exchange))
     }
@@ -196,7 +196,7 @@ fn migrate_requests_v2_up(transaction: &Transaction) -> HookResult {
 
             ":status_code": exchange.response.status.as_u16(),
             ":response_headers": SqlWrap(&exchange.response.headers),
-            ":response_body": exchange.response.body.bytes(),
+            ":response_body": exchange.response.body.bytes().deref(),
         })?;
     }
 
@@ -430,7 +430,7 @@ mod tests {
                         ":start_time": &exchange.start_time,
                         ":end_time": &exchange.end_time,
                         ":request": &ByteEncoded(&*exchange.request),
-                        ":response": &ByteEncoded(&*exchange.response),
+                        ":response": &ByteEncoded(&exchange.response),
                         ":status_code": exchange.response.status.as_u16(),
                     },
                 )

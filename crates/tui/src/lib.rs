@@ -18,7 +18,7 @@ mod view;
 
 use crate::{
     context::TuiContext,
-    http::RequestStore,
+    http::{BackgroundResponseParser, RequestState, RequestStore},
     message::{Message, MessageSender, RequestConfig},
     util::{
         clear_event_buffer, get_editor_command, save_file, signals,
@@ -26,7 +26,8 @@ use crate::{
     },
     view::{PreviewPrompter, UpdateContext, View},
 };
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
+use bytes::Bytes;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
@@ -38,7 +39,7 @@ use slumber_config::{Action, Config};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     db::{CollectionDatabase, Database},
-    http::RequestSeed,
+    http::{RequestId, RequestSeed},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
 use std::{
@@ -119,7 +120,10 @@ impl Tui {
         // `Tui`.
         let terminal = initialize_terminal()?;
 
-        let request_store = RequestStore::new(database.clone());
+        let request_store = RequestStore::new(
+            database.clone(),
+            BackgroundResponseParser::new(messages_tx.clone()),
+        );
 
         let app = Tui {
             terminal,
@@ -245,8 +249,15 @@ impl Tui {
                 self.copy_request_curl(request_config)?;
             }
             Message::CopyText(text) => self.view.copy_text(text),
-            Message::SaveFile { default_path, data } => {
-                self.spawn(save_file(self.messages_tx(), default_path, data));
+            Message::SaveResponseBody { request_id, data } => {
+                self.save_response_body(request_id, data).with_context(
+                    || {
+                        format!(
+                            "Error saving response body \
+                            for request {request_id}"
+                        )
+                    },
+                )?;
             }
 
             Message::EditFile { path, on_complete } => {
@@ -303,6 +314,17 @@ impl Tui {
             }
             Message::ConfirmStart(confirm) => {
                 self.view.open_modal(confirm);
+            }
+
+            Message::ParseResponseBodyComplete { request_id, body } => {
+                self.request_store
+                    .set_parsed_body(request_id, body)
+                    .with_context(|| {
+                        format!(
+                            "Error storing parsed response body \
+                            for request {request_id}"
+                        )
+                    })?;
             }
 
             Message::TemplatePreview {
@@ -512,6 +534,34 @@ impl Tui {
             messages_tx.send(Message::CopyText(command));
             Ok(())
         });
+        Ok(())
+    }
+
+    /// Save the body of a response to a file, prompting the user for a file
+    /// path. If the body text is provided, that will be used. Useful when
+    /// what's being saved differs from the actual response body (because of
+    /// prettification/querying). If not provided, we'll pull the body from the
+    /// request store.
+    fn save_response_body(
+        &self,
+        request_id: RequestId,
+        text: Option<String>,
+    ) -> anyhow::Result<()> {
+        let Some(request_state) = self.request_store.get(request_id) else {
+            bail!("Request not in store")
+        };
+        let RequestState::Response { exchange } = request_state else {
+            bail!("Request is not complete")
+        };
+        // Get a suggested file name from the response if possible
+        let default_path = exchange.response.file_name();
+
+        let data = text.map(Bytes::from).unwrap_or_else(|| {
+            // This is the path we hit for binary and/or large bodies that were
+            // never parsed. This clone is cheap so we're being efficient!
+            exchange.response.body.bytes().clone()
+        });
+        self.spawn(save_file(self.messages_tx(), default_path, data));
         Ok(())
     }
 

@@ -538,7 +538,7 @@ mod tests {
             response: ResponseRecord {
                 body: "not json!".into(),
                 ..ResponseRecord::factory(())
-            }.into(),
+            },
             ..Exchange::factory(RecipeId::from("recipe1"))
         }),
         "content type not provided",
@@ -560,7 +560,7 @@ mod tests {
             response: ResponseRecord {
                 body: "not json!".into(),
                 ..ResponseRecord::factory(())
-            }.into(),
+            },
             ..Exchange::factory(RecipeId::from("recipe1"))
         }),
         "Parsing response: expected ident at line 1 column 2",
@@ -582,7 +582,7 @@ mod tests {
             response: ResponseRecord {
                 body: "[1, 2]".into(),
                 ..ResponseRecord::factory(())
-            }.into(),
+            },
             ..Exchange::factory(RecipeId::from("recipe1"))
         }),
         "No results from JSONPath query",

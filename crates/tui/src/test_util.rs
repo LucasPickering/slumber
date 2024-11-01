@@ -2,7 +2,7 @@
 
 use crate::{
     context::TuiContext,
-    http::RequestStore,
+    http::{RequestStore, ResponseParser},
     message::{Message, MessageSender},
     view::ViewContext,
 };
@@ -14,7 +14,10 @@ use ratatui::{
 };
 use rstest::fixture;
 use slumber_core::{
-    collection::Collection, db::CollectionDatabase, test_util::Factory,
+    collection::Collection,
+    db::CollectionDatabase,
+    http::{RequestId, ResponseRecord},
+    test_util::Factory,
 };
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -27,8 +30,10 @@ pub fn harness() -> TestHarness {
     let messages_tx: MessageSender = messages_tx.into();
     let collection = Collection::factory(()).into();
     let database = CollectionDatabase::factory(());
-    let request_store =
-        Rc::new(RefCell::new(RequestStore::new(database.clone())));
+    let request_store = Rc::new(RefCell::new(RequestStore::new(
+        database.clone(),
+        TestResponseParser,
+    )));
     ViewContext::init(
         Arc::clone(&collection),
         database.clone(),
@@ -130,6 +135,33 @@ impl TestTerminal {
 
     pub fn draw(&self, f: impl FnOnce(&mut Frame)) {
         self.0.borrow_mut().draw(f).unwrap();
+    }
+}
+
+/// Parse response bodies inline, for simplicity. Maybe not using the main
+/// code path for tests is bad practice, but IMO it's not worth the effort
+/// to make the background parser work in tests.
+#[derive(Debug)]
+pub struct TestResponseParser;
+
+impl TestResponseParser {
+    /// A helper for manually parsing a response body in tests
+    pub fn parse_body(response: &mut ResponseRecord) {
+        // Request ID is never used, so we can just pass a random one in
+        Self.parse(RequestId::new(), response);
+    }
+}
+
+impl ResponseParser for TestResponseParser {
+    fn parse(&self, _: RequestId, response: &mut ResponseRecord) {
+        let Some(content_type) = response.content_type() else {
+            return;
+        };
+        let Ok(parsed) = content_type.parse_content(response.body.bytes())
+        else {
+            return;
+        };
+        response.set_parsed_body(parsed);
     }
 }
 

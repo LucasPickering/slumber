@@ -10,7 +10,6 @@ use crate::{
         content_type::{ContentType, ResponseContent},
     },
     template::Template,
-    util::ResultTraced,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -25,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt::{Debug, Write},
-    sync::{Arc, OnceLock},
+    sync::Arc,
 };
 use thiserror::Error;
 use tracing::error;
@@ -183,8 +182,8 @@ pub struct Exchange {
     pub id: RequestId,
     /// What we said. Use an Arc so the view can hang onto it.
     pub request: Arc<RequestRecord>,
-    /// What we heard. Use an Arc so the view can hang onto it.
-    pub response: Arc<ResponseRecord>,
+    /// What we heard
+    pub response: ResponseRecord,
     /// When was the request sent to the server?
     pub start_time: DateTime<Utc>,
     /// When did we finish receiving the *entire* response?
@@ -424,7 +423,7 @@ impl crate::test_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
         Self {
             id: request.id,
             request: request.into(),
-            response: response.into(),
+            response,
             start_time: Utc::now(),
             end_time: Utc::now(),
         }
@@ -451,21 +450,9 @@ pub struct ResponseRecord {
 }
 
 impl ResponseRecord {
-    /// Attempt to parse the body of this response, and store it in the body
-    /// struct. If parsing fails, we'll store `None` instead.
-    pub fn parse_body(&self) {
-        let body = ContentType::parse_response(self)
-            .context("Error parsing response body")
-            .traced()
-            .ok();
-        // Store whether we succeeded or not, so we know not to try again
-        if self.body.parsed.set(body).is_err() {
-            // This indicates a logic error, because this should only be
-            // called once, when the response is first received.
-            // Unfortunately we don't have any helpful context to include
-            // here. The body could potentially be huge so don't log it.
-            error!("Response body parsed twice");
-        }
+    /// Stored the parsed form of this request's body
+    pub fn set_parsed_body(&mut self, body: Box<dyn ResponseContent>) {
+        self.body.parsed = Some(body);
     }
 
     /// Get the content type of the response body, according to the
@@ -509,6 +496,13 @@ impl ResponseRecord {
     }
 }
 
+pub enum ParseMode {
+    Immediate,
+    Background {
+        callback: Box<dyn 'static + FnOnce(Box<dyn ResponseContent>) + Send>,
+    },
+}
+
 /// HTTP response body. Content is stored as bytes because it may not
 /// necessarily be valid UTF-8. Converted to text only as needed.
 #[derive(Default, Deserialize)]
@@ -521,7 +515,7 @@ pub struct ResponseBody {
     /// [ResponseRecord::parse_body] to set the parsed body. This uses a lock
     /// so it can be parsed and populated in a background thread.
     #[serde(skip)]
-    parsed: OnceLock<Option<Box<dyn ResponseContent>>>,
+    parsed: Option<Box<dyn ResponseContent>>,
 }
 
 impl ResponseBody {
@@ -533,7 +527,7 @@ impl ResponseBody {
     }
 
     /// Raw content bytes
-    pub fn bytes(&self) -> &[u8] {
+    pub fn bytes(&self) -> &Bytes {
         &self.data
     }
 
@@ -559,7 +553,7 @@ impl ResponseBody {
     ///
     /// Return `None` if parsing either hasn't happened yet, or failed.
     pub fn parsed(&self) -> Option<&dyn ResponseContent> {
-        self.parsed.get().and_then(Option::as_deref)
+        self.parsed.as_deref()
     }
 }
 

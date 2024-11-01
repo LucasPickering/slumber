@@ -22,7 +22,6 @@ use slumber_core::{
     collection::RecipeId,
     http::{RequestId, ResponseRecord},
 };
-use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
 /// Display response body
@@ -37,7 +36,7 @@ pub struct ResponseBodyView {
 pub struct ResponseBodyViewProps<'a> {
     pub request_id: RequestId,
     pub recipe_id: &'a RecipeId,
-    pub response: Arc<ResponseRecord>,
+    pub response: &'a ResponseRecord,
 }
 
 /// Items in the actions popup menu for the Body
@@ -59,8 +58,7 @@ impl ToStringGenerate for BodyMenuAction {}
 /// Internal state
 #[derive(Debug)]
 struct State {
-    /// Use Arc so we're not cloning large responses
-    response: Arc<ResponseRecord>,
+    request_id: RequestId,
     /// The presentable version of the response body, which may or may not
     /// match the response body. We apply transformations such as filter,
     /// prettification, or in the case of binary responses, a hex dump.
@@ -84,40 +82,26 @@ impl EventHandler for ResponseBodyView {
                     ViewContext::send_message(Message::CollectionEdit)
                 }
                 BodyMenuAction::CopyBody => {
-                    // Use whatever text is visible to the user
+                    // Use whatever text is visible to the user. This differs
+                    // from saving the body, because:
+                    // 1. We need an owned string no matter what, so there's no
+                    //   point in avoiding the allocation
+                    // 2. We can't copy binary content, so if the file is binary
+                    //   we'll copy the hexcode text
                     if let Some(body) = self
                         .state
                         .get()
-                        .and_then(|state| state.body.data().text())
+                        .map(|state| state.body.data().visible_text())
                     {
                         ViewContext::send_message(Message::CopyText(body));
                     }
                 }
                 BodyMenuAction::SaveBody => {
-                    // For text, use whatever is visible to the user. For
-                    // binary, use the raw value
                     if let Some(state) = self.state.get() {
-                        // If we've parsed the body, then save exactly what the
-                        // user sees. Otherwise, save the raw bytes. This is
-                        // going to clone the whole body, which could be big.
-                        // If we need to optimize this, we would have to shove
-                        // all querying to the main data storage, so the main
-                        // loop can access it directly to be written.
-                        let data = if state.response.body.parsed().is_some() {
-                            state
-                                .body
-                                .data()
-                                .text()
-                                .unwrap_or_default()
-                                .into_bytes()
-                        } else {
-                            state.response.body.bytes().to_vec()
-                        };
-
                         // This will trigger a modal to ask the user for a path
-                        ViewContext::send_message(Message::SaveFile {
-                            default_path: state.response.file_name(),
-                            data,
+                        ViewContext::send_message(Message::SaveResponseBody {
+                            request_id: state.request_id,
+                            data: state.body.data().parsed_text(),
                         });
                     }
                 }
@@ -146,7 +130,7 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
     ) {
         let response = &props.response;
         let state = self.state.get_or_update(&props.request_id, || State {
-            response: Arc::clone(&props.response),
+            request_id: props.request_id,
             body: PersistedLazy::new(
                 ResponseQueryPersistedKey(props.recipe_id.clone()),
                 QueryableBody::new(),
@@ -194,7 +178,9 @@ impl<'a> Draw<ResponseHeadersViewProps<'a>> for ResponseHeadersView {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{
+            harness, terminal, TestHarness, TestResponseParser, TestTerminal,
+        },
         view::test_util::TestComponent,
     };
     use indexmap::indexmap;
@@ -208,17 +194,23 @@ mod tests {
     /// Test "Copy Body" menu action
     #[rstest]
     #[case::json_body(
-        ResponseRecord{
+        ResponseRecord {
             headers: header_map(indexmap! {"content-type" => "application/json"}),
             body: br#"{"hello":"world"}"#.to_vec().into(),
             ..ResponseRecord::factory(())
         },
-        // Body gets prettified
-        "{\n  \"hello\": \"world\"\n}"
+        "{\n  \"hello\": \"world\"\n}",
+    )]
+    #[case::unparsed_text_body(
+        ResponseRecord {
+            headers: header_map(indexmap! {"content-type" => "text/plain"}),
+            body: b"hello!".to_vec().into(),
+            ..ResponseRecord::factory(())
+        },
+        "hello!\n",
     )]
     #[case::binary_body(
-        ResponseRecord{
-            headers: header_map(indexmap! {"content-type" => "image/png"}),
+        ResponseRecord {
             body: b"\x01\x02\x03\xff".to_vec().into(),
             ..ResponseRecord::factory(())
         },
@@ -233,11 +225,11 @@ mod tests {
         #[case] response: ResponseRecord,
         #[case] expected_body: &str,
     ) {
-        response.parse_body(); // Normally the view does this
-        let exchange = Exchange {
-            response: response.into(),
+        let mut exchange = Exchange {
+            response,
             ..Exchange::factory(())
         };
+        TestResponseParser::parse_body(&mut exchange.response);
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -245,7 +237,7 @@ mod tests {
             ResponseBodyViewProps {
                 request_id: exchange.id,
                 recipe_id: &exchange.request.recipe_id,
-                response: exchange.response,
+                response: &exchange.response,
             },
         );
 
@@ -263,49 +255,40 @@ mod tests {
     /// Test "Save Body as File" menu action
     #[rstest]
     #[case::json_body(
-        ResponseRecord{
+        ResponseRecord {
             headers: header_map(indexmap! {"content-type" => "application/json"}),
             body: br#"{"hello":"world"}"#.to_vec().into(),
             ..ResponseRecord::factory(())
         },
-        // Body gets prettified
-        b"{\n  \"hello\": \"world\"\n}",
-        "data.json"
+        Some("{\n  \"hello\": \"world\"\n}"),
+    )]
+    #[case::unparsed_text_body(
+        ResponseRecord {
+            headers: header_map(indexmap! {"content-type" => "text/plain"}),
+            body: b"hello!".to_vec().into(),
+            ..ResponseRecord::factory(())
+        },
+        None,
     )]
     #[case::binary_body(
-        ResponseRecord{
-            headers: header_map(indexmap! {"content-type" => "image/png"}),
+        ResponseRecord {
             body: b"\x01\x02\x03".to_vec().into(),
             ..ResponseRecord::factory(())
         },
-        b"\x01\x02\x03",
-        "data.png"
-    )]
-    #[case::content_disposition(
-        ResponseRecord{
-            headers: header_map(indexmap! {
-                "content-type" => "image/png",
-                "content-disposition" => "attachment; filename=\"dogs.png\"",
-            }),
-            body: b"\x01\x02\x03".to_vec().into(),
-            ..ResponseRecord::factory(())
-        },
-        b"\x01\x02\x03",
-        "dogs.png"
+        None,
     )]
     #[tokio::test]
     async fn test_save_file(
         mut harness: TestHarness,
         terminal: TestTerminal,
         #[case] response: ResponseRecord,
-        #[case] expected_body: &[u8],
-        #[case] expected_path: &str,
+        #[case] expected_body: Option<&str>,
     ) {
-        response.parse_body(); // Normally the view does this
-        let exchange = Exchange {
-            response: response.into(),
+        let mut exchange = Exchange {
+            response,
             ..Exchange::factory(())
         };
+        TestResponseParser::parse_body(&mut exchange.response);
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -313,7 +296,7 @@ mod tests {
             ResponseBodyViewProps {
                 request_id: exchange.id,
                 recipe_id: &exchange.request.recipe_id,
-                response: exchange.response,
+                response: &exchange.response,
             },
         );
 
@@ -321,11 +304,11 @@ mod tests {
             .update_draw(Event::new_local(BodyMenuAction::SaveBody))
             .assert_empty();
 
-        let (data, default_path) = assert_matches!(
+        let (request_id, data) = assert_matches!(
             harness.pop_message_now(),
-            Message::SaveFile { data, default_path } => (data, default_path),
+            Message::SaveResponseBody { request_id, data } => (request_id, data),
         );
-        assert_eq!(data, expected_body);
-        assert_eq!(default_path.as_deref(), Some(expected_path));
+        assert_eq!(request_id, exchange.id);
+        assert_eq!(data.as_deref(), expected_body);
     }
 }

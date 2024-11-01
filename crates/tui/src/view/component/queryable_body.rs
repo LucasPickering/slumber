@@ -37,7 +37,7 @@ use std::cell::Cell;
 pub struct QueryableBody {
     /// Visible text state. This needs to be in a cell because it's initialized
     /// from the body passed in via props
-    filtered_text: StateCell<Option<Query>, Identified<Text<'static>>>,
+    state: StateCell<StateKey, State>,
     /// Store whether the body can be queried. True only if it's a recognized
     /// and parsed format
     query_available: Cell<bool>,
@@ -63,6 +63,21 @@ pub struct QueryableBodyProps<'a> {
     pub body: &'a ResponseBody,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct StateKey {
+    /// Sometimes the parsing takes a little bit. We want to make sure the body
+    /// is regenerated after parsing completes
+    is_parsed: bool,
+    query: Option<Query>,
+}
+
+#[derive(Debug)]
+struct State {
+    text: Identified<Text<'static>>,
+    is_parsed: bool,
+    is_binary: bool,
+}
+
 impl QueryableBody {
     /// Create a new body, optionally loading the query text from the
     /// persistence DB. This is optional because not all callers use the query
@@ -85,7 +100,7 @@ impl QueryableBody {
                 ViewContext::push_event(Event::new_local(QueryCallback::Submit))
             });
         Self {
-            filtered_text: Default::default(),
+            state: Default::default(),
             query_available: Cell::new(false),
             query_focused: false,
             query: Default::default(),
@@ -95,9 +110,32 @@ impl QueryableBody {
     }
 
     /// Get visible body text. Return an owned value because that's what all
-    /// consumers need anyway, and it makes the API simpler
-    pub fn text(&self) -> Option<String> {
-        self.filtered_text.get().map(|text| text.to_string())
+    /// consumers need anyway, and it makes the API simpler. Return `None` if:
+    /// - Text isn't initialized yet
+    /// - Body is binary
+    /// - Body has not been parsed, either because it's too large or not a known
+    ///   content type
+    ///
+    /// Note that in the last case, we _could_ return the body, but it's going
+    /// to be the same content as what's in the request store so we can avoid
+    /// the clone by returning `None` instead.
+    pub fn parsed_text(&self) -> Option<String> {
+        let state = self.state.get()?;
+        if state.is_binary || !state.is_parsed {
+            None
+        } else {
+            Some(state.text.to_string())
+        }
+    }
+
+    /// Get the exact text that the user sees
+    pub fn visible_text(&self) -> String {
+        // State should always be initialized by the time this is called, but
+        // if it isn't then the user effectively sees nothing
+        self.state
+            .get()
+            .map(|state| state.text.to_string())
+            .unwrap_or_default()
     }
 }
 
@@ -174,13 +212,17 @@ impl<'a> Draw<QueryableBodyProps<'a>> for QueryableBody {
 
         // Draw the body
         let body = props.body;
-        let text = self.filtered_text.get_or_update(&self.query, || {
-            init_text(props.content_type, body, self.query.as_ref())
+        let state_key = StateKey {
+            query: self.query.clone(),
+            is_parsed: props.body.parsed().is_some(),
+        };
+        let state = self.state.get_or_update(&state_key, || {
+            init_state(props.content_type, body, self.query.as_ref())
         });
         self.text_window.draw(
             frame,
             TextWindowProps {
-                text: &text,
+                text: &state.text,
                 margins: ScrollbarMargins {
                     bottom: 2, // Extra margin to jump over the search box
                     ..Default::default()
@@ -220,12 +262,12 @@ enum QueryCallback {
 }
 
 /// Calculate display text based on current body/query
-fn init_text(
+fn init_state(
     content_type: Option<ContentType>,
     body: &ResponseBody,
     query: Option<&Query>,
-) -> Identified<Text<'static>> {
-    let text = if TuiContext::get().config.http.is_large(body.size()) {
+) -> State {
+    if TuiContext::get().config.http.is_large(body.size()) {
         // For bodies over the "large" size, skip prettification and
         // highlighting because it's slow. We could try to push this work
         // into a background thread instead, but there's way to kill those
@@ -235,32 +277,54 @@ fn init_text(
         // We don't show a hint to the user in this case because it's not
         // worth the screen real estate
         if let Some(text) = body.text() {
-            str_to_text(text)
+            State {
+                text: str_to_text(text).into(),
+                is_parsed: false,
+                is_binary: false,
+            }
         } else {
             // Showing binary content is a bit of a novelty, there's not much
             // value in it. For large bodies it's not worth the CPU cycles
-            "<binary>".into()
+            let text: Text = "<binary>".into();
+            State {
+                text: text.into(),
+                is_parsed: false,
+                is_binary: true,
+            }
         }
     } else {
         // Query and prettify text if possible. This involves a lot of cloning
         // because it makes stuff easier. If it becomes a bottleneck on large
         // responses it's fixable.
-        let body = body
-            .parsed()
-            .map(|parsed_body| {
-                // Body is a known content type so we parsed it - apply a query
-                // if necessary and prettify the output
-                query
-                    .map(|query| query.query_content(parsed_body).prettify())
-                    .unwrap_or_else(|| parsed_body.prettify())
-            })
-            // Content couldn't be parsed, fall back to the raw text
-            // If the text isn't UTF-8, we'll show a placeholder instead
-            .unwrap_or_else(|| format!("{:#}", MaybeStr(body.bytes())));
-        // Apply syntax highlighting
-        highlight::highlight_if(content_type, body.into())
-    };
-    text.into()
+        if let Some(parsed) = body.parsed() {
+            // Body is a known content type so we parsed it - apply a query
+            // if necessary and prettify the output
+            let text = query
+                .map(|query| query.query_content(parsed).prettify())
+                .unwrap_or_else(|| parsed.prettify());
+            let text = highlight::highlight_if(content_type, text.into());
+            State {
+                text: text.into(),
+                is_parsed: true,
+                is_binary: false,
+            }
+        } else if let Some(text) = body.text() {
+            // Body is textual but hasn't been parsed. Just show the plain text
+            State {
+                text: str_to_text(text).into(),
+                is_parsed: false,
+                is_binary: false,
+            }
+        } else {
+            // Content is binary, show a textual representation of it
+            let text: Text = format!("{:#}", MaybeStr(body.bytes())).into();
+            State {
+                text: text.into(),
+                is_parsed: false,
+                is_binary: true,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -268,7 +332,9 @@ mod tests {
     use super::*;
     use crate::{
         context::TuiContext,
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{
+            harness, terminal, TestHarness, TestResponseParser, TestTerminal,
+        },
         view::{
             test_util::TestComponent,
             util::persistence::{DatabasePersistedStore, PersistedLazy},
@@ -292,12 +358,12 @@ mod tests {
 
     #[fixture]
     fn json_response() -> ResponseRecord {
-        let response = ResponseRecord {
+        let mut response = ResponseRecord {
             status: StatusCode::OK,
             headers: header_map([("Content-Type", "application/json")]),
             body: ResponseBody::new(TEXT.into()),
         };
-        response.parse_body();
+        TestResponseParser::parse_body(&mut response);
         response
     }
 
@@ -324,7 +390,7 @@ mod tests {
         // https://github.com/ratatui-org/ratatui/pull/1320
         let mut expected = String::from_utf8(TEXT.to_owned()).unwrap();
         expected.push('\n');
-        assert_eq!(data.text().as_deref(), Some(expected.as_str()));
+        assert_eq!(data.parsed_text().as_deref(), None);
         assert!(!data.query_available.get());
         assert_eq!(data.query, None);
 
@@ -357,7 +423,7 @@ mod tests {
         assert!(data.query_available.get());
         assert_eq!(data.query, None);
         assert_eq!(
-            data.text().as_deref(),
+            data.parsed_text().as_deref(),
             Some("{\n  \"greeting\": \"hello\"\n}")
         );
         let styles = &TuiContext::get().styles.text_box;
@@ -380,7 +446,7 @@ mod tests {
         // Make sure state updated correctly
         let data = component.data();
         assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
-        assert_eq!(data.text().as_deref(), Some("[\n  \"hello\"\n]"));
+        assert_eq!(data.parsed_text().as_deref(), Some("[\n  \"hello\"\n]"));
         assert!(data.query_focused); // Still focused
 
         // Cancelling out of the text box should reset the query value

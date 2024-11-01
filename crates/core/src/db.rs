@@ -16,7 +16,7 @@ use rusqlite::{named_params, Connection, DatabaseName, OptionalExtension};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     fmt::Debug,
-    ops::DerefMut,
+    ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -361,7 +361,7 @@ impl CollectionDatabase {
 
                     ":status_code": exchange.response.status.as_u16(),
                     ":response_headers": SqlWrap(&exchange.response.headers),
-                    ":response_body": exchange.response.body.bytes(),
+                    ":response_body": exchange.response.body.bytes().deref(),
                 },
             )
             .context(format!(

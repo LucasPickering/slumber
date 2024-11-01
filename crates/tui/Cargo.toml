@@ -12,6 +12,7 @@ version = "2.2.0"
 
 [dependencies]
 anyhow = {workspace = true}
+bytes = {workspace = true}
 chrono = {workspace = true}
 cli-clipboard = "0.4.0"
 crossterm = {workspace = true, features = ["bracketed-paste", "windows", "events", "event-stream"]}

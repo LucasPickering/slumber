@@ -539,9 +539,7 @@ impl<'a> ChainTemplateSource<'a> {
             ChainRequestTrigger::Always => send_request().await?,
         };
 
-        // We haven't passed the exchange around so we can unwrap the Arc safely
-        Ok(Arc::try_unwrap(exchange.response)
-            .expect("Request Arc should have only one reference"))
+        Ok(exchange.response)
     }
 
     /// Extract the specified component bytes from the response. For headers,

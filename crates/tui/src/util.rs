@@ -4,6 +4,7 @@ use crate::{
     view::Confirm,
 };
 use anyhow::Context;
+use bytes::Bytes;
 use crossterm::event;
 use editor_command::EditorBuilder;
 use futures::{future, FutureExt};
@@ -107,7 +108,7 @@ pub async fn signals() -> anyhow::Result<()> {
 pub async fn save_file(
     messages_tx: MessageSender,
     default_path: Option<String>,
-    data: Vec<u8>,
+    data: Bytes,
 ) -> anyhow::Result<()> {
     // If the user closed the prompt, just exit
     let Some(path) =
@@ -255,7 +256,7 @@ mod tests {
         let handle = tokio::spawn(save_file(
             harness.messages_tx().clone(),
             Some("default.txt".into()),
-            b"hello!".to_vec(),
+            b"hello!".as_slice().into(),
         ));
 
         // First we expect a prompt for the file path

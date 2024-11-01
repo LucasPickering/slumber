@@ -265,7 +265,9 @@ impl PersistedContainer for SelectedRequestId {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{
+            harness, terminal, TestHarness, TestResponseParser, TestTerminal,
+        },
         view::{
             test_util::TestComponent, util::persistence::DatabasePersistedStore,
         },
@@ -275,12 +277,14 @@ mod tests {
     use rstest::rstest;
     use slumber_core::{assert_matches, http::Exchange, test_util::Factory};
 
+    const PARSER: TestResponseParser = TestResponseParser;
+
     /// Test that, on first render, the view loads the most recent historical
     /// request for the first recipe+profile
     #[rstest]
     fn test_preload_request(harness: TestHarness, terminal: TestTerminal) {
         // Add a request into the DB that we expect to preload
-        let request_store = RequestStore::new(harness.database.clone());
+        let request_store = RequestStore::new(harness.database.clone(), PARSER);
         let collection = Collection::factory(());
         let profile_id = collection.first_profile_id();
         let recipe_id = collection.first_recipe_id();
@@ -314,7 +318,7 @@ mod tests {
         harness: TestHarness,
         terminal: TestTerminal,
     ) {
-        let request_store = RequestStore::new(harness.database.clone());
+        let request_store = RequestStore::new(harness.database.clone(), PARSER);
         let collection = Collection::factory(());
         let recipe_id = collection.first_recipe_id();
         let profile_id = collection.first_profile_id();
@@ -361,7 +365,7 @@ mod tests {
         harness: TestHarness,
         terminal: TestTerminal,
     ) {
-        let request_store = RequestStore::new(harness.database.clone());
+        let request_store = RequestStore::new(harness.database.clone(), PARSER);
         let collection = Collection::factory(());
         let recipe_id = collection.first_recipe_id();
         let profile_id = collection.first_profile_id();
@@ -397,7 +401,7 @@ mod tests {
 
     #[rstest]
     fn test_edit_collection(mut harness: TestHarness, terminal: TestTerminal) {
-        let request_store = RequestStore::new(harness.database.clone());
+        let request_store = RequestStore::new(harness.database.clone(), PARSER);
         let root = Root::new(&harness.collection);
         let mut component = TestComponent::new(
             &harness,

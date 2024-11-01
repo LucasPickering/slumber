@@ -8,8 +8,8 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
-        BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
-        RequestRecord,
+        content_type::ResponseContent, BuildOptions, Exchange,
+        RequestBuildError, RequestError, RequestId, RequestRecord,
     },
     template::{Prompt, Prompter, Select, Template, TemplateChunk},
     util::ResultTraced,
@@ -113,25 +113,35 @@ pub enum Message {
 
     /// Send an informational notification to the user
     Notify(String),
+
+    /// Register a parsed response body. Parsing is performed in a background
+    /// thread so it doesn't block the UI
+    ParseResponseBodyComplete {
+        request_id: RequestId,
+        #[debug(skip)]
+        body: Box<dyn ResponseContent>,
+    },
+
     /// Show a prompt to the user, asking for some input. Use the included
     /// channel to return the value.
     PromptStart(Prompt),
 
-    /// Show a select list to the user, asking them to choose an item
-    /// Use the included channel to return the selection.
-    SelectStart(Select),
-
     /// Exit the program
     Quit,
 
-    /// Save data to a file. Could be binary (e.g. image) or encoded text
-    SaveFile {
-        /// A suggestion for the file name. User will have the opportunity to
-        /// change this
-        default_path: Option<String>,
-        /// Data to save
-        data: Vec<u8>,
+    /// Save a response body to a file. This will trigger a process to prompt
+    /// the user for a file name
+    SaveResponseBody {
+        request_id: RequestId,
+        /// If the response body has been modified in-TUI (via prettification
+        /// or querying), pass whatever the user sees here. Otherwise pass
+        /// `None`, and the original response bytes will be used.
+        data: Option<String>,
     },
+
+    /// Show a select list to the user, asking them to choose an item
+    /// Use the included channel to return the selection.
+    SelectStart(Select),
 
     /// Render a template string, to be previewed in the UI. Ideally this could
     /// be launched directly by the component that needs it, but only the

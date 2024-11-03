@@ -29,6 +29,10 @@ on:
     workflows: ["Release"]
     types:
       - completed
+    # Every PR runs the first step of the Release workflow. Without this branch
+    # filter, that workflow run would trigger the website release on every merge.
+    # Instead, we only want to trigger when a release is actually cut.
+    branches: [master]
 
   # Run manually
   workflow_dispatch:

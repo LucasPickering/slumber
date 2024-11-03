@@ -1,7 +1,7 @@
 use crate::{
     context::TuiContext,
     message::Message,
-    util::ResultReported,
+    util::{delete_temp_file, temp_file, ResultReported},
     view::{
         common::text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         component::recipe_pane::{
@@ -11,25 +11,25 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, Update},
+        state::Identified,
         Component, ViewContext,
     },
 };
 use anyhow::Context;
-use ratatui::{style::Styled, Frame};
+use ratatui::{style::Styled, text::Text, Frame};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{RecipeBody, RecipeId},
     http::content_type::ContentType,
     template::Template,
-    util::ResultTraced,
 };
 use std::{
-    env, fs,
+    fs,
+    ops::Deref,
     path::{Path, PathBuf},
 };
 use tracing::debug;
-use uuid::Uuid;
 
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
@@ -64,6 +64,18 @@ impl RecipeBodyDisplay {
                 );
                 Self::Form(inner.into())
             }
+        }
+    }
+
+    /// Get body text. Return `None` for form bodies
+    pub fn text(
+        &self,
+    ) -> Option<impl '_ + Deref<Target = Identified<Text<'static>>>> {
+        match self {
+            RecipeBodyDisplay::Raw(body) => {
+                Some(body.data().body.preview().text())
+            }
+            RecipeBodyDisplay::Form(_) => None,
         }
     }
 
@@ -139,7 +151,7 @@ impl RawBody {
     /// the body to a temp file so the editor subprocess can access it. We'll
     /// read it back later.
     fn open_editor(&mut self) {
-        let path = env::temp_dir().join(format!("slumber-{}", Uuid::new_v4()));
+        let path = temp_file();
         debug!(?path, "Writing body to file for editing");
         let Some(_) =
             fs::write(&path, self.body.template().display().as_bytes())
@@ -180,11 +192,7 @@ impl RawBody {
         };
 
         // Clean up after ourselves
-        let _ = fs::remove_file(path)
-            .with_context(|| {
-                format!("Error writing body to file {path:?} for editing")
-            })
-            .traced();
+        delete_temp_file(path);
 
         let Some(template) = body
             .parse::<Template>()

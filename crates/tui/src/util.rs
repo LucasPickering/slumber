@@ -13,7 +13,7 @@ use slumber_core::{
     util::{doc_link, paths::expand_home, ResultTraced},
 };
 use std::{
-    io,
+    env, io,
     ops::Deref,
     path::{Path, PathBuf},
     process::Command,
@@ -21,6 +21,7 @@ use std::{
 };
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::oneshot};
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
 /// Extension trait for [Result]
 pub trait ResultReported<T, E>: Sized {
@@ -100,6 +101,19 @@ pub async fn signals() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Get a path to a random temp file
+pub fn temp_file() -> PathBuf {
+    env::temp_dir().join(format!("slumber-{}", Uuid::new_v4()))
+}
+
+/// Delete a file. If it fails, trace and move on because it's not important
+/// enough to bother the user
+pub fn delete_temp_file(path: &Path) {
+    let _ = std::fs::remove_file(path)
+        .with_context(|| format!("Error deleting file {path:?}"))
+        .traced();
+}
+
 /// Save some data to disk. This will:
 /// - Ask the user for a path
 /// - Attempt to save a *new* file
@@ -176,8 +190,8 @@ pub async fn save_file(
     Ok(())
 }
 
-/// Get a command to open the given file in the user's configured editor. Return
-/// an error if the user has no editor configured
+/// Get a command to open the given file in the user's configured editor.
+/// Default editor is `vim`. Return an error if the command couldn't be built.
 pub fn get_editor_command(file: &Path) -> anyhow::Result<Command> {
     EditorBuilder::new()
         // Config field takes priority over environment variables
@@ -189,6 +203,29 @@ pub fn get_editor_command(file: &Path) -> anyhow::Result<Command> {
         .with_context(|| {
             format!(
                 "Error opening editor; see {}",
+                doc_link("api/configuration/editor"),
+            )
+        })
+}
+
+/// Get a command to open the given file in the user's configured file viewer.
+/// Default is `less` on Unix, `more` on Windows. Return an error if the command
+/// couldn't be built.
+pub fn get_viewer_command(file: &Path) -> anyhow::Result<Command> {
+    // Use a built-in viewer
+    let default = if cfg!(windows) { "more" } else { "less" };
+
+    // Unlike the editor, there is no standard env var to store the viewer, so
+    // we rely solely on the configuration field.
+    EditorBuilder::new()
+        // Config field takes priority over environment variables
+        .source(TuiContext::get().config.viewer.as_deref())
+        .source(Some(default))
+        .path(file)
+        .build()
+        .with_context(|| {
+            format!(
+                "Error opening viewer; see {}",
                 doc_link("api/configuration/editor"),
             )
         })

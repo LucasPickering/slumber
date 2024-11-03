@@ -11,7 +11,7 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
         state::{Identified, StateCell},
-        util::highlight,
+        util::{highlight, view_text},
         Component, ViewContext,
     },
 };
@@ -59,6 +59,8 @@ enum MenuAction {
     CopyUrl,
     #[display("Copy Body")]
     CopyBody,
+    #[display("View Body")]
+    ViewBody,
 }
 
 impl ToStringGenerate for MenuAction {}
@@ -74,7 +76,8 @@ impl EventHandler for RequestView {
             {
                 [].as_slice()
             } else {
-                &[MenuAction::CopyBody]
+                // No body available - disable these actions
+                &[MenuAction::CopyBody, MenuAction::ViewBody]
             };
             ViewContext::open_modal(ActionsModal::new(disabled));
         } else if let Some(action) = event.local::<MenuAction>() {
@@ -97,6 +100,13 @@ impl EventHandler for RequestView {
                         Some(body.to_string())
                     }) {
                         ViewContext::send_message(Message::CopyText(body));
+                    }
+                }
+                MenuAction::ViewBody => {
+                    if let Some(state) = self.state.get() {
+                        if let Some(body) = state.body.as_deref() {
+                            view_text(body);
+                        }
                     }
                 }
             }

@@ -9,13 +9,13 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
         state::StateCell,
-        util::persistence::PersistedLazy,
+        util::{persistence::PersistedLazy, view_text},
         Component, ViewContext,
     },
 };
 use derive_more::Display;
 use persisted::PersistedKey;
-use ratatui::Frame;
+use ratatui::{text::Text, Frame};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
@@ -47,6 +47,8 @@ enum BodyMenuAction {
     #[default]
     #[display("Edit Collection")]
     EditCollection,
+    #[display("View Body")]
+    ViewBody,
     #[display("Copy Body")]
     CopyBody,
     #[display("Save Body as File")]
@@ -70,6 +72,16 @@ struct State {
 #[persisted(String)]
 struct ResponseQueryPersistedKey(RecipeId);
 
+impl ResponseBodyView {
+    fn with_body(&self, f: impl Fn(&Text)) {
+        if let Some(state) = self.state.get() {
+            if let Some(body) = state.body.data().visible_text() {
+                f(&body)
+            }
+        }
+    }
+}
+
 impl EventHandler for ResponseBodyView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::OpenActions) = event.action() {
@@ -81,6 +93,7 @@ impl EventHandler for ResponseBodyView {
                 BodyMenuAction::EditCollection => {
                     ViewContext::send_message(Message::CollectionEdit)
                 }
+                BodyMenuAction::ViewBody => self.with_body(view_text),
                 BodyMenuAction::CopyBody => {
                     // Use whatever text is visible to the user. This differs
                     // from saving the body, because:
@@ -88,13 +101,11 @@ impl EventHandler for ResponseBodyView {
                     //   point in avoiding the allocation
                     // 2. We can't copy binary content, so if the file is binary
                     //   we'll copy the hexcode text
-                    if let Some(body) = self
-                        .state
-                        .get()
-                        .map(|state| state.body.data().visible_text())
-                    {
-                        ViewContext::send_message(Message::CopyText(body));
-                    }
+                    self.with_body(|body| {
+                        ViewContext::send_message(Message::CopyText(
+                            body.to_string(),
+                        ));
+                    });
                 }
                 BodyMenuAction::SaveBody => {
                     if let Some(state) = self.state.get() {

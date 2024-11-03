@@ -31,42 +31,42 @@ input_bindings:
 
 ## Actions
 
-| Action                | Default Binding             | Description                                           |
-| --------------------- | --------------------------- | ----------------------------------------------------- |
-| `left_click`          | None                        |                                                       |
-| `right_click`         | None                        |                                                       |
-| `scroll_up`           | None                        |                                                       |
-| `scroll_down`         | None                        |                                                       |
-| `scroll_left`         | `shift left`                |                                                       |
-| `scroll_right`        | `shift right`               |                                                       |
-| `quit`                | `q`                         | Exit current dialog, or the entire app                |
-| `force_quit`          | `ctrl c`                    | Exit the app, regardless                              |
-| `previous_pane`       | `backtab` (AKA `shift tab`) | Select previous pane in the cycle                     |
-| `next_pane`           | `tab`                       |                                                       |
-| `up`                  | `up`                        |                                                       |
-| `down`                | `down`                      |                                                       |
-| `left`                | `left`                      |                                                       |
-| `right`               | `right`                     |                                                       |
-| `page_up`             | `pgup`                      |                                                       |
-| `page_down`           | `pgdn`                      |                                                       |
-| `home`                | `home`                      |                                                       |
-| `end`                 | `end`                       |                                                       |
-| `submit`              | `enter`                     | Send a request, submit a text box, etc.               |
-| `toggle`              | `space`                     | Toggle a checkbox on/off                              |
-| `cancel`              | `esc`                       | Cancel current dialog or request                      |
-| `edit`                | `e`                         | Apply a temporary override to a recipe value          |
-| `reset`               | `r`                         | Reset temporary recipe override to its default        |
-| `history`             | `h`                         | Open request history for a recipe                     |
-| `search`              | `/`                         | Open/select search for current pane                   |
-| `reload_collection`   | `f5`                        | Force reload collection file                          |
-| `fullscreen`          | `f`                         | Fullscreen current pane                               |
-| `open_actions`        | `x`                         | Open actions menu                                     |
-| `open_help`           | `?`                         | Open help dialog                                      |
-| `select_profile_list` | `p`                         | Open Profile List dialog                              |
-| `select_recipe_list`  | `l`                         | Select Recipe List pane                               |
-| `select_recipe`       | `c`                         | Select Recipe pane                                    |
-| `select_response`     | `s`                         | Select Request/Response pane                          |
-| `select_request`      | `r`                         | Select Request/Response pane (backward compatibility) |
+| Action                | Default Binding             | Description                                             |
+| --------------------- | --------------------------- | ------------------------------------------------------- |
+| `left_click`          | None                        |                                                         |
+| `right_click`         | None                        |                                                         |
+| `scroll_up`           | None                        |                                                         |
+| `scroll_down`         | None                        |                                                         |
+| `scroll_left`         | `shift left`                |                                                         |
+| `scroll_right`        | `shift right`               |                                                         |
+| `quit`                | `q`                         | Exit current dialog, or the entire app                  |
+| `force_quit`          | `ctrl c`                    | Exit the app, regardless                                |
+| `previous_pane`       | `backtab` (AKA `shift tab`) | Select previous pane in the cycle                       |
+| `next_pane`           | `tab`                       |                                                         |
+| `up`                  | `up`                        |                                                         |
+| `down`                | `down`                      |                                                         |
+| `left`                | `left`                      |                                                         |
+| `right`               | `right`                     |                                                         |
+| `page_up`             | `pgup`                      |                                                         |
+| `page_down`           | `pgdn`                      |                                                         |
+| `home`                | `home`                      |                                                         |
+| `end`                 | `end`                       |                                                         |
+| `submit`              | `enter`                     | Send a request, submit a text box, etc.                 |
+| `toggle`              | `space`                     | Toggle a checkbox on/off                                |
+| `cancel`              | `esc`                       | Cancel current dialog or request                        |
+| `edit`                | `e`                         | Apply a temporary override to a recipe value            |
+| `reset`               | `r`                         | Reset temporary recipe override to its default          |
+| `history`             | `h`                         | Open request history for a recipe                       |
+| `search`              | `/`                         | Open/select search for current pane                     |
+| `reload_collection`   | `f5`                        | Force reload collection file                            |
+| `fullscreen`          | `f`                         | Fullscreen current pane                                 |
+| `open_actions`        | `x`                         | Open actions menu                                       |
+| `open_help`           | `?`                         | Open help dialog                                        |
+| `select_profile_list` | `p`                         | Open Profile List dialog                                |
+| `select_recipe_list`  | `l`                         | Select Recipe List pane                                 |
+| `select_recipe`       | `c`                         | Select Recipe pane                                      |
+| `select_response`     | `s`                         | Select Request/Response pane                            |
+| `select_request`      | `r`                         | Select Request/Response pane (backward compatibility)   |
 
 > Note: mouse bindings are not configurable; mouse actions such as `left_click` _can_ be bound to a key combination, which cannot be unbound from the default mouse action.
 

@@ -3,12 +3,18 @@
 pub mod highlight;
 pub mod persistence;
 
+use crate::{message::Message, util::temp_file, view::ViewContext};
+use anyhow::Context;
 use itertools::Itertools;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     text::{Line, Text},
 };
-use slumber_core::template::{Prompt, PromptChannel, Prompter, Select};
+use slumber_core::{
+    template::{Prompt, PromptChannel, Prompter, Select},
+    util::ResultTraced,
+};
+use std::{io::Write, path::Path};
 
 /// A data structure for representation a yes/no confirmation. This is similar
 /// to [Prompt], but it only asks a yes/no question.
@@ -76,4 +82,35 @@ pub fn str_to_text(s: &str) -> Text<'static> {
         .map(|line| Line::from(line.to_owned()))
         .collect_vec()
         .into()
+}
+
+/// Open a [Text] object in the user's external viewer. This will write the text
+/// to a random temporary file, without having to copy the contents. If an
+/// error occurs, it will be traced and reported to the user.
+pub fn view_text(text: &Text) {
+    // Shitty try block
+    fn helper(text: &Text, path: &Path) -> anyhow::Result<()> {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)?;
+        for line in &text.lines {
+            for span in &line.spans {
+                file.write_all(span.content.as_bytes())?;
+            }
+            // Every line gets a line ending, so we end up with a trailing one
+            file.write_all(b"\n")?;
+        }
+        Ok(())
+    }
+
+    let path = temp_file();
+    let result = helper(text, &path)
+        .with_context(|| format!("Error writing to file {path:?}"))
+        .traced();
+    match result {
+        Ok(()) => ViewContext::send_message(Message::ViewFile { path }),
+        Err(error) => ViewContext::send_message(Message::Error { error }),
+    }
 }

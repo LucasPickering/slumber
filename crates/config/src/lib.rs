@@ -42,6 +42,8 @@ pub struct Config {
     /// Command to use for in-app editing. If provided, overrides
     /// `VISUAL`/`EDITOR` environment variables
     pub editor: Option<String>,
+    /// Command to use to browse response bodies
+    pub viewer: Option<String>,
     #[serde(flatten)]
     pub http: HttpEngineConfig,
     /// Should templates be rendered inline in the UI, or should we show the
@@ -111,6 +113,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             editor: None,
+            viewer: None,
             http: HttpEngineConfig::default(),
             preview_templates: true,
             input_bindings: Default::default(),

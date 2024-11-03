@@ -28,7 +28,7 @@ use slumber_core::{
     http::{content_type::ContentType, query::Query, ResponseBody},
     util::{MaybeStr, ResultTraced},
 };
-use std::cell::Cell;
+use std::cell::{Cell, Ref};
 
 /// Display response body as text, with a query box to filter it if the body has
 /// been parsed. The query state can be persisted by persisting this entire
@@ -128,14 +128,11 @@ impl QueryableBody {
         }
     }
 
-    /// Get the exact text that the user sees
-    pub fn visible_text(&self) -> String {
-        // State should always be initialized by the time this is called, but
-        // if it isn't then the user effectively sees nothing
+    /// Get visible body text
+    pub fn visible_text(&self) -> Option<Ref<'_, Text>> {
         self.state
             .get()
-            .map(|state| state.text.to_string())
-            .unwrap_or_default()
+            .map(|state| Ref::map(state, |state| &*state.text))
     }
 }
 

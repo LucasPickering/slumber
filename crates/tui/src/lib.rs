@@ -21,8 +21,8 @@ use crate::{
     http::{BackgroundResponseParser, RequestState, RequestStore},
     message::{Message, MessageSender, RequestConfig},
     util::{
-        clear_event_buffer, get_editor_command, save_file, signals,
-        ResultReported,
+        clear_event_buffer, delete_temp_file, get_editor_command,
+        get_viewer_command, save_file, signals, ResultReported,
     },
     view::{PreviewPrompter, UpdateContext, View},
 };
@@ -46,7 +46,8 @@ use std::{
     future::Future,
     io::{self, Stdout},
     ops::Deref,
-    path::{Path, PathBuf},
+    path::PathBuf,
+    process::Command,
     sync::Arc,
     time::Duration,
 };
@@ -55,7 +56,7 @@ use tokio::{
     sync::mpsc::{self, UnboundedReceiver},
     time,
 };
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, info_span, trace};
 
 /// Main controller struct for the TUI. The app uses a React-ish architecture
 /// for the view, with a wrapping controller (this struct)
@@ -236,7 +237,8 @@ impl Tui {
             }
             Message::CollectionEdit => {
                 let path = self.collection_file.path().to_owned();
-                self.edit_file(&path)?
+                let command = get_editor_command(&path)?;
+                self.run_command(command)?;
             }
 
             Message::CopyRequestUrl(request_config) => {
@@ -261,8 +263,17 @@ impl Tui {
             }
 
             Message::EditFile { path, on_complete } => {
-                self.edit_file(&path)?;
+                let command = get_editor_command(&path)?;
+                self.run_command(command)?;
                 on_complete(path);
+                // The callback may queue an event to read the file, so we can't
+                // delete it yet. Caller is responsible for cleaning up
+            }
+            Message::ViewFile { path } => {
+                let command = get_viewer_command(&path)?;
+                self.run_command(command)?;
+                // We don't need to read the contents back so we can clean up
+                delete_temp_file(&path);
             }
 
             Message::Error { error } => self.view.open_modal(error),
@@ -423,13 +434,11 @@ impl Tui {
         Ok(())
     }
 
-    /// Open a file in the user's configured editor. **This will  block the main
-    /// thread**, because we assume we're opening a terminal editor and
-    /// therefore should yield the terminal to the editor.
-    fn edit_file(&mut self, path: &Path) -> anyhow::Result<()> {
-        let mut command = get_editor_command(path)?;
-        let error_context =
-            format!("Error spawning editor with command `{command:?}`");
+    /// Run a **blocking** subprocess that will take over the terminal. Used
+    /// for opening an external editor or viewer.
+    fn run_command(&mut self, mut command: Command) -> anyhow::Result<()> {
+        let span = info_span!("Running command", ?command).entered();
+        let error_context = format!("Error spawning command `{command:?}`");
 
         // Block while the editor runs. Useful for terminal editors since
         // they'll take over the whole screen. Potentially annoying for GUI
@@ -438,7 +447,10 @@ impl Tui {
         // subprocess took over the terminal and cut it loose if not, or add a
         // config field for it.
         self.terminal.draw(|frame| {
-            frame.render_widget("Waiting for editor to close...", frame.area());
+            frame.render_widget(
+                "Waiting for subprocess to close...",
+                frame.area(),
+            );
         })?;
 
         let mut stdout = io::stdout();
@@ -451,6 +463,7 @@ impl Tui {
         // other events were queued behind the event to open the editor).
         clear_event_buffer();
         crossterm::execute!(stdout, EnterAlternateScreen)?;
+        drop(span);
 
         // Redraw immediately. The main loop will probably be in the tick
         // timeout when we go back to it, so that adds a 250ms delay to

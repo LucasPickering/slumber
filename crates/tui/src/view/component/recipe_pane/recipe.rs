@@ -10,6 +10,7 @@ use crate::{
         },
         draw::{Draw, DrawMetadata},
         event::{Child, EventHandler},
+        state::Identified,
         util::persistence::PersistedLazy,
         Component,
     },
@@ -19,7 +20,7 @@ use persisted::SingletonKey;
 use ratatui::{
     layout::{Alignment, Layout},
     prelude::Constraint,
-    text::Span,
+    text::{Span, Text},
     widgets::Paragraph,
     Frame,
 };
@@ -29,6 +30,7 @@ use slumber_core::{
     collection::{Method, Recipe, RecipeId},
     http::BuildOptions,
 };
+use std::ops::Deref;
 use strum::{EnumCount, EnumIter};
 
 /// Display a recipe. Note a recipe *node*, this is for genuine bonafide recipe.
@@ -140,6 +142,14 @@ impl RecipeDisplay {
     /// Does the recipe have a body defined?
     pub fn has_body(&self) -> bool {
         self.body.data().is_some()
+    }
+
+    /// Get visible body text
+    pub fn body_text(
+        &self,
+    ) -> Option<impl '_ + Deref<Target = Identified<Text<'static>>>> {
+        let body = self.body.data().as_ref()?;
+        body.text()
     }
 }
 

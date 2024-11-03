@@ -63,6 +63,21 @@ impl RecipePane {
             options,
         })
     }
+
+    /// Execute a function with the recipe's body text, if available. Body text
+    /// is only available for recipes with non-form bodies.
+    pub fn with_body_text(&self, f: impl FnOnce(&Text)) {
+        let Some(state) = self.recipe_state.get() else {
+            return;
+        };
+        let Some(display) = state.data().as_ref() else {
+            return;
+        };
+        let Some(body_text) = display.body_text() else {
+            return;
+        };
+        f(&body_text)
+    }
 }
 
 impl EventHandler for RecipePane {
@@ -185,10 +200,12 @@ pub enum RecipeMenuAction {
     EditCollection,
     #[display("Copy URL")]
     CopyUrl,
-    #[display("Copy Body")]
-    CopyBody,
     #[display("Copy as cURL")]
     CopyCurl,
+    #[display("View Body")]
+    ViewBody,
+    #[display("Copy Body")]
+    CopyBody,
 }
 
 impl RecipeMenuAction {
@@ -200,7 +217,7 @@ impl RecipeMenuAction {
             if has_body {
                 &[]
             } else {
-                &[Self::CopyBody]
+                &[Self::CopyBody, Self::ViewBody]
             }
         } else {
             &[Self::CopyUrl, Self::CopyBody, Self::CopyCurl]

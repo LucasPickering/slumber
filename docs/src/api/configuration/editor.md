@@ -1,4 +1,6 @@
-# In-App Editing
+# In-App Editing and File Viewing
+
+## Editing
 
 Slumber supports editing your collection file without leaving the app. To do so, open the actions menu (`x` by default), then select `Edit Collection`. Slumber will open an external editor to modify the file. To determine which editor to use, Slumber checks these places in the following order:
 
@@ -16,3 +18,21 @@ editor: code --wait
 ```
 
 The command will be parsed like a shell command (although a shell is never actually invoked). For exact details on parsing behavior, see [shellish_parse](https://docs.rs/shellish_parse/latest/shellish_parse/index.html).
+
+## Viewing
+
+You can open your response bodies in a separate file browser if you additional features beyond what Slumber provides. To configure the command to use, set the `viewer` configuration field:
+
+```yaml
+viewer: bat
+```
+
+> The viewer command uses the same format as the `editor` field. The command is parsed with [shellish_parse](https://docs.rs/shellish_parse/latest/shellish_parse/index.html), then a temporary file path is passed as the final argument.
+
+To open a body in the viewer, use the actions menu keybinding (`x` by default, see [input bindings](./input_bindings.md)), and select `View Body`.
+
+Some popular file viewers:
+
+- [bat](https://github.com/sharkdp/bat)
+- [fx](https://fx.wtf/)
+- [jless](https://github.com/PaulJuliusMartinez/jless)

@@ -17,7 +17,10 @@ use crate::{
         draw::{Draw, DrawMetadata, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
         state::fixed_select::FixedSelectState,
-        util::persistence::{Persisted, PersistedLazy},
+        util::{
+            persistence::{Persisted, PersistedLazy},
+            view_text,
+        },
         Component, ViewContext,
     },
 };
@@ -262,13 +265,23 @@ impl PrimaryView {
             return;
         };
 
-        let message = match action {
-            RecipeMenuAction::EditCollection => Message::CollectionEdit,
-            RecipeMenuAction::CopyUrl => Message::CopyRequestUrl(config),
-            RecipeMenuAction::CopyBody => Message::CopyRequestBody(config),
-            RecipeMenuAction::CopyCurl => Message::CopyRequestCurl(config),
-        };
-        ViewContext::send_message(message);
+        match action {
+            RecipeMenuAction::EditCollection => {
+                ViewContext::send_message(Message::CollectionEdit)
+            }
+            RecipeMenuAction::CopyUrl => {
+                ViewContext::send_message(Message::CopyRequestUrl(config))
+            }
+            RecipeMenuAction::CopyCurl => {
+                ViewContext::send_message(Message::CopyRequestCurl(config))
+            }
+            RecipeMenuAction::CopyBody => {
+                ViewContext::send_message(Message::CopyRequestBody(config))
+            }
+            RecipeMenuAction::ViewBody => {
+                self.recipe_pane.data().with_body_text(view_text)
+            }
+        }
     }
 }
 

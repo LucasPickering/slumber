@@ -86,6 +86,8 @@ pub enum Message {
         #[debug(skip)]
         on_complete: Callback<PathBuf>,
     },
+    /// Open a file to be viewed in the user's external viewer
+    ViewFile { path: PathBuf },
 
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },

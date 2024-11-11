@@ -30,7 +30,7 @@ rusqlite = {version = "0.31.0", default-features = false, features = ["bundled",
 rusqlite_migration = "1.2.0"
 serde = {workspace = true, features = ["derive"]}
 serde_json = {version = "1.0.120", default-features = false, features = ["preserve_order"]}
-serde_json_path = "0.6.3"
+serde_json_path = {workspace = true}
 serde_yaml = {workspace = true}
 strum = {workspace = true, features = ["derive"]}
 thiserror = "1.0.63"

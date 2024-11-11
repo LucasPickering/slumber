@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add "View Body" action to response bodies, to open a body in an external viewer such as `less` or `fx` [#404](https://github.com/LucasPickering/slumber/issues/404)
+  - By default `less` is used. You can customize this with the [`viewer` config field](https://slumber.lucaspickering.me/book/api/configuration/editor.html)
+
 ### Changes
 
 - Preserve key order of objects in JSON responses [#405](https://github.com/LucasPickering/slumber/issues/405)

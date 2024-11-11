@@ -383,10 +383,7 @@ mod tests {
 
         // Assert state
         let data = component.data();
-        // Remove newline after this fix:
-        // https://github.com/ratatui-org/ratatui/pull/1320
-        let mut expected = String::from_utf8(TEXT.to_owned()).unwrap();
-        expected.push('\n');
+        let expected = String::from_utf8(TEXT.to_owned()).unwrap();
         assert_eq!(data.parsed_text().as_deref(), None);
         assert!(!data.query_available.get());
         assert_eq!(data.query, None);

@@ -218,16 +218,14 @@ mod tests {
             body: b"hello!".to_vec().into(),
             ..ResponseRecord::factory(())
         },
-        "hello!\n",
+        "hello!",
     )]
     #[case::binary_body(
         ResponseRecord {
             body: b"\x01\x02\x03\xff".to_vec().into(),
             ..ResponseRecord::factory(())
         },
-        // Remove newline after this fix:
-        // https://github.com/ratatui-org/ratatui/pull/1320
-        "01 02 03 ff\n"
+        "01 02 03 ff"
     )]
     #[tokio::test]
     async fn test_copy_body(

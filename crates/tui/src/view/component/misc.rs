@@ -19,7 +19,7 @@ use derive_more::Display;
 use ratatui::{
     prelude::Constraint,
     text::{Line, Text},
-    widgets::{Paragraph, Wrap},
+    widgets::Paragraph,
     Frame,
 };
 use slumber_core::template::{Prompt, Select};
@@ -46,10 +46,7 @@ impl EventHandler for ErrorModal {}
 
 impl Draw for ErrorModal {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        frame.render_widget(
-            Paragraph::new(self.0.generate()).wrap(Wrap::default()),
-            metadata.area(),
-        );
+        frame.render_widget(self.0.generate(), metadata.area());
     }
 }
 

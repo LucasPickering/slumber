@@ -21,7 +21,7 @@ use chrono::{DateTime, Duration, Local, Utc};
 use itertools::{Itertools, Position};
 use ratatui::{
     text::{Line, Span, Text},
-    widgets::{Block, Borders},
+    widgets::{Block, Borders, Paragraph, Wrap},
 };
 use reqwest::{header::HeaderValue, StatusCode};
 use slumber_core::{
@@ -197,36 +197,39 @@ impl Generate for &HeaderValue {
 
 impl Generate for &anyhow::Error {
     /// 'static because string is generated
-    type Output<'this> = Text<'static> where Self: 'this;
+    type Output<'this> = Paragraph<'static> where Self: 'this;
 
     fn generate<'this>(self) -> Self::Output<'this>
     where
         Self: 'this,
     {
         let chain = self.chain();
-        chain
-            .with_position()
-            .enumerate()
-            .map::<Line, _>(|(i, (position, error))| {
-                let icon = match position {
-                    Position::First | Position::Only => "",
-                    Position::Middle => "└┬",
-                    Position::Last => "└─",
+        let mut lines: Vec<Line> = Vec::new();
+        for (i, (position, error)) in chain.with_position().enumerate() {
+            let icon = match position {
+                Position::First | Position::Only => "",
+                Position::Middle => "└┬",
+                Position::Last => "└─",
+            };
+            for (position, line) in error.to_string().lines().with_position() {
+                let line = if let Position::First | Position::Only = position {
+                    format!(
+                        "{indent:width$}{icon}{line}",
+                        indent = "",
+                        width = i.saturating_sub(1)
+                    )
+                } else {
+                    line.to_owned()
                 };
-                format!(
-                    "{indent:width$}{icon}{error}",
-                    indent = "",
-                    width = i.saturating_sub(1)
-                )
-                .into()
-            })
-            .collect_vec()
-            .into()
+                lines.push(line.into());
+            }
+        }
+        Paragraph::new(lines).wrap(Wrap::default())
     }
 }
 
 impl Generate for &RequestBuildError {
-    type Output<'this> = Text<'static> where Self: 'this;
+    type Output<'this> = Paragraph<'static> where Self: 'this;
 
     fn generate<'this>(self) -> Self::Output<'this>
     where
@@ -238,7 +241,7 @@ impl Generate for &RequestBuildError {
 }
 
 impl Generate for &RequestError {
-    type Output<'this> = Text<'static> where Self: 'this;
+    type Output<'this> = Paragraph<'static> where Self: 'this;
 
     fn generate<'this>(self) -> Self::Output<'this>
     where

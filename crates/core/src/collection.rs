@@ -2,9 +2,7 @@
 //! possible
 
 mod cereal;
-mod insomnia;
 mod models;
-mod openapi;
 mod recipe_tree;
 
 pub use cereal::HasId;

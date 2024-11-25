@@ -194,10 +194,10 @@ fn parse_reference<T: ComponentKind>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::assert_err;
     use indexmap::{indexmap, IndexMap};
     use openapiv3::{Components, OAuth2Flows};
     use rstest::rstest;
+    use slumber_core::assert_err;
 
     #[rstest]
     #[case::simple("petstore_auth")]

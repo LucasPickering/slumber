@@ -10,15 +10,7 @@
 
 mod resolve;
 
-use crate::{
-    collection::{
-        openapi::resolve::ReferenceResolver, Authentication, Collection,
-        DuplicateRecipeIdError, Folder, Method, Profile, ProfileId, Recipe,
-        RecipeBody, RecipeId, RecipeNode, RecipeTree,
-    },
-    template::Template,
-    util::{ResultTraced, NEW_ISSUE_LINK},
-};
+use crate::openapi::resolve::ReferenceResolver;
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -28,58 +20,64 @@ use openapiv3::{
     PathItem, PathStyle, Paths, ReferenceOr, RequestBody, Schema,
     SecurityScheme, Server,
 };
+use slumber_core::{
+    collection::{
+        Authentication, Collection, DuplicateRecipeIdError, Folder, Method,
+        Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
+        RecipeTree,
+    },
+    template::Template,
+    util::{ResultTraced, NEW_ISSUE_LINK},
+};
 use std::{fs::File, iter, path::Path};
 use strum::IntoEnumIterator;
 use tracing::{debug, error, info, warn};
 
-impl Collection {
-    /// Loads a collection from an OpenAPI v3 specification file
-    pub fn from_openapi(
-        openapi_file: impl AsRef<Path>,
-    ) -> anyhow::Result<Self> {
-        let path = openapi_file.as_ref();
-        info!(file = ?path, "Loading OpenAPI collection");
-        warn!(
-            "The OpenAPI importer is approximate. Some features are missing \
+/// Loads a collection from an OpenAPI v3 specification file
+pub fn from_openapi(
+    openapi_file: impl AsRef<Path>,
+) -> anyhow::Result<Collection> {
+    let path = openapi_file.as_ref();
+    info!(file = ?path, "Loading OpenAPI collection");
+    warn!(
+        "The OpenAPI importer is approximate. Some features are missing \
             and it may not give you an equivalent or fulling functional
             collection. If you encounter a bug or would like to request support
             for a particular OpenAPI feature, please open an issue:
             {NEW_ISSUE_LINK}"
-        );
+    );
 
-        let file = File::open(path).context(format!(
-            "Error opening OpenAPI collection file {path:?}"
-        ))?;
+    let file = File::open(path)
+        .context(format!("Error opening OpenAPI collection file {path:?}"))?;
 
-        // The format can be YAML or JSON, so we can just treat it all as YAML
-        let OpenAPI {
-            openapi: openapi_version,
-            components,
-            paths,
-            servers,
-            ..
-        } = serde_yaml::from_reader(file).context(format!(
-            "Error deserializing OpenAPI collection file {path:?}"
-        ))?;
+    // The format can be YAML or JSON, so we can just treat it all as YAML
+    let OpenAPI {
+        openapi: openapi_version,
+        components,
+        paths,
+        servers,
+        ..
+    } = serde_yaml::from_reader(file).context(format!(
+        "Error deserializing OpenAPI collection file {path:?}"
+    ))?;
 
-        if !openapi_version.starts_with("3.0.") {
-            warn!(
-                "Importer currently only supports OpenAPI v3.0, this spec is
+    if !openapi_version.starts_with("3.0.") {
+        warn!(
+            "Importer currently only supports OpenAPI v3.0, this spec is
                 version {openapi_version}. We'll try the import anyway, but you
                 may experience issues."
-            )
-        }
-
-        let profiles = build_profiles(servers);
-        let recipes = build_recipe_tree(paths, components)?;
-
-        Ok(Collection {
-            profiles,
-            recipes,
-            chains: IndexMap::new(),
-            _ignore: serde::de::IgnoredAny,
-        })
+        )
     }
+
+    let profiles = build_profiles(servers);
+    let recipes = build_recipe_tree(paths, components)?;
+
+    Ok(Collection {
+        profiles,
+        recipes,
+        chains: IndexMap::new(),
+        _ignore: serde::de::IgnoredAny,
+    })
 }
 
 /// Build one profile per server
@@ -636,12 +634,12 @@ impl<'a> RecipeBuilder<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{collection::Collection, test_util::test_data_dir};
     use indexmap::indexmap;
     use openapiv3::{Example, Schema, SchemaData, SchemaKind, Type};
     use pretty_assertions::assert_eq;
     use rstest::{fixture, rstest};
     use serde_json::json;
+    use slumber_core::{collection::Collection, test_util::test_data_dir};
     use std::{path::PathBuf, sync::OnceLock};
 
     const OPENAPIV3_FILE: &str = "openapiv3_petstore.yml";
@@ -655,8 +653,7 @@ mod tests {
     #[rstest]
     fn test_openapiv3_import(test_data_dir: PathBuf) {
         let imported =
-            Collection::from_openapi(test_data_dir.join(OPENAPIV3_FILE))
-                .unwrap();
+            from_openapi(test_data_dir.join(OPENAPIV3_FILE)).unwrap();
         let expected =
             Collection::load(&test_data_dir.join(OPENAPIV3_IMPORTED_FILE))
                 .unwrap();

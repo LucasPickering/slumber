@@ -1,77 +1,76 @@
 //! Import request collections from Insomnia. Based on the Insomnia v4 export
 //! format
 
-use crate::{
-    collection::{
-        self, cereal::deserialize_from_str, Chain, ChainId, ChainSource,
-        Collection, Folder, HasId, Method, Profile, ProfileId, Recipe,
-        RecipeBody, RecipeId, RecipeNode, RecipeTree, SelectorMode,
-    },
-    http::content_type::ContentType,
-    template::{Identifier, Template},
-    util::NEW_ISSUE_LINK,
-};
 use anyhow::{anyhow, Context};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use mime::Mime;
 use reqwest::header;
-use serde::{Deserialize, Deserializer};
-use std::{collections::HashMap, fs::File, path::Path};
+use serde::{de::Error as _, Deserialize, Deserializer};
+use slumber_core::{
+    collection::{
+        self, Chain, ChainId, ChainSource, Collection, Folder, HasId, Method,
+        Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
+        RecipeTree, SelectorMode,
+    },
+    http::content_type::ContentType,
+    template::{Identifier, Template},
+    util::NEW_ISSUE_LINK,
+};
+use std::{
+    collections::HashMap, fmt::Display, fs::File, path::Path, str::FromStr,
+};
 use tracing::{debug, error, info, warn};
 
-impl Collection {
-    /// Convert an Insomnia exported collection into the slumber format. This
-    /// supports YAML *or* JSON input.
-    ///
-    /// This is not async because it's only called by the CLI, where we don't
-    /// care about blocking. It keeps the code simpler.
-    pub fn from_insomnia(
-        insomnia_file: impl AsRef<Path>,
-    ) -> anyhow::Result<Self> {
-        let insomnia_file = insomnia_file.as_ref();
-        // First, deserialize into the insomnia format
-        info!(file = ?insomnia_file, "Loading Insomnia collection");
-        warn!(
-            "The Insomnia importer is approximate. Some features are missing \
+/// Convert an Insomnia exported collection into the slumber format. This
+/// supports YAML *or* JSON input.
+///
+/// This is not async because it's only called by the CLI, where we don't
+/// care about blocking. It keeps the code simpler.
+pub fn from_insomnia(
+    insomnia_file: impl AsRef<Path>,
+) -> anyhow::Result<Collection> {
+    let insomnia_file = insomnia_file.as_ref();
+    // First, deserialize into the insomnia format
+    info!(file = ?insomnia_file, "Loading Insomnia collection");
+    warn!(
+        "The Insomnia importer is approximate. Some features are missing \
             and it most likely will not give you an equivalent collection. If \
             you would like to request support for a particular Insomnia \
             feature, please open an issue: {NEW_ISSUE_LINK}"
-        );
-        let file = File::open(insomnia_file).context(format!(
-            "Error opening Insomnia collection file {insomnia_file:?}"
+    );
+    let file = File::open(insomnia_file).context(format!(
+        "Error opening Insomnia collection file {insomnia_file:?}"
+    ))?;
+    // The format can be YAML or JSON, so we can just treat it all as YAML
+    let mut insomnia: Insomnia =
+        serde_yaml::from_reader(file).context(format!(
+            "Error deserializing Insomnia collection file {insomnia_file:?}"
         ))?;
-        // The format can be YAML or JSON, so we can just treat it all as YAML
-        let mut insomnia: Insomnia =
-            serde_yaml::from_reader(file).context(format!(
-                "Error deserializing Insomnia collection file {insomnia_file:?}"
-            ))?;
 
-        // Match Insomnia's visual order. This isn't entirely accurate because
-        // Insomnia reorders folders/requests according to the tree structure,
-        // but it should get us the right order within each layer
-        insomnia.resources.sort_by_key(Resource::sort_key);
+    // Match Insomnia's visual order. This isn't entirely accurate because
+    // Insomnia reorders folders/requests according to the tree structure,
+    // but it should get us the right order within each layer
+    insomnia.resources.sort_by_key(Resource::sort_key);
 
-        let Grouped {
-            workspace_id,
-            environments,
-            request_groups,
-            requests,
-        } = Grouped::group(insomnia)?;
+    let Grouped {
+        workspace_id,
+        environments,
+        request_groups,
+        requests,
+    } = Grouped::group(insomnia)?;
 
-        // Convert everything we care about
-        let profiles = build_profiles(&workspace_id, environments);
-        let chains = build_chains(&requests);
-        let recipes =
-            build_recipe_tree(&workspace_id, request_groups, requests)?;
+    // Convert everything we care about
+    let profiles = build_profiles(&workspace_id, environments);
+    let chains = build_chains(&requests);
+    let recipes = build_recipe_tree(&workspace_id, request_groups, requests)?;
 
-        Ok(Collection {
-            profiles,
-            recipes,
-            chains,
-            _ignore: serde::de::IgnoredAny,
-        })
-    }
+    Ok(Collection {
+        profiles,
+        recipes,
+        chains,
+        _ignore: serde::de::IgnoredAny,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -575,6 +574,17 @@ fn build_recipe_tree(
     Ok(RecipeTree::new(tree)?)
 }
 
+/// Deserialize a value using its `FromStr` implementation
+fn deserialize_from_str<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: FromStr,
+    T::Err: Display,
+{
+    let s = String::deserialize(deserializer)?;
+    s.parse().map_err(D::Error::custom)
+}
+
 /// For some fucked reason, Insomnia uses empty map instead of `null` for empty
 /// values in some cases. This function deserializes that to a regular Option.
 fn deserialize_shitty_option<'de, T, D>(
@@ -603,12 +613,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::test_data_dir;
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde::de::DeserializeOwned;
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
+    use slumber_core::test_util::test_data_dir;
     use std::{fmt::Debug, path::PathBuf};
 
     const INSOMNIA_FILE: &str = "insomnia.json";
@@ -622,8 +632,7 @@ mod tests {
     #[rstest]
     fn test_insomnia_import(test_data_dir: PathBuf) {
         let imported =
-            Collection::from_insomnia(test_data_dir.join(INSOMNIA_FILE))
-                .unwrap();
+            from_insomnia(test_data_dir.join(INSOMNIA_FILE)).unwrap();
         let expected =
             Collection::load(&test_data_dir.join(INSOMNIA_IMPORTED_FILE))
                 .unwrap();

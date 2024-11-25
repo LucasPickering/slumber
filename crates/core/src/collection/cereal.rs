@@ -19,7 +19,7 @@ use serde::{
     ser::Error as _,
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::{fmt::Display, hash::Hash, str::FromStr};
+use std::{hash::Hash, str::FromStr};
 
 /// A type that has an `id` field. This is ripe for a derive macro, maybe a fun
 /// project some day?
@@ -104,17 +104,6 @@ where
         v.set_id(k.clone());
     }
     Ok(map)
-}
-
-/// Deserialize a value using its `FromStr` implementation
-pub fn deserialize_from_str<'de, D, T>(deserializer: D) -> Result<T, D::Error>
-where
-    D: Deserializer<'de>,
-    T: FromStr,
-    T::Err: Display,
-{
-    let s = String::deserialize(deserializer)?;
-    s.parse().map_err(D::Error::custom)
 }
 
 /// Deserialize a profile mapping. This also enforces that only one profile is

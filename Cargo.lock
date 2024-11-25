@@ -2361,6 +2361,7 @@ dependencies = [
  "serde_yaml",
  "slumber_config",
  "slumber_core",
+ "slumber_import",
  "tokio",
  "tracing",
 ]
@@ -2399,7 +2400,6 @@ dependencies = [
  "indexmap",
  "itertools",
  "mime",
- "openapiv3",
  "pretty_assertions",
  "proptest",
  "proptest-derive",
@@ -2422,6 +2422,29 @@ dependencies = [
  "uuid",
  "winnow",
  "wiremock",
+]
+
+[[package]]
+name = "slumber_import"
+version = "2.3.0"
+dependencies = [
+ "anyhow",
+ "indexmap",
+ "itertools",
+ "mime",
+ "openapiv3",
+ "pretty_assertions",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "serde_test",
+ "serde_yaml",
+ "slumber_core",
+ "strum",
+ "thiserror",
+ "tracing",
+ "winnow",
 ]
 
 [[package]]

@@ -1,36 +1,37 @@
 [package]
 authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
-description = "Command line interface for Slumber. Not intended for external use."
+description = "Import from other formats to Slumber collections. Not intended for external use."
 edition = "2021"
 homepage = "https://slumber.lucaspickering.me"
 keywords = ["rest", "http", "terminal", "tui"]
 license = "MIT"
-name = "slumber_cli"
+name = "slumber_import"
 repository = "https://github.com/LucasPickering/slumber"
 version = "2.3.0"
 # Rely on parent for rust-version
 
 [dependencies]
 anyhow = {workspace = true}
-clap = {version = "4.4.2", features = ["derive"]}
-clap_complete = {version = "4.5.29", features = ["unstable-dynamic"]}
-dialoguer = {version = "0.11.0", default-features = false, features = ["password"]}
-indexmap = {workspace = true}
+indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
+mime = {workspace = true}
+openapiv3 = "2.0.0"
 reqwest = {workspace = true}
 serde = {workspace = true}
+serde_json = {workspace = true}
 serde_yaml = {workspace = true}
-slumber_config = {workspace = true}
 slumber_core = {workspace = true}
-slumber_import = {workspace = true}
+strum = {workspace = true}
+thiserror = {workspace = true}
 tracing = {workspace = true}
+winnow = {workspace = true}
 
 [dev-dependencies]
-env-lock = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
-slumber_core = {workspace = true, features = ["test"]}
-tokio = {workspace = true, features = ["rt", "macros"]}
+serde_test = {workspace = true}
+
+[features]
 
 [package.metadata.release]
 tag = false

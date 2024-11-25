@@ -383,7 +383,6 @@ mod tests {
 
         // Assert state
         let data = component.data();
-        let expected = String::from_utf8(TEXT.to_owned()).unwrap();
         assert_eq!(data.parsed_text().as_deref(), None);
         assert!(!data.query_available.get());
         assert_eq!(data.query, None);

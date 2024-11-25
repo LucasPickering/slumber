@@ -9,6 +9,7 @@ pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 
+use crate::lua::LuaVm;
 use anyhow::{anyhow, Context};
 use itertools::Itertools;
 use std::{
@@ -25,10 +26,10 @@ use tracing::{trace, warn};
 /// support loading from one file at a time, so if more than one of these is
 /// defined, we'll take the earliest and print a warning.
 const CONFIG_FILES: &[&str] = &[
-    "slumber.yml",
-    "slumber.yaml",
-    ".slumber.yml",
-    ".slumber.yaml",
+    "slumber.luau",
+    "slumber.lua",
+    ".slumber.luau",
+    ".slumber.lua",
 ];
 
 /// A wrapper around a request collection, to handle functionality around the
@@ -155,7 +156,7 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
     // YAML parsing is blocking so do it in a different thread. We could use
     // tokio::fs for this but that just uses std::fs underneath anyway.
-    task::spawn_blocking(move || Collection::load(&path))
+    task::spawn_blocking(move || Ok(LuaVm::new().load_collection(&path)?))
         .await
         // This error only occurs if the task panics
         .context("Error parsing collection")?
@@ -261,7 +262,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "command_stdin".into(),
@@ -273,7 +274,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "command_trim_none".into(),
@@ -282,7 +283,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "command_trim_start".into(),
@@ -291,7 +292,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::Start,
+                    trim: TrimMode::Start,
                 },
                 Chain {
                     id: "command_trim_end".into(),
@@ -300,7 +301,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::End,
+                    trim: TrimMode::End,
                 },
                 Chain {
                     id: "command_trim_both".into(),
@@ -309,7 +310,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::Both,
+                    trim: TrimMode::Both,
                 },
                 Chain {
                     id: "prompt_sensitive".into(),
@@ -321,7 +322,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "prompt_default".into(),
@@ -333,7 +334,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "file".into(),
@@ -344,7 +345,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "file_content_type".into(),
@@ -355,93 +356,93 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: Some(ContentType::Json),
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_selector".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: Some("$.data".parse().unwrap()),
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_trigger_never".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_trigger_no_history".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_trigger_expire".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Expire(
-                            Duration::from_secs(12 * 60 * 60),
-                        ),
+                        trigger: RequestTrigger::Expire(Duration::from_secs(
+                            12 * 60 * 60,
+                        )),
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_trigger_always".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_section_body".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_section_header".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Header(
                             "content-type".into(),
                         ),
@@ -450,7 +451,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
             ]),
             recipes: by_id([

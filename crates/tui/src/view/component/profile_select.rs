@@ -240,10 +240,6 @@ impl HasId for ProfileListItem {
     fn id(&self) -> &Self::Id {
         &self.id
     }
-
-    fn set_id(&mut self, id: Self::Id) {
-        self.id = id;
-    }
 }
 
 impl PartialEq<ProfileListItem> for ProfileId {

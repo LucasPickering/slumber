@@ -1,8 +1,8 @@
 //! Parsing and stringification for templates
 
 use crate::{
-    collection::ChainId,
-    template::{error::TemplateParseError, Identifier, Template, TemplateKey},
+    lua::LuaFunction,
+    template::{error::TemplateParseError, Template, TemplateExpression},
 };
 #[cfg(test)]
 use proptest::strategy::Strategy;
@@ -18,7 +18,7 @@ use winnow::{
         alt, cut_err, eof, not, peek, preceded, repeat, repeat_till, terminated,
     },
     error::StrContext,
-    token::{any, take_while},
+    token::{any, take_until},
     PResult, Parser,
 };
 
@@ -28,24 +28,29 @@ const ESCAPE: &str = "_";
 const KEY_OPEN: &str = "{{";
 /// Marks the end of a template key
 const KEY_CLOSE: &str = "}}";
-// Export these so they can be used in TemplateKey's Display impl
-pub const CHAIN_PREFIX: &str = "chains.";
-pub const ENV_PREFIX: &str = "env.";
 
 impl Template {
-    /// Create a template that renders a single field, equivalent to
-    /// `{{<field>}}`
-    pub fn from_field(field: Identifier) -> Self {
+    /// Create a template that renders a single profile field, equivalent to
+    /// `{{profile().<field>}}`
+    pub fn from_field(field: &str) -> Self {
+        // Escape single quotes in key names
+        let field = field.replace("'", "\\'");
+        let source = format!("profile()['{field}']");
         Self {
-            chunks: vec![TemplateInputChunk::Key(TemplateKey::Field(field))],
+            chunks: vec![TemplateInputChunk::Expression(TemplateExpression {
+                source,
+            })],
         }
     }
 
-    /// Create a template that renders a single chain, equivalent to
-    /// `{{chains.<id>}}`
-    pub fn from_chain(id: ChainId) -> Self {
+    /// Generate Lua source code for a function call. Useful for collection
+    /// importers that need to generate a Lua collection.
+    pub fn from_function(f: &impl LuaFunction) -> Self {
+        let source = f.to_source();
         Self {
-            chunks: vec![TemplateInputChunk::Key(TemplateKey::Chain(id))],
+            chunks: vec![TemplateInputChunk::Expression(TemplateExpression {
+                source,
+            })],
         }
     }
 
@@ -96,7 +101,7 @@ impl Template {
                         buf.to_mut().push_str(&s[last_copied..]);
                     }
                 }
-                TemplateInputChunk::Key(key) => {
+                TemplateInputChunk::Expression(key) => {
                     // If the previous chunk ends with a potential escape
                     // sequence, add an underscore to escape the upcoming key
                     static REGEX: LazyLock<Regex> =
@@ -124,35 +129,6 @@ impl FromStr for Template {
     }
 }
 
-impl Identifier {
-    /// Which characters are allowed in identifiers?
-    fn is_char_allowed(c: char) -> bool {
-        c.is_alphanumeric() || "-_".contains(c)
-    }
-
-    /// Generate an identifier from a string, replacing all invalid chars with
-    /// a placeholder. Panic if the string is empty.
-    pub fn escape(value: &str) -> Self {
-        if value.is_empty() {
-            panic!("Cannot create identifier from empty string");
-        }
-        Self(
-            value
-                .chars()
-                .map(|c| if Self::is_char_allowed(c) { c } else { '_' })
-                .collect(),
-        )
-    }
-}
-
-impl FromStr for Identifier {
-    type Err = TemplateParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(identifier.parse(s)?)
-    }
-}
-
 /// A parsed piece of a template. After parsing, each chunk is either raw text
 /// or a parsed key, ready to be rendered.
 #[derive(Clone, Debug, PartialEq)]
@@ -167,7 +143,8 @@ pub enum TemplateInputChunk {
         #[cfg_attr(test, proptest(strategy = "\".+\".prop_map(Arc::new)"))]
         Arc<String>,
     ),
-    Key(TemplateKey),
+    /// A Lua expression
+    Expression(TemplateExpression),
 }
 
 /// Parse a template into keys and raw text
@@ -179,7 +156,7 @@ fn all_chunks(input: &mut &str) -> PResult<Vec<TemplateInputChunk>> {
     repeat_till(
         0..,
         alt((
-            key.map(TemplateInputChunk::Key),
+            expression.map(TemplateInputChunk::Expression),
             raw.map(TemplateInputChunk::Raw),
         ))
         .context(StrContext::Label("template chunk")),
@@ -224,41 +201,24 @@ fn escape_sequence<'a>(input: &mut &'a str) -> PResult<&'a str> {
     .parse_next(input)
 }
 
-/// Parse a template key
-fn key(input: &mut &str) -> PResult<TemplateKey> {
+/// Parse a template expression
+fn expression(input: &mut &str) -> PResult<TemplateExpression> {
     preceded(
         KEY_OPEN,
-        // Any error inside a template key is fatal, including an unclosed key
-        cut_err(terminated(key_contents, KEY_CLOSE)),
+        // Any error inside an expression is fatal, including an unclosed key
+        cut_err(terminated(lua_expression, KEY_CLOSE)),
     )
     .context(StrContext::Label("key"))
     .parse_next(input)
 }
 
-/// Parse the contents of a key (inside the `{{ }}`)
-fn key_contents(input: &mut &str) -> PResult<TemplateKey> {
-    alt((
-        preceded(
-            CHAIN_PREFIX,
-            identifier.map(|id| TemplateKey::Chain(id.into())),
-        )
-        .context(StrContext::Label("chain")),
-        preceded(ENV_PREFIX, identifier.map(TemplateKey::Environment))
-            .context(StrContext::Label("environment")),
-        identifier
-            .map(TemplateKey::Field)
-            .context(StrContext::Label("field")),
-    ))
-    .parse_next(input)
-}
-
-/// Parse a field name/chain ID/env variable etc, inside a key. See [Identifier]
-/// for the definition of allowed syntax.
-fn identifier(input: &mut &str) -> PResult<Identifier> {
-    take_while(1.., Identifier::is_char_allowed)
-        .map(|id: &str| Identifier(id.to_owned()))
-        .context(StrContext::Label("identifier"))
-        .parse_next(input)
+/// Parse everything up to the next `}}`, which should constitute a valid Lua
+/// expression.
+fn lua_expression(input: &mut &str) -> PResult<TemplateExpression> {
+    let source = take_until(1.., KEY_CLOSE)
+        .context(StrContext::Label("expression"))
+        .parse_next(input)?;
+    Ok(TemplateExpression::new(source.to_owned()))
 }
 
 #[cfg(test)]
@@ -284,17 +244,21 @@ mod tests {
 
     /// Shorthand for creating a field key chunk
     fn key_field(field: &'static str) -> TemplateInputChunk {
-        TemplateInputChunk::Key(TemplateKey::Field(field.into()))
+        TemplateInputChunk::Expression(TemplateExpression::Field(field.into()))
     }
 
     /// Shorthand for creating an env key chunk
     fn key_env(variable: &'static str) -> TemplateInputChunk {
-        TemplateInputChunk::Key(TemplateKey::Environment(variable.into()))
+        TemplateInputChunk::Expression(TemplateExpression::Environment(
+            variable.into(),
+        ))
     }
 
     /// Shorthand for creating a chain key chunk
     fn key_chain(chain_id: &'static str) -> TemplateInputChunk {
-        TemplateInputChunk::Key(TemplateKey::Chain(chain_id.into()))
+        TemplateInputChunk::Expression(TemplateExpression::Chain(
+            chain_id.into(),
+        ))
     }
 
     /// Test round tripping between raw strings and templates. Parse, display,

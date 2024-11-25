@@ -55,7 +55,7 @@ impl AuthenticationDisplay {
                     selected_field: Default::default(),
                 }
             }
-            Authentication::Bearer(token) => State::Bearer {
+            Authentication::Bearer { token } => State::Bearer {
                 token: RecipeTemplate::new(
                     RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
                     token,
@@ -78,9 +78,9 @@ impl AuthenticationDisplay {
                     // See note on field def for why we always use Some
                     password: Some(password.template().clone()),
                 },
-                State::Bearer { token, .. } => {
-                    Authentication::Bearer(token.template().clone())
-                }
+                State::Bearer { token, .. } => Authentication::Bearer {
+                    token: token.template().clone(),
+                },
             })
         } else {
             None

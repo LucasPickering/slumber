@@ -224,10 +224,6 @@ impl HasId for RecipeListItem {
     fn id(&self) -> &Self::Id {
         &self.id
     }
-
-    fn set_id(&mut self, id: Self::Id) {
-        self.id = id;
-    }
 }
 
 impl PartialEq<RecipeListItem> for RecipeId {

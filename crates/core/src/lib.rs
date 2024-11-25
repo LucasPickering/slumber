@@ -10,6 +10,7 @@
 pub mod collection;
 pub mod db;
 pub mod http;
+pub mod lua;
 pub mod template;
 #[cfg(any(test, feature = "test"))]
 pub mod test_util;

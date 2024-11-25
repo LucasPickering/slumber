@@ -619,7 +619,7 @@ impl PartialEq for ResponseBody {
 
 /// An error that can occur while *building* a request
 #[derive(Debug, Error)]
-#[error("Error building request {id}")]
+#[error("Error building request `{id}`")]
 pub struct RequestBuildError {
     /// There are multiple possible error types and anyhow's Error makes
     /// display easier

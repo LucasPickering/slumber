@@ -191,7 +191,7 @@ fn init_body(request: &RequestRecord) -> Option<Identified<Text<'static>>> {
 
                 Some(
                     Text::raw(format!(
-                        "Body not available. Streamed bodies, or bodies over \
+                        "Body not available; streamed bodies, or bodies over \
                         {}, are not persisted",
                         format_byte_size(config.http.large_body_size)
                     ))

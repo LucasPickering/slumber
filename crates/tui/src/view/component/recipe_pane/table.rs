@@ -280,10 +280,6 @@ impl<K: PersistedKey<Value = bool>> HasId for RowState<K> {
     fn id(&self) -> &Self::Id {
         &self.key
     }
-
-    fn set_id(&mut self, id: Self::Id) {
-        self.key = id;
-    }
 }
 
 /// Needed for SelectState persistence

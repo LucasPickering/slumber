@@ -72,12 +72,7 @@ pub fn from_openapi(
     let profiles = build_profiles(servers);
     let recipes = build_recipe_tree(paths, components)?;
 
-    Ok(Collection {
-        profiles,
-        recipes,
-        chains: IndexMap::new(),
-        _ignore: serde::de::IgnoredAny,
-    })
+    Ok(Collection { profiles, recipes })
 }
 
 /// Build one profile per server
@@ -411,10 +406,8 @@ impl<'a> RecipeBuilder<'a> {
                 } => match scheme.as_str() {
                     "Basic" | "basic" => {
                         self.authentication = Some(Authentication::Basic {
-                            username: Template::from_field("username".into()),
-                            password: Some(Template::from_field(
-                                "password".into(),
-                            )),
+                            username: Template::from_field("username"),
+                            password: Some(Template::from_field("password")),
                         });
                     }
                     "Bearer" | "bearer" => {
@@ -423,7 +416,7 @@ impl<'a> RecipeBuilder<'a> {
                             .map(Template::raw)
                             .unwrap_or_default();
                         self.authentication =
-                            Some(Authentication::Bearer(template));
+                            Some(Authentication::Bearer { token: template });
                     }
                     unsupported => {
                         error!(
@@ -433,14 +426,13 @@ impl<'a> RecipeBuilder<'a> {
                 },
                 SecurityScheme::APIKey { location, name, .. } => match location
                 {
-                    APIKeyLocation::Query => self.query.push((
-                        name.clone(),
-                        Template::from_field("api_key".into()),
-                    )),
+                    APIKeyLocation::Query => self
+                        .query
+                        .push((name.clone(), Template::from_field("api_key"))),
                     APIKeyLocation::Header => {
                         self.headers.insert(
                             name.clone(),
-                            Template::from_field("api_key".into()),
+                            Template::from_field("api_key"),
                         );
                     }
                     APIKeyLocation::Cookie => {

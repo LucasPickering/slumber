@@ -2,6 +2,7 @@
 
 pub mod highlight;
 pub mod persistence;
+pub mod query;
 
 use crate::{message::Message, util::temp_file, view::ViewContext};
 use anyhow::Context;

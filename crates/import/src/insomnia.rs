@@ -9,12 +9,12 @@ use reqwest::header;
 use serde::{de::Error as _, Deserialize, Deserializer};
 use slumber_core::{
     collection::{
-        self, Chain, ChainId, ChainSource, Collection, Folder, HasId, Method,
-        Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
-        RecipeTree, SelectorMode,
+        self, Collection, Folder, HasId, Method, Profile, ProfileId, Recipe,
+        RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     http::content_type::ContentType,
-    template::{Identifier, Template},
+    lua::FileFn,
+    template::Template,
     util::NEW_ISSUE_LINK,
 };
 use std::{
@@ -62,15 +62,9 @@ pub fn from_insomnia(
 
     // Convert everything we care about
     let profiles = build_profiles(&workspace_id, environments);
-    let chains = build_chains(&requests);
     let recipes = build_recipe_tree(&workspace_id, request_groups, requests)?;
 
-    Ok(Collection {
-        profiles,
-        recipes,
-        chains,
-        _ignore: serde::de::IgnoredAny,
-    })
+    Ok(Collection { profiles, recipes })
 }
 
 #[derive(Debug, Deserialize)]
@@ -209,7 +203,6 @@ impl Body {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FormParam {
-    id: String,
     name: String,
     value: String,
     /// Variant of param. This is omitted by Insomnia for simple text params,
@@ -394,15 +387,16 @@ impl From<FormParam> for (String, Template) {
         match param.kind {
             // Simple string, map to a raw template
             FormParamKind::String => (param.name, Template::raw(param.value)),
-            // We'll map this to a chain that loads the file. The ID of the
-            // chain is the ID of this param. We're banking on that chain being
-            // created elsewhere. It's a bit spaghetti but otherwise we'd need
-            // mutable access to the entire collection, which I think would end
-            // up with even more spaghetti
-            FormParamKind::File => (
-                param.name,
-                Template::from_chain(Identifier::escape(&param.id).into()),
-            ),
+            // Load data from a file
+            FormParamKind::File => {
+                // If file name isn't available, fall back to an empty string
+                error!("Missing file name for form param `{}`", param.name);
+                let path = param.file_name.unwrap_or_default();
+                (
+                    param.name,
+                    Template::from_function(&FileFn { path: path.into() }),
+                )
+            }
         }
     }
 }
@@ -420,7 +414,9 @@ impl TryFrom<Authentication> for collection::Authentication {
                 })
             }
             Authentication::Bearer { token } => {
-                Ok(collection::Authentication::Bearer(Template::raw(token)))
+                Ok(collection::Authentication::Bearer {
+                    token: Template::raw(token),
+                })
             }
             // Caller should print a warning for this
             Authentication::Other { kind } => Err(kind),
@@ -475,53 +471,6 @@ fn build_profiles(
             )
         })
         .collect()
-}
-
-/// Build up all the chains we need to represent the Insomnia collection.
-/// Chains don't map 1:1 with any Insomnia resource. They generally are an
-/// explicit representation of some implicit Insomnia behavior, so we have to
-/// crawl over the Insomnia collection to find where chains need to exist. For
-/// each generated chain, we'll need to pick a consistent ID so the consumer can
-/// link to the same chain.
-fn build_chains(requests: &[Request]) -> IndexMap<ChainId, Chain> {
-    let mut chains = IndexMap::new();
-
-    for request in requests {
-        debug!("Generating chains for request `{}`", request.id);
-
-        // Any multipart form param that references a file needs a chain
-        for param in request.body.iter().flat_map(|body| &body.params) {
-            debug!("Generating chains for form parameter `{}`", param.id);
-
-            if let FormParamKind::File = param.kind {
-                let id: ChainId = Identifier::escape(&param.id).into();
-                let Some(path) = &param.file_name else {
-                    error!(
-                        "Form param `{}` is of type `file` \
-                        but missing `file_name` field",
-                        param.id
-                    );
-                    continue;
-                };
-                chains.insert(
-                    id.clone(),
-                    Chain {
-                        id,
-                        source: ChainSource::File {
-                            path: Template::raw(path.to_owned()),
-                        },
-                        sensitive: false,
-                        selector: None,
-                        selector_mode: SelectorMode::default(),
-                        content_type: None,
-                        trim: Default::default(),
-                    },
-                );
-            }
-        }
-    }
-
-    chains
 }
 
 /// Expand the flat list of Insomnia resources into a recipe tree
@@ -618,24 +567,24 @@ mod tests {
     use rstest::rstest;
     use serde::de::DeserializeOwned;
     use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
-    use slumber_core::test_util::test_data_dir;
-    use std::{fmt::Debug, path::PathBuf};
+    use slumber_core::{lua::LuaVm, test_util::test_data_dir};
+    use std::fmt::Debug;
 
     const INSOMNIA_FILE: &str = "insomnia.json";
     /// Assertion expectation is stored in a separate file. This is for a couple
     /// reasons:
     /// - It's huge so it makes code hard to navigate
     /// - Changes don't require a re-compile
-    const INSOMNIA_IMPORTED_FILE: &str = "insomnia_imported.yml";
+    const INSOMNIA_IMPORTED_FILE: &str = "insomnia_imported.luau";
 
     /// Catch-all test for insomnia import
     #[rstest]
-    fn test_insomnia_import(test_data_dir: PathBuf) {
-        let imported =
-            from_insomnia(test_data_dir.join(INSOMNIA_FILE)).unwrap();
-        let expected =
-            Collection::load(&test_data_dir.join(INSOMNIA_IMPORTED_FILE))
-                .unwrap();
+    fn test_insomnia_import() {
+        let dir = test_data_dir();
+        let imported = from_insomnia(dir.join(INSOMNIA_FILE)).unwrap();
+        let expected = LuaVm::new()
+            .load_collection(&dir.join(INSOMNIA_IMPORTED_FILE))
+            .unwrap();
         assert_eq!(imported, expected);
     }
 

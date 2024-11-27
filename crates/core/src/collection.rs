@@ -9,6 +9,7 @@ pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 
+use crate::lua::LuaVm;
 use anyhow::{anyhow, Context};
 use itertools::Itertools;
 use std::{
@@ -25,10 +26,10 @@ use tracing::{trace, warn};
 /// support loading from one file at a time, so if more than one of these is
 /// defined, we'll take the earliest and print a warning.
 const CONFIG_FILES: &[&str] = &[
-    "slumber.yml",
-    "slumber.yaml",
-    ".slumber.yml",
-    ".slumber.yaml",
+    "slumber.luau",
+    "slumber.lua",
+    ".slumber.luau",
+    ".slumber.lua",
 ];
 
 /// A wrapper around a request collection, to handle functionality around the
@@ -155,7 +156,7 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
     // YAML parsing is blocking so do it in a different thread. We could use
     // tokio::fs for this but that just uses std::fs underneath anyway.
-    task::spawn_blocking(move || Collection::load(&path))
+    task::spawn_blocking(move || Ok(LuaVm::new().load_collection(&path)?))
         .await
         // This error only occurs if the task panics
         .context("Error parsing collection")?
@@ -172,9 +173,8 @@ mod tests {
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use serde::de::IgnoredAny;
     use serde_json::json;
-    use std::{fs, fs::File, time::Duration};
+    use std::{fs, fs::File};
 
     /// Test various cases of try_path
     #[rstest]
@@ -225,11 +225,13 @@ mod tests {
     /// collection format. This lives at the bottom because it's huge.
     #[rstest]
     #[tokio::test]
-    async fn test_regression(test_data_dir: PathBuf) {
-        let loaded = CollectionFile::load(test_data_dir.join("regression.yml"))
-            .await
-            .unwrap()
-            .collection;
+    async fn test_regression() {
+        let loaded =
+            CollectionFile::load(test_data_dir().join("regression.yml"))
+                .await
+                .unwrap()
+                .collection;
+        let user_url = "{{profile().host}}/anything/{{profile().user_guid}}";
         let expected = Collection {
             profiles: by_id([
                 Profile {
@@ -253,216 +255,16 @@ mod tests {
                     },
                 },
             ]),
-            chains: by_id([
-                Chain {
-                    id: "command".into(),
-                    source: ChainSource::command(["whoami"]),
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "command_stdin".into(),
-                    source: ChainSource::Command {
-                        command: vec!["head -c 1".into()],
-                        stdin: Some("abcdef".into()),
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "command_trim_none".into(),
-                    source: ChainSource::command(["whoami"]),
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "command_trim_start".into(),
-                    source: ChainSource::command(["whoami"]),
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::Start,
-                },
-                Chain {
-                    id: "command_trim_end".into(),
-                    source: ChainSource::command(["whoami"]),
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::End,
-                },
-                Chain {
-                    id: "command_trim_both".into(),
-                    source: ChainSource::command(["whoami"]),
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::Both,
-                },
-                Chain {
-                    id: "prompt_sensitive".into(),
-                    source: ChainSource::Prompt {
-                        message: Some("Password".into()),
-                        default: None,
-                    },
-                    sensitive: true,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "prompt_default".into(),
-                    source: ChainSource::Prompt {
-                        message: Some("User GUID".into()),
-                        default: Some("{{user_guid}}".into()),
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "file".into(),
-                    source: ChainSource::File {
-                        path: "./README.md".into(),
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "file_content_type".into(),
-                    source: ChainSource::File {
-                        path: "./data.json".into(),
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: Some(ContentType::Json),
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "request_selector".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: Some("$.data".parse().unwrap()),
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "request_trigger_never".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "request_trigger_no_history".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "request_trigger_expire".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Expire(
-                            Duration::from_secs(12 * 60 * 60),
-                        ),
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "request_trigger_always".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "request_section_body".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-                Chain {
-                    id: "request_section_header".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
-                        section: ChainRequestSection::Header(
-                            "content-type".into(),
-                        ),
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: ChainOutputTrim::None,
-                },
-            ]),
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
                     id: "text_body".into(),
                     name: None,
                     method: Method::Post,
-                    url: "{{host}}/anything/login".into(),
+                    url: "{{profile().host}}/anything/login".into(),
 
                     body: Some(RecipeBody::Raw {
-                        body: "{\"username\": \"{{username}}\", \
-                        \"password\": \"{{chains.password}}\"}"
+                        body: "{\"username\": \"{{username()}}\", \
+                        \"password\": \"{{password()}}\"}"
                             .into(),
                         content_type: None,
                     }),
@@ -483,7 +285,7 @@ mod tests {
                             id: "simple".into(),
                             name: Some("Get User".into()),
                             method: Method::Get,
-                            url: "{{host}}/anything/{{user_guid}}".into(),
+                            url: user_url.into(),
                             body: None,
                             authentication: None,
                             query: vec![
@@ -496,15 +298,15 @@ mod tests {
                             id: "json_body".into(),
                             name: Some("Modify User".into()),
                             method: Method::Put,
-                            url: "{{host}}/anything/{{user_guid}}".into(),
+                            url: user_url.into(),
                             body: Some(RecipeBody::Raw {
                                 body: json!({"username": "new username"})
                                     .into(),
                                 content_type: Some(ContentType::Json),
                             }),
-                            authentication: Some(Authentication::Bearer(
-                                "{{chains.auth_token}}".into(),
-                            )),
+                            authentication: Some(Authentication::Bearer {
+                                token: "{{chains.auth_token}}".into(),
+                            }),
                             query: vec![],
                             headers: indexmap! {
                                 "Accept".into() => "application/json".into(),
@@ -514,8 +316,7 @@ mod tests {
                             id: "json_body_but_not".into(),
                             name: Some("Modify User".into()),
                             method: Method::Put,
-                            url: "{{host}}/anything/{{user_guid}}".into(),
-
+                            url: user_url.into(),
                             body: Some(RecipeBody::Raw {
                                 body: json!(r#"{"warning": "NOT an object"}"#)
                                     .into(),
@@ -534,8 +335,7 @@ mod tests {
                             id: "form_urlencoded_body".into(),
                             name: Some("Modify User".into()),
                             method: Method::Put,
-                            url: "{{host}}/anything/{{user_guid}}".into(),
-
+                            url: user_url.into(),
                             body: Some(RecipeBody::FormUrlencoded(indexmap! {
                                 "username".into() => "new username".into()
                             })),
@@ -549,7 +349,6 @@ mod tests {
                 }),
             ])
             .into(),
-            _ignore: IgnoredAny,
         };
         assert_eq!(*loaded, expected);
     }

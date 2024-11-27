@@ -205,22 +205,29 @@ impl Generate for &anyhow::Error {
     {
         let chain = self.chain();
         let mut lines: Vec<Line> = Vec::new();
-        for (i, (position, error)) in chain.with_position().enumerate() {
-            let icon = match position {
-                Position::First | Position::Only => "",
-                Position::Middle => "└┬",
-                Position::Last => "└─",
-            };
-            for (position, line) in error.to_string().lines().with_position() {
-                let line = if let Position::First | Position::Only = position {
-                    format!(
-                        "{indent:width$}{icon}{line}",
-                        indent = "",
-                        width = i.saturating_sub(1)
-                    )
-                } else {
-                    line.to_owned()
+        for (i, (error_position, error)) in chain.with_position().enumerate() {
+            for (line_position, line) in
+                error.to_string().lines().with_position()
+            {
+                let icon = match line_position {
+                    Position::First | Position::Only => match error_position {
+                        Position::First | Position::Only => "",
+                        Position::Middle => "└┬",
+                        Position::Last => "└─",
+                    },
+                    // Continuation lines get different icons/indentation
+                    _ => match error_position {
+                        Position::First | Position::Only => "│",
+                        Position::Middle => " │",
+                        Position::Last => "  ",
+                    },
                 };
+
+                let line = format!(
+                    "{indent:width$}{icon}{line}",
+                    indent = "",
+                    width = i.saturating_sub(1)
+                );
                 lines.push(line.into());
             }
         }

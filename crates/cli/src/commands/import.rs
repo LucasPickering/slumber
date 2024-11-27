@@ -54,7 +54,8 @@ impl Subcommand for ImportCommand {
             ),
             None => Box::new(io::stdout()),
         };
-        serde_yaml::to_writer(&mut writer, &collection)?;
+        // TODO figure out how to generate Lua
+        todo!("Importing to Lua is not supported yet");
 
         Ok(ExitCode::SUCCESS)
     }

@@ -225,9 +225,10 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use slumber_core::{
-        collection::{Chain, ChainSource, Collection, Profile},
+        collection::{Collection, Profile},
+        lua::LuaRenderer,
         template::TemplateContext,
-        test_util::{by_id, invalid_utf8_chain, Factory},
+        test_util::{by_id, invalid_utf8, Factory},
     };
 
     /// Test line breaks, multi-byte characters, and binary data
@@ -257,13 +258,11 @@ mod tests {
         ]
     )]
     #[case::binary(
-        "binary data: {{chains.binary}}",
-        vec![Line::from(vec![Span::raw("binary data: "), rendered("<binary>")])]
+        invalid_utf8(), vec![Line::from(vec![rendered("<binary>")])]
     )]
     #[tokio::test]
     async fn test_template_stitch(
         _harness: TestHarness,
-        invalid_utf8_chain: ChainSource,
         #[case] template: Template,
         #[case] expected: Vec<Line<'static>>,
     ) {
@@ -276,14 +275,8 @@ mod tests {
             ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
-        let chain = Chain {
-            id: "binary".into(),
-            source: invalid_utf8_chain,
-            ..Chain::factory(())
-        };
         let collection = Collection {
             profiles: by_id([profile]),
-            chains: by_id([chain]),
             ..Collection::factory(())
         };
         let context = TemplateContext {
@@ -291,8 +284,9 @@ mod tests {
             selected_profile: Some(profile_id),
             ..TemplateContext::factory(())
         };
+        let renderer = LuaRenderer::factory(context);
 
-        let chunks = template.render_chunks(&context).await;
+        let chunks = template.render_chunks(&renderer).await;
         let text = TextStitcher::stitch_chunks(&chunks);
         assert_eq!(text, Text::from(expected));
     }

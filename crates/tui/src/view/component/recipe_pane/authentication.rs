@@ -61,7 +61,7 @@ impl AuthenticationDisplay {
                     selected_field: Default::default(),
                 }
             }
-            Authentication::Bearer(token) => State::Bearer {
+            Authentication::Bearer { token } => State::Bearer {
                 token: RecipeTemplate::new(
                     RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
                     token,
@@ -87,9 +87,9 @@ impl AuthenticationDisplay {
                     // See note on field def for why we always use Some
                     password: Some(password.template().clone()),
                 },
-                State::Bearer { token, .. } => {
-                    Authentication::Bearer(token.template().clone())
-                }
+                State::Bearer { token, .. } => Authentication::Bearer {
+                    token: token.template().clone(),
+                },
             })
         } else {
             None
@@ -414,7 +414,9 @@ mod tests {
 
     #[rstest]
     fn test_edit_bearer(harness: TestHarness, terminal: TestTerminal) {
-        let authentication = Authentication::Bearer("i am a token".into());
+        let authentication = Authentication::Bearer {
+            token: "i am a token".into(),
+        };
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -430,8 +432,15 @@ mod tests {
         component.send_text("!!!").assert_empty();
         component.send_key(KeyCode::Enter).assert_empty();
         assert_eq!(
+<<<<<<< HEAD
             component.data().override_value(),
             Some(Authentication::Bearer("i am a token!!!".into()))
+=======
+            component.data().inner().override_value(),
+            Some(Authentication::Bearer {
+                token: "i am a token!!!".into()
+            })
+>>>>>>> abf50ed (Initial Lua implementation)
         );
 
         // Reset token
@@ -482,7 +491,7 @@ mod tests {
             &RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
             &RecipeOverrideValue::Override("token".into()),
         );
-        let authentication = Authentication::Bearer("".into());
+        let authentication = Authentication::Bearer { token: "".into() };
         let component = TestComponent::new(
             &harness,
             &terminal,
@@ -492,7 +501,9 @@ mod tests {
 
         assert_eq!(
             component.data().override_value(),
-            Some(Authentication::Bearer("token".into()))
+            Some(Authentication::Bearer {
+                token: "token".into()
+            })
         );
     }
 }

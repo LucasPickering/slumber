@@ -1,0 +1,170 @@
+local profiles = {
+    {
+        id = "env_3b607180e18c41228387930058c9ca43",
+        name = "Local",
+        data = {
+            base_field = "base",
+            host = "http://localhost:3000",
+            greeting = "hello!"
+        }
+    },
+    {
+        id = "env_4fb19173966e42898a0a77f45af591c9",
+        name = "Remote",
+        data = {
+            base_field = "base",
+            host = "https://httpbin.org",
+            greeting = "howdy"
+        }
+    }
+}
+
+local requests = {
+    {
+        type = "folder",
+        id = "fld_9a7332db608943b093c929a82c81df50",
+        name = "My Folder",
+        requests = {
+            {
+                type = "folder",
+                id = "fld_8077c48f5a89436bbe4b3a53c06471f5",
+                name = "Inner Folder",
+                requests = {
+                    {
+                        type = "request",
+                        id = "req_2ec3dc9ff6774ac78248777e75984831",
+                        name = "Bearer Auth",
+                        method = "GET",
+                        url = "https://httpbin.org/get",
+                        body = nil,
+                        authentication = {
+                            type = "bearer",
+                            token = "{% response 'body', 'req_3bc2de939f1a4d1ebc00835cbefd6b5d', 'b64::JC5oZWFkZXJzLkhvc3Q=::46b', 'when-expired', 60 %}"
+                        },
+                        query = {},
+                        headers = {}
+                    },
+
+                    {
+                        type = "request",
+                        id = "req_b08ee35904784b5f9af598f9b7fd7ca0",
+                        name = "Digest Auth (Unsupported)",
+                        method = "GET",
+                        url = "https://httpbin.org/get",
+                        body = nil,
+                        authentication = nil,
+                        query = {},
+                        headers = {}
+                    },
+
+                    {
+                        type = "request",
+                        id = "req_284e0d90f0d647b483f863af5ee79c23",
+                        name = "Basic Auth",
+                        method = "GET",
+                        url = "https://httpbin.org/get",
+                        body = nil,
+                        authentication = {
+                            type = "basic",
+                            username = "user",
+                            password = "pass"
+                        },
+                        query = {},
+                        headers = {}
+                    },
+
+                    {
+                        type = "request",
+                        id = "req_814a5e9b63a7482da1d8261311bc6c84",
+                        name = "No Auth",
+                        method = "GET",
+                        url = "https://httpbin.org/get",
+                        body = nil,
+                        authentication = nil,
+                        query = {},
+                        headers = {}
+                    }
+                }
+            },
+
+            {
+                type = "request",
+                id = "req_583c296a600247d6b0c28a0afcefdb89",
+                name = "With Text Body",
+                method = "POST",
+                url = "https://httpbin.org/post",
+                authentication = nil,
+                query = {},
+                headers = {
+                    ["content-type"] = "text/plain"
+                },
+                body = "hello!"
+            },
+
+            {
+                type = "request",
+                id = "req_1419670d20eb4964956df954e1eb7c4b",
+                name = "With JSON Body",
+                method = "POST",
+                url = "https://httpbin.org/post",
+                authentication = nil,
+                query = {},
+                headers = {
+                    -- This is redundant with the body type, but it's more
+                    -- effort than it's worth to remove it
+                    ["content-type"] = "application/json"
+                },
+                body = {
+                    type = "json",
+                    data = {message = "hello!"}
+                },
+            },
+
+            {
+                type = "request",
+                id = "req_a01b6de924274654bda0835e2a073bd0",
+                name = "With Multipart Body",
+                method = "POST",
+                url = "https://httpbin.org/post",
+                authentication = nil,
+                query = {},
+                headers = {
+                    -- This is redundant with the body type, but it's more
+                    -- effort than it's worth to remove it
+                    ["content-type"] = "multipart/form-data"
+                },
+                body = {
+                    type = "form_multipart",
+                    data = {
+                        username = "user",
+                        image = "{{file({path = './public/slumber.png'})}}"
+                    }
+                }
+            }
+        }
+    },
+
+    {
+        type = "request",
+        id = "req_a345faa530a7453e83ee967d18555712",
+        name = "Login",
+        method = "POST",
+        url = "https://httpbin.org/anything/login",
+        authentication = nil,
+        query = {},
+        headers = {
+            -- This is redundant with the body type, but it's more
+            -- effort than it's worth to remove it
+            ["content-type"] = "application/x-www-form-urlencoded"
+        },
+        body = {
+            type = "form_urlencoded",
+            data = {
+                username = "user",
+                password = "pass"
+            }
+        },
+    }
+}
+
+collection = {profiles = profiles, requests = requests}

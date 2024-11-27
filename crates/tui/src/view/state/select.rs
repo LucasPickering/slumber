@@ -584,10 +584,6 @@ mod tests {
             fn id(&self) -> &Self::Id {
                 &self.0
             }
-
-            fn set_id(&mut self, id: Self::Id) {
-                self.0 = id;
-            }
         }
 
         impl PartialEq<ProfileItem> for ProfileId {

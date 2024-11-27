@@ -40,6 +40,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     db::{CollectionDatabase, Database},
     http::{RequestId, RequestSeed},
+    lua::{LuaRenderer, LuaVm},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
 use std::{
@@ -490,7 +491,7 @@ impl Tui {
         }: RequestConfig,
     ) -> anyhow::Result<()> {
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let template_context = self.template_renderer(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
@@ -514,7 +515,7 @@ impl Tui {
         }: RequestConfig,
     ) -> anyhow::Result<()> {
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let template_context = self.template_renderer(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
@@ -542,7 +543,7 @@ impl Tui {
         }: RequestConfig,
     ) -> anyhow::Result<()> {
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let template_context = self.template_renderer(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
@@ -598,7 +599,7 @@ impl Tui {
         // These clones are all cheap.
 
         let template_context =
-            self.template_context(profile_id.clone(), false)?;
+            self.template_renderer(profile_id.clone(), false)?;
         let messages_tx = self.messages_tx();
 
         let seed = RequestSeed::new(recipe_id.clone(), options);
@@ -659,7 +660,7 @@ impl Tui {
             dyn 'static + Send + Sync + FnOnce(Vec<TemplateChunk>),
         >,
     ) -> anyhow::Result<()> {
-        let context = self.template_context(profile_id, true)?;
+        let context = self.template_renderer(profile_id, true)?;
         let messages_tx = self.messages_tx();
         tokio::spawn(async move {
             // Render chunks, then write them to the output destination
@@ -684,11 +685,11 @@ impl Tui {
     /// Expose app state to the templater. Most of the data has to be cloned out
     /// to be passed across async boundaries. This is annoying but in reality
     /// it should be small data.
-    fn template_context(
+    fn template_renderer(
         &self,
         profile_id: Option<ProfileId>,
         is_preview: bool,
-    ) -> anyhow::Result<TemplateContext> {
+    ) -> anyhow::Result<LuaRenderer> {
         let context = TuiContext::get();
         let collection = &self.collection_file.collection;
         let (http_engine, prompter): (_, Box<dyn Prompter>) = if is_preview {
@@ -700,7 +701,7 @@ impl Tui {
             )
         };
 
-        Ok(TemplateContext {
+        let context = TemplateContext {
             selected_profile: profile_id,
             collection: collection.clone(),
             http_engine,
@@ -708,7 +709,10 @@ impl Tui {
             overrides: Default::default(),
             prompter,
             state: Default::default(),
-        })
+        };
+        let renderer =
+            LuaVm::new().renderer(self.collection_file.path(), context)?;
+        Ok(renderer)
     }
 }
 

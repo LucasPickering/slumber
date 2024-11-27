@@ -30,6 +30,7 @@ winnow = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 serde_test = {workspace = true}
+slumber_core = {workspace = true, features = ["test"]}
 
 [features]
 

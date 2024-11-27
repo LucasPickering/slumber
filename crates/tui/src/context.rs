@@ -56,8 +56,6 @@ impl TuiContext {
 
     /// Get a reference to the global context
     pub fn get() -> &'static Self {
-        // Right now the theme isn't configurable so this is fine. To make it
-        // configurable we'll need to populate the static value during startup
         INSTANCE.get().expect("Global context is not initialized")
     }
 }

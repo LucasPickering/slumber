@@ -3,11 +3,13 @@ use anyhow::Context;
 use clap::Parser;
 use std::{fs::OpenOptions, io::Write, path::PathBuf, process::ExitCode};
 
+// TODO migrate this to Lua
+
 /// We use a static source file, to get control of whitespace/comments.
 /// Generating a collection and serializing it would be like driving from the
 /// back seat with a broom stick.
-const SOURCE: &[u8] = include_bytes!("new.yml");
-const DEFAULT_PATH: &str = "slumber.yml";
+const SOURCE: &[u8] = include_bytes!("new.luau");
+const DEFAULT_PATH: &str = "slumber.luau";
 
 /// Generate a new Slumber collection file
 #[derive(Clone, Debug, Parser)]
@@ -51,8 +53,7 @@ mod tests {
     use rstest::rstest;
     use slumber_core::{
         collection::{
-            Chain, ChainSource, Collection, Folder, Method, Profile, Recipe,
-            RecipeBody, RecipeNode,
+            Collection, Folder, Method, Profile, Recipe, RecipeBody, RecipeNode,
         },
         http::content_type::ContentType,
         test_util::{by_id, temp_dir, Factory, TempDir},
@@ -110,22 +111,12 @@ mod tests {
                     "host".into() => "https://httpbin.org".into()
                 },
             }]),
-            chains: by_id([Chain {
-                id: "example".into(),
-                source: ChainSource::Request {
-                    recipe: "example1".into(),
-                    trigger: Default::default(),
-                    section: Default::default(),
-                },
-                selector: Some("$.data".parse().unwrap()),
-                ..Chain::factory(())
-            }]),
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
                     id: "example1".into(),
                     name: Some("Example Request 1".into()),
                     method: Method::Get,
-                    url: "{{host}}/anything".into(),
+                    url: "{{profile().host}}/anything".into(),
                     ..Recipe::factory(())
                 }),
                 RecipeNode::Folder(Folder {
@@ -135,9 +126,9 @@ mod tests {
                         id: "example2".into(),
                         name: Some("Example Request 2".into()),
                         method: Method::Post,
-                        url: "{{host}}/anything".into(),
+                        url: "{{profile().host}}/anything".into(),
                         body: Some(RecipeBody::Raw {
-                            body: "{\n  \"data\": \"{{chains.example}}\"\n}"
+                            body: "{\n  \"data\": \"{{response_body()}}\"\n}"
                                 .into(),
                             content_type: Some(ContentType::Json),
                         }),
@@ -146,7 +137,6 @@ mod tests {
                 }),
             ])
             .into(),
-            _ignore: serde::de::IgnoredAny,
         };
         assert_eq!(collection, expected);
     }

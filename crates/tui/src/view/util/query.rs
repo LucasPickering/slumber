@@ -1,9 +1,11 @@
 //! Utilities for querying HTTP response data
 
-use crate::{collection::SelectorMode, http::content_type::ResponseContent};
 use derive_more::{Display, FromStr};
 use serde::{Deserialize, Serialize};
 use serde_json_path::{ExactlyOneError, JsonPath};
+use slumber_core::{
+    collection::SelectorMode, http::content_type::ResponseContent,
+};
 use thiserror::Error;
 
 /// A wrapper around a JSONPath. This combines some common behavior, and will
@@ -95,9 +97,9 @@ impl From<ExactlyOneError> for QueryError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert_err, http::content_type::Json};
     use rstest::rstest;
     use serde_json::json;
+    use slumber_core::{assert_err, http::content_type::Json};
 
     /// Test how `query_to_string` handles different types of values returned as
     /// *single results* of a query

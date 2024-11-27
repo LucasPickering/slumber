@@ -1,9 +1,10 @@
 //! General test utilities, that apply to all parts of the program
 
 use crate::{
-    collection::{ChainSource, HasId},
+    collection::HasId,
     http::{HttpEngine, HttpEngineConfig},
-    template::{Prompt, Prompter, Select},
+    lua::FileFn,
+    template::{Prompt, Prompter, Select, Template},
     util::{paths::get_repo_root, ResultTraced},
 };
 use anyhow::Context;
@@ -32,21 +33,16 @@ pub trait Factory<Param = ()> {
 }
 
 /// Directory containing static test data
-#[fixture]
 pub fn test_data_dir() -> PathBuf {
     get_repo_root().join("test_data")
 }
 
-/// A chain that spits out bytes that are *not* valid UTF-8
+/// A Lua expression that spits out bytes that are *not* valid UTF-8
 #[fixture]
-pub fn invalid_utf8_chain(test_data_dir: PathBuf) -> ChainSource {
-    ChainSource::File {
-        path: test_data_dir
-            .join("invalid_utf8.bin")
-            .to_string_lossy()
-            .to_string()
-            .into(),
-    }
+pub fn invalid_utf8() -> Template {
+    Template::from_function(&FileFn {
+        path: test_data_dir().join("invalid_utf8.bin"),
+    })
 }
 
 /// Create a new temporary folder. This will include a random subfolder to

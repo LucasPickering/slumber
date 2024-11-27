@@ -11,8 +11,13 @@ use crate::{
         draw::{Draw, DrawMetadata},
         event::{Child, Event, EventHandler, Update},
         state::{Identified, StateCell},
+<<<<<<< HEAD
         util::{highlight, str_to_text},
         Component,
+=======
+        util::{highlight, query::Query, str_to_text},
+        Component, ViewContext,
+>>>>>>> abf50ed (Initial Lua implementation)
     },
 };
 use anyhow::Context;
@@ -25,7 +30,7 @@ use ratatui::{
 use serde_json_path::JsonPath;
 use slumber_config::Action;
 use slumber_core::{
-    http::{content_type::ContentType, query::Query, ResponseBody},
+    http::{content_type::ContentType, ResponseBody},
     util::{MaybeStr, ResultTraced},
 };
 use std::cell::{Cell, Ref};

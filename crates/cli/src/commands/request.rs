@@ -11,9 +11,10 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{Collection, CollectionFile, ProfileId, RecipeId},
+    collection::{CollectionFile, ProfileId, RecipeId},
     db::{CollectionDatabase, Database},
     http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
+    lua::LuaVm,
     template::{Prompt, Prompter, Select, TemplateContext, TemplateError},
     util::ResultTraced,
 };
@@ -77,7 +78,8 @@ pub struct BuildRequestCommand {
     )]
     profile: Option<ProfileId>,
 
-    /// List of key=value template field overrides
+    /// List of expression=value overrides, to replace arbitrary Lua
+    /// expressions in the render process
     #[clap(
         long = "override",
         short = 'o',
@@ -164,7 +166,7 @@ impl BuildRequestCommand {
     ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
         let collection_path = CollectionFile::try_path(None, global.file)?;
         let database = Database::load()?.into_collection(&collection_path)?;
-        let collection = Collection::load(&collection_path)?;
+        let collection = LuaVm::new().load_collection(&collection_path)?;
         let config = Config::load()?;
         let http_engine = HttpEngine::new(&config.http);
 
@@ -201,8 +203,10 @@ impl BuildRequestCommand {
             prompter: Box::new(CliPrompter),
             state: Default::default(),
         };
+        let renderer =
+            LuaVm::new().renderer(&collection_path, template_context)?;
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
-        let request = http_engine.build(seed, &template_context).await?;
+        let request = http_engine.build(seed, &renderer).await?;
         Ok((database, request))
     }
 }

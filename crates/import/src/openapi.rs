@@ -76,7 +76,7 @@ pub fn from_openapi(
         profiles,
         recipes,
         chains: IndexMap::new(),
-        _ignore: serde::de::IgnoredAny,
+        locals: IndexMap::new(),
     })
 }
 

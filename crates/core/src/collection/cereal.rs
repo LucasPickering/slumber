@@ -240,6 +240,7 @@ impl RecipeBody {
     ];
 }
 
+/*
 /// Custom serialization for RecipeBody, so the `Raw` variant serializes as a
 /// scalar without a tag
 impl Serialize for RecipeBody {
@@ -372,6 +373,7 @@ impl<'de> Deserialize<'de> for RecipeBody {
         deserializer.deserialize_any(RecipeBodyVisitor)
     }
 }
+*/
 
 /// Serialize/deserialize a duration with unit shorthand. This does *not* handle
 /// subsecond precision. Supported units are:

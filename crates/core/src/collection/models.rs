@@ -34,7 +34,6 @@ pub struct Collection {
     /// intuitive
     #[serde(default, rename = "requests")]
     pub recipes: RecipeTree,
-    pub chains: IndexMap<ChainId, Chain>,
     /// TODO
     pub locals: IndexMap<String, Expression>,
 }

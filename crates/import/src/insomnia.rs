@@ -68,7 +68,6 @@ pub fn from_insomnia(
     Ok(Collection {
         profiles,
         recipes,
-        chains,
         locals: IndexMap::new(),
     })
 }

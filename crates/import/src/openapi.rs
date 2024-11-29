@@ -75,7 +75,6 @@ pub fn from_openapi(
     Ok(Collection {
         profiles,
         recipes,
-        chains: IndexMap::new(),
         locals: IndexMap::new(),
     })
 }

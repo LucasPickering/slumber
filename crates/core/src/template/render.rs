@@ -2,8 +2,8 @@
 
 use crate::{
     collection::{
-        ChainId, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
-        ChainSource, RecipeId, SelectOptions,
+        Chain, ChainId, ChainOutputTrim, ChainRequestSection,
+        ChainRequestTrigger, ChainSource, RecipeId, SelectOptions,
     },
     http::{content_type::ContentType, Exchange, RequestSeed, ResponseRecord},
     template::{
@@ -327,10 +327,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
         // Any error in here is the chain error subtype
         let result: TemplateResult = async {
             // Resolve chained value
-            let chain =
-                context.collection.chains.get(self.chain_id).ok_or_else(
-                    || ChainError::ChainUnknown(self.chain_id.clone()),
-                )?;
+            let chain: &Chain = todo!();
 
             // Resolve the value based on the source type. Also resolve its
             // content type. For responses this will come from its header, from

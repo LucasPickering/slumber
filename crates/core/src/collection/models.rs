@@ -11,6 +11,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From, FromStr};
+use hcl::Expression;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -29,18 +30,13 @@ use tracing::info;
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
     pub profiles: IndexMap<ProfileId, Profile>,
-    #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
-    pub chains: IndexMap<ChainId, Chain>,
     /// Internally we call these recipes, but to a user `requests` is more
     /// intuitive
     #[serde(default, rename = "requests")]
     pub recipes: RecipeTree,
-    /// A hack-ish to allow users to add arbitrary data to their collection
-    /// file without triggering a unknown field error. Ideally we could
-    /// ignore anything that starts with `.` (recursively) but that
-    /// requires a custom serde impl for each type, or changes to the macro
-    #[serde(default, skip_serializing, rename = ".ignore")]
-    pub _ignore: serde::de::IgnoredAny,
+    pub chains: IndexMap<ChainId, Chain>,
+    /// TODO
+    pub locals: IndexMap<String, Expression>,
 }
 
 impl Collection {
@@ -50,7 +46,11 @@ impl Collection {
 
         let load = || {
             let file = File::open(path)?;
-            let collection = parse_yaml(&file)?;
+            let collection = if path.extension().unwrap_or_default() == "hcl" {
+                hcl::from_reader(&file)?
+            } else {
+                parse_yaml(&file)?
+            };
             Ok::<_, anyhow::Error>(collection)
         };
 
@@ -332,7 +332,8 @@ pub enum Authentication<T = Template> {
 /// HTTP engine uses the variant to determine not only how to serialize the
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum RecipeBody {
     /// Plain string/bytes body

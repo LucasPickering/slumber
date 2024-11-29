@@ -29,6 +29,8 @@ const CONFIG_FILES: &[&str] = &[
     "slumber.yaml",
     ".slumber.yml",
     ".slumber.yaml",
+    "slumber.hcl",
+    ".slumber.hcl",
 ];
 
 /// A wrapper around a request collection, to handle functionality around the

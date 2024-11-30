@@ -11,11 +11,18 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From, FromStr};
-use hcl::Expression;
+use hcl::{
+    expr::{Traversal, TraversalOperator},
+    Attribute, Body, Expression, Structure,
+};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::{fs::File, path::PathBuf, time::Duration};
+use std::{
+    fs::{self, File},
+    path::PathBuf,
+    time::Duration,
+};
 use strum::{EnumIter, IntoEnumIterator};
 use tracing::info;
 
@@ -46,7 +53,11 @@ impl Collection {
         let load = || {
             let file = File::open(path)?;
             let collection = if path.extension().unwrap_or_default() == "hcl" {
-                hcl::from_reader(&file)?
+                let content = fs::read_to_string(path)?;
+                let deserializer = hcl::de::Deserializer::from_str(&content)?;
+                let half_done: HalfDone =
+                    serde_path_to_error::deserialize(deserializer)?;
+                half_done.try_into_collection()?
             } else {
                 parse_yaml(&file)?
             };
@@ -317,7 +328,7 @@ impl crate::test_util::Factory for Chain {
 /// `T=String`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(rename_all = "snake_case", tag = "type", deny_unknown_fields)]
 pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`
     Basic { username: T, password: Option<T> },
@@ -608,5 +619,125 @@ impl TryFrom<String> for Method {
                 Method::iter().map(|method| method.to_string()).format(", ")
             )
         })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct HalfDone {
+    body: Body,
+}
+
+impl HalfDone {
+    const LOCALS: &'static str = "locals";
+
+    fn try_into_collection(mut self) -> anyhow::Result<Collection> {
+        self.resolve()?;
+        let deserializer = hcl::de::Deserializer::from_body(self.body)?;
+        serde_path_to_error::deserialize(deserializer).context("TODO")
+    }
+
+    fn resolve(&mut self) -> anyhow::Result<()> {
+        self.resolve_includes()?;
+        self.resolve_locals()?;
+        Ok(())
+    }
+
+    fn resolve_includes(&mut self) -> anyhow::Result<()> {
+        // TODO
+        Ok(())
+    }
+
+    /// TODO
+    fn resolve_locals(&mut self) -> anyhow::Result<()> {
+        let locals = self.load_locals()?;
+        self.body.resolve_locals(&locals)
+    }
+
+    /// TODO
+    fn load_locals(
+        &mut self,
+        // TODO import hcl::Identifier
+    ) -> anyhow::Result<IndexMap<hcl::Identifier, Expression>> {
+        // TODO error if "locals" is an attribute
+        let Some(locals) = self
+            .body
+            .blocks()
+            .find(|block| block.identifier() == Self::LOCALS)
+        else {
+            return Ok(IndexMap::new());
+        };
+        // TODO assert labels empty
+        // TODO assert body.blocks empty
+        let map = locals
+            .body
+            .attributes()
+            .map(|attr| (attr.key.clone(), attr.expr.clone()))
+            .collect();
+        Ok(map)
+    }
+}
+
+/// TODO
+trait Resolve {
+    fn resolve_locals(
+        &mut self,
+        locals: &IndexMap<hcl::Identifier, Expression>,
+    ) -> anyhow::Result<()>;
+}
+
+impl Resolve for Body {
+    fn resolve_locals(
+        &mut self,
+        locals: &IndexMap<hcl::Identifier, Expression>,
+    ) -> anyhow::Result<()> {
+        for structure in self {
+            structure.resolve_locals(locals)?;
+        }
+        Ok(())
+    }
+}
+
+impl Resolve for Structure {
+    fn resolve_locals(
+        &mut self,
+        locals: &IndexMap<hcl::Identifier, Expression>,
+    ) -> anyhow::Result<()> {
+        match self {
+            Structure::Attribute(Attribute { ref mut expr, .. }) => {
+                expr.resolve_locals(locals)
+            }
+            Structure::Block(block) => block.body.resolve_locals(locals),
+        }
+    }
+}
+
+impl Resolve for Expression {
+    fn resolve_locals(
+        &mut self,
+        locals: &IndexMap<hcl::Identifier, Expression>,
+    ) -> anyhow::Result<()> {
+        // TODO handle other expression types
+        let Expression::Traversal(traversal) = self else {
+            return Ok(());
+        };
+        let Traversal {
+            expr: Expression::Variable(variable),
+            operators,
+        } = &mut **traversal
+        else {
+            // TODO handle other expression types
+            return Ok(());
+        };
+        if variable.as_str() != HalfDone::LOCALS {
+            // TODO: should be error instead?
+            return Ok(());
+        }
+        let [TraversalOperator::GetAttr(field)] = operators.as_slice() else {
+            todo!("return error")
+        };
+        // Replace this alias with the assigned expression
+        *self = locals.get(field).ok_or_else(|| anyhow!("TODO"))?.clone();
+        Ok(())
     }
 }

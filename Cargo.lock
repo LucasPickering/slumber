@@ -828,8 +828,7 @@ dependencies = [
 [[package]]
 name = "hcl-edit"
 version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47a966f321ccf77cf6df2e600a3ebc8adb0b9d10acf3ed563fcf27efc69a7204"
+source = "git+https://github.com/LucasPickering/hcl-rs?branch=from-body#092a5b4f5a61343416f124dc1b14e14767f27624"
 dependencies = [
  "fnv",
  "hcl-primitives",
@@ -840,8 +839,7 @@ dependencies = [
 [[package]]
 name = "hcl-primitives"
 version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c48fcfd8788ffb4673ac4d3c914dfae15ceedc71d6c6975ab167f9da88a1f142"
+source = "git+https://github.com/LucasPickering/hcl-rs?branch=from-body#092a5b4f5a61343416f124dc1b14e14767f27624"
 dependencies = [
  "itoa",
  "kstring",
@@ -853,8 +851,7 @@ dependencies = [
 [[package]]
 name = "hcl-rs"
 version = "0.18.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "048bb0eadcf99b53625333e7b40591309d13c35074961307c80cbf8d4729c76d"
+source = "git+https://github.com/LucasPickering/hcl-rs?branch=from-body#092a5b4f5a61343416f124dc1b14e14767f27624"
 dependencies = [
  "hcl-edit",
  "hcl-primitives",

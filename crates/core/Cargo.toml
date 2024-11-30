@@ -18,7 +18,8 @@ chrono = {workspace = true, features = ["clock", "serde", "std"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from", "from_str"]}
 dirs = {workspace = true}
 futures = {workspace = true}
-hcl-rs = "0.18.2"
+# hcl-rs = "0.18.2"
+hcl-rs = {git = "https://github.com/LucasPickering/hcl-rs", branch = "from-body"}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}

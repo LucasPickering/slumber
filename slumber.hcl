@@ -1,3 +1,6 @@
+# TODO includes
+# include = ["base.hcl"]
+
 profiles {
   works {
     name    = "This Works"
@@ -46,7 +49,8 @@ requests {
   login "request" {
     method = "POST"
     url    = "${host}/anything/login"
-    authentication "basic" {
+    authentication = {
+      type     = "basic"
       username = profile.username
       password = locals.password
     }

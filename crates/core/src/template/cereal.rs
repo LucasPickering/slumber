@@ -4,63 +4,6 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 
-impl Serialize for Template {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.display().serialize(serializer)
-    }
-}
-
-// Custom deserializer for `Template`. This is useful for deserializing values
-// that are not strings, but should be treated as strings such as numbers,
-// booleans, and nulls.
-impl<'de> Deserialize<'de> for Template {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct TemplateVisitor;
-
-        macro_rules! visit_primitive {
-            ($func:ident, $type:ty) => {
-                fn $func<E>(self, v: $type) -> Result<Self::Value, E>
-                where
-                    E: Error,
-                {
-                    self.visit_string(v.to_string())
-                }
-            };
-        }
-
-        impl<'de> Visitor<'de> for TemplateVisitor {
-            type Value = Template;
-
-            fn expecting(
-                &self,
-                formatter: &mut std::fmt::Formatter,
-            ) -> std::fmt::Result {
-                formatter.write_str("string, number, or boolean")
-            }
-
-            visit_primitive!(visit_bool, bool);
-            visit_primitive!(visit_u64, u64);
-            visit_primitive!(visit_i64, i64);
-            visit_primitive!(visit_f64, f64);
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: Error,
-            {
-                v.parse().map_err(E::custom)
-            }
-        }
-
-        deserializer.deserialize_any(TemplateVisitor)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

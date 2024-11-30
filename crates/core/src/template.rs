@@ -1,8 +1,8 @@
 //! Generate strings (and bytes) from user-written templates with dynamic data
 
-mod cereal;
+// mod cereal;
 mod error;
-mod parse;
+// mod parse;
 mod prompt;
 mod render;
 
@@ -13,12 +13,10 @@ use crate::{
     collection::{ChainId, Collection, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
-    template::{
-        parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
-        render::RenderGroupState,
-    },
+    template::render::RenderGroupState,
 };
 use derive_more::{Deref, Display};
+use hcl::Expression;
 use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
@@ -36,21 +34,10 @@ use std::sync::Arc;
 /// - Two templates with the same source string will have the same set of
 ///   chunks, and vice versa
 /// - No two raw segments will ever be consecutive
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct Template {
-    /// Pre-parsed chunks of the template. For raw chunks we store the
-    /// presentation text (which is not necessarily the source text, as escape
-    /// sequences will be eliminated). For keys, just store the needed
-    /// metadata.
-    #[cfg_attr(
-        test,
-        proptest(
-            strategy = "any::<Vec<TemplateInputChunk>>().prop_map(join_raw)"
-        )
-    )]
-    chunks: Vec<TemplateInputChunk>,
-}
+pub struct Template(Expression);
 
 /// A little container struct for all the data that the user can access via
 /// templating. Unfortunately this has to own all data so templating can be
@@ -85,19 +72,7 @@ impl Template {
     /// Useful when importing from external formats where the string isn't
     /// expected to be a valid Slumber template
     pub fn raw(template: String) -> Template {
-        let chunks = if template.is_empty() {
-            vec![]
-        } else {
-            // This may seem too easy, but the hard part comes during
-            // stringification, when we need to add backslashes to get the
-            // string to parse correctly later
-            vec![TemplateInputChunk::Raw(template.into())]
-        };
-        Self { chunks }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.chunks.is_empty()
+        todo!()
     }
 }
 
@@ -206,10 +181,10 @@ pub enum TemplateKey {
     /// A plain field, which can come from the profile or an override
     Field(Identifier),
     /// A value from a predefined chain of another recipe
-    #[display("{CHAIN_PREFIX}{_0}")]
+    #[display("chains.{_0}")]
     Chain(ChainId),
     /// A value pulled from the process environment
-    #[display("{ENV_PREFIX}{_0}")]
+    #[display("env.{_0}")]
     Environment(Identifier),
 }
 

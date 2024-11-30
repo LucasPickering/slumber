@@ -7,9 +7,8 @@ use crate::{
     },
     http::{content_type::ContentType, Exchange, RequestSeed, ResponseRecord},
     template::{
-        error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
-        Prompt, Select, Template, TemplateChunk, TemplateContext,
-        TemplateError, TemplateKey,
+        error::TriggeredRequestError, ChainError, Prompt, Select, Template,
+        TemplateChunk, TemplateContext, TemplateError, TemplateKey,
     },
     util::{paths::expand_home, FutureCache, FutureCacheOutcome, ResultTraced},
 };

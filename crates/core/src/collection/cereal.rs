@@ -5,21 +5,15 @@ use crate::{
         recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, Recipe,
         RecipeBody, RecipeId,
     },
-    http::content_type::ContentType,
     template::Template,
 };
-use anyhow::Context;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{
-    de::{
-        self, EnumAccess, Error as _, MapAccess, SeqAccess, VariantAccess,
-        Visitor,
-    },
-    ser::Error as _,
-    Deserialize, Deserializer, Serialize, Serializer,
+    de::{self, MapAccess, SeqAccess, Visitor},
+    Deserialize, Deserializer, Serializer,
 };
-use std::{hash::Hash, str::FromStr};
+use std::hash::Hash;
 
 /// A type that has an `id` field. This is ripe for a derive macro, maybe a fun
 /// project some day?
@@ -225,155 +219,6 @@ pub mod serde_query_parameters {
         deserializer.deserialize_any(QueryParametersVisitor)
     }
 }
-
-impl RecipeBody {
-    // Constants for serialize/deserialization. Typically these are generated
-    // by macros, but we need custom implementation
-    const STRUCT_NAME: &'static str = "RecipeBody";
-    const VARIANT_JSON: &'static str = "json";
-    const VARIANT_FORM_URLENCODED: &'static str = "form_urlencoded";
-    const VARIANT_FORM_MULTIPART: &'static str = "form_multipart";
-    const ALL_VARIANTS: &'static [&'static str] = &[
-        Self::VARIANT_JSON,
-        Self::VARIANT_FORM_URLENCODED,
-        Self::VARIANT_FORM_MULTIPART,
-    ];
-}
-
-/*
-/// Custom serialization for RecipeBody, so the `Raw` variant serializes as a
-/// scalar without a tag
-impl Serialize for RecipeBody {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // This involves a lot of duplication, but any abstraction will probably
-        // just make it worse
-        match self {
-            RecipeBody::Raw {
-                body,
-                content_type: None,
-            } => body.serialize(serializer),
-            RecipeBody::Raw {
-                body,
-                content_type: Some(ContentType::Json),
-            } => {
-                // Reparse the body as JSON. Since it came from JSOn originally,
-                // it *shouldn't* fail to reparse
-                let json = serde_json::Value::from_str(&body.display())
-                    .context("Failed to reparse body as JSON")
-                    .map_err(S::Error::custom)?;
-                serializer.serialize_newtype_variant(
-                    Self::STRUCT_NAME,
-                    1,
-                    Self::VARIANT_JSON,
-                    &json,
-                )
-            }
-            RecipeBody::FormUrlencoded(value) => serializer
-                .serialize_newtype_variant(
-                    Self::STRUCT_NAME,
-                    2,
-                    Self::VARIANT_FORM_URLENCODED,
-                    value,
-                ),
-            RecipeBody::FormMultipart(value) => serializer
-                .serialize_newtype_variant(
-                    Self::STRUCT_NAME,
-                    3,
-                    Self::VARIANT_FORM_MULTIPART,
-                    value,
-                ),
-        }
-    }
-}
-
-// Custom deserialization for RecipeBody, to support raw template or structured
-// body with a tag
-impl<'de> Deserialize<'de> for RecipeBody {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct RecipeBodyVisitor;
-
-        /// For all primitives, parse it as a template and create a raw body
-        macro_rules! visit_primitive {
-            ($func:ident, $type:ty) => {
-                fn $func<E>(self, v: $type) -> Result<Self::Value, E>
-                where
-                    E: de::Error,
-                {
-                    let template = v.to_string().parse().map_err(E::custom)?;
-                    Ok(RecipeBody::Raw {
-                        body: template,
-                        content_type: None,
-                    })
-                }
-            };
-        }
-
-        impl<'de> Visitor<'de> for RecipeBodyVisitor {
-            type Value = RecipeBody;
-
-            fn expecting(
-                &self,
-                formatter: &mut std::fmt::Formatter,
-            ) -> std::fmt::Result {
-                // "!<type>" is a little wonky, but tags aren't a common YAML
-                // syntax so we should provide a hint to the user about what it
-                // means. Once they provide a tag they'll get a different error
-                // message if it's an unsupported tag
-                formatter.write_str("string, boolean, number, or tag !<type>")
-            }
-
-            visit_primitive!(visit_bool, bool);
-            visit_primitive!(visit_u64, u64);
-            visit_primitive!(visit_u128, u128);
-            visit_primitive!(visit_i64, i64);
-            visit_primitive!(visit_i128, i128);
-            visit_primitive!(visit_f64, f64);
-            visit_primitive!(visit_str, &str);
-
-            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
-            where
-                A: EnumAccess<'de>,
-            {
-                let (tag, value) = data.variant::<String>()?;
-                match tag.as_str() {
-                    RecipeBody::VARIANT_JSON => {
-                        // Pretty print the JSON now and parse it as a template.
-                        // This is inefficient because we stringify the value
-                        // then immediately clone it during the parse :(
-                        let json: serde_json::Value =
-                            value.newtype_variant()?;
-                        let body = format!("{json:#}")
-                            .parse()
-                            .map_err(A::Error::custom)?;
-                        Ok(RecipeBody::Raw {
-                            body,
-                            content_type: Some(ContentType::Json),
-                        })
-                    }
-                    RecipeBody::VARIANT_FORM_URLENCODED => {
-                        Ok(RecipeBody::FormUrlencoded(value.newtype_variant()?))
-                    }
-                    RecipeBody::VARIANT_FORM_MULTIPART => {
-                        Ok(RecipeBody::FormMultipart(value.newtype_variant()?))
-                    }
-                    other => Err(A::Error::unknown_variant(
-                        other,
-                        RecipeBody::ALL_VARIANTS,
-                    )),
-                }
-            }
-        }
-
-        deserializer.deserialize_any(RecipeBodyVisitor)
-    }
-}
-*/
 
 /// Serialize/deserialize a duration with unit shorthand. This does *not* handle
 /// subsecond precision. Supported units are:

@@ -419,7 +419,6 @@ pub struct Chain {
     Default,
     Display,
     Eq,
-    FromStr,
     Hash,
     PartialEq,
     Serialize,

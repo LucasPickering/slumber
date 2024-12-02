@@ -12,6 +12,7 @@ mod util;
 
 pub use common::modal::{IntoModal, ModalPriority};
 pub use context::{UpdateContext, ViewContext};
+pub use event::LocalEvent;
 pub use styles::Styles;
 pub use util::{Confirm, PreviewPrompter};
 
@@ -139,6 +140,11 @@ impl View {
     pub fn notify(&mut self, message: impl ToString) {
         let notification = Notification::new(message.to_string());
         ViewContext::push_event(Event::Notify(notification));
+    }
+
+    /// Trigger a localized UI event
+    pub fn local(&mut self, event: Box<dyn LocalEvent>) {
+        ViewContext::push_event(Event::Local(event));
     }
 
     /// Queue an event to update the view according to an input event from the

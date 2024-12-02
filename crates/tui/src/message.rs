@@ -1,7 +1,7 @@
 //! Async message passing! This is how inputs and other external events trigger
 //! state updates.
 
-use crate::view::Confirm;
+use crate::view::{Confirm, LocalEvent};
 use anyhow::Context;
 use derive_more::From;
 use slumber_config::Action;
@@ -14,7 +14,7 @@ use slumber_core::{
     template::{Prompt, Prompter, Select, Template, TemplateChunk},
     util::ResultTraced,
 };
-use std::{path::PathBuf, sync::Arc};
+use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
@@ -78,8 +78,11 @@ pub enum Message {
     /// Copy some text to the clipboard
     CopyText(String),
 
+    /// An error occurred in some async process and should be shown to the user
+    Error { error: anyhow::Error },
+
     /// Open a file in the user's external editor
-    EditFile {
+    FileEdit {
         path: PathBuf,
         /// Function to call once the edit is done. The original path will be
         /// passed back
@@ -87,10 +90,7 @@ pub enum Message {
         on_complete: Callback<PathBuf>,
     },
     /// Open a file to be viewed in the user's external viewer
-    ViewFile { path: PathBuf },
-
-    /// An error occurred in some async process and should be shown to the user
-    Error { error: anyhow::Error },
+    FileView { path: PathBuf },
 
     /// Launch an HTTP request from the given recipe/profile.
     HttpBeginRequest(RequestConfig),
@@ -112,6 +112,9 @@ pub enum Message {
         /// Action mapped via input bindings. This is what most consumers use
         action: Option<Action>,
     },
+
+    /// Trigger a localized UI event
+    Local(Box<dyn 'static + LocalEvent + Send + Sync>),
 
     /// Send an informational notification to the user
     Notify(String),

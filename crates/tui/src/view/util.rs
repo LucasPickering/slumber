@@ -14,7 +14,8 @@ use slumber_core::{
     template::{Prompt, PromptChannel, Prompter, Select},
     util::ResultTraced,
 };
-use std::{io::Write, path::Path};
+use std::{io::Write, path::Path, time::Duration};
+use tokio::{select, sync::broadcast, time};
 
 /// A data structure for representation a yes/no confirmation. This is similar
 /// to [Prompt], but it only asks a yes/no question.
@@ -38,6 +39,52 @@ impl Prompter for PreviewPrompter {
 
     fn select(&self, select: Select) {
         select.channel.respond("<select>".into())
+    }
+}
+
+/// Utility for debouncing repeated calls to a callback
+#[derive(Debug)]
+pub struct Debounce {
+    duration: Duration,
+    /// Broadcast channel to send on when previous tasks should be cancelled
+    cancel_send: broadcast::Sender<()>,
+}
+
+impl Debounce {
+    pub fn new(duration: Duration) -> Self {
+        let (cancel_send, _) = broadcast::channel(1);
+        Self {
+            duration,
+            cancel_send,
+        }
+    }
+
+    /// Trigger a debounced callback. The given callback will be invoked after
+    /// the debounce period _if_ this method is not called again during the
+    /// debounce period.
+    pub fn start(&self, on_complete: impl 'static + Fn() + Send + Sync) {
+        // Cancel existing tasks, _then_ start a new listener, so we don't
+        // cancel ourselves
+        self.cancel();
+        let mut cancel_recv = self.cancel_send.subscribe();
+
+        let duration = self.duration;
+        tokio::spawn(async move {
+            // Start a timer. If it expires before cancellation, then submit
+            select! {
+                _ = time::sleep(duration) => {
+                    on_complete()
+                },
+                _ = cancel_recv.recv() => {}
+            };
+        });
+    }
+
+    /// Cancel the current pending callback (if any) without registering a new
+    /// one
+    pub fn cancel(&self) {
+        // An error on the send just means there are no listeners; we can ignore
+        let _ = self.cancel_send.send(());
     }
 }
 
@@ -110,7 +157,7 @@ pub fn view_text(text: &Text) {
         .with_context(|| format!("Error writing to file {path:?}"))
         .traced();
     match result {
-        Ok(()) => ViewContext::send_message(Message::ViewFile { path }),
+        Ok(()) => ViewContext::send_message(Message::FileView { path }),
         Err(error) => ViewContext::send_message(Message::Error { error }),
     }
 }

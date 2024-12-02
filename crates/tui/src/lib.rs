@@ -262,14 +262,14 @@ impl Tui {
                 )?;
             }
 
-            Message::EditFile { path, on_complete } => {
+            Message::FileEdit { path, on_complete } => {
                 let command = get_editor_command(&path)?;
                 self.run_command(command)?;
                 on_complete(path);
                 // The callback may queue an event to read the file, so we can't
                 // delete it yet. Caller is responsible for cleaning up
             }
-            Message::ViewFile { path } => {
+            Message::FileView { path } => {
                 let command = get_viewer_command(&path)?;
                 self.run_command(command)?;
                 // We don't need to read the contents back so we can clean up
@@ -315,6 +315,8 @@ impl Tui {
             Message::Input { event, action } => {
                 self.view.handle_input(event, action);
             }
+
+            Message::Local(event) => self.view.local(event),
 
             Message::Notify(message) => self.view.notify(message),
             Message::PromptStart(prompt) => {

@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Wrap long error messages in response pane
 - Include data path in config/collection deserialization errors
   - This should make errors much less cryptic and frustrating
+- Improve UX of query text box
+  - The query is now auto-applied when changed (with a 500ms debounce), and drops focus on the text box when Enter is pressed
 
 ## [2.3.0] - 2024-11-11
 

@@ -164,7 +164,7 @@ impl RawBody {
             return;
         };
 
-        ViewContext::send_message(Message::EditFile {
+        ViewContext::send_message(Message::FileEdit {
             path,
             on_complete: Box::new(|path| {
                 ViewContext::push_event(Event::new_local(SaveBodyOverride(
@@ -317,7 +317,7 @@ mod tests {
         component.send_key(KeyCode::Char('e')).assert_empty();
         let (path, on_complete) = assert_matches!(
             harness.pop_message_now(),
-            Message::EditFile { path, on_complete } => (path, on_complete),
+            Message::FileEdit { path, on_complete } => (path, on_complete),
         );
         assert_eq!(fs::read(&path).unwrap(), b"hello!");
 

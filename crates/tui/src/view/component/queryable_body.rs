@@ -86,19 +86,17 @@ impl QueryableBody {
         let input_engine = &TuiContext::get().input_engine;
         let binding = input_engine.binding_display(Action::Search);
 
+        let send_local = |callback| {
+            move || ViewContext::push_event(Event::new_local(callback))
+        };
         let text_box = TextBox::default()
             .placeholder(format!("'{binding}' to filter body with JSONPath"))
             .validator(|text| JsonPath::parse(text).is_ok())
             // Callback trigger an events, so we can modify our own state
-            .on_click(|| {
-                ViewContext::push_event(Event::new_local(QueryCallback::Focus))
-            })
-            .on_cancel(|| {
-                ViewContext::push_event(Event::new_local(QueryCallback::Cancel))
-            })
-            .on_submit(|| {
-                ViewContext::push_event(Event::new_local(QueryCallback::Submit))
-            });
+            .on_click(send_local(QueryCallback::Focus))
+            .on_change(send_local(QueryCallback::Change), true)
+            .on_cancel(send_local(QueryCallback::Cancel))
+            .on_submit(send_local(QueryCallback::Submit));
         Self {
             state: Default::default(),
             query_available: Cell::new(false),
@@ -134,6 +132,19 @@ impl QueryableBody {
             .get()
             .map(|state| Ref::map(state, |state| &*state.text))
     }
+
+    fn update_query(&mut self) {
+        let text = self.query_text_box.data().text();
+        self.query = if text.is_empty() {
+            None
+        } else {
+            text.parse()
+                // Log the error, then throw it away
+                .with_context(|| format!("Error parsing query {text:?}"))
+                .traced()
+                .ok()
+        };
+    }
 }
 
 impl Default for QueryableBody {
@@ -151,6 +162,7 @@ impl EventHandler for QueryableBody {
         } else if let Some(callback) = event.local::<QueryCallback>() {
             match callback {
                 QueryCallback::Focus => self.query_focused = true,
+                QueryCallback::Change => self.update_query(),
                 QueryCallback::Cancel => {
                     // Reset text to whatever was submitted last
                     self.query_text_box.data_mut().set_text(
@@ -162,18 +174,8 @@ impl EventHandler for QueryableBody {
                     self.query_focused = false;
                 }
                 QueryCallback::Submit => {
-                    let text = self.query_text_box.data().text();
-                    self.query = if text.is_empty() {
-                        None
-                    } else {
-                        text.parse()
-                            // Log the error, then throw it away
-                            .with_context(|| {
-                                format!("Error parsing query {text:?}")
-                            })
-                            .traced()
-                            .ok()
-                    };
+                    self.update_query();
+                    self.query_focused = false;
                 }
             }
         } else {
@@ -251,9 +253,10 @@ impl PersistedContainer for QueryableBody {
 }
 
 /// All callback events from the query text box
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 enum QueryCallback {
     Focus,
+    Change,
     Cancel,
     Submit,
 }
@@ -396,7 +399,8 @@ mod tests {
 
     /// Render a parsed body with query text box
     #[rstest]
-    fn test_parsed(
+    #[tokio::test]
+    async fn test_parsed(
         harness: TestHarness,
         #[with(32, 5)] terminal: TestTerminal,
         json_response: ResponseRecord,
@@ -440,14 +444,16 @@ mod tests {
         let data = component.data();
         assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
         assert_eq!(data.parsed_text().as_deref(), Some("[\n  \"hello\"\n]"));
-        assert!(data.query_focused); // Still focused
+        assert!(!data.query_focused);
 
         // Cancelling out of the text box should reset the query value
+        component.send_key(KeyCode::Char('/')).assert_empty();
         component.send_text("more text").assert_empty();
         component.send_key(KeyCode::Esc).assert_empty();
         let data = component.data();
         assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
         assert_eq!(data.query_text_box.data().text(), "$.greeting");
+        assert!(!data.query_focused);
 
         // Check the view again
         terminal.assert_buffer_lines([

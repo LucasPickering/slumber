@@ -29,7 +29,11 @@ const DEBOUNCE: Duration = Duration::from_millis(500);
 pub struct TextBox {
     // Parameters
     sensitive: bool,
+    /// Text to show when text content is empty
     placeholder_text: String,
+    /// Text to show when text content is empty and text box is in focus. If
+    /// `None`, the default placeholder will be shown instead.
+    placeholder_focused: Option<String>,
     /// Predicate function to apply visual validation effect
     #[debug(skip)]
     validator: Option<Validator>,
@@ -77,6 +81,16 @@ impl TextBox {
         self
     }
 
+    /// Set placeholder text to show only while the text box is focused. If not
+    /// set, this will fallback to the general placeholder text.
+    pub fn placeholder_focused(
+        mut self,
+        placeholder: impl Into<String>,
+    ) -> Self {
+        self.placeholder_focused = Some(placeholder.into());
+        self
+    }
+
     /// Set validation function. If input is invalid, the `on_change` and
     /// `on_submit` callbacks will be blocked, meaning the user must fix the
     /// error or cancel.
@@ -87,6 +101,7 @@ impl TextBox {
         self.validator = Some(Box::new(validator));
         self
     }
+
     /// Set the callback to be called when the user clicks the textbox
     pub fn on_click(mut self, f: impl 'static + Fn()) -> Self {
         self.on_click = Some(Box::new(f));
@@ -261,12 +276,20 @@ impl Draw for TextBox {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles;
 
-        // Hide top secret data
         let text: Text = if self.state.text.is_empty() {
-            Line::from(self.placeholder_text.as_str())
+            // Users can optionally set a different placeholder for when focused
+            let placeholder = if metadata.has_focus() {
+                self.placeholder_focused
+                    .as_deref()
+                    .unwrap_or(&self.placeholder_text)
+            } else {
+                &self.placeholder_text
+            };
+            Line::from(placeholder)
                 .style(styles.text_box.placeholder)
                 .into()
         } else if self.sensitive {
+            // Hide top secret data
             Masked::new(&self.state.text, '•').into()
         } else {
             self.state.text.as_str().into()
@@ -644,6 +667,38 @@ mod tests {
             Span::styled("ello", styles.text.patch(styles.placeholder)),
             text(" "),
         ]]);
+    }
+
+    #[rstest]
+    fn test_placeholder_focused(
+        harness: TestHarness,
+        #[with(9, 1)] terminal: TestTerminal,
+    ) {
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            TextBox::default()
+                .placeholder("unfocused")
+                .placeholder_focused("focused"),
+            (),
+        );
+        let styles = &TuiContext::get().styles.text_box;
+
+        // Focused
+        assert_state(&component.data().state, "", 0);
+        terminal.assert_buffer_lines([vec![
+            cursor("f"),
+            Span::styled("ocused", styles.text.patch(styles.placeholder)),
+            text("  "),
+        ]]);
+
+        // Unfocused
+        component.unfocus();
+        component.drain_draw().assert_empty();
+        terminal.assert_buffer_lines([vec![Span::styled(
+            "unfocused",
+            styles.text.patch(styles.placeholder),
+        )]]);
     }
 
     #[rstest]

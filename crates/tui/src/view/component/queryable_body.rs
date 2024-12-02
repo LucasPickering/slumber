@@ -90,7 +90,8 @@ impl QueryableBody {
             move || ViewContext::push_event(Event::new_local(callback))
         };
         let text_box = TextBox::default()
-            .placeholder(format!("'{binding}' to filter body with JSONPath"))
+            .placeholder(format!("{binding} to query body"))
+            .placeholder_focused("Query with JSONPath (ex: $.results)")
             .validator(|text| JsonPath::parse(text).is_ok())
             // Callback trigger an events, so we can modify our own state
             .on_click(send_local(QueryCallback::Focus))
@@ -429,10 +430,13 @@ mod tests {
             vec![gutter("2"), "   \"greeting\": \"hello\"".into()],
             vec![gutter("3"), " }                        ".into()],
             vec![gutter(" "), "                          ".into()],
-            vec![Span::styled(
-                "'/' to filter body with JSONPath",
-                styles.text.patch(styles.placeholder),
-            )],
+            vec![
+                Span::styled(
+                    "/ to query body",
+                    styles.text.patch(styles.placeholder),
+                ),
+                Span::styled("                 ", styles.text),
+            ],
         ]);
 
         // Type something into the query box

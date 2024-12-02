@@ -40,6 +40,9 @@ pub struct TestComponent<'term, T, Props> {
     /// components since props typically just contain identifiers, references,
     /// and primitives. Modify using [Self::set_props].
     props: Props,
+    /// Should the component be given focus on the next draw? Defaults to
+    /// `true`
+    has_focus: bool,
 }
 
 impl<'term, Props, T> TestComponent<'term, T, Props>
@@ -68,6 +71,7 @@ where
             area: terminal.area(),
             component,
             props: initial_props,
+            has_focus: true,
         };
         // Do an initial draw to set up state, then handle any triggered events
         slf.draw();
@@ -88,6 +92,16 @@ where
         self.props = props;
     }
 
+    /// Enable focus for the next draw
+    pub fn focus(&mut self) {
+        self.has_focus = true;
+    }
+
+    /// Disable focus for the next draw
+    pub fn unfocus(&mut self) {
+        self.has_focus = false;
+    }
+
     /// Get a reference to the wrapped component's inner data
     pub fn data(&self) -> &T {
         self.component.data()
@@ -103,8 +117,12 @@ where
     /// use the same props from the last draw.
     fn draw(&mut self) {
         self.terminal.draw(|frame| {
-            self.component
-                .draw(frame, self.props.clone(), self.area, true)
+            self.component.draw(
+                frame,
+                self.props.clone(),
+                self.area,
+                self.has_focus,
+            )
         });
     }
 

@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changes
 
 - Wrap long error messages in response pane
+- Include data path in config/collection deserialization errors
+  - This should make errors much less cryptic and frustrating
 
 ## [2.3.0] - 2024-11-11
 

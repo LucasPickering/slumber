@@ -40,13 +40,14 @@ pub fn doc_link(path: &str) -> String {
 }
 
 /// Parse bytes from a reader into YAML. This will merge any anchors/aliases.
-pub fn parse_yaml<T: DeserializeOwned>(
-    reader: impl Read,
-) -> serde_yaml::Result<T> {
+pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
     // Two-step parsing is required for anchor/alias merging
-    let mut yaml_value: serde_yaml::Value = serde_yaml::from_reader(reader)?;
+    let deserializer = serde_yaml::Deserializer::from_reader(reader);
+    let mut yaml_value: serde_yaml::Value =
+        serde_path_to_error::deserialize(deserializer)?;
     yaml_value.apply_merge()?;
-    serde_yaml::from_value(yaml_value)
+    let output = serde_path_to_error::deserialize(yaml_value)?;
+    Ok(output)
 }
 
 /// Format a datetime for the user

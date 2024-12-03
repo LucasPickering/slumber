@@ -10,12 +10,11 @@ pub use error::{ChainError, TemplateError, TriggeredRequestError};
 pub use prompt::{Prompt, PromptChannel, Prompter, Select};
 
 use crate::{
-    collection::{ChainId, Collection, ProfileId},
+    collection::{Collection, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
     template::render::RenderGroupState,
 };
-use derive_more::{Deref, Display};
 use hcl::Expression;
 use indexmap::IndexMap;
 #[cfg(test)]
@@ -97,37 +96,6 @@ impl From<serde_json::Value> for Template {
     }
 }
 
-/// An identifier that can be used in a template key. A valid identifier is
-/// any non-empty string that contains only alphanumeric characters, `-`, or
-/// `_`.
-///
-/// Construct via [FromStr](std::str::FromStr)
-#[derive(
-    Clone,
-    Debug,
-    Deref,
-    Default,
-    Display,
-    Eq,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-#[serde(transparent)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct Identifier(
-    #[cfg_attr(test, proptest(regex = "[a-zA-Z0-9-_]+"))] String,
-);
-
-/// A shortcut for creating identifiers from static strings. Since the string
-/// is defined in code we're assuming it's valid.
-impl From<&'static str> for Identifier {
-    fn from(value: &'static str) -> Self {
-        Self(value.parse().unwrap())
-    }
-}
-
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string, and those chunks should be contiguous.
 #[derive(Debug)]
@@ -159,33 +127,6 @@ impl TemplateChunk {
     fn raw(value: &str) -> Self {
         Self::Raw(value.to_owned().into())
     }
-}
-
-/// A parsed template key. The variant of this determines how the key will be
-/// resolved into a value.
-///
-/// This also serves as an enumeration of all possible value types. Once a key
-/// is parsed, we know its value type and can dynamically dispatch for rendering
-/// based on that.
-///
-/// The generic parameter defines *how* the key data is stored. Ideally we could
-/// just store a `&str`, but that isn't possible when this is part of a
-/// `Template`, because it would create a self-referential pointer. In that
-/// case, we can store a `Span` which points back to its source in the template.
-///
-/// The `Display` impl here should return exactly what this was parsed from.
-/// This is important for matching override keys during rendering.
-#[derive(Clone, Debug, Display, PartialEq)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum TemplateKey {
-    /// A plain field, which can come from the profile or an override
-    Field(Identifier),
-    /// A value from a predefined chain of another recipe
-    #[display("chains.{_0}")]
-    Chain(ChainId),
-    /// A value pulled from the process environment
-    #[display("env.{_0}")]
-    Environment(Identifier),
 }
 
 #[cfg(any(test, feature = "test"))]

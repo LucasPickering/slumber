@@ -26,8 +26,8 @@ persisted = {version = "0.3.1", features = ["serde"]}
 ratatui = {workspace = true, features = ["crossterm", "underline-color", "unstable-widget-ref"]}
 reqwest = {workspace = true}
 serde = {workspace = true}
-serde_json_path = {workspace = true}
 serde_yaml = {workspace = true}
+shellish_parse = "2.2.0"
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}
 strum = {workspace = true}

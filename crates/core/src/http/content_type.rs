@@ -134,11 +134,6 @@ pub trait ResponseContent: Debug + Display + Send + Sync {
     where
         Self: Sized;
 
-    /// Prettify a parsed body into something the user will really like. Once
-    /// a response is parsed, prettification is infallible. Could be slow
-    /// though!
-    fn prettify(&self) -> String;
-
     /// Convert the content to JSON. JSON is the common language used for
     /// querying internally, so everything needs to be convertible to/from JSON.
     fn to_json(&self) -> Cow<'_, serde_json::Value>;
@@ -159,11 +154,6 @@ impl ResponseContent for Json {
 
     fn parse(body: &[u8]) -> anyhow::Result<Self> {
         Ok(Self(serde_json::from_slice(body)?))
-    }
-
-    fn prettify(&self) -> String {
-        // serde_json can't fail serializing its own Value type
-        serde_json::to_string_pretty(&self.0).unwrap()
     }
 
     fn to_json(&self) -> Cow<'_, serde_json::Value> {

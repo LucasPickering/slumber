@@ -40,6 +40,9 @@ pub struct TextBox {
 
     // State
     state: TextState,
+    /// Text box has some related error. This is set externally by
+    /// [Self::set_error], and cleared whenever text changes
+    has_error: bool,
     on_change_debounce: Option<Debounce>,
 
     // Callbacks
@@ -148,6 +151,11 @@ impl TextBox {
         self.submit();
     }
 
+    /// Enable error state, to show something invalid to the user
+    pub fn set_error(&mut self) {
+        self.has_error = true;
+    }
+
     /// Check if the current input text is valid. Always returns true if there
     /// is no validator
     fn is_valid(&self) -> bool {
@@ -208,6 +216,7 @@ impl TextBox {
     /// Call parent's on_change callback. Should be called whenever text
     /// _content_ is changed
     fn change(&mut self) {
+        self.has_error = false; // Clear existing error for the new text
         let is_valid = self.is_valid();
         if let Some(debounce) = &self.on_change_debounce {
             if self.is_valid() {
@@ -296,9 +305,10 @@ impl Draw for TextBox {
         };
 
         // Draw the text
-        let style = if self.is_valid() {
+        let style = if self.is_valid() && !self.has_error {
             styles.text_box.text
         } else {
+            // Invalid and error state look the same
             styles.text_box.invalid
         };
         frame.render_widget(Paragraph::new(text).style(style), metadata.area());

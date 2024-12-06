@@ -7,7 +7,7 @@ use crate::{
             actions::ActionsModal, header_table::HeaderTable,
             modal::ModalHandle,
         },
-        component::queryable_body::{QueryableBody, QueryableBodyProps},
+        component::queryable_body::QueryableBody,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Child, Event, EventHandler, Update},
@@ -25,6 +25,7 @@ use slumber_core::{
     collection::RecipeId,
     http::{RequestId, ResponseRecord},
 };
+use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
 /// Display response body
@@ -40,7 +41,7 @@ pub struct ResponseBodyView {
 pub struct ResponseBodyViewProps<'a> {
     pub request_id: RequestId,
     pub recipe_id: &'a RecipeId,
-    pub response: &'a ResponseRecord,
+    pub response: &'a Arc<ResponseRecord>,
 }
 
 /// Items in the actions popup menu for the Body
@@ -79,9 +80,7 @@ struct ResponseQueryPersistedKey(RecipeId);
 impl ResponseBodyView {
     fn with_body(&self, f: impl Fn(&Text)) {
         if let Some(state) = self.state.get() {
-            if let Some(body) = state.body.data().visible_text() {
-                f(&body)
-            }
+            f(state.body.data().visible_text())
         }
     }
 }
@@ -114,7 +113,7 @@ impl EventHandler for ResponseBodyView {
                         // This will trigger a modal to ask the user for a path
                         ViewContext::send_message(Message::SaveResponseBody {
                             request_id: state.request_id,
-                            data: state.body.data().parsed_text(),
+                            data: state.body.data().modified_text(),
                         });
                     }
                 }
@@ -141,25 +140,16 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
         props: ResponseBodyViewProps,
         metadata: DrawMetadata,
     ) {
-        let response = &props.response;
         let state = self.state.get_or_update(&props.request_id, || State {
             request_id: props.request_id,
             body: PersistedLazy::new(
                 ResponseQueryPersistedKey(props.recipe_id.clone()),
-                QueryableBody::new(),
+                QueryableBody::new(Arc::clone(props.response)),
             )
             .into(),
         });
 
-        state.body.draw(
-            frame,
-            QueryableBodyProps {
-                content_type: response.content_type(),
-                body: &response.body,
-            },
-            metadata.area(),
-            true,
-        );
+        state.body.draw(frame, (), metadata.area(), true);
     }
 }
 
@@ -191,37 +181,21 @@ impl<'a> Draw<ResponseHeadersViewProps<'a>> for ResponseHeadersView {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{
-            harness, terminal, TestHarness, TestResponseParser, TestTerminal,
-        },
+        test_util::{harness, terminal, TestHarness, TestTerminal},
         view::test_util::TestComponent,
     };
     use crossterm::event::KeyCode;
-    use indexmap::indexmap;
     use rstest::rstest;
-    use slumber_core::{
-        assert_matches,
-        http::Exchange,
-        test_util::{header_map, Factory},
-    };
+    use slumber_core::{assert_matches, http::Exchange, test_util::Factory};
 
     /// Test "Copy Body" menu action
     #[rstest]
-    #[case::json_body(
+    #[case::text_body(
         ResponseRecord {
-            headers: header_map(indexmap! {"content-type" => "application/json"}),
             body: br#"{"hello":"world"}"#.to_vec().into(),
             ..ResponseRecord::factory(())
         },
-        "{\n  \"hello\": \"world\"\n}",
-    )]
-    #[case::unparsed_text_body(
-        ResponseRecord {
-            headers: header_map(indexmap! {"content-type" => "text/plain"}),
-            body: b"hello!".to_vec().into(),
-            ..ResponseRecord::factory(())
-        },
-        "hello!",
+        "{\"hello\":\"world\"}",
     )]
     #[case::binary_body(
         ResponseRecord {
@@ -237,11 +211,10 @@ mod tests {
         #[case] response: ResponseRecord,
         #[case] expected_body: &str,
     ) {
-        let mut exchange = Exchange {
-            response,
+        let exchange = Exchange {
+            response: response.into(),
             ..Exchange::factory(())
         };
-        TestResponseParser::parse_body(&mut exchange.response);
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -272,20 +245,12 @@ mod tests {
 
     /// Test "Save Body as File" menu action
     #[rstest]
-    #[case::json_body(
+    #[case::text_body(
         ResponseRecord {
-            headers: header_map(indexmap! {"content-type" => "application/json"}),
-            body: br#"{"hello":"world"}"#.to_vec().into(),
-            ..ResponseRecord::factory(())
-        },
-        Some("{\n  \"hello\": \"world\"\n}"),
-    )]
-    #[case::unparsed_text_body(
-        ResponseRecord {
-            headers: header_map(indexmap! {"content-type" => "text/plain"}),
             body: b"hello!".to_vec().into(),
             ..ResponseRecord::factory(())
         },
+        None,
         None,
     )]
     #[case::binary_body(
@@ -294,19 +259,30 @@ mod tests {
             ..ResponseRecord::factory(())
         },
         None,
+        None,
+    )]
+    #[case::queried_body(
+        ResponseRecord {
+            body: b"hello!".to_vec().into(),
+            ..ResponseRecord::factory(())
+        },
+        Some("head -c 4"),
+        Some("hell"),
     )]
     #[tokio::test]
     async fn test_save_file(
         mut harness: TestHarness,
         terminal: TestTerminal,
         #[case] response: ResponseRecord,
+        #[case] query: Option<&str>,
         #[case] expected_body: Option<&str>,
     ) {
-        let mut exchange = Exchange {
-            response,
+        use crate::test_util::run_local;
+
+        let exchange = Exchange {
+            response: response.into(),
             ..Exchange::factory(())
         };
-        TestResponseParser::parse_body(&mut exchange.response);
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -317,6 +293,20 @@ mod tests {
                 response: &exchange.response,
             },
         );
+
+        if let Some(query) = query {
+            // Querying requires a LocalSet to run the command in the background
+            run_local(async {
+                // Type something into the query box
+                component.send_key(KeyCode::Char('/')).assert_empty();
+                component.send_text(query).assert_empty();
+                component.send_key(KeyCode::Enter).assert_empty();
+                // Wait for the command to finish, pass results back to the
+                // component
+            })
+            .await;
+            component.drain_draw().assert_empty();
+        }
 
         // Open actions modal and select the save action
         component

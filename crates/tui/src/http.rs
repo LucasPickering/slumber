@@ -311,6 +311,14 @@ impl RequestStore {
         Ok(())
     }
 
+    /// Is the given request either building or loading?
+    pub fn is_in_progress(&self, id: RequestId) -> bool {
+        matches!(
+            self.get(id),
+            Some(RequestState::Building { .. } | RequestState::Loading { .. },)
+        )
+    }
+
     /// Replace a request state in the store with new state, by mapping it
     /// through a function. This assumes the request state is supposed to be in
     /// the state, so it logs a message if it isn't (panics in debug mode). This

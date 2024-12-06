@@ -151,16 +151,19 @@ impl EventHandler for Root {
                 }
                 Action::Cancel => {
                     if let Some(request_id) = self.selected_request_id.0 {
-                        ViewContext::open_modal(ConfirmModal::new(
-                            "Cancel request?".into(),
-                            move |response| {
-                                if response {
-                                    ViewContext::send_message(
-                                        Message::HttpCancel(request_id),
-                                    );
-                                }
-                            },
-                        ))
+                        // 2024 edition: if-let chain
+                        if context.request_store.is_in_progress(request_id) {
+                            ViewContext::open_modal(ConfirmModal::new(
+                                "Cancel request?".into(),
+                                move |response| {
+                                    if response {
+                                        ViewContext::send_message(
+                                            Message::HttpCancel(request_id),
+                                        );
+                                    }
+                                },
+                            ))
+                        }
                     }
                 }
                 Action::Quit => ViewContext::send_message(Message::Quit),

@@ -209,13 +209,13 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for Exchange {
                     .get::<_, Option<SqlWrap<Bytes>>>("request_body")?
                     .map(|wrap| wrap.0),
             }),
-            response: ResponseRecord {
+            response: Arc::new(ResponseRecord {
                 status: row.get::<_, SqlWrap<StatusCode>>("status_code")?.0,
                 headers: row
                     .get::<_, SqlWrap<HeaderMap>>("response_headers")?
                     .0,
                 body: row.get::<_, SqlWrap<Bytes>>("response_body")?.0.into(),
-            },
+            }),
         })
     }
 }

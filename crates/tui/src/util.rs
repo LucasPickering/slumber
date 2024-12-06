@@ -3,7 +3,7 @@ use crate::{
     message::{Message, MessageSender},
     view::Confirm,
 };
-use anyhow::Context;
+use anyhow::{anyhow, bail, Context};
 use bytes::Bytes;
 use crossterm::event;
 use editor_command::EditorBuilder;
@@ -16,11 +16,11 @@ use std::{
     env, io,
     ops::Deref,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     time::Duration,
 };
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::oneshot};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, debug_span, error, info, warn};
 use uuid::Uuid;
 
 /// Extension trait for [Result]
@@ -229,6 +229,46 @@ pub fn get_viewer_command(file: &Path) -> anyhow::Result<Command> {
                 doc_link("api/configuration/editor"),
             )
         })
+}
+
+/// Run a shellish command, optionally piping some stdin to it
+pub async fn run_command(
+    command: &str,
+    stdin: Option<&[u8]>,
+) -> anyhow::Result<Vec<u8>> {
+    let _ = debug_span!("Command", command).entered();
+
+    let mut parsed = shellish_parse::parse(command, true)?;
+    let mut tokens = parsed.drain(..);
+    let program = tokens.next().ok_or_else(|| anyhow!("Command is empty"))?;
+    let args = tokens;
+    let mut process = tokio::process::Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    if let Some(stdin) = stdin {
+        process
+            .stdin
+            .as_mut()
+            .expect("Process missing stdin")
+            .write_all(stdin)
+            .await?;
+    }
+    let output = process.wait_with_output().await?;
+    debug!(
+        status = ?output.status,
+        stdout = %String::from_utf8_lossy(&output.stdout),
+        stderr = %String::from_utf8_lossy(&output.stderr),
+        "Command complete"
+    );
+    if !output.status.success() {
+        let stderr = std::str::from_utf8(&output.stderr).unwrap_or_default();
+        bail!("{}", stderr);
+    }
+    Ok(output.stdout)
 }
 
 /// Ask the user for some text input and wait for a response. Return `None` if

@@ -18,8 +18,8 @@ mod view;
 
 use crate::{
     context::TuiContext,
-    http::{BackgroundResponseParser, RequestState, RequestStore},
-    message::{Message, MessageSender, RequestConfig},
+    http::{RequestState, RequestStore},
+    message::{Callback, Message, MessageSender, RequestConfig},
     util::{
         clear_event_buffer, delete_temp_file, get_editor_command,
         get_viewer_command, save_file, signals, ResultReported,
@@ -121,10 +121,7 @@ impl Tui {
         // `Tui`.
         let terminal = initialize_terminal()?;
 
-        let request_store = RequestStore::new(
-            database.clone(),
-            BackgroundResponseParser::new(messages_tx.clone()),
-        );
+        let request_store = RequestStore::new(database.clone());
 
         let app = Tui {
             terminal,
@@ -327,17 +324,6 @@ impl Tui {
             }
             Message::ConfirmStart(confirm) => {
                 self.view.open_modal(confirm);
-            }
-
-            Message::ParseResponseBodyComplete { request_id, body } => {
-                self.request_store
-                    .set_parsed_body(request_id, body)
-                    .with_context(|| {
-                        format!(
-                            "Error storing parsed response body \
-                            for request {request_id}"
-                        )
-                    })?;
             }
 
             Message::TemplatePreview {
@@ -650,9 +636,7 @@ impl Tui {
         &self,
         template: Template,
         profile_id: Option<ProfileId>,
-        on_complete: Box<
-            dyn 'static + Send + Sync + FnOnce(Vec<TemplateChunk>),
-        >,
+        on_complete: Callback<Vec<TemplateChunk>>,
     ) -> anyhow::Result<()> {
         let context = self.template_context(profile_id, true)?;
         let messages_tx = self.messages_tx();

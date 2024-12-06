@@ -8,8 +8,8 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
-        content_type::ResponseContent, BuildOptions, Exchange,
-        RequestBuildError, RequestError, RequestId, RequestRecord,
+        BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
+        RequestRecord,
     },
     template::{Prompt, Prompter, Select, Template, TemplateChunk},
     util::ResultTraced,
@@ -118,14 +118,6 @@ pub enum Message {
 
     /// Send an informational notification to the user
     Notify(String),
-
-    /// Register a parsed response body. Parsing is performed in a background
-    /// thread so it doesn't block the UI
-    ParseResponseBodyComplete {
-        request_id: RequestId,
-        #[debug(skip)]
-        body: Box<dyn ResponseContent>,
-    },
 
     /// Show a prompt to the user, asking for some input. Use the included
     /// channel to return the value.

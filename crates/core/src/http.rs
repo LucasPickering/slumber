@@ -375,7 +375,7 @@ impl RequestTicket {
                 let exchange = Exchange {
                     id,
                     request: self.record,
-                    response,
+                    response: response.into(),
                     start_time,
                     end_time,
                 };
@@ -1362,7 +1362,7 @@ mod tests {
             .to_str()
             .unwrap();
         assert_eq!(
-            exchange.response,
+            *exchange.response,
             ResponseRecord {
                 status: StatusCode::OK,
                 headers: header_map([

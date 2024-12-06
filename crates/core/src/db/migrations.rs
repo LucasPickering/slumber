@@ -128,7 +128,7 @@ fn migrate_requests_v2_up(transaction: &Transaction) -> HookResult {
             end_time: row.get("end_time")?,
             // Deserialize from bytes
             request: Arc::new(row.get::<_, ByteEncoded<_>>("request")?.0),
-            response: row.get::<_, ByteEncoded<_>>("response")?.0,
+            response: Arc::new(row.get::<_, ByteEncoded<_>>("response")?.0),
         };
         Ok((collection_id, exchange))
     }
@@ -430,7 +430,7 @@ mod tests {
                         ":start_time": &exchange.start_time,
                         ":end_time": &exchange.end_time,
                         ":request": &ByteEncoded(&*exchange.request),
-                        ":response": &ByteEncoded(&exchange.response),
+                        ":response": &ByteEncoded(&*exchange.response),
                         ":status_code": exchange.response.status.as_u16(),
                     },
                 )

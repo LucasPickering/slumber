@@ -539,7 +539,10 @@ impl<'a> ChainTemplateSource<'a> {
             ChainRequestTrigger::Always => send_request().await?,
         };
 
-        Ok(exchange.response)
+        // Safe because we just constructed the exchange and haven't shared it
+        let response =
+            Arc::into_inner(exchange.response).expect("Arc never shared");
+        Ok(response)
     }
 
     /// Extract the specified component bytes from the response. For headers,

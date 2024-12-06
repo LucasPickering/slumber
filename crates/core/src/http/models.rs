@@ -5,10 +5,7 @@
 
 use crate::{
     collection::{Authentication, ProfileId, RecipeBody, RecipeId},
-    http::{
-        cereal,
-        content_type::{ContentType, ResponseContent},
-    },
+    http::{cereal, content_type::ContentType},
     template::Template,
 };
 use anyhow::Context;
@@ -183,7 +180,7 @@ pub struct Exchange {
     /// What we said. Use an Arc so the view can hang onto it.
     pub request: Arc<RequestRecord>,
     /// What we heard
-    pub response: ResponseRecord,
+    pub response: Arc<ResponseRecord>,
     /// When was the request sent to the server?
     pub start_time: DateTime<Utc>,
     /// When did we finish receiving the *entire* response?
@@ -423,7 +420,7 @@ impl crate::test_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
         Self {
             id: request.id,
             request: request.into(),
-            response,
+            response: response.into(),
             start_time: Utc::now(),
             end_time: Utc::now(),
         }
@@ -450,20 +447,10 @@ pub struct ResponseRecord {
 }
 
 impl ResponseRecord {
-    /// Stored the parsed form of this request's body
-    pub fn set_parsed_body(&mut self, body: Box<dyn ResponseContent>) {
-        self.body.parsed = Some(body);
-    }
-
     /// Get the content type of the response body, according to the
     /// `Content-Type` header
     pub fn content_type(&self) -> Option<ContentType> {
-        // If we've parsed the body, we'll have the content type present. If
-        // not, check the header now
-        self.body
-            .parsed()
-            .map(|content| content.content_type())
-            .or_else(|| ContentType::from_headers(&self.headers).ok())
+        ContentType::from_headers(&self.headers).ok()
     }
 
     /// Get a suggested file name for the content of this response. First we'll
@@ -496,64 +483,41 @@ impl ResponseRecord {
     }
 }
 
-pub enum ParseMode {
-    Immediate,
-    Background {
-        callback: Box<dyn 'static + FnOnce(Box<dyn ResponseContent>) + Send>,
-    },
-}
-
 /// HTTP response body. Content is stored as bytes because it may not
 /// necessarily be valid UTF-8. Converted to text only as needed.
+///
+/// The generic type is to make this usable with references to bodies. In most
+/// cases you can just use the default.
 #[derive(Default, Deserialize)]
-#[serde(from = "Bytes")] // Can't use into=Bytes because that requires cloning
-pub struct ResponseBody {
+#[serde(bound = "T: From<Bytes>", from = "Bytes")] // Can't use into=Bytes because that requires cloning
+pub struct ResponseBody<T = Bytes> {
     /// Raw body
-    data: Bytes,
-    /// For responses of a known content type, we can parse the body into a
-    /// real data structure. This is populated manually; Call
-    /// [ResponseRecord::parse_body] to set the parsed body. This uses a lock
-    /// so it can be parsed and populated in a background thread.
-    #[serde(skip)]
-    parsed: Option<Box<dyn ResponseContent>>,
+    data: T,
 }
 
-impl ResponseBody {
-    pub fn new(data: Bytes) -> Self {
-        Self {
-            data,
-            parsed: Default::default(),
-        }
+impl<T: AsRef<[u8]>> ResponseBody<T> {
+    pub fn new(data: T) -> Self {
+        Self { data }
     }
 
     /// Raw content bytes
-    pub fn bytes(&self) -> &Bytes {
+    pub fn bytes(&self) -> &T {
         &self.data
     }
 
     /// Owned raw content bytes
-    pub fn into_bytes(self) -> Bytes {
+    pub fn into_bytes(self) -> T {
         self.data
     }
 
     /// Get bytes as text, if valid UTF-8
     pub fn text(&self) -> Option<&str> {
-        std::str::from_utf8(&self.data).ok()
+        std::str::from_utf8(self.data.as_ref()).ok()
     }
 
     /// Get body size, in bytes
     pub fn size(&self) -> usize {
-        self.bytes().len()
-    }
-
-    /// Get the parsed version of this body. Must haved call
-    /// [ResponseRecord::parse_body] first to actually do the parse. Parsing has
-    /// to be done on the parent because we don't have access to the
-    /// `Content-Type` header here, which tells us how to parse.
-    ///
-    /// Return `None` if parsing either hasn't happened yet, or failed.
-    pub fn parsed(&self) -> Option<&dyn ResponseContent> {
-        self.parsed.as_deref()
+        self.data.as_ref().len()
     }
 }
 
@@ -566,9 +530,9 @@ impl Debug for ResponseBody {
     }
 }
 
-impl From<Bytes> for ResponseBody {
-    fn from(bytes: Bytes) -> Self {
-        Self::new(bytes)
+impl<T: From<Bytes>> From<Bytes> for ResponseBody<T> {
+    fn from(data: Bytes) -> Self {
+        Self { data: data.into() }
     }
 }
 

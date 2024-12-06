@@ -2,7 +2,7 @@
 
 use crate::{
     context::TuiContext,
-    http::{RequestStore, ResponseParser},
+    http::RequestStore,
     message::{Message, MessageSender},
     view::ViewContext,
 };
@@ -14,13 +14,13 @@ use ratatui::{
 };
 use rstest::fixture;
 use slumber_core::{
-    collection::Collection,
-    db::CollectionDatabase,
-    http::{RequestId, ResponseRecord},
-    test_util::Factory,
+    collection::Collection, db::CollectionDatabase, test_util::Factory,
 };
-use std::{cell::RefCell, rc::Rc, sync::Arc};
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use std::{cell::RefCell, future::Future, rc::Rc, sync::Arc};
+use tokio::{
+    sync::mpsc::{self, UnboundedReceiver},
+    task::LocalSet,
+};
 
 /// Get a test harness, with a clean terminal etc. See [TestHarness].
 #[fixture]
@@ -49,10 +49,8 @@ impl TestHarness {
         let (messages_tx, messages_rx) = mpsc::unbounded_channel();
         let messages_tx: MessageSender = messages_tx.into();
         let database = CollectionDatabase::factory(());
-        let request_store = Rc::new(RefCell::new(RequestStore::new(
-            database.clone(),
-            TestResponseParser,
-        )));
+        let request_store =
+            Rc::new(RefCell::new(RequestStore::new(database.clone())));
         let collection = Arc::new(collection);
         ViewContext::init(
             Arc::clone(&collection),
@@ -143,31 +141,12 @@ impl TestTerminal {
     }
 }
 
-/// Parse response bodies inline, for simplicity. Maybe not using the main
-/// code path for tests is bad practice, but IMO it's not worth the effort
-/// to make the background parser work in tests.
-#[derive(Debug)]
-pub struct TestResponseParser;
-
-impl TestResponseParser {
-    /// A helper for manually parsing a response body in tests
-    pub fn parse_body(response: &mut ResponseRecord) {
-        // Request ID is never used, so we can just pass a random one in
-        Self.parse(RequestId::new(), response);
-    }
-}
-
-impl ResponseParser for TestResponseParser {
-    fn parse(&self, _: RequestId, response: &mut ResponseRecord) {
-        let Some(content_type) = response.content_type() else {
-            return;
-        };
-        let Ok(parsed) = content_type.parse_content(response.body.bytes())
-        else {
-            return;
-        };
-        response.set_parsed_body(parsed);
-    }
+/// Run a future in a local set, so it can use [tokio::task::spawn_local]. This
+/// will wait until all spawned tasks are done.
+pub async fn run_local(future: impl Future<Output = ()>) {
+    let local = LocalSet::new();
+    local.run_until(future).await; // Let the future spawn tasks
+    local.await; // Wait until all tasks are done
 }
 
 /// Assert that the event queue matches the given list of patterns. Each event

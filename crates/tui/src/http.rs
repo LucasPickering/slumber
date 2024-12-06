@@ -1,7 +1,5 @@
 //! Types for managing HTTP state in the TUI
 
-use crate::message::{Message, MessageSender};
-use anyhow::{bail, Context};
 use chrono::{DateTime, TimeDelta, Utc};
 use itertools::Itertools;
 use reqwest::StatusCode;
@@ -9,18 +7,16 @@ use slumber_core::{
     collection::{ProfileId, RecipeId},
     db::CollectionDatabase,
     http::{
-        content_type::ResponseContent, Exchange, ExchangeSummary,
-        RequestBuildError, RequestError, RequestId, RequestRecord,
-        ResponseRecord,
+        Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
+        RequestRecord,
     },
-    util::ResultTraced,
 };
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Debug,
     sync::Arc,
 };
-use tokio::task::{self, JoinHandle};
+use tokio::task::JoinHandle;
 use tracing::{error, warn};
 
 /// Simple in-memory "database" for request state. This serves a few purposes:
@@ -39,19 +35,13 @@ use tracing::{error, warn};
 pub struct RequestStore {
     database: CollectionDatabase,
     requests: HashMap<RequestId, RequestState>,
-    /// A helper to parse response bodies. See trait definition
-    parser: Box<dyn ResponseParser>,
 }
 
 impl RequestStore {
-    pub fn new(
-        database: CollectionDatabase,
-        parser: impl 'static + ResponseParser,
-    ) -> Self {
+    pub fn new(database: CollectionDatabase) -> Self {
         Self {
             database,
             requests: Default::default(),
-            parser: Box::new(parser),
         }
     }
 
@@ -127,7 +117,7 @@ impl RequestStore {
 
     /// Mark a request as successful, i.e. we received a response
     pub fn response(&mut self, exchange: Exchange) {
-        let response_state = RequestState::response(exchange, &*self.parser);
+        let response_state = RequestState::response(exchange);
         // Use replace just to help catch bugs
         self.replace(response_state.id(), |state| {
             // This indicates a bug or race condition (e.g. request cancelled as
@@ -217,12 +207,10 @@ impl RequestStore {
     ) -> anyhow::Result<Option<&RequestState>> {
         let request = match self.requests.entry(id) {
             Entry::Occupied(entry) => Some(entry.into_mut()),
-            Entry::Vacant(entry) => {
-                self.database.get_request(id)?.map(|exchange| {
-                    entry
-                        .insert(RequestState::response(exchange, &*self.parser))
-                })
-            }
+            Entry::Vacant(entry) => self
+                .database
+                .get_request(id)?
+                .map(|exchange| entry.insert(RequestState::response(exchange))),
         };
         Ok(request.map(|r| &*r))
     }
@@ -243,9 +231,7 @@ impl RequestStore {
                 .entry(exchange.id)
                 // This is expensive because it parses the body, so avoid it if
                 // the record is already cached
-                .or_insert_with(|| {
-                    RequestState::response(exchange, &*self.parser)
-                });
+                .or_insert_with(|| RequestState::response(exchange));
         }
 
         // Now that the know the most recent completed record is in our local
@@ -292,23 +278,6 @@ impl RequestStore {
             // De-duplicate double-loaded requests
             .unique_by(RequestStateSummary::id);
         Ok(iter)
-    }
-
-    /// Set the parsed body for a response. This is part of the callback chain
-    /// after a body has been parsed in a background task
-    pub fn set_parsed_body(
-        &mut self,
-        id: RequestId,
-        body: Box<dyn ResponseContent>,
-    ) -> anyhow::Result<()> {
-        let Some(request_state) = self.requests.get_mut(&id) else {
-            bail!("Request not in store")
-        };
-        let RequestState::Response { exchange } = request_state else {
-            bail!("Request is not complete")
-        };
-        exchange.response.set_parsed_body(body);
-        Ok(())
     }
 
     /// Is the given request either building or loading?
@@ -490,12 +459,8 @@ impl RequestState {
         }
     }
 
-    /// Create a request state from a completed response. This will trigger
-    /// parsing of the response in a background task, so the call is expensive
-    /// but not blocking.
-    fn response(mut exchange: Exchange, parser: &dyn ResponseParser) -> Self {
-        // Pre-parse the body so the view doesn't have to do it
-        parser.parse(exchange.id, &mut exchange.response);
+    /// Create a request state from a completed response
+    fn response(exchange: Exchange) -> Self {
         Self::Response { exchange }
     }
 }
@@ -731,57 +696,10 @@ impl From<&RequestState> for RequestStateSummary {
     }
 }
 
-/// An abstraction for defining how response bodies should be parsed. In the TUI
-/// we use background threads, but in tests we do it inline for simplicity.
-pub trait ResponseParser: Debug {
-    fn parse(&self, request_id: RequestId, response: &mut ResponseRecord);
-}
-
-/// Parser response bodies in background threads, to prevent blocking the UI.
-#[derive(Debug)]
-pub struct BackgroundResponseParser {
-    messages_tx: MessageSender,
-}
-
-impl BackgroundResponseParser {
-    pub fn new(messages_tx: MessageSender) -> Self {
-        Self { messages_tx }
-    }
-}
-
-impl ResponseParser for BackgroundResponseParser {
-    fn parse(&self, request_id: RequestId, response: &mut ResponseRecord) {
-        if let Some(content_type) = response.content_type() {
-            // Bytes are cheaply clonable
-            let body = response.body.bytes().clone();
-            let messages_tx = self.messages_tx.clone();
-            task::spawn_blocking(move || {
-                let Ok(parsed) = content_type
-                    .parse_content(&body)
-                    .with_context(|| {
-                        format!(
-                            "Error parsing response body \
-                            for request {request_id}"
-                        )
-                    })
-                    .traced()
-                else {
-                    return;
-                };
-
-                messages_tx.send(Message::ParseResponseBodyComplete {
-                    request_id,
-                    body: parsed,
-                });
-            });
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{harness, TestHarness, TestResponseParser};
+    use crate::test_util::{harness, TestHarness};
     use anyhow::anyhow;
     use chrono::Utc;
     use rstest::rstest;
@@ -799,17 +717,14 @@ mod tests {
     };
     use tokio::time;
 
-    const PARSER: TestResponseParser = TestResponseParser;
-
     #[rstest]
     fn test_get() {
-        let mut store =
-            RequestStore::new(CollectionDatabase::factory(()), PARSER);
+        let mut store = RequestStore::new(CollectionDatabase::factory(()));
         let exchange = Exchange::factory(());
         let id = exchange.id;
         store
             .requests
-            .insert(exchange.id, RequestState::response(exchange, &PARSER));
+            .insert(exchange.id, RequestState::response(exchange));
 
         // This is a bit jank, but since we can't clone exchanges, the only way
         // to get the value back for comparison is to access the map directly
@@ -821,8 +736,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_life_cycle_success() {
-        let mut store =
-            RequestStore::new(CollectionDatabase::factory(()), PARSER);
+        let mut store = RequestStore::new(CollectionDatabase::factory(()));
         let exchange = Exchange::factory(());
         let id = exchange.id;
 
@@ -858,10 +772,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_life_cycle_build_error() {
-        let mut store = RequestStore::new(
-            CollectionDatabase::factory(()),
-            TestResponseParser,
-        );
+        let mut store = RequestStore::new(CollectionDatabase::factory(()));
         let exchange = Exchange::factory(());
         let id = exchange.id;
         let profile_id = &exchange.request.profile_id;
@@ -890,8 +801,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_life_cycle_request_error() {
-        let mut store =
-            RequestStore::new(CollectionDatabase::factory(()), PARSER);
+        let mut store = RequestStore::new(CollectionDatabase::factory(()));
         let exchange = Exchange::factory(());
         let id = exchange.id;
         let profile_id = &exchange.request.profile_id;
@@ -921,8 +831,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_life_cycle_cancel() {
-        let mut store =
-            RequestStore::new(CollectionDatabase::factory(()), PARSER);
+        let mut store = RequestStore::new(CollectionDatabase::factory(()));
         let exchange = Exchange::factory(());
         let id = exchange.id;
         let profile_id = &exchange.request.profile_id;
@@ -970,10 +879,9 @@ mod tests {
         // it so we can ensure the store *isn't* going to the DB for it
         let present_exchange = Exchange::factory(());
         let present_id = present_exchange.id;
-        store.requests.insert(
-            present_id,
-            RequestState::response(present_exchange, &PARSER),
-        );
+        store
+            .requests
+            .insert(present_id, RequestState::response(present_exchange));
 
         let missing_exchange = Exchange::factory(());
         let missing_id = missing_exchange.id;
@@ -1023,7 +931,7 @@ mod tests {
 
         assert_eq!(
             store.load_latest(Some(&profile_id), &recipe_id).unwrap(),
-            Some(&RequestState::response(expected_exchange, &PARSER))
+            Some(&RequestState::response(expected_exchange))
         );
 
         // Non-match
@@ -1051,7 +959,7 @@ mod tests {
         let mut store = harness.request_store.borrow_mut();
         store
             .requests
-            .insert(exchange.id, RequestState::response(exchange, &PARSER));
+            .insert(exchange.id, RequestState::response(exchange));
         let loaded = store.load_latest(Some(&profile_id), &recipe_id).unwrap();
         assert_eq!(loaded.map(RequestState::id), Some(request_id));
     }
@@ -1078,7 +986,7 @@ mod tests {
         let response_id = exchange.id;
         store
             .requests
-            .insert(exchange.id, RequestState::response(exchange, &PARSER));
+            .insert(exchange.id, RequestState::response(exchange));
 
         let building_id = RequestId::new();
         store.start(

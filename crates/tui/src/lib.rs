@@ -38,7 +38,7 @@ use ratatui::{prelude::CrosstermBackend, Terminal};
 use slumber_config::{Action, Config};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
-    db::{CollectionDatabase, Database},
+    db::{CollectionDatabase, Database, DatabaseMode},
     http::{RequestId, RequestSeed},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
@@ -101,7 +101,8 @@ impl Tui {
         // to default, just show an error to the user
         let config = Config::load().reported(&messages_tx).unwrap_or_default();
         // Load a database for this particular collection
-        let database = Database::load()?.into_collection(&collection_path)?;
+        let database = Database::load()?
+            .into_collection(&collection_path, DatabaseMode::ReadWrite)?;
         // Initialize global view context
         TuiContext::init(config);
 

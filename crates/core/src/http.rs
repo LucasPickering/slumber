@@ -380,8 +380,10 @@ impl RequestTicket {
                     end_time,
                 };
 
-                // Error here should *not* kill the request
-                let _ = database.insert_exchange(&exchange);
+                if database.can_write() {
+                    // Error here should *not* kill the request
+                    let _ = database.insert_exchange(&exchange);
+                }
                 Ok(exchange)
             }
 

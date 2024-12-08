@@ -12,7 +12,7 @@ use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId, RecipeId},
-    db::{CollectionDatabase, Database},
+    db::{CollectionDatabase, Database, DatabaseMode},
     http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
     template::{Prompt, Prompter, Select, TemplateContext, TemplateError},
     util::ResultTraced,
@@ -163,9 +163,13 @@ impl BuildRequestCommand {
         trigger_dependencies: bool,
     ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
         let collection_path = CollectionFile::try_path(None, global.file)?;
-        let database = Database::load()?.into_collection(&collection_path)?;
-        let collection = Collection::load(&collection_path)?;
         let config = Config::load()?;
+        let collection = Collection::load(&collection_path)?;
+        // Open DB in readonly. Storing requests in history from the CLI isn't
+        // really intuitive, and could have a large perf impact for scripting
+        // and large responses
+        let database = Database::load()?
+            .into_collection(&collection_path, DatabaseMode::ReadOnly)?;
         let http_engine = HttpEngine::new(&config.http);
 
         // Validate profile ID, so we can provide a good error if it's invalid

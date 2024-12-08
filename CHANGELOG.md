@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Breaking
+
+- Don't store CLI requests in history
+
 ## [2.5.0] - 2025-01-06
 
 ### Added

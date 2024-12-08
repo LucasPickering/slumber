@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Breaking
+
+- Don't store CLI requests in history
+
 ### Added
 
 - Add REST Importer for VSCode and Jetbrains [#122](https://github.com/LucasPickering/slumber/issues/122) (thanks @benfaerber)

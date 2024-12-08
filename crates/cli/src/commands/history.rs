@@ -9,7 +9,7 @@ use clap_complete::ArgValueCompleter;
 use dialoguer::console::Style;
 use slumber_core::{
     collection::{CollectionFile, ProfileId, RecipeId},
-    db::Database,
+    db::{Database, DatabaseMode},
     http::{Exchange, ExchangeSummary, RequestId},
     util::{format_byte_size, format_duration, format_time, MaybeStr},
 };
@@ -62,7 +62,8 @@ impl Subcommand for HistoryCommand {
             it may change or be removed at any time"
         );
         let collection_path = CollectionFile::try_path(None, global.file)?;
-        let database = Database::load()?.into_collection(&collection_path)?;
+        let database = Database::load()?
+            .into_collection(&collection_path, DatabaseMode::ReadOnly)?;
 
         match self.subcommand {
             HistorySubcommand::List { recipe, profile } => {

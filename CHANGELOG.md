@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Breaking
+
+- Don't store CLI requests in history
+
 ### Changed
 
 - Update [editor-command](https://crates.io/crates/editor-command), which replaces [shellish_parse](https://crates.io/crates/shellish_parse) with [shell-words](https://crates.io/crates/shell-words) for editor and pager command parsing

@@ -175,6 +175,7 @@ impl Database {
     pub fn into_collection(
         self,
         path: &Path,
+        mode: DatabaseMode,
     ) -> anyhow::Result<CollectionDatabase> {
         // Convert to canonicalize and make serializable
         let path: CollectionPath = path.try_into()?;
@@ -205,6 +206,7 @@ impl Database {
         Ok(CollectionDatabase {
             collection_id,
             database: self,
+            mode,
         })
     }
 }
@@ -216,6 +218,7 @@ impl Database {
 pub struct CollectionDatabase {
     collection_id: CollectionId,
     database: Database,
+    mode: DatabaseMode,
 }
 
 impl CollectionDatabase {
@@ -231,6 +234,20 @@ impl CollectionDatabase {
             .context("Error fetching collection path")
             .traced()
             .map(PathBuf::from)
+    }
+
+    /// Is read/write mode enabled for this database?
+    pub fn can_write(&self) -> bool {
+        self.mode == DatabaseMode::ReadWrite
+    }
+
+    /// Return an error if we are in read-only mode
+    fn ensure_write(&self) -> anyhow::Result<()> {
+        if self.can_write() {
+            Ok(())
+        } else {
+            Err(anyhow!("Database in read-only mode"))
+        }
     }
 
     /// Get a request by ID, or `None` if it does not exist in history.
@@ -307,6 +324,8 @@ impl CollectionDatabase {
     /// requests that failed to complete (e.g. because of a network error)
     /// should not (and cannot) be stored.
     pub fn insert_exchange(&self, exchange: &Exchange) -> anyhow::Result<()> {
+        self.ensure_write()?;
+
         debug!(
             id = %exchange.id,
             url = %exchange.request.url,
@@ -453,6 +472,8 @@ impl CollectionDatabase {
         K: Debug + Serialize,
         V: Debug + Serialize,
     {
+        self.ensure_write()?;
+
         debug!(?key, ?value, "Setting UI state");
         self.database
             .connection()
@@ -507,17 +528,31 @@ impl crate::test_util::Factory for Database {
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for CollectionDatabase {
     fn factory(_: ()) -> Self {
+        Self::factory(DatabaseMode::ReadWrite)
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl crate::test_util::Factory<DatabaseMode> for CollectionDatabase {
+    fn factory(mode: DatabaseMode) -> Self {
         use crate::util::paths::get_repo_root;
         Database::factory(())
-            .into_collection(&get_repo_root().join("slumber.yml"))
+            .into_collection(&get_repo_root().join("slumber.yml"), mode)
             .expect("Error initializing DB collection")
     }
+}
+
+/// Is the database read-only or read/write?
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum DatabaseMode {
+    ReadOnly,
+    ReadWrite,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{test_util::Factory, util::paths::get_repo_root};
+    use crate::{assert_err, test_util::Factory, util::paths::get_repo_root};
     use itertools::Itertools;
     use std::collections::HashMap;
 
@@ -526,8 +561,14 @@ mod tests {
         let database = Database::factory(());
         let path1 = get_repo_root().join("slumber.yml");
         let path2 = get_repo_root().join("README.md"); // Has to be a real file
-        let collection1 = database.clone().into_collection(&path1).unwrap();
-        let collection2 = database.clone().into_collection(&path2).unwrap();
+        let collection1 = database
+            .clone()
+            .into_collection(&path1, DatabaseMode::ReadWrite)
+            .unwrap();
+        let collection2 = database
+            .clone()
+            .into_collection(&path2, DatabaseMode::ReadWrite)
+            .unwrap();
 
         let exchange1 =
             Exchange::factory((Some("profile1".into()), "recipe1".into()));
@@ -598,11 +639,17 @@ mod tests {
         let database = Database::factory(());
         let collection1 = database
             .clone()
-            .into_collection(&get_repo_root().join("slumber.yml"))
+            .into_collection(
+                &get_repo_root().join("slumber.yml"),
+                DatabaseMode::ReadWrite,
+            )
             .unwrap();
         let collection2 = database
             .clone()
-            .into_collection(&get_repo_root().join("README.md"))
+            .into_collection(
+                &get_repo_root().join("README.md"),
+                DatabaseMode::ReadWrite,
+            )
             .unwrap();
 
         let exchange2 = Exchange::factory(());
@@ -736,11 +783,14 @@ mod tests {
         let database = Database::factory(());
         let collection1 = database
             .clone()
-            .into_collection(Path::new("../../slumber.yml"))
+            .into_collection(
+                Path::new("../../slumber.yml"),
+                DatabaseMode::ReadWrite,
+            )
             .unwrap();
         let collection2 = database
             .clone()
-            .into_collection(Path::new("Cargo.toml"))
+            .into_collection(Path::new("Cargo.toml"), DatabaseMode::ReadWrite)
             .unwrap();
 
         let key_type = "MyKey";
@@ -755,6 +805,19 @@ mod tests {
         assert_eq!(
             collection2.get_ui::<_, String>(key_type, ui_key).unwrap(),
             Some("value2".into())
+        );
+    }
+
+    #[test]
+    fn test_readonly_mode() {
+        let database = CollectionDatabase::factory(DatabaseMode::ReadOnly);
+        assert_err!(
+            database.insert_exchange(&Exchange::factory(())),
+            "Database in read-only mode"
+        );
+        assert_err!(
+            database.set_ui("MyKey", "key1", "value1"),
+            "Database in read-only mode"
         );
     }
 }

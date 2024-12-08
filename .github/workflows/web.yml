@@ -17,22 +17,12 @@ on:
   # completely broke oranda/mdbook. Sadly we don't provide previews (yet)!
   pull_request:
 
-  # Whenever a workflow called "Release" completes, update the docs!
-  #
-  # If you're using cargo-dist, this is recommended, as it will ensure that
-  # oranda always sees the latest release right when it's available. Note
-  # however that Github's UI is wonky when you use workflow_run, and won't
-  # show this workflow as part of any commit. You have to go to the "actions"
-  # tab for your repo to see this one running (the gh-pages deploy will also
-  # only show up there).
-  workflow_run:
-    workflows: ["Release"]
-    types:
-      - completed
-    # Every PR runs the first step of the Release workflow. Without this branch
-    # filter, that workflow run would trigger the website release on every merge.
-    # Instead, we only want to trigger when a release is actually cut.
-    branches: [master]
+  # Deploy website when release is published. This is a manual edit. Eventually
+  # hopefully we can configure oranda to do generate it like this
+  # https://github.com/axodotdev/oranda/issues/646
+  release:
+    # This only triggers for stable releases
+    types: [released]
 
   # Run manually
   workflow_dispatch:

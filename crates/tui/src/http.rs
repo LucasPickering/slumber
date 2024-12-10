@@ -259,7 +259,8 @@ impl RequestStore {
     ) -> anyhow::Result<impl 'a + Iterator<Item = RequestStateSummary>> {
         // Load summaries from the DB. We do *not* want to insert these into the
         // store, because they don't include request/response data
-        let loaded = self.database.get_all_requests(profile_id, recipe_id)?;
+        let loaded =
+            self.database.get_profile_requests(profile_id, recipe_id)?;
 
         // Find what we have in memory already
         let iter = self

@@ -33,14 +33,14 @@ enum HistorySubcommand {
         #[clap(add = ArgValueCompleter::new(complete_recipe))]
         recipe: RecipeId,
 
-        /// Profile to query for. If omitted, query for requests with no
-        /// profile
+        /// Profile to query for. If omitted, show requests for all profiles.
+        /// Pass --profile with no value to show requests with no profile.
         #[clap(
             long = "profile",
             short,
             add = ArgValueCompleter::new(complete_profile),
         )]
-        profile: Option<ProfileId>,
+        profile: Option<Option<ProfileId>>,
     },
 
     /// Print an entire request/response
@@ -67,8 +67,11 @@ impl Subcommand for HistoryCommand {
 
         match self.subcommand {
             HistorySubcommand::List { recipe, profile } => {
-                let exchanges =
-                    database.get_all_requests(profile.as_ref(), &recipe)?;
+                let exchanges = if let Some(profile) = profile.as_ref() {
+                    database.get_profile_requests(profile.as_ref(), &recipe)?
+                } else {
+                    database.get_all_requests(&recipe)?
+                };
                 Self::print_list(exchanges);
             }
             HistorySubcommand::Get { request } => {
@@ -86,7 +89,8 @@ impl HistoryCommand {
     fn print_list(exchanges: Vec<ExchangeSummary>) {
         for exchange in exchanges {
             println!(
-                "{} {} {}",
+                "{} {} {} {}",
+                exchange.profile_id.as_deref().unwrap_or_default(),
                 exchange.id,
                 exchange.status,
                 format_time(&exchange.start_time)

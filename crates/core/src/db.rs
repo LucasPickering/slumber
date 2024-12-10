@@ -391,8 +391,39 @@ impl CollectionDatabase {
         Ok(())
     }
 
-    /// Get a list of all requests for a profile+recipe combo
+    /// Get all requests for a recipe, across all profiles
     pub fn get_all_requests(
+        &self,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<Vec<ExchangeSummary>> {
+        trace!(
+
+            recipe_id = %recipe_id,
+            "Fetching request history from database"
+        );
+        self.database
+            .connection()
+            .prepare(
+                "SELECT id, profile_id, start_time, end_time, status_code
+                FROM requests_v2
+                WHERE collection_id = :collection_id AND recipe_id = :recipe_id
+                ORDER BY start_time DESC",
+            )?
+            .query_map(
+                named_params! {
+                    ":collection_id": self.collection_id,
+                    ":recipe_id": recipe_id,
+                },
+                |row| row.try_into(),
+            )
+            .context("Error fetching request history from database")
+            .traced()?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .context("Error extracting request history")
+    }
+
+    /// Get a list of all requests for a profile+recipe combo
+    pub fn get_profile_requests(
         &self,
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
@@ -402,10 +433,14 @@ impl CollectionDatabase {
             recipe_id = %recipe_id,
             "Fetching request history from database"
         );
+        // It would be nice to de-dupe this code with get_all_requests, but
+        // there's no good way to dynamically build a query with sqlite so it
+        // ends up not being worth it
         self.database
             .connection()
             .prepare(
-                "SELECT id, start_time, end_time, status_code FROM requests_v2
+                "SELECT id, profile_id, start_time, end_time, status_code
+                FROM requests_v2
                 WHERE collection_id = :collection_id
                     AND profile_id IS :profile_id
                     AND recipe_id = :recipe_id
@@ -758,7 +793,7 @@ mod tests {
                 // Leave the Option here so a non-match will trigger a handy
                 // assertion error
                 let ids = database
-                    .get_all_requests(profile_id.as_ref(), &recipe_id)
+                    .get_profile_requests(profile_id.as_ref(), &recipe_id)
                     .unwrap()
                     .into_iter()
                     .map(|exchange| exchange.id)
@@ -775,6 +810,24 @@ mod tests {
                 );
             }
         }
+
+        // Load all requests for a recipe (across all profiles)
+        let recipe_id = "recipe1".into();
+        let ids = database
+            .get_all_requests(&recipe_id)
+            .unwrap()
+            .into_iter()
+            .map(|exchange| exchange.id)
+            .sorted()
+            .collect_vec();
+        let expected_ids = request_ids
+            .iter()
+            .filter(|((_, r), _)| r == &recipe_id)
+            .flat_map(|(_, request_ids)| request_ids)
+            .sorted()
+            .copied()
+            .collect_vec();
+        assert_eq!(ids, expected_ids)
     }
 
     /// Test UI state storage and retrieval

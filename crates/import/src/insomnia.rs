@@ -563,7 +563,7 @@ fn build_recipe_tree(
         // Recursively build out our family
         for child in tree.values_mut() {
             if let RecipeNode::Folder(folder) = child {
-                folder.children = build_tree(children_map, folder.id.as_str())?;
+                folder.children = build_tree(children_map, &folder.id)?;
             }
         }
 

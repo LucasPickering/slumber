@@ -41,6 +41,7 @@ use uuid::Uuid;
     Serialize,
     Deserialize,
 )]
+#[cfg_attr(test, derive(PartialOrd, Ord))]
 pub struct RequestId(pub Uuid);
 
 impl RequestId {
@@ -196,9 +197,10 @@ impl Exchange {
 
 /// Metadata about an exchange. Useful in lists where request/response content
 /// isn't needed.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct ExchangeSummary {
     pub id: RequestId,
+    pub profile_id: Option<ProfileId>,
     pub start_time: DateTime<Utc>,
     pub end_time: DateTime<Utc>,
     pub status: StatusCode,
@@ -208,6 +210,7 @@ impl From<&Exchange> for ExchangeSummary {
     fn from(exchange: &Exchange) -> Self {
         Self {
             id: exchange.id,
+            profile_id: exchange.request.profile_id.clone(),
             start_time: exchange.start_time,
             end_time: exchange.end_time,
             status: exchange.response.status,

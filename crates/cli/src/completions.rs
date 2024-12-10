@@ -36,7 +36,7 @@ fn load_collection() -> anyhow::Result<Collection> {
     Collection::load(&path)
 }
 
-fn get_candidates<'a, T: 'a + Deref<Target = String>>(
+fn get_candidates<'a, T: 'a + Deref<Target = str>>(
     iter: impl Iterator<Item = &'a T>,
     current: &OsStr,
 ) -> Vec<CompletionCandidate> {
@@ -45,6 +45,6 @@ fn get_candidates<'a, T: 'a + Deref<Target = String>>(
     };
     // Only include IDs prefixed by the input we've gotten so far
     iter.filter(|value| value.starts_with(current))
-        .map(|value| CompletionCandidate::new(value.as_str()))
+        .map(|value| CompletionCandidate::new(value.deref()))
         .collect()
 }

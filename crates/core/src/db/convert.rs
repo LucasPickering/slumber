@@ -227,6 +227,7 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for ExchangeSummary {
     fn try_from(row: &'a Row<'b>) -> Result<Self, Self::Error> {
         Ok(Self {
             id: row.get("id")?,
+            profile_id: row.get("profile_id")?,
             start_time: row.get("start_time")?,
             end_time: row.get("end_time")?,
             status: row.get::<_, SqlWrap<StatusCode>>("status_code")?.0,

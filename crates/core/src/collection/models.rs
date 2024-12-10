@@ -113,6 +113,7 @@ impl crate::test_util::Factory for Profile {
     Serialize,
     Deserialize,
 )]
+#[deref(forward)]
 #[serde(transparent)]
 pub struct ProfileId(String);
 
@@ -236,6 +237,7 @@ pub struct Recipe {
     Serialize,
     Deserialize,
 )]
+#[deref(forward)]
 #[serde(transparent)]
 pub struct RecipeId(String);
 
@@ -414,6 +416,7 @@ pub struct Chain {
     Serialize,
     Deserialize,
 )]
+#[deref(forward)]
 #[serde(transparent)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ChainId(#[deref(forward)] Identifier);

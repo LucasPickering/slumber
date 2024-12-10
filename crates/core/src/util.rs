@@ -59,6 +59,11 @@ pub fn format_time(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
     time.with_timezone(&Local).format("%b %-d %H:%M:%S")
 }
 
+/// Format a datetime in ISO 8601 format
+pub fn format_time_iso(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
+    time.with_timezone(&Local).format("%FT%TZ%Z")
+}
+
 /// Format a duration for the user
 pub fn format_duration(duration: &Duration) -> String {
     let ms = duration.num_milliseconds();

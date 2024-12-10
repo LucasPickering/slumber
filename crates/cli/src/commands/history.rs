@@ -11,7 +11,10 @@ use slumber_core::{
     collection::{CollectionFile, ProfileId, RecipeId},
     db::{Database, DatabaseMode},
     http::{Exchange, ExchangeSummary, RequestId},
-    util::{format_byte_size, format_duration, format_time, MaybeStr},
+    util::{
+        format_byte_size, format_duration, format_time, format_time_iso,
+        MaybeStr,
+    },
 };
 use std::process::ExitCode;
 use tracing::warn;
@@ -89,11 +92,11 @@ impl HistoryCommand {
     fn print_list(exchanges: Vec<ExchangeSummary>) {
         for exchange in exchanges {
             println!(
-                "{} {} {} {}",
+                "{}\t{}\t{}\t{}",
                 exchange.profile_id.as_deref().unwrap_or_default(),
                 exchange.id,
-                exchange.status,
-                format_time(&exchange.start_time)
+                exchange.status.as_str(),
+                format_time_iso(&exchange.start_time),
             );
         }
     }

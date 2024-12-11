@@ -282,7 +282,7 @@ impl CollectionDatabase {
     /// profile is `None`, match all requests that have no associated profile.
     pub fn get_latest_request(
         &self,
-        profile_id: Option<&ProfileId>,
+        profile_id: ProfileFilter,
         recipe_id: &RecipeId,
     ) -> anyhow::Result<Option<Exchange>> {
         trace!(
@@ -293,14 +293,19 @@ impl CollectionDatabase {
         self.database
             .connection()
             .query_row(
-                // `IS` needed for profile_id so `None` will match `NULL`
+                // `IS` needed for profile_id so `None` will match `NULL`.
+                // We want to dynamically ignore the profile filter if the user
+                // is asking for all profiles. Dynamically modifying the query
+                // is really ugly so the easiest thing is to use an additional
+                // parameter to bypass the filter
                 "SELECT * FROM requests_v2
                 WHERE collection_id = :collection_id
-                    AND profile_id IS :profile_id
+                    AND (:ignore_profile_id OR profile_id IS :profile_id)
                     AND recipe_id = :recipe_id
                 ORDER BY start_time DESC LIMIT 1",
                 named_params! {
                     ":collection_id": self.collection_id,
+                    ":ignore_profile_id": profile_id == ProfileFilter::All,
                     ":profile_id": profile_id,
                     ":recipe_id": recipe_id,
                 },
@@ -309,13 +314,56 @@ impl CollectionDatabase {
             .optional()
             .with_context(|| {
                 format!(
-                    "Error fetching request [profile={}; recipe={}] \
+                    "Error fetching request [profile={:?}; recipe={}] \
                     from database",
-                    profile_id.map(ProfileId::to_string).unwrap_or_default(),
-                    recipe_id
+                    profile_id, recipe_id
                 )
             })
             .traced()
+    }
+
+    /// Get a list of all requests for a profile+recipe combo
+    pub fn get_all_requests(
+        &self,
+        profile_id: ProfileFilter,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<Vec<ExchangeSummary>> {
+        trace!(
+            profile_id = ?profile_id,
+            recipe_id = %recipe_id,
+            "Fetching request history from database"
+        );
+        // It would be nice to de-dupe this code with get_all_requests, but
+        // there's no good way to dynamically build a query with sqlite so it
+        // ends up not being worth it
+        self.database
+            .connection()
+            .prepare(
+                // `IS` needed for profile_id so `None` will match `NULL`.
+                // We want to dynamically ignore the profile filter if the user
+                // is asking for all profiles. Dynamically modifying the query
+                // is really ugly so the easiest thing is to use an additional
+                // parameter to bypass the filter
+                "SELECT id, profile_id, start_time, end_time, status_code
+                FROM requests_v2
+                WHERE collection_id = :collection_id
+                    AND (:ignore_profile_id OR profile_id IS :profile_id)
+                    AND recipe_id = :recipe_id
+                ORDER BY start_time DESC",
+            )?
+            .query_map(
+                named_params! {
+                    ":collection_id": self.collection_id,
+                    ":ignore_profile_id": profile_id == ProfileFilter::All,
+                    ":profile_id": profile_id,
+                    ":recipe_id": recipe_id,
+                },
+                |row| row.try_into(),
+            )
+            .context("Error fetching request history from database")
+            .traced()?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .context("Error extracting request history")
     }
 
     /// Add a new exchange to history. The HTTP engine is responsible for
@@ -389,75 +437,6 @@ impl CollectionDatabase {
             ))
             .traced()?;
         Ok(())
-    }
-
-    /// Get all requests for a recipe, across all profiles
-    pub fn get_all_requests(
-        &self,
-        recipe_id: &RecipeId,
-    ) -> anyhow::Result<Vec<ExchangeSummary>> {
-        trace!(
-
-            recipe_id = %recipe_id,
-            "Fetching request history from database"
-        );
-        self.database
-            .connection()
-            .prepare(
-                "SELECT id, profile_id, start_time, end_time, status_code
-                FROM requests_v2
-                WHERE collection_id = :collection_id AND recipe_id = :recipe_id
-                ORDER BY start_time DESC",
-            )?
-            .query_map(
-                named_params! {
-                    ":collection_id": self.collection_id,
-                    ":recipe_id": recipe_id,
-                },
-                |row| row.try_into(),
-            )
-            .context("Error fetching request history from database")
-            .traced()?
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .context("Error extracting request history")
-    }
-
-    /// Get a list of all requests for a profile+recipe combo
-    pub fn get_profile_requests(
-        &self,
-        profile_id: Option<&ProfileId>,
-        recipe_id: &RecipeId,
-    ) -> anyhow::Result<Vec<ExchangeSummary>> {
-        trace!(
-            profile_id = ?profile_id,
-            recipe_id = %recipe_id,
-            "Fetching request history from database"
-        );
-        // It would be nice to de-dupe this code with get_all_requests, but
-        // there's no good way to dynamically build a query with sqlite so it
-        // ends up not being worth it
-        self.database
-            .connection()
-            .prepare(
-                "SELECT id, profile_id, start_time, end_time, status_code
-                FROM requests_v2
-                WHERE collection_id = :collection_id
-                    AND profile_id IS :profile_id
-                    AND recipe_id = :recipe_id
-                ORDER BY start_time DESC",
-            )?
-            .query_map(
-                named_params! {
-                    ":collection_id": self.collection_id,
-                    ":profile_id": profile_id,
-                    ":recipe_id": recipe_id,
-                },
-                |row| row.try_into(),
-            )
-            .context("Error fetching request history from database")
-            .traced()?
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .context("Error extracting request history")
     }
 
     /// Get the value of a UI state field. Key type is included as part of the
@@ -584,6 +563,28 @@ pub enum DatabaseMode {
     ReadWrite,
 }
 
+/// Define how to filter requests by profile
+#[derive(Debug, Default, PartialEq)]
+pub enum ProfileFilter<'a> {
+    /// Show requests with _no_ associated profile
+    None,
+    /// Show requests for a particular profile
+    Some(&'a ProfileId),
+    /// Show requests for all profiles
+    #[default]
+    All,
+}
+
+/// Convert from an option that defines either *no* profile or a specific one
+impl<'a> From<Option<&'a ProfileId>> for ProfileFilter<'a> {
+    fn from(value: Option<&'a ProfileId>) -> Self {
+        match value {
+            Some(profile_id) => Self::Some(profile_id),
+            None => Self::None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -621,7 +622,7 @@ mod tests {
         // Sanity checks
         assert_eq!(
             collection1
-                .get_latest_request(profile_id, recipe_id)
+                .get_latest_request(profile_id.into(), recipe_id)
                 .unwrap()
                 .unwrap()
                 .id,
@@ -633,7 +634,7 @@ mod tests {
         );
         assert_eq!(
             collection2
-                .get_latest_request(profile_id, recipe_id)
+                .get_latest_request(profile_id.into(), recipe_id)
                 .unwrap()
                 .unwrap()
                 .id,
@@ -650,7 +651,7 @@ mod tests {
         // Collection 2 values should've overwritten
         assert_eq!(
             collection1
-                .get_latest_request(profile_id, recipe_id)
+                .get_latest_request(profile_id.into(), recipe_id)
                 .unwrap()
                 .unwrap()
                 .id,
@@ -732,7 +733,10 @@ mod tests {
                     // Leave the Option here so a non-match will trigger a handy
                     // assertion error
                     let exchange_id = collection
-                        .get_latest_request(profile_id.as_ref(), &recipe_id)
+                        .get_latest_request(
+                            profile_id.as_ref().into(),
+                            &recipe_id,
+                        )
                         .unwrap()
                         .map(|exchange| exchange.id);
                     let expected_id = request_ids.get(&(
@@ -793,7 +797,7 @@ mod tests {
                 // Leave the Option here so a non-match will trigger a handy
                 // assertion error
                 let ids = database
-                    .get_profile_requests(profile_id.as_ref(), &recipe_id)
+                    .get_all_requests(profile_id.as_ref().into(), &recipe_id)
                     .unwrap()
                     .into_iter()
                     .map(|exchange| exchange.id)
@@ -814,7 +818,7 @@ mod tests {
         // Load all requests for a recipe (across all profiles)
         let recipe_id = "recipe1".into();
         let ids = database
-            .get_all_requests(&recipe_id)
+            .get_all_requests(ProfileFilter::All, &recipe_id)
             .unwrap()
             .into_iter()
             .map(|exchange| exchange.id)

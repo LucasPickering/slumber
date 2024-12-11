@@ -4,22 +4,22 @@ use crate::{
     GlobalArgs, Subcommand,
 };
 use anyhow::anyhow;
-use clap::{Parser, ValueHint};
+use clap::Parser;
 use clap_complete::ArgValueCompleter;
 use dialoguer::console::Style;
 use slumber_core::{
     collection::{CollectionFile, ProfileId, RecipeId},
-    db::{Database, DatabaseMode},
+    db::{Database, DatabaseMode, ProfileFilter},
     http::{Exchange, ExchangeSummary, RequestId},
     util::{
         format_byte_size, format_duration, format_time, format_time_iso,
         MaybeStr,
     },
 };
-use std::process::ExitCode;
+use std::{process::ExitCode, str::FromStr};
 use tracing::warn;
 
-/// View request collection history (unstable)
+/// View request history (unstable)
 #[derive(Clone, Debug, Parser)]
 #[command(hide = true)] // Hidden because unstable
 pub struct HistoryCommand {
@@ -29,33 +29,41 @@ pub struct HistoryCommand {
 
 #[derive(Clone, Debug, clap::Subcommand)]
 enum HistorySubcommand {
-    /// List all requests for a recipe/profile combination
+    /// List all requests for a recipe
     #[command(visible_alias = "ls")]
     List {
-        /// Recipe to query for
+        /// Recipe to show requests for
         #[clap(add = ArgValueCompleter::new(complete_recipe))]
         recipe: RecipeId,
 
-        /// Profile to query for. If omitted, show requests for all profiles.
-        /// Pass --profile with no value to show requests with no profile.
+        /// Only show recipes for a single profile. If this argument is passed
+        /// with no value, requests with no associated profile are shown
         #[clap(
             long = "profile",
             short,
             add = ArgValueCompleter::new(complete_profile),
         )]
+        // None -> All profiles
+        // Some(None) -> No profile
+        // Some(Some("profile1")) -> profile1
         profile: Option<Option<ProfileId>>,
     },
 
     /// Print an entire request/response
     Get {
-        // Disable completion for this arg. We could load all the request IDs
-        // from the DB, but that's not worth the effort since this is an
-        // unstable command still and people will rarely be typing an ID by
-        // hand, they'll typically just copy paste
-        /// ID of the request/response to print
-        #[clap(value_hint = ValueHint::Other)]
-        request: RequestId,
+        /// ID of the request to print. Pass a recipe ID to get the most recent
+        /// request for that recipe
+        // Autocomplete recipe IDs, because users won't ever be typing request
+        // IDs by hand
+        #[clap(add = ArgValueCompleter::new(complete_recipe))]
+        request: RecipeOrRequest,
     },
+}
+
+#[derive(Clone, Debug)]
+enum RecipeOrRequest {
+    Recipe(RecipeId),
+    Request(RequestId),
 }
 
 impl Subcommand for HistoryCommand {
@@ -70,17 +78,28 @@ impl Subcommand for HistoryCommand {
 
         match self.subcommand {
             HistorySubcommand::List { recipe, profile } => {
-                let exchanges = if let Some(profile) = profile.as_ref() {
-                    database.get_profile_requests(profile.as_ref(), &recipe)?
-                } else {
-                    database.get_all_requests(&recipe)?
+                let profile_filter = match &profile {
+                    None => ProfileFilter::All,
+                    Some(None) => ProfileFilter::None,
+                    Some(Some(profile_id)) => ProfileFilter::Some(profile_id),
                 };
+                let exchanges =
+                    database.get_all_requests(profile_filter, &recipe)?;
                 Self::print_list(exchanges);
             }
             HistorySubcommand::Get { request } => {
-                let exchange = database
-                    .get_request(request)?
-                    .ok_or_else(|| anyhow!("Request `{request}` not found"))?;
+                let exchange = match request {
+                    RecipeOrRequest::Recipe(recipe_id) => database
+                        .get_latest_request(ProfileFilter::All, &recipe_id)?
+                        .ok_or_else(|| {
+                            anyhow!("Recipe `{recipe_id}` has no history")
+                        })?,
+                    RecipeOrRequest::Request(request_id) => {
+                        database.get_request(request_id)?.ok_or_else(|| {
+                            anyhow!("Request `{request_id}` not found")
+                        })?
+                    }
+                };
                 Self::print_detail(exchange);
             }
         }
@@ -158,5 +177,17 @@ impl HistoryCommand {
             format_byte_size(response.body.size()),
             MaybeStr(response.body.bytes())
         );
+    }
+}
+
+impl FromStr for RecipeOrRequest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(s.parse::<RequestId>()
+            .map(Self::Request)
+            .unwrap_or_else(|_| {
+                RecipeOrRequest::Recipe(RecipeId::from(s.to_owned()))
+            }))
     }
 }

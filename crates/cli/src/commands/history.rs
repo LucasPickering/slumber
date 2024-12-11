@@ -17,11 +17,9 @@ use slumber_core::{
     },
 };
 use std::{process::ExitCode, str::FromStr};
-use tracing::warn;
 
-/// View request history (unstable)
+/// View request history
 #[derive(Clone, Debug, Parser)]
-#[command(hide = true)] // Hidden because unstable
 pub struct HistoryCommand {
     #[command(subcommand)]
     subcommand: HistorySubcommand,
@@ -68,10 +66,6 @@ enum RecipeOrRequest {
 
 impl Subcommand for HistoryCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        warn!(
-            "`history` command is unstable; \
-            it may change or be removed at any time"
-        );
         let collection_path = CollectionFile::try_path(None, global.file)?;
         let database = Database::load()?
             .into_collection(&collection_path, DatabaseMode::ReadOnly)?;

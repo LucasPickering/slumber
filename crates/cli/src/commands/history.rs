@@ -1,20 +1,16 @@
 use crate::{
+    commands::request::DisplayExchangeCommand,
     completions::{complete_profile, complete_recipe},
-    util::HeaderDisplay,
     GlobalArgs, Subcommand,
 };
 use anyhow::anyhow;
 use clap::Parser;
 use clap_complete::ArgValueCompleter;
-use dialoguer::console::Style;
 use slumber_core::{
     collection::{CollectionFile, ProfileId, RecipeId},
     db::{Database, DatabaseMode, ProfileFilter},
-    http::{Exchange, ExchangeSummary, RequestId},
-    util::{
-        format_byte_size, format_duration, format_time, format_time_iso,
-        MaybeStr,
-    },
+    http::{ExchangeSummary, RequestId},
+    util::format_time_iso,
 };
 use std::{process::ExitCode, str::FromStr};
 
@@ -55,6 +51,9 @@ enum HistorySubcommand {
         // IDs by hand
         #[clap(add = ArgValueCompleter::new(complete_recipe))]
         request: RecipeOrRequest,
+
+        #[clap(flatten)]
+        display: DisplayExchangeCommand,
     },
 }
 
@@ -81,7 +80,7 @@ impl Subcommand for HistoryCommand {
                     database.get_all_requests(profile_filter, &recipe)?;
                 Self::print_list(exchanges);
             }
-            HistorySubcommand::Get { request } => {
+            HistorySubcommand::Get { request, display } => {
                 let exchange = match request {
                     RecipeOrRequest::Recipe(recipe_id) => database
                         .get_latest_request(ProfileFilter::All, &recipe_id)?
@@ -94,7 +93,8 @@ impl Subcommand for HistoryCommand {
                         })?
                     }
                 };
-                Self::print_detail(exchange);
+                display.write_request(&exchange.request);
+                display.write_response(&exchange.response)?;
             }
         }
         Ok(ExitCode::SUCCESS)
@@ -112,65 +112,6 @@ impl HistoryCommand {
                 format_time_iso(&exchange.start_time),
             );
         }
-    }
-
-    fn print_detail(exchange: Exchange) {
-        let header_style = Style::new().bold().underlined();
-        let subheader_style = Style::new().bold();
-
-        // Request
-        let request = &exchange.request;
-        println!("{}", header_style.apply_to("REQUEST"));
-        println!("{} {}", subheader_style.apply_to("URL:"), request.url);
-        println!("{} {}", subheader_style.apply_to("Method:"), request.method);
-        print!(
-            "{}\n{}",
-            subheader_style.apply_to("Headers"),
-            HeaderDisplay(&request.headers)
-        );
-        if let Some(body) = &request.body {
-            print!(
-                "{} ({})\n{}",
-                subheader_style.apply_to("Body"),
-                format_byte_size(body.len()),
-                MaybeStr(body)
-            )
-        }
-        println!();
-
-        // Timing
-        println!("{}", header_style.apply_to("METADATA"));
-        println!(
-            "{} {}",
-            subheader_style.apply_to("Start Time:"),
-            format_time(&exchange.start_time)
-        );
-        println!(
-            "{} {}",
-            subheader_style.apply_to("Duration:"),
-            format_duration(&exchange.duration())
-        );
-        println!();
-
-        // Response
-        let response = &exchange.response;
-        println!("{}", header_style.apply_to("RESPONSE"));
-        println!(
-            "{} {}",
-            subheader_style.apply_to("Status:"),
-            response.status
-        );
-        print!(
-            "{}\n{}",
-            subheader_style.apply_to("Headers"),
-            HeaderDisplay(&response.headers)
-        );
-        print!(
-            "{} ({})\n{}",
-            subheader_style.apply_to("Body"),
-            format_byte_size(response.body.size()),
-            MaybeStr(response.body.bytes())
-        );
     }
 }
 

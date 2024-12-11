@@ -2,7 +2,7 @@
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    db::CollectionId,
+    db::{CollectionId, ProfileFilter},
     http::{
         Exchange, ExchangeSummary, RequestId, RequestRecord, ResponseRecord,
     },
@@ -342,6 +342,18 @@ impl FromSql for SqlWrap<HeaderMap> {
                 error_other(HeaderParseError(error.to_string()))
             })?;
         Ok(Self(lines))
+    }
+}
+
+impl<'a> ToSql for ProfileFilter<'a> {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        match self {
+            Self::None => None::<&ProfileId>.to_sql(),
+            Self::Some(id) => id.to_sql(),
+            // This filter value shouldn't actually be used, but we can
+            // serialize as null just to get a value
+            Self::All => None::<&ProfileId>.to_sql(),
+        }
     }
 }
 

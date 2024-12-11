@@ -469,7 +469,7 @@ impl<'a> ChainTemplateSource<'a> {
             context
                 .database
                 .get_latest_request(
-                    context.selected_profile.as_ref(),
+                    context.selected_profile.as_ref().into(),
                     recipe_id,
                 )
                 .map_err(|error| ChainError::Database(error.into()))

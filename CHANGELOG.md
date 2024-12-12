@@ -9,6 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Breaking
 
 - Don't store CLI requests in history
+- Simplify display for `slumber request`
+  - The flags `--status`, `--headers` and `--no-body` have been removed in favor of a single `--verbose` flag
+
+### Added
+
+- Add `slumber history` subcommand. Currently it has two operations:
+  - `slumber history list` lists all stored requests for a recipe
+  - `slumber history get` prints a specific request/response
+- Add `--output` flag to `slumber request` to control where the response body is written to
 
 ## [2.5.0] - 2025-01-06
 

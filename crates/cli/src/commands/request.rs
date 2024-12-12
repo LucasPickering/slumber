@@ -1,6 +1,5 @@
 use crate::{
     completions::{complete_profile, complete_recipe},
-    util::HeaderDisplay,
     GlobalArgs, Subcommand,
 };
 use anyhow::{anyhow, Context};
@@ -13,13 +12,18 @@ use slumber_config::Config;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId, RecipeId},
     db::{CollectionDatabase, Database, DatabaseMode},
-    http::{BuildOptions, HttpEngine, RequestSeed, RequestTicket},
+    http::{
+        BuildOptions, HttpEngine, RequestRecord, RequestSeed, RequestTicket,
+        ResponseRecord,
+    },
     template::{Prompt, Prompter, Select, TemplateContext, TemplateError},
-    util::ResultTraced,
+    util::{MaybeStr, ResultTraced},
 };
 use std::{
     error::Error,
-    io::{self, Write},
+    fs::OpenOptions,
+    io::{self, IsTerminal, Write},
+    path::{Path, PathBuf},
     process::ExitCode,
     str::FromStr,
 };
@@ -36,27 +40,18 @@ pub struct RequestCommand {
     #[clap(flatten)]
     build_request: BuildRequestCommand,
 
-    /// Print HTTP response status
-    #[clap(long)]
-    status: bool,
-
-    /// Print HTTP request and response headers
-    #[clap(long)]
-    headers: bool,
-
-    /// Do not print HTTP response body
-    #[clap(long)]
-    no_body: bool,
-
-    /// Set process exit code based on HTTP response status. If the status is
-    /// <400, exit code is 0. If it's >=400, exit code is 2.
-    #[clap(long)]
-    exit_status: bool,
+    #[clap(flatten)]
+    display: DisplayExchangeCommand,
 
     /// Just print the generated request, instead of sending it. Triggered
     /// sub-requests will also not be executed.
     #[clap(long)]
     dry_run: bool,
+
+    /// Set process exit code based on HTTP response status. If the status is
+    /// <400, exit code is 0. If it's >=400, exit code is 2.
+    #[clap(long)]
+    exit_status: bool,
 }
 
 /// A helper for any subcommand that needs to build requests. This handles
@@ -88,6 +83,23 @@ pub struct BuildRequestCommand {
     overrides: Vec<(String, String)>,
 }
 
+/// Helper for any subcommand that prints exchange (request/response)
+/// components. This aims to generally match  the behavior of `curl`, including:
+/// - By default, only the response body is printed
+/// - `--verbose` enables request and response metadata
+/// - Everything other than the response body is printed to stderr
+/// - Response body is printed to stdout, but can be redirected with `--output`
+#[derive(Clone, Debug, Parser)]
+pub struct DisplayExchangeCommand {
+    /// Print additional request and response metadata
+    #[clap(short, long)]
+    verbose: bool,
+
+    /// Write to file instead of stdout
+    #[clap(long)]
+    output: Option<PathBuf>,
+}
+
 impl Subcommand for RequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         let (database, ticket) = self
@@ -111,35 +123,13 @@ impl Subcommand for RequestCommand {
             println!("{:#?}", ticket.record());
             Ok(ExitCode::SUCCESS)
         } else {
-            // Everything other than the body prints to stderr, to make it easy
-            // to pipe the body to a file
-            if self.headers {
-                eprintln!("{}", HeaderDisplay(&ticket.record().headers));
-            }
+            self.display.write_request(ticket.record());
 
             // Run the request
             let exchange = ticket.send(&database).await?;
             let status = exchange.response.status;
 
-            // Print stuff!
-            if self.status {
-                eprintln!("{}", status.as_u16());
-            }
-            if self.headers {
-                eprintln!("{}", HeaderDisplay(&exchange.response.headers));
-            }
-            if !self.no_body {
-                // If body is not UTF-8, write the raw bytes instead (e.g if
-                // downloading an image)
-                let body = &exchange.response.body;
-                if let Some(text) = body.text() {
-                    print!("{}", text);
-                } else {
-                    io::stdout()
-                        .write(body.bytes())
-                        .context("Error writing to stdout")?;
-                }
-            }
+            self.display.write_response(&exchange.response)?;
 
             if self.exit_status && status.as_u16() >= 400 {
                 Ok(ExitCode::from(HTTP_ERROR_EXIT_CODE))
@@ -208,6 +198,73 @@ impl BuildRequestCommand {
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
         let request = http_engine.build(seed, &template_context).await?;
         Ok((database, request))
+    }
+}
+
+impl DisplayExchangeCommand {
+    /// Print request details to stderr
+    pub fn write_request(&self, request: &RequestRecord) {
+        // The request is entirely hidden unless verbose mode is enabled
+        if self.verbose {
+            eprintln!("> {}", request.url);
+            for (header, value) in &request.headers {
+                eprintln!("> {}: {}", header, MaybeStr(value.as_bytes()));
+            }
+        }
+    }
+
+    /// Print response metadata to stderr and write response to the user's
+    /// designated output (stdout by default)
+    pub fn write_response(
+        &self,
+        response: &ResponseRecord,
+    ) -> anyhow::Result<()> {
+        // Print metadata
+        if self.verbose {
+            eprintln!();
+            eprintln!("< {}", response.status);
+            for (header, value) in &response.headers {
+                eprintln!("< {}: {}", header, MaybeStr(value.as_bytes()));
+            }
+        }
+
+        // By default we won't print binary to the terminal, but the user can
+        // override this with `--output -`. We will happily write binary to a
+        // file though
+        let (mut output, allow_binary) = if let Some(path) = &self.output {
+            let output: Box<dyn Write> = if path == Path::new("-") {
+                Box::new(io::stdout())
+            } else {
+                Box::new(
+                    OpenOptions::new()
+                        .create(true)
+                        .truncate(true)
+                        .write(true)
+                        .open(path)
+                        .with_context(|| {
+                            format!("Error opening file {path:?}")
+                        })?,
+                )
+            };
+            // The user explicitly asked for stdout, so we will write binary
+            // here. This matches curl behavior
+            (output as Box<dyn Write>, true)
+        } else {
+            let stdout = io::stdout();
+            let allow_binary = !stdout.is_terminal();
+            (Box::new(stdout) as Box<dyn Write>, allow_binary)
+        };
+
+        if response.body.text().is_none() && !allow_binary {
+            eprintln!(
+                "Response body is not text. Binary output can mess up your \
+                terminal. Pass `--output -` if you're sure you want to print \
+                the output, or consider `--output <FILE>` to save to a file."
+            );
+        } else {
+            output.write_all(response.body.bytes())?;
+        }
+        Ok(())
     }
 }
 

@@ -9,7 +9,6 @@
 
 mod commands;
 mod completions;
-mod util;
 
 use crate::commands::{
     collections::CollectionsCommand, generate::GenerateCommand,

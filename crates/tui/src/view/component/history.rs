@@ -6,9 +6,9 @@ use crate::{
         common::{list::List, modal::Modal},
         component::Component,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler},
-        state::select::SelectState,
-        ViewContext,
+        event::{Child, Event, EventHandler, Update},
+        state::select::{SelectState, SelectStateEvent, SelectStateEventType},
+        UpdateContext, ViewContext,
     },
 };
 use ratatui::{
@@ -40,13 +40,8 @@ impl History {
             .map(|recipe| recipe.name().to_owned())
             .unwrap_or_else(|| recipe_id.to_string());
         let select = SelectState::builder(requests)
+            .subscribe([SelectStateEventType::Select])
             .preselect_opt(selected_request_id.as_ref())
-            // When an item is selected, load it up
-            .on_select(|exchange| {
-                ViewContext::push_event(Event::HttpSelectRequest(Some(
-                    exchange.id(),
-                )))
-            })
             .build();
 
         Self {
@@ -77,6 +72,19 @@ impl Modal for History {
 }
 
 impl EventHandler for History {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+        if let Some(event) = self.select.emitted(&event) {
+            if let SelectStateEvent::Select(index) = event {
+                ViewContext::push_event(Event::HttpSelectRequest(Some(
+                    self.select.data()[*index].id(),
+                )))
+            }
+        } else {
+            return Update::Propagate(event);
+        }
+        Update::Consumed
+    }
+
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![self.select.to_child_mut()]
     }

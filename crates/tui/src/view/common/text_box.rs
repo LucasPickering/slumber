@@ -2,13 +2,11 @@
 
 use crate::{
     context::TuiContext,
-    message::Message,
     view::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, Update},
+        event::{Emitter, EmitterId, Event, EventHandler, Update},
         util::Debounce,
-        ViewContext,
     },
 };
 use crossterm::event::{KeyCode, KeyModifiers};
@@ -27,6 +25,7 @@ const DEBOUNCE: Duration = Duration::from_millis(500);
 /// Single line text submission component
 #[derive(derive_more::Debug, Default)]
 pub struct TextBox {
+    emitter_id: EmitterId,
     // Parameters
     sensitive: bool,
     /// Text to show when text content is empty
@@ -41,23 +40,7 @@ pub struct TextBox {
     // State
     state: TextState,
     on_change_debounce: Option<Debounce>,
-
-    // Callbacks
-    /// Called when user clicks to start editing
-    #[debug(skip)]
-    on_click: Option<Callback>,
-    /// Called when user changes the text content. Can optionally be debounced
-    #[debug(skip)]
-    on_change: Option<Callback>,
-    /// Called when user exits with submission (e.g. Enter)
-    #[debug(skip)]
-    on_submit: Option<Callback>,
-    /// Called when user exits without saving (e.g. Escape)
-    #[debug(skip)]
-    on_cancel: Option<Callback>,
 }
-
-type Callback = Box<dyn Fn()>;
 
 type Validator = Box<dyn Fn(&str) -> bool>;
 
@@ -91,9 +74,8 @@ impl TextBox {
         self
     }
 
-    /// Set validation function. If input is invalid, the `on_change` and
-    /// `on_submit` callbacks will be blocked, meaning the user must fix the
-    /// error or cancel.
+    /// Set validation function. If input is invalid, events will not be emitted
+    /// for submit or change, meaning the user must fix the error or cancel.
     pub fn validator(
         mut self,
         validator: impl 'static + Fn(&str) -> bool,
@@ -102,32 +84,10 @@ impl TextBox {
         self
     }
 
-    /// Set the callback to be called when the user clicks the textbox
-    pub fn on_click(mut self, f: impl 'static + Fn()) -> Self {
-        self.on_click = Some(Box::new(f));
-        self
-    }
-
-    /// Set the callback to be called when the user changes the text value.
-    /// Callback can optionally be debounced, so it isn't called repeatedly
-    /// while the user is typing
-    pub fn on_change(mut self, f: impl 'static + Fn(), debounce: bool) -> Self {
-        self.on_change = Some(Box::new(f));
-        if debounce {
-            self.on_change_debounce = Some(Debounce::new(DEBOUNCE));
-        }
-        self
-    }
-
-    /// Set the callback to be called when the user hits escape
-    pub fn on_cancel(mut self, f: impl 'static + Fn()) -> Self {
-        self.on_cancel = Some(Box::new(f));
-        self
-    }
-
-    /// Set the callback to be called when the user hits enter
-    pub fn on_submit(mut self, f: impl 'static + Fn()) -> Self {
-        self.on_submit = Some(Box::new(f));
+    /// Enable debouncing on the change event, meaning the user has to stop
+    /// inputting for a certain delay before the event is emitted
+    pub fn debounce(mut self) -> Self {
+        self.on_change_debounce = Some(Debounce::new(DEBOUNCE));
         self
     }
 
@@ -141,11 +101,10 @@ impl TextBox {
         self.state.text
     }
 
-    /// Set text, and move the cursor to the end
+    /// Set text, and move the cursor to the end. This will **not** emit events
     pub fn set_text(&mut self, text: String) {
         self.state.text = text;
         self.state.end();
-        self.submit();
     }
 
     /// Check if the current input text is valid. Always returns true if there
@@ -205,34 +164,26 @@ impl TextBox {
         true // We DID handle this event
     }
 
-    /// Call parent's on_change callback. Should be called whenever text
-    /// _content_ is changed
+    /// Emit a change event. Should be called whenever text _content_ is changed
     fn change(&mut self) {
         let is_valid = self.is_valid();
         if let Some(debounce) = &self.on_change_debounce {
             if self.is_valid() {
-                let messages_tx = ViewContext::messages_tx();
-                // WARNING: There is a bug here. If there are multiple text
-                // boxes active on the screen, there's no guarantee this will go
-                // to the right one. Fortunately that UX doesn't really make
-                // sense. This can be truly fixed with unique target IDs for
-                // local events, but that's a much bigger refactor. For now it
-                // should be fine.
-                debounce.start(move || {
-                    messages_tx.send(Message::Local(Box::new(ChangeEvent)))
-                });
+                // Defer the change event until after the debounce period
+                let emitter = self.detach();
+                debounce.start(move || emitter.emit(TextBoxEvent::Change));
             } else {
                 debounce.cancel();
             }
         } else if is_valid {
-            call(&self.on_change);
+            self.emit(TextBoxEvent::Change);
         }
     }
 
-    /// Call parent's submission callback
+    /// Emit a submit event
     fn submit(&mut self) {
         if self.is_valid() {
-            call(&self.on_submit);
+            self.emit(TextBoxEvent::Submit);
         }
     }
 }
@@ -240,11 +191,9 @@ impl TextBox {
 impl EventHandler for TextBox {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         match event {
-            Event::Local(local)
-                if local.downcast_ref::<ChangeEvent>().is_some() =>
-            {
-                call(&self.on_change)
-            }
+            // Warning: all actions need to be handled here, because unhandled
+            // actions have to get treated as text input instead of being
+            // propagated
             Event::Input {
                 action: Some(Action::Submit),
                 ..
@@ -252,11 +201,11 @@ impl EventHandler for TextBox {
             Event::Input {
                 action: Some(Action::Cancel),
                 ..
-            } => call(&self.on_cancel),
+            } => self.emit(TextBoxEvent::Cancel),
             Event::Input {
                 action: Some(Action::LeftClick),
                 ..
-            } => call(&self.on_click),
+            } => self.emit(TextBoxEvent::Focus),
             Event::Input {
                 event: crossterm::event::Event::Key(key_event),
                 ..
@@ -430,18 +379,26 @@ impl PersistedContainer for TextBox {
 
     fn restore_persisted(&mut self, value: Self::Value) {
         self.set_text(value);
+        self.submit();
     }
 }
 
-/// Local event for triggering debounced on_change calls
-#[derive(Debug)]
-struct ChangeEvent;
+impl Emitter for TextBox {
+    type Emitted = TextBoxEvent;
 
-/// Call a callback if defined
-fn call(f: &Option<impl Fn()>) {
-    if let Some(f) = f {
-        f();
+    fn id(&self) -> EmitterId {
+        self.emitter_id
     }
+}
+
+/// Emitted event type for a text box
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum TextBoxEvent {
+    Focus,
+    Change,
+    Cancel,
+    Submit,
 }
 
 #[cfg(test)]
@@ -454,7 +411,7 @@ mod tests {
     use ratatui::text::Span;
     use rstest::rstest;
     use slumber_core::assert_matches;
-    use std::{cell::Cell, rc::Rc};
+    use tokio::{task::LocalSet, time};
 
     /// Create a span styled as the cursor
     fn cursor(text: &str) -> Span {
@@ -477,69 +434,38 @@ mod tests {
         )
     }
 
-    /// Helper for counting calls to a closure
-    #[derive(Clone, Debug, Default)]
-    struct Counter(Rc<Cell<usize>>);
-
-    impl Counter {
-        fn increment(&self) {
-            self.0.set(self.0.get() + 1);
-        }
-
-        /// Create a callback that just calls the counter
-        fn callback(&self) -> impl Fn() {
-            let counter = self.clone();
-            move || {
-                counter.increment();
-            }
-        }
-    }
-
-    impl PartialEq<usize> for Counter {
-        fn eq(&self, other: &usize) -> bool {
-            self.0.get() == *other
-        }
-    }
-
     /// Test the basic interaction loop on the text box
     #[rstest]
     fn test_interaction(
         harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {
-        let click_count = Counter::default();
-        let change_count = Counter::default();
-        let submit_count = Counter::default();
-        let cancel_count = Counter::default();
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            TextBox::default()
-                .on_click(click_count.callback())
-                .on_change(change_count.callback(), false)
-                .on_submit(submit_count.callback())
-                .on_cancel(cancel_count.callback()),
-            (),
-        );
+        let mut component =
+            TestComponent::new(&harness, &terminal, TextBox::default(), ());
 
         // Assert initial state/view
         assert_state(&component.data().state, "", 0);
         terminal.assert_buffer_lines([vec![cursor(" "), text("         ")]]);
 
         // Type some text
-        component.send_text("hello!").assert_empty();
-        assert_state(&component.data().state, "hello!", 6);
+        component.send_text("hi!").assert_emitted([
+            TextBoxEvent::Change,
+            TextBoxEvent::Change,
+            TextBoxEvent::Change,
+        ]);
+        assert_state(&component.data().state, "hi!", 3);
         terminal.assert_buffer_lines([vec![
-            text("hello!"),
+            text("hi!"),
             cursor(" "),
-            text("   "),
+            text("      "),
         ]]);
 
         // Sending with a modifier applied should do nothing, unless it's shift
+
         component
             .send_key_modifiers(KeyCode::Char('W'), KeyModifiers::SHIFT)
-            .assert_empty();
-        assert_state(&component.data().state, "hello!W", 7);
+            .assert_emitted([TextBoxEvent::Change]);
+        assert_state(&component.data().state, "hi!W", 4);
         assert_matches!(
             component
                 .send_key_modifiers(
@@ -550,50 +476,49 @@ mod tests {
                 .events(),
             &[Event::Input { .. }]
         );
-        assert_state(&component.data().state, "hello!W", 7);
+        assert_state(&component.data().state, "hi!W", 4);
 
-        // Test callbacks
-        component.click(0, 0).assert_empty();
-        assert_eq!(click_count, 1);
+        // Test emitted events
 
-        assert_eq!(change_count, 7);
+        component.click(0, 0).assert_emitted([TextBoxEvent::Focus]);
 
-        component.send_key(KeyCode::Enter).assert_empty();
-        assert_eq!(submit_count, 1);
+        component
+            .send_key(KeyCode::Enter)
+            .assert_emitted([TextBoxEvent::Submit]);
 
-        component.send_key(KeyCode::Esc).assert_empty();
-        assert_eq!(cancel_count, 1);
+        component
+            .send_key(KeyCode::Esc)
+            .assert_emitted([TextBoxEvent::Cancel]);
     }
 
     /// Test on_change debouncing
     #[rstest]
     #[tokio::test]
     async fn test_debounce(
-        mut harness: TestHarness,
+        harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {
-        let change_count = Counter::default();
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            TextBox::default().on_change(change_count.callback(), true),
-            (),
-        );
+        // Local task set needed for the debounce task
+        let local = LocalSet::new();
+        let future = local.run_until(async {
+            let mut component = TestComponent::new(
+                &harness,
+                &terminal,
+                TextBox::default().debounce(),
+                (),
+            );
 
-        // Type some text
-        component.send_text("hello!").assert_empty();
-        // on_change isn't called immediately
-        assert_eq!(change_count, 0);
+            // Type some text. on_change isn't called immediately
+            component.send_text("hi").assert_emitted([]);
 
-        // It gets called after waiting
-        let event = assert_matches!(
-            harness.pop_message_wait().await,
-            Message::Local(event) => event,
-        );
-        // We have to feed the event from the message channel to the component
-        // manually. This is normally done by the main loop
-        component.update_draw(Event::Local(event)).assert_empty();
-        assert_eq!(change_count, 1);
+            // It gets called after waiting. Give the debounce a bit of buffer
+            // time before checking it
+            time::sleep(DEBOUNCE * 5 / 4).await;
+            component
+                .drain_draw()
+                .assert_emitted([TextBoxEvent::Change]);
+        });
+        future.await;
     }
 
     /// Test text navigation and deleting. [TextState] has its own tests so
@@ -607,17 +532,29 @@ mod tests {
             TestComponent::new(&harness, &terminal, TextBox::default(), ());
 
         // Type some text
-        component.send_text("hello!").assert_empty();
+        component.send_text("hello!").assert_emitted([
+            // One change event per letter
+            TextBoxEvent::Change,
+            TextBoxEvent::Change,
+            TextBoxEvent::Change,
+            TextBoxEvent::Change,
+            TextBoxEvent::Change,
+            TextBoxEvent::Change,
+        ]);
         assert_state(&component.data().state, "hello!", 6);
 
         // Move around, delete some text.
         component.send_key(KeyCode::Left).assert_empty();
         assert_state(&component.data().state, "hello!", 5);
 
-        component.send_key(KeyCode::Backspace).assert_empty();
+        component
+            .send_key(KeyCode::Backspace)
+            .assert_emitted([TextBoxEvent::Change]);
         assert_state(&component.data().state, "hell!", 4);
 
-        component.send_key(KeyCode::Delete).assert_empty();
+        component
+            .send_key(KeyCode::Delete)
+            .assert_emitted([TextBoxEvent::Change]);
         assert_state(&component.data().state, "hell", 4);
 
         component.send_key(KeyCode::Home).assert_empty();
@@ -633,7 +570,7 @@ mod tests {
     #[rstest]
     fn test_sensitive(
         harness: TestHarness,
-        #[with(6, 1)] terminal: TestTerminal,
+        #[with(3, 1)] terminal: TestTerminal,
     ) {
         let mut component = TestComponent::new(
             &harness,
@@ -642,10 +579,12 @@ mod tests {
             (),
         );
 
-        component.send_text("hello").assert_empty();
+        component
+            .send_text("hi")
+            .assert_emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
 
-        assert_state(&component.data().state, "hello", 5);
-        terminal.assert_buffer_lines([vec![text("•••••"), cursor(" ")]]);
+        assert_state(&component.data().state, "hi", 2);
+        terminal.assert_buffer_lines([vec![text("••"), cursor(" ")]]);
     }
 
     #[rstest]
@@ -706,39 +645,34 @@ mod tests {
         harness: TestHarness,
         #[with(6, 1)] terminal: TestTerminal,
     ) {
-        let change_count = Counter::default();
-        let submit_count = Counter::default();
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            TextBox::default()
-                .validator(|text| text.len() <= 2)
-                .on_change(change_count.callback(), false)
-                .on_submit(submit_count.callback()),
+            TextBox::default().validator(|text| text.len() <= 2),
             (),
         );
 
         // Valid text, everything is normal
-        component.send_text("he").assert_empty();
+        component
+            .send_text("he")
+            .assert_emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
         terminal.assert_buffer_lines([vec![
             text("he"),
             cursor(" "),
             text("   "),
         ]]);
-        assert_eq!(change_count, 2);
-        component.send_key(KeyCode::Enter).assert_empty();
-        assert_eq!(submit_count, 1);
 
-        // Invalid text, styling changes
-        component.send_text("llo").assert_empty();
+        component
+            .send_key(KeyCode::Enter)
+            .assert_emitted([TextBoxEvent::Submit]);
+
+        // Invalid text, styling changes and no events are emitted
+        component.send_text("llo").assert_emitted([]);
         terminal.assert_buffer_lines([vec![
             Span::styled("hello", TuiContext::get().styles.text_box.invalid),
             cursor(" "),
         ]]);
-        // Callbacks are disabled
-        assert_eq!(change_count, 2);
-        component.send_key(KeyCode::Enter).assert_empty();
-        assert_eq!(submit_count, 1);
+        component.send_key(KeyCode::Enter).assert_emitted([]);
     }
 
     #[test]

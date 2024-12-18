@@ -6,14 +6,17 @@ use crate::view::{
         button::ButtonGroup,
         list::List,
         modal::{IntoModal, Modal},
-        text_box::TextBox,
+        text_box::{TextBox, TextBoxEvent},
     },
     component::Component,
     context::UpdateContext,
     draw::{Draw, DrawMetadata, Generate},
     event::{Child, Event, EventHandler, Update},
-    state::{select::SelectState, Notification},
-    Confirm, ModalPriority, ViewContext,
+    state::{
+        select::{SelectState, SelectStateEvent, SelectStateEventType},
+        Notification,
+    },
+    Confirm, ModalPriority,
 };
 use derive_more::Display;
 use ratatui::{
@@ -80,20 +83,9 @@ impl TextBoxModal {
         text_box: TextBox,
         on_submit: impl 'static + FnOnce(String),
     ) -> Self {
-        let text_box = text_box
-            // Make sure cancel gets propagated to close the modal
-            .on_cancel(|| {
-                ViewContext::push_event(Event::CloseModal { submitted: false })
-            })
-            .on_submit(move || {
-                // We have to defer submission to on_close, because we need the
-                // owned value of `self.prompt`
-                ViewContext::push_event(Event::CloseModal { submitted: true });
-            })
-            .into();
         Self {
             title,
-            text_box,
+            text_box: text_box.into(),
             on_submit: Box::new(on_submit),
         }
     }
@@ -117,6 +109,26 @@ impl Modal for TextBoxModal {
 }
 
 impl EventHandler for TextBoxModal {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+        if let Some(event) = self.text_box.emitted(&event) {
+            match event {
+                TextBoxEvent::Focus | TextBoxEvent::Change => {}
+                TextBoxEvent::Cancel => {
+                    // Propagate cancel to close the modal
+                    self.close(false);
+                }
+                TextBoxEvent::Submit => {
+                    // We have to defer submission to on_close, because we need
+                    // the owned value of `self.on_submit`
+                    self.close(true);
+                }
+            }
+            Update::Consumed
+        } else {
+            Update::Propagate(event)
+        }
+    }
+
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![self.text_box.to_child_mut()]
     }
@@ -165,11 +177,7 @@ impl SelectListModal {
         Self {
             title,
             options: SelectState::builder(options)
-                .on_submit(move |_| {
-                    ViewContext::push_event(Event::CloseModal {
-                        submitted: true,
-                    });
-                })
+                .subscribe([SelectStateEventType::Submit])
                 .build()
                 .into(),
             on_submit: Box::new(on_submit),
@@ -207,6 +215,17 @@ impl Modal for SelectListModal {
 }
 
 impl EventHandler for SelectListModal {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+        if let Some(event) = self.options.emitted(&event) {
+            if let SelectStateEvent::Submit(_) = event {
+                self.close(true);
+            }
+        } else {
+            return Update::Propagate(event);
+        }
+        Update::Consumed
+    }
+
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![self.options.to_child_mut()]
     }
@@ -298,12 +317,12 @@ impl Modal for ConfirmModal {
 impl EventHandler for ConfirmModal {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         // When user selects a button, send the response and close
-        let Some(button) = event.local::<ConfirmButton>() else {
+        let Some(button) = self.buttons.emitted(&event) else {
             return Update::Propagate(event);
         };
 
         self.answer = *button == ConfirmButton::Yes;
-        ViewContext::push_event(Event::CloseModal { submitted: true });
+        self.close(true);
         Update::Consumed
     }
 

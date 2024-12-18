@@ -10,7 +10,10 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler, Update},
+        event::{
+            Child, Emitter, EmitterId, EmitterToken, Event, EventHandler,
+            Update,
+        },
         state::fixed_select::FixedSelectState,
         ViewContext,
     },
@@ -32,11 +35,14 @@ use strum::{EnumCount, EnumIter};
 
 /// Display authentication settings for a recipe
 #[derive(Debug)]
-pub struct AuthenticationDisplay(State);
+pub struct AuthenticationDisplay {
+    emitter_id: EmitterId,
+    state: State,
+}
 
 impl AuthenticationDisplay {
     pub fn new(recipe_id: RecipeId, authentication: Authentication) -> Self {
-        let inner = match authentication {
+        let state = match authentication {
             Authentication::Basic { username, password } => {
                 let username = RecipeTemplate::new(
                     RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
@@ -63,14 +69,17 @@ impl AuthenticationDisplay {
                 ),
             },
         };
-        Self(inner)
+        Self {
+            emitter_id: EmitterId::new(),
+            state,
+        }
     }
 
     /// If the user has applied a temporary edit to the auth settings, get the
     /// override value. Return `None` to use the recipe's stock auth.
     pub fn override_value(&self) -> Option<Authentication> {
-        if self.0.is_overridden() {
-            Some(match &self.0 {
+        if self.state.is_overridden() {
+            Some(match &self.state {
                 State::Basic {
                     username, password, ..
                 } => Authentication::Basic {
@@ -92,11 +101,13 @@ impl EventHandler for AuthenticationDisplay {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         let action = event.action();
         if let Some(Action::Edit) = action {
-            self.0.open_edit_modal();
+            self.state.open_edit_modal(self.detach());
         } else if let Some(Action::Reset) = action {
-            self.0.reset_override();
-        } else if let Some(SaveAuthenticationOverride(value)) = event.local() {
-            self.0.set_override(value);
+            self.state.reset_override();
+        } else if let Some(SaveAuthenticationOverride(value)) =
+            self.emitted(&event)
+        {
+            self.state.set_override(value);
         } else {
             return Update::Propagate(event);
         }
@@ -104,7 +115,7 @@ impl EventHandler for AuthenticationDisplay {
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        match &mut self.0 {
+        match &mut self.state {
             State::Basic { selected_field, .. } => {
                 vec![selected_field.to_child_mut()]
             }
@@ -120,7 +131,7 @@ impl Draw for AuthenticationDisplay {
         let [label_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
                 .areas(metadata.area());
-        let label = match &self.0 {
+        let label = match &self.state {
             State::Basic {
                 username,
                 password,
@@ -153,12 +164,27 @@ impl Draw for AuthenticationDisplay {
             styles.text.title,
         )
         .into();
-        if self.0.is_overridden() {
+        if self.state.is_overridden() {
             title.push_span(Span::styled(" (edited)", styles.text.hint));
         }
         frame.render_widget(title, label_area);
     }
 }
+
+/// Emit events to ourselves for override editing
+impl Emitter for AuthenticationDisplay {
+    type Emitted = SaveAuthenticationOverride;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
+    }
+}
+
+/// Local event to save a user's override value(s). Triggered from the edit
+/// modal. These will be raw string values, consumer has to parse them to
+/// templates.
+#[derive(Debug)]
+pub struct SaveAuthenticationOverride(String);
 
 /// Private to hide enum variants
 #[derive(Debug)]
@@ -190,7 +216,10 @@ impl State {
     }
 
     /// Open a modal to let the user edit temporary override values
-    fn open_edit_modal(&self) {
+    fn open_edit_modal(
+        &self,
+        emitter: EmitterToken<SaveAuthenticationOverride>,
+    ) {
         let (label, value) = match &self {
             Self::Basic {
                 username,
@@ -214,11 +243,9 @@ impl State {
             TextBox::default()
                 .default_value(value.into_owned())
                 .validator(|value| value.parse::<Template>().is_ok()),
-            |value| {
+            move |value| {
                 // Defer the state update into an event, so it can get &mut
-                ViewContext::push_event(Event::new_local(
-                    SaveAuthenticationOverride(value),
-                ))
+                emitter.emit(SaveAuthenticationOverride(value))
             },
         ))
     }
@@ -286,12 +313,6 @@ enum BasicFields {
     Password,
 }
 
-/// Local event to save a user's override value(s). Triggered from the edit
-/// modal. These will be raw string values, consumer has to parse them to
-/// templates.
-#[derive(Debug)]
-struct SaveAuthenticationOverride(String);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,7 +323,7 @@ mod tests {
                 recipe_pane::persistence::RecipeOverrideValue,
                 RecipeOverrideStore,
             },
-            test_util::{TestComponent, WithModalQueue},
+            test_util::TestComponent,
         },
     };
     use crossterm::event::KeyCode;
@@ -319,22 +340,19 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            WithModalQueue::new(AuthenticationDisplay::new(
-                RecipeId::factory(()),
-                authentication,
-            )),
+            AuthenticationDisplay::new(RecipeId::factory(()), authentication),
             (),
         );
 
         // Check initial state
-        assert_eq!(component.data().inner().override_value(), None);
+        assert_eq!(component.data().override_value(), None);
 
         // Edit username
         component.send_key(KeyCode::Char('e')).assert_empty();
         component.send_text("!!!").assert_empty();
         component.send_key(KeyCode::Enter).assert_empty();
         assert_eq!(
-            component.data().inner().override_value(),
+            component.data().override_value(),
             Some(Authentication::Basic {
                 username: "user1!!!".into(),
                 password: Some("hunter2".into())
@@ -343,7 +361,7 @@ mod tests {
 
         // Reset username
         component.send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().inner().override_value(), None);
+        assert_eq!(component.data().override_value(), None);
 
         // Edit password
         component.send_key(KeyCode::Down).assert_empty();
@@ -351,7 +369,7 @@ mod tests {
         component.send_text("???").assert_empty();
         component.send_key(KeyCode::Enter).assert_empty();
         assert_eq!(
-            component.data().inner().override_value(),
+            component.data().override_value(),
             Some(Authentication::Basic {
                 username: "user1".into(),
                 password: Some("hunter2???".into())
@@ -360,7 +378,7 @@ mod tests {
 
         // Reset password
         component.send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().inner().override_value(), None);
+        assert_eq!(component.data().override_value(), None);
     }
 
     #[rstest]
@@ -375,10 +393,7 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            WithModalQueue::new(AuthenticationDisplay::new(
-                RecipeId::factory(()),
-                authentication,
-            )),
+            AuthenticationDisplay::new(RecipeId::factory(()), authentication),
             (),
         );
 
@@ -387,7 +402,7 @@ mod tests {
         component.send_key(KeyCode::Char('e')).assert_empty();
         component.send_key(KeyCode::Enter).assert_empty();
         assert_eq!(
-            component.data().inner().override_value(),
+            component.data().override_value(),
             Some(Authentication::Basic {
                 username: "user1".into(),
                 // None gets replaced by empty string. They're functionally
@@ -403,28 +418,25 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            WithModalQueue::new(AuthenticationDisplay::new(
-                RecipeId::factory(()),
-                authentication,
-            )),
+            AuthenticationDisplay::new(RecipeId::factory(()), authentication),
             (),
         );
 
         // Check initial state
-        assert_eq!(component.data().inner().override_value(), None);
+        assert_eq!(component.data().override_value(), None);
 
         // Edit token
         component.send_key(KeyCode::Char('e')).assert_empty();
         component.send_text("!!!").assert_empty();
         component.send_key(KeyCode::Enter).assert_empty();
         assert_eq!(
-            component.data().inner().override_value(),
+            component.data().override_value(),
             Some(Authentication::Bearer("i am a token!!!".into()))
         );
 
         // Reset token
         component.send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().inner().override_value(), None);
+        assert_eq!(component.data().override_value(), None);
     }
 
     /// Basic auth fields should load persisted overrides

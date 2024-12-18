@@ -3,7 +3,6 @@ use crate::{
     view::{
         common::{tabs::Tabs, Pane},
         component::{
-            primary::PrimaryPane,
             request_view::{RequestView, RequestViewProps},
             response_view::{
                 ResponseBodyView, ResponseBodyViewProps, ResponseHeadersView,
@@ -13,9 +12,9 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler, Update},
+        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
         util::persistence::PersistedLazy,
-        RequestState, ViewContext,
+        RequestState,
     },
 };
 use derive_more::Display;
@@ -42,6 +41,7 @@ use strum::{EnumCount, EnumIter};
 /// pane isn't selected.
 #[derive(Debug, Default)]
 pub struct ExchangePane {
+    emitter_id: EmitterId,
     tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
     request: Component<RequestView>,
     response_headers: Component<ResponseHeadersView>,
@@ -77,11 +77,7 @@ enum Tab {
 impl EventHandler for ExchangePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         match event.action() {
-            Some(Action::LeftClick) => {
-                ViewContext::push_event(Event::new_local(
-                    PrimaryPane::Exchange,
-                ));
-            }
+            Some(Action::LeftClick) => self.emit(ExchangePaneEvent::Click),
             _ => return Update::Propagate(event),
         }
         Update::Consumed
@@ -269,4 +265,19 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
             }
         }
     }
+}
+
+/// Notify parent when this pane is clicked
+impl Emitter for ExchangePane {
+    type Emitted = ExchangePaneEvent;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
+    }
+}
+
+/// Emitted event for the exchange pane component
+#[derive(Debug)]
+pub enum ExchangePaneEvent {
+    Click,
 }

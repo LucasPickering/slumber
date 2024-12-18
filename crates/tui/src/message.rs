@@ -1,7 +1,7 @@
 //! Async message passing! This is how inputs and other external events trigger
 //! state updates.
 
-use crate::view::{Confirm, LocalEvent};
+use crate::view::Confirm;
 use anyhow::Context;
 use derive_more::From;
 use slumber_config::Action;
@@ -112,9 +112,6 @@ pub enum Message {
         /// Action mapped via input bindings. This is what most consumers use
         action: Option<Action>,
     },
-
-    /// Trigger a localized UI event
-    Local(Box<dyn 'static + LocalEvent + Send + Sync>),
 
     /// Send an informational notification to the user
     Notify(String),

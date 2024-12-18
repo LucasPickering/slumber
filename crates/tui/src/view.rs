@@ -12,7 +12,6 @@ mod util;
 
 pub use common::modal::{IntoModal, ModalPriority};
 pub use context::{UpdateContext, ViewContext};
-pub use event::LocalEvent;
 pub use styles::Styles;
 pub use util::{Confirm, PreviewPrompter};
 
@@ -133,18 +132,13 @@ impl View {
     /// Queue an event to open a new modal. The input can be anything that
     /// converts to modal content
     pub fn open_modal(&mut self, modal: impl IntoModal + 'static) {
-        ViewContext::push_event(Event::OpenModal(Box::new(modal.into_modal())));
+        ViewContext::open_modal(modal.into_modal());
     }
 
     /// Queue an event to send an informational notification to the user
     pub fn notify(&mut self, message: impl ToString) {
         let notification = Notification::new(message.to_string());
         ViewContext::push_event(Event::Notify(notification));
-    }
-
-    /// Trigger a localized UI event
-    pub fn local(&mut self, event: Box<dyn LocalEvent>) {
-        ViewContext::push_event(Event::Local(event));
     }
 
     /// Queue an event to update the view according to an input event from the
@@ -226,9 +220,9 @@ mod tests {
 
         // Initial events
         assert_events!(
-            Event::HttpSelectRequest(None),
-            Event::Local(_),
-            Event::Notify(_)
+            Event::Emitted { .. }, // Recipe list selection
+            Event::Emitted { .. }, // Primary pane selection
+            Event::Notify(_),
         );
 
         // Events should *still* be in the queue, because we haven't drawn yet
@@ -237,17 +231,17 @@ mod tests {
             request_store: &mut request_store,
         });
         assert_events!(
-            Event::HttpSelectRequest(None),
-            Event::Local(_),
-            Event::Notify(_)
+            Event::Emitted { .. },
+            Event::Emitted { .. },
+            Event::Notify(_),
         );
 
         // Nothing new
         terminal.draw(|frame| view.draw(frame, &request_store));
         assert_events!(
-            Event::HttpSelectRequest(None),
-            Event::Local(_),
-            Event::Notify(_)
+            Event::Emitted { .. },
+            Event::Emitted { .. },
+            Event::Notify(_),
         );
 
         // *Now* the queue is drained

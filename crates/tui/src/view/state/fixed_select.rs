@@ -1,9 +1,10 @@
 use crate::view::{
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
-    event::{Event, EventHandler, Update},
+    event::{Emitter, EmitterId, Event, EventHandler, Update},
     state::select::{
         SelectItem, SelectState, SelectStateBuilder, SelectStateData,
+        SelectStateEvent, SelectStateEventType,
     },
 };
 use itertools::Itertools;
@@ -12,7 +13,10 @@ use ratatui::{
     widgets::{ListState, StatefulWidget},
     Frame,
 };
-use std::fmt::{Debug, Display};
+use std::{
+    fmt::{Debug, Display},
+    ops::{Index, IndexMut},
+};
 use strum::{EnumCount, IntoEnumIterator};
 
 /// State manager for a static (AKA fixed) list of items. Fixed lists must be
@@ -51,21 +55,12 @@ impl<Item, State> FixedSelectStateBuilder<Item, State> {
         self
     }
 
-    /// Set the callback to be called when the user highlights a new item
-    pub fn on_select(
+    /// Which types of events should this emit?
+    pub fn subscribe(
         mut self,
-        on_select: impl 'static + Fn(&mut Item),
+        event_types: impl IntoIterator<Item = SelectStateEventType>,
     ) -> Self {
-        self.inner = self.inner.on_select(on_select);
-        self
-    }
-
-    /// Set the callback to be called when the user hits enter on an item
-    pub fn on_submit(
-        mut self,
-        on_submit: impl 'static + Fn(&mut Item),
-    ) -> Self {
-        self.inner = self.inner.on_submit(on_submit);
+        self.inner = self.inner.subscribe(event_types);
         self
     }
 
@@ -172,6 +167,30 @@ where
     }
 }
 
+/// Get an item by index, and panic if out of bounds. Useful with emitted
+/// events, when we know the index will be valid
+impl<Item, State> Index<usize> for FixedSelectState<Item, State>
+where
+    Item: FixedSelect,
+    State: SelectStateData,
+{
+    type Output = Item;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.inner[index]
+    }
+}
+
+impl<Item, State> IndexMut<usize> for FixedSelectState<Item, State>
+where
+    Item: FixedSelect,
+    State: SelectStateData,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.inner[index]
+    }
+}
+
 /// Handle input events to cycle between items
 impl<Item, State> EventHandler for FixedSelectState<Item, State>
 where
@@ -207,8 +226,16 @@ where
     }
 
     fn restore_persisted(&mut self, value: Self::Value) {
-        // This will call the on_select callback if the item is in the list
+        // This will emit a Select event if the item is in the list
         self.select(&value);
+    }
+}
+
+impl<T: FixedSelect> Emitter for FixedSelectState<T> {
+    type Emitted = SelectStateEvent;
+
+    fn id(&self) -> EmitterId {
+        self.inner.id()
     }
 }
 

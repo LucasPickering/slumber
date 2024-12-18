@@ -5,7 +5,7 @@
 use crate::view::{
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
-    event::{Child, Event, ToChild, Update},
+    event::{Child, Emitter, Event, ToChild, Update},
 };
 use crossterm::event::MouseEvent;
 use derive_more::Display;
@@ -202,6 +202,14 @@ impl<T> Component<T> {
     /// Move the inner component out
     pub fn into_data(self) -> T {
         self.inner
+    }
+
+    /// Forward to [Emitter::emitted]
+    pub fn emitted<'a>(&self, event: &'a Event) -> Option<&'a T::Emitted>
+    where
+        T: Emitter,
+    {
+        self.data().emitted(event)
     }
 
     /// Draw the component to the frame. This will update global state, then

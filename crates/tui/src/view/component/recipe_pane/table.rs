@@ -13,8 +13,11 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler, Update},
-        state::select::SelectState,
+        event::{
+            Child, Emitter, EmitterId, EmitterToken, Event, EventHandler,
+            Update,
+        },
+        state::select::{SelectState, SelectStateEvent, SelectStateEventType},
         util::persistence::{Persisted, PersistedKey, PersistedLazy},
         ViewContext,
     },
@@ -47,6 +50,7 @@ where
     RowSelectKey: PersistedKey<Value = Option<String>>,
     RowToggleKey: PersistedKey<Value = bool>,
 {
+    emitter_id: EmitterId,
     select: Component<
         PersistedLazy<
             RowSelectKey,
@@ -81,9 +85,10 @@ where
             })
             .collect();
         let select = SelectState::builder(items)
-            .on_toggle(RowState::toggle)
+            .subscribe([SelectStateEventType::Toggle])
             .build();
         Self {
+            emitter_id: EmitterId::new(),
             select: PersistedLazy::new(select_key, select).into(),
         }
     }
@@ -107,20 +112,30 @@ where
     RowToggleKey: PersistedKey<Value = bool>,
 {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        let action = event.action();
-        if let Some(Action::Edit) = action {
-            if let Some(selected_row) = self.select.data().selected() {
-                selected_row.open_edit_modal();
+        if let Some(action) = event.action() {
+            match action {
+                Action::Edit => {
+                    // Consume the event even if we have no rows, for
+                    // consistency
+                    if let Some(selected_row) = self.select.data().selected() {
+                        selected_row.open_edit_modal(self.detach());
+                    }
+                }
+                Action::Reset => {
+                    if let Some(selected_row) =
+                        self.select.data_mut().get_mut().selected_mut()
+                    {
+                        selected_row.value.reset_override();
+                    }
+                }
+                _ => return Update::Propagate(event),
             }
-            // Consume the event even if we have no rows, for consistency
-        } else if let Some(Action::Reset) = action {
-            if let Some(selected_row) =
-                self.select.data_mut().get_mut().selected_mut()
-            {
-                selected_row.value.reset_override();
+        } else if let Some(event) = self.select.emitted(&event) {
+            if let SelectStateEvent::Toggle(index) = event {
+                self.select.data_mut().get_mut()[*index].toggle();
             }
         } else if let Some(SaveRecipeTableOverride { row_index, value }) =
-            event.local()
+            self.emitted(&event)
         {
             // The row we're modifying *should* still be the selected row,
             // because it shouldn't be possible to change the selection while
@@ -170,6 +185,28 @@ where
         self.select
             .draw(frame, table.generate(), metadata.area(), true);
     }
+}
+
+/// Emit events to ourselves for override editing
+impl<RowSelectKey, RowToggleKey> Emitter
+    for RecipeFieldTable<RowSelectKey, RowToggleKey>
+where
+    RowSelectKey: PersistedKey<Value = Option<String>>,
+    RowToggleKey: PersistedKey<Value = bool>,
+{
+    type Emitted = SaveRecipeTableOverride;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
+    }
+}
+
+/// Local event to modify a row's override template. Triggered from the edit
+/// modal
+#[derive(Debug)]
+pub struct SaveRecipeTableOverride {
+    row_index: usize,
+    value: String,
 }
 
 #[derive(Clone)]
@@ -229,7 +266,7 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
     }
 
     /// Open a modal to create or edit the value's temporary override
-    fn open_edit_modal(&self) {
+    fn open_edit_modal(&self, emitter: EmitterToken<SaveRecipeTableOverride>) {
         let index = self.index;
         ViewContext::open_modal(TextBoxModal::new(
             format!("Edit value for {}", self.key),
@@ -239,12 +276,10 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
                 .validator(|value| value.parse::<Template>().is_ok()),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
-                ViewContext::push_event(Event::new_local(
-                    SaveRecipeTableOverride {
-                        row_index: index,
-                        value,
-                    },
-                ))
+                emitter.emit(SaveRecipeTableOverride {
+                    row_index: index,
+                    value,
+                });
             },
         ));
     }
@@ -296,14 +331,6 @@ where
     }
 }
 
-/// Local event to modify a row's override template. Triggered from the edit
-/// modal
-#[derive(Debug)]
-struct SaveRecipeTableOverride {
-    row_index: usize,
-    value: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,7 +341,7 @@ mod tests {
                 recipe_pane::persistence::RecipeOverrideValue,
                 RecipeOverrideStore,
             },
-            test_util::{TestComponent, WithModalQueue},
+            test_util::TestComponent,
         },
     };
     use crossterm::event::KeyCode;
@@ -422,11 +449,7 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            // We'll need a modal queue to handle the edit box
-            WithModalQueue::new(RecipeFieldTable::new(
-                TestRowKey(recipe_id.clone()),
-                rows,
-            )),
+            RecipeFieldTable::new(TestRowKey(recipe_id.clone()), rows),
             RecipeFieldTableProps {
                 key_header: "Key",
                 value_header: "Value",
@@ -435,7 +458,7 @@ mod tests {
 
         // Check initial state
         assert_eq!(
-            component.data().inner().to_build_overrides(),
+            component.data().to_build_overrides(),
             BuildFieldOverrides::default()
         );
 
@@ -445,13 +468,12 @@ mod tests {
         component.send_text("!!!").assert_empty();
         component.send_key(KeyCode::Enter).assert_empty();
 
-        let selected_row =
-            component.data().inner().select.data().selected().unwrap();
+        let selected_row = component.data().select.data().selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
         assert!(selected_row.value.is_overridden());
         assert_eq!(selected_row.value.template().display(), "value1!!!");
         assert_eq!(
-            component.data().inner().to_build_overrides(),
+            component.data().to_build_overrides(),
             [(1, BuildFieldOverride::Override("value1!!!".into()))]
                 .into_iter()
                 .collect(),
@@ -459,8 +481,7 @@ mod tests {
 
         // Reset edited state
         component.send_key(KeyCode::Char('z')).assert_empty();
-        let selected_row =
-            component.data().inner().select.data().selected().unwrap();
+        let selected_row = component.data().select.data().selected().unwrap();
         assert!(!selected_row.value.is_overridden());
     }
 
@@ -499,11 +520,7 @@ mod tests {
         let component = TestComponent::new(
             &harness,
             &terminal,
-            // We'll need a modal queue to handle the edit box
-            WithModalQueue::new(RecipeFieldTable::new(
-                TestRowKey(recipe_id.clone()),
-                rows,
-            )),
+            RecipeFieldTable::new(TestRowKey(recipe_id.clone()), rows),
             RecipeFieldTableProps {
                 key_header: "Key",
                 value_header: "Value",
@@ -511,7 +528,7 @@ mod tests {
         );
 
         assert_eq!(
-            component.data().inner().to_build_overrides(),
+            component.data().to_build_overrides(),
             [
                 (0, BuildFieldOverride::Override("p0".into())),
                 (1, BuildFieldOverride::Override("p1".into()))

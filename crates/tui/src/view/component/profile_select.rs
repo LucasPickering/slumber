@@ -5,13 +5,19 @@ use crate::{
     util::ResultReported,
     view::{
         common::{
-            list::List, modal::Modal, table::Table,
-            template_preview::TemplatePreview, Pane,
+            list::List,
+            modal::{Modal, ModalHandle},
+            table::Table,
+            template_preview::TemplatePreview,
+            Pane,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler, Update},
-        state::{select::SelectState, StateCell},
+        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
+        state::{
+            select::{SelectState, SelectStateEvent, SelectStateEventType},
+            StateCell,
+        },
         util::persistence::Persisted,
         Component, ViewContext,
     },
@@ -41,6 +47,8 @@ pub struct ProfilePane {
     /// necessarily the same: the user could highlight a profile without
     /// actually selecting it.
     selected_profile_id: Persisted<SelectedProfileKey>,
+    /// Handle events from the opened modal
+    modal_handle: ModalHandle<ProfileListModal>,
 }
 
 /// Persisted key for the ID of the selected profile
@@ -73,6 +81,7 @@ impl ProfilePane {
 
         Self {
             selected_profile_id,
+            modal_handle: ModalHandle::new(),
         }
     }
 
@@ -81,10 +90,9 @@ impl ProfilePane {
     }
 
     /// Open the profile list modal
-    pub fn open_modal(&self) {
-        ViewContext::open_modal(ProfileListModal::new(
-            self.selected_profile_id.as_ref(),
-        ));
+    pub fn open_modal(&mut self) {
+        self.modal_handle
+            .open(ProfileListModal::new(self.selected_profile_id.as_ref()));
     }
 }
 
@@ -92,7 +100,9 @@ impl EventHandler for ProfilePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::LeftClick) = event.action() {
             self.open_modal();
-        } else if let Some(SelectProfile(profile_id)) = event.local() {
+        } else if let Some(SelectProfile(profile_id)) =
+            self.modal_handle.emitted(&event)
+        {
             // Handle message from the modal
             *self.selected_profile_id.get_mut() = Some(profile_id.clone());
             // Refresh template previews
@@ -133,30 +143,17 @@ impl Draw for ProfilePane {
     }
 }
 
-/// Local event to pass selected profile ID from modal back to the parent
-#[derive(Debug)]
-struct SelectProfile(ProfileId);
-
 /// Modal to allow user to select a profile from a list and preview profile
 /// fields
 #[derive(Debug)]
 struct ProfileListModal {
+    emitter_id: EmitterId,
     select: Component<SelectState<ProfileListItem>>,
     detail: Component<ProfileDetail>,
 }
 
 impl ProfileListModal {
     pub fn new(selected_profile_id: Option<&ProfileId>) -> Self {
-        // Loaded request depends on the profile, so refresh on change
-        fn on_submit(profile: &mut ProfileListItem) {
-            // Close the modal *first*, so the parent can handle the
-            // callback event. Jank but it works
-            ViewContext::push_event(Event::CloseModal { submitted: true });
-            ViewContext::push_event(Event::new_local(SelectProfile(
-                profile.id.clone(),
-            )));
-        }
-
         let profiles = ViewContext::collection()
             .profiles
             .values()
@@ -165,9 +162,10 @@ impl ProfileListModal {
 
         let select = SelectState::builder(profiles)
             .preselect_opt(selected_profile_id)
-            .on_submit(on_submit)
+            .subscribe([SelectStateEventType::Submit])
             .build();
         Self {
+            emitter_id: EmitterId::new(),
             select: select.into(),
             detail: Default::default(),
         }
@@ -185,6 +183,21 @@ impl Modal for ProfileListModal {
 }
 
 impl EventHandler for ProfileListModal {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+        if let Some(event) = self.select.emitted(&event) {
+            // Loaded request depends on the profile, so refresh on change
+            if let SelectStateEvent::Submit(index) = event {
+                // Close modal first so the parent can consume the emitted event
+                self.close(true);
+                let profile_id = self.select.data()[*index].id.clone();
+                self.emit(SelectProfile(profile_id));
+            }
+        } else {
+            return Update::Propagate(event);
+        }
+        Update::Consumed
+    }
+
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![self.select.to_child_mut()]
     }
@@ -225,6 +238,18 @@ impl Draw for ProfileListModal {
         }
     }
 }
+
+impl Emitter for ProfileListModal {
+    type Emitted = SelectProfile;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
+    }
+}
+
+/// Local event to pass selected profile ID from modal back to the parent
+#[derive(Debug)]
+struct SelectProfile(ProfileId);
 
 /// Simplified version of [Profile], to be used in the display list. This
 /// only stores whatever data is necessary to render the list

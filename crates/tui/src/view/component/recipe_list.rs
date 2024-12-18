@@ -17,7 +17,7 @@ use ratatui::{text::Text, Frame};
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::collection::{
-    HasId, RecipeId, RecipeLookupKey, RecipeNodeDiscriminants, RecipeTree,
+    HasId, RecipeId, RecipeLookupKey, RecipeNodeType, RecipeTree,
 };
 use std::collections::HashSet;
 
@@ -76,9 +76,7 @@ impl RecipeListPane {
 
     /// ID and kind of whatever recipe/folder in the list is selected. `None`
     /// iff the list is empty
-    pub fn selected_node(
-        &self,
-    ) -> Option<(&RecipeId, RecipeNodeDiscriminants)> {
+    pub fn selected_node(&self) -> Option<(&RecipeId, RecipeNodeType)> {
         self.select
             .data()
             .selected()
@@ -233,18 +231,18 @@ pub enum RecipeListPaneEvent {
 struct RecipeListItem {
     id: RecipeId,
     name: String,
-    kind: RecipeNodeDiscriminants,
+    kind: RecipeNodeType,
     depth: usize,
     collapsed: bool,
 }
 
 impl RecipeListItem {
     fn is_folder(&self) -> bool {
-        matches!(self.kind, RecipeNodeDiscriminants::Folder)
+        matches!(self.kind, RecipeNodeType::Folder)
     }
 
     fn is_recipe(&self) -> bool {
-        matches!(self.kind, RecipeNodeDiscriminants::Recipe)
+        matches!(self.kind, RecipeNodeType::Recipe)
     }
 }
 
@@ -276,9 +274,9 @@ impl<'a> Generate for &'a RecipeListItem {
         Self: 'this,
     {
         let icon = match self.kind {
-            RecipeNodeDiscriminants::Folder if self.collapsed => "▶",
-            RecipeNodeDiscriminants::Folder => "▼",
-            RecipeNodeDiscriminants::Recipe => "",
+            RecipeNodeType::Folder if self.collapsed => "▶",
+            RecipeNodeType::Folder => "▼",
+            RecipeNodeType::Recipe => "",
         };
 
         // Apply indentation

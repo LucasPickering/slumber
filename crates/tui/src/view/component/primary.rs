@@ -41,7 +41,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::collection::{
-    Collection, ProfileId, RecipeId, RecipeNodeDiscriminants,
+    Collection, ProfileId, RecipeId, RecipeNodeType,
 };
 use strum::{EnumCount, EnumIter};
 
@@ -142,7 +142,7 @@ impl PrimaryView {
             .data()
             .selected_node()
             .and_then(|(id, kind)| {
-                if matches!(kind, RecipeNodeDiscriminants::Recipe) {
+                if matches!(kind, RecipeNodeType::Recipe) {
                     Some(id)
                 } else {
                     None

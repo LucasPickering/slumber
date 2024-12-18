@@ -29,8 +29,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::{
-    collection::RecipeNodeDiscriminants, http::RequestRecord,
-    util::format_byte_size,
+    collection::RecipeNodeType, http::RequestRecord, util::format_byte_size,
 };
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
@@ -51,7 +50,7 @@ pub struct ExchangePane {
 pub struct ExchangePaneProps<'a> {
     /// Do we have a recipe, folder, or neither selected? Used to determine
     /// placeholder
-    pub selected_recipe_kind: Option<RecipeNodeDiscriminants>,
+    pub selected_recipe_kind: Option<RecipeNodeType>,
     pub request_state: Option<&'a RequestState>,
 }
 
@@ -112,10 +111,7 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
         }
         .generate();
         // If a recipe is selected, history is available so show the hint
-        if matches!(
-            props.selected_recipe_kind,
-            Some(RecipeNodeDiscriminants::Recipe)
-        ) {
+        if matches!(props.selected_recipe_kind, Some(RecipeNodeType::Recipe)) {
             let text = input_engine.add_hint("History", Action::History);
             block = block.title(Title::from(text).alignment(Alignment::Right));
         }
@@ -127,14 +123,14 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
             None => {
                 return;
             }
-            Some(RecipeNodeDiscriminants::Folder) => {
+            Some(RecipeNodeType::Folder) => {
                 frame.render_widget(
                     "Select a recipe to see its request history",
                     area,
                 );
                 return;
             }
-            Some(RecipeNodeDiscriminants::Recipe) => {}
+            Some(RecipeNodeType::Recipe) => {}
         }
 
         // Split out the areas we *may* need

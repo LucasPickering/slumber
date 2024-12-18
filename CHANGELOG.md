@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - The query is now auto-applied when changed (with a 500ms debounce), and drops focus on the text box when Enter is pressed
 - Refactor UI event handling logic
   - This shouldn't have any noticable impact on the user, but if you notice any bugs please open an issue
+- Include request duration in History modal
 
 ### Fixed
 

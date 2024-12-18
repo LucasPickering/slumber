@@ -287,7 +287,7 @@ impl RequestStore {
             // Add what we loaded from the DB
             .chain(loaded.into_iter().map(RequestStateSummary::Response))
             // Sort descending
-            .sorted_by_key(RequestStateSummary::time)
+            .sorted_by_key(RequestStateSummary::start_time)
             .rev()
             // De-duplicate double-loaded requests
             .unique_by(RequestStateSummary::id);
@@ -626,7 +626,8 @@ pub enum RequestStateSummary {
     Response(ExchangeSummary),
     RequestError {
         id: RequestId,
-        time: DateTime<Utc>,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
     },
 }
 
@@ -642,24 +643,48 @@ impl RequestStateSummary {
         }
     }
 
-    /// Get the time of the request state. For in-flight or completed requests,
-    /// this is when it *started*.
-    pub fn time(&self) -> DateTime<Utc> {
+    /// Get the start time of the request state. For in-flight or completed
+    /// requests, this is when it *started*.
+    pub fn start_time(&self) -> DateTime<Utc> {
         match self {
-            Self::Building {
-                start_time: time, ..
-            }
-            | Self::BuildError {
-                start_time: time, ..
-            }
-            | Self::Loading {
-                start_time: time, ..
+            Self::Building { start_time, .. }
+            | Self::BuildError { start_time, .. }
+            | Self::Loading { start_time, .. }
+            | Self::Cancelled { start_time, .. }
+            | Self::RequestError { start_time, .. } => *start_time,
+            Self::Response(exchange) => exchange.start_time,
+        }
+    }
+
+    /// Elapsed time for the active request. If pending, this is a running
+    /// total. Otherwise end time - start time.
+    pub fn duration(&self) -> TimeDelta {
+        // It'd be nice to dedupe this with the calculation used for
+        // RequestMetadata, but it's not that easy
+        match self {
+            // In-progress states
+            Self::Building { start_time, .. }
+            | Self::Loading { start_time, .. } => Utc::now() - start_time,
+
+            // Error states
+            Self::BuildError {
+                start_time,
+                end_time,
+                ..
             }
             | Self::Cancelled {
-                start_time: time, ..
+                start_time,
+                end_time,
+                ..
             }
-            | Self::RequestError { time, .. } => *time,
-            Self::Response(exchange) => exchange.start_time,
+            | Self::RequestError {
+                start_time,
+                end_time,
+                ..
+            } => *end_time - *start_time,
+
+            // Completed
+            Self::Response(exchange) => exchange.end_time - exchange.start_time,
         }
     }
 }
@@ -699,7 +724,8 @@ impl From<&RequestState> for RequestStateSummary {
             }
             RequestState::RequestError { error } => Self::RequestError {
                 id: error.request.id,
-                time: error.start_time,
+                start_time: error.start_time,
+                end_time: error.end_time,
             },
         }
     }

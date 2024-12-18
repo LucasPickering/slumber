@@ -37,6 +37,7 @@ pub struct RecipeLookupKey(Vec<RecipeId>);
 
 /// A node in the recipe tree, either a folder or recipe
 #[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
+#[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]

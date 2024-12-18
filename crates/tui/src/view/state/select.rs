@@ -1,7 +1,7 @@
 use crate::view::{
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
-    event::{Event, EventHandler, Update},
+    event::{Emitter, EmitterId, Event, EventHandler, Update},
 };
 use persisted::PersistedContainer;
 use ratatui::{
@@ -10,7 +10,13 @@ use ratatui::{
 };
 use slumber_config::Action;
 use slumber_core::collection::HasId;
-use std::{cell::RefCell, fmt::Debug, marker::PhantomData};
+use std::{
+    cell::RefCell,
+    fmt::Debug,
+    marker::PhantomData,
+    ops::{Index, IndexMut},
+};
+use strum::EnumDiscriminants;
 
 /// State manager for a dynamic list of items.
 ///
@@ -22,20 +28,14 @@ pub struct SelectState<Item, State = ListState>
 where
     State: SelectStateData,
 {
+    emitter_id: EmitterId,
+    /// Which event types to emit
+    subscribed_events: Vec<SelectStateEventType>,
     /// Use interior mutability because this needs to be modified during the
     /// draw phase, by [ratatui::Frame::render_stateful_widget]. This allows
     /// rendering without a mutable reference.
     state: RefCell<State>,
     items: Vec<SelectItem<Item>>,
-    /// Callback when an item is highlighted
-    #[debug(skip)]
-    on_select: Option<Callback<Item>>,
-    /// Callback when the Toggle action is performed on an item
-    #[debug(skip)]
-    on_toggle: Option<Callback<Item>>,
-    /// Callback when the Submit action is performed on an item
-    #[debug(skip)]
-    on_submit: Option<Callback<Item>>,
 }
 
 /// An item in a select list, with additional metadata
@@ -53,22 +53,20 @@ impl<T> SelectItem<T> {
 }
 
 /// Builder for [SelectState]. The main reason for the builder is to allow
-/// callbacks to be present during state initialization, in case we want to
-/// call on_select for the default item.
+/// setting the preselect index, so the wrong index doesn't get an event emitted
+/// for it
 pub struct SelectStateBuilder<Item, State> {
     items: Vec<SelectItem<Item>>,
     /// Store preselected value as an index, so we don't need to care about the
     /// type of the value. Defaults to 0.
     preselect_index: usize,
-    on_select: Option<Callback<Item>>,
-    on_toggle: Option<Callback<Item>>,
-    on_submit: Option<Callback<Item>>,
+    subscribed_events: Vec<SelectStateEventType>,
     _state: PhantomData<State>,
 }
 
 impl<Item, State> SelectStateBuilder<Item, State> {
     /// Disable certain items in the list by value. Disabled items can still be
-    /// selected, but do not trigger callbacks.
+    /// selected, but do not emit events.
     pub fn disabled_items<'a, T>(
         mut self,
         disabled_items: impl IntoIterator<Item = &'a T>,
@@ -84,6 +82,15 @@ impl<Item, State> SelectStateBuilder<Item, State> {
                 }
             }
         }
+        self
+    }
+
+    /// Which types of events should this emit?
+    pub fn subscribe(
+        mut self,
+        event_types: impl IntoIterator<Item = SelectStateEventType>,
+    ) -> Self {
+        self.subscribed_events.extend(event_types);
         self
     }
 
@@ -115,43 +122,15 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         }
     }
 
-    /// Set the callback to be called when the user highlights a new item
-    pub fn on_select(
-        mut self,
-        on_select: impl 'static + Fn(&mut Item),
-    ) -> Self {
-        self.on_select = Some(Box::new(on_select));
-        self
-    }
-
-    /// Set the callback to be called when the user hits space on an item
-    pub fn on_toggle(
-        mut self,
-        on_toggle: impl 'static + Fn(&mut Item),
-    ) -> Self {
-        self.on_toggle = Some(Box::new(on_toggle));
-        self
-    }
-
-    /// Set the callback to be called when the user hits enter on an item
-    pub fn on_submit(
-        mut self,
-        on_submit: impl 'static + Fn(&mut Item),
-    ) -> Self {
-        self.on_submit = Some(Box::new(on_submit));
-        self
-    }
-
     pub fn build(self) -> SelectState<Item, State>
     where
         State: SelectStateData,
     {
         let mut select = SelectState {
+            emitter_id: EmitterId::new(),
+            subscribed_events: self.subscribed_events,
             state: RefCell::default(),
             items: self.items,
-            on_select: self.on_select,
-            on_toggle: self.on_toggle,
-            on_submit: self.on_submit,
         };
         // Set initial value. Generally the index will be valid unless the list
         // is empty, because it's either the default of 0 or was derived from
@@ -162,8 +141,6 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         select
     }
 }
-
-type Callback<Item> = Box<dyn Fn(&mut Item)>;
 
 impl<Item, State: SelectStateData> SelectState<Item, State> {
     /// Start a new builder
@@ -177,9 +154,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
                 })
                 .collect(),
             preselect_index: 0,
-            on_select: None,
-            on_toggle: None,
-            on_submit: None,
+            subscribed_events: Vec::new(),
             _state: PhantomData,
         }
     }
@@ -227,9 +202,9 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         self.items.get_mut(index).map(|item| &mut item.value)
     }
 
-    /// Select an item by value. Context is required for callbacks. Generally
-    /// the given value will be the type `Item`, but it could be anything that
-    /// compares to `Item` (e.g. an ID type).
+    /// Select an item by value. Generally the given value will be the type
+    /// `Item`, but it could be anything that compares to `Item` (e.g. an ID
+    /// type).
     pub fn select<T: PartialEq<Item>>(&mut self, value: &T) {
         if let Some(index) = find_index(&self.items, value) {
             self.select_index(index);
@@ -253,24 +228,14 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         state.select(index);
         let new = state.selected();
 
-        // If the selection changed, call the callback
-        match &self.on_select {
-            Some(on_select) if current != new => {
-                let selected = new.and_then(|index| self.items.get_mut(index));
-                // Don't call callbacks for disabled items
-                match selected {
-                    Some(selected) if !selected.disabled => {
-                        on_select(&mut selected.value);
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
+        // If the selection changed, send an event
+        if current != new {
+            self.emit_for_selected(SelectStateEvent::Select);
         }
     }
 
     /// Move some number of items up or down the list. Selection will wrap if
-    /// it underflows/overflows. Context is required for callbacks.
+    /// it underflows/overflows.
     fn select_delta(&mut self, delta: isize) {
         // If there's nothing in the list, we can't do anything
         if !self.items.is_empty() {
@@ -286,6 +251,28 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
             self.select_index(index);
         }
     }
+
+    /// Helper to generate an emit an event for the currentl selected item. The
+    /// event will *not* be emitted if no item is select, or the selected item
+    /// is disabled.
+    fn emit_for_selected(&self, event_fn: impl Fn(usize) -> SelectStateEvent) {
+        // 2024 edition: if-let chain
+        match self.selected_index() {
+            // Don't send event for disabled items
+            Some(selected) if !self.items[selected].disabled => {
+                let event = event_fn(selected);
+                // Check if the parent subscribed to this event type
+                if self.is_subscribed(SelectStateEventType::from(&event)) {
+                    self.emit(event);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn is_subscribed(&self, event_type: SelectStateEventType) -> bool {
+        self.subscribed_events.contains(&event_type)
+    }
 }
 
 impl<Item, State> Default for SelectState<Item, State>
@@ -295,6 +282,28 @@ where
 {
     fn default() -> Self {
         SelectState::<Item, State>::builder(Vec::new()).build()
+    }
+}
+
+/// Get an item by index, and panic if out of bounds. Useful with emitted
+/// events, when we know the index will be valid
+impl<Item, State> Index<usize> for SelectState<Item, State>
+where
+    State: SelectStateData,
+{
+    type Output = Item;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.items[index].value
+    }
+}
+
+impl<Item, State> IndexMut<usize> for SelectState<Item, State>
+where
+    State: SelectStateData,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.items[index].value
     }
 }
 
@@ -308,46 +317,22 @@ where
         let Some(action) = event.action() else {
             return Update::Propagate(event);
         };
+
         // Up/down keys and scrolling. Scrolling will only work if .set_area()
         // is called on the wrapping Component by our parent
         match action {
             Action::Up | Action::ScrollUp => self.previous(),
             Action::Down | Action::ScrollDown => self.next(),
-            Action::Toggle => {
-                // If we have an on_toggle, our parent wants us to handle
-                // toggle events so consume it even if nothing is selected
-                if let Some(on_toggle) = &self.on_toggle {
-                    let selected = self
-                        .state
-                        .get_mut()
-                        .selected()
-                        .and_then(|index| self.items.get_mut(index));
-                    if let Some(selected) = selected {
-                        on_toggle(&mut selected.value);
-                    }
-                } else {
-                    return Update::Propagate(event);
-                }
+            // Don't eat these events unless the user has subscribed
+            Action::Toggle
+                if self.is_subscribed(SelectStateEventType::Toggle) =>
+            {
+                self.emit_for_selected(SelectStateEvent::Toggle)
             }
-            Action::Submit => {
-                // If we have an on_submit, our parent wants us to handle
-                // submit events so consume it even if nothing is selected
-                if let Some(on_submit) = &self.on_submit {
-                    let selected = self
-                        .state
-                        .get_mut()
-                        .selected()
-                        .and_then(|index| self.items.get_mut(index));
-                    // Don't call callbacks for disabled items
-                    match selected {
-                        Some(selected) if !selected.disabled => {
-                            on_submit(&mut selected.value);
-                        }
-                        _ => {}
-                    }
-                } else {
-                    return Update::Propagate(event);
-                }
+            Action::Submit
+                if self.is_subscribed(SelectStateEventType::Submit) =>
+            {
+                self.emit_for_selected(SelectStateEvent::Submit)
             }
             _ => return Update::Propagate(event),
         }
@@ -390,9 +375,17 @@ where
         // means the list was empty before persisting and it may now have data,
         // and we don't want to overwrite whatever was pre-selected
         if let Some(value) = &value {
-            // This will call the on_select callback if the item is in the list
+            // This will emit a select event if the item is in the list
             self.select(value);
         }
+    }
+}
+
+impl<Item, State: SelectStateData> Emitter for SelectState<Item, State> {
+    type Emitted = SelectStateEvent;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
     }
 }
 
@@ -437,6 +430,19 @@ impl SelectStateData for usize {
     }
 }
 
+/// Emitted event for select list
+#[derive(Debug, EnumDiscriminants)]
+#[strum_discriminants(name(SelectStateEventType))]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum SelectStateEvent {
+    /// User highlight a new item in the list
+    Select(usize),
+    /// User hit submit button (Enter by default) on an item
+    Submit(usize),
+    /// User hit toggle button (Space by default) on an item
+    Toggle(usize),
+}
+
 /// Find the index of a value in the list
 fn find_index<Item, T>(items: &[SelectItem<Item>], value: &T) -> Option<usize>
 where
@@ -460,8 +466,7 @@ mod tests {
     use ratatui::widgets::List;
     use rstest::{fixture, rstest};
     use serde::Serialize;
-    use slumber_core::{collection::ProfileId, test_util::Factory};
-    use std::sync::mpsc;
+    use slumber_core::{assert_matches, collection::ProfileId};
 
     /// Test going up and down in the list
     #[rstest]
@@ -473,6 +478,7 @@ mod tests {
         let select = SelectState::builder(items.0).build();
         let mut component =
             TestComponent::new(&harness, &terminal, select, items.1);
+        component.drain_draw().assert_empty();
         assert_eq!(component.data().selected(), Some(&"a"));
         component.send_key(KeyCode::Down).assert_empty();
         assert_eq!(component.data().selected(), Some(&"b"));
@@ -481,67 +487,95 @@ mod tests {
         assert_eq!(component.data().selected(), Some(&"a"));
     }
 
-    /// Test on_select callback
+    /// Test select emitted event
     #[rstest]
-    fn test_on_select(
+    fn test_select(
         harness: TestHarness,
         terminal: TestTerminal,
         items: (Vec<&'static str>, List<'static>),
     ) {
-        // Track calls to the callback
-        let (tx, rx) = mpsc::channel();
-
         let select = SelectState::builder(items.0)
             .disabled_items(&["c"])
-            .on_select(move |item| tx.send(*item).unwrap())
+            .subscribe([SelectStateEventType::Select])
             .build();
         let mut component =
             TestComponent::new(&harness, &terminal, select, items.1);
 
+        // Initial selection
         assert_eq!(component.data().selected(), Some(&"a"));
-        assert_eq!(rx.recv().unwrap(), "a");
-        component.send_key(KeyCode::Down).assert_empty();
-        assert_eq!(rx.recv().unwrap(), "b");
+        component
+            .drain_draw()
+            .assert_emitted([SelectStateEvent::Select(0)]);
 
-        // "c" is disabled, should not trigger callback
+        component
+            .send_key(KeyCode::Down)
+            .assert_emitted([SelectStateEvent::Select(1)]);
+
+        // "c" is disabled, should not trigger events
         component.send_key(KeyCode::Down).assert_empty();
-        assert!(rx.try_recv().is_err());
     }
 
-    /// Test on_submit callback
+    /// Test submit emitted event
     #[rstest]
-    fn test_on_submit(
+    fn test_submit(
         harness: TestHarness,
         terminal: TestTerminal,
         items: (Vec<&'static str>, List<'static>),
     ) {
-        // Track calls to the callback
-        let (tx, rx) = mpsc::channel();
-
         let select = SelectState::builder(items.0)
             .disabled_items(&["c"])
-            .on_submit(move |item| tx.send(*item).unwrap())
+            .subscribe([SelectStateEventType::Submit])
             .build();
         let mut component =
             TestComponent::new(&harness, &terminal, select, items.1);
+        component.drain_draw().assert_empty();
 
-        component.send_key(KeyCode::Down).assert_empty();
-        component.send_key(KeyCode::Enter).assert_empty();
-        assert_eq!(rx.recv().unwrap(), "b");
+        component
+            .send_keys([KeyCode::Down, KeyCode::Enter])
+            .assert_emitted([SelectStateEvent::Submit(1)]);
 
-        // "c" is disabled, should not trigger callback
-        component.send_key(KeyCode::Down).assert_empty();
-        component.send_key(KeyCode::Enter).assert_empty();
-        assert!(rx.try_recv().is_err());
+        // "c" is disabled, should not trigger events
+        component
+            .send_keys([KeyCode::Down, KeyCode::Enter])
+            .assert_empty();
+    }
+
+    /// Test that submit and toggle input events are propagated if we're not
+    /// subscribed to them
+    #[rstest]
+    fn test_propagate(
+        harness: TestHarness,
+        terminal: TestTerminal,
+        items: (Vec<&'static str>, List<'static>),
+    ) {
+        let select = SelectState::builder(items.0).build();
+        let mut component =
+            TestComponent::new(&harness, &terminal, select, items.1);
+
+        assert_matches!(
+            component.send_key(KeyCode::Enter).events(),
+            &[Event::Input {
+                action: Some(Action::Submit),
+                ..
+            }]
+        );
+        assert_matches!(
+            component.send_key(KeyCode::Char(' ')).events(),
+            &[Event::Input {
+                action: Some(Action::Toggle),
+                ..
+            }]
+        );
     }
 
     /// Test persisting selected item
     #[rstest]
-    fn test_persistence(_harness: TestHarness) {
+    fn test_persistence(harness: TestHarness, terminal: TestTerminal) {
         #[derive(Debug, PersistedKey, Serialize)]
         #[persisted(Option<ProfileId>)]
         struct Key;
 
+        #[derive(Debug)]
         struct ProfileItem(ProfileId);
 
         impl HasId for ProfileItem {
@@ -562,7 +596,7 @@ mod tests {
             }
         }
 
-        let profile_id = ProfileId::factory(());
+        let profile_id: ProfileId = "profile2".into();
         let profile = ProfileItem(profile_id.clone());
 
         DatabasePersistedStore::store_persisted(
@@ -570,14 +604,30 @@ mod tests {
             &Some(profile_id.clone()),
         );
 
-        let pid = profile_id.clone();
-        let select = PersistedLazy::new(
-            Key,
-            SelectState::<_, usize>::builder(vec![profile])
-                .on_select(move |item| assert_eq!(item.0, pid))
-                .build(),
+        // Second profile should be pre-selected because of persistence
+        let select =
+            SelectState::builder(vec![ProfileItem("profile1".into()), profile])
+                .subscribe([SelectStateEventType::Select])
+                .build();
+        let list = select
+            .items()
+            .map(|item| item.0.to_string())
+            .collect::<List>();
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            PersistedLazy::new(Key, select),
+            list,
         );
-        assert_eq!(select.selected().map(ProfileItem::id), Some(&profile_id));
+        assert_eq!(
+            component.data().selected().map(ProfileItem::id),
+            Some(&profile_id)
+        );
+        component.drain_draw().assert_emitted([
+            // First item gets selected by preselection, second by persistence
+            SelectStateEvent::Select(0),
+            SelectStateEvent::Select(1),
+        ])
     }
 
     #[fixture]

@@ -3,9 +3,9 @@ use crate::{
     view::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Child, Event, EventHandler, Update},
+        event::{Child, Emitter, EmitterToken, Event, EventHandler, Update},
         util::centered_rect,
-        Component,
+        Component, ViewContext,
     },
 };
 use ratatui::{
@@ -39,6 +39,12 @@ pub trait Modal: Debug + Draw<()> + EventHandler {
 
     /// Dimensions of the modal, relative to the whole screen
     fn dimensions(&self) -> (Constraint, Constraint);
+
+    /// Send an event to close this modal. `submitted` flag will be forwarded
+    /// to the `on_close` handler.
+    fn close(&self, submitted: bool) {
+        ViewContext::push_event(Event::CloseModal { submitted });
+    }
 
     /// Optional callback when the modal is closed. Useful for finishing
     /// operations that require ownership of the modal data. Submitted flag is
@@ -189,5 +195,47 @@ impl Draw for ModalQueue {
             // Render the actual content
             modal.draw(frame, (), inner_area, true);
         }
+    }
+}
+
+/// A helper to manage opened modals. Useful for components that need to open
+/// a modal of a particular type, then listen for emitted events from that
+/// modal. This only supports **a single modal at a time** of that type.
+#[derive(Debug)]
+pub struct ModalHandle<T: Emitter> {
+    /// Track the emitter ID of the opened modal, so we can check for emitted
+    /// events from it later. This is `None` on initialization. Note: this does
+    /// *not* get cleared when a modal is closed, because that requires extra
+    /// plumbing but would not actually accomplish anything. Once a modal is
+    /// closed, it won't be emitting anymore so there's no harm in hanging onto
+    /// its ID.
+    emitter: Option<EmitterToken<T::Emitted>>,
+}
+
+impl<T: Emitter> ModalHandle<T> {
+    pub fn new() -> Self {
+        Self { emitter: None }
+    }
+
+    /// Open a modal and store its emitter ID
+    pub fn open(&mut self, modal: T)
+    where
+        T: 'static + Modal,
+    {
+        self.emitter = Some(modal.detach());
+        ViewContext::open_modal(modal);
+    }
+
+    /// Check if an event was emitted by the most recently opened modal
+    pub fn emitted<'a>(&self, event: &'a Event) -> Option<&'a T::Emitted> {
+        self.emitter
+            .as_ref()
+            .and_then(|emitter| emitter.emitted(event))
+    }
+}
+
+impl<T: Emitter> Default for ModalHandle<T> {
+    fn default() -> Self {
+        Self { emitter: None }
     }
 }

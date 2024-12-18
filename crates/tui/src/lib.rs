@@ -54,7 +54,7 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::{self, UnboundedReceiver},
-    time,
+    task, time,
 };
 use tracing::{debug, error, info, info_span, trace};
 
@@ -139,7 +139,14 @@ impl Tui {
             request_store,
         };
 
-        app.run().await
+        // Run the main loop in a local task set. This allows simple UI behavior
+        // requires async (e.g. event debouncing) to run on the main thread and
+        // retain access to the view context. This allows some tasks to avoid
+        // using the message channel, simplifying the process
+        let local = task::LocalSet::new();
+        local.spawn_local(app.run());
+        local.await;
+        Ok(())
     }
 
     /// Run the main TUI update loop. Any error returned from this is fatal. See
@@ -315,8 +322,6 @@ impl Tui {
             Message::Input { event, action } => {
                 self.view.handle_input(event, action);
             }
-
-            Message::Local(event) => self.view.local(event),
 
             Message::Notify(message) => self.view.notify(message),
             Message::PromptStart(prompt) => {

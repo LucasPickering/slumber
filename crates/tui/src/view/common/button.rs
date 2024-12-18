@@ -5,9 +5,8 @@ use crate::{
     view::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Event, EventHandler, Update},
+        event::{Emitter, EmitterId, Event, EventHandler, Update},
         state::fixed_select::{FixedSelect, FixedSelectState},
-        ViewContext,
     },
 };
 use ratatui::{
@@ -51,6 +50,7 @@ impl<'a> Generate for Button<'a> {
 /// type `T`.
 #[derive(Debug, Default)]
 pub struct ButtonGroup<T: FixedSelect> {
+    emitter_id: EmitterId,
     select: FixedSelectState<T>,
 }
 
@@ -64,9 +64,7 @@ impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
             Action::Right => self.select.next(),
             Action::Submit => {
                 // Propagate the selected item as a dynamic event
-                ViewContext::push_event(Event::new_local(
-                    self.select.selected(),
-                ));
+                self.emit(self.select.selected());
             }
             _ => return Update::Propagate(event),
         }
@@ -102,5 +100,15 @@ impl<T: FixedSelect> Draw for ButtonGroup<T> {
                 *area,
             )
         }
+    }
+}
+
+/// The only type of event we can emit is a button being selected, so just
+/// emit the button type
+impl<T: FixedSelect> Emitter for ButtonGroup<T> {
+    type Emitted = T;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
     }
 }

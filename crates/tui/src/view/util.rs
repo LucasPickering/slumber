@@ -15,7 +15,7 @@ use slumber_core::{
     util::ResultTraced,
 };
 use std::{io::Write, path::Path, time::Duration};
-use tokio::{select, sync::broadcast, time};
+use tokio::{select, sync::broadcast, task, time};
 
 /// A data structure for representation a yes/no confirmation. This is similar
 /// to [Prompt], but it only asks a yes/no question.
@@ -62,14 +62,16 @@ impl Debounce {
     /// Trigger a debounced callback. The given callback will be invoked after
     /// the debounce period _if_ this method is not called again during the
     /// debounce period.
-    pub fn start(&self, on_complete: impl 'static + Fn() + Send + Sync) {
+    pub fn start(&self, on_complete: impl 'static + Fn()) {
         // Cancel existing tasks, _then_ start a new listener, so we don't
         // cancel ourselves
         self.cancel();
         let mut cancel_recv = self.cancel_send.subscribe();
 
+        // Run debounce in a local task so component behavior can access the
+        // view context, e.g. to push events
         let duration = self.duration;
-        tokio::spawn(async move {
+        task::spawn_local(async move {
             // Start a timer. If it expires before cancellation, then submit
             select! {
                 _ = time::sleep(duration) => {

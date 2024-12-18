@@ -173,17 +173,12 @@ mod tests {
     fn test_event_queue(_harness: TestHarness) {
         assert_events!(); // Start empty
 
-        ViewContext::push_event(Event::new_local(3u32));
         ViewContext::push_event(Event::CloseModal { submitted: false });
-        assert_events!(
-            Event::Local(event) if event.downcast_ref::<u32>() == Some(&3),
-            Event::CloseModal{ submitted: false },
-        );
+        assert_events!(Event::CloseModal { submitted: false },);
 
-        assert_matches!(ViewContext::pop_event(), Some(Event::Local(_)));
         assert_matches!(
             ViewContext::pop_event(),
-            Some(Event::CloseModal { submitted: false })
+            Some(Event::CloseModal { .. })
         );
         assert_events!(); // Empty again
     }

@@ -5,6 +5,7 @@ use crate::{
         common::{
             actions::ActionsModal,
             header_table::HeaderTable,
+            modal::ModalHandle,
             text_window::{TextWindow, TextWindowProps},
         },
         context::UpdateContext,
@@ -30,6 +31,7 @@ use strum::{EnumCount, EnumIter};
 #[derive(Debug, Default)]
 pub struct RequestView {
     state: StateCell<RequestId, State>,
+    actions_handle: ModalHandle<ActionsModal<MenuAction>>,
     body_text_window: Component<TextWindow>,
 }
 
@@ -79,9 +81,9 @@ impl EventHandler for RequestView {
                 // No body available - disable these actions
                 &[MenuAction::CopyBody, MenuAction::ViewBody]
             };
-            ViewContext::open_modal(ActionsModal::new(disabled));
-        } else if let Some(action) = event.local::<MenuAction>() {
-            match action {
+            self.actions_handle.open(ActionsModal::new(disabled));
+        } else if let Some(menu_action) = self.actions_handle.emitted(&event) {
+            match menu_action {
                 MenuAction::EditCollection => {
                     ViewContext::send_message(Message::CollectionEdit)
                 }

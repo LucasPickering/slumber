@@ -10,7 +10,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Child, Event, EventHandler, Update},
+        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
         state::Identified,
         Component, ViewContext,
     },
@@ -127,6 +127,7 @@ impl Draw for RecipeBodyDisplay {
 
 #[derive(Debug)]
 pub struct RawBody {
+    emitter_id: EmitterId,
     body: RecipeTemplate,
     text_window: Component<TextWindow>,
 }
@@ -138,6 +139,7 @@ impl RawBody {
         content_type: Option<ContentType>,
     ) -> Self {
         Self {
+            emitter_id: EmitterId::new(),
             body: RecipeTemplate::new(
                 RecipeOverrideKey::body(recipe_id),
                 template,
@@ -164,12 +166,11 @@ impl RawBody {
             return;
         };
 
+        let emitter = self.detach();
         ViewContext::send_message(Message::FileEdit {
             path,
-            on_complete: Box::new(|path| {
-                ViewContext::push_event(Event::new_local(SaveBodyOverride(
-                    path,
-                )));
+            on_complete: Box::new(move |path| {
+                emitter.emit(SaveBodyOverride(path))
             }),
         })
     }
@@ -214,7 +215,7 @@ impl EventHandler for RawBody {
             self.open_editor();
         } else if let Some(Action::Reset) = action {
             self.body.reset_override();
-        } else if let Some(SaveBodyOverride(path)) = event.local() {
+        } else if let Some(SaveBodyOverride(path)) = self.emitted(&event) {
             self.load_override(path);
         } else {
             return Update::Propagate(event);
@@ -253,6 +254,15 @@ impl Draw for RawBody {
     }
 }
 
+/// Emit events to ourselves for override editing
+impl Emitter for RawBody {
+    type Emitted = SaveBodyOverride;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
+    }
+}
+
 /// Persistence key for selected form field, per recipe. Value is the field name
 #[derive(Debug, Serialize, persisted::PersistedKey)]
 #[persisted(Option<String>)]
@@ -269,7 +279,7 @@ pub struct FormRowToggleKey {
 /// Local event to save a user's override body. Triggered from the on_complete
 /// callback when the user closes the editor.
 #[derive(Debug)]
-struct SaveBodyOverride(PathBuf);
+pub struct SaveBodyOverride(PathBuf);
 
 #[cfg(test)]
 mod tests {

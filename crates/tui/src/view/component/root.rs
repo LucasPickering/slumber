@@ -68,6 +68,15 @@ impl Root {
         self.selected_request_id.0
     }
 
+    /// Extract the currently selected request from the store
+    fn selected_request<'a>(
+        &self,
+        request_store: &'a RequestStore,
+    ) -> Option<&'a RequestState> {
+        self.selected_request_id()
+            .and_then(|id| request_store.get(id))
+    }
+
     /// Select the given request. This will ensure the request data is loaded
     /// in memory.
     pub fn select_request(
@@ -90,6 +99,18 @@ impl Root {
             // We don't have a valid persisted ID, find the most recent for the
             // current recipe+profile
             if let Some(recipe_id) = primary_view.selected_recipe_id() {
+                // If someone asked for the latest request for a recipe, but we
+                // already have another request of that same recipe selected,
+                // ignore the request. This gets around a bug during
+                // initialization where the recipe list asks for the latest
+                // request *after* the selected ID is loaded from persistence
+                if self
+                    .selected_request(request_store)
+                    .is_some_and(|request| request.recipe_id() == recipe_id)
+                {
+                    return Ok(self.selected_request_id());
+                }
+
                 let profile_id = primary_view.selected_profile_id();
                 Ok(request_store
                     .load_latest(profile_id, recipe_id)?
@@ -204,9 +225,7 @@ impl<'a> Draw<RootProps<'a>> for Root {
                 .areas(metadata.area());
 
         // Main content
-        let selected_request = self
-            .selected_request_id()
-            .and_then(|id| props.request_store.get(id));
+        let selected_request = self.selected_request(props.request_store);
         self.primary_view.draw(
             frame,
             PrimaryViewProps { selected_request },
@@ -295,7 +314,7 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&exchange).unwrap();
 
-        let component = TestComponent::new(
+        let mut component = TestComponent::new(
             &harness,
             &terminal,
             Root::new(&collection),
@@ -303,6 +322,7 @@ mod tests {
                 request_store: &request_store,
             },
         );
+        component.drain_draw().assert_empty();
 
         // Make sure profile+recipe were preselected correctly
         let primary_view = component.data().primary_view.data();
@@ -337,7 +357,7 @@ mod tests {
             &Some(old_exchange.id),
         );
 
-        let component = TestComponent::new(
+        let mut component = TestComponent::new(
             &harness,
             &terminal,
             Root::new(&collection),
@@ -345,6 +365,7 @@ mod tests {
                 request_store: &request_store,
             },
         );
+        component.drain_draw().assert_empty();
 
         // Make sure everything was preselected correctly
         assert_eq!(
@@ -387,7 +408,7 @@ mod tests {
             )
             .unwrap();
 
-        let component = TestComponent::new(
+        let mut component = TestComponent::new(
             &harness,
             &terminal,
             Root::new(&collection),
@@ -395,6 +416,7 @@ mod tests {
                 request_store: &request_store,
             },
         );
+        component.drain_draw().assert_empty();
 
         assert_eq!(
             component.data().selected_request_id(),
@@ -414,14 +436,15 @@ mod tests {
                 request_store: &request_store,
             },
         );
+        component.drain_draw().assert_empty();
 
         harness.clear_messages(); // Clear init junk
 
-        // Event should be converted into a message appropriately
         // Open action menu
         component.send_key(KeyCode::Char('x')).assert_empty();
         // Select first action - Edit Collection
         component.send_key(KeyCode::Enter).assert_empty();
+        // Event should be converted into a message appropriately
         assert_matches!(harness.pop_message_now(), Message::CollectionEdit);
     }
 }

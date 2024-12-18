@@ -4,7 +4,7 @@ use crate::{
     context::TuiContext,
     view::{
         common::{
-            text_box::TextBox,
+            text_box::{TextBox, TextBoxEvent},
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
         context::UpdateContext,
@@ -12,7 +12,7 @@ use crate::{
         event::{Child, Event, EventHandler, Update},
         state::{Identified, StateCell},
         util::{highlight, str_to_text},
-        Component, ViewContext,
+        Component,
     },
 };
 use anyhow::Context;
@@ -86,18 +86,11 @@ impl QueryableBody {
         let input_engine = &TuiContext::get().input_engine;
         let binding = input_engine.binding_display(Action::Search);
 
-        let send_local = |callback| {
-            move || ViewContext::push_event(Event::new_local(callback))
-        };
         let text_box = TextBox::default()
             .placeholder(format!("{binding} to query body"))
             .placeholder_focused("Query with JSONPath (ex: $.results)")
             .validator(|text| JsonPath::parse(text).is_ok())
-            // Callback trigger an events, so we can modify our own state
-            .on_click(send_local(QueryCallback::Focus))
-            .on_change(send_local(QueryCallback::Change), true)
-            .on_cancel(send_local(QueryCallback::Cancel))
-            .on_submit(send_local(QueryCallback::Submit));
+            .debounce();
         Self {
             state: Default::default(),
             query_available: Cell::new(false),
@@ -160,11 +153,11 @@ impl EventHandler for QueryableBody {
             if self.query_available.get() {
                 self.query_focused = true;
             }
-        } else if let Some(callback) = event.local::<QueryCallback>() {
-            match callback {
-                QueryCallback::Focus => self.query_focused = true,
-                QueryCallback::Change => self.update_query(),
-                QueryCallback::Cancel => {
+        } else if let Some(event) = self.query_text_box.emitted(&event) {
+            match event {
+                TextBoxEvent::Focus => self.query_focused = true,
+                TextBoxEvent::Change => self.update_query(),
+                TextBoxEvent::Cancel => {
                     // Reset text to whatever was submitted last
                     self.query_text_box.data_mut().set_text(
                         self.query
@@ -174,7 +167,7 @@ impl EventHandler for QueryableBody {
                     );
                     self.query_focused = false;
                 }
-                QueryCallback::Submit => {
+                TextBoxEvent::Submit => {
                     self.update_query();
                     self.query_focused = false;
                 }
@@ -251,15 +244,6 @@ impl PersistedContainer for QueryableBody {
     fn restore_persisted(&mut self, value: Self::Value) {
         self.query_text_box.data_mut().restore_persisted(value)
     }
-}
-
-/// All callback events from the query text box
-#[derive(Copy, Clone, Debug)]
-enum QueryCallback {
-    Focus,
-    Change,
-    Cancel,
-    Submit,
 }
 
 /// Calculate display text based on current body/query
@@ -348,6 +332,7 @@ mod tests {
     use rstest::{fixture, rstest};
     use serde::Serialize;
     use slumber_core::{http::ResponseRecord, test_util::header_map};
+    use tokio::task::LocalSet;
 
     const TEXT: &[u8] = b"{\"greeting\":\"hello\"}";
 
@@ -406,70 +391,78 @@ mod tests {
         #[with(32, 5)] terminal: TestTerminal,
         json_response: ResponseRecord,
     ) {
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            QueryableBody::new(),
-            QueryableBodyProps {
-                content_type: None,
-                body: &json_response.body,
-            },
-        );
+        // Debounce mechanism requires a LocalSet
+        let local = LocalSet::new();
+        let future = local.run_until(async {
+            let mut component = TestComponent::new(
+                &harness,
+                &terminal,
+                QueryableBody::new(),
+                QueryableBodyProps {
+                    content_type: None,
+                    body: &json_response.body,
+                },
+            );
 
-        // Assert initial state/view
-        let data = component.data();
-        assert!(data.query_available.get());
-        assert_eq!(data.query, None);
-        assert_eq!(
-            data.parsed_text().as_deref(),
-            Some("{\n  \"greeting\": \"hello\"\n}")
-        );
-        let styles = &TuiContext::get().styles.text_box;
-        terminal.assert_buffer_lines([
-            vec![gutter("1"), " {                        ".into()],
-            vec![gutter("2"), "   \"greeting\": \"hello\"".into()],
-            vec![gutter("3"), " }                        ".into()],
-            vec![gutter(" "), "                          ".into()],
-            vec![
-                Span::styled(
-                    "/ to query body",
-                    styles.text.patch(styles.placeholder),
-                ),
-                Span::styled("                 ", styles.text),
-            ],
-        ]);
+            // Assert initial state/view
+            let data = component.data();
+            assert!(data.query_available.get());
+            assert_eq!(data.query, None);
+            assert_eq!(
+                data.parsed_text().as_deref(),
+                Some("{\n  \"greeting\": \"hello\"\n}")
+            );
+            let styles = &TuiContext::get().styles.text_box;
+            terminal.assert_buffer_lines([
+                vec![gutter("1"), " {                        ".into()],
+                vec![gutter("2"), "   \"greeting\": \"hello\"".into()],
+                vec![gutter("3"), " }                        ".into()],
+                vec![gutter(" "), "                          ".into()],
+                vec![
+                    Span::styled(
+                        "/ to query body",
+                        styles.text.patch(styles.placeholder),
+                    ),
+                    Span::styled("                 ", styles.text),
+                ],
+            ]);
 
-        // Type something into the query box
-        component.send_key(KeyCode::Char('/')).assert_empty();
-        component.send_text("$.greeting").assert_empty();
-        component.send_key(KeyCode::Enter).assert_empty();
+            // Type something into the query box
+            component.send_key(KeyCode::Char('/')).assert_empty();
+            component.send_text("$.greeting").assert_empty();
+            component.send_key(KeyCode::Enter).assert_empty();
 
-        // Make sure state updated correctly
-        let data = component.data();
-        assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
-        assert_eq!(data.parsed_text().as_deref(), Some("[\n  \"hello\"\n]"));
-        assert!(!data.query_focused);
+            // Make sure state updated correctly
+            let data = component.data();
+            assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
+            assert_eq!(
+                data.parsed_text().as_deref(),
+                Some("[\n  \"hello\"\n]")
+            );
+            assert!(!data.query_focused);
 
-        // Cancelling out of the text box should reset the query value
-        component.send_key(KeyCode::Char('/')).assert_empty();
-        component.send_text("more text").assert_empty();
-        component.send_key(KeyCode::Esc).assert_empty();
-        let data = component.data();
-        assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
-        assert_eq!(data.query_text_box.data().text(), "$.greeting");
-        assert!(!data.query_focused);
+            // Cancelling out of the text box should reset the query value
+            component.send_key(KeyCode::Char('/')).assert_empty();
+            component.send_text("more text").assert_empty();
+            component.send_key(KeyCode::Esc).assert_empty();
+            let data = component.data();
+            assert_eq!(data.query, Some("$.greeting".parse().unwrap()));
+            assert_eq!(data.query_text_box.data().text(), "$.greeting");
+            assert!(!data.query_focused);
 
-        // Check the view again
-        terminal.assert_buffer_lines([
-            vec![gutter("1"), " [                        ".into()],
-            vec![gutter("2"), "   \"hello\"              ".into()],
-            vec![gutter("3"), " ]                        ".into()],
-            vec![gutter(" "), "                          ".into()],
-            vec![Span::styled(
-                "$.greeting                      ",
-                styles.text,
-            )],
-        ]);
+            // Check the view again
+            terminal.assert_buffer_lines([
+                vec![gutter("1"), " [                        ".into()],
+                vec![gutter("2"), "   \"hello\"              ".into()],
+                vec![gutter("3"), " ]                        ".into()],
+                vec![gutter(" "), "                          ".into()],
+                vec![Span::styled(
+                    "$.greeting                      ",
+                    styles.text,
+                )],
+            ]);
+        });
+        future.await
     }
 
     /// Render a parsed body with query text box, and load initial query from
@@ -490,7 +483,7 @@ mod tests {
         // We already have another test to check that querying works via typing
         // in the box, so we just need to make sure state is initialized
         // correctly here
-        let component = TestComponent::new(
+        let mut component = TestComponent::new(
             &harness,
             &terminal,
             PersistedLazy::new(Key, QueryableBody::new()),
@@ -499,6 +492,7 @@ mod tests {
                 body: &json_response.body,
             },
         );
+        component.drain_draw().assert_empty();
         assert_eq!(component.data().query, Some("$.greeting".parse().unwrap()));
     }
 }

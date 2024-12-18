@@ -3,7 +3,10 @@
 use crate::{
     message::Message,
     view::{
-        common::{actions::ActionsModal, header_table::HeaderTable},
+        common::{
+            actions::ActionsModal, header_table::HeaderTable,
+            modal::ModalHandle,
+        },
         component::queryable_body::{QueryableBody, QueryableBodyProps},
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
@@ -30,6 +33,7 @@ pub struct ResponseBodyView {
     /// Persist the response body to track view state. Update whenever the
     /// loaded request changes
     state: StateCell<RequestId, State>,
+    actions_handle: ModalHandle<ActionsModal<BodyMenuAction>>,
 }
 
 #[derive(Clone)]
@@ -85,11 +89,9 @@ impl ResponseBodyView {
 impl EventHandler for ResponseBodyView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::OpenActions) = event.action() {
-            ViewContext::open_modal::<ActionsModal<BodyMenuAction>>(
-                Default::default(),
-            );
-        } else if let Some(action) = event.local::<BodyMenuAction>() {
-            match action {
+            self.actions_handle.open(ActionsModal::default());
+        } else if let Some(menu_action) = self.actions_handle.emitted(&event) {
+            match menu_action {
                 BodyMenuAction::EditCollection => {
                     ViewContext::send_message(Message::CollectionEdit)
                 }
@@ -194,6 +196,7 @@ mod tests {
         },
         view::test_util::TestComponent,
     };
+    use crossterm::event::KeyCode;
     use indexmap::indexmap;
     use rstest::rstest;
     use slumber_core::{
@@ -250,8 +253,14 @@ mod tests {
             },
         );
 
+        // Open actions modal and select the copy action
         component
-            .update_draw(Event::new_local(BodyMenuAction::CopyBody))
+            .send_keys([
+                KeyCode::Char('x'),
+                KeyCode::Down,
+                KeyCode::Down,
+                KeyCode::Enter,
+            ])
             .assert_empty();
 
         let body = assert_matches!(
@@ -309,8 +318,15 @@ mod tests {
             },
         );
 
+        // Open actions modal and select the save action
         component
-            .update_draw(Event::new_local(BodyMenuAction::SaveBody))
+            .send_keys([
+                KeyCode::Char('x'),
+                KeyCode::Down,
+                KeyCode::Down,
+                KeyCode::Down,
+                KeyCode::Enter,
+            ])
             .assert_empty();
 
         let (request_id, data) = assert_matches!(

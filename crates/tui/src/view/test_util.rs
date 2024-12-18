@@ -9,7 +9,7 @@ use crate::{
         component::Component,
         context::ViewContext,
         draw::{Draw, DrawMetadata},
-        event::{Child, Event, EventHandler, ToChild, Update},
+        event::{Child, Emitter, Event, EventHandler, ToChild, Update},
         UpdateContext,
     },
 };
@@ -17,6 +17,7 @@ use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
 };
+use itertools::Itertools;
 use ratatui::{layout::Rect, Frame};
 use std::{cell::RefCell, rc::Rc};
 
@@ -32,7 +33,7 @@ pub struct TestComponent<'term, T, Props> {
     /// terminal but can be modified to test things like resizes, using
     /// [Self::set_area]
     area: Rect,
-    component: Component<T>,
+    component: Component<WithModalQueue<T>>,
     /// Whatever props were used for the most recent draw. We store these for
     /// convenience, because in most test cases we use the same props over and
     /// over, and just care about changes in response to events. This requires
@@ -45,7 +46,7 @@ pub struct TestComponent<'term, T, Props> {
     has_focus: bool,
 }
 
-impl<'term, Props, T> TestComponent<'term, T, Props>
+impl<'term, T, Props> TestComponent<'term, T, Props>
 where
     Props: Clone,
     T: Draw<Props> + ToChild,
@@ -64,7 +65,8 @@ where
         data: T,
         initial_props: Props,
     ) -> Self {
-        let component: Component<T> = data.into();
+        let component: Component<WithModalQueue<T>> =
+            WithModalQueue::new(data).into();
         let mut slf = Self {
             terminal,
             request_store: Rc::clone(&harness.request_store),
@@ -75,11 +77,17 @@ where
         };
         // Do an initial draw to set up state, then handle any triggered events
         slf.draw();
-        // Ignore any propagated events from initialization. Maybe we *should*
-        // be checking these, but the mechanics of that aren't smooth. Punting
-        // for now
-        let _ = slf.drain_events();
         slf
+    }
+
+    /// Get a reference to the wrapped component's inner data
+    pub fn data(&self) -> &T {
+        self.component.data().inner()
+    }
+
+    /// Get a mutable  reference to the wrapped component's inner data
+    pub fn data_mut(&mut self) -> &mut T {
+        self.component.data_mut().inner_mut()
     }
 
     /// Modify the area the component will be drawn to
@@ -102,16 +110,6 @@ where
         self.has_focus = false;
     }
 
-    /// Get a reference to the wrapped component's inner data
-    pub fn data(&self) -> &T {
-        self.component.data()
-    }
-
-    /// Get a mutable  reference to the wrapped component's inner data
-    pub fn data_mut(&mut self) -> &mut T {
-        self.component.data_mut()
-    }
-
     /// Draw this component onto the terminal, using the entire terminal frame
     /// as the draw area. If props are given, use them for the draw. If not,
     /// use the same props from the last draw.
@@ -129,7 +127,7 @@ where
     /// Drain events from the event queue, and handle them one-by-one. Return
     /// the events that were propagated (i.e. not consumed by the component or
     /// its children), in the order they were queued/handled.
-    fn drain_events(&mut self) -> PropagatedEvents {
+    fn drain_events(&mut self) -> Vec<Event> {
         // Safety check, prevent annoying bugs
         assert!(
             self.component.is_visible(),
@@ -148,7 +146,7 @@ where
                 propagated.push(event);
             }
         }
-        PropagatedEvents(propagated)
+        propagated
     }
 
     /// Drain all events in the queue, then draw the component to the terminal.
@@ -157,10 +155,13 @@ where
     /// you to queue a new event first. This is helpful in the rare occasions
     /// where the UI needs to respond to some asynchronous event, such as a
     /// callback that would normally be called by the main loop.
-    pub fn drain_draw(&mut self) -> PropagatedEvents {
+    pub fn drain_draw(&mut self) -> PropagatedEvents<'_, T> {
         let propagated = self.drain_events();
         self.draw();
-        propagated
+        PropagatedEvents {
+            component: self.data(),
+            events: propagated,
+        }
     }
 
     /// Put an event on the event queue, handle **all** events in the queue,
@@ -177,14 +178,14 @@ where
     /// if you're just checking that it's empty. This is important because
     /// propagated events *may* be intentional, but could also indicate a bug
     /// where you component isn't handling events it should (or vice versa).
-    pub fn update_draw(&mut self, event: Event) -> PropagatedEvents {
+    pub fn update_draw(&mut self, event: Event) -> PropagatedEvents<'_, T> {
         // This is a safety check, so we don't end up handling events we didn't
         // expect to
         ViewContext::inspect_event_queue(|queue| {
             assert!(
                 queue.is_empty(),
                 "Event queue is not empty. To prevent unintended side-effects, \
-                the queue must be empty before an update."
+                the queue must be empty before an update. {queue:?}"
             )
         });
         ViewContext::push_event(event);
@@ -197,7 +198,7 @@ where
     pub fn send_input(
         &mut self,
         crossterm_event: crossterm::event::Event,
-    ) -> PropagatedEvents {
+    ) -> PropagatedEvents<'_, T> {
         let action = TuiContext::get().input_engine.action(&crossterm_event);
         let event = Event::Input {
             event: crossterm_event,
@@ -208,7 +209,7 @@ where
 
     /// Simulate a left click at the given location, then drain events and draw.
     /// See [Self::update_draw] about return value.
-    pub fn click(&mut self, x: u16, y: u16) -> PropagatedEvents {
+    pub fn click(&mut self, x: u16, y: u16) -> PropagatedEvents<'_, T> {
         let crossterm_event = crossterm::event::Event::Mouse(MouseEvent {
             kind: MouseEventKind::Up(MouseButton::Left),
             column: x,
@@ -222,7 +223,7 @@ where
     /// corresponding event (including bound action, if any), send it to the
     /// component, then drain events and draw.  See
     /// [Self::update_draw] about return value.
-    pub fn send_key(&mut self, code: KeyCode) -> PropagatedEvents {
+    pub fn send_key(&mut self, code: KeyCode) -> PropagatedEvents<'_, T> {
         self.send_key_modifiers(code, KeyModifiers::NONE)
     }
 
@@ -231,7 +232,7 @@ where
         &mut self,
         code: KeyCode,
         modifiers: KeyModifiers,
-    ) -> PropagatedEvents {
+    ) -> PropagatedEvents<'_, T> {
         let crossterm_event = crossterm::event::Event::Key(KeyEvent {
             code,
             modifiers,
@@ -241,17 +242,35 @@ where
         self.send_input(crossterm_event)
     }
 
+    /// Send multiple key events in sequence
+    pub fn send_keys(
+        &mut self,
+        codes: impl IntoIterator<Item = KeyCode>,
+    ) -> PropagatedEvents<'_, T> {
+        let events = codes
+            .into_iter()
+            .flat_map(|code| self.send_key(code).events)
+            .collect();
+        PropagatedEvents {
+            component: self.data(),
+            events,
+        }
+    }
+
     /// Send some text as a series of key events, handling each event and
     /// re-drawing after each character. This may seem wasteful, but it most
     /// closely simulates what happens in the real world. Return propagated
     /// events from *all* updates, e.g. the concatenation of propagated events
     /// from each individual call to [Self::update_draw].
-    pub fn send_text(&mut self, text: &str) -> PropagatedEvents {
-        PropagatedEvents(
-            text.chars()
-                .flat_map(|c| self.send_key(KeyCode::Char(c)).0)
-                .collect(),
-        )
+    pub fn send_text(&mut self, text: &str) -> PropagatedEvents<'_, T> {
+        let events = text
+            .chars()
+            .flat_map(|c| self.send_key(KeyCode::Char(c)).events)
+            .collect();
+        PropagatedEvents {
+            component: self.data(),
+            events,
+        }
     }
 }
 
@@ -259,29 +278,61 @@ where
 /// [TestComponent::update_draw] call. This wrapper makes it easy to check
 /// which, if any, events were propagated.
 #[must_use = "Propagated events must be checked"]
-#[derive(Debug)]
-pub struct PropagatedEvents(Vec<Event>);
+#[derive(derive_more::Debug)]
+pub struct PropagatedEvents<'a, Component> {
+    component: &'a Component,
+    events: Vec<Event>,
+}
 
-impl PropagatedEvents {
+impl<'a, Component> PropagatedEvents<'a, Component> {
     /// Assert that no events were propagated, i.e. the component handled all
     /// given and generated events.
     pub fn assert_empty(self) {
         assert!(
-            self.0.is_empty(),
+            self.events.is_empty(),
             "Expected no propagated events, but got {:?}",
-            self.0
+            self.events
         )
+    }
+
+    /// Assert that only emitted events were propagated, and those events match
+    /// a specific sequence. Requires `PartialEq` to be implemented for the
+    /// emitted event type.
+    pub fn assert_emitted(
+        &self,
+        expected: impl IntoIterator<Item = Component::Emitted>,
+    ) where
+        Component: Emitter,
+        Component::Emitted: PartialEq,
+    {
+        let emitted = self
+            .events
+            .iter()
+            .map(|event| {
+                self.component.emitted(event).unwrap_or_else(|| {
+                    panic!(
+                        "Expected only emitted events to have been propagated, \
+                        but received: {event:#?}\nAll: {:#?}",
+                        self.events()
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        let expected = expected.into_iter().collect_vec();
+        let expected = expected.iter().collect_vec();
+        assert_eq!(emitted.as_slice(), expected.as_slice());
     }
 
     /// Get propagated events as a slice
     pub fn events(&self) -> &[Event] {
-        &self.0
+        &self.events
     }
 }
 
 /// A wrapper component to pair a component with a modal queue. Useful when the
-/// component opens modals.
-pub struct WithModalQueue<T> {
+/// component opens modals. This is included automatically in all tests, because
+/// the modal queue is always present in the real app.
+struct WithModalQueue<T> {
     inner: Component<T>,
     modal_queue: Component<ModalQueue>,
 }
@@ -297,9 +348,13 @@ impl<T> WithModalQueue<T> {
     pub fn inner(&self) -> &T {
         self.inner.data()
     }
+
+    pub fn inner_mut(&mut self) -> &mut T {
+        self.inner.data_mut()
+    }
 }
 
-impl<T: EventHandler> EventHandler for WithModalQueue<T> {
+impl<T: ToChild> EventHandler for WithModalQueue<T> {
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![self.modal_queue.to_child_mut(), self.inner.to_child_mut()]
     }

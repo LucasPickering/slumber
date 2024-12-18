@@ -1,12 +1,12 @@
 use crate::{
     context::TuiContext,
     view::{
-        common::{actions::ActionsModal, list::List, Pane},
-        component::{primary::PrimaryPane, recipe_pane::RecipeMenuAction},
+        common::{actions::ActionsModal, list::List, modal::ModalHandle, Pane},
+        component::recipe_pane::RecipeMenuAction,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler, Update},
-        state::select::SelectState,
+        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
+        state::select::{SelectState, SelectStateEvent, SelectStateEventType},
         util::persistence::{Persisted, PersistedLazy},
         Component, ViewContext,
     },
@@ -33,6 +33,7 @@ use std::collections::HashSet;
 /// implementation.
 #[derive(Debug)]
 pub struct RecipeListPane {
+    emitter_id: EmitterId,
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
@@ -47,6 +48,7 @@ pub struct RecipeListPane {
     /// issue though, it just means it'll be pre-collapsed if the user ever
     /// adds the folder back. Not worth working around.
     collapsed: Persisted<SingletonKey<Collapsed>>,
+    actions_handle: ModalHandle<ActionsModal<RecipeMenuAction>>,
 }
 
 /// Persisted key for the ID of the selected recipe
@@ -65,8 +67,10 @@ impl RecipeListPane {
             collapsed.build_select_state(recipes),
         );
         Self {
+            emitter_id: EmitterId::new(),
             select: persistent.into(),
             collapsed,
+            actions_handle: ModalHandle::default(),
         }
     }
 
@@ -126,47 +130,57 @@ impl RecipeListPane {
 
 impl EventHandler for RecipeListPane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        let Some(action) = event.action() else {
+        if let Some(action) = event.action() {
+            match action {
+                Action::LeftClick => self.emit(RecipeListPaneEvent::Click),
+                Action::Left => {
+                    self.set_selected_collapsed(CollapseState::Collapse);
+                }
+                Action::Right => {
+                    self.set_selected_collapsed(CollapseState::Expand);
+                }
+                Action::OpenActions => {
+                    let recipe = self
+                        .select
+                        .data()
+                        .selected()
+                        .filter(|node| node.is_recipe());
+                    let has_body = recipe
+                        .map(|recipe| {
+                            ViewContext::collection()
+                                .recipes
+                                .get_recipe(&recipe.id)
+                                .and_then(|recipe| recipe.body.as_ref())
+                                .is_some()
+                        })
+                        .unwrap_or(false);
+                    self.actions_handle.open(ActionsModal::new(
+                        RecipeMenuAction::disabled_actions(
+                            recipe.is_some(),
+                            has_body,
+                        ),
+                    ));
+                }
+                _ => return Update::Propagate(event),
+            }
+        } else if let Some(event) = self.select.emitted(&event) {
+            match event {
+                SelectStateEvent::Select(_) => {
+                    // When highlighting a new recipe, load its most recent
+                    // request from the DB. If a recipe isn't selected, this
+                    // will do nothing
+                    ViewContext::push_event(Event::HttpSelectRequest(None));
+                }
+                SelectStateEvent::Submit(_) => {}
+                SelectStateEvent::Toggle(_) => {
+                    self.set_selected_collapsed(CollapseState::Toggle);
+                }
+            }
+        } else if let Some(menu_action) = self.actions_handle.emitted(&event) {
+            // Menu actions are handled by the parent, so forward them
+            self.emit(RecipeListPaneEvent::MenuAction(*menu_action));
+        } else {
             return Update::Propagate(event);
-        };
-        match action {
-            Action::LeftClick => {
-                ViewContext::push_event(Event::new_local(
-                    PrimaryPane::RecipeList,
-                ));
-            }
-            Action::Left => {
-                self.set_selected_collapsed(CollapseState::Collapse);
-            }
-            Action::Right => {
-                self.set_selected_collapsed(CollapseState::Expand);
-            }
-            Action::Toggle => {
-                self.set_selected_collapsed(CollapseState::Toggle);
-            }
-            Action::OpenActions => {
-                let recipe = self
-                    .select
-                    .data()
-                    .selected()
-                    .filter(|node| node.is_recipe());
-                let has_body = recipe
-                    .map(|recipe| {
-                        ViewContext::collection()
-                            .recipes
-                            .get_recipe(&recipe.id)
-                            .and_then(|recipe| recipe.body.as_ref())
-                            .is_some()
-                    })
-                    .unwrap_or(false);
-                ViewContext::open_modal(ActionsModal::new(
-                    RecipeMenuAction::disabled_actions(
-                        recipe.is_some(),
-                        has_body,
-                    ),
-                ))
-            }
-            _ => return Update::Propagate(event),
         }
 
         Update::Consumed
@@ -195,6 +209,22 @@ impl Draw for RecipeListPane {
         self.select
             .draw(frame, List::from(&**self.select.data()), area, true);
     }
+}
+
+/// Notify parent when this pane is clicked
+impl Emitter for RecipeListPane {
+    type Emitted = RecipeListPaneEvent;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
+    }
+}
+
+/// Emitted event type for the recipe list pane
+#[derive(Debug)]
+pub enum RecipeListPaneEvent {
+    Click,
+    MenuAction(RecipeMenuAction),
 }
 
 /// Simplified version of [RecipeNode], to be used in the display tree. This
@@ -296,12 +326,6 @@ impl Collapsed {
         &self,
         recipes: &RecipeTree,
     ) -> SelectState<RecipeListItem> {
-        // When highlighting a new recipe, load it from the repo
-        fn on_select(_: &mut RecipeListItem) {
-            // If a recipe isn't selected, this will do nothing
-            ViewContext::push_event(Event::HttpSelectRequest(None));
-        }
-
         let items = recipes
             .iter()
             // Filter out hidden nodes
@@ -315,6 +339,11 @@ impl Collapsed {
             })
             .collect();
 
-        SelectState::builder(items).on_select(on_select).build()
+        SelectState::builder(items)
+            .subscribe([
+                SelectStateEventType::Select,
+                SelectStateEventType::Toggle,
+            ])
+            .build()
     }
 }

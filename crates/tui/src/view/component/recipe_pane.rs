@@ -10,13 +10,13 @@ use crate::{
     context::TuiContext,
     message::RequestConfig,
     view::{
-        common::{actions::ActionsModal, Pane},
-        component::{primary::PrimaryPane, recipe_pane::recipe::RecipeDisplay},
+        common::{actions::ActionsModal, modal::ModalHandle, Pane},
+        component::recipe_pane::recipe::RecipeDisplay,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Child, Event, EventHandler, Update},
+        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
         state::StateCell,
-        Component, ViewContext,
+        Component,
     },
 };
 use derive_more::Display;
@@ -36,9 +36,11 @@ use strum::{EnumCount, EnumIter};
 /// empty
 #[derive(Debug, Default)]
 pub struct RecipePane {
+    emitter_id: EmitterId,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
     recipe_state: StateCell<RecipeStateKey, Component<Option<RecipeDisplay>>>,
+    actions_handle: ModalHandle<ActionsModal<RecipeMenuAction>>,
 }
 
 #[derive(Clone)]
@@ -84,14 +86,10 @@ impl EventHandler for RecipePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(action) = event.action() {
             match action {
-                Action::LeftClick => {
-                    ViewContext::push_event(Event::new_local(
-                        PrimaryPane::Recipe,
-                    ));
-                }
+                Action::LeftClick => self.emit(RecipePaneEvent::Click),
                 Action::OpenActions => {
                     let state = self.recipe_state.get_mut();
-                    ViewContext::open_modal(ActionsModal::new(
+                    self.actions_handle.open(ActionsModal::new(
                         RecipeMenuAction::disabled_actions(
                             state.is_some(),
                             state
@@ -102,6 +100,9 @@ impl EventHandler for RecipePane {
                 }
                 _ => return Update::Propagate(event),
             }
+        } else if let Some(menu_action) = self.actions_handle.emitted(&event) {
+            // Menu actions are handled by the parent, so forward them
+            self.emit(RecipePaneEvent::MenuAction(*menu_action));
         } else {
             return Update::Propagate(event);
         }
@@ -180,6 +181,21 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
             }
         };
     }
+}
+
+impl Emitter for RecipePane {
+    type Emitted = RecipePaneEvent;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
+    }
+}
+
+/// Emitted event for the recipe pane component
+#[derive(Debug)]
+pub enum RecipePaneEvent {
+    Click,
+    MenuAction(RecipeMenuAction),
 }
 
 /// Template preview state will be recalculated when any of these fields change

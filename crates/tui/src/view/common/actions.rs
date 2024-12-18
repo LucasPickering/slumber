@@ -1,10 +1,13 @@
 use crate::view::{
     common::{list::List, modal::Modal},
     component::Component,
+    context::UpdateContext,
     draw::{Draw, DrawMetadata, Generate},
-    event::{Child, Event, EventHandler},
-    state::fixed_select::{FixedSelect, FixedSelectState},
-    ViewContext,
+    event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
+    state::{
+        fixed_select::{FixedSelect, FixedSelectState},
+        select::{SelectStateEvent, SelectStateEventType},
+    },
 };
 use ratatui::{
     layout::Constraint,
@@ -17,6 +20,7 @@ use ratatui::{
 /// is defined by the generic parameter
 #[derive(Debug)]
 pub struct ActionsModal<T: FixedSelect> {
+    emitter_id: EmitterId,
     /// Join the list of global actions into the given one
     actions: Component<FixedSelectState<T, ListState>>,
 }
@@ -25,17 +29,11 @@ impl<T: FixedSelect> ActionsModal<T> {
     /// Create a new actions modal, optional disabling certain actions based on
     /// some external condition(s).
     pub fn new(disabled_actions: &[T]) -> Self {
-        let on_submit = move |action: &mut T| {
-            // Close the modal *first*, so the parent can handle the
-            // callback event. Jank but it works
-            ViewContext::push_event(Event::CloseModal { submitted: true });
-            ViewContext::push_event(Event::new_local(*action));
-        };
-
         Self {
+            emitter_id: EmitterId::new(),
             actions: FixedSelectState::builder()
                 .disabled_items(disabled_actions)
-                .on_submit(on_submit)
+                .subscribe([SelectStateEventType::Submit])
                 .build()
                 .into(),
         }
@@ -62,7 +60,25 @@ where
     }
 }
 
-impl<T: FixedSelect> EventHandler for ActionsModal<T> {
+impl<T> EventHandler for ActionsModal<T>
+where
+    T: FixedSelect,
+    ActionsModal<T>: Draw,
+{
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+        if let Some(event) = self.actions.emitted(&event) {
+            if let SelectStateEvent::Submit(index) = event {
+                // Close modal first so the parent can consume the emitted event
+                self.close(true);
+                let action = self.actions.data()[*index];
+                self.emit(action);
+            }
+            Update::Consumed
+        } else {
+            Update::Propagate(event)
+        }
+    }
+
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![self.actions.to_child_mut()]
     }
@@ -80,5 +96,14 @@ where
             metadata.area(),
             true,
         );
+    }
+}
+
+impl<T: FixedSelect> Emitter for ActionsModal<T> {
+    /// Emit the action itself
+    type Emitted = T;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
     }
 }

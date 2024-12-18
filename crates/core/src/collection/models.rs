@@ -586,7 +586,14 @@ impl Collection {
 impl crate::test_util::Factory for Collection {
     fn factory(_: ()) -> Self {
         use crate::test_util::by_id;
-        let recipe = Recipe::factory(());
+        // Include a body in the recipe, so body-related behavior can be tested
+        let recipe = Recipe {
+            body: Some(RecipeBody::Raw {
+                body: r#"{"message": "hello"}"#.into(),
+                content_type: Some(ContentType::Json),
+            }),
+            ..Recipe::factory(())
+        };
         let profile = Profile::factory(());
         Collection {
             recipes: by_id([recipe]).into(),

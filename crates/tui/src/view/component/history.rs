@@ -123,7 +123,14 @@ impl Generate for &RequestStateSummary {
                 Span::styled("Request error", styles.text.error)
             }
         };
-        vec![self.time().generate(), " ".into(), description].into()
+        vec![
+            self.start_time().generate(),
+            " / ".into(),
+            self.duration().generate(),
+            " ".into(),
+            description,
+        ]
+        .into()
     }
 }
 

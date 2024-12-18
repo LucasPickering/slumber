@@ -229,7 +229,9 @@ impl EventHandler for RecipeListPane {
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        vec![self.select.to_child_mut(), self.search.to_child_mut()]
+        // Search gets priority if enabled, but users should still be able to
+        // navigate the list while searching
+        vec![self.search.to_child_mut(), self.select.to_child_mut()]
     }
 }
 
@@ -256,7 +258,7 @@ impl Draw for RecipeListPane {
             frame,
             List::from(&**self.select.data()),
             select_area,
-            !self.search_focused,
+            true,
         );
 
         self.search

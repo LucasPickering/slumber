@@ -1,7 +1,13 @@
 use crate::{
     context::TuiContext,
     view::{
-        common::{actions::ActionsModal, list::List, modal::ModalHandle, Pane},
+        common::{
+            actions::ActionsModal,
+            list::List,
+            modal::ModalHandle,
+            text_box::{TextBox, TextBoxEvent},
+            Pane,
+        },
         component::recipe_pane::RecipeMenuAction,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -13,7 +19,11 @@ use crate::{
 };
 use derive_more::{Deref, DerefMut};
 use persisted::{PersistedKey, SingletonKey};
-use ratatui::{text::Text, Frame};
+use ratatui::{
+    layout::{Constraint, Layout},
+    text::Text,
+    Frame,
+};
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::collection::{
@@ -48,6 +58,10 @@ pub struct RecipeListPane {
     /// issue though, it just means it'll be pre-collapsed if the user ever
     /// adds the folder back. Not worth working around.
     collapsed: Persisted<SingletonKey<Collapsed>>,
+
+    search: Component<TextBox>,
+    search_focused: bool,
+
     actions_handle: ModalHandle<ActionsModal<RecipeMenuAction>>,
 }
 
@@ -58,18 +72,25 @@ struct SelectedRecipeKey;
 
 impl RecipeListPane {
     pub fn new(recipes: &RecipeTree) -> Self {
+        let input_engine = &TuiContext::get().input_engine;
+        let binding = input_engine.binding_display(Action::Search);
+
         // This clone is unfortunate, but we can't hold onto a reference to the
         // recipes
         let collapsed: Persisted<SingletonKey<Collapsed>> =
             Persisted::default();
-        let persistent = PersistedLazy::new(
+        let select = PersistedLazy::new(
             SelectedRecipeKey,
             collapsed.build_select_state(recipes),
         );
+        let search =
+            TextBox::default().placeholder(format!("{binding} search"));
         Self {
             emitter_id: EmitterId::new(),
-            select: persistent.into(),
+            select: select.into(),
             collapsed,
+            search: search.into(),
+            search_focused: false,
             actions_handle: ModalHandle::default(),
         }
     }
@@ -124,6 +145,18 @@ impl RecipeListPane {
 
         changed
     }
+
+    /// Apply the search query, selecting the first recipe/folder in the list
+    /// that contains the query in its name
+    fn search(&mut self) {
+        let query = self.search.data().text().trim().to_lowercase();
+        if !query.is_empty() {
+            self.select
+                .data_mut()
+                .get_mut()
+                .find(|item| item.name.to_lowercase().contains(&query));
+        }
+    }
 }
 
 impl EventHandler for RecipeListPane {
@@ -136,6 +169,9 @@ impl EventHandler for RecipeListPane {
                 }
                 Action::Right => {
                     self.set_selected_collapsed(CollapseState::Expand);
+                }
+                Action::Search => {
+                    self.search_focused = true;
                 }
                 Action::OpenActions => {
                     let recipe = self
@@ -174,6 +210,14 @@ impl EventHandler for RecipeListPane {
                     self.set_selected_collapsed(CollapseState::Toggle);
                 }
             }
+        } else if let Some(event) = self.search.emitted(&event) {
+            match event {
+                TextBoxEvent::Focus => self.search_focused = true,
+                TextBoxEvent::Change => self.search(),
+                TextBoxEvent::Cancel | TextBoxEvent::Submit => {
+                    self.search_focused = false
+                }
+            }
         } else if let Some(menu_action) = self.actions_handle.emitted(&event) {
             // Menu actions are handled by the parent, so forward them
             self.emit(RecipeListPaneEvent::MenuAction(*menu_action));
@@ -185,7 +229,7 @@ impl EventHandler for RecipeListPane {
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        vec![self.select.to_child_mut()]
+        vec![self.select.to_child_mut(), self.search.to_child_mut()]
     }
 }
 
@@ -204,8 +248,19 @@ impl Draw for RecipeListPane {
         let area = block.inner(metadata.area());
         frame.render_widget(block, metadata.area());
 
-        self.select
-            .draw(frame, List::from(&**self.select.data()), area, true);
+        let [select_area, search_area] =
+            Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
+                .areas(area);
+
+        self.select.draw(
+            frame,
+            List::from(&**self.select.data()),
+            select_area,
+            !self.search_focused,
+        );
+
+        self.search
+            .draw(frame, (), search_area, self.search_focused);
     }
 }
 
@@ -343,5 +398,92 @@ impl Collapsed {
                 SelectStateEventType::Toggle,
             ])
             .build()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        test_util::{harness, terminal, TestHarness, TestTerminal},
+        view::test_util::TestComponent,
+    };
+    use crossterm::event::KeyCode;
+    use rstest::{fixture, rstest};
+    use slumber_core::{
+        assert_matches,
+        collection::Recipe,
+        test_util::{by_id, Factory},
+    };
+
+    /// Test the search box
+    #[rstest]
+    fn test_search(
+        harness: TestHarness,
+        terminal: TestTerminal,
+        recipes: RecipeTree,
+    ) {
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            RecipeListPane::new(&recipes),
+            (),
+        );
+        // Clear initial events
+        assert_matches!(
+            component.drain_draw().events(),
+            &[Event::HttpSelectRequest(None)],
+        );
+
+        // Enter search
+        component.send_key(KeyCode::Char('/')).assert_empty();
+        assert!(component.data().search_focused);
+
+        // Find something. Match should be caseless. The recipe selection
+        // triggers an event to load the latest request
+        assert_matches!(
+            component.send_text("recipe 2").events(),
+            &[Event::HttpSelectRequest(None)]
+        );
+        assert_eq!(
+            component
+                .data()
+                .select
+                .data()
+                .selected()
+                .map(|item| &item.id),
+            Some(&RecipeId::from("recipe2"))
+        );
+
+        // Exit search
+        component.send_key(KeyCode::Esc).assert_empty();
+        assert!(!component.data().search_focused);
+    }
+
+    #[fixture]
+    fn recipes() -> RecipeTree {
+        by_id([
+            Recipe {
+                id: "recipe1".into(),
+                name: Some("Recipe 1".into()),
+                ..Recipe::factory(())
+            },
+            Recipe {
+                id: "recipe2".into(),
+                name: Some("Recipe 2".into()),
+                ..Recipe::factory(())
+            },
+            Recipe {
+                id: "recipe3".into(),
+                name: Some("Recipe 3".into()),
+                ..Recipe::factory(())
+            },
+            Recipe {
+                id: "recipe22".into(),
+                name: Some("Recipe 22".into()),
+                ..Recipe::factory(())
+            },
+        ])
+        .into()
     }
 }

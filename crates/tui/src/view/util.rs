@@ -133,7 +133,7 @@ pub fn str_to_text(s: &str) -> Text<'static> {
         .into()
 }
 
-/// Open a [Text] object in the user's external viewer. This will write the text
+/// Open a [Text] object in the user's external pager. This will write the text
 /// to a random temporary file, without having to copy the contents. If an
 /// error occurs, it will be traced and reported to the user.
 pub fn view_text(text: &Text) {

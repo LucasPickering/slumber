@@ -22,7 +22,7 @@ use crate::{
     message::{Message, MessageSender, RequestConfig},
     util::{
         clear_event_buffer, delete_temp_file, get_editor_command,
-        get_viewer_command, save_file, signals, ResultReported,
+        get_pager_command, save_file, signals, ResultReported,
     },
     view::{PreviewPrompter, UpdateContext, View},
 };
@@ -277,7 +277,7 @@ impl Tui {
                 // delete it yet. Caller is responsible for cleaning up
             }
             Message::FileView { path } => {
-                let command = get_viewer_command(&path)?;
+                let command = get_pager_command(&path)?;
                 self.run_command(command)?;
                 // We don't need to read the contents back so we can clean up
                 delete_temp_file(&path);
@@ -442,7 +442,7 @@ impl Tui {
     }
 
     /// Run a **blocking** subprocess that will take over the terminal. Used
-    /// for opening an external editor or viewer.
+    /// for opening an external editor or pager.
     fn run_command(&mut self, mut command: Command) -> anyhow::Result<()> {
         let span = info_span!("Running command", ?command).entered();
         let error_context = format!("Error spawning command `{command:?}`");

@@ -31,9 +31,35 @@ pub struct RecipeTree {
 
 /// A path into the recipe tree. Every constructed path is assumed to be valid,
 /// which must be enforced by the creator.
-#[derive(Clone, Debug, From)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[derive(Clone, Debug, From, Eq, Hash, PartialEq)]
 pub struct RecipeLookupKey(Vec<RecipeId>);
+
+impl RecipeLookupKey {
+    /// How many nodes are above us in the tree?
+    pub fn depth(&self) -> usize {
+        self.0.len() - 1
+    }
+
+    /// Get all parent IDs, starting at the root
+    pub fn ancestors(&self) -> &[RecipeId] {
+        &self.0[0..self.0.len() - 1]
+    }
+}
+
+impl From<&Vec<&RecipeId>> for RecipeLookupKey {
+    fn from(value: &Vec<&RecipeId>) -> Self {
+        Self(value.iter().copied().cloned().collect())
+    }
+}
+
+impl IntoIterator for RecipeLookupKey {
+    type Item = RecipeId;
+    type IntoIter = <Vec<RecipeId> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 /// A node in the recipe tree, either a folder or recipe
 #[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
@@ -245,18 +271,6 @@ impl RecipeNode {
             Self::Recipe(_) => None,
             Self::Folder(folder) => Some(folder),
         }
-    }
-}
-
-impl RecipeLookupKey {
-    pub fn as_slice(&self) -> &[RecipeId] {
-        &self.0
-    }
-}
-
-impl From<&Vec<&RecipeId>> for RecipeLookupKey {
-    fn from(value: &Vec<&RecipeId>) -> Self {
-        Self(value.iter().copied().cloned().collect())
     }
 }
 

@@ -4,7 +4,6 @@
 use anyhow::Context;
 use slumber_cli::Args;
 use slumber_core::util::{paths, ResultTraced};
-use slumber_tui::Tui;
 use std::{
     fs::{self, File, OpenOptions},
     io,
@@ -23,12 +22,16 @@ async fn main() -> anyhow::Result<ExitCode> {
 
     // Select mode based on whether request ID(s) were given
     match args.subcommand {
-        // Run the TUI
+        // Run the TUI. TUI can be disabled so we don't have to compile it while
+        // testing the CLI
+        #[cfg(feature = "tui")]
         None => {
-            // This should return the error so we get a full stack trac
-            Tui::start(args.global.file).await?;
+            // This should return the error so we get a full stack trace
+            slumber_tui::Tui::start(args.global.file).await?;
             Ok(ExitCode::SUCCESS)
         }
+        #[cfg(not(feature = "tui"))]
+        None => Err(anyhow::anyhow!("TUI feature is disabled")),
 
         // Execute one request without a TUI
         Some(subcommand) => Ok(subcommand

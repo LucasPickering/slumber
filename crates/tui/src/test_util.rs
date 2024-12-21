@@ -25,27 +25,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 /// Get a test harness, with a clean terminal etc. See [TestHarness].
 #[fixture]
 pub fn harness() -> TestHarness {
-    TuiContext::init_test();
-    let (messages_tx, messages_rx) = mpsc::unbounded_channel();
-    let messages_tx: MessageSender = messages_tx.into();
-    let collection = Collection::factory(()).into();
-    let database = CollectionDatabase::factory(());
-    let request_store = Rc::new(RefCell::new(RequestStore::new(
-        database.clone(),
-        TestResponseParser,
-    )));
-    ViewContext::init(
-        Arc::clone(&collection),
-        database.clone(),
-        messages_tx.clone(),
-    );
-    TestHarness {
-        collection,
-        database,
-        request_store,
-        messages_tx,
-        messages_rx,
-    }
+    TestHarness::new(Collection::factory(()))
 }
 
 /// A container for all singleton types needed for tests. Most TUI tests will
@@ -63,6 +43,31 @@ pub struct TestHarness {
 }
 
 impl TestHarness {
+    /// Create a new test harness and initialize state
+    pub fn new(collection: Collection) -> Self {
+        TuiContext::init_test();
+        let (messages_tx, messages_rx) = mpsc::unbounded_channel();
+        let messages_tx: MessageSender = messages_tx.into();
+        let database = CollectionDatabase::factory(());
+        let request_store = Rc::new(RefCell::new(RequestStore::new(
+            database.clone(),
+            TestResponseParser,
+        )));
+        let collection = Arc::new(collection);
+        ViewContext::init(
+            Arc::clone(&collection),
+            database.clone(),
+            messages_tx.clone(),
+        );
+        TestHarness {
+            collection,
+            database,
+            request_store,
+            messages_tx,
+            messages_rx,
+        }
+    }
+
     /// Get the message sender
     pub fn messages_tx(&self) -> &MessageSender {
         &self.messages_tx

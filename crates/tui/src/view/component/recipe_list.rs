@@ -27,7 +27,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::collection::{
-    HasId, RecipeId, RecipeLookupKey, RecipeNodeType, RecipeTree,
+    HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType, RecipeTree,
 };
 use std::collections::HashSet;
 
@@ -59,8 +59,8 @@ pub struct RecipeListPane {
     /// adds the folder back. Not worth working around.
     collapsed: Persisted<SingletonKey<Collapsed>>,
 
-    search: Component<TextBox>,
-    search_focused: bool,
+    filter: Component<TextBox>,
+    filter_focused: bool,
 
     actions_handle: ModalHandle<ActionsModal<RecipeMenuAction>>,
 }
@@ -81,16 +81,16 @@ impl RecipeListPane {
             Persisted::default();
         let select = PersistedLazy::new(
             SelectedRecipeKey,
-            collapsed.build_select_state(recipes),
+            collapsed.build_select_state(recipes, ""),
         );
-        let search =
-            TextBox::default().placeholder(format!("{binding} search"));
+        let filter =
+            TextBox::default().placeholder(format!("{binding} to filter"));
         Self {
             emitter_id: EmitterId::new(),
             select: select.into(),
             collapsed,
-            search: search.into(),
-            search_focused: false,
+            filter: filter.into(),
+            filter_focused: false,
             actions_handle: ModalHandle::default(),
         }
     }
@@ -108,8 +108,11 @@ impl RecipeListPane {
     /// If a folder is not selected, do nothing. Returns whether a change was
     /// made.
     fn set_selected_collapsed(&mut self, state: CollapseState) -> bool {
-        let select = self.select.data_mut();
-        let folder = select.selected().filter(|node| node.is_folder());
+        let folder = self
+            .select
+            .data()
+            .selected()
+            .filter(|node| node.is_folder());
         let changed = if let Some(folder) = folder {
             let collapsed = &mut self.collapsed;
             match state {
@@ -132,30 +135,25 @@ impl RecipeListPane {
 
         // If we changed the set of what is visible, rebuild the list state
         if changed {
-            let mut new_select_state = self
-                .collapsed
-                .build_select_state(&ViewContext::collection().recipes);
-
-            // Carry over the selection
-            if let Some(selected) = select.selected() {
-                new_select_state.select(selected.id());
-            }
-            *select.get_mut() = new_select_state;
+            self.rebuild_select_state();
         }
 
         changed
     }
 
-    /// Apply the search query, selecting the first recipe/folder in the list
-    /// that contains the query in its name
-    fn search(&mut self) {
-        let query = self.search.data().text().trim().to_lowercase();
-        if !query.is_empty() {
-            self.select
-                .data_mut()
-                .get_mut()
-                .find(|item| item.name.to_lowercase().contains(&query));
+    /// Rebuild the select list based on current filter/collapsed state
+    fn rebuild_select_state(&mut self) {
+        let mut new_select_state = self.collapsed.build_select_state(
+            &ViewContext::collection().recipes,
+            &self.filter.data().text().trim().to_lowercase(),
+        );
+
+        // Carry over the selection
+        let select = self.select.data_mut();
+        if let Some(selected) = select.selected() {
+            new_select_state.select(selected.id());
         }
+        *select.get_mut() = new_select_state;
     }
 }
 
@@ -171,7 +169,7 @@ impl EventHandler for RecipeListPane {
                     self.set_selected_collapsed(CollapseState::Expand);
                 }
                 Action::Search => {
-                    self.search_focused = true;
+                    self.filter_focused = true;
                 }
                 Action::OpenActions => {
                     let recipe = self
@@ -210,12 +208,12 @@ impl EventHandler for RecipeListPane {
                     self.set_selected_collapsed(CollapseState::Toggle);
                 }
             }
-        } else if let Some(event) = self.search.emitted(&event) {
+        } else if let Some(event) = self.filter.emitted(&event) {
             match event {
-                TextBoxEvent::Focus => self.search_focused = true,
-                TextBoxEvent::Change => self.search(),
+                TextBoxEvent::Focus => self.filter_focused = true,
+                TextBoxEvent::Change => self.rebuild_select_state(),
                 TextBoxEvent::Cancel | TextBoxEvent::Submit => {
-                    self.search_focused = false
+                    self.filter_focused = false
                 }
             }
         } else if let Some(menu_action) = self.actions_handle.emitted(&event) {
@@ -229,9 +227,9 @@ impl EventHandler for RecipeListPane {
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        // Search gets priority if enabled, but users should still be able to
-        // navigate the list while searching
-        vec![self.search.to_child_mut(), self.select.to_child_mut()]
+        // Filter gets priority if enabled, but users should still be able to
+        // navigate the list while filtering
+        vec![self.filter.to_child_mut(), self.select.to_child_mut()]
     }
 }
 
@@ -250,7 +248,7 @@ impl Draw for RecipeListPane {
         let area = block.inner(metadata.area());
         frame.render_widget(block, metadata.area());
 
-        let [select_area, search_area] =
+        let [select_area, filter_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(area);
 
@@ -261,8 +259,8 @@ impl Draw for RecipeListPane {
             true,
         );
 
-        self.search
-            .draw(frame, (), search_area, self.search_focused);
+        self.filter
+            .draw(frame, (), filter_area, self.filter_focused);
     }
 }
 
@@ -294,6 +292,16 @@ struct RecipeListItem {
 }
 
 impl RecipeListItem {
+    fn new(node: &RecipeNode, collapsed: bool, depth: usize) -> Self {
+        Self {
+            id: node.id().clone(),
+            name: node.name().to_owned(),
+            kind: node.into(),
+            collapsed,
+            depth,
+        }
+    }
+
     fn is_folder(&self) -> bool {
         matches!(self.kind, RecipeNodeType::Folder)
     }
@@ -370,29 +378,51 @@ impl Collapsed {
     /// ancestors for visibility too.
     fn is_visible(&self, lookup_key: &RecipeLookupKey) -> bool {
         // If any ancestors are collapsed, this is *not* visible
-        let [ancestors @ .., _] = lookup_key.as_slice() else {
-            panic!("Recipe lookup key cannot be empty")
-        };
-        !ancestors.iter().any(|id| self.is_collapsed(id))
+        !lookup_key
+            .ancestors()
+            .iter()
+            .any(|id| self.is_collapsed(id))
     }
 
     /// Construct select list based on which nodes are currently visible
     fn build_select_state(
         &self,
         recipes: &RecipeTree,
+        filter: &str,
     ) -> SelectState<RecipeListItem> {
-        let items = recipes
-            .iter()
-            // Filter out hidden nodes
-            .filter(|(lookup_key, _)| self.is_visible(lookup_key))
-            .map(|(lookup_key, node)| RecipeListItem {
-                id: node.id().clone(),
-                name: node.name().to_owned(),
-                kind: node.into(),
-                collapsed: self.is_collapsed(node.id()),
-                depth: lookup_key.as_slice().len() - 1,
-            })
-            .collect();
+        let items = if filter.is_empty() {
+            // No filter - calculate visible nodes based on collapsed state
+            recipes
+                .iter()
+                .filter(|(lookup_key, _)| self.is_visible(lookup_key))
+                .map(|(lookup_key, node)| {
+                    RecipeListItem::new(
+                        node,
+                        self.is_collapsed(node.id()),
+                        lookup_key.depth(),
+                    )
+                })
+                .collect()
+        } else {
+            // Find all nodes that match the filter, *and their parents*. If a
+            // node is visible we want to show its ancestry too
+            let visible: HashSet<RecipeId> = recipes
+                .iter()
+                .filter(|(_, node)| node.name().to_lowercase().contains(filter))
+                // If a node matches, then all its parents should be visible too
+                .flat_map(|(lookup_key, _)| lookup_key)
+                .collect();
+
+            recipes
+                .iter()
+                .filter(|(_, node)| visible.contains(node.id()))
+                .map(|(lookup_key, node)| {
+                    // Never collapse folders here, because we want to show the
+                    // user what they're filtering for
+                    RecipeListItem::new(node, false, lookup_key.depth())
+                })
+                .collect()
+        };
 
         SelectState::builder(items)
             .subscribe([
@@ -407,28 +437,30 @@ impl Collapsed {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{terminal, TestHarness, TestTerminal},
         view::test_util::TestComponent,
     };
     use crossterm::event::KeyCode;
+    use itertools::Itertools;
     use rstest::{fixture, rstest};
     use slumber_core::{
         assert_matches,
-        collection::Recipe,
+        collection::{Collection, Recipe},
         test_util::{by_id, Factory},
     };
 
-    /// Test the search box
+    /// Test the filter box
     #[rstest]
-    fn test_search(
-        harness: TestHarness,
-        terminal: TestTerminal,
-        recipes: RecipeTree,
-    ) {
+    fn test_filter(terminal: TestTerminal, recipes: RecipeTree) {
+        // Recipe tree needs to be in ViewContext so it can be used in updates
+        let harness = TestHarness::new(Collection {
+            recipes,
+            ..Collection::factory(())
+        });
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            RecipeListPane::new(&recipes),
+            RecipeListPane::new(&harness.collection.recipes),
             (),
         );
         // Clear initial events
@@ -437,29 +469,33 @@ mod tests {
             &[Event::HttpSelectRequest(None)],
         );
 
-        // Enter search
+        // Enter filter
         component.send_key(KeyCode::Char('/')).assert_empty();
-        assert!(component.data().search_focused);
+        assert!(component.data().filter_focused);
 
-        // Find something. Match should be caseless. The recipe selection
-        // triggers an event to load the latest request
+        // Find something. Match should be caseless. Should trigger an event to
+        // load the latest request
         assert_matches!(
-            component.send_text("recipe 2").events(),
+            component.send_text("2").events(),
             &[Event::HttpSelectRequest(None)]
         );
+        let select = component.data().select.data();
         assert_eq!(
-            component
-                .data()
-                .select
-                .data()
-                .selected()
-                .map(|item| &item.id),
-            Some(&RecipeId::from("recipe2"))
+            select
+                .items()
+                .map(|item| item.id.as_str())
+                .collect_vec()
+                .as_slice(),
+            &["recipe2", "recipe22"]
+        );
+        assert_eq!(
+            select.selected().map(|item| item.id.as_str()),
+            Some("recipe2")
         );
 
-        // Exit search
+        // Exit filter
         component.send_key(KeyCode::Esc).assert_empty();
-        assert!(!component.data().search_focused);
+        assert!(!component.data().filter_focused);
     }
 
     #[fixture]

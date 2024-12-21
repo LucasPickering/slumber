@@ -221,15 +221,6 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         self.select_delta(1);
     }
 
-    /// Select the first item in the list that matches the given predicate. If
-    /// no items match, the selection remains unchanged
-    pub fn find(&mut self, predicate: impl Fn(&Item) -> bool) {
-        let match_index = self.items().position(predicate);
-        if let Some(index) = match_index {
-            self.select_index(index);
-        }
-    }
-
     /// Select an item by index
     fn select_index(&mut self, index: usize) {
         let state = self.state.get_mut();
@@ -637,17 +628,6 @@ mod tests {
             SelectStateEvent::Select(0),
             SelectStateEvent::Select(1),
         ])
-    }
-
-    /// Test the `find` method
-    #[rstest]
-    fn test_find() {
-        let mut select = SelectState::<_, ListState>::builder(vec![
-            "alpha", "bravo", "charlie",
-        ])
-        .build();
-        select.find(|item| item.contains("avo"));
-        assert_eq!(select.selected(), Some(&"bravo"));
     }
 
     #[fixture]

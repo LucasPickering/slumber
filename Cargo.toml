@@ -52,10 +52,15 @@ winnow = "0.6.16"
 anyhow = {workspace = true, features = ["backtrace"]}
 slumber_cli = {workspace = true}
 slumber_core = {workspace = true}
-slumber_tui = {workspace = true}
+slumber_tui = {workspace = true, optional = true}
 tokio = {workspace = true, features = ["macros", "rt-multi-thread"]}
 tracing = {workspace = true}
 tracing-subscriber = {version = "0.3.17", default-features = false, features = ["ansi", "fmt", "registry"]}
+
+[features]
+default = ["tui"]
+# TUI can be disabled in dev to speed compilation while testing CLI
+tui = ["dep:slumber_tui"]
 
 # The profile that 'cargo dist' will build with
 [profile.dist]

@@ -22,18 +22,14 @@ use std::{path::PathBuf, process::ExitCode};
 
 const COMMAND_NAME: &str = "slumber";
 
+/// Configurable HTTP client with both TUI and CLI interfaces
+///
+/// If subcommand is omitted, start the TUI.
 #[derive(Debug, Parser)]
-#[clap(
-    author,
-    version,
-    about,
-    name = COMMAND_NAME,
-    long_about = "Configurable HTTP client with both TUI and CLI interfaces"
-)]
+#[clap(author, version, about, name = COMMAND_NAME)]
 pub struct Args {
     #[command(flatten)]
     pub global: GlobalArgs,
-    /// Subcommand to execute. If omitted, run the TUI
     #[command(subcommand)]
     pub subcommand: Option<CliCommand>,
 }

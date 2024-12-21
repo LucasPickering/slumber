@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Refactor UI event handling logic
   - This shouldn't have any noticable impact on the user, but if you notice any bugs please open an issue
 - Include request duration in History modal
+- Rename `viewer` config field to `pager`
+  - The old field name `viewer` is still supported for backward compatibility, but the docs have been updated to suggest the newer name instead
+- Load pager command from the `PAGER` environment variable if available, similar to the `EDITOR` environment variable
 
 ### Fixed
 

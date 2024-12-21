@@ -89,7 +89,7 @@ pub enum Message {
         #[debug(skip)]
         on_complete: Callback<PathBuf>,
     },
-    /// Open a file to be viewed in the user's external viewer
+    /// Open a file to be viewed in the user's external pager
     FileView { path: PathBuf },
 
     /// Launch an HTTP request from the given recipe/profile.

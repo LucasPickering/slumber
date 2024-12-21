@@ -208,24 +208,23 @@ pub fn get_editor_command(file: &Path) -> anyhow::Result<Command> {
         })
 }
 
-/// Get a command to open the given file in the user's configured file viewer.
+/// Get a command to open the given file in the user's configured file pager.
 /// Default is `less` on Unix, `more` on Windows. Return an error if the command
 /// couldn't be built.
-pub fn get_viewer_command(file: &Path) -> anyhow::Result<Command> {
-    // Use a built-in viewer
+pub fn get_pager_command(file: &Path) -> anyhow::Result<Command> {
+    // Use a built-in pager
     let default = if cfg!(windows) { "more" } else { "less" };
 
-    // Unlike the editor, there is no standard env var to store the viewer, so
-    // we rely solely on the configuration field.
     EditorBuilder::new()
         // Config field takes priority over environment variables
-        .source(TuiContext::get().config.viewer.as_deref())
+        .source(TuiContext::get().config.pager.as_deref())
+        .source(env::var("PAGER").ok())
         .source(Some(default))
         .path(file)
         .build()
         .with_context(|| {
             format!(
-                "Error opening viewer; see {}",
+                "Error opening pager; see {}",
                 doc_link("api/configuration/editor"),
             )
         })

@@ -39,4 +39,5 @@ SLUMBER_CONFIG_PATH=~/dotfiles/slumber.yml slumber
 | `large_body_size`          | `number`                            | Size over which request/response bodies are not formatted/highlighted, for performance (bytes)    | `1000000` (1 MB)                     |
 | `preview_templates`        | `boolean`                           | Render template values in the TUI? If false, the raw template will be shown.                      | `true`                               |
 | `theme`                    | [`Theme`](./theme.md)               | Visual customizations                                                                             | `{}`                                 |
-| `viewer`                   | `string`                            | Command to use when opening files for viewing. [More info](./editor.md)                           | `less` (Unix), `more` (Windows)      |
+| `pager`                    | `string`                            | Command to use when opening files for viewing. [More info](./editor.md)                           | `less` (Unix), `more` (Windows)      |
+| `viewer`                   | See `pager`                         | Alias for `pager`, for backward compatibility                                                     | See `pager`                          |

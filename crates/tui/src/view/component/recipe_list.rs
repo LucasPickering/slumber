@@ -483,13 +483,13 @@ mod tests {
         assert_eq!(
             select
                 .items()
-                .map(|item| item.id.as_str())
+                .map(|item| &item.id as &str)
                 .collect_vec()
                 .as_slice(),
             &["recipe2", "recipe22"]
         );
         assert_eq!(
-            select.selected().map(|item| item.id.as_str()),
+            select.selected().map(|item| &item.id as &str),
             Some("recipe2")
         );
 

@@ -27,7 +27,7 @@ use slumber_core::{
     http::{content_type::ContentType, ResponseBody, ResponseRecord},
     util::MaybeStr,
 };
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 use tokio::task;
 
 /// Display response body as text, with a query box to run commands on the body.
@@ -62,7 +62,7 @@ impl QueryableBody {
             .placeholder(format!("{binding} to filter"))
             .placeholder_focused("Enter command (ex: `jq .results`)")
             .debounce();
-        let state = init_state(response.content_type(), &response.body);
+        let state = init_state(response.content_type(), &response.body, true);
 
         Self {
             emitter_id: EmitterId::new(),
@@ -75,18 +75,20 @@ impl QueryableBody {
         }
     }
 
-    /// If a query command has been applied, get the visible text. Otherwise,
+    /// If the original body text is _not_ what the user is looking at (because
+    /// of a query command or prettification), get the visible text. Otherwise,
     /// return `None` to indicate the response's original body can be used.
-    /// Return an owned value because we have to join the text to a string.
+    /// Binary bodies will return `None` here. Return an owned value because we
+    /// have to join the text to a string.
     pub fn modified_text(&self) -> Option<String> {
-        if self.query_command.is_none() {
-            None
-        } else {
+        if self.query_command.is_some() || self.state.pretty {
             Some(self.state.text.to_string())
+        } else {
+            None
         }
     }
 
-    /// Get visible body text
+    /// Get whatever text the user sees
     pub fn visible_text(&self) -> &Text {
         &self.state.text
     }
@@ -95,17 +97,22 @@ impl QueryableBody {
     /// a task to run the command
     fn update_query(&mut self) {
         let command = self.query_text_box.data().text();
+        let response = &self.response;
         if command.is_empty() {
             // Reset to initial body
             self.query_command = None;
-            self.state =
-                init_state(self.response.content_type(), &self.response.body);
-        } else {
+            self.state = init_state(
+                self.response.content_type(),
+                &self.response.body,
+                true, // Prettify
+            );
+        } else if self.query_command.as_deref() != Some(command) {
+            // If the command has changed, execute it
             self.query_command = Some(command.to_owned());
 
             // Spawn the command in the background because it could be slow.
             // Clone is cheap because Bytes uses refcounting
-            let body = self.response.body.bytes().clone();
+            let body = response.body.bytes().clone();
             let command = command.to_owned();
             let emitter = self.detach();
             task::spawn_local(async move {
@@ -143,6 +150,9 @@ impl EventHandler for QueryableBody {
                         // Assume the output has the same content type
                         self.response.content_type(),
                         &ResponseBody::new(stdout),
+                        // Don't prettify - user has control over this output,
+                        // so if it isn't pretty already that's on them
+                        false,
                     );
                 }
                 // Trigger error state. We DON'T want to show a modal here
@@ -214,6 +224,9 @@ impl Emitter for QueryableBody {
 struct TextState {
     /// The full body, which we need to track for launching commands
     text: Identified<Text<'static>>,
+    /// Was the text prettified? We track this so we know if we've modified the
+    /// original text
+    pretty: bool,
 }
 
 /// Emitted event to notify when a query subprocess has completed. Contains the
@@ -225,6 +238,7 @@ pub struct QueryComplete(anyhow::Result<Vec<u8>>);
 fn init_state<T: AsRef<[u8]>>(
     content_type: Option<ContentType>,
     body: &ResponseBody<T>,
+    prettify: bool,
 ) -> TextState {
     if TuiContext::get().config.http.is_large(body.size()) {
         // For bodies over the "large" size, skip prettification and
@@ -238,21 +252,43 @@ fn init_state<T: AsRef<[u8]>>(
         if let Some(text) = body.text() {
             TextState {
                 text: str_to_text(text).into(),
+                pretty: false,
             }
         } else {
             // Showing binary content is a bit of a novelty, there's not much
             // value in it. For large bodies it's not worth the CPU cycles
             let text: Text = "<binary>".into();
-            TextState { text: text.into() }
+            TextState {
+                text: text.into(),
+                pretty: false,
+            }
         }
     } else if let Some(text) = body.text() {
-        let text = highlight::highlight_if(content_type, str_to_text(text));
-        TextState { text: text.into() }
+        // Prettify for known content types. We _don't_ do this in a separate
+        // task because it's generally very fast. If this is slow enough that
+        // it affects the user, the "large" body size is probably too low
+        // 2024 edition: if-let chain
+        let (text, pretty): (Cow<str>, bool) = match content_type {
+            Some(content_type) if prettify => content_type
+                .prettify(text)
+                .map(|body| (Cow::Owned(body), true))
+                .unwrap_or((Cow::Borrowed(text), false)),
+            _ => (Cow::Borrowed(text), false),
+        };
+
+        let text = highlight::highlight_if(content_type, str_to_text(&text));
+        TextState {
+            text: text.into(),
+            pretty,
+        }
     } else {
         // Content is binary, show a textual representation of it
         let text: Text =
             format!("{:#}", MaybeStr(body.bytes().as_ref())).into();
-        TextState { text: text.into() }
+        TextState {
+            text: text.into(),
+            pretty: false,
+        }
     }
 }
 
@@ -287,8 +323,9 @@ mod tests {
     fn response() -> Arc<ResponseRecord> {
         ResponseRecord {
             status: StatusCode::OK,
-            // Note: do NOT set the content-type header here. All it does is
-            // enable syntax highlighting, which makes buffer assertions hard
+            // Note: do NOT set the content-type header here. It enables syntax
+            // highlighting, which makes buffer assertions hard. JSON-specific
+            // behavior is tested in ResponseView
             headers: Default::default(),
             body: ResponseBody::new(TEXT.into()),
         }

@@ -104,6 +104,27 @@ impl ContentType {
         }
     }
 
+    /// Make a response body look pretty. If the input isn't valid for this
+    /// content type, return `None`
+    pub fn prettify(&self, body: &str) -> Option<String> {
+        match self {
+            ContentType::Json => {
+                // The easiest way to prettify is to parse and restringify.
+                // There's definitely faster ways that don't require building
+                // the whole data structure in memory, but not via serde
+                if let Ok(parsed) =
+                    serde_json::from_str::<serde_json::Value>(body)
+                {
+                    // serde_json shouldn't fail serializing its own Value type
+                    serde_json::to_string_pretty(&parsed).ok()
+                } else {
+                    // Not valid JSON
+                    None
+                }
+            }
+        }
+    }
+
     /// Stringify a single JSON value into this format
     pub fn value_to_string(self, value: &serde_json::Value) -> String {
         match self {

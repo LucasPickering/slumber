@@ -185,8 +185,13 @@ mod tests {
         view::test_util::TestComponent,
     };
     use crossterm::event::KeyCode;
+    use indexmap::indexmap;
     use rstest::rstest;
-    use slumber_core::{assert_matches, http::Exchange, test_util::Factory};
+    use slumber_core::{
+        assert_matches,
+        http::Exchange,
+        test_util::{header_map, Factory},
+    };
 
     /// Test "Copy Body" menu action
     #[rstest]
@@ -196,6 +201,14 @@ mod tests {
             ..ResponseRecord::factory(())
         },
         "{\"hello\":\"world\"}",
+    )]
+    #[case::json_body(
+        ResponseRecord {
+            headers: header_map(indexmap! {"content-type" => "application/json"}),
+            body: br#"{"hello":"world"}"#.to_vec().into(),
+            ..ResponseRecord::factory(())
+        },
+        "{\n  \"hello\": \"world\"\n}",
     )]
     #[case::binary_body(
         ResponseRecord {
@@ -252,6 +265,16 @@ mod tests {
         },
         None,
         None,
+    )]
+    #[case::json_body(
+        ResponseRecord {
+            headers: header_map(indexmap! {"content-type" => "application/json"}),
+            body: br#"{"hello":"world"}"#.to_vec().into(),
+            ..ResponseRecord::factory(())
+        },
+        None,
+        // Body has been prettified, so we can't use the original
+        Some("{\n  \"hello\": \"world\"\n}"),
     )]
     #[case::binary_body(
         ResponseRecord {

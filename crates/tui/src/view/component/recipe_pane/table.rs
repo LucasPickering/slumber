@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    util::ResultReported,
     view::{
         common::{
             table::{Table, ToggleRow},
@@ -272,8 +271,8 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
             format!("Edit value for {}", self.key),
             TextBox::default()
                 // Edit as a raw template
-                .default_value(self.value.template().display().into_owned())
-                .validator(|value| value.parse::<Template>().is_ok()),
+                .default_value(self.value.template().to_string())
+                .validator(|value| true /* TODO */),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
                 emitter.emit(SaveRecipeTableOverride {
@@ -286,14 +285,15 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
 
     /// Override the value template and re-render the preview
     fn set_override(&mut self, override_value: &str) {
+        todo!()
         // The validator on the override text box enforces that it's a valid
         // template, so we expect this parse to succeed
-        if let Some(template) = override_value
-            .parse::<Template>()
-            .reported(&ViewContext::messages_tx())
-        {
-            self.value.set_override(template);
-        }
+        // if let Some(template) = override_value
+        //     .parse::<Template>()
+        //     .reported(&ViewContext::messages_tx())
+        // {
+        //     self.value.set_override(template);
+        // }
     }
 
     /// Get the disabled/override state of this row

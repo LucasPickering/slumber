@@ -40,7 +40,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{RequestId, RequestSeed},
-    template::{Prompter, Template, TemplateChunk, TemplateContext},
+    template::{Prompter, Template, TemplateContext, TemplateError},
 };
 use std::{
     future::Future,
@@ -642,14 +642,14 @@ impl Tui {
         &self,
         template: Template,
         profile_id: Option<ProfileId>,
-        on_complete: Callback<Vec<TemplateChunk>>,
+        on_complete: Callback<Result<Vec<u8>, TemplateError>>,
     ) -> anyhow::Result<()> {
         let context = self.template_context(profile_id, true)?;
         let messages_tx = self.messages_tx();
         tokio::spawn(async move {
             // Render chunks, then write them to the output destination
-            let chunks = template.render_chunks(&context).await;
-            on_complete(chunks);
+            let result = template.render(&context).await;
+            on_complete(result);
             // Trigger a draw
             messages_tx.send(Message::TemplatePreviewComplete);
         });
@@ -692,7 +692,6 @@ impl Tui {
             database: self.database.clone(),
             overrides: Default::default(),
             prompter,
-            state: Default::default(),
         })
     }
 }

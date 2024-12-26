@@ -1,8 +1,6 @@
 //! Generate strings (and bytes) from user-written templates with dynamic data
 
-mod cereal;
 mod error;
-mod parse;
 mod prompt;
 mod render;
 
@@ -10,15 +8,11 @@ pub use error::{ChainError, TemplateError, TriggeredRequestError};
 pub use prompt::{Prompt, PromptChannel, Prompter, Select};
 
 use crate::{
-    collection::{ChainId, Collection, ProfileId},
+    collection::{Collection, Profile, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
-    template::{
-        parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
-        render::RenderGroupState,
-    },
 };
-use derive_more::{Deref, Display};
+use hcl::Expression;
 use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
@@ -36,20 +30,26 @@ use std::sync::Arc;
 /// - Two templates with the same source string will have the same set of
 ///   chunks, and vice versa
 /// - No two raw segments will ever be consecutive
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(
+    Clone, Debug, derive_more::Display, PartialEq, Serialize, Deserialize,
+)]
+#[serde(transparent)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct Template {
-    /// Pre-parsed chunks of the template. For raw chunks we store the
-    /// presentation text (which is not necessarily the source text, as escape
-    /// sequences will be eliminated). For keys, just store the needed
-    /// metadata.
-    #[cfg_attr(
-        test,
-        proptest(
-            strategy = "any::<Vec<TemplateInputChunk>>().prop_map(join_raw)"
-        )
-    )]
-    chunks: Vec<TemplateInputChunk>,
+pub struct Template(Expression);
+
+impl Default for Template {
+    fn default() -> Self {
+        Self(Expression::String(String::new()))
+    }
+}
+
+impl Template {
+    /// Create a new template from a raw string, without parsing it at all.
+    /// Useful when importing from external formats where the string isn't
+    /// expected to be a valid Slumber template
+    pub fn raw(template: String) -> Template {
+        todo!()
+    }
 }
 
 /// A little container struct for all the data that the user can access via
@@ -75,29 +75,16 @@ pub struct TemplateContext {
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
-    /// State that should be shared across al renders that use this context.
-    /// This is meant to be opaque; just use [Default::default] to initialize.
-    pub state: RenderGroupState,
 }
 
-impl Template {
-    /// Create a new template from a raw string, without parsing it at all.
-    /// Useful when importing from external formats where the string isn't
-    /// expected to be a valid Slumber template
-    pub fn raw(template: String) -> Template {
-        let chunks = if template.is_empty() {
-            vec![]
-        } else {
-            // This may seem too easy, but the hard part comes during
-            // stringification, when we need to add backslashes to get the
-            // string to parse correctly later
-            vec![TemplateInputChunk::Raw(template.into())]
-        };
-        Self { chunks }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.chunks.is_empty()
+impl TemplateContext {
+    /// Get the selected profile from the collection
+    pub fn profile(&self) -> Option<&Profile> {
+        // Get the value from the profile
+        let profile_id = self.selected_profile.as_ref()?;
+        // Typically the caller should validate the ID before initializing
+        // template context, but if it's invalid for some reason, return None
+        self.collection.profiles.get(profile_id)
     }
 }
 
@@ -122,97 +109,6 @@ impl From<serde_json::Value> for Template {
     }
 }
 
-/// An identifier that can be used in a template key. A valid identifier is
-/// any non-empty string that contains only alphanumeric characters, `-`, or
-/// `_`.
-///
-/// Construct via [FromStr](std::str::FromStr)
-#[derive(
-    Clone,
-    Debug,
-    Deref,
-    Default,
-    Display,
-    Eq,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-#[serde(transparent)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct Identifier(
-    #[cfg_attr(test, proptest(regex = "[a-zA-Z0-9-_]+"))] String,
-);
-
-/// A shortcut for creating identifiers from static strings. Since the string
-/// is defined in code we're assuming it's valid.
-impl From<&'static str> for Identifier {
-    fn from(value: &'static str) -> Self {
-        Self(value.parse().unwrap())
-    }
-}
-
-/// A piece of a rendered template string. A collection of chunks collectively
-/// constitutes a rendered string, and those chunks should be contiguous.
-#[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum TemplateChunk {
-    /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
-    /// stored in an `Arc` so we can reference the text in the parsed input
-    /// without having to clone it.
-    Raw(Arc<String>),
-    /// Outcome of rendering a template key
-    Rendered {
-        /// This is wrapped in `Arc` to de-duplicate large values derived from
-        /// chains. When the same chain is used multiple times in a render
-        /// group it gets deduplicated, meaning multiple render results would
-        /// refer to the same data. In the vast majority of cases though we
-        /// only ever have one pointer to this data. This is arguably a
-        /// premature optimization, but it's very possible for a large chained
-        /// body to be used twice, and we wouldn't want to duplicate that.
-        value: Arc<Vec<u8>>,
-        sensitive: bool,
-    },
-    /// An error occurred while rendering a template key
-    Error(TemplateError),
-}
-
-#[cfg(test)]
-impl TemplateChunk {
-    /// Shorthand for creating a new raw chunk
-    fn raw(value: &str) -> Self {
-        Self::Raw(value.to_owned().into())
-    }
-}
-
-/// A parsed template key. The variant of this determines how the key will be
-/// resolved into a value.
-///
-/// This also serves as an enumeration of all possible value types. Once a key
-/// is parsed, we know its value type and can dynamically dispatch for rendering
-/// based on that.
-///
-/// The generic parameter defines *how* the key data is stored. Ideally we could
-/// just store a `&str`, but that isn't possible when this is part of a
-/// `Template`, because it would create a self-referential pointer. In that
-/// case, we can store a `Span` which points back to its source in the template.
-///
-/// The `Display` impl here should return exactly what this was parsed from.
-/// This is important for matching override keys during rendering.
-#[derive(Clone, Debug, Display, PartialEq)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum TemplateKey {
-    /// A plain field, which can come from the profile or an override
-    Field(Identifier),
-    /// A value from a predefined chain of another recipe
-    #[display("{CHAIN_PREFIX}{_0}")]
-    Chain(ChainId),
-    /// A value pulled from the process environment
-    #[display("{ENV_PREFIX}{_0}")]
-    Environment(Identifier),
-}
-
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for TemplateContext {
     fn factory(_: ()) -> Self {
@@ -224,7 +120,6 @@ impl crate::test_util::Factory for TemplateContext {
             database: CollectionDatabase::factory(()),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
-            state: RenderGroupState::default(),
         }
     }
 }

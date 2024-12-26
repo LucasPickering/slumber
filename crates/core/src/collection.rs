@@ -24,12 +24,7 @@ use tracing::{trace, warn};
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
 /// defined, we'll take the earliest and print a warning.
-const CONFIG_FILES: &[&str] = &[
-    "slumber.yml",
-    "slumber.yaml",
-    ".slumber.yml",
-    ".slumber.yaml",
-];
+const CONFIG_FILES: &[&str] = &["slumber.hcl", ".slumber.hcl"];
 
 /// A wrapper around a request collection, to handle functionality around the
 /// file system.

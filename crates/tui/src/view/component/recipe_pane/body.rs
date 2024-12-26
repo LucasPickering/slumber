@@ -1,7 +1,7 @@
 use crate::{
     context::TuiContext,
     message::Message,
-    util::{delete_temp_file, temp_file, ResultReported},
+    util::{temp_file, ResultReported},
     view::{
         common::text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         component::recipe_pane::{
@@ -156,7 +156,7 @@ impl RawBody {
         let path = temp_file();
         debug!(?path, "Writing body to file for editing");
         let Some(_) =
-            fs::write(&path, self.body.template().display().as_bytes())
+            fs::write(&path, self.body.template().to_string().as_bytes())
                 .with_context(|| {
                     format!("Error writing body to file {path:?} for editing")
                 })
@@ -178,6 +178,8 @@ impl RawBody {
     /// Read the user's edited body from the temp file we created, and rebuild
     /// the body from that
     fn load_override(&mut self, path: &Path) {
+        todo!()
+        /*
         // Read the body back from the temp file we handed to the editor, then
         // delete it to prevent cluttering the disk
         debug!(?path, "Reading edited body from file");
@@ -205,6 +207,7 @@ impl RawBody {
 
         // Update state and regenerate the preview
         self.body.set_override(template);
+        */
     }
 }
 

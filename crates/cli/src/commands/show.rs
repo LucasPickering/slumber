@@ -51,7 +51,11 @@ impl Subcommand for ShowCommand {
                 let collection_path =
                     CollectionFile::try_path(None, global.file)?;
                 let collection = Collection::load(&collection_path)?;
-                println!("{}", to_yaml(&collection));
+                println!(
+                    "{}",
+                    hcl::to_string(&collection)
+                        .expect("Error serializing collection")
+                );
             }
         }
         Ok(ExitCode::SUCCESS)

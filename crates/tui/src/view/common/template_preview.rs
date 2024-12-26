@@ -6,13 +6,12 @@ use crate::{
 use ratatui::{
     buffer::Buffer,
     prelude::Rect,
-    style::Style,
-    text::{Line, Span, Text},
+    text::{Span, Text},
     widgets::Widget,
 };
 use slumber_core::{
     http::content_type::ContentType,
-    template::{Template, TemplateChunk},
+    template::{Template, TemplateError},
 };
 use std::{
     ops::Deref,
@@ -53,7 +52,7 @@ impl TemplatePreview {
             // recompute the text on each render. Ideally we could hold onto
             // the template and have this text reference it, but that would be
             // self-referential
-            template.display().into_owned().into(),
+            template.to_string().into(),
         )
         .into();
         let text = Arc::new(Mutex::new(text));
@@ -78,11 +77,23 @@ impl TemplatePreview {
     /// Generate text from the rendered template, and replace the text in the
     /// mutex
     fn calculate_rendered_text(
-        chunks: Vec<TemplateChunk>,
+        result: Result<Vec<u8>, TemplateError>,
         destination: &Mutex<Identified<Text<'static>>>,
         content_type: Option<ContentType>,
     ) {
-        let text = TextStitcher::stitch_chunks(&chunks);
+        let styles = &TuiContext::get().styles.template_preview;
+
+        // TODO can we do chunk-based errors?
+        // TODO hide sensitive values
+        // We have to wrap everything in a span so the styling doesn't apply
+        // to the entire text, beyond the end of the content
+        let text = match result.map(String::from_utf8) {
+            Ok(Ok(rendered)) => Span::styled(rendered, styles.text).into(),
+            // Rendered succeeded but not UTF-8
+            Ok(Err(_)) => Span::styled("<binary>", styles.text).into(),
+            // Render failed
+            Err(_) => Span::styled("Error", styles.error).into(),
+        };
         let text = highlight::highlight_if(content_type, text);
         *destination
             .lock()
@@ -120,100 +131,6 @@ impl Generate for &TemplatePreview {
 impl Widget for &TemplatePreview {
     fn render(self, area: Rect, buf: &mut Buffer) {
         (&**self.text()).render(area, buf)
-    }
-}
-
-/// A helper for stitching rendered template chunks into ratatui `Text`. This
-/// requires some effort because ratatui *loves* line breaks, so we have to
-/// very manually construct the text to make sure the structure reflects the
-/// line breaks in the input.
-///
-/// See ratatui docs: <https://docs.rs/ratatui/latest/ratatui/text/index.html>
-#[derive(Debug, Default)]
-struct TextStitcher {
-    text: Text<'static>,
-}
-
-impl TextStitcher {
-    /// Convert chunks into a series of spans, which can be turned into a line
-    fn stitch_chunks(chunks: &[TemplateChunk]) -> Text<'static> {
-        let styles = &TuiContext::get().styles;
-
-        // Each chunk will get its own styling, but we can't just make each
-        // chunk a Span, because one chunk might have multiple lines. And we
-        // can't make each chunk a Line, because multiple chunks might be
-        // together on the same line. So we need to walk down each line and
-        // manually split the lines
-        let mut stitcher = Self::default();
-        for chunk in chunks {
-            let chunk_text = Self::get_chunk_text(chunk);
-            let style = match chunk {
-                TemplateChunk::Raw(_) => Style::default(),
-                TemplateChunk::Rendered { .. } => styles.template_preview.text,
-                TemplateChunk::Error(_) => styles.template_preview.error,
-            };
-
-            stitcher.add_chunk(chunk_text, style);
-        }
-        stitcher.text
-    }
-
-    /// Add one chunk to the text. This will recursively split on any line
-    /// breaks in the text until it reaches the end.
-    fn add_chunk(&mut self, chunk_text: String, style: Style) {
-        let ends_in_newline = chunk_text.ends_with("\n");
-
-        // The first line should extend the final line of the current text,
-        // because there isn't necessarily a line break between chunks
-        let mut lines = chunk_text.lines();
-        if let Some(first_line) = lines.next() {
-            if !first_line.is_empty() {
-                self.text
-                    .push_span(Span::styled(first_line.to_owned(), style));
-            }
-        }
-        self.text.extend(lines.map(|line| {
-            // If the text is empty, push an empty line instead of a line with
-            // a single empty chunk
-            if line.is_empty() {
-                Line::default()
-            } else {
-                // Push a span instead of a whole line, because if this is the
-                // last line, the next chunk may extend it
-                Span::styled(line.to_owned(), style).into()
-            }
-        }));
-
-        // std::lines throws away trailing newlines, but we care about them
-        // because the next chunk needs to go on a new line. We also care about
-        // keeping trailing newlines at the end of HTTP bodies, for correctness
-        if ends_in_newline {
-            self.text.push_line(Line::default());
-        }
-    }
-
-    /// Get the renderable text for a chunk of a template. This will clone the
-    /// text out of the chunk, because it's all stashed behind Arcs
-    fn get_chunk_text(chunk: &TemplateChunk) -> String {
-        match chunk {
-            TemplateChunk::Raw(text) => text.deref().clone(),
-            TemplateChunk::Rendered { value, sensitive } => {
-                if *sensitive {
-                    // Hide sensitive values. Ratatui has a Masked type, but
-                    // it complicates the string ownership a lot and also
-                    // exposes the length of the sensitive text
-                    "<sensitive>".into()
-                } else {
-                    // We could potentially use MaybeStr to show binary data as
-                    // hex, but that could get weird if there's text data in the
-                    // template as well. This is simpler and prevents giant
-                    // binary blobs from getting rendered in.
-                    std::str::from_utf8(value).unwrap_or("<binary>").to_owned()
-                }
-            }
-            // There's no good way to render the entire error inline
-            TemplateChunk::Error(_) => "Error".into(),
-        }
     }
 }
 

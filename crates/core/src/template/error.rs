@@ -1,11 +1,9 @@
 use crate::{
-    collection::{ChainId, ProfileId, RecipeId},
+    collection::{ProfileId, RecipeId},
     http::{query::QueryError, RequestBuildError, RequestError},
-    template::TemplateKey,
     util::doc_link,
 };
-use itertools::Itertools;
-use std::{fmt::Display, io, path::PathBuf, string::FromUtf8Error, sync::Arc};
+use std::{io, path::PathBuf, string::FromUtf8Error, sync::Arc};
 use thiserror::Error;
 use winnow::error::{ContextError, ParseError};
 
@@ -66,14 +64,8 @@ pub enum TemplateError {
     #[error(transparent)]
     InvalidUtf8(FromUtf8Error),
 
-    /// Cycle detected in nested template keys. We store the entire cycle stack
-    /// for presentation
-    #[error("Infinite loop detected in template: {}", format_cycle(.0))]
-    InfiniteLoop(Vec<TemplateKey>),
-
-    #[error("Resolving chain `{chain_id}`")]
+    #[error("Resolving chain `TODO`")]
     Chain {
-        chain_id: ChainId,
         #[source]
         error: ChainError,
     },
@@ -107,10 +99,6 @@ impl TemplateError {
 /// renders, hence the `Arc`s on inner errors.
 #[derive(Clone, Debug, Error)]
 pub enum ChainError {
-    /// Reference to a chain that doesn't exist
-    #[error("Unknown chain: {_0}")]
-    ChainUnknown(ChainId),
-
     /// Reference to a recipe that doesn't exist
     #[error("Unknown request recipe: {_0}")]
     RecipeUnknown(RecipeId),
@@ -287,8 +275,4 @@ impl PartialEq for ChainError {
             }
         }
     }
-}
-
-fn format_cycle(stack: &[TemplateKey]) -> impl '_ + Display {
-    stack.iter().format(" -> ")
 }

@@ -11,7 +11,7 @@ use slumber_core::{
         BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
         RequestRecord,
     },
-    template::{Prompt, Prompter, Select, Template, TemplateChunk},
+    template::{Prompt, Prompter, Select, Template, TemplateError},
     util::ResultTraced,
 };
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
@@ -147,7 +147,7 @@ pub enum Message {
     TemplatePreview {
         template: Template,
         #[debug(skip)]
-        on_complete: Callback<Vec<TemplateChunk>>,
+        on_complete: Callback<Result<Vec<u8>, TemplateError>>,
     },
     /// An empty event to trigger a draw when a template preview is done being
     /// rendered. This is a bit hacky, but it's an explicit way to tell the TUI

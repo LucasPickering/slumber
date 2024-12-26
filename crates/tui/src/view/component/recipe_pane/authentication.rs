@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    util::ResultReported,
     view::{
         common::{table::Table, text_box::TextBox},
         component::{
@@ -27,10 +26,7 @@ use ratatui::{
     Frame,
 };
 use slumber_config::Action;
-use slumber_core::{
-    collection::{Authentication, RecipeId},
-    template::Template,
-};
+use slumber_core::collection::{Authentication, RecipeId};
 use strum::{EnumCount, EnumIter};
 
 /// Display authentication settings for a recipe
@@ -61,7 +57,7 @@ impl AuthenticationDisplay {
                     selected_field: Default::default(),
                 }
             }
-            Authentication::Bearer(token) => State::Bearer {
+            Authentication::Bearer { token } => State::Bearer {
                 token: RecipeTemplate::new(
                     RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
                     token,
@@ -87,9 +83,9 @@ impl AuthenticationDisplay {
                     // See note on field def for why we always use Some
                     password: Some(password.template().clone()),
                 },
-                State::Bearer { token, .. } => {
-                    Authentication::Bearer(token.template().clone())
-                }
+                State::Bearer { token, .. } => Authentication::Bearer {
+                    token: token.template().clone(),
+                },
             })
         } else {
             None
@@ -228,21 +224,22 @@ impl State {
                 ..
             } => match selected_field.data().selected() {
                 BasicFields::Username => {
-                    ("username", username.template().display())
+                    ("username", username.template().to_string())
                 }
                 BasicFields::Password => {
-                    ("password", password.template().display())
+                    ("password", password.template().to_string())
                 }
             },
             Self::Bearer { token, .. } => {
-                ("bearer token", token.template().display())
+                ("bearer token", token.template().to_string())
             }
         };
         ViewContext::open_modal(TextBoxModal::new(
             format!("Edit {label}"),
-            TextBox::default()
-                .default_value(value.into_owned())
-                .validator(|value| value.parse::<Template>().is_ok()),
+            TextBox::default().default_value(value).validator(
+                // TODO
+                |value| true, /* value.parse::<Template>().is_ok() */
+            ),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
                 emitter.emit(SaveAuthenticationOverride(value))
@@ -253,6 +250,8 @@ impl State {
     /// Override the value template for whichever field is selected, and
     /// recompute the template preview
     fn set_override(&mut self, value: &str) {
+        todo!()
+        /*
         let Some(template) = value
             .parse::<Template>()
             // The template *should* always parse because the text box has a
@@ -277,7 +276,7 @@ impl State {
             Self::Bearer { token } => {
                 token.set_override(template);
             }
-        }
+        } */
     }
 
     /// Reset the value template override to the default from the recipe, and

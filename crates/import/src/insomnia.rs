@@ -68,8 +68,7 @@ pub fn from_insomnia(
     Ok(Collection {
         profiles,
         recipes,
-        chains,
-        _ignore: serde::de::IgnoredAny,
+        locals: IndexMap::new(),
     })
 }
 

@@ -24,6 +24,7 @@ derive_more = {version = "1.0.0", default-features = false}
 dirs = "5.0.1"
 env-lock = "0.1.0"
 futures = "0.3.28"
+hcl-rs = {git = "https://github.com/LucasPickering/hcl-rs", branch = "from-body"}#TODO stable version
 indexmap = {version = "2.0.0", default-features = false}
 itertools = "0.13.0"
 mime = "0.3.17"

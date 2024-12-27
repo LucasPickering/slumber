@@ -17,7 +17,7 @@ Slumber supports passing additional arguments to the editor. For example, if you
 editor: code --wait
 ```
 
-The command will be parsed like a shell command (although a shell is never actually invoked). For exact details on parsing behavior, see [shellish_parse](https://docs.rs/shellish_parse/latest/shellish_parse/index.html).
+The command will be parsed like a shell command (although a shell is never actually invoked). For exact details on parsing behavior, see [shell-words](https://docs.rs/shell-words/1.1.0/shell_words/fn.split.html).
 
 ## Paging
 
@@ -27,7 +27,7 @@ You can open your response bodies in a separate file browser if you want additio
 pager: bat
 ```
 
-> The pager command uses the same format as the `editor` field. The command is parsed with [shellish_parse](https://docs.rs/shellish_parse/latest/shellish_parse/index.html), then a temporary file path is passed as the final argument.
+> The pager command uses the same format as the `editor` field. The command is parsed with [shell-words](https://docs.rs/shell-words/1.1.0/shell_words/fn.split.html), then a temporary file path is passed as the final argument.
 
 To open a body in the pager, use the actions menu keybinding (`x` by default, see [input bindings](./input_bindings.md)), and select `View Body`.
 

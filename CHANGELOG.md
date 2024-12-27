@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- Update [editor-command](https://crates.io/crates/editor-command), which replaces [shellish_parse](https://crates.io/crates/shellish_parse) with [shell-words](https://crates.io/crates/shell-words) for editor and pager command parsing
+  - There should be no impact to users
+
 ## [2.4.0] - 2024-12-27
 
 ### Added
@@ -13,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add filter box to the recipe list
   - This behavior is not necessarily final. Please leave feedback if you think it could be improved.
 
-### Changes
+### Changed
 
 - Wrap long error messages in response pane
 - Include data path in config/collection deserialization errors
@@ -38,7 +43,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add "View Body" action to response bodies, to open a body in an external viewer such as `less` or `fx` [#404](https://github.com/LucasPickering/slumber/issues/404)
   - By default `less` is used. You can customize this with the [`viewer` config field](https://slumber.lucaspickering.me/book/api/configuration/editor.html)
 
-### Changes
+### Changed
 
 - Preserve key order of objects in JSON responses [#405](https://github.com/LucasPickering/slumber/issues/405)
 
@@ -204,7 +209,7 @@ This release focuses on minor fixes and improvements. There are no new major fea
 
 - Add global `--log` argument to CLI, to print the log file being used for that invocation
 
-### Changes
+### Changed
 
 - Checkbox row state and folder expand/collapse state are now toggled via the spacebar instead of enter
   - Enter now sends a request from anywhere. While this change may be annoying, it will hopefully be more intuitive in the long run.

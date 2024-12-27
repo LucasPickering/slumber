@@ -30,9 +30,9 @@ locals {
     type = "bearer"
     data = {
       token = json_path({
-        query = "$.form",
+        query = "$.form.username",
         data  = response({ recipe = "login" })
-      })
+      })[0]
     }
   }
   headers = {
@@ -42,9 +42,10 @@ locals {
   login_form_values = json_path({
     query = "$.form[*]"
     data  = response({ recipe = "login" })
+    mode  = "array"
   })
-  username = command({ command = ["whoami"], trim = "both" })
-  password = prompt({ message = "Password" })
+  username = command({ command = "whoami", trim = "both" })
+  password = prompt({ message = "Password", sensitive = true })
 }
 
 requests {
@@ -82,7 +83,7 @@ requests {
       get_users "request" {
         name           = "Get Users"
         method         = "GET"
-        url            = "${host}/get"
+        url            = "${profile.host}/get"
         authentication = locals.authentication
         query = [
           ["foo", "bar"],
@@ -93,7 +94,7 @@ requests {
       get_user "request" {
         name           = "Get User"
         method         = "GET"
-        url            = "${host}/anything/${user_guid}"
+        url            = "${profile.host}/anything/${profile.user_guid}"
         authentication = locals.authentication
         headers        = locals.headers
       }
@@ -101,7 +102,7 @@ requests {
       modify_user "request" {
         name           = "Modify User"
         method         = "PUT"
-        url            = "${host}/anything/${user_guid}"
+        url            = "${profile.host}/anything/${profile.user_guid}"
         authentication = locals.authentication
         headers        = locals.headers
         # body = {
@@ -121,7 +122,7 @@ requests {
   get_image "request" {
     name           = "Get Image"
     method         = "GET"
-    url            = "${host}/image"
+    url            = "${profile.host}/image"
     authentication = locals.authentication
     headers = {
       Accept = "image/png"
@@ -131,7 +132,7 @@ requests {
   upload_image "request" {
     name           = "Upload Image"
     method         = "POST"
-    url            = "${host}/anything/image"
+    url            = "${profile.host}/anything/image"
     authentication = locals.authentication
     body = {
       type = "form_multipart"
@@ -145,7 +146,7 @@ requests {
   big_file "request" {
     name           = "Big File"
     method         = "POST"
-    url            = "${host}/anything"
+    url            = "${profile.host}/anything"
     authentication = locals.authentication
     headers        = locals.headers
     # body = {
@@ -159,7 +160,7 @@ requests {
   delay "request" {
     name           = "Delay"
     method         = "GET"
-    url            = "${host}/delay/5"
+    url            = "${profile.host}/delay/5"
     authentication = locals.authentication
     headers        = locals.headers
   }

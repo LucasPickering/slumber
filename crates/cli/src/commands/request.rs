@@ -16,7 +16,7 @@ use slumber_core::{
         BuildOptions, HttpEngine, RequestRecord, RequestSeed, RequestTicket,
         ResponseRecord,
     },
-    template::{Prompt, Prompter, Select, TemplateContext, TemplateError},
+    template::{Prompt, Prompter, RenderContext, RenderError, Select},
     util::{MaybeStr, ResultTraced},
 };
 use std::{
@@ -110,7 +110,7 @@ impl Subcommand for RequestCommand {
             .map_err(|error| {
                 // If the build failed because triggered requests are disabled,
                 // replace it with a custom error message
-                if TemplateError::has_trigger_disabled_error(&error) {
+                if RenderError::has_trigger_disabled_error(&error) {
                     error.context(
                         "Triggered requests are disabled with `--dry-run`",
                     )
@@ -180,7 +180,7 @@ impl BuildRequestCommand {
 
         // Build the request
         let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
-        let template_context = TemplateContext {
+        let template_context = RenderContext {
             selected_profile,
             collection: collection.into(),
             // Passing the HTTP engine is how we tell the template renderer that
@@ -193,6 +193,7 @@ impl BuildRequestCommand {
             database: database.clone(),
             overrides,
             prompter: Box::new(CliPrompter),
+            state: Default::default(),
         };
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
         let request = http_engine.build(seed, &template_context).await?;

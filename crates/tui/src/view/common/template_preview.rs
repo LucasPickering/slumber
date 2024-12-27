@@ -11,7 +11,7 @@ use ratatui::{
 };
 use slumber_core::{
     http::content_type::ContentType,
-    template::{Template, TemplateError},
+    template::{Template, RenderError},
 };
 use std::{
     ops::Deref,
@@ -77,7 +77,7 @@ impl TemplatePreview {
     /// Generate text from the rendered template, and replace the text in the
     /// mutex
     fn calculate_rendered_text(
-        result: Result<Vec<u8>, TemplateError>,
+        result: Result<Vec<u8>, RenderError>,
         destination: &Mutex<Identified<Text<'static>>>,
         content_type: Option<ContentType>,
     ) {
@@ -143,7 +143,7 @@ mod tests {
     use rstest::rstest;
     use slumber_core::{
         collection::{Chain, ChainSource, Collection, Profile},
-        template::TemplateContext,
+        template::RenderContext,
         test_util::{by_id, invalid_utf8_chain, Factory},
     };
 

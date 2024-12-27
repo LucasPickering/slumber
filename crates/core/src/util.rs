@@ -7,17 +7,18 @@ use chrono::{
     format::{DelayedFormat, StrftimeItems},
     DateTime, Duration, Local, Utc,
 };
-use derive_more::{DerefMut, Display};
+use derive_more::Display;
 use serde::de::DeserializeOwned;
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::{self, Debug},
+    future::Future,
     hash::Hash,
     io::Read,
     ops::Deref,
     sync::Arc,
 };
-use tokio::sync::{Mutex, OwnedRwLockWriteGuard, RwLock};
+use tokio::sync::{Mutex, RwLock};
 use tracing::error;
 
 const WEBSITE: &str = "https://slumber.lucaspickering.me";
@@ -209,13 +210,14 @@ pub(crate) struct FutureCache<K: Hash + Eq, V: Clone> {
 }
 
 impl<K: Hash + Eq, V: 'static + Clone> FutureCache<K, V> {
-    /// Get a value from the cache, or if not present, insert a placeholder
-    /// value and return a guard that can be used to insert the completed value
-    /// later. The placeholder will tell subsequent accessors of this key that
-    /// the value is being computed, and will be present later. If the
-    /// placeholder is present and the final value being computed, **this block
-    /// will not return until the value is available**.
-    pub async fn get_or_init(&self, key: K) -> FutureCacheOutcome<V> {
+    /// Get a value from the cache, or if not present, compute it via the given
+    /// future. **The future will only be evaluated if the key isn't already
+    /// in the cache.** If the key is present, the future will just be dropped.
+    pub async fn get_or_init(
+        &self,
+        key: K,
+        future: impl Future<Output = V>,
+    ) -> V {
         let mut cache = self.cache.lock().await;
         match cache.entry(key) {
             Entry::Occupied(entry) => {
@@ -223,8 +225,11 @@ impl<K: Hash + Eq, V: 'static + Clone> FutureCache<K, V> {
                 drop(cache); // Drop the outer lock as quickly as possible
 
                 match &*lock.read_owned().await {
-                    Some(value) => FutureCacheOutcome::Hit(value.clone()),
-                    None => FutureCacheOutcome::NoResponse,
+                    Some(value) => value.clone(),
+                    // Lock was dropped without anything being written, which
+                    // means the future panicked while resolving. We'll panic
+                    // as well to keep logic simple
+                    None => panic!("Cached future failed to resolve"),
                 }
             }
             Entry::Vacant(entry) => {
@@ -234,10 +239,13 @@ impl<K: Hash + Eq, V: 'static + Clone> FutureCache<K, V> {
 
                 // Grab the write lock and hold it as long as the parent is
                 // working to compute the value
-                let guard = lock
+                let mut guard = lock
                     .try_write_owned()
                     .expect("Lock was just created, who the hell grabbed it??");
-                FutureCacheOutcome::Miss(FutureCacheGuard(guard))
+                // Compute the future and store a copy for everyone else
+                let value = future.await;
+                *guard = Some(value.clone());
+                value
             }
         }
     }
@@ -247,41 +255,6 @@ impl<K: Hash + Eq, V: Clone> Default for FutureCache<K, V> {
     fn default() -> Self {
         Self {
             cache: Default::default(),
-        }
-    }
-}
-
-/// Outcome of check a future cache for a particular key
-pub(crate) enum FutureCacheOutcome<V> {
-    /// The value is already in the cache
-    Hit(V),
-    /// The value is not in the cache. Caller is responsible for inserting it
-    /// by calling [FutureCacheGuard::set] once computed.
-    Miss(FutureCacheGuard<V>),
-    /// The first entrant dropped their write guard without writing to it, so
-    /// there's no response to return
-    NoResponse,
-}
-
-/// A handle for writing a computed future value back into the cache. This is
-/// returned once per key, to the first caller of that key. The caller is then
-/// responsible for calling [FutureCacheGuard::set] to insert the value for
-/// everyone else. Subsequent callers to the cache will block until `set` is
-/// called.
-pub(crate) struct FutureCacheGuard<V>(OwnedRwLockWriteGuard<Option<V>>);
-
-impl<V> FutureCacheGuard<V> {
-    pub fn set(mut self, value: V) {
-        *self.0.deref_mut() = Some(value);
-    }
-}
-
-impl<V> Drop for FutureCacheGuard<V> {
-    fn drop(&mut self) {
-        if self.0.is_none() {
-            // Friendly little error logging. We don't have a good way of
-            // identifying *which* lock this happened to :(
-            error!("Future cache guard dropped without setting a value");
         }
     }
 }

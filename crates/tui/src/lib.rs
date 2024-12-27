@@ -40,7 +40,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{RequestId, RequestSeed},
-    template::{Prompter, Template, TemplateContext, TemplateError},
+    template::{Prompter, RenderContext, RenderError, Template},
 };
 use std::{
     future::Future,
@@ -642,13 +642,13 @@ impl Tui {
         &self,
         template: Template,
         profile_id: Option<ProfileId>,
-        on_complete: Callback<Result<Vec<u8>, TemplateError>>,
+        on_complete: Callback<Result<Vec<u8>, RenderError>>,
     ) -> anyhow::Result<()> {
         let context = self.template_context(profile_id, true)?;
         let messages_tx = self.messages_tx();
         tokio::spawn(async move {
             // Render chunks, then write them to the output destination
-            let result = template.render(&context).await;
+            let result = template.render_bytes(&context).await;
             on_complete(result);
             // Trigger a draw
             messages_tx.send(Message::TemplatePreviewComplete);
@@ -673,7 +673,7 @@ impl Tui {
         &self,
         profile_id: Option<ProfileId>,
         is_preview: bool,
-    ) -> anyhow::Result<TemplateContext> {
+    ) -> anyhow::Result<RenderContext> {
         let context = TuiContext::get();
         let collection = &self.collection_file.collection;
         let (http_engine, prompter): (_, Box<dyn Prompter>) = if is_preview {
@@ -685,13 +685,14 @@ impl Tui {
             )
         };
 
-        Ok(TemplateContext {
+        Ok(RenderContext {
             selected_profile: profile_id,
             collection: collection.clone(),
             http_engine,
             database: self.database.clone(),
             overrides: Default::default(),
             prompter,
+            state: Default::default(),
         })
     }
 }

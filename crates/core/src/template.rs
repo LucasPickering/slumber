@@ -1,16 +1,19 @@
 //! Generate strings (and bytes) from user-written templates with dynamic data
 
+mod cereal;
 mod error;
+mod functions;
 mod prompt;
 mod render;
 
-pub use error::{ChainError, TemplateError, TriggeredRequestError};
+pub use error::{ChainError, RenderError, TriggeredRequestError};
 pub use prompt::{Prompt, PromptChannel, Prompter, Select};
 
 use crate::{
     collection::{Collection, Profile, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
+    template::render::RenderGroupState,
 };
 use hcl::Expression;
 use indexmap::IndexMap;
@@ -30,6 +33,8 @@ use std::sync::Arc;
 /// - Two templates with the same source string will have the same set of
 ///   chunks, and vice versa
 /// - No two raw segments will ever be consecutive
+///
+/// TODO update comment or delete this type
 #[derive(
     Clone, Debug, derive_more::Display, PartialEq, Serialize, Deserialize,
 )]
@@ -47,7 +52,7 @@ impl Template {
     /// Create a new template from a raw string, without parsing it at all.
     /// Useful when importing from external formats where the string isn't
     /// expected to be a valid Slumber template
-    pub fn raw(template: String) -> Template {
+    pub fn raw(_template: String) -> Template {
         todo!()
     }
 }
@@ -57,7 +62,7 @@ impl Template {
 /// deferred into a task (tokio requires `'static` for spawned tasks). If this
 /// becomes a bottleneck, we can `Arc` some stuff.
 #[derive(Debug)]
-pub struct TemplateContext {
+pub struct RenderContext {
     /// Entire request collection
     pub collection: Arc<Collection>,
     /// ID of the profile whose data should be used for rendering. Generally
@@ -75,16 +80,26 @@ pub struct TemplateContext {
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
+    /// State that should be shared across all renders that use this context.
+    /// This is meant to be opaque; just use [Default::default] to initialize.
+    pub state: RenderGroupState,
 }
 
-impl TemplateContext {
+impl RenderContext {
     /// Get the selected profile from the collection
-    pub fn profile(&self) -> Option<&Profile> {
+    pub fn profile(&self) -> Result<&Profile, RenderError> {
         // Get the value from the profile
-        let profile_id = self.selected_profile.as_ref()?;
+        let profile_id = self
+            .selected_profile
+            .as_ref()
+            .ok_or(RenderError::ProfileNotSelected)?;
         // Typically the caller should validate the ID before initializing
-        // template context, but if it's invalid for some reason, return None
-        self.collection.profiles.get(profile_id)
+        // template context, but if it's invalid for some reason, return error
+        self.collection.profiles.get(profile_id).ok_or_else(|| {
+            RenderError::ProfileUnknown {
+                profile_id: profile_id.clone(),
+            }
+        })
     }
 }
 
@@ -110,7 +125,7 @@ impl From<serde_json::Value> for Template {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for TemplateContext {
+impl crate::test_util::Factory for RenderContext {
     fn factory(_: ()) -> Self {
         use crate::test_util::TestPrompter;
         Self {
@@ -120,6 +135,7 @@ impl crate::test_util::Factory for TemplateContext {
             database: CollectionDatabase::factory(()),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
+            state: Default::default(),
         }
     }
 }
@@ -157,8 +173,8 @@ mod tests {
     use crate::{
         assert_err,
         collection::{
-            Chain, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
-            ChainSource, Profile, Recipe, RecipeId, SelectOptions,
+            Chain, ChainRequestSection, ChainSource, Profile, Recipe, RecipeId,
+            RequestTrigger, SelectOptions, TrimMode,
         },
         http::{
             content_type::ContentType, Exchange, RequestRecord, ResponseRecord,
@@ -195,7 +211,7 @@ mod tests {
             source: ChainSource::command(["echo", "chain"]),
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 profiles: by_id([profile]),
                 chains: by_id([chain]),
@@ -204,7 +220,7 @@ mod tests {
             .into(),
             selected_profile: Some(profile_id),
             overrides,
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_eq!(
@@ -344,7 +360,7 @@ mod tests {
             .insert_exchange(&Exchange::factory((request, response)))
             .unwrap();
 
-        let context = TemplateContext {
+        let context = RenderContext {
             selected_profile: Some(profile.id.clone()),
             collection: Collection {
                 recipes: by_id([recipe]).into(),
@@ -354,7 +370,7 @@ mod tests {
             }
             .into(),
             database,
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_eq!(
@@ -511,7 +527,7 @@ mod tests {
             database.insert_exchange(&exchange).unwrap();
         }
 
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 recipes: recipes.into(),
                 chains: by_id([chain]),
@@ -519,7 +535,7 @@ mod tests {
             }
             .into(),
             database,
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
@@ -578,7 +594,7 @@ mod tests {
             },
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 recipes: by_id([recipe]).into(),
                 chains: by_id([chain]),
@@ -587,7 +603,7 @@ mod tests {
             .into(),
             http_engine: Some(http_engine.clone()),
             database,
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), "hello!");
@@ -611,13 +627,13 @@ mod tests {
             source,
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
             }
             .into(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
@@ -656,13 +672,13 @@ mod tests {
             source,
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
             }
             .into(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
@@ -684,13 +700,13 @@ mod tests {
             trim,
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
             }
             .into(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
@@ -712,13 +728,13 @@ mod tests {
             source,
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
             }
             .into(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
         // This prevents tests from competing for environment variables, and
         // isolates us from the external env
@@ -744,13 +760,13 @@ mod tests {
             source: ChainSource::File { path: path.clone() },
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
             }
             .into(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_eq!(
@@ -769,13 +785,13 @@ mod tests {
             },
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
             }
             .into(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_err!(
@@ -801,7 +817,7 @@ mod tests {
         };
 
         // Test value from prompter
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
@@ -809,7 +825,7 @@ mod tests {
             .into(),
 
             prompter: Box::new(TestPrompter::new(response)),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
         assert_eq!(render!("{{chains.chain1}}", context).unwrap(), expected);
     }
@@ -824,7 +840,7 @@ mod tests {
             },
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
@@ -832,7 +848,7 @@ mod tests {
             .into(),
             // Prompter gives no response
             prompter: Box::<TestPrompter>::default(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_err!(
@@ -877,14 +893,14 @@ mod tests {
             ..Chain::factory(())
         };
 
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([sut_chain, command_chain]),
                 ..Collection::factory(())
             }
             .into(),
             prompter: Box::new(TestSelectPrompter::new(vec![index])),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_eq!(render!("{{chains.sut}}", context).unwrap(), expected);
@@ -946,7 +962,7 @@ mod tests {
             .insert_exchange(&Exchange::factory((request, response)))
             .unwrap();
 
-        let context = TemplateContext {
+        let context = RenderContext {
             selected_profile: Some(profile.id.clone()),
             collection: Collection {
                 recipes: by_id([recipe]).into(),
@@ -957,7 +973,7 @@ mod tests {
             .into(),
             database,
             prompter: Box::new(TestSelectPrompter::new(vec![index])),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_eq!(render!("{{chains.sut}}", context).unwrap(), expected);
@@ -972,7 +988,7 @@ mod tests {
             },
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
@@ -980,7 +996,7 @@ mod tests {
             .into(),
             // Prompter gives no response
             prompter: Box::<TestSelectPrompter>::default(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_err!(
@@ -1018,14 +1034,14 @@ mod tests {
             ..Chain::factory(())
         };
 
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([sut_chain, command_chain]),
                 ..Collection::factory(())
             }
             .into(),
             prompter: Box::new(TestSelectPrompter::new(vec![0usize])),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_err!(render!("{{chains.chain1}}", context), expected_error);
@@ -1042,7 +1058,7 @@ mod tests {
             ..Chain::factory(())
         };
 
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
@@ -1050,7 +1066,7 @@ mod tests {
             .into(),
 
             prompter: Box::new(TestPrompter::new(["first", "second"])),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
         assert_eq!(
             render!("{{chains.chain1}} {{chains.chain1}}", context).unwrap(),
@@ -1071,7 +1087,7 @@ mod tests {
             ..Chain::factory(())
         };
         let chain_id = chain.id.clone();
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
@@ -1079,12 +1095,12 @@ mod tests {
             .into(),
 
             prompter: Box::<TestPrompter>::default(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
         let template = Template::from("{{chains.chain1}}{{chains.chain1}}");
 
         // Chunked render
-        let expected_error = TemplateError::Chain {
+        let expected_error = RenderError::Chain {
             chain_id,
             error: ChainError::PromptNoResponse,
         };
@@ -1111,7 +1127,7 @@ mod tests {
             sensitive: true,
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
@@ -1119,7 +1135,7 @@ mod tests {
             .into(),
             // Prompter gives no response
             prompter: Box::new(TestPrompter::new(["hello!"])),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
         assert_eq!(
             Template::from("{{chains.chain1}}")
@@ -1159,13 +1175,13 @@ mod tests {
             ..Chain::factory(())
         };
 
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([file_chain, command_chain]),
                 ..Collection::factory(())
             }
             .into(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
         assert_eq!(
             render!("{{chains.command}}", context).unwrap(),
@@ -1197,13 +1213,13 @@ mod tests {
             ..Chain::factory(())
         };
 
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([file_chain, command_chain]),
                 ..Collection::factory(())
             }
             .into(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
         let expected = if cfg!(unix) {
             "Rendering nested template for field `command[2]`: \
@@ -1225,7 +1241,7 @@ mod tests {
         #[case] env_value: Option<&str>,
         #[case] expected: &str,
     ) {
-        let context = TemplateContext::factory(());
+        let context = RenderContext::factory(());
         // This prevents tests from competing for environ environment variables,
         // and isolates us from the external env
         let result = {
@@ -1243,13 +1259,13 @@ mod tests {
             source: invalid_utf8_chain,
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
             }
             .into(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_eq!(
@@ -1269,13 +1285,13 @@ mod tests {
             source: invalid_utf8_chain,
             ..Chain::factory(())
         };
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 chains: by_id([chain]),
                 ..Collection::factory(())
             }
             .into(),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_err!(render!("{{chains.chain1}}", context), "invalid utf-8");
@@ -1301,7 +1317,7 @@ mod tests {
                 },
                 // Each emoji is 4 bytes
                 TemplateChunk::raw(" 💚💙💜 "),
-                TemplateChunk::Error(TemplateError::FieldUnknown {
+                TemplateChunk::Error(RenderError::VariableUnknown {
                     field: "unknown".into()
                 }),
                 TemplateChunk::raw(" outro"),
@@ -1323,20 +1339,20 @@ mod tests {
     }
 
     /// Build a template context that only has simple profile data
-    fn profile_context(data: IndexMap<String, Template>) -> TemplateContext {
+    fn profile_context(data: IndexMap<String, Template>) -> RenderContext {
         let profile = Profile {
             data,
             ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
-        TemplateContext {
+        RenderContext {
             collection: Collection {
                 profiles: by_id([profile]),
                 ..Collection::factory(())
             }
             .into(),
             selected_profile: Some(profile_id),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         }
     }
 
@@ -1382,7 +1398,7 @@ mod tests {
             },
         ];
 
-        let context = TemplateContext {
+        let context = RenderContext {
             collection: Collection {
                 profiles: by_id([profile]),
                 chains: by_id(chains),
@@ -1390,7 +1406,7 @@ mod tests {
             }
             .into(),
             selected_profile: Some(profile_id),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         };
 
         assert_err!(

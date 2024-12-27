@@ -46,7 +46,7 @@ use crate::{
     collection::{Authentication, Method, Recipe, RecipeBody},
     db::CollectionDatabase,
     http::content_type::ContentType,
-    template::{Template, TemplateContext},
+    template::{RenderContext, Template},
     util::ResultTraced,
 };
 use anyhow::Context;
@@ -115,7 +115,7 @@ impl HttpEngine {
     pub async fn build(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        template_context: &RenderContext,
     ) -> Result<RequestTicket, RequestBuildError> {
         let RequestSeed {
             id,
@@ -181,7 +181,7 @@ impl HttpEngine {
     pub async fn build_url(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        template_context: &RenderContext,
     ) -> Result<Url, RequestBuildError> {
         let RequestSeed {
             id,
@@ -221,7 +221,7 @@ impl HttpEngine {
     pub async fn build_body(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        template_context: &RenderContext,
     ) -> Result<Option<Bytes>, RequestBuildError> {
         let RequestSeed {
             id,
@@ -325,7 +325,7 @@ impl RequestSeed {
     async fn convert_error<T>(
         &self,
         future: impl Future<Output = anyhow::Result<T>>,
-        template_context: &TemplateContext,
+        template_context: &RenderContext,
     ) -> Result<T, RequestBuildError> {
         let start_time = Utc::now();
         future.await.traced().map_err(|error| RequestBuildError {
@@ -428,7 +428,7 @@ impl Recipe {
     /// Render base URL, *excluding* query params
     async fn render_url(
         &self,
-        template_context: &TemplateContext,
+        template_context: &RenderContext,
     ) -> anyhow::Result<Url> {
         let url = self
             .url
@@ -443,7 +443,7 @@ impl Recipe {
     async fn render_query(
         &self,
         options: &BuildOptions,
-        template_context: &TemplateContext,
+        template_context: &RenderContext,
     ) -> anyhow::Result<Vec<(String, String)>> {
         let iter = self.query.iter().enumerate().filter_map(|(i, (k, v))| {
             // Look up and apply override. We do this by index because the
@@ -467,7 +467,7 @@ impl Recipe {
     async fn render_headers(
         &self,
         options: &BuildOptions,
-        template_context: &TemplateContext,
+        template_context: &RenderContext,
     ) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
 
@@ -513,12 +513,12 @@ impl Recipe {
     /// Render a single key/value header
     async fn render_header(
         &self,
-        template_context: &TemplateContext,
+        template_context: &RenderContext,
         header: &str,
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
         let mut value = value_template
-            .render(template_context)
+            .render_bytes(template_context)
             .await
             .context(format!("Error rendering header `{header}`"))?;
 
@@ -546,7 +546,7 @@ impl Recipe {
     async fn render_authentication(
         &self,
         options: &BuildOptions,
-        template_context: &TemplateContext,
+        template_context: &RenderContext,
     ) -> anyhow::Result<Option<Authentication<String>>> {
         let authentication = options
             .authentication
@@ -588,7 +588,7 @@ impl Recipe {
     async fn render_body(
         &self,
         options: &BuildOptions,
-        template_context: &TemplateContext,
+        template_context: &RenderContext,
     ) -> anyhow::Result<Option<RenderedBody>> {
         let Some(body) = options.body.as_ref().or(self.body.as_ref()) else {
             return Ok(None);
@@ -596,7 +596,7 @@ impl Recipe {
 
         let rendered = match body {
             RecipeBody::Raw { body, .. } => RenderedBody::Raw(
-                body.render(template_context)
+                body.render_bytes(template_context)
                     .await
                     .context("Error rendering body")?
                     .into(),
@@ -627,7 +627,7 @@ impl Recipe {
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
                             let value = template
-                                .render(template_context)
+                                .render_bytes(template_context)
                                 .await
                                 .context(format!(
                                     "Error rendering form field `{field}`"
@@ -765,7 +765,7 @@ mod tests {
     fn template_context(
         recipes: impl IntoIterator<Item = Recipe>,
         chains: impl IntoIterator<Item = Chain>,
-    ) -> TemplateContext {
+    ) -> RenderContext {
         let profile_data = indexmap! {
             "host".into() => "http://localhost".into(),
             "mode".into() => "sudo".into(),
@@ -790,7 +790,7 @@ mod tests {
         }]
         .into_iter()
         .chain(chains);
-        TemplateContext {
+        RenderContext {
             collection: Collection {
                 recipes: by_id(recipes).into(),
                 profiles: by_id([profile]),
@@ -800,7 +800,7 @@ mod tests {
             .into(),
             selected_profile: Some(profile_id.clone()),
             prompter: Box::new(TestPrompter::new(["first", "second"])),
-            ..TemplateContext::factory(())
+            ..RenderContext::factory(())
         }
     }
 

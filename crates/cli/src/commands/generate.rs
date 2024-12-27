@@ -1,6 +1,6 @@
 use crate::{commands::request::BuildRequestCommand, GlobalArgs, Subcommand};
 use clap::{Parser, ValueEnum};
-use slumber_core::template::TemplateError;
+use slumber_core::template::RenderError;
 use std::process::ExitCode;
 
 /// Render a request and generate an equivalent for a third-party client
@@ -32,7 +32,7 @@ impl Subcommand for GenerateCommand {
             .map_err(|error| {
                 // If the build failed because triggered requests are disabled,
                 // replace it with a custom error message
-                if TemplateError::has_trigger_disabled_error(&error) {
+                if RenderError::has_trigger_disabled_error(&error) {
                     error.context(
                         "Triggered requests are disabled by default; \
                          pass `--execute-triggers` to enable",

@@ -68,6 +68,12 @@ impl Collection {
             .context(format!("Error loading data from {path:?}"))
             .traced()
     }
+
+    /// Get the profile marked as `default: true`, if any. At most one profile
+    /// can be marked as default.
+    pub fn default_profile(&self) -> Option<&Profile> {
+        self.profiles.values().find(|profile| profile.default)
+    }
 }
 
 /// Mutually exclusive hot-swappable config group
@@ -378,11 +384,11 @@ impl From<&str> for RecipeBody {
 }
 
 /// Define when a recipe with a chained request should auto-execute the
-/// dependency request.
+/// dependency request
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum ChainRequestTrigger {
+pub enum RequestTrigger {
     /// Never trigger the request. This is the default because upstream
     /// requests could be mutating, so we want the user to explicitly opt into
     /// automatic execution.
@@ -398,6 +404,7 @@ pub enum ChainRequestTrigger {
 }
 
 /// Control how a JSONPath selector returns 0 vs 1 vs 2+ results
+/// TODO delete?
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -415,30 +422,6 @@ pub enum SelectorMode {
     /// 1 - JSON array
     /// 2 - JSON array
     Array,
-}
-
-/// Trim whitespace from rendered output
-#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum ChainOutputTrim {
-    /// Do not trim the output
-    #[default]
-    None,
-    /// Trim the start of the output
-    Start,
-    /// Trim the end of the output
-    End,
-    /// Trim the start and end of the output
-    Both,
-}
-
-impl Collection {
-    /// Get the profile marked as `default: true`, if any. At most one profile
-    /// can be marked as default.
-    pub fn default_profile(&self) -> Option<&Profile> {
-        self.profiles.values().find(|profile| profile.default)
-    }
 }
 
 /// Test-only helpers

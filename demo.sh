@@ -2,6 +2,8 @@
 # Regenerate the demo GIF from the VHS tape
 # https://github.com/charmbracelet/vhs
 
+set -e
+
 case $1 in
     "--check")
         latest_commit=$(git rev-parse HEAD)

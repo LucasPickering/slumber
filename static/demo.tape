@@ -1,5 +1,5 @@
 Output "static/demo.gif"
-Set Shell sh
+Set Shell bash
 Set Width 1200
 Set Height 800
 Set FontSize 18

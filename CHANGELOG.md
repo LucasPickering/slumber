@@ -8,7 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Add search box to the recipe list
+- Add filter box to the recipe list
+  - This behavior is not necessarily final. Please leave feedback if you think it could be improved.
 
 ### Changes
 

@@ -2397,7 +2397,7 @@ dependencies = [
 
 [[package]]
 name = "slumber"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "anyhow",
  "slumber_cli",
@@ -2410,7 +2410,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_cli"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2433,7 +2433,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_config"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -2452,7 +2452,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_core"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2492,7 +2492,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_import"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "anyhow",
  "indexmap",
@@ -2515,7 +2515,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_tui"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "anyhow",
  "bytes",

@@ -17,7 +17,7 @@ chrono = {workspace = true}
 cli-clipboard = "0.4.0"
 crossterm = {workspace = true, features = ["bracketed-paste", "windows", "events", "event-stream"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from"]}
-editor-command = "0.1.0"
+editor-command = "1.0.0"
 futures = {workspace = true}
 indexmap = {workspace = true}
 itertools = {workspace = true}

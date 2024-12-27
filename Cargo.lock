@@ -573,11 +573,11 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "editor-command"
-version = "0.1.1"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa7a3e34d7a5b881150285b40d8c81ba256b398c89dcc5e9384941184ae934c0"
+checksum = "ee98e369cc618396b828ba0231d5bc39857ee1d8e9dcb1c1adef49a21bb5c427"
 dependencies = [
- "shellish_parse",
+ "shell-words",
 ]
 
 [[package]]
@@ -2343,12 +2343,6 @@ name = "shell-words"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
-
-[[package]]
-name = "shellish_parse"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c29b912ad681a28566f37b936bba1f3580a93b9391c4a0b12cb1c6b4ed79973"
 
 [[package]]
 name = "shlex"

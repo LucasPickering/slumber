@@ -43,8 +43,13 @@ impl RecipeBodyDisplay {
     /// Build a component to display the body, based on the body type
     pub fn new(body: &RecipeBody, recipe_id: RecipeId) -> Self {
         match body {
-            RecipeBody::Raw { body, content_type } => Self::Raw(
-                RawBody::new(recipe_id, body.clone(), *content_type).into(),
+            RecipeBody::Raw(body) => {
+                Self::Raw(RawBody::new(recipe_id, body.clone(), None).into())
+            }
+            // TODO make JSON previews work
+            RecipeBody::Json(body) => Self::Raw(
+                RawBody::new(recipe_id, body.clone(), Some(ContentType::Json))
+                    .into(),
             ),
             RecipeBody::FormUrlencoded(fields)
             | RecipeBody::FormMultipart(fields) => {
@@ -87,10 +92,11 @@ impl RecipeBodyDisplay {
                 if inner.data().body.is_overridden() =>
             {
                 let inner = inner.data();
-                Some(RecipeBody::Raw {
-                    body: inner.body.template().clone(),
-                    content_type: inner.body.content_type(),
-                })
+                let body = inner.body.template().clone();
+                match inner.body.content_type() {
+                    None => Some(RecipeBody::Raw(body)),
+                    Some(ContentType::Json) => Some(RecipeBody::Json(body)),
+                }
             }
             _ => None,
         }

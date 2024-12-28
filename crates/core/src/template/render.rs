@@ -56,6 +56,15 @@ impl Template {
         // TODO should we use infallible conversion?
         try_value_to_string(value)
     }
+
+    /// TODO
+    pub async fn render_json(
+        &self,
+        context: &RenderContext,
+    ) -> Result<serde_json::Value, RenderError> {
+        let value = self.0.render(context).await?;
+        hcl::from_value::<serde_json::Value, _>(value).map_err(|error| todo!())
+    }
 }
 
 /// State for a render group, which consists of one or more related renders

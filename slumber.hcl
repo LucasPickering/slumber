@@ -1,6 +1,3 @@
-# TODO includes
-# include = ["base.hcl"]
-
 profiles {
   works {
     name    = "This Works"
@@ -109,16 +106,16 @@ requests {
         url            = "${profile.host}/anything/${profile.user_guid}"
         authentication = locals.authentication
         headers        = locals.headers
-        # body = {
-        #   type = "json"
-        #   data = {
-        #     new_username = "user formerly known as ${locals.username}"
-        #     number       = 3
-        #     bool         = true
-        #     null         = null
-        #     array        = [1, 2, false, 3.3, "www.www"]
-        #   }
-        # }
+        body = {
+          type = "json"
+          data = {
+            new_username = "user formerly known as ${locals.username}"
+            number       = 3
+            bool         = true
+            null         = null
+            array        = [1, 2, false, 3.3, "www.www"]
+          }
+        }
       }
     }
   }
@@ -153,12 +150,12 @@ requests {
     url            = "${profile.host}/anything"
     authentication = locals.authentication
     headers        = locals.headers
-    # body = {
-    #   type = "json"
-    #   data = {
-    #     my_file = file({ path = "Cargo.lock" })
-    #   }
-    # }
+    body = {
+      type = "json"
+      data = {
+        my_file = file({ path = "Cargo.lock" })
+      }
+    }
   }
 
   delay "request" {

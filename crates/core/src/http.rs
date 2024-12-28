@@ -44,7 +44,6 @@ pub use models::*;
 use crate::{
     collection::{Authentication, Method, Recipe, RecipeBody},
     db::CollectionDatabase,
-    http::content_type::ContentType,
     template::{RenderContext, Template},
     util::ResultTraced,
 };
@@ -55,7 +54,6 @@ use futures::{
     future::{self, try_join_all, OptionFuture},
     try_join, Future,
 };
-use mime::Mime;
 use reqwest::{
     header::{self, HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
@@ -247,6 +245,7 @@ impl HttpEngine {
                 // If we have the bytes, we don't need to bother building a
                 // request
                 RenderedBody::Raw(bytes) => Ok(Some(bytes)),
+                RenderedBody::Json(json) => Ok(Some(json.to_string().into())),
                 // The body is complex - offload the hard work to RequestBuilder
                 RenderedBody::FormUrlencoded(_)
                 | RenderedBody::FormMultipart(_) => {
@@ -470,21 +469,6 @@ impl Recipe {
     ) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
 
-        // Set Content-Type based on the body type. This can be overwritten
-        // below if the user explicitly passed a Content-Type value
-        if let Some(content_type) =
-            self.body.as_ref().and_then(|body| body.mime())
-        {
-            headers.insert(
-                header::CONTENT_TYPE,
-                content_type
-                    .as_ref()
-                    // A MIME type should always be a valid header value
-                    .try_into()
-                    .expect("Invalid MIME"),
-            );
-        }
-
         // Render headers in an iterator so we can parallelize
         let iter = self.headers.iter().enumerate().filter_map(
             move |(i, (header, value_template))| {
@@ -594,11 +578,16 @@ impl Recipe {
         };
 
         let rendered = match body {
-            RecipeBody::Raw { body, .. } => RenderedBody::Raw(
+            RecipeBody::Raw(body) => RenderedBody::Raw(
                 body.render_bytes(template_context)
                     .await
                     .context("Error rendering body")?
                     .into(),
+            ),
+            RecipeBody::Json(body) => RenderedBody::Json(
+                body.render_json(template_context)
+                    .await
+                    .context("Error rendering body")?,
             ),
             RecipeBody::FormUrlencoded(fields) => {
                 let iter = fields.iter().enumerate().filter_map(
@@ -654,28 +643,12 @@ impl Authentication<String> {
     }
 }
 
-impl RecipeBody {
-    /// Get the value that we should set for the `Content-Type` header,
-    /// according to the body
-    fn mime(&self) -> Option<Mime> {
-        match self {
-            RecipeBody::Raw { content_type, .. } => {
-                content_type.as_ref().map(ContentType::to_mime)
-            }
-            // Do *not* set anything for these, because reqwest will do that
-            // automatically and we don't want to interfere
-            RecipeBody::FormUrlencoded(_) | RecipeBody::FormMultipart(_) => {
-                None
-            }
-        }
-    }
-}
-
 /// Body ready to be added to the request. Each variant corresponds to a method
 /// by which we'll add it to the request. This means it is **not** 1:1 with
 /// [RecipeBody]
 enum RenderedBody {
     Raw(Bytes),
+    Json(serde_json::Value),
     /// Field:value mapping. Value is `String` because only string data can be
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
@@ -688,6 +661,9 @@ impl RenderedBody {
         // Set body. The variant tells us _how_ to set it
         match self {
             RenderedBody::Raw(bytes) => builder.body(bytes),
+            RenderedBody::Json(json) => builder
+                .body(json.to_string())
+                .header(header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref()),
             RenderedBody::FormUrlencoded(fields) => builder.form(&fields),
             RenderedBody::FormMultipart(fields) => {
                 let mut form = Form::new();

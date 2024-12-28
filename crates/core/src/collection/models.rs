@@ -5,7 +5,6 @@ use crate::{
         cereal,
         recipe_tree::{RecipeNode, RecipeTree},
     },
-    http::content_type::ContentType,
     template::Template,
     util::{parse_yaml, ResultTraced},
 };
@@ -349,13 +348,9 @@ pub enum Authentication<T = Template> {
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum RecipeBody {
     /// Plain string/bytes body
-    Raw {
-        body: Template,
-        /// For structured body types such as `!json`, we'll stringify during
-        /// deserialization then just store the content type. This makes
-        /// internal logic much simpler because we can just work with templates
-        content_type: Option<ContentType>,
-    },
+    Raw(Template),
+    /// Expression that renders to JSON (`Content-Type: application/json`)
+    Json(Template),
     /// `application/x-www-form-urlencoded` fields. Values must be strings
     FormUrlencoded(IndexMap<String, Template>),
     /// `multipart/form-data` fields. Values can be binary
@@ -365,21 +360,15 @@ pub enum RecipeBody {
 impl RecipeBody {
     /// Build a JSON body *without* parsing the internal strings as templates.
     /// Useful for importing from external formats.
-    pub fn untemplated_json(value: serde_json::Value) -> Self {
-        Self::Raw {
-            body: Template::raw(format!("{value:#}")),
-            content_type: Some(ContentType::Json),
-        }
+    pub fn untemplated_json(_value: serde_json::Value) -> Self {
+        todo!()
     }
 }
 
 #[cfg(any(test, feature = "test"))]
 impl From<&str> for RecipeBody {
     fn from(template: &str) -> Self {
-        Self::Raw {
-            body: template.into(),
-            content_type: None,
-        }
+        Self::Raw(template.into())
     }
 }
 
@@ -429,10 +418,7 @@ impl crate::test_util::Factory for Collection {
         use crate::test_util::by_id;
         // Include a body in the recipe, so body-related behavior can be tested
         let recipe = Recipe {
-            body: Some(RecipeBody::Raw {
-                body: r#"{"message": "hello"}"#.into(),
-                content_type: Some(ContentType::Json),
-            }),
+            body: Some(RecipeBody::Json(r#"{"message": "hello"}"#.into())),
             ..Recipe::factory(())
         };
         let profile = Profile::factory(());

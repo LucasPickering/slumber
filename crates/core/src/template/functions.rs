@@ -79,6 +79,7 @@ pub trait HclFunction: DeserializeOwned {
 /// Run a command in a subprocess
 /// TODO accept command+args in one field?
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CommandFn {
     /// Name/path to the command
     command: String,
@@ -146,35 +147,32 @@ impl HclFunction for CommandFn {
 
 /// Load the value of an environment variable
 #[derive(Deserialize)]
-struct EnvFn {
-    variable: String,
-}
+#[serde(transparent, deny_unknown_fields)]
+struct EnvFn(String);
 
 impl HclFunction for EnvFn {
     const NAME: &'static str = "env";
 
     async fn call(self, _: &RenderContext) -> RenderResult {
-        Ok(std::env::var(&self.variable).unwrap_or_default().into())
+        Ok(std::env::var(&self.0).unwrap_or_default().into())
     }
 }
 
 /// Load the contents of a file
 #[derive(Deserialize)]
-struct FileFn {
-    path: PathBuf,
-}
+#[serde(transparent, deny_unknown_fields)]
+struct FileFn(PathBuf);
 
 impl HclFunction for FileFn {
     const NAME: &'static str = "file";
 
     async fn call(self, _: &RenderContext) -> RenderResult {
+        let path = self.0;
         let output =
-            fs::read(&self.path)
-                .await
-                .map_err(|error| RenderError::File {
-                    path: self.path,
-                    error: error.into(),
-                })?;
+            fs::read(&path).await.map_err(|error| RenderError::File {
+                path,
+                error: error.into(),
+            })?;
         Ok(bytes_to_value(output))
     }
 }
@@ -182,6 +180,7 @@ impl HclFunction for FileFn {
 /// Query a JSON string via JSONPath. This always outputs an array, so consumers
 /// will have to grab the first element manually
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct JsonPathFn {
     query: String,
     data: String,
@@ -230,6 +229,7 @@ impl HclFunction for JsonPathFn {
 
 /// Prompt the user to enter a text value
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PromptFn {
     message: String,
     default: Option<String>,
@@ -256,6 +256,7 @@ impl HclFunction for PromptFn {
 /// Load the most recent response body for a recipe and the
 /// current profile
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ResponseFn {
     recipe: RecipeId,
     #[serde(default)]
@@ -276,6 +277,7 @@ impl HclFunction for ResponseFn {
 /// Load a header value from the most recent response for a
 /// recipe and the current profile
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ResponseHeaderFn {
     recipe: RecipeId,
     header: String,
@@ -304,6 +306,7 @@ impl HclFunction for ResponseHeaderFn {
 
 /// Ask the user to select a value from a list
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SelectFn {
     message: String,
     options: Vec<String>,
@@ -329,7 +332,7 @@ impl HclFunction for SelectFn {
 /// This uses the name `tostring` to match Terraform. `to_string` would be
 /// better style, but predictability is probably worth more.
 #[derive(Deserialize)]
-#[serde(transparent)]
+#[serde(deny_unknown_fields, transparent)]
 struct ToStringFn(RenderValue);
 
 impl HclFunction for ToStringFn {

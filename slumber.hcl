@@ -43,7 +43,6 @@ locals {
   login_form_values = json_path({
     query = "$.form[*]"
     data  = response({ recipe = "login" })
-    mode  = "array"
   })
   username = command({ command = "whoami" })
   password = prompt({ message = "Password", sensitive = true })
@@ -139,7 +138,7 @@ requests {
       type = "form_multipart"
       data = {
         filename = "logo.png"
-        image    = file({ path = "./static/slumber.png" })
+        image    = file("./static/slumber.png")
       }
     }
   }
@@ -149,12 +148,14 @@ requests {
     method         = "POST"
     url            = "${profile.host}/anything"
     authentication = locals.authentication
-    headers        = locals.headers
+    headers = {
+      Accept         = "application/json"
+      "Content-Type" = "text/plain"
+    }
     body = {
-      type = "json"
-      data = {
-        my_file = file({ path = "Cargo.lock" })
-      }
+      # TODO tag shouldn't be necessary
+      type = "raw"
+      data = file("Cargo.lock")
     }
   }
 

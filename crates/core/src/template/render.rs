@@ -430,8 +430,11 @@ impl RenderContext {
             RequestTrigger::Always => send_request().await?,
         };
 
-        // TODO explain why safe
-        Ok(Arc::into_inner(exchange.response).expect("TODO"))
+        // Safe because we just created the exchange and it hasn't been shared
+        Ok(
+            Arc::into_inner(exchange.response)
+                .expect("Arc has not been shared"),
+        )
     }
 }
 

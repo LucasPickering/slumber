@@ -2,7 +2,7 @@
 
 pub mod paths;
 
-use crate::{http::RequestError, template::ChainError};
+use crate::http::RequestError;
 use chrono::{
     format::{DelayedFormat, StrftimeItems},
     DateTime, Duration, Local, Utc,
@@ -106,15 +106,6 @@ impl<T> ResultTraced<T, anyhow::Error> for anyhow::Result<T> {
 }
 
 impl<T> ResultTraced<T, RequestError> for Result<T, RequestError> {
-    fn traced(self) -> Self {
-        if let Err(err) = &self {
-            error!(error = %err);
-        }
-        self
-    }
-}
-
-impl<T> ResultTraced<T, ChainError> for Result<T, ChainError> {
     fn traced(self) -> Self {
         if let Err(err) = &self {
             error!(error = %err);

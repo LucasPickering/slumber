@@ -383,11 +383,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_choose() {
-        todo!()
-    }
-
-    #[test]
     fn test_command() {
         todo!()
     }
@@ -424,6 +419,16 @@ mod tests {
 
     #[test]
     fn test_response_header() {
+        todo!()
+    }
+
+    #[test]
+    fn test_select() {
+        todo!()
+    }
+
+    #[test]
+    fn test_to_string() {
         todo!()
     }
 }

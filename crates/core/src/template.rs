@@ -5,7 +5,7 @@ mod functions;
 mod prompt;
 mod render;
 
-pub use error::{ChainError, RenderError, TriggeredRequestError};
+pub use error::{RenderError, TriggeredRequestError};
 pub use prompt::{Prompt, PromptChannel, Prompter, Select};
 
 use crate::{

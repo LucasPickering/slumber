@@ -19,7 +19,7 @@ use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 /// A parsed template, which can contain raw and/or templated content. The
 /// string is parsed during creation to identify template keys, hence the
@@ -53,6 +53,15 @@ impl Template {
     /// expected to be a valid Slumber template
     pub fn raw(_template: String) -> Template {
         todo!()
+    }
+}
+
+impl FromStr for Template {
+    type Err = hcl::edit::parser::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let expression = s.parse::<hcl::edit::expr::Expression>()?;
+        Ok(Self(expression.into()))
     }
 }
 

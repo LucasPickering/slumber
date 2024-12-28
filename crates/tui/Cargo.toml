@@ -19,6 +19,7 @@ crossterm = {workspace = true, features = ["bracketed-paste", "windows", "events
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from"]}
 editor-command = "1.0.0"
 futures = {workspace = true}
+hcl-rs = {workspace = true}
 indexmap = {workspace = true}
 itertools = {workspace = true}
 notify = {version = "6.1.1", default-features = false, features = ["macos_fsevent"]}

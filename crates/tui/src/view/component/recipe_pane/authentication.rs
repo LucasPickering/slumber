@@ -1,5 +1,6 @@
 use crate::{
     context::TuiContext,
+    util::ResultReported,
     view::{
         common::{table::Table, text_box::TextBox},
         component::{
@@ -26,7 +27,10 @@ use ratatui::{
     Frame,
 };
 use slumber_config::Action;
-use slumber_core::collection::{Authentication, RecipeId};
+use slumber_core::{
+    collection::{Authentication, RecipeId},
+    template::Template,
+};
 use strum::{EnumCount, EnumIter};
 
 /// Display authentication settings for a recipe
@@ -236,10 +240,9 @@ impl State {
         };
         ViewContext::open_modal(TextBoxModal::new(
             format!("Edit {label}"),
-            TextBox::default().default_value(value).validator(
-                // TODO
-                |value| true, /* value.parse::<Template>().is_ok() */
-            ),
+            TextBox::default()
+                .default_value(value)
+                .validator(|value| value.parse::<Template>().is_ok()),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
                 emitter.emit(SaveAuthenticationOverride(value))
@@ -250,8 +253,6 @@ impl State {
     /// Override the value template for whichever field is selected, and
     /// recompute the template preview
     fn set_override(&mut self, value: &str) {
-        todo!()
-        /*
         let Some(template) = value
             .parse::<Template>()
             // The template *should* always parse because the text box has a
@@ -276,7 +277,7 @@ impl State {
             Self::Bearer { token } => {
                 token.set_override(template);
             }
-        } */
+        }
     }
 
     /// Reset the value template override to the default from the recipe, and

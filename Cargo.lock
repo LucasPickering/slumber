@@ -2570,6 +2570,7 @@ dependencies = [
  "derive_more",
  "editor-command",
  "futures",
+ "hcl-rs",
  "indexmap",
  "itertools",
  "notify",

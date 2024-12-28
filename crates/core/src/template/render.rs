@@ -20,8 +20,6 @@ use hcl::{
     template::{Directive, Element, Interpolation},
     Expression, ObjectKey,
 };
-use indexmap::IndexMap;
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -40,7 +38,9 @@ impl Template {
         &self,
         context: &RenderContext,
     ) -> Result<Vec<u8>, RenderError> {
-        self.0.render(context).await?.try_into()
+        let value = self.0.render(context).await?;
+        // TODO should we use infallible conversion?
+        try_value_to_bytes(value)
     }
 
     /// Render the template using values from the given context. If any chunk
@@ -52,7 +52,9 @@ impl Template {
         &self,
         context: &RenderContext,
     ) -> Result<String, RenderError> {
-        self.0.render(context).await?.try_into()
+        let value = self.0.render(context).await?;
+        // TODO should we use infallible conversion?
+        try_value_to_string(value)
     }
 }
 
@@ -112,7 +114,8 @@ impl Render for Expression {
                         )
                         .await
                         .context(format!("field `{key}`"))?;
-                        let key: String = key.try_into()?;
+                        // TODO is this the correct behavior? check spec/hcl-rs
+                        let key = try_value_to_string(key)?;
                         Ok((key, value))
                     },
                 ))
@@ -170,17 +173,8 @@ impl Render for TemplateExpr {
                 .map(|element| element.render(context)),
         )
         .await?;
-        let joined: String = chunks
-            .into_iter()
-            .map(|chunk| {
-                match chunk {
-                    RenderValue::String(s) => Ok(s),
-                    // TODO convert other primitives to strings
-                    // look up if the spec says how to do this
-                    _ => todo!(),
-                }
-            })
-            .try_collect()?;
+        let joined =
+            chunks.into_iter().map(value_to_string).collect::<String>();
         Ok(joined.into())
     }
 }
@@ -330,7 +324,7 @@ async fn traverse(
         RenderValue::Bool(_) => todo!(),
         RenderValue::Number(number) => todo!(),
         RenderValue::String(_) => todo!(),
-        RenderValue::Binary(bytes) => todo!(),
+        RenderValue::Capsule(bytes) => todo!(),
         RenderValue::Array(mut vec) => {
             let [TraversalOperator::Index(index)] = operators else {
                 todo!("return error")
@@ -350,94 +344,8 @@ async fn traverse(
     }
 }
 
-/// TODO
-#[derive(Clone, Debug, Serialize)]
-#[serde(untagged)]
-pub enum RenderValue {
-    Null,
-    Bool(bool),
-    Number(hcl::Number),
-    String(String),
-    /// TODO
-    Binary(Bytes),
-    Array(Vec<Self>),
-    Object(IndexMap<String, Self>),
-}
-
-impl From<String> for RenderValue {
-    fn from(s: String) -> Self {
-        Self::String(s)
-    }
-}
-
-impl From<Vec<u8>> for RenderValue {
-    fn from(bytes: Vec<u8>) -> Self {
-        // Treat the bytes as a string if possible
-        String::from_utf8(bytes)
-            .map(Self::String)
-            .unwrap_or_else(|error| Self::Binary(error.into_bytes().into()))
-    }
-}
-
-impl From<Bytes> for RenderValue {
-    fn from(bytes: Bytes) -> Self {
-        Self::Binary(bytes)
-    }
-}
-
-/// Convert from JSON to our value. Used for converting results from JSONPath
-/// queries
-impl From<&serde_json::Value> for RenderValue {
-    fn from(json: &serde_json::Value) -> RenderValue {
-        match json {
-            serde_json::Value::Null => RenderValue::Null,
-            serde_json::Value::Bool(b) => RenderValue::Bool(*b),
-            serde_json::Value::Number(number) => RenderValue::Number(todo!()),
-            serde_json::Value::String(s) => RenderValue::String(s.clone()),
-            serde_json::Value::Array(vec) => {
-                RenderValue::Array(vec.iter().map(Self::from).collect())
-            }
-            serde_json::Value::Object(map) => RenderValue::Object(
-                map.iter()
-                    .map(|(key, value)| (key.clone(), value.into()))
-                    .collect(),
-            ),
-        }
-    }
-}
-
-impl TryFrom<RenderValue> for String {
-    type Error = RenderError;
-
-    fn try_from(value: RenderValue) -> Result<Self, Self::Error> {
-        match value {
-            RenderValue::Null => Ok("null".into()),
-            RenderValue::Bool(b) => Ok(b.to_string()),
-            RenderValue::Number(number) => Ok(number.to_string()),
-            RenderValue::String(s) => Ok(s),
-            RenderValue::Binary(bytes) => String::from_utf8(bytes.to_vec())
-                .map_err(RenderError::InvalidUtf8),
-            RenderValue::Array(_) => Err(RenderError::ExpectedScalar { value }),
-            RenderValue::Object(_) => {
-                Err(RenderError::ExpectedScalar { value })
-            }
-        }
-    }
-}
-
-impl TryFrom<RenderValue> for Vec<u8> {
-    type Error = RenderError;
-
-    fn try_from(value: RenderValue) -> Result<Self, Self::Error> {
-        if let RenderValue::Binary(bytes) = value {
-            Ok(bytes.to_vec())
-        } else {
-            // Use the value->string conversion, then take the string bytes.
-            // This will fail for array and object types
-            String::try_from(value).map(String::into_bytes)
-        }
-    }
-}
+/// An HCL value, extended to support binary values
+pub type RenderValue = hcl::Value<Bytes>;
 
 impl RenderContext {
     /// Get the most recent response for a profile+recipe pair
@@ -499,7 +407,9 @@ impl RenderContext {
 
         let exchange = match trigger {
             RequestTrigger::Never => {
-                get_latest()?.ok_or(RenderError::ResponseMissing)?
+                get_latest()?.ok_or(RenderError::ResponseMissing {
+                    recipe_id: recipe_id.clone(),
+                })?
             }
             RequestTrigger::NoHistory => {
                 // If a exchange is present in history, use that. If not, fetch
@@ -533,13 +443,14 @@ impl RenderContext {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum TrimMode {
     /// Do not trim the output
-    #[default] // TODO should Both be default?
     None,
     /// Trim the start of the output
     Start,
     /// Trim the end of the output
     End,
     /// Trim the start and end of the output
+    #[default]
+    // TODO this is a change from 2.0, document it/handle in import
     Both,
 }
 
@@ -559,5 +470,50 @@ impl TrimMode {
             Self::End => s.trim_end().into(),
             Self::Both => s.trim().into(),
         }
+    }
+}
+
+/// TODO
+pub fn bytes_to_value(bytes: Vec<u8>) -> RenderValue {
+    // TODO remove double conversion bytes -> vec -> bytes
+    String::from_utf8(bytes)
+        .map(RenderValue::String)
+        .unwrap_or_else(|error| RenderValue::Capsule(error.into_bytes().into()))
+}
+
+/// TODO
+pub fn value_to_string(value: RenderValue) -> String {
+    if let RenderValue::String(s) = value {
+        // Don't include quotes
+        s
+    } else {
+        value.to_string()
+    }
+}
+
+/// TODO
+fn try_value_to_string(value: RenderValue) -> Result<String, RenderError> {
+    match value {
+        RenderValue::Null => Ok("null".into()),
+        RenderValue::Bool(b) => Ok(b.to_string()),
+        RenderValue::Number(number) => Ok(number.to_string()),
+        RenderValue::String(s) => Ok(s),
+        RenderValue::Capsule(bytes) => {
+            // TODO drop this
+            String::from_utf8(bytes.to_vec()).map_err(RenderError::InvalidUtf8)
+        }
+        RenderValue::Array(_) => Err(RenderError::ExpectedScalar { value }),
+        RenderValue::Object(_) => Err(RenderError::ExpectedScalar { value }),
+    }
+}
+
+/// TODO
+fn try_value_to_bytes(value: RenderValue) -> Result<Vec<u8>, RenderError> {
+    if let RenderValue::Capsule(bytes) = value {
+        Ok(bytes.to_vec())
+    } else {
+        // Use the value->string conversion, then take the string bytes.
+        // This will fail for array and object types
+        try_value_to_string(value).map(String::into_bytes)
     }
 }

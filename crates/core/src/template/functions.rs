@@ -1,16 +1,18 @@
 //! HCL functions provided to users, to be used in collections
 
 use crate::{
-    collection::{RecipeId, RequestTrigger, SelectorMode},
+    collection::{RecipeId, RequestTrigger},
     template::{
-        cereal::from_value,
         error::RenderResultExt,
-        render::{RenderResult, RenderValue, TrimMode},
+        render::{
+            bytes_to_value, value_to_string, RenderResult, RenderValue,
+            TrimMode,
+        },
         Prompt, RenderContext, RenderError, Select,
     },
 };
 use serde::{de::DeserializeOwned, Deserialize};
-use serde_json_path::{ExactlyOneError, JsonPath};
+use serde_json_path::JsonPath;
 use std::{path::PathBuf, process::Stdio};
 use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
 use tracing::{debug, debug_span};
@@ -52,12 +54,17 @@ pub async fn call_fn(
         ResponseFn,
         ResponseHeaderFn,
         SelectFn,
+        ToStringFn,
     )
 }
 
 fn map_args<T: HclFunction>(arg: RenderValue) -> Result<T, RenderError> {
     // TODO func arg deserialization should get a special error variant
-    from_value::<T>(arg).context(format!("arguments to function `{}`", T::NAME))
+    hcl::from_value::<T, _>(arg)
+        .map_err(|error| RenderError::FunctionArgument {
+            error: error.into(),
+        })
+        .context(format!("arguments to function `{}`", T::NAME))
 }
 
 /// A Rust function exposed to HCL. This trait defines the name, arguments,
@@ -81,6 +88,7 @@ struct CommandFn {
     /// Optional data to pipe to the command via stdin
     stdin: Option<String>,
     /// Trim whitespace from the start/end of command output
+    #[serde(default)]
     trim: TrimMode,
 }
 
@@ -132,7 +140,7 @@ impl HclFunction for CommandFn {
         );
 
         let trimmed = trim.apply(output.stdout);
-        Ok(trimmed.into())
+        Ok(bytes_to_value(trimmed))
     }
 }
 
@@ -183,6 +191,25 @@ impl HclFunction for JsonPathFn {
     const NAME: &'static str = "json_path";
 
     async fn call(self, _: &RenderContext) -> RenderResult {
+        fn json_to_hcl(json: &serde_json::Value) -> RenderValue {
+            match json {
+                serde_json::Value::Null => RenderValue::Null,
+                serde_json::Value::Bool(b) => RenderValue::Bool(*b),
+                serde_json::Value::Number(number) => {
+                    RenderValue::Number(todo!())
+                }
+                serde_json::Value::String(s) => RenderValue::String(s.clone()),
+                serde_json::Value::Array(vec) => {
+                    RenderValue::Array(vec.iter().map(json_to_hcl).collect())
+                }
+                serde_json::Value::Object(map) => RenderValue::Object(
+                    map.iter()
+                        .map(|(key, value)| (key.clone(), json_to_hcl(value)))
+                        .collect(),
+                ),
+            }
+        }
+
         let query = JsonPath::parse(&self.query).map_err(|error| {
             RenderError::JsonPathParse {
                 path: self.query,
@@ -196,7 +223,7 @@ impl HclFunction for JsonPathFn {
 
         let node_list = query.query(&json);
         Ok(RenderValue::Array(
-            node_list.into_iter().map(RenderValue::from).collect(),
+            node_list.into_iter().map(json_to_hcl).collect(),
         ))
 
         // TODO use selector mode?
@@ -280,7 +307,7 @@ impl HclFunction for ResponseFn {
         let response = context
             .get_latest_response(&self.recipe, self.trigger)
             .await?;
-        Ok(response.body.into_bytes().into())
+        Ok(bytes_to_value(response.body.into_bytes().into()))
     }
 }
 
@@ -332,6 +359,22 @@ impl HclFunction for SelectFn {
         });
         let output = rx.await.map_err(|_| RenderError::PromptNoReply)?;
         Ok(output.into())
+    }
+}
+
+/// Coerce any value to a string, so it can be used as input for a string thing
+///
+/// This uses the name `tostring` to match Terraform. `to_string` would be
+/// better style, but predictability is probably worth more.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct ToStringFn(RenderValue);
+
+impl HclFunction for ToStringFn {
+    const NAME: &'static str = "tostring";
+
+    async fn call(self, _: &RenderContext) -> RenderResult {
+        Ok(value_to_string(self.0).into())
     }
 }
 

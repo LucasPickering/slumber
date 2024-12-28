@@ -24,7 +24,8 @@ derive_more = {version = "1.0.0", default-features = false}
 dirs = "5.0.1"
 env-lock = "0.1.0"
 futures = "0.3.28"
-hcl-rs = {git = "https://github.com/LucasPickering/hcl-rs", branch = "from-body"}#TODO stable version
+# hcl-rs = {git = "https://github.com/LucasPickering/hcl-rs", branch = "capsule"}#TODO stable version
+hcl-rs = {path = "../hcl-rs/crates/hcl-rs"}
 indexmap = {version = "2.0.0", default-features = false}
 itertools = "0.13.0"
 mime = "0.3.17"
@@ -36,11 +37,11 @@ serde = {version = "1.0.204", default-features = false}
 serde_json = {version = "1.0.120", default-features = false, features = ["preserve_order"]}
 serde_test = "1.0.176"
 serde_yaml = {version = "0.9.0", default-features = false}
-slumber_cli = {path = "./crates/cli", version = "2.4.0" }
-slumber_config = {path = "./crates/config", version = "2.4.0" }
-slumber_core = {path = "./crates/core", version = "2.4.0" }
-slumber_import = {path = "./crates/import", version = "2.4.0" }
-slumber_tui = {path = "./crates/tui", version = "2.4.0" }
+slumber_cli = {path = "./crates/cli", version = "2.4.0"}
+slumber_config = {path = "./crates/config", version = "2.4.0"}
+slumber_core = {path = "./crates/core", version = "2.4.0"}
+slumber_import = {path = "./crates/import", version = "2.4.0"}
+slumber_tui = {path = "./crates/tui", version = "2.4.0"}
 strum = {version = "0.26.3", default-features = false}
 thiserror = "1.0.63"
 tokio = {version = "1.39.2", default-features = false}

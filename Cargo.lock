@@ -865,7 +865,6 @@ dependencies = [
 [[package]]
 name = "hcl-edit"
 version = "0.8.3"
-source = "git+https://github.com/LucasPickering/hcl-rs?branch=from-body#092a5b4f5a61343416f124dc1b14e14767f27624"
 dependencies = [
  "fnv",
  "hcl-primitives",
@@ -876,7 +875,6 @@ dependencies = [
 [[package]]
 name = "hcl-primitives"
 version = "0.1.7"
-source = "git+https://github.com/LucasPickering/hcl-rs?branch=from-body#092a5b4f5a61343416f124dc1b14e14767f27624"
 dependencies = [
  "itoa",
  "kstring",
@@ -888,7 +886,6 @@ dependencies = [
 [[package]]
 name = "hcl-rs"
 version = "0.18.2"
-source = "git+https://github.com/LucasPickering/hcl-rs?branch=from-body#092a5b4f5a61343416f124dc1b14e14767f27624"
 dependencies = [
  "hcl-edit",
  "hcl-primitives",

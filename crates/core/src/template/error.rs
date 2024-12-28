@@ -5,7 +5,6 @@ use crate::{
     util::doc_link,
 };
 use itertools::Itertools;
-use serde_json_path::ExactlyOneError;
 use std::{io, iter, path::PathBuf, string::FromUtf8Error, sync::Arc};
 use thiserror::Error;
 use winnow::error::{ContextError, ParseError};
@@ -105,6 +104,13 @@ pub enum RenderError {
     /// Called a function that doesn't exist
     #[error("Unknown function `{name}`")]
     FunctionUnknown { name: String },
+    /// Error deserializing function arguments
+    /// TODO better message (include fn name?)
+    #[error("Invalid function argument")]
+    FunctionArgument {
+        #[source]
+        error: Arc<hcl::Error>,
+    },
 
     /// Invalid JSONPath query
     #[error("Invalid JSONPath `{path}`")]
@@ -136,8 +142,8 @@ pub enum RenderError {
     PromptNoReply,
 
     /// Recipe for `response()` has no history
-    #[error("No response available")]
-    ResponseMissing,
+    #[error("No response available for recipe `{recipe_id}`")]
+    ResponseMissing { recipe_id: RecipeId },
     /// Specified header did not exist in the response
     #[error("Header `{header}` not in response")]
     ResponseMissingHeader { header: String },
@@ -155,10 +161,6 @@ pub enum RenderError {
         #[source]
         error: TriggeredRequestError,
     },
-
-    /// TODO
-    #[error("{0}")]
-    Deserialization(String),
 }
 
 impl RenderError {

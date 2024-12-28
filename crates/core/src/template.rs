@@ -1,6 +1,5 @@
 //! Generate strings (and bytes) from user-written templates with dynamic data
 
-mod cereal;
 mod error;
 mod functions;
 mod prompt;

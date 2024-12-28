@@ -29,10 +29,14 @@ locals {
   authentication = {
     type = "bearer"
     data = {
-      token = json_path({
-        query = "$.form.username",
-        data  = response({ recipe = "login" })
-      })[0]
+      token = command({
+        command = "base64",
+        # Pick some arbitrary data from the login response
+        stdin = tostring(json_path({
+          query = "$.form",
+          data  = response({ recipe = "login" })
+        })[0]),
+      }),
     }
   }
   headers = {
@@ -44,7 +48,7 @@ locals {
     data  = response({ recipe = "login" })
     mode  = "array"
   })
-  username = command({ command = "whoami", trim = "both" })
+  username = command({ command = "whoami" })
   password = prompt({ message = "Password", sensitive = true })
 }
 

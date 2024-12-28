@@ -491,7 +491,7 @@ impl HalfDone {
 
     fn try_into_collection(mut self) -> anyhow::Result<Collection> {
         self.resolve()?;
-        let deserializer = hcl::de::Deserializer::from_body(self.body)?;
+        let deserializer = hcl::de::Deserializer::from_body(self.body);
         serde_path_to_error::deserialize(deserializer)
             .context("Error deserializing TODO")
     }

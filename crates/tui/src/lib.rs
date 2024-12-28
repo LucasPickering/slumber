@@ -647,7 +647,7 @@ impl Tui {
         let context = self.template_context(profile_id, true)?;
         let messages_tx = self.messages_tx();
         tokio::spawn(async move {
-            // Render chunks, then write them to the output destination
+            // Render, then write output to the destination
             let result = template.render_bytes(&context).await;
             on_complete(result);
             // Trigger a draw

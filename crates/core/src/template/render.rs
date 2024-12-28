@@ -14,11 +14,11 @@ use chrono::Utc;
 use futures::future;
 use hcl::{
     expr::{
-        Conditional, FuncCall, Operation, TemplateExpr, Traversal,
-        TraversalOperator,
+        BinaryOp, Conditional, FuncCall, Operation, TemplateExpr, Traversal,
+        TraversalOperator, UnaryOp,
     },
     template::{Directive, Element, Interpolation},
-    Expression, ObjectKey,
+    Expression, Number, ObjectKey, Value,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -38,9 +38,8 @@ impl Template {
         &self,
         context: &RenderContext,
     ) -> Result<Vec<u8>, RenderError> {
-        let value = self.0.render(context).await?;
         // TODO should we use infallible conversion?
-        try_value_to_bytes(value)
+        self.0.render(context).await?.scalar_to_bytes()
     }
 
     /// Render the template using values from the given context. If any chunk
@@ -52,9 +51,8 @@ impl Template {
         &self,
         context: &RenderContext,
     ) -> Result<String, RenderError> {
-        let value = self.0.render(context).await?;
         // TODO should we use infallible conversion?
-        try_value_to_string(value)
+        self.0.render(context).await?.scalar_to_string()
     }
 
     /// TODO
@@ -62,8 +60,7 @@ impl Template {
         &self,
         context: &RenderContext,
     ) -> Result<serde_json::Value, RenderError> {
-        let value = self.0.render(context).await?;
-        hcl::from_value::<serde_json::Value, _>(value).map_err(|error| todo!())
+        self.0.render(context).await?.into_json()
     }
 }
 
@@ -85,6 +82,196 @@ pub struct RenderGroupState {
 /// Outcome of rendering an expression
 pub type RenderResult = Result<RenderValue, RenderError>;
 
+/// An HCL value, extended to support binary values
+///
+/// Binary (capsule) values should only ever representing **invalid UTF-8
+/// bytes**. The various construction methods ensure that if bytes are UTF-8,
+/// we construct a string.
+#[derive(Clone, Debug, derive_more::Display, Deserialize)]
+#[serde(transparent)]
+pub struct RenderValue(Value<Bytes>);
+
+impl RenderValue {
+    /// TODO
+    async fn traverse(
+        self,
+        operators: &[TraversalOperator],
+        context: &RenderContext,
+    ) -> RenderResult {
+        // TODO handle multiple levels of traversal
+        match self.0 {
+            Value::Null => todo!(),
+            Value::Bool(_) => todo!(),
+            Value::Number(number) => todo!(),
+            Value::String(_) => todo!(),
+            Value::Capsule(bytes) => todo!(),
+            Value::Array(mut vec) => {
+                let [TraversalOperator::Index(index)] = operators else {
+                    todo!("return error")
+                };
+                let Value::Number(index) =
+                    Box::pin(index.render(context)).await.context("TODO")?.0
+                else {
+                    todo!("error")
+                };
+                let Some(index) = index.as_u64() else {
+                    todo!("error")
+                };
+                // TODO bounds check
+                Ok(vec.swap_remove(index as usize).into())
+            }
+            Value::Object(index_map) => todo!(),
+        }
+    }
+
+    /// Convert this value to a string. If the value is already a string, the
+    /// internal value will be returned, i.e. **quotes will be dropped**.
+    /// Otherwise, the value will be stringified.
+    pub(super) fn into_string(self) -> String {
+        if let Value::String(s) = self.0 {
+            // Don't include quotes
+            s
+        } else {
+            self.to_string()
+        }
+    }
+
+    /// TODO
+    fn scalar_to_string(self) -> Result<String, RenderError> {
+        match self.0 {
+            Value::Null => Ok("null".into()),
+            Value::Bool(b) => Ok(b.to_string()),
+            Value::Number(number) => Ok(number.to_string()),
+            Value::String(s) => Ok(s),
+            // Capsule is always invalid UTF-8, so we can't convert to a string
+            Value::Capsule(_) => Err(RenderError::UnexpectedType {
+                expected: "UTF-8 bytes",
+                value: self,
+            }),
+            Value::Array(_) | Value::Object(_) => {
+                Err(RenderError::UnexpectedType {
+                    expected: "scalar",
+                    value: self,
+                })
+            }
+        }
+    }
+
+    /// TODO
+    fn scalar_to_bytes(self) -> Result<Vec<u8>, RenderError> {
+        if let Value::Capsule(bytes) = self.0 {
+            Ok(bytes.to_vec())
+        } else {
+            // Use the value->string conversion, then take the string bytes.
+            // This will fail for array and object types
+            self.scalar_to_string().map(String::into_bytes)
+        }
+    }
+
+    /// TODO
+    fn into_json(self) -> Result<serde_json::Value, RenderError> {
+        hcl::from_value::<serde_json::Value, _>(self.0).map_err(|error| todo!())
+    }
+
+    fn try_into_bool(self) -> Result<bool, RenderError> {
+        match self.0 {
+            Value::Bool(b) => Ok(b),
+            _ => Err(RenderError::UnexpectedType {
+                expected: "bool",
+                value: self,
+            }),
+        }
+    }
+}
+
+impl From<Value<Bytes>> for RenderValue {
+    fn from(value: Value<Bytes>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<RenderValue> for Value<Bytes> {
+    fn from(value: RenderValue) -> Self {
+        value.0
+    }
+}
+
+impl From<bool> for RenderValue {
+    fn from(b: bool) -> Self {
+        Self(Value::Bool(b))
+    }
+}
+
+impl From<Number> for RenderValue {
+    fn from(n: Number) -> Self {
+        Self(Value::Number(n))
+    }
+}
+
+impl From<String> for RenderValue {
+    fn from(s: String) -> Self {
+        Self(Value::String(s))
+    }
+}
+
+impl From<Vec<u8>> for RenderValue {
+    fn from(bytes: Vec<u8>) -> Self {
+        String::from_utf8(bytes)
+            .map(RenderValue::from)
+            .unwrap_or_else(|error| {
+                Self(Value::Capsule(error.into_bytes().into()))
+            })
+    }
+}
+
+impl From<Bytes> for RenderValue {
+    fn from(bytes: Bytes) -> Self {
+        std::str::from_utf8(&bytes)
+            .map(|s| s.to_owned().into())
+            .unwrap_or_else(|_| Self(Value::Capsule(bytes)))
+    }
+}
+
+impl From<&serde_json::Value> for RenderValue {
+    fn from(json: &serde_json::Value) -> RenderValue {
+        match json {
+            serde_json::Value::Null => Value::Null.into(),
+            serde_json::Value::Bool(b) => (*b).into(),
+            serde_json::Value::Number(number) => todo!(),
+            serde_json::Value::String(s) => s.clone().into(),
+            serde_json::Value::Array(vec) => {
+                vec.iter().map(Self::from).collect()
+            }
+            serde_json::Value::Object(map) => map
+                .iter()
+                .map(|(key, value)| (key.clone(), value.into()))
+                .collect(),
+        }
+    }
+}
+
+/// Construct an HCL array from a series of values
+impl FromIterator<Self> for RenderValue {
+    fn from_iter<T: IntoIterator<Item = Self>>(iter: T) -> Self {
+        // We need to unwrap each element from RenderValue to hcl::Value, then
+        // rewrap the parent
+        Self(Value::Array(iter.into_iter().map(Value::from).collect()))
+    }
+}
+
+/// Construct an HCL object from a series of (key, value)
+impl FromIterator<(String, Self)> for RenderValue {
+    fn from_iter<T: IntoIterator<Item = (String, Self)>>(iter: T) -> Self {
+        // We need to unwrap each element from RenderValue to hcl::Value, then
+        // rewrap the parent
+        Self(Value::Object(
+            iter.into_iter()
+                .map(|(key, value)| (key, value.0))
+                .collect(),
+        ))
+    }
+}
+
 /// An abstraction for an HCL expression that can be rendered to bytes. This is
 /// very similar to the [Evaluate](hcl::eval::Evaluate) trait, with a few key
 /// differences:
@@ -93,17 +280,17 @@ pub type RenderResult = Result<RenderValue, RenderError>;
 /// - Rendering is async
 /// - Traversal such as `profile.x` and `locals.x` is lazy instead of eager, so
 ///   that we don't have to evaluate ALL profile/local fields for every render
-trait Render {
+pub trait Render {
     async fn render(&self, context: &RenderContext) -> RenderResult;
 }
 
 impl Render for Expression {
     async fn render(&self, context: &RenderContext) -> RenderResult {
         match self {
-            Expression::Null => Ok(RenderValue::Null),
-            Expression::Bool(b) => Ok(RenderValue::Bool(*b)),
-            Expression::Number(number) => Ok(RenderValue::Number(*number)),
-            Expression::String(s) => Ok(RenderValue::String(s.clone())),
+            Expression::Null => Ok(Value::Null.into()),
+            Expression::Bool(b) => Ok((*b).into()),
+            Expression::Number(number) => Ok((*number).into()),
+            Expression::String(s) => Ok(s.clone().into()),
             Expression::Array(vec) => {
                 // Concurrency!!
                 // TODO provide error context
@@ -111,25 +298,24 @@ impl Render for Expression {
                     vec.iter().map(|expr| expr.render(context)),
                 )
                 .await?;
-                Ok(RenderValue::Array(elements))
+                Ok(elements.into_iter().collect())
             }
             Expression::Object(map) => {
                 let elements = future::try_join_all(map.iter().map(
                     |(key, value)| async move {
                         let (key, value) = future::try_join(
-                            // TODO provide context specifically to key/value?
                             key.render(context),
                             value.render(context),
                         )
                         .await
                         .context(format!("field `{key}`"))?;
                         // TODO is this the correct behavior? check spec/hcl-rs
-                        let key = try_value_to_string(key)?;
-                        Ok((key, value))
+                        let key = key.scalar_to_string()?;
+                        Ok((key, value.0))
                     },
                 ))
                 .await?;
-                Ok(RenderValue::Object(elements.into_iter().collect()))
+                Ok(Value::Object(elements.into_iter().collect()).into())
             }
             Expression::TemplateExpr(template_expr) => {
                 template_expr.render(context).await
@@ -149,8 +335,12 @@ impl Render for Expression {
                 conditional.render(context).await
             }
             Expression::Operation(operation) => operation.render(context).await,
-            Expression::ForExpr(for_expr) => todo!(),
-            _ => todo!(),
+            // These are complicated to implement and probably not that useful
+            Expression::ForExpr(_) => Err(RenderError::Unimplemented {
+                description: "for expressions".into(),
+            }),
+            // Required for non_exhaustive enum
+            other => unimplemented!("unknown expression type: {other}"),
         }
     }
 }
@@ -164,7 +354,8 @@ impl Render for ObjectKey {
             ObjectKey::Expression(expression) => {
                 expression.render(context).await
             }
-            _ => todo!(),
+            // Required for non_exhaustive enum
+            other => unimplemented!("unknown object key type: {other}"),
         }
     }
 }
@@ -172,8 +363,14 @@ impl Render for ObjectKey {
 impl Render for TemplateExpr {
     async fn render(&self, context: &RenderContext) -> RenderResult {
         // Parse the string as a template
-        let template =
-            hcl::Template::from_expr(self).map_err(|error| todo!())?;
+        let template = hcl::Template::from_expr(self).map_err(|error| {
+            // I don't think this is possible because invalid templates won't
+            // pass the original HCL parsing, but I'm not sure
+            RenderError::TemplateParse {
+                template: self.clone(),
+                error: error.into(),
+            }
+        })?;
         // Render each element independently
         let chunks = future::try_join_all(
             template
@@ -182,8 +379,10 @@ impl Render for TemplateExpr {
                 .map(|element| element.render(context)),
         )
         .await?;
-        let joined =
-            chunks.into_iter().map(value_to_string).collect::<String>();
+        let joined = chunks
+            .into_iter()
+            .map(RenderValue::into_string)
+            .collect::<String>();
         Ok(joined.into())
     }
 }
@@ -209,13 +408,16 @@ impl Render for Interpolation {
 
 impl Render for Directive {
     async fn render(&self, context: &RenderContext) -> RenderResult {
-        todo!()
+        match self {
+            Directive::If(if_directive) => todo!(),
+            Directive::For(for_directive) => todo!(),
+        }
     }
 }
 
 impl Render for Traversal {
     async fn render(&self, context: &RenderContext) -> RenderResult {
-        // TODO support multiple levels of traversal?
+        // TODO support multiple levels of traversal
         match &self.expr {
             Expression::Variable(variable) if variable.as_str() == LOCALS => {
                 // TODO de-dupe with profile case
@@ -230,7 +432,7 @@ impl Render for Traversal {
                 // We're the first to ask for this field. Render it ourselves,
                 // and share the value back when we're done
                 let expression = locals.get(field).ok_or_else(|| {
-                    RenderError::VariableUnknown {
+                    RenderError::UndefinedVariable {
                         variable: field.to_owned(),
                     }
                 })?;
@@ -259,7 +461,7 @@ impl Render for Traversal {
                 // We're the first to ask for this field. Render it ourselves,
                 // and share the value back when we're done
                 let expression = profile.data.get(field).ok_or_else(|| {
-                    RenderError::VariableUnknown {
+                    RenderError::UndefinedVariable {
                         variable: field.to_owned(),
                     }
                 })?;
@@ -281,7 +483,7 @@ impl Render for Traversal {
             expr => {
                 let value =
                     Box::pin(expr.render(context)).await.context("TODO")?;
-                traverse(value, &self.operators, context).await
+                value.traverse(&self.operators, context).await
             }
         }
     }
@@ -293,7 +495,7 @@ impl Render for FuncCall {
             todo!("varargs not allowed")
         }
         if self.name.is_namespaced() {
-            return Err(RenderError::FunctionUnknown {
+            return Err(RenderError::UndefinedFunction {
                 name: self.name.to_string(),
             });
         }
@@ -311,50 +513,82 @@ impl Render for FuncCall {
 
 impl Render for Conditional {
     async fn render(&self, context: &RenderContext) -> RenderResult {
-        todo!()
+        // TODO error context?
+        let condition = Box::pin(self.cond_expr.render(context))
+            .await
+            .context("condition")?
+            .try_into_bool()?;
+        if condition {
+            Box::pin(self.true_expr.render(context))
+                .await
+                .context("true branch")
+        } else {
+            Box::pin(self.false_expr.render(context))
+                .await
+                .context("false branch")
+        }
     }
 }
 
 impl Render for Operation {
     async fn render(&self, context: &RenderContext) -> RenderResult {
-        todo!()
-    }
-}
-
-/// TODO
-async fn traverse(
-    value: RenderValue,
-    operators: &[TraversalOperator],
-    context: &RenderContext,
-) -> RenderResult {
-    // TODO handle multiple levels of traversal
-    match value {
-        RenderValue::Null => todo!(),
-        RenderValue::Bool(_) => todo!(),
-        RenderValue::Number(number) => todo!(),
-        RenderValue::String(_) => todo!(),
-        RenderValue::Capsule(bytes) => todo!(),
-        RenderValue::Array(mut vec) => {
-            let [TraversalOperator::Index(index)] = operators else {
-                todo!("return error")
-            };
-            let RenderValue::Number(index) =
-                Box::pin(index.render(context)).await.context("TODO")?
-            else {
-                todo!("error")
-            };
-            let Some(index) = index.as_u64() else {
-                todo!("error")
-            };
-            // TODO bounds check
-            Ok(vec.swap_remove(index as usize))
+        match self {
+            Operation::Unary(op) => op.render(context).await,
+            Operation::Binary(op) => op.render(context).await,
         }
-        RenderValue::Object(index_map) => todo!(),
     }
 }
 
-/// An HCL value, extended to support binary values
-pub type RenderValue = hcl::Value<Bytes>;
+impl Render for UnaryOp {
+    async fn render(&self, context: &RenderContext) -> RenderResult {
+        use hcl::{UnaryOperator::*, Value::*};
+        let value = Box::pin(self.expr.render(context)).await?;
+
+        let value = match (self.operator, value.0) {
+            (Not, Bool(v)) => Bool(!v),
+            (Neg, Number(n)) => Number(-n),
+            (operator, value) => {
+                return Err(RenderError::UnexpectedUnary {
+                    operator,
+                    value: value.into(),
+                })
+            }
+        };
+        Ok(value.into())
+    }
+}
+
+impl Render for BinaryOp {
+    async fn render(&self, context: &RenderContext) -> RenderResult {
+        use hcl::{BinaryOperator::*, Value::*};
+
+        let lhs_value = Box::pin(self.lhs_expr.render(context)).await?;
+        let rhs_value = Box::pin(self.lhs_expr.render(context)).await?;
+        let value = match (lhs_value.0, self.operator, rhs_value.0) {
+            (lhs, Eq, rhs) => Bool(lhs == rhs),
+            (lhs, NotEq, rhs) => Bool(lhs != rhs),
+            (Bool(lhs), And, Bool(rhs)) => Bool(lhs && rhs),
+            (Bool(lhs), Or, Bool(rhs)) => Bool(lhs || rhs),
+            (Number(lhs), LessEq, Number(rhs)) => Bool(lhs <= rhs),
+            (Number(lhs), GreaterEq, Number(rhs)) => Bool(lhs >= rhs),
+            (Number(lhs), Less, Number(rhs)) => Bool(lhs < rhs),
+            (Number(lhs), Greater, Number(rhs)) => Bool(lhs > rhs),
+            (Number(lhs), Plus, Number(rhs)) => Number(lhs + rhs),
+            (Number(lhs), Minus, Number(rhs)) => Number(lhs - rhs),
+            (Number(lhs), Mul, Number(rhs)) => Number(lhs * rhs),
+            (Number(lhs), Div, Number(rhs)) => Number(lhs / rhs),
+            (Number(lhs), Mod, Number(rhs)) => Number(lhs % rhs),
+            (lhs, operator, rhs) => {
+                return Err(RenderError::UnexpectedBinary {
+                    operator,
+                    lhs: lhs.into(),
+                    rhs: rhs.into(),
+                })
+            }
+        };
+        Ok(value.into())
+    }
+}
 
 impl RenderContext {
     /// Get the most recent response for a profile+recipe pair
@@ -482,50 +716,5 @@ impl TrimMode {
             Self::End => s.trim_end().into(),
             Self::Both => s.trim().into(),
         }
-    }
-}
-
-/// TODO
-pub fn bytes_to_value(bytes: Vec<u8>) -> RenderValue {
-    // TODO remove double conversion bytes -> vec -> bytes
-    String::from_utf8(bytes)
-        .map(RenderValue::String)
-        .unwrap_or_else(|error| RenderValue::Capsule(error.into_bytes().into()))
-}
-
-/// TODO
-pub fn value_to_string(value: RenderValue) -> String {
-    if let RenderValue::String(s) = value {
-        // Don't include quotes
-        s
-    } else {
-        value.to_string()
-    }
-}
-
-/// TODO
-fn try_value_to_string(value: RenderValue) -> Result<String, RenderError> {
-    match value {
-        RenderValue::Null => Ok("null".into()),
-        RenderValue::Bool(b) => Ok(b.to_string()),
-        RenderValue::Number(number) => Ok(number.to_string()),
-        RenderValue::String(s) => Ok(s),
-        RenderValue::Capsule(bytes) => {
-            // TODO drop this
-            String::from_utf8(bytes.to_vec()).map_err(RenderError::InvalidUtf8)
-        }
-        RenderValue::Array(_) => Err(RenderError::ExpectedScalar { value }),
-        RenderValue::Object(_) => Err(RenderError::ExpectedScalar { value }),
-    }
-}
-
-/// TODO
-fn try_value_to_bytes(value: RenderValue) -> Result<Vec<u8>, RenderError> {
-    if let RenderValue::Capsule(bytes) = value {
-        Ok(bytes.to_vec())
-    } else {
-        // Use the value->string conversion, then take the string bytes.
-        // This will fail for array and object types
-        try_value_to_string(value).map(String::into_bytes)
     }
 }

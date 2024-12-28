@@ -4,10 +4,7 @@ use crate::{
     collection::{RecipeId, RequestTrigger},
     template::{
         error::RenderResultExt,
-        render::{
-            bytes_to_value, value_to_string, RenderResult, RenderValue,
-            TrimMode,
-        },
+        render::{RenderResult, RenderValue, TrimMode},
         Prompt, RenderContext, RenderError, Select,
     },
 };
@@ -37,7 +34,7 @@ pub async fn call_fn(
                             .await
                     }
                 )*
-                _ => Err(RenderError::FunctionUnknown {
+                _ => Err(RenderError::UndefinedFunction {
                     name: name.to_string(),
                 }),
             }
@@ -60,7 +57,7 @@ pub async fn call_fn(
 
 fn map_args<T: HclFunction>(arg: RenderValue) -> Result<T, RenderError> {
     // TODO func arg deserialization should get a special error variant
-    hcl::from_value::<T, _>(arg)
+    hcl::from_value::<T, _>(arg.into())
         .map_err(|error| RenderError::FunctionArgument {
             error: error.into(),
         })
@@ -141,7 +138,7 @@ impl HclFunction for CommandFn {
         );
 
         let trimmed = trim.apply(output.stdout);
-        Ok(bytes_to_value(trimmed))
+        Ok(trimmed.into())
     }
 }
 
@@ -173,7 +170,7 @@ impl HclFunction for FileFn {
                 path,
                 error: error.into(),
             })?;
-        Ok(bytes_to_value(output))
+        Ok(output.into())
     }
 }
 
@@ -190,25 +187,6 @@ impl HclFunction for JsonPathFn {
     const NAME: &'static str = "json_path";
 
     async fn call(self, _: &RenderContext) -> RenderResult {
-        fn json_to_hcl(json: &serde_json::Value) -> RenderValue {
-            match json {
-                serde_json::Value::Null => RenderValue::Null,
-                serde_json::Value::Bool(b) => RenderValue::Bool(*b),
-                serde_json::Value::Number(number) => {
-                    RenderValue::Number(todo!())
-                }
-                serde_json::Value::String(s) => RenderValue::String(s.clone()),
-                serde_json::Value::Array(vec) => {
-                    RenderValue::Array(vec.iter().map(json_to_hcl).collect())
-                }
-                serde_json::Value::Object(map) => RenderValue::Object(
-                    map.iter()
-                        .map(|(key, value)| (key.clone(), json_to_hcl(value)))
-                        .collect(),
-                ),
-            }
-        }
-
         let query = JsonPath::parse(&self.query).map_err(|error| {
             RenderError::JsonPathParse {
                 path: self.query,
@@ -221,9 +199,7 @@ impl HclFunction for JsonPathFn {
             })?;
 
         let node_list = query.query(&json);
-        Ok(RenderValue::Array(
-            node_list.into_iter().map(json_to_hcl).collect(),
-        ))
+        Ok(node_list.into_iter().map(RenderValue::from).collect())
     }
 }
 
@@ -270,7 +246,7 @@ impl HclFunction for ResponseFn {
         let response = context
             .get_latest_response(&self.recipe, self.trigger)
             .await?;
-        Ok(bytes_to_value(response.body.into_bytes().into()))
+        Ok(response.body.into_bytes().into())
     }
 }
 
@@ -300,7 +276,7 @@ impl HclFunction for ResponseHeaderFn {
             })?;
         // TODO respect is_sensitive flag?
         // HeaderValue doesn't expose its inner bytes so we have to clone :(
-        Ok(bytes_to_value(header.as_bytes().to_owned()))
+        Ok(header.as_bytes().to_owned().into())
     }
 }
 
@@ -339,7 +315,7 @@ impl HclFunction for ToStringFn {
     const NAME: &'static str = "tostring";
 
     async fn call(self, _: &RenderContext) -> RenderResult {
-        Ok(value_to_string(self.0).into())
+        Ok(self.0.into_string().into())
     }
 }
 

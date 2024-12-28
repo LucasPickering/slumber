@@ -1325,7 +1325,7 @@ mod tests {
                 },
                 // Each emoji is 4 bytes
                 TemplateChunk::raw(" 💚💙💜 "),
-                TemplateChunk::Error(RenderError::VariableUnknown {
+                TemplateChunk::Error(RenderError::UndefinedVariable {
                     field: "unknown".into()
                 }),
                 TemplateChunk::raw(" outro"),

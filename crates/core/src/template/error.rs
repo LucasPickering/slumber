@@ -3,6 +3,7 @@ use crate::{
     http::{RequestBuildError, RequestError},
     template::render::RenderValue,
 };
+use hcl::expr::{BinaryOperator, TemplateExpr, UnaryOperator};
 use itertools::Itertools;
 use std::{io, iter, path::PathBuf, string::FromUtf8Error, sync::Arc};
 use thiserror::Error;
@@ -54,7 +55,7 @@ pub enum RenderError {
     /// A profile field key contained an unknown field
     /// TODO update to support profile or locals
     #[error("Unknown variable `{variable}`")]
-    VariableUnknown { variable: String },
+    UndefinedVariable { variable: String },
 
     /// User tried to access a global variable, which is not allowed
     #[error(
@@ -72,11 +73,6 @@ pub enum RenderError {
         error: Box<Self>,
     },
 
-    /// TODO
-    /// TODO can we use Display impl on this?
-    #[error("Expected a single value but received: {value:?}")]
-    ExpectedScalar { value: RenderValue },
-
     /// Error opening/reading a file
     #[error("Reading file `{path}`")]
     File {
@@ -87,7 +83,7 @@ pub enum RenderError {
 
     /// Called a function that doesn't exist
     #[error("Unknown function `{name}`")]
-    FunctionUnknown { name: String },
+    UndefinedFunction { name: String },
     /// Error deserializing function arguments
     /// TODO better message (include fn name?)
     #[error("Invalid function argument")]
@@ -138,6 +134,14 @@ pub enum RenderError {
         error: Arc<serde_json::Error>,
     },
 
+    /// TODO
+    #[error("Parsing template")]
+    TemplateParse {
+        template: TemplateExpr,
+        #[source]
+        error: Arc<hcl::Error>,
+    },
+
     /// Something bad happened while triggering a request dependency
     #[error("Triggering upstream recipe `{recipe_id}`")]
     Trigger {
@@ -145,6 +149,32 @@ pub enum RenderError {
         #[source]
         error: TriggeredRequestError,
     },
+
+    /// We got the wrong value type during a type coercion
+    #[error("Expected {expected} but received: {value}")]
+    UnexpectedType {
+        expected: &'static str,
+        value: RenderValue,
+    },
+    /// We got the wrong value type for a unary operator
+    #[error("Unary operator `{operator}` is not applicable to `{value}`")]
+    UnexpectedUnary {
+        operator: UnaryOperator,
+        value: RenderValue,
+    },
+    /// We got the wrong value type for a binary operator
+    #[error(
+        "Binary operator `{operator}` is not applicable to `{lhs}` and `{rhs}`"
+    )]
+    UnexpectedBinary {
+        operator: BinaryOperator,
+        lhs: RenderValue,
+        rhs: RenderValue,
+    },
+
+    /// TODO
+    #[error("{description} not supported")]
+    Unimplemented { description: String },
 }
 
 impl RenderError {

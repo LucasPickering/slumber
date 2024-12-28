@@ -175,7 +175,7 @@ impl HclFunction for FileFn {
                     path: self.path,
                     error: error.into(),
                 })?;
-        Ok(output.into())
+        Ok(bytes_to_value(output))
     }
 }
 
@@ -225,44 +225,6 @@ impl HclFunction for JsonPathFn {
         Ok(RenderValue::Array(
             node_list.into_iter().map(json_to_hcl).collect(),
         ))
-
-        // TODO use selector mode?
-        /*
-        /// Stringify a single JSON value into this format
-        fn value_to_string(value: &serde_json::Value) -> String {
-            match value {
-                serde_json::Value::Null => "".into(),
-                serde_json::Value::String(s) => s.clone(),
-                other => other.to_string(),
-            }
-        }
-
-        /// Stringify a list of JSON values into this format
-        fn vec_to_string(values: &Vec<&serde_json::Value>) -> String {
-            serde_json::to_string(&values).unwrap()
-        }
-
-        let stringified = match self.mode {
-            SelectorMode::Auto => match node_list.len() {
-                0 => return Err(RenderError::JsonPathNone),
-                1 => value_to_string(node_list.first().unwrap()),
-                2.. => vec_to_string(&node_list.all()),
-            },
-            SelectorMode::Single => {
-                let value =
-                    node_list.exactly_one().map_err(|error| match error {
-                        ExactlyOneError::Empty => RenderError::JsonPathNone,
-                        ExactlyOneError::MoreThanOne(n) => {
-                            RenderError::JsonPathTooMany { actual_count: n }
-                        }
-                    })?;
-                value_to_string(value)
-            }
-            SelectorMode::Array => vec_to_string(&node_list.all()),
-        };
-
-        Ok(stringified.into())
-        */
     }
 }
 
@@ -336,7 +298,7 @@ impl HclFunction for ResponseHeaderFn {
             })?;
         // TODO respect is_sensitive flag?
         // HeaderValue doesn't expose its inner bytes so we have to clone :(
-        Ok(header.as_bytes().to_owned().into())
+        Ok(bytes_to_value(header.as_bytes().to_owned()))
     }
 }
 

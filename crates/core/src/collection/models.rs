@@ -403,27 +403,6 @@ pub enum RequestTrigger {
     Always,
 }
 
-/// Control how a JSONPath selector returns 0 vs 1 vs 2+ results
-/// TODO delete?
-#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum SelectorMode {
-    /// 0 - Error
-    /// 1 - Single result, without wrapping quotes
-    /// 2 - JSON array
-    #[default]
-    Auto,
-    /// 0 - Error
-    /// 1 - Single result, without wrapping quotes
-    /// 2 - Error
-    Single,
-    /// 0 - JSON array
-    /// 1 - JSON array
-    /// 2 - JSON array
-    Array,
-}
-
 /// Test-only helpers
 #[cfg(any(test, feature = "test"))]
 impl Collection {

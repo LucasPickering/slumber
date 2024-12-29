@@ -11,7 +11,7 @@ use ratatui::{
 };
 use slumber_core::{
     http::content_type::ContentType,
-    template::{Template, RenderError},
+    template::{RenderError, RenderValue, Template},
 };
 use std::{
     ops::Deref,
@@ -77,22 +77,27 @@ impl TemplatePreview {
     /// Generate text from the rendered template, and replace the text in the
     /// mutex
     fn calculate_rendered_text(
-        result: Result<Vec<u8>, RenderError>,
+        result: Result<RenderValue, RenderError>,
         destination: &Mutex<Identified<Text<'static>>>,
         content_type: Option<ContentType>,
     ) {
-        let styles = &TuiContext::get().styles.template_preview;
+        let styles = &TuiContext::get().styles;
 
         // TODO can we do chunk-based errors?
         // TODO hide sensitive values
-        // We have to wrap everything in a span so the styling doesn't apply
-        // to the entire text, beyond the end of the content
-        let text = match result.map(String::from_utf8) {
-            Ok(Ok(rendered)) => Span::styled(rendered, styles.text).into(),
+        let text: Text = match result {
+            Ok(value) => match content_type {
+                None => value.into_string().into(),
+                Some(ContentType::Json) => {
+                    let json = value.into_json().expect("TODO");
+                    format!("{json:#}").into()
+                }
+            },
+            // TODO fix binary
             // Rendered succeeded but not UTF-8
-            Ok(Err(_)) => Span::styled("<binary>", styles.text).into(),
+            // Ok(Err(_)) => Span::styled("<binary>", styles.text).into(),
             // Render failed
-            Err(_) => Span::styled("Error", styles.error).into(),
+            Err(_) => Span::styled("Error", styles.text.error).into(),
         };
         let text = highlight::highlight_if(content_type, text);
         *destination

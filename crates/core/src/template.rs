@@ -7,6 +7,7 @@ mod render;
 
 pub use error::{RenderError, TriggeredRequestError};
 pub use prompt::{Prompt, PromptChannel, Prompter, Select};
+pub use render::{Render, RenderValue};
 
 use crate::{
     collection::{Collection, Profile, ProfileId},

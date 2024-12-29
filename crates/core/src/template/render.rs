@@ -127,7 +127,7 @@ impl RenderValue {
     /// Convert this value to a string. If the value is already a string, the
     /// internal value will be returned, i.e. **quotes will be dropped**.
     /// Otherwise, the value will be stringified.
-    pub(super) fn into_string(self) -> String {
+    pub fn into_string(self) -> String {
         if let Value::String(s) = self.0 {
             // Don't include quotes
             s
@@ -169,7 +169,7 @@ impl RenderValue {
     }
 
     /// TODO
-    fn into_json(self) -> Result<serde_json::Value, RenderError> {
+    pub fn into_json(self) -> Result<serde_json::Value, RenderError> {
         hcl::from_value::<serde_json::Value, _>(self.0).map_err(|error| todo!())
     }
 
@@ -281,7 +281,14 @@ impl FromIterator<(String, Self)> for RenderValue {
 /// - Traversal such as `profile.x` and `locals.x` is lazy instead of eager, so
 ///   that we don't have to evaluate ALL profile/local fields for every render
 pub trait Render {
+    #[allow(async_fn_in_trait)]
     async fn render(&self, context: &RenderContext) -> RenderResult;
+}
+
+impl Render for Template {
+    async fn render(&self, context: &RenderContext) -> RenderResult {
+        self.0.render(context).await
+    }
 }
 
 impl Render for Expression {

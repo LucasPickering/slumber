@@ -16,7 +16,6 @@ pub struct Styles {
     pub status_code: StatusCodeStyles,
     pub tab: TabStyles,
     pub table: TableStyles,
-    pub template_preview: TemplatePreviewStyles,
     pub text: TextStyle,
     pub text_box: TextBoxStyle,
     pub text_window: TextWindowStyle,
@@ -86,13 +85,6 @@ pub struct TableStyles {
     pub disabled: Style,
     pub highlight: Style,
     pub title: Style,
-}
-
-/// Styles for TemplatePreview component
-#[derive(Debug)]
-pub struct TemplatePreviewStyles {
-    pub text: Style,
-    pub error: Style,
 }
 
 /// General text styles
@@ -173,14 +165,6 @@ impl Styles {
                     .add_modifier(Modifier::BOLD)
                     .add_modifier(Modifier::UNDERLINED),
                 title: Style::default().add_modifier(Modifier::BOLD),
-            },
-            template_preview: TemplatePreviewStyles {
-                text: Style::default()
-                    .fg(theme.secondary_color)
-                    .add_modifier(Modifier::UNDERLINED),
-                error: Style::default()
-                    .fg(Color::default()) // Override syntax highlighting
-                    .bg(theme.error_color),
             },
             text: TextStyle {
                 highlight: Style::default()

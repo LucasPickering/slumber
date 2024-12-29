@@ -40,7 +40,9 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{RequestId, RequestSeed},
-    template::{Prompter, RenderContext, RenderError, Template},
+    template::{
+        Prompter, Render, RenderContext, RenderError, RenderValue, Template,
+    },
 };
 use std::{
     future::Future,
@@ -642,13 +644,13 @@ impl Tui {
         &self,
         template: Template,
         profile_id: Option<ProfileId>,
-        on_complete: Callback<Result<Vec<u8>, RenderError>>,
+        on_complete: Callback<Result<RenderValue, RenderError>>,
     ) -> anyhow::Result<()> {
         let context = self.template_context(profile_id, true)?;
         let messages_tx = self.messages_tx();
         tokio::spawn(async move {
             // Render, then write output to the destination
-            let result = template.render_bytes(&context).await;
+            let result = template.render(&context).await;
             on_complete(result);
             // Trigger a draw
             messages_tx.send(Message::TemplatePreviewComplete);

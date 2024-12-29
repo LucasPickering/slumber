@@ -8,9 +8,10 @@ use crate::{
     template::Template,
     util::{parse_yaml, ResultTraced},
 };
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, Context as _};
 use derive_more::{Deref, Display, From, FromStr};
 use hcl::{
+    eval::{Context, Evaluate},
     expr::{Traversal, TraversalOperator},
     Attribute, Body, Expression, Structure,
 };
@@ -455,52 +456,42 @@ impl HalfDone {
     const LOCALS: &'static str = "locals";
 
     fn try_into_collection(mut self) -> anyhow::Result<Collection> {
-        self.resolve()?;
+        let mut context = Context::new();
+        self.load_locals(&mut context);
+        dbg!(&context);
+
+        dbg!(self.body.evaluate_in_place(&context));
+
+        println!("{}", hcl::to_string(&self.body).unwrap());
+
         let deserializer = hcl::de::Deserializer::from_body(self.body);
         serde_path_to_error::deserialize(deserializer)
             .context("Error deserializing TODO")
     }
 
-    fn resolve(&mut self) -> anyhow::Result<()> {
-        self.resolve_includes()?;
-        self.resolve_locals()?;
-        Ok(())
-    }
-
-    fn resolve_includes(&mut self) -> anyhow::Result<()> {
-        // TODO
-        Ok(())
-    }
-
     /// TODO
-    fn resolve_locals(&mut self) -> anyhow::Result<()> {
-        let locals = self.load_locals()?;
-        self.body.resolve_locals(&locals)
-    }
-
-    /// TODO
-    fn load_locals(
-        &mut self,
-        // TODO import hcl::Identifier
-    ) -> anyhow::Result<IndexMap<hcl::Identifier, Expression>> {
+    fn load_locals(&mut self, context: &mut Context) {
         // TODO error if "locals" is an attribute
-        // TODO pull owned value out
         let Some(locals) = self
             .body
-            .blocks()
+            .blocks_mut()
             .find(|block| block.identifier() == Self::LOCALS)
         else {
-            return Ok(IndexMap::new());
+            return;
         };
-        // TODO can we use serde for this instead?
-        // TODO assert labels empty
-        // TODO assert body.blocks empty
-        let map = locals
+
+        let locals: IndexMap<_, _> = locals
             .body
-            .attributes()
-            .map(|attr| (attr.key.clone(), attr.expr.clone()))
+            .attributes_mut()
+            .filter_map(|attr| {
+                if let Ok(value) = attr.expr.evaluate(context) {
+                    Some((attr.key.as_str().to_owned(), value))
+                } else {
+                    None
+                }
+            })
             .collect();
-        Ok(map)
+        context.declare_var(Self::LOCALS, locals);
     }
 }
 

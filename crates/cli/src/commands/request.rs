@@ -154,7 +154,7 @@ impl BuildRequestCommand {
     ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
         let collection_path = CollectionFile::try_path(None, global.file)?;
         let config = Config::load()?;
-        let collection = Collection::load(&collection_path)?;
+        let collection = Collection::load(&collection_path).await?;
         // Open DB in readonly. Storing requests in history from the CLI isn't
         // really intuitive, and could have a large perf impact for scripting
         // and large responses

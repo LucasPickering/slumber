@@ -50,7 +50,7 @@ impl Subcommand for ShowCommand {
             ShowTarget::Collection => {
                 let collection_path =
                     CollectionFile::try_path(None, global.file)?;
-                let collection = Collection::load(&collection_path)?;
+                let collection = Collection::load(&collection_path).await?;
                 println!("{}", to_yaml(&collection));
             }
         }

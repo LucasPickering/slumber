@@ -16,20 +16,27 @@ use std::{
     fmt::Debug,
     future::Future,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
 };
-use tokio::task;
+use tokio::{runtime::Runtime, task};
 use tracing::{trace, warn};
 
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
 /// defined, we'll take the earliest and print a warning.
 const CONFIG_FILES: &[&str] = &[
+    "slumber.js",
+    ".slumber.js",
     "slumber.yml",
     "slumber.yaml",
     ".slumber.yml",
     ".slumber.yaml",
 ];
+
+thread_local! {
+    pub static RUNTIME: Rc<Runtime> = Rc::new(Runtime::new().unwrap());
+}
 
 /// A wrapper around a request collection, to handle functionality around the
 /// file system.
@@ -155,10 +162,8 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
     // YAML parsing is blocking so do it in a different thread. We could use
     // tokio::fs for this but that just uses std::fs underneath anyway.
-    task::spawn_blocking(move || Collection::load(&path))
-        .await
-        // This error only occurs if the task panics
-        .context("Error parsing collection")?
+    // TODO update comment
+    Collection::load(&path).await
 }
 
 #[cfg(test)]

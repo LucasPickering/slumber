@@ -4,6 +4,7 @@ use crate::{
     collection::{
         cereal,
         recipe_tree::{RecipeNode, RecipeTree},
+        RUNTIME,
     },
     http::{content_type::ContentType, query::Query},
     template::{Identifier, Template},
@@ -13,8 +14,9 @@ use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From, FromStr};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use rustyscript::{Module, Runtime};
 use serde::{Deserialize, Serialize};
-use std::{fs::File, path::PathBuf, time::Duration};
+use std::{ffi::OsStr, fs::File, path::Path, rc::Rc, time::Duration};
 use strum::{EnumIter, IntoEnumIterator};
 use tracing::info;
 
@@ -45,16 +47,30 @@ pub struct Collection {
 
 impl Collection {
     /// Load collection from a file
-    pub fn load(path: &PathBuf) -> anyhow::Result<Self> {
+    pub async fn load(path: &Path) -> anyhow::Result<Self> {
         info!(?path, "Loading collection file");
 
-        let load = || {
-            let file = File::open(path)?;
-            let collection = parse_yaml(&file)?;
+        // TODO use async IO?
+        let future = async {
+            let collection =
+                if path.extension().and_then(OsStr::to_str) == Some("js") {
+                    let module = Module::load(path)?;
+                    let mut runtime = Runtime::with_tokio_runtime(
+                        Default::default(),
+                        RUNTIME.with(Rc::clone),
+                    )?;
+                    let handle = runtime.load_module_async(&module).await?;
+                    runtime.call_entrypoint_async(&handle, &()).await?
+                } else {
+                    let file = File::open(path)?;
+                    parse_yaml(&file)?
+                };
+
             Ok::<_, anyhow::Error>(collection)
         };
 
-        load()
+        future
+            .await
             .context(format!("Error loading data from {path:?}"))
             .traced()
     }
@@ -334,7 +350,8 @@ pub enum Authentication<T = Template> {
 /// HTTP engine uses the variant to determine not only how to serialize the
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum RecipeBody {
     /// Plain string/bytes body
@@ -430,7 +447,7 @@ impl<T: Into<Identifier>> From<T> for ChainId {
 /// The source of data for a chain
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(rename_all = "snake_case", tag = "type", deny_unknown_fields)]
 pub enum ChainSource {
     /// Run an external command to get a result
     Command {

@@ -290,6 +290,7 @@ impl Serialize for RecipeBody {
 
 // Custom deserialization for RecipeBody, to support raw template or structured
 // body with a tag
+/*
 impl<'de> Deserialize<'de> for RecipeBody {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -371,7 +372,7 @@ impl<'de> Deserialize<'de> for RecipeBody {
 
         deserializer.deserialize_any(RecipeBodyVisitor)
     }
-}
+} */
 
 /// Serialize/deserialize a duration with unit shorthand. This does *not* handle
 /// subsecond precision. Supported units are:

@@ -33,7 +33,8 @@ fn load_collection() -> anyhow::Result<Collection> {
     // For now we just lean on the default collection paths. In the future we
     // should be able to look for a --file arg in the command and use that path
     let path = CollectionFile::try_path(None, None)?;
-    Collection::load(&path)
+    // Collection::load(&path)
+    todo!()
 }
 
 fn get_candidates<'a, T: 'a + Deref<Target = str>>(

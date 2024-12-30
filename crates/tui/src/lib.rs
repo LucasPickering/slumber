@@ -231,7 +231,8 @@ impl Tui {
             Message::CollectionStartReload => {
                 let future = self.collection_file.reload();
                 let messages_tx = self.messages_tx();
-                self.spawn(async move {
+                // TODO display error here
+                self.spawn_local(async move {
                     let collection = future.await?;
                     messages_tx.send(Message::CollectionEndReload(collection));
                     Ok(())
@@ -664,6 +665,17 @@ impl Tui {
     ) {
         let messages_tx = self.messages_tx();
         tokio::spawn(async move { future.await.reported(&messages_tx) });
+    }
+
+    /// TODO
+    fn spawn_local(
+        &self,
+        future: impl Future<Output = anyhow::Result<()>> + 'static,
+    ) {
+        let messages_tx = self.messages_tx();
+        tokio::task::spawn_local(
+            async move { future.await.reported(&messages_tx) },
+        );
     }
 
     /// Expose app state to the templater. Most of the data has to be cloned out

@@ -3,17 +3,25 @@
 
 use anyhow::Context;
 use slumber_cli::Args;
-use slumber_core::util::{paths, ResultTraced};
+use slumber_core::{
+    collection::RUNTIME,
+    util::{paths, ResultTraced},
+};
 use std::{
     fs::{self, File, OpenOptions},
     io,
     process::ExitCode,
+    rc::Rc,
 };
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{filter::Targets, fmt::format::FmtSpan, prelude::*};
 
-#[tokio::main]
-async fn main() -> anyhow::Result<ExitCode> {
+fn main() -> anyhow::Result<ExitCode> {
+    let runtime = RUNTIME.with(Rc::clone);
+    runtime.block_on(run())
+}
+
+async fn run() -> anyhow::Result<ExitCode> {
     // Global initialization
     Args::complete(); // If COMPLETE var is enabled, process will stop here
     let args = Args::parse();

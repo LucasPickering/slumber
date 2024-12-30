@@ -4,21 +4,17 @@ use crate::{
     collection::{
         cereal,
         recipe_tree::{RecipeNode, RecipeTree},
-        RUNTIME,
     },
     http::content_type::ContentType,
     template::Template,
-    util::{parse_yaml, ResultTraced},
 };
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use derive_more::{Deref, Display, From, FromStr};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use rustyscript::{Module, Runtime};
 use serde::{Deserialize, Serialize};
-use std::{ffi::OsStr, fs::File, path::Path, rc::Rc, time::Duration};
+use std::time::Duration;
 use strum::{EnumIter, IntoEnumIterator};
-use tracing::info;
 use uuid::Uuid;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
@@ -26,46 +22,31 @@ use uuid::Uuid;
 ///
 /// This deliberately does not implement `Clone`, because it could potentially
 /// be very large. Instead, it's hidden behind an `Arc` by `CollectionFile`.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
-pub struct Collection {
+#[serde(
+    bound(
+        serialize = "F: Serialize",
+        deserialize = "for<'a> F: Deserialize<'a>"
+    ),
+    deny_unknown_fields
+)]
+pub struct Collection<F = FunctionId> {
     #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
-    pub profiles: IndexMap<ProfileId, Profile>,
+    pub profiles: IndexMap<ProfileId, Profile<F>>,
     /// Internally we call these recipes, but to a user `requests` is more
     /// intuitive
     #[serde(default, rename = "requests")]
-    pub recipes: RecipeTree,
+    pub recipes: RecipeTree<F>,
 }
 
-impl Collection {
-    /// Load collection from a file
-    pub async fn load(path: &Path) -> anyhow::Result<Self> {
-        info!(?path, "Loading collection file");
-
-        // TODO use async IO?
-        let future = async {
-            let collection =
-                if path.extension().and_then(OsStr::to_str) == Some("js") {
-                    let mut runtime = Runtime::with_tokio_runtime(
-                        Default::default(),
-                        RUNTIME.with(Rc::clone),
-                    )?;
-                    let module = Module::load(path)?;
-                    let handle = runtime.load_module_async(&module).await?;
-                    runtime.call_entrypoint_async(&handle, &()).await?
-                } else {
-                    let file = File::open(path)?;
-                    parse_yaml(&file)?
-                };
-
-            Ok::<_, anyhow::Error>(collection)
-        };
-
-        future
-            .await
-            .context(format!("Error loading data from {path:?}"))
-            .traced()
+// Derive macro applies an incorrect bound on F
+impl<F> Default for Collection<F> {
+    fn default() -> Self {
+        Self {
+            profiles: Default::default(),
+            recipes: Default::default(),
+        }
     }
 }
 
@@ -73,7 +54,7 @@ impl Collection {
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
-pub struct Profile {
+pub struct Profile<F = FunctionId> {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
     pub name: Option<String>,
@@ -83,7 +64,7 @@ pub struct Profile {
     /// custom deserializer function.
     #[serde(default)]
     pub default: bool,
-    pub data: IndexMap<String, Template>,
+    pub data: IndexMap<String, Template<F>>,
 }
 
 impl Profile {
@@ -143,8 +124,14 @@ impl crate::test_util::Factory for ProfileId {
 /// A gathering of like-minded recipes and/or folders
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
-pub struct Folder {
+#[serde(
+    bound(
+        serialize = "F: Serialize",
+        deserialize = "for<'a> F: Deserialize<'a>"
+    ),
+    deny_unknown_fields
+)]
+pub struct Folder<F = FunctionId> {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
     pub name: Option<String>,
@@ -154,10 +141,10 @@ pub struct Folder {
         deserialize_with = "cereal::deserialize_id_map",
         rename = "requests"
     )]
-    pub children: IndexMap<RecipeId, RecipeNode>,
+    pub children: IndexMap<RecipeId, RecipeNode<F>>,
 }
 
-impl Folder {
+impl<F> Folder<F> {
     /// Get a presentable name for this folder
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
@@ -175,7 +162,7 @@ impl crate::test_util::Factory for Folder {
     }
 }
 
-impl Recipe {
+impl<F> Recipe<F> {
     /// Get a presentable name for this recipe
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
@@ -215,8 +202,14 @@ impl crate::test_util::Factory<&str> for Recipe {
 /// meaning related to string interpolation.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
-pub struct Recipe {
+#[serde(
+    bound(
+        serialize = "F: Serialize",
+        deserialize = "for<'a> F: Deserialize<'a>"
+    ),
+    deny_unknown_fields
+)]
+pub struct Recipe<F = FunctionId> {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
     pub name: Option<String>,
@@ -224,13 +217,13 @@ pub struct Recipe {
     /// complexity. This gives the user an immediate error if the method is
     /// wrong which is helpful.
     pub method: Method,
-    pub url: Template,
-    pub body: Option<RecipeBody>,
-    pub authentication: Option<Authentication>,
+    pub url: Template<F>,
+    pub body: Option<RecipeBody<F>>,
+    pub authentication: Option<Authentication<Template<F>>>,
     #[serde(default)]
-    pub query: Vec<(String, Template)>,
+    pub query: Vec<(String, Template<F>)>,
     #[serde(default)]
-    pub headers: IndexMap<String, Template>,
+    pub headers: IndexMap<String, Template<F>>,
 }
 
 #[derive(
@@ -278,6 +271,18 @@ impl crate::test_util::Factory for RecipeId {
     Deserialize,
 )]
 pub struct FunctionId(Uuid);
+
+impl FunctionId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl Default for FunctionId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// HTTP method. This is duplicated from reqwest's Method so we can enforce
 /// the method is valid during deserialization. This is also generally more
@@ -342,22 +347,22 @@ pub enum Authentication<T = Template> {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub enum RecipeBody {
+pub enum RecipeBody<F = FunctionId> {
     /// Plain string/bytes body
     Raw {
-        body: Template,
+        body: Template<F>,
         /// For structured body types such as `!json`, we'll stringify during
         /// deserialization then just store the content type. This makes
         /// internal logic much simpler because we can just work with templates
         content_type: Option<ContentType>,
     },
     /// `application/x-www-form-urlencoded` fields. Values must be strings
-    FormUrlencoded(IndexMap<String, Template>),
+    FormUrlencoded(IndexMap<String, Template<F>>),
     /// `multipart/form-data` fields. Values can be binary
-    FormMultipart(IndexMap<String, Template>),
+    FormMultipart(IndexMap<String, Template<F>>),
 }
 
-impl RecipeBody {
+impl<F> RecipeBody<F> {
     /// Build a JSON body *without* parsing the internal strings as templates.
     /// Useful for importing from external formats.
     pub fn untemplated_json(value: serde_json::Value) -> Self {

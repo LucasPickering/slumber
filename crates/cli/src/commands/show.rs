@@ -3,9 +3,7 @@ use clap::Parser;
 use serde::Serialize;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{Collection, CollectionFile},
-    db::Database,
-    util::paths,
+    collection::CollectionFile, db::Database, js::JsRuntime, util::paths,
 };
 use std::{borrow::Cow, path::Path, process::ExitCode};
 
@@ -50,7 +48,8 @@ impl Subcommand for ShowCommand {
             ShowTarget::Collection => {
                 let collection_path =
                     CollectionFile::try_path(None, global.file)?;
-                let collection = Collection::load(&collection_path).await?;
+                let collection =
+                    JsRuntime::new().load_collection(&collection_path).await?;
                 println!("{}", to_yaml(&collection));
             }
         }

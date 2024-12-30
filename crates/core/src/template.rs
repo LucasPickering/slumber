@@ -34,14 +34,16 @@ use std::sync::Arc;
 /// - Two templates with the same source string will have the same set of
 ///   chunks, and vice versa
 /// - No two raw segments will ever be consecutive
+///
+/// TODO update comment
 #[derive(Clone, Debug, Display, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
-pub enum Template {
+pub enum Template<F = FunctionId> {
     Value(String),
-    Lazy(FunctionId),
+    Lazy(F),
 }
 
-impl Default for Template {
+impl<F> Default for Template<F> {
     fn default() -> Self {
         Self::Value(String::new())
     }
@@ -75,11 +77,11 @@ pub struct TemplateContext {
     pub state: RenderGroupState,
 }
 
-impl Template {
+impl<F> Template<F> {
     /// Create a new template from a raw string, without parsing it at all.
     /// Useful when importing from external formats where the string isn't
     /// expected to be a valid Slumber template
-    pub fn raw(template: String) -> Template {
+    pub fn raw(template: String) -> Self {
         Self::Value(template)
     }
 }

@@ -34,7 +34,7 @@ impl Subcommand for ImportCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
         // Load the input
         // TODO
-        let collection = match self.format {
+        let collection: Collection = match self.format {
             Format::Insomnia => {
                 Collection::default()
                 // slumber_import::from_insomnia(&self.input_file)?

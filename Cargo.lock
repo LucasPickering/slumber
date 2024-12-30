@@ -2832,8 +2832,6 @@ dependencies = [
 [[package]]
 name = "rustyscript"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c018784a521f62e7bf43ac6256a3b42aa16e8a61e0acc36701eadda51e54560"
 dependencies = [
  "async-trait",
  "deno_ast",

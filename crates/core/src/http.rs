@@ -659,7 +659,7 @@ impl Authentication<String> {
     }
 }
 
-impl RecipeBody {
+impl<F> RecipeBody<F> {
     /// Get the value that we should set for the `Content-Type` header,
     /// according to the body
     fn mime(&self) -> Option<Mime> {

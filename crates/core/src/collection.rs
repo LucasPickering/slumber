@@ -9,7 +9,8 @@ pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 
-use anyhow::{anyhow, Context};
+use crate::js::JsRuntime;
+use anyhow::anyhow;
 use itertools::Itertools;
 use std::{
     env,
@@ -19,20 +20,13 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
-use tokio::{runtime::Runtime, task};
+use tokio::runtime::Runtime;
 use tracing::{trace, warn};
 
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
 /// defined, we'll take the earliest and print a warning.
-const CONFIG_FILES: &[&str] = &[
-    "slumber.js",
-    ".slumber.js",
-    "slumber.yml",
-    "slumber.yaml",
-    ".slumber.yml",
-    ".slumber.yaml",
-];
+const CONFIG_FILES: &[&str] = &["slumber.js", ".slumber.js"];
 
 thread_local! {
     pub static RUNTIME: Rc<Runtime> = Rc::new(Runtime::new().unwrap());
@@ -163,7 +157,7 @@ async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
     // YAML parsing is blocking so do it in a different thread. We could use
     // tokio::fs for this but that just uses std::fs underneath anyway.
     // TODO update comment
-    Collection::load(&path).await
+    JsRuntime::new().load_collection(&path).await
 }
 
 #[cfg(test)]

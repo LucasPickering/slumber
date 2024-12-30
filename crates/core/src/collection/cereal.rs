@@ -18,7 +18,7 @@ pub trait HasId {
     fn set_id(&mut self, id: Self::Id);
 }
 
-impl HasId for Profile {
+impl<F> HasId for Profile<F> {
     type Id = ProfileId;
 
     fn id(&self) -> &Self::Id {
@@ -30,7 +30,7 @@ impl HasId for Profile {
     }
 }
 
-impl HasId for RecipeNode {
+impl<F> HasId for RecipeNode<F> {
     type Id = RecipeId;
 
     fn id(&self) -> &Self::Id {
@@ -48,7 +48,7 @@ impl HasId for RecipeNode {
     }
 }
 
-impl HasId for Recipe {
+impl<F> HasId for Recipe<F> {
     type Id = RecipeId;
 
     fn id(&self) -> &Self::Id {
@@ -83,17 +83,18 @@ where
 
 /// Deserialize a profile mapping. This also enforces that only one profile is
 /// marked as default
-pub fn deserialize_profiles<'de, D>(
+pub fn deserialize_profiles<'de, D, F>(
     deserializer: D,
-) -> Result<IndexMap<ProfileId, Profile>, D::Error>
+) -> Result<IndexMap<ProfileId, Profile<F>>, D::Error>
 where
     D: Deserializer<'de>,
+    F: Deserialize<'de>,
 {
-    let profiles: IndexMap<ProfileId, Profile> =
+    let profiles: IndexMap<ProfileId, Profile<F>> =
         deserialize_id_map(deserializer)?;
 
     // Make sure at most one profile is the default
-    let is_default = |profile: &&Profile| profile.default;
+    let is_default = |profile: &&Profile<F>| profile.default;
 
     if profiles.values().filter(is_default).count() > 1 {
         return Err(de::Error::custom(format!(

@@ -1,7 +1,7 @@
 //! Recipe/folder tree structure
 
 use crate::collection::{
-    cereal::deserialize_id_map, Folder, HasId, Recipe, RecipeId,
+    cereal::deserialize_id_map, Folder, FunctionId, HasId, Recipe, RecipeId,
 };
 use anyhow::anyhow;
 use derive_more::From;
@@ -16,17 +16,194 @@ use thiserror::Error;
 /// recipes. This is a mild restriction on the user that makes implementing a
 /// lot simpler. In reality it's unlikely they would want to give two things
 /// the same ID anyway.
-#[derive(derive_more::Debug, Default)]
+#[derive(derive_more::Debug)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub struct RecipeTree {
+pub struct RecipeTree<F = FunctionId> {
     /// Tree structure storing all the folder/recipe data
-    tree: IndexMap<RecipeId, RecipeNode>,
+    pub(crate) tree: IndexMap<RecipeId, RecipeNode<F>>,
     /// A flattened version of the tree, with each ID pointing to its path in
     /// the tree. This is possible because the IDs are globally unique. It is
     /// an invariant that every lookup key in this map is valid, therefore it's
     /// safe to panic if one is found to be invalid.
     #[debug(skip)] // It's big and useless
-    nodes_by_id: IndexMap<RecipeId, RecipeLookupKey>,
+    pub(crate) nodes_by_id: IndexMap<RecipeId, RecipeLookupKey>,
+}
+
+impl<F> RecipeTree<F> {
+    /// Create a new tree. If there are *any* duplicate IDs in the tree, the
+    /// duplicate ID will be returned as an `Err`.
+    pub fn new(
+        tree: IndexMap<RecipeId, RecipeNode<F>>,
+    ) -> Result<Self, DuplicateRecipeIdError> {
+        // IDs of *all* nodes are unique, which means we can build a flat lookup
+        // map for all recipes. This is also where we enforce uniqueness
+        let mut nodes_by_id = IndexMap::new();
+        let mut new = Self {
+            tree,
+            nodes_by_id: IndexMap::default(),
+        };
+        for (lookup_key, node) in new.iter() {
+            let evicted = nodes_by_id.insert(node.id().clone(), lookup_key);
+            if evicted.is_some() {
+                return Err(DuplicateRecipeIdError(node.id().clone()));
+            }
+        }
+        new.nodes_by_id = nodes_by_id;
+        Ok(new)
+    }
+
+    /// Get a recipe/folder's tree lookup key by is unique ID
+    pub fn get_lookup_key(&self, id: &RecipeId) -> Option<&RecipeLookupKey> {
+        self.nodes_by_id.get(id)
+    }
+
+    /// Get a folder/recipe by ID
+    pub fn get(&self, id: &RecipeId) -> Option<&RecipeNode<F>> {
+        let lookup_key = self.nodes_by_id.get(id)?;
+        let mut nodes = &self.tree;
+        for (depth, step) in lookup_key.0.iter().enumerate() {
+            let is_last = depth == lookup_key.0.len() - 1;
+            let node = nodes.get(step).unwrap_or_else(|| {
+                panic!("Lookup key {lookup_key:?} does not point to a node")
+            });
+            if is_last {
+                return Some(node);
+            }
+            match node {
+                RecipeNode::Folder(folder) => nodes = &folder.children,
+                RecipeNode::Recipe(recipe) => panic!(
+                    "Lookup key {lookup_key:?} attempts to traverse through \
+                    recipe node `{}`",
+                    recipe.id
+                ),
+            }
+        }
+        None
+    }
+
+    /// Get a folder/recipe by ID. Return an error if the ID isn't in the tree
+    pub fn try_get(&self, id: &RecipeId) -> anyhow::Result<&RecipeNode<F>> {
+        self.get(id)
+            .ok_or_else(|| anyhow!("No recipe node with ID `{}`", id,))
+    }
+
+    /// Get a **recipe** by ID. If the ID isn't in the tree, or points to a
+    /// folder, return `None`
+    pub fn get_recipe(&self, id: &RecipeId) -> Option<&Recipe<F>> {
+        self.get(id).and_then(RecipeNode::recipe)
+    }
+
+    /// Get a **recipe** by ID. If the ID isn't in the tree, or points to a
+    /// folder, return an error that can be presented to the user
+    pub fn try_get_recipe(&self, id: &RecipeId) -> anyhow::Result<&Recipe<F>> {
+        self.get_recipe(id)
+            .ok_or_else(|| anyhow!("No recipe with ID `{}`", id,))
+    }
+
+    /// Get all **recipe** IDs in the tree. Useful for printing a list to the
+    /// user
+    pub fn recipe_ids(&self) -> impl Iterator<Item = &RecipeId> {
+        self.nodes_by_id
+            .keys()
+            .filter(|id| self.get_recipe(id).is_some())
+    }
+
+    /// Get a flat iterator over all nodes in the tree, using depth first
+    /// search. Each yielded item will include the lookup key to retrieve
+    /// that item.
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = (RecipeLookupKey, &RecipeNode<F>)> {
+        // We'll lean on the inner IndexMap iterator for the hard work. We just
+        // keep a stack of all the branches we're iterating over
+
+        struct Iter<'a, F> {
+            stack: Vec<Values<'a, RecipeId, RecipeNode<F>>>,
+            path: Vec<&'a RecipeId>,
+        }
+
+        impl<'a, F> Iterator for Iter<'a, F> {
+            type Item = (RecipeLookupKey, &'a RecipeNode<F>);
+
+            fn next(&mut self) -> Option<Self::Item> {
+                while let Some(iter) = self.stack.last_mut() {
+                    match iter.next() {
+                        Some(node @ RecipeNode::Folder(folder)) => {
+                            // Go down this branch next
+                            self.path.push(&folder.id);
+                            self.stack.push(folder.children.values());
+                            return Some(((&self.path).into(), node));
+                        }
+                        Some(node @ RecipeNode::Recipe(recipe)) => {
+                            let mut lookup_key: RecipeLookupKey =
+                                (&self.path).into();
+                            lookup_key.0.push(recipe.id.clone());
+                            return Some((lookup_key, node));
+                        }
+                        None => {
+                            self.stack.pop();
+                            self.path.pop();
+                        }
+                    }
+                }
+                // We ran out of iteration :(
+                None
+            }
+        }
+
+        Iter {
+            stack: vec![self.tree.values()],
+            path: Vec::new(),
+        }
+    }
+}
+
+// Derive macro applies an incorrect bound on F
+impl<F> Default for RecipeTree<F> {
+    fn default() -> Self {
+        Self {
+            tree: Default::default(),
+            nodes_by_id: Default::default(),
+        }
+    }
+}
+
+impl<F: Serialize> Serialize for RecipeTree<F> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.tree.serialize(serializer)
+    }
+}
+
+impl<'de, F: for<'a> Deserialize<'a>> Deserialize<'de> for RecipeTree<F> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let tree: IndexMap<RecipeId, RecipeNode<F>> =
+            deserialize_id_map(deserializer)?;
+        Self::new(tree).map_err(D::Error::custom)
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
+    fn from(value: IndexMap<RecipeId, Recipe>) -> Self {
+        value
+            .into_iter()
+            .map(|(id, recipe)| (id, RecipeNode::Recipe(recipe)))
+            .collect::<IndexMap<_, _>>()
+            .into()
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<IndexMap<RecipeId, RecipeNode>> for RecipeTree {
+    fn from(tree: IndexMap<RecipeId, RecipeNode>) -> Self {
+        Self::new(tree).unwrap()
+    }
 }
 
 /// A path into the recipe tree. Every constructed path is assumed to be valid,
@@ -65,14 +242,47 @@ impl IntoIterator for RecipeLookupKey {
 #[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
 #[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    // TODO can we get rid of these manual bounds?
+    bound(
+        serialize = "F: Serialize",
+        deserialize = "for<'a> F: Deserialize<'a>"
+    ),
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
 #[allow(clippy::large_enum_variant)]
-pub enum RecipeNode {
-    Folder(Folder),
+pub enum RecipeNode<F = FunctionId> {
+    Folder(Folder<F>),
     /// Rename this variant to match the `requests` field in the root and
     /// folders
     #[serde(rename = "request")]
-    Recipe(Recipe),
+    Recipe(Recipe<F>),
+}
+
+impl<F> RecipeNode<F> {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Folder(folder) => folder.name(),
+            Self::Recipe(recipe) => recipe.name(),
+        }
+    }
+
+    /// If this node is a recipe, return it. Otherwise return `None`
+    pub fn recipe(&self) -> Option<&Recipe<F>> {
+        match self {
+            Self::Recipe(recipe) => Some(recipe),
+            Self::Folder(_) => None,
+        }
+    }
+
+    /// If this node is a folder, return it. Otherwise return `None`
+    pub fn folder(&self) -> Option<&Folder<F>> {
+        match self {
+            Self::Recipe(_) => None,
+            Self::Folder(folder) => Some(folder),
+        }
+    }
 }
 
 /// Error returned when attempting to build a [RecipeTree] with a duplicate
@@ -83,196 +293,6 @@ pub enum RecipeNode {
     recipe/folder IDs must be globally unique"
 )]
 pub struct DuplicateRecipeIdError(RecipeId);
-
-impl RecipeTree {
-    /// Create a new tree. If there are *any* duplicate IDs in the tree, the
-    /// duplicate ID will be returned as an `Err`.
-    pub fn new(
-        tree: IndexMap<RecipeId, RecipeNode>,
-    ) -> Result<Self, DuplicateRecipeIdError> {
-        // IDs of *all* nodes are unique, which means we can build a flat lookup
-        // map for all recipes. This is also where we enforce uniqueness
-        let mut nodes_by_id = IndexMap::new();
-        let mut new = Self {
-            tree,
-            nodes_by_id: IndexMap::default(),
-        };
-        for (lookup_key, node) in new.iter() {
-            let evicted = nodes_by_id.insert(node.id().clone(), lookup_key);
-            if evicted.is_some() {
-                return Err(DuplicateRecipeIdError(node.id().clone()));
-            }
-        }
-        new.nodes_by_id = nodes_by_id;
-        Ok(new)
-    }
-
-    /// Get a recipe/folder's tree lookup key by is unique ID
-    pub fn get_lookup_key(&self, id: &RecipeId) -> Option<&RecipeLookupKey> {
-        self.nodes_by_id.get(id)
-    }
-
-    /// Get a folder/recipe by ID
-    pub fn get(&self, id: &RecipeId) -> Option<&RecipeNode> {
-        let lookup_key = self.nodes_by_id.get(id)?;
-        let mut nodes = &self.tree;
-        for (depth, step) in lookup_key.0.iter().enumerate() {
-            let is_last = depth == lookup_key.0.len() - 1;
-            let node = nodes.get(step).unwrap_or_else(|| {
-                panic!("Lookup key {lookup_key:?} does not point to a node")
-            });
-            if is_last {
-                return Some(node);
-            }
-            match node {
-                RecipeNode::Folder(folder) => nodes = &folder.children,
-                RecipeNode::Recipe(recipe) => panic!(
-                    "Lookup key {lookup_key:?} attempts to traverse through \
-                    recipe node `{}`",
-                    recipe.id
-                ),
-            }
-        }
-        None
-    }
-
-    /// Get a folder/recipe by ID. Return an error if the ID isn't in the tree
-    pub fn try_get(&self, id: &RecipeId) -> anyhow::Result<&RecipeNode> {
-        self.get(id)
-            .ok_or_else(|| anyhow!("No recipe node with ID `{}`", id,))
-    }
-
-    /// Get a **recipe** by ID. If the ID isn't in the tree, or points to a
-    /// folder, return `None`
-    pub fn get_recipe(&self, id: &RecipeId) -> Option<&Recipe> {
-        self.get(id).and_then(RecipeNode::recipe)
-    }
-
-    /// Get a **recipe** by ID. If the ID isn't in the tree, or points to a
-    /// folder, return an error that can be presented to the user
-    pub fn try_get_recipe(&self, id: &RecipeId) -> anyhow::Result<&Recipe> {
-        self.get_recipe(id)
-            .ok_or_else(|| anyhow!("No recipe with ID `{}`", id,))
-    }
-
-    /// Get all **recipe** IDs in the tree. Useful for printing a list to the
-    /// user
-    pub fn recipe_ids(&self) -> impl Iterator<Item = &RecipeId> {
-        self.nodes_by_id
-            .keys()
-            .filter(|id| self.get_recipe(id).is_some())
-    }
-
-    /// Get a flat iterator over all nodes in the tree, using depth first
-    /// search. Each yielded item will include the lookup key to retrieve
-    /// that item.
-    pub fn iter(&self) -> impl Iterator<Item = (RecipeLookupKey, &RecipeNode)> {
-        // We'll lean on the inner IndexMap iterator for the hard work. We just
-        // keep a stack of all the branches we're iterating over
-
-        struct Iter<'a> {
-            stack: Vec<Values<'a, RecipeId, RecipeNode>>,
-            path: Vec<&'a RecipeId>,
-        }
-
-        impl<'a> Iterator for Iter<'a> {
-            type Item = (RecipeLookupKey, &'a RecipeNode);
-
-            fn next(&mut self) -> Option<Self::Item> {
-                while let Some(iter) = self.stack.last_mut() {
-                    match iter.next() {
-                        Some(node @ RecipeNode::Folder(folder)) => {
-                            // Go down this branch next
-                            self.path.push(&folder.id);
-                            self.stack.push(folder.children.values());
-                            return Some(((&self.path).into(), node));
-                        }
-                        Some(node @ RecipeNode::Recipe(recipe)) => {
-                            let mut lookup_key: RecipeLookupKey =
-                                (&self.path).into();
-                            lookup_key.0.push(recipe.id.clone());
-                            return Some((lookup_key, node));
-                        }
-                        None => {
-                            self.stack.pop();
-                            self.path.pop();
-                        }
-                    }
-                }
-                // We ran out of iteration :(
-                None
-            }
-        }
-
-        Iter {
-            stack: vec![self.tree.values()],
-            path: Vec::new(),
-        }
-    }
-}
-
-impl Serialize for RecipeTree {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.tree.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for RecipeTree {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let tree: IndexMap<RecipeId, RecipeNode> =
-            deserialize_id_map(deserializer)?;
-        Self::new(tree).map_err(D::Error::custom)
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
-    fn from(value: IndexMap<RecipeId, Recipe>) -> Self {
-        value
-            .into_iter()
-            .map(|(id, recipe)| (id, RecipeNode::Recipe(recipe)))
-            .collect::<IndexMap<_, _>>()
-            .into()
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl From<IndexMap<RecipeId, RecipeNode>> for RecipeTree {
-    fn from(tree: IndexMap<RecipeId, RecipeNode>) -> Self {
-        Self::new(tree).unwrap()
-    }
-}
-
-impl RecipeNode {
-    pub fn name(&self) -> &str {
-        match self {
-            Self::Folder(folder) => folder.name(),
-            Self::Recipe(recipe) => recipe.name(),
-        }
-    }
-
-    /// If this node is a recipe, return it. Otherwise return `None`
-    pub fn recipe(&self) -> Option<&Recipe> {
-        match self {
-            Self::Recipe(recipe) => Some(recipe),
-            Self::Folder(_) => None,
-        }
-    }
-
-    /// If this node is a folder, return it. Otherwise return `None`
-    pub fn folder(&self) -> Option<&Folder> {
-        match self {
-            Self::Recipe(_) => None,
-            Self::Folder(folder) => Some(folder),
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

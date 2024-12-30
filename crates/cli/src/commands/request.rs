@@ -10,12 +10,13 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{Collection, CollectionFile, ProfileId, RecipeId},
+    collection::{CollectionFile, ProfileId, RecipeId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{
         BuildOptions, HttpEngine, RequestRecord, RequestSeed, RequestTicket,
         ResponseRecord,
     },
+    js::{JsRuntime, PlainRenderer},
     template::{Prompt, Prompter, Select, TemplateContext, TemplateError},
     util::{MaybeStr, ResultTraced},
 };
@@ -154,7 +155,8 @@ impl BuildRequestCommand {
     ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
         let collection_path = CollectionFile::try_path(None, global.file)?;
         let config = Config::load()?;
-        let collection = Collection::load(&collection_path).await?;
+        let mut runtime = JsRuntime::new();
+        let collection = runtime.load_collection(&collection_path).await?;
         // Open DB in readonly. Storing requests in history from the CLI isn't
         // really intuitive, and could have a large perf impact for scripting
         // and large responses
@@ -195,14 +197,18 @@ impl BuildRequestCommand {
             prompter: Box::new(CliPrompter),
             state: Default::default(),
         };
+        let renderer = PlainRenderer {
+            runtime: &runtime,
+            context: &template_context,
+        };
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
-        let request = http_engine.build(seed, &template_context).await?;
+        let request = http_engine.build(seed, &renderer).await?;
         Ok((database, request))
     }
 }
 
 impl DisplayExchangeCommand {
-    /// Print request details to stderr
+    /// Print request details to stderrz
     pub fn write_request(&self, request: &RequestRecord) {
         // The request is entirely hidden unless verbose mode is enabled
         if self.verbose {

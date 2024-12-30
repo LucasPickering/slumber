@@ -10,6 +10,7 @@
 mod context;
 mod http;
 mod input;
+mod js;
 mod message;
 #[cfg(test)]
 mod test_util;
@@ -19,6 +20,7 @@ mod view;
 use crate::{
     context::TuiContext,
     http::{RequestState, RequestStore},
+    js::{BackgroundRenderer, RenderQueue},
     message::{Callback, Message, MessageSender, RequestConfig},
     util::{
         clear_event_buffer, delete_temp_file, get_editor_command,
@@ -40,6 +42,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{RequestId, RequestSeed},
+    js::Renderer,
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
 use std::{
@@ -76,6 +79,7 @@ pub struct Tui {
     collection_file: CollectionFile,
     should_run: bool,
     request_store: RequestStore,
+    render_queue: RenderQueue,
 }
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -123,6 +127,7 @@ impl Tui {
         let terminal = initialize_terminal()?;
 
         let request_store = RequestStore::new(database.clone());
+        let render_queue = js::run();
 
         let app = Tui {
             terminal,
@@ -135,6 +140,7 @@ impl Tui {
 
             view,
             request_store,
+            render_queue,
         };
 
         // Run the main loop in a local task set. This allows simple UI behavior
@@ -231,12 +237,13 @@ impl Tui {
             Message::CollectionStartReload => {
                 let future = self.collection_file.reload();
                 let messages_tx = self.messages_tx();
-                // TODO display error here
-                self.spawn_local(async move {
-                    let collection = future.await?;
-                    messages_tx.send(Message::CollectionEndReload(collection));
-                    Ok(())
-                });
+                // TODO
+                // self.spawn(async move {
+                //     let collection = future.await?;
+                //     messages_tx.
+                // send(Message::CollectionEndReload(collection));
+                //     Ok(())
+                // });
             }
             Message::CollectionEndReload(collection) => {
                 self.reload_collection(collection)
@@ -478,13 +485,13 @@ impl Tui {
         }: RequestConfig,
     ) -> anyhow::Result<()> {
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
+        let renderer = self.renderer(profile_id, false)?;
         // Spawn a task to do the render+copy
         self.spawn(async move {
             let url = TuiContext::get()
                 .http_engine
-                .build_url(seed, &template_context)
+                .build_url(seed, &renderer)
                 .await?;
             messages_tx.send(Message::CopyText(url.to_string()));
             Ok(())
@@ -502,13 +509,13 @@ impl Tui {
         }: RequestConfig,
     ) -> anyhow::Result<()> {
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let renderer = self.renderer(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
             let body = TuiContext::get()
                 .http_engine
-                .build_body(seed, &template_context)
+                .build_body(seed, &renderer)
                 .await?
                 .ok_or(anyhow!("Request has no body"))?;
             // Clone the bytes :(
@@ -530,14 +537,12 @@ impl Tui {
         }: RequestConfig,
     ) -> anyhow::Result<()> {
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let renderer = self.renderer(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         self.spawn(async move {
-            let ticket = TuiContext::get()
-                .http_engine
-                .build(seed, &template_context)
-                .await?;
+            let ticket =
+                TuiContext::get().http_engine.build(seed, &renderer).await?;
             let command = ticket.record().to_curl()?;
             messages_tx.send(Message::CopyText(command));
             Ok(())
@@ -585,8 +590,7 @@ impl Tui {
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
 
-        let template_context =
-            self.template_context(profile_id.clone(), false)?;
+        let renderer = self.renderer(profile_id.clone(), false)?;
         let messages_tx = self.messages_tx();
 
         let seed = RequestSeed::new(recipe_id.clone(), options);
@@ -597,10 +601,8 @@ impl Tui {
         let database = self.database.clone();
         let join_handle = tokio::spawn(async move {
             // Build the request
-            let result = TuiContext::get()
-                .http_engine
-                .build(seed, &template_context)
-                .await;
+            let result =
+                TuiContext::get().http_engine.build(seed, &renderer).await;
             let ticket = match result {
                 Ok(ticket) => ticket,
                 Err(error) => {
@@ -645,11 +647,12 @@ impl Tui {
         profile_id: Option<ProfileId>,
         on_complete: Callback<Vec<TemplateChunk>>,
     ) -> anyhow::Result<()> {
-        let context = self.template_context(profile_id, true)?;
+        let renderer = self.renderer(profile_id, true)?;
         let messages_tx = self.messages_tx();
         tokio::spawn(async move {
             // Render chunks, then write them to the output destination
-            let chunks = template.render_chunks(&context).await;
+            renderer.render_string(&template).await;
+            let chunks = Vec::new(); // TODO
             on_complete(chunks);
             // Trigger a draw
             messages_tx.send(Message::TemplatePreviewComplete);
@@ -668,14 +671,13 @@ impl Tui {
     }
 
     /// TODO
-    fn spawn_local(
+    fn renderer(
         &self,
-        future: impl Future<Output = anyhow::Result<()>> + 'static,
-    ) {
-        let messages_tx = self.messages_tx();
-        tokio::task::spawn_local(
-            async move { future.await.reported(&messages_tx) },
-        );
+        profile_id: Option<ProfileId>,
+        is_preview: bool,
+    ) -> anyhow::Result<BackgroundRenderer> {
+        let template_context = self.template_context(profile_id, is_preview)?;
+        Ok(self.render_queue.renderer(template_context))
     }
 
     /// Expose app state to the templater. Most of the data has to be cloned out

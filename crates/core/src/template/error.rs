@@ -1,11 +1,9 @@
 use crate::{
     collection::{ChainId, ProfileId, RecipeId},
     http::{query::QueryError, RequestBuildError, RequestError},
-    template::TemplateKey,
     util::doc_link,
 };
-use itertools::Itertools;
-use std::{fmt::Display, io, path::PathBuf, string::FromUtf8Error, sync::Arc};
+use std::{io, path::PathBuf, string::FromUtf8Error, sync::Arc};
 use thiserror::Error;
 use winnow::error::{ContextError, ParseError};
 
@@ -68,8 +66,8 @@ pub enum TemplateError {
 
     /// Cycle detected in nested template keys. We store the entire cycle stack
     /// for presentation
-    #[error("Infinite loop detected in template: {}", format_cycle(.0))]
-    InfiniteLoop(Vec<TemplateKey>),
+    #[error("Infinite loop detected in template")]
+    InfiniteLoop,
 
     #[error("Resolving chain `{chain_id}`")]
     Chain {
@@ -287,8 +285,4 @@ impl PartialEq for ChainError {
             }
         }
     }
-}
-
-fn format_cycle(stack: &[TemplateKey]) -> impl '_ + Display {
-    stack.iter().format(" -> ")
 }

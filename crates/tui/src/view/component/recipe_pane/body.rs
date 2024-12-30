@@ -1,7 +1,5 @@
 use crate::{
     context::TuiContext,
-    message::Message,
-    util::{delete_temp_file, temp_file, ResultReported},
     view::{
         common::text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         component::recipe_pane::{
@@ -12,10 +10,9 @@ use crate::{
         draw::{Draw, DrawMetadata},
         event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
         state::Identified,
-        Component, ViewContext,
+        Component,
     },
 };
-use anyhow::Context;
 use ratatui::{style::Styled, text::Text, Frame};
 use serde::Serialize;
 use slumber_config::Action;
@@ -25,11 +22,9 @@ use slumber_core::{
     template::Template,
 };
 use std::{
-    fs,
     ops::Deref,
     path::{Path, PathBuf},
 };
-use tracing::debug;
 
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
@@ -153,7 +148,8 @@ impl RawBody {
     /// the body to a temp file so the editor subprocess can access it. We'll
     /// read it back later.
     fn open_editor(&mut self) {
-        let path = temp_file();
+        todo!()
+        /* let path = temp_file();
         debug!(?path, "Writing body to file for editing");
         let Some(_) =
             fs::write(&path, self.body.template().display().as_bytes())
@@ -172,13 +168,14 @@ impl RawBody {
             on_complete: Box::new(move |path| {
                 emitter.emit(SaveBodyOverride(path))
             }),
-        })
+        }) */
     }
 
     /// Read the user's edited body from the temp file we created, and rebuild
     /// the body from that
     fn load_override(&mut self, path: &Path) {
-        // Read the body back from the temp file we handed to the editor, then
+        todo!()
+        /*  // Read the body back from the temp file we handed to the editor, then
         // delete it to prevent cluttering the disk
         debug!(?path, "Reading edited body from file");
         let Some(body) = fs::read_to_string(path)
@@ -204,7 +201,7 @@ impl RawBody {
         };
 
         // Update state and regenerate the preview
-        self.body.set_override(template);
+        self.body.set_override(template); */
     }
 }
 

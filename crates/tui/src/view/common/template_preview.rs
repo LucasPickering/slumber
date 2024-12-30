@@ -53,7 +53,7 @@ impl TemplatePreview {
             // recompute the text on each render. Ideally we could hold onto
             // the template and have this text reference it, but that would be
             // self-referential
-            template.display().into_owned().into(),
+            template.to_string().into(),
         )
         .into();
         let text = Arc::new(Mutex::new(text));

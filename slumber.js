@@ -84,7 +84,7 @@ const requests = {
       authentication: {
         basic: { username: "{{username}}", password: "{{chains.password}}" },
       },
-      query: ["sudo=yes_please", "fast=no_thanks", "fast=actually_maybe"],
+      // query: ["sudo=yes_please", "fast=no_thanks", "fast=actually_maybe"],
       headers: { Accept: "application/json" },
       body: {
         type: "form_urlencoded",
@@ -103,7 +103,7 @@ const requests = {
             name: "Get Users",
             method: "GET",
             url: "{{host}}/get",
-            query: ["foo=bar", "select={{chains.select_dynamic}}"],
+            // query: ["foo=bar", "select={{chains.select_dynamic}}"],
           },
         },
         get_user: {

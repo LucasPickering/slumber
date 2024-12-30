@@ -1,6 +1,7 @@
 use crate::{GlobalArgs, Subcommand};
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
+use slumber_core::collection::Collection;
 use std::{
     fs::File,
     io::{self, Write},
@@ -32,11 +33,16 @@ enum Format {
 impl Subcommand for ImportCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
         // Load the input
+        // TODO
         let collection = match self.format {
             Format::Insomnia => {
-                slumber_import::from_insomnia(&self.input_file)?
+                Collection::default()
+                // slumber_import::from_insomnia(&self.input_file)?
             }
-            Format::Openapi => slumber_import::from_openapi(&self.input_file)?,
+            Format::Openapi => {
+                Collection::default()
+                //  slumber_import::from_openapi(&self.input_file)?
+            }
         };
 
         // Write the output

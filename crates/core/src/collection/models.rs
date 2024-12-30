@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::{ffi::OsStr, fs::File, path::Path, rc::Rc, time::Duration};
 use strum::{EnumIter, IntoEnumIterator};
 use tracing::info;
+use uuid::Uuid;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
@@ -54,11 +55,11 @@ impl Collection {
         let future = async {
             let collection =
                 if path.extension().and_then(OsStr::to_str) == Some("js") {
-                    let module = Module::load(path)?;
                     let mut runtime = Runtime::with_tokio_runtime(
                         Default::default(),
                         RUNTIME.with(Rc::clone),
                     )?;
+                    let module = Module::load(path)?;
                     let handle = runtime.load_module_async(&module).await?;
                     runtime.call_entrypoint_async(&handle, &()).await?
                 } else {
@@ -234,7 +235,7 @@ pub struct Recipe {
     pub url: Template,
     pub body: Option<RecipeBody>,
     pub authentication: Option<Authentication>,
-    #[serde(default, with = "cereal::serde_query_parameters")]
+    #[serde(default)]
     pub query: Vec<(String, Template)>,
     #[serde(default)]
     pub headers: IndexMap<String, Template>,
@@ -270,6 +271,21 @@ impl crate::test_util::Factory for RecipeId {
         uuid::Uuid::new_v4().to_string().into()
     }
 }
+
+/// TODO
+#[derive(
+    // TODO remove serde impls
+    Copy,
+    Clone,
+    Debug,
+    Display,
+    Eq,
+    Hash,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
+pub struct FunctionId(Uuid);
 
 /// HTTP method. This is duplicated from reqwest's Method so we can enforce
 /// the method is valid during deserialization. This is also generally more
@@ -350,7 +366,7 @@ pub enum Authentication<T = Template> {
 /// HTTP engine uses the variant to determine not only how to serialize the
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum RecipeBody {
@@ -427,7 +443,6 @@ pub struct Chain {
     Default,
     Display,
     Eq,
-    FromStr,
     Hash,
     PartialEq,
     Serialize,

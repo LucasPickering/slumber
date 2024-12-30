@@ -3303,6 +3303,7 @@ dependencies = [
  "ratatui",
  "reqwest",
  "rstest",
+ "rustyscript",
  "serde",
  "serde_yaml",
  "shellish_parse",

@@ -11,16 +11,16 @@ pub use error::{TemplateError, TriggeredRequestError};
 pub use prompt::{Prompt, PromptChannel, Prompter, Select};
 
 use crate::{
-    collection::{Collection, FunctionId, ProfileId},
+    collection::{Collection, FunctionId, Profile, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
     template::render::RenderGroupState,
 };
-use derive_more::{Deref, Display};
+use derive_more::Display;
 use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
 
 /// A parsed template, which can contain raw and/or templated content. The
@@ -36,16 +36,60 @@ use std::sync::Arc;
 /// - No two raw segments will ever be consecutive
 ///
 /// TODO update comment
-#[derive(Clone, Debug, Display, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Display, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum Template<F = FunctionId> {
     Value(String),
     Lazy(F),
 }
 
+impl<F> Template<F> {
+    /// Create a new template from a raw string, without parsing it at all.
+    /// Useful when importing from external formats where the string isn't
+    /// expected to be a valid Slumber template
+    pub fn raw(template: String) -> Self {
+        Self::Value(template)
+    }
+}
+
 impl<F> Default for Template<F> {
     fn default() -> Self {
         Self::Value(String::new())
+    }
+}
+
+impl<'de, F: Deserialize<'de>> Deserialize<'de> for Template<F> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if let Ok(f) = F::deserialize(deserializer) {
+            Ok(Self::Lazy(f))
+        } else {
+            Ok(Self::Value("TODO".into()))
+            // Err(de::Error::custom("TODO"))
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<&str> for Template {
+    fn from(value: &str) -> Self {
+        value.parse().unwrap()
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<String> for Template {
+    fn from(value: String) -> Self {
+        value.as_str().into()
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<serde_json::Value> for Template {
+    fn from(value: serde_json::Value) -> Self {
+        format!("{value:#}").into()
     }
 }
 
@@ -77,64 +121,12 @@ pub struct TemplateContext {
     pub state: RenderGroupState,
 }
 
-impl<F> Template<F> {
-    /// Create a new template from a raw string, without parsing it at all.
-    /// Useful when importing from external formats where the string isn't
-    /// expected to be a valid Slumber template
-    pub fn raw(template: String) -> Self {
-        Self::Value(template)
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl From<&str> for Template {
-    fn from(value: &str) -> Self {
-        value.parse().unwrap()
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl From<String> for Template {
-    fn from(value: String) -> Self {
-        value.as_str().into()
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl From<serde_json::Value> for Template {
-    fn from(value: serde_json::Value) -> Self {
-        format!("{value:#}").into()
-    }
-}
-
-/// An identifier that can be used in a template key. A valid identifier is
-/// any non-empty string that contains only alphanumeric characters, `-`, or
-/// `_`.
-///
-/// Construct via [FromStr](std::str::FromStr)
-#[derive(
-    Clone,
-    Debug,
-    Deref,
-    Default,
-    Display,
-    Eq,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-#[serde(transparent)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct Identifier(
-    #[cfg_attr(test, proptest(regex = "[a-zA-Z0-9-_]+"))] String,
-);
-
-/// A shortcut for creating identifiers from static strings. Since the string
-/// is defined in code we're assuming it's valid.
-impl From<&'static str> for Identifier {
-    fn from(value: &'static str) -> Self {
-        Self(value.parse().unwrap())
+impl TemplateContext {
+    /// TODO
+    pub fn profile(&self) -> Option<&Profile> {
+        self.selected_profile
+            .as_ref()
+            .and_then(|profile_id| self.collection.profiles.get(profile_id))
     }
 }
 

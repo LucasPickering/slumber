@@ -125,8 +125,18 @@ impl<'a> Renderer for PlainRenderer<'a> {
         &self,
         function_id: &FunctionId,
     ) -> anyhow::Result<String> {
-        let _ = self.runtime.functions.get(function_id);
-        todo!()
+        let func = self.runtime.functions.get(function_id);
+        let empty = IndexMap::new();
+        // TODO render profile fields first
+        let profile_data = self
+            .context
+            .profile()
+            .map(|profile| &profile.data)
+            .unwrap_or(&empty);
+        let mut runtime = self.runtime.runtime.lock().await;
+        func.call_async(&mut runtime, None, &[profile_data])
+            .await
+            .context("TODO")
     }
 
     fn context(&self) -> &TemplateContext {

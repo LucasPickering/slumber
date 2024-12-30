@@ -330,7 +330,7 @@ impl From<Method> for String {
 /// `T=String`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`
     Basic { username: T, password: Option<T> },
@@ -345,7 +345,7 @@ pub enum Authentication<T = Template> {
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum RecipeBody<F = FunctionId> {
     /// Plain string/bytes body

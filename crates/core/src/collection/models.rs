@@ -6,8 +6,8 @@ use crate::{
         recipe_tree::{RecipeNode, RecipeTree},
         RUNTIME,
     },
-    http::{content_type::ContentType, query::Query},
-    template::{Identifier, Template},
+    http::content_type::ContentType,
+    template::Template,
     util::{parse_yaml, ResultTraced},
 };
 use anyhow::{anyhow, Context};
@@ -32,18 +32,10 @@ use uuid::Uuid;
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
     pub profiles: IndexMap<ProfileId, Profile>,
-    #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
-    pub chains: IndexMap<ChainId, Chain>,
     /// Internally we call these recipes, but to a user `requests` is more
     /// intuitive
     #[serde(default, rename = "requests")]
     pub recipes: RecipeTree,
-    /// A hack-ish to allow users to add arbitrary data to their collection
-    /// file without triggering a unknown field error. Ideally we could
-    /// ignore anything that starts with `.` (recursively) but that
-    /// requires a custom serde impl for each type, or changes to the macro
-    #[serde(default, skip_serializing, rename = ".ignore")]
-    pub _ignore: serde::de::IgnoredAny,
 }
 
 impl Collection {
@@ -325,25 +317,6 @@ impl From<Method> for String {
     }
 }
 
-#[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for Chain {
-    fn factory(_: ()) -> Self {
-        Self {
-            id: "chain1".into(),
-            source: ChainSource::Request {
-                recipe: RecipeId::factory(()),
-                trigger: Default::default(),
-                section: Default::default(),
-            },
-            sensitive: false,
-            selector: None,
-            selector_mode: SelectorMode::default(),
-            content_type: None,
-            trim: ChainOutputTrim::default(),
-        }
-    }
-}
-
 /// Shortcut for defining authentication method. If this is defined in addition
 /// to the `Authorization` header, that header will end up being included in the
 /// request twice.
@@ -403,134 +376,6 @@ impl From<&str> for RecipeBody {
             content_type: None,
         }
     }
-}
-
-/// A chain is a means to data from one response in another request. The chain
-/// is the middleman: it defines where and how to pull the value, then recipes
-/// can use it in a template via `{{chains.<chain_id>}}`.
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
-pub struct Chain {
-    #[serde(skip)] // This will be auto-populated from the map key
-    pub id: ChainId,
-    pub source: ChainSource,
-    /// Mask chained value in the UI
-    #[serde(default)]
-    pub sensitive: bool,
-    /// Selector to extract a value from the response. This uses JSONPath
-    /// regardless of the content type. Non-JSON values will be converted to
-    /// JSON, then converted back.
-    pub selector: Option<Query>,
-    /// Control selector behavior relative to number of query results
-    #[serde(default)]
-    pub selector_mode: SelectorMode,
-    /// Hard-code the content type of the response. Only needed if a selector
-    /// is given and the content type can't be dynamically determined
-    /// correctly. This is needed if the chain source is not an HTTP
-    /// response (e.g. a file) **or** if the response's `Content-Type` header
-    /// is incorrect.
-    pub content_type: Option<ContentType>,
-    #[serde(default)]
-    pub trim: ChainOutputTrim,
-}
-
-/// Unique ID for a chain, provided by the user
-#[derive(
-    Clone,
-    Debug,
-    Deref,
-    Default,
-    Display,
-    Eq,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-#[deref(forward)]
-#[serde(transparent)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct ChainId(#[deref(forward)] Identifier);
-
-impl<T: Into<Identifier>> From<T> for ChainId {
-    fn from(value: T) -> Self {
-        Self(value.into())
-    }
-}
-
-/// The source of data for a chain
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", tag = "type", deny_unknown_fields)]
-pub enum ChainSource {
-    /// Run an external command to get a result
-    Command {
-        command: Vec<Template>,
-        stdin: Option<Template>,
-    },
-    /// Load from an environment variable
-    #[serde(rename = "env")]
-    Environment { variable: Template },
-    /// Load data from a file
-    File { path: Template },
-    /// Prompt the user for a value
-    Prompt {
-        /// Descriptor to show to the user
-        message: Option<Template>,
-        /// Default value for the shown textbox
-        default: Option<Template>,
-    },
-    /// Load data from the most recent response of a particular request recipe
-    Request {
-        recipe: RecipeId,
-        /// When should this request be automatically re-executed?
-        #[serde(default)]
-        trigger: ChainRequestTrigger,
-        #[serde(default)]
-        section: ChainRequestSection,
-    },
-    /// Prompt the user to select a value from a list
-    Select {
-        /// Descriptor to show to the user
-        message: Option<Template>,
-        /// List of options to choose from
-        options: SelectOptions,
-    },
-}
-
-/// Static or dynamic list of options for a select chain
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(untagged)]
-pub enum SelectOptions {
-    Fixed(Vec<Template>),
-    /// Render a template, then parse its output as a JSON array to get options
-    Dynamic(Template),
-}
-
-/// Test-only helpers
-#[cfg(any(test, feature = "test"))]
-impl ChainSource {
-    /// Build a new [Self::Command] variant from [command, ...args]
-    pub fn command<const N: usize>(cmd: [&str; N]) -> ChainSource {
-        ChainSource::Command {
-            command: cmd.into_iter().map(Template::from).collect(),
-            stdin: None,
-        }
-    }
-}
-
-/// The component of the response to use as the chain source
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum ChainRequestSection {
-    #[default]
-    Body,
-    /// Pull a value from a response's headers. If the given header appears
-    /// multiple times, the first value will be used
-    Header(Template),
 }
 
 /// Define when a recipe with a chained request should auto-execute the

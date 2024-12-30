@@ -7,7 +7,7 @@ mod error;
 mod prompt;
 mod render;
 
-pub use error::{ChainError, TemplateError, TriggeredRequestError};
+pub use error::{TemplateError, TriggeredRequestError};
 pub use prompt::{Prompt, PromptChannel, Prompter, Select};
 
 use crate::{

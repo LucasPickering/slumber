@@ -1,8 +1,7 @@
 //! Serialization/deserialization helpers for various types
 
 use crate::collection::{
-    recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, Recipe,
-    RecipeId,
+    recipe_tree::RecipeNode, Profile, ProfileId, Recipe, RecipeId,
 };
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -51,18 +50,6 @@ impl HasId for RecipeNode {
 
 impl HasId for Recipe {
     type Id = RecipeId;
-
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-
-    fn set_id(&mut self, id: Self::Id) {
-        self.id = id;
-    }
-}
-
-impl HasId for Chain {
-    type Id = ChainId;
 
     fn id(&self) -> &Self::Id {
         &self.id

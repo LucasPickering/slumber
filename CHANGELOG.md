@@ -17,6 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Replace JSONPath querying with general purpose shell commands for querying response bodies
+  - Now you can access any CLI tools you want for transforming response bodies, such as `jq` or `grep`
+  - By default, commands are executed via `sh` (or `cmd` on Windows), but this is configured via the [`commands.shell` field](https://slumber.lucaspickering.me/book/api/configuration/index.html)
 - Add `slumber history` subcommand. Currently it has two operations:
   - `slumber history list` lists all stored requests for a recipe
   - `slumber history get` prints a specific request/response

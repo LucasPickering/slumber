@@ -101,6 +101,8 @@ jobs:
 
       - name: Install toolchain
         run: rustup target add ${{ matrix.platform.target }}
+        env:
+          RUST_BACKTRACE: 1
 
       - name: Run tests
         run: cargo test --workspace

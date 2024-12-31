@@ -59,7 +59,7 @@ That's it!
 
 ### Tests
 
-The [test coverage](https://app.codecov.io/gh/ratatui-org/ratatui) of the crate is reasonably good, but this can always be improved. Focus on keeping the tests simple and obvious and write unit tests for all new or modified code. Slumber uses [rstest](https://docs.rs/rstest/latest/rstest/) and [factori](https://docs.rs/factori/latest/factori/) to make testing easier. Try to follow existing test patterns. Some general rules to follow:
+The test coverage of the crate is reasonably good, but this can always be improved. Focus on keeping the tests simple and obvious and write unit tests for all new or modified code. Slumber uses [rstest](https://docs.rs/rstest/latest/rstest/) to make testing easier. Try to follow existing test patterns. Some general rules to follow:
 
 - Prefer [parameterized tests](https://docs.rs/rstest/latest/rstest/#creating-parametrized-tests) over a single long test that checks a lot of cases. This makes it easier to isolate failing test cases.
 - Use existing factories and functions from [test_util.rs](https://github.com/LucasPickering/slumber/blob/master/src/test_util.rs)

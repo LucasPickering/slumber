@@ -39,7 +39,7 @@ Slumber will check these places in the following order for a command:
 
 To open a body in the pager, use the actions menu keybinding (`x` by default, see [input bindings](../../api/configuration/input_bindings.md)), and select `View Body`.
 
-Some popular file viewers:
+Some popular pagers:
 
 - [bat](https://github.com/sharkdp/bat)
 - [fx](https://fx.wtf/)

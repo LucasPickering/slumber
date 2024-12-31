@@ -34,6 +34,14 @@ The following fields are available in `config.yml`:
 
 <!-- toc -->
 
+### `commands.shell`
+
+**Type:** `string[]`
+
+**Default:** `[sh, -c]` (Unix), `[cmd, /S, /C]` (Windows)
+
+Shell used to execute commands within the TUI. [More info](#commands)
+
 ### `debug`
 
 **Type:** `boolean`

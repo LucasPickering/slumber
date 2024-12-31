@@ -28,7 +28,7 @@ use slumber_core::{
     util::MaybeStr,
 };
 use std::{borrow::Cow, sync::Arc};
-use tokio::task;
+use tokio::task::{self, AbortHandle};
 
 /// Display response body as text, with a query box to run commands on the body.
 /// The query state can be persisted by persisting this entire container.
@@ -41,6 +41,8 @@ pub struct QueryableBody {
     query_focused: bool,
     /// Shell command used to transform the content body
     query_command: Option<String>,
+    /// Handle used to abort a query subcommand
+    query_handle: Option<AbortHandle>,
     /// Where the user enters their body query
     query_text_box: Component<TextBox>,
     /// Filtered text display
@@ -69,6 +71,7 @@ impl QueryableBody {
             response,
             query_focused: false,
             query_command: None,
+            query_handle: None,
             query_text_box: text_box.into(),
             text_window: Default::default(),
             state,
@@ -98,6 +101,12 @@ impl QueryableBody {
     fn update_query(&mut self) {
         let command = self.query_text_box.data().text();
         let response = &self.response;
+
+        // If a command is already running, abort it
+        if let Some(handle) = self.query_handle.take() {
+            handle.abort();
+        }
+
         if command.is_empty() {
             // Reset to initial body
             self.query_command = None;
@@ -115,10 +124,11 @@ impl QueryableBody {
             let body = response.body.bytes().clone();
             let command = command.to_owned();
             let emitter = self.detach();
-            task::spawn_local(async move {
+            let handle = task::spawn_local(async move {
                 let result = run_command(&command, Some(&body)).await;
                 emitter.emit(QueryComplete(result));
             });
+            self.query_handle = Some(handle.abort_handle());
         }
     }
 }

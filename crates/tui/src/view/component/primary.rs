@@ -483,7 +483,7 @@ mod tests {
         terminal: &'term TestTerminal,
     ) -> TestComponent<'term, PrimaryView, PrimaryViewProps<'static>> {
         let view = PrimaryView::new(&harness.collection);
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             harness,
             terminal,
             view,

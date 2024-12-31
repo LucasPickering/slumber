@@ -39,9 +39,6 @@ pub struct TextBox {
 
     // State
     state: TextState,
-    /// Text box has some related error. This is set externally by
-    /// [Self::set_error], and cleared whenever text changes
-    has_error: bool,
     on_change_debounce: Option<Debounce>,
 }
 
@@ -110,11 +107,6 @@ impl TextBox {
         self.state.end();
     }
 
-    /// Enable error state, to show something invalid to the user
-    pub fn set_error(&mut self) {
-        self.has_error = true;
-    }
-
     /// Check if the current input text is valid. Always returns true if there
     /// is no validator
     fn is_valid(&self) -> bool {
@@ -174,7 +166,6 @@ impl TextBox {
 
     /// Emit a change event. Should be called whenever text _content_ is changed
     fn change(&mut self) {
-        self.has_error = false; // Clear existing error for the new text
         let is_valid = self.is_valid();
         if let Some(debounce) = &self.on_change_debounce {
             if self.is_valid() {
@@ -242,8 +233,13 @@ impl EventHandler for TextBox {
     }
 }
 
-impl Draw for TextBox {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+impl Draw<TextBoxProps> for TextBox {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: TextBoxProps,
+        metadata: DrawMetadata,
+    ) {
         let styles = &TuiContext::get().styles;
 
         let text: Text = if self.state.text.is_empty() {
@@ -266,7 +262,7 @@ impl Draw for TextBox {
         };
 
         // Draw the text
-        let style = if self.is_valid() && !self.has_error {
+        let style = if self.is_valid() && !props.has_error {
             styles.text_box.text
         } else {
             // Invalid and error state look the same
@@ -287,6 +283,11 @@ impl Draw for TextBox {
                 .set_style(cursor_area, styles.text_box.cursor);
         }
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct TextBoxProps {
+    pub has_error: bool,
 }
 
 /// Encapsulation of text/cursor state. Encapsulating this makes reading and
@@ -462,7 +463,7 @@ mod tests {
         #[with(10, 1)] terminal: TestTerminal,
     ) {
         let mut component =
-            TestComponent::new(&harness, &terminal, TextBox::default(), ());
+            TestComponent::new(&harness, &terminal, TextBox::default());
 
         // Assert initial state/view
         assert_state(&component.data().state, "", 0);
@@ -524,7 +525,6 @@ mod tests {
             &harness,
             &terminal,
             TextBox::default().debounce(),
-            (),
         );
         run_local(async {
             // Type some text. Change event isn't emitted immediately
@@ -545,7 +545,7 @@ mod tests {
         #[with(10, 1)] terminal: TestTerminal,
     ) {
         let mut component =
-            TestComponent::new(&harness, &terminal, TextBox::default(), ());
+            TestComponent::new(&harness, &terminal, TextBox::default());
 
         // Type some text
         component.send_text("hello!").assert_emitted([
@@ -592,7 +592,6 @@ mod tests {
             &harness,
             &terminal,
             TextBox::default().sensitive(true),
-            (),
         );
 
         component
@@ -612,7 +611,6 @@ mod tests {
             &harness,
             &terminal,
             TextBox::default().placeholder("hello"),
-            (),
         );
 
         assert_state(&component.data().state, "", 0);
@@ -635,7 +633,6 @@ mod tests {
             TextBox::default()
                 .placeholder("unfocused")
                 .placeholder_focused("focused"),
-            (),
         );
         let styles = &TuiContext::get().styles.text_box;
 
@@ -665,7 +662,6 @@ mod tests {
             &harness,
             &terminal,
             TextBox::default().validator(|text| text.len() <= 2),
-            (),
         );
 
         // Valid text, everything is normal

@@ -315,7 +315,6 @@ mod tests {
             &harness,
             &terminal,
             RecipeBodyDisplay::new(&body, recipe_id.clone()),
-            (),
         );
 
         // Check initial state
@@ -379,7 +378,6 @@ mod tests {
             &harness,
             &terminal,
             RecipeBodyDisplay::new(&body, recipe_id),
-            (),
         );
 
         assert_eq!(

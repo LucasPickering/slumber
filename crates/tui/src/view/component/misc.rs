@@ -6,7 +6,7 @@ use crate::view::{
         button::ButtonGroup,
         list::List,
         modal::{IntoModal, Modal},
-        text_box::{TextBox, TextBoxEvent},
+        text_box::{TextBox, TextBoxEvent, TextBoxProps},
     },
     component::Component,
     context::UpdateContext,
@@ -26,12 +26,25 @@ use ratatui::{
     Frame,
 };
 use slumber_core::template::{Prompt, Select};
+use std::{fmt::Debug, rc::Rc};
 use strum::{EnumCount, EnumIter};
 
+/// Modal to display an error. Typically the error is [anyhow::Error], but it
+/// could also be wrapped in a smart pointer.
 #[derive(Debug)]
-pub struct ErrorModal(anyhow::Error);
+pub struct ErrorModal<E = anyhow::Error>(E);
 
-impl Modal for ErrorModal {
+impl<E> ErrorModal<E> {
+    pub fn new(error: E) -> Self {
+        Self(error)
+    }
+}
+
+impl<E> Modal for ErrorModal<E>
+where
+    E: Debug,
+    Self: Draw,
+{
     fn priority(&self) -> ModalPriority {
         ModalPriority::High // beep beep coming through
     }
@@ -45,16 +58,22 @@ impl Modal for ErrorModal {
     }
 }
 
-impl EventHandler for ErrorModal {}
+impl<E> EventHandler for ErrorModal<E> {}
 
-impl Draw for ErrorModal {
+impl Draw for ErrorModal<anyhow::Error> {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        frame.render_widget(self.0.generate(), metadata.area());
+    }
+}
+
+impl Draw for ErrorModal<Rc<anyhow::Error>> {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         frame.render_widget(self.0.generate(), metadata.area());
     }
 }
 
 impl IntoModal for anyhow::Error {
-    type Target = ErrorModal;
+    type Target = ErrorModal<anyhow::Error>;
 
     fn into_modal(self) -> Self::Target {
         ErrorModal(self)
@@ -136,7 +155,12 @@ impl EventHandler for TextBoxModal {
 
 impl Draw for TextBoxModal {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        self.text_box.draw(frame, (), metadata.area(), true);
+        self.text_box.draw(
+            frame,
+            TextBoxProps::default(),
+            metadata.area(),
+            true,
+        );
     }
 }
 

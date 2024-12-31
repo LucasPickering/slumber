@@ -310,7 +310,7 @@ mod tests {
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&exchange).unwrap();
 
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             Root::new(&collection),
@@ -353,7 +353,7 @@ mod tests {
             &Some(old_exchange.id),
         );
 
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             Root::new(&collection),
@@ -404,7 +404,7 @@ mod tests {
             )
             .unwrap();
 
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             Root::new(&collection),
@@ -424,7 +424,7 @@ mod tests {
     fn test_edit_collection(mut harness: TestHarness, terminal: TestTerminal) {
         let request_store = RequestStore::new(harness.database.clone());
         let root = Root::new(&harness.collection);
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             root,

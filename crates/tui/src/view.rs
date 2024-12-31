@@ -24,7 +24,6 @@ use crate::{
         component::{Component, Root, RootProps},
         debug::DebugMonitor,
         event::{Event, Update},
-        state::Notification,
     },
 };
 use anyhow::anyhow;
@@ -132,8 +131,7 @@ impl View {
 
     /// Queue an event to send an informational notification to the user
     pub fn notify(&mut self, message: impl ToString) {
-        let notification = Notification::new(message.to_string());
-        ViewContext::push_event(Event::Notify(notification));
+        ViewContext::notify(message);
     }
 
     /// Queue an event to update the view according to an input event from the

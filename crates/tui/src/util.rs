@@ -243,6 +243,9 @@ pub async fn run_command(
     let args = tokens;
     let mut process = tokio::process::Command::new(program)
         .args(args)
+        // Stop the command on drop. This will leave behind a zombie process,
+        // but tokio should reap it in the background. See method docs
+        .kill_on_drop(true)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

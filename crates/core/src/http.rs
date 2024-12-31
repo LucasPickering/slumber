@@ -35,7 +35,6 @@
 //! +----------+
 //! ```
 
-mod cereal;
 pub mod content_type;
 mod models;
 pub mod query;

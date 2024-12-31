@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Don't store CLI requests in history
 - Simplify display for `slumber request`
   - The flags `--status`, `--headers` and `--no-body` have been removed in favor of a single `--verbose` flag
+- Remove DB migration to upgrade from the pre-1.8.0 DB format
+  - This only impacts users upgrading to 3.0.0 from versions _before_ 1.8.0. You'll need to upgrade to an intermediate version first. If you install 3.0.0 and try to start it, you'll see an error message explaining how to fix it.
+  - See [#306](https://github.com/LucasPickering/slumber/issues/306) for more info
 
 ### Added
 

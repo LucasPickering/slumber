@@ -228,7 +228,7 @@ mod tests {
             response: response.into(),
             ..Exchange::factory(())
         };
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             ResponseBodyView::default(),
@@ -306,7 +306,7 @@ mod tests {
             response: response.into(),
             ..Exchange::factory(())
         };
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             ResponseBodyView::default(),

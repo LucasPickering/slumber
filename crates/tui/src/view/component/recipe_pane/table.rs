@@ -385,7 +385,7 @@ mod tests {
                 },
             ),
         ];
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             RecipeFieldTable::new(TestRowKey(recipe_id.clone()), rows),
@@ -446,7 +446,7 @@ mod tests {
                 },
             ),
         ];
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             RecipeFieldTable::new(TestRowKey(recipe_id.clone()), rows),
@@ -517,7 +517,7 @@ mod tests {
                 },
             ),
         ];
-        let component = TestComponent::new(
+        let component = TestComponent::with_props(
             &harness,
             &terminal,
             RecipeFieldTable::new(TestRowKey(recipe_id.clone()), rows),

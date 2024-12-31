@@ -331,7 +331,7 @@ mod tests {
         let text =
             Text::from("line 1\nline 2 is longer\nline 3\nline 4\nline 5")
                 .into();
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             TextWindow::default(),
@@ -416,7 +416,7 @@ mod tests {
     ) {
         let text =
             Text::from("intro\n💚💙💜 this is a longer line\noutro").into();
-        TestComponent::new(
+        TestComponent::with_props(
             &harness,
             &terminal,
             TextWindow::default(),
@@ -443,7 +443,7 @@ mod tests {
         harness: TestHarness,
     ) {
         let text = Text::raw("💚💙💜💚💙💜").into();
-        TestComponent::new(
+        TestComponent::with_props(
             &harness,
             &terminal,
             TextWindow::default(),
@@ -473,7 +473,7 @@ mod tests {
         let text =
             Text::from_iter(["1 this is a long line", "2", "3", "4", "5"])
                 .into();
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             TextWindow::default(),
@@ -516,7 +516,7 @@ mod tests {
         let text =
             Text::from_iter(["1 this is a long line", "2", "3", "4", "5"])
                 .into();
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             TextWindow::default(),

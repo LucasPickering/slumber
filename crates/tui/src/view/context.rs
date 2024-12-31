@@ -5,6 +5,7 @@ use crate::{
         common::modal::Modal,
         component::RecipeOverrideStore,
         event::{Event, EventQueue},
+        state::Notification,
     },
 };
 use slumber_core::{collection::Collection, db::CollectionDatabase};
@@ -129,6 +130,12 @@ impl ViewContext {
     /// Open a modal
     pub fn open_modal<M: 'static + Modal>(modal: M) {
         Self::push_event(Event::OpenModal(Box::new(modal)));
+    }
+
+    /// Queue an event to send an informational notification to the user
+    pub fn notify(message: impl ToString) {
+        let notification = Notification::new(message.to_string());
+        Self::push_event(Event::Notify(notification));
     }
 
     /// Get a clone of the async message sender. Generally you should use

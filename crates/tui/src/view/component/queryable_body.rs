@@ -5,17 +5,19 @@ use crate::{
     util::run_command,
     view::{
         common::{
-            text_box::{TextBox, TextBoxEvent},
+            text_box::{TextBox, TextBoxEvent, TextBoxProps},
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
+        component::misc::ErrorModal,
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
         state::Identified,
         util::{highlight, str_to_text},
-        Component,
+        Component, ViewContext,
     },
 };
+use anyhow::Context;
 use persisted::PersistedContainer;
 use ratatui::{
     layout::{Constraint, Layout},
@@ -27,7 +29,7 @@ use slumber_core::{
     http::{content_type::ContentType, ResponseBody, ResponseRecord},
     util::MaybeStr,
 };
-use std::{borrow::Cow, sync::Arc};
+use std::{borrow::Cow, mem, rc::Rc, sync::Arc};
 use tokio::task::{self, AbortHandle};
 
 /// Display response body as text, with a query box to run commands on the body.
@@ -41,15 +43,15 @@ pub struct QueryableBody {
     query_focused: bool,
     /// Shell command used to transform the content body
     query_command: Option<String>,
-    /// Handle used to abort a query subcommand
-    query_handle: Option<AbortHandle>,
+    /// Track status of the current query command
+    query_state: QueryState,
     /// Where the user enters their body query
     query_text_box: Component<TextBox>,
     /// Filtered text display
     text_window: Component<TextWindow>,
 
     /// Data that can update as the query changes
-    state: TextState,
+    text_state: TextState,
 }
 
 impl QueryableBody {
@@ -64,17 +66,18 @@ impl QueryableBody {
             .placeholder(format!("{binding} to filter"))
             .placeholder_focused("Enter command (ex: `jq .results`)")
             .debounce();
-        let state = init_state(response.content_type(), &response.body, true);
+        let text_state =
+            TextState::new(response.content_type(), &response.body, true);
 
         Self {
             emitter_id: EmitterId::new(),
             response,
             query_focused: false,
             query_command: None,
-            query_handle: None,
+            query_state: QueryState::None,
             query_text_box: text_box.into(),
             text_window: Default::default(),
-            state,
+            text_state,
         }
     }
 
@@ -84,8 +87,8 @@ impl QueryableBody {
     /// Binary bodies will return `None` here. Return an owned value because we
     /// have to join the text to a string.
     pub fn modified_text(&self) -> Option<String> {
-        if self.query_command.is_some() || self.state.pretty {
-            Some(self.state.text.to_string())
+        if self.query_command.is_some() || self.text_state.pretty {
+            Some(self.text_state.text.to_string())
         } else {
             None
         }
@@ -93,7 +96,7 @@ impl QueryableBody {
 
     /// Get whatever text the user sees
     pub fn visible_text(&self) -> &Text {
-        &self.state.text
+        &self.text_state.text
     }
 
     /// Update query command based on the current text in the box, and start
@@ -103,14 +106,14 @@ impl QueryableBody {
         let response = &self.response;
 
         // If a command is already running, abort it
-        if let Some(handle) = self.query_handle.take() {
+        if let Some(handle) = self.query_state.take_abort_handle() {
             handle.abort();
         }
 
         if command.is_empty() {
             // Reset to initial body
             self.query_command = None;
-            self.state = init_state(
+            self.text_state = TextState::new(
                 self.response.content_type(),
                 &self.response.body,
                 true, // Prettify
@@ -125,10 +128,12 @@ impl QueryableBody {
             let command = command.to_owned();
             let emitter = self.detach();
             let handle = task::spawn_local(async move {
-                let result = run_command(&command, Some(&body)).await;
-                emitter.emit(QueryComplete(result));
+                let result = run_command(&command, Some(&body))
+                    .await
+                    .with_context(|| format!("Error running `{command}`"));
+                emitter.emit(QueryComplete(result.map_err(Rc::new)));
             });
-            self.query_handle = Some(handle.abort_handle());
+            self.query_state = QueryState::Running(handle.abort_handle());
         }
     }
 }
@@ -137,6 +142,13 @@ impl EventHandler for QueryableBody {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         if let Some(Action::Search) = event.action() {
             self.query_focused = true;
+        } else if let Some(Action::OpenHelp) = event.action() {
+            if let QueryState::Error(error) = &self.query_state {
+                ViewContext::open_modal(ErrorModal::new(Rc::clone(error)));
+            } else {
+                // Let the parent handle it
+                return Update::Propagate(event);
+            }
         } else if let Some(event) = self.query_text_box.emitted(&event) {
             match event {
                 TextBoxEvent::Focus => self.query_focused = true,
@@ -156,7 +168,8 @@ impl EventHandler for QueryableBody {
         } else if let Some(QueryComplete(result)) = self.emitted(&event) {
             match result {
                 Ok(stdout) => {
-                    self.state = init_state(
+                    self.query_state = QueryState::Ok;
+                    self.text_state = TextState::new(
                         // Assume the output has the same content type
                         self.response.content_type(),
                         &ResponseBody::new(stdout),
@@ -165,10 +178,20 @@ impl EventHandler for QueryableBody {
                         false,
                     );
                 }
-                // Trigger error state. We DON'T want to show a modal here
-                // because it's incredibly annoying. Maybe there should be a
-                // way to open the error though?
-                Err(_) => self.query_text_box.data_mut().set_error(),
+                // Trigger error state. We DON'T want to show a modal here by
+                // default because it's incredibly annoying. Instead the user
+                // can open the modal by hitting  a key
+                Err(error) => {
+                    // It'd be nice to get the owned error here, but it makes
+                    // the downcasting for the emitted event more complicated
+                    self.query_state = QueryState::Error(Rc::clone(error));
+                    let binding = TuiContext::get()
+                        .input_engine
+                        .binding_display(Action::OpenHelp);
+                    ViewContext::notify(format!(
+                        "Error query response; {binding} for detail"
+                    ));
+                }
             }
         } else {
             return Update::Propagate(event);
@@ -193,7 +216,7 @@ impl Draw for QueryableBody {
         self.text_window.draw(
             frame,
             TextWindowProps {
-                text: &self.state.text,
+                text: &self.text_state.text,
                 margins: ScrollbarMargins {
                     bottom: 2, // Extra margin to jump over the search box
                     ..Default::default()
@@ -204,8 +227,14 @@ impl Draw for QueryableBody {
             true,
         );
 
-        self.query_text_box
-            .draw(frame, (), query_area, self.query_focused);
+        self.query_text_box.draw(
+            frame,
+            TextBoxProps {
+                has_error: matches!(self.query_state, QueryState::Error(_)),
+            },
+            query_area,
+            self.query_focused,
+        );
     }
 }
 
@@ -239,65 +268,100 @@ struct TextState {
     pretty: bool,
 }
 
-/// Emitted event to notify when a query subprocess has completed. Contains the
-/// stdout of the process if successful.
-#[derive(Debug)]
-pub struct QueryComplete(anyhow::Result<Vec<u8>>);
+impl TextState {
+    /// Calculate display text based on current body/query
+    fn new<T: AsRef<[u8]>>(
+        content_type: Option<ContentType>,
+        body: &ResponseBody<T>,
+        prettify: bool,
+    ) -> Self {
+        if TuiContext::get().config.http.is_large(body.size()) {
+            // For bodies over the "large" size, skip prettification and
+            // highlighting because it's slow. We could try to push this work
+            // into a background thread instead, but there's no way to kill
+            // those threads so we could end up piling up a lot of work. It also
+            // burns a lot of CPU, regardless of where it's run
+            //
+            // We don't show a hint to the user in this case because it's not
+            // worth the screen real estate
+            if let Some(text) = body.text() {
+                TextState {
+                    text: str_to_text(text).into(),
+                    pretty: false,
+                }
+            } else {
+                // Showing binary content is a bit of a novelty, there's not
+                // much value in it. For large bodies it's not
+                // worth the CPU cycles
+                let text: Text = "<binary>".into();
+                TextState {
+                    text: text.into(),
+                    pretty: false,
+                }
+            }
+        } else if let Some(text) = body.text() {
+            // Prettify for known content types. We _don't_ do this in a
+            // separate task because it's generally very fast. If this is slow
+            // enough that it affects the user, the "large" body size is
+            // probably too low
+            // 2024 edition: if-let chain
+            let (text, pretty): (Cow<str>, bool) = match content_type {
+                Some(content_type) if prettify => content_type
+                    .prettify(text)
+                    .map(|body| (Cow::Owned(body), true))
+                    .unwrap_or((Cow::Borrowed(text), false)),
+                _ => (Cow::Borrowed(text), false),
+            };
 
-/// Calculate display text based on current body/query
-fn init_state<T: AsRef<[u8]>>(
-    content_type: Option<ContentType>,
-    body: &ResponseBody<T>,
-    prettify: bool,
-) -> TextState {
-    if TuiContext::get().config.http.is_large(body.size()) {
-        // For bodies over the "large" size, skip prettification and
-        // highlighting because it's slow. We could try to push this work
-        // into a background thread instead, but there's no way to kill those
-        // threads so we could end up piling up a lot of work. It also burns
-        // a lot of CPU, regardless of where it's run
-        //
-        // We don't show a hint to the user in this case because it's not
-        // worth the screen real estate
-        if let Some(text) = body.text() {
+            let text =
+                highlight::highlight_if(content_type, str_to_text(&text));
             TextState {
-                text: str_to_text(text).into(),
-                pretty: false,
+                text: text.into(),
+                pretty,
             }
         } else {
-            // Showing binary content is a bit of a novelty, there's not much
-            // value in it. For large bodies it's not worth the CPU cycles
-            let text: Text = "<binary>".into();
+            // Content is binary, show a textual representation of it
+            let text: Text =
+                format!("{:#}", MaybeStr(body.bytes().as_ref())).into();
             TextState {
                 text: text.into(),
                 pretty: false,
             }
         }
-    } else if let Some(text) = body.text() {
-        // Prettify for known content types. We _don't_ do this in a separate
-        // task because it's generally very fast. If this is slow enough that
-        // it affects the user, the "large" body size is probably too low
-        // 2024 edition: if-let chain
-        let (text, pretty): (Cow<str>, bool) = match content_type {
-            Some(content_type) if prettify => content_type
-                .prettify(text)
-                .map(|body| (Cow::Owned(body), true))
-                .unwrap_or((Cow::Borrowed(text), false)),
-            _ => (Cow::Borrowed(text), false),
-        };
+    }
+}
 
-        let text = highlight::highlight_if(content_type, str_to_text(&text));
-        TextState {
-            text: text.into(),
-            pretty,
-        }
-    } else {
-        // Content is binary, show a textual representation of it
-        let text: Text =
-            format!("{:#}", MaybeStr(body.bytes().as_ref())).into();
-        TextState {
-            text: text.into(),
-            pretty: false,
+/// Emitted event to notify when a query subprocess has completed. Contains the
+/// stdout of the process if successful.
+#[derive(Debug)]
+pub struct QueryComplete(Result<Vec<u8>, Rc<anyhow::Error>>);
+
+#[derive(Debug, Default)]
+enum QueryState {
+    /// Query has not been run yet
+    #[default]
+    None,
+    /// Command is running. Handle can be used to kill it
+    Running(AbortHandle),
+    /// Command failed. Error is stored in an Rc so we can pass it to the modal
+    /// but still hold onto it, allowing the modal to be opened multiple times.
+    /// The modals needs ownership because it lives at the top of the component
+    /// tree.
+    Error(Rc<anyhow::Error>),
+    // Success! The result is immediately transformed and stored in the text
+    // window, so we don't need to store it here
+    Ok,
+}
+
+impl QueryState {
+    fn take_abort_handle(&mut self) -> Option<AbortHandle> {
+        match mem::take(self) {
+            Self::Running(handle) => Some(handle),
+            other => {
+                // Put it back!
+                *self = other;
+                None
+            }
         }
     }
 }
@@ -354,7 +418,6 @@ mod tests {
             &harness,
             &terminal,
             QueryableBody::new(response),
-            (),
         );
 
         // Assert initial state/view
@@ -433,7 +496,6 @@ mod tests {
             &harness,
             &terminal,
             PersistedLazy::new(Key, QueryableBody::new(response)),
-            (),
         );
 
         // We already have another test to check that querying works via typing

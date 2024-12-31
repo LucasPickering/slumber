@@ -197,7 +197,7 @@ mod tests {
     #[rstest]
     #[case::text_body(
         ResponseRecord {
-            body: br#"{"hello":"world"}"#.to_vec().into(),
+            body: br#"{"hello":"world"}"#.as_slice().into(),
             ..ResponseRecord::factory(())
         },
         "{\"hello\":\"world\"}",
@@ -205,14 +205,14 @@ mod tests {
     #[case::json_body(
         ResponseRecord {
             headers: header_map(indexmap! {"content-type" => "application/json"}),
-            body: br#"{"hello":"world"}"#.to_vec().into(),
+            body: br#"{"hello":"world"}"#.as_slice().into(),
             ..ResponseRecord::factory(())
         },
         "{\n  \"hello\": \"world\"\n}",
     )]
     #[case::binary_body(
         ResponseRecord {
-            body: b"\x01\x02\x03\xff".to_vec().into(),
+            body: b"\x01\x02\x03\xff".as_slice().into(),
             ..ResponseRecord::factory(())
         },
         "01 02 03 ff"
@@ -260,7 +260,7 @@ mod tests {
     #[rstest]
     #[case::text_body(
         ResponseRecord {
-            body: b"hello!".to_vec().into(),
+            body: b"hello!".as_slice().into(),
             ..ResponseRecord::factory(())
         },
         None,
@@ -269,7 +269,7 @@ mod tests {
     #[case::json_body(
         ResponseRecord {
             headers: header_map(indexmap! {"content-type" => "application/json"}),
-            body: br#"{"hello":"world"}"#.to_vec().into(),
+            body: br#"{"hello":"world"}"#.as_slice().into(),
             ..ResponseRecord::factory(())
         },
         None,
@@ -278,7 +278,7 @@ mod tests {
     )]
     #[case::binary_body(
         ResponseRecord {
-            body: b"\x01\x02\x03".to_vec().into(),
+            body: b"\x01\x02\x03".as_slice().into(),
             ..ResponseRecord::factory(())
         },
         None,
@@ -286,7 +286,7 @@ mod tests {
     )]
     #[case::queried_body(
         ResponseRecord {
-            body: b"hello!".to_vec().into(),
+            body: b"hello!".as_slice().into(),
             ..ResponseRecord::factory(())
         },
         Some("head -c 4"),

@@ -16,6 +16,7 @@ async-trait = "0.1.81"
 bytes = {workspace = true, features = ["serde"]}
 chrono = {workspace = true, features = ["clock", "serde", "std"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from", "from_str"]}
+dialoguer = {workspace = true}
 dirs = {workspace = true}
 futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
@@ -23,7 +24,6 @@ itertools = {workspace = true}
 mime = {workspace = true}
 regex = {version = "1.10.5", default-features = false}
 reqwest = {workspace = true, features = ["multipart", "rustls-tls", "rustls-tls-native-roots"]}
-rmp-serde = "1.1.2"
 rstest = {workspace = true, optional = true}
 rusqlite = {version = "0.31.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
 rusqlite_migration = "1.2.0"

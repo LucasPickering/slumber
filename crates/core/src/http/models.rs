@@ -5,7 +5,7 @@
 
 use crate::{
     collection::{Authentication, ProfileId, RecipeBody, RecipeId},
-    http::{cereal, content_type::ContentType},
+    http::content_type::ContentType,
     template::Template,
 };
 use anyhow::Context;
@@ -228,9 +228,7 @@ impl From<&Exchange> for ExchangeSummary {
 /// This intentionally does *not* implement `Clone`, because request data could
 /// potentially be large so we want to be intentional about duplicating it only
 /// when necessary.
-///
-/// Remove serde impls in https://github.com/LucasPickering/slumber/issues/306
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct RequestRecord {
     /// Unique ID for this request
@@ -240,11 +238,9 @@ pub struct RequestRecord {
     /// The recipe used to generate this request (for historical context)
     pub recipe_id: RecipeId,
 
-    #[serde(with = "cereal::serde_method")]
     pub method: Method,
     /// URL, including query params/fragment
     pub url: Url,
-    #[serde(with = "cereal::serde_header_map")]
     pub headers: HeaderMap,
     /// Body content as bytes. This should be decoded as needed. This will
     /// **not** be populated for bodies that are above the "large" threshold.
@@ -437,14 +433,10 @@ impl crate::test_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
 ///
 /// This intentionally does not implement Clone, because responses could
 /// potentially be very large.
-///
-/// Remove serde impls in https://github.com/LucasPickering/slumber/issues/306
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct ResponseRecord {
-    #[serde(with = "cereal::serde_status_code")]
     pub status: StatusCode,
-    #[serde(with = "cereal::serde_header_map")]
     pub headers: HeaderMap,
     pub body: ResponseBody,
 }
@@ -491,8 +483,7 @@ impl ResponseRecord {
 ///
 /// The generic type is to make this usable with references to bodies. In most
 /// cases you can just use the default.
-#[derive(Default, Deserialize)]
-#[serde(bound = "T: From<Bytes>", from = "Bytes")] // Can't use into=Bytes because that requires cloning
+#[derive(Default)]
 pub struct ResponseBody<T = Bytes> {
     /// Raw body
     data: T,
@@ -539,37 +530,21 @@ impl<T: From<Bytes>> From<Bytes> for ResponseBody<T> {
     }
 }
 
-impl Serialize for ResponseBody {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        // Serialize just the bytes, everything else is derived
-        self.data.serialize(serializer)
-    }
-}
-
-impl From<Vec<u8>> for ResponseBody {
-    fn from(value: Vec<u8>) -> Self {
-        Self::new(value.into())
-    }
-}
-
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl From<&str> for ResponseBody {
     fn from(value: &str) -> Self {
         Self::new(value.to_owned().into())
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl From<&[u8]> for ResponseBody {
     fn from(value: &[u8]) -> Self {
         Self::new(value.to_owned().into())
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test"))]
 impl From<serde_json::Value> for ResponseBody {
     fn from(value: serde_json::Value) -> Self {
         Self::new(value.to_string().into())

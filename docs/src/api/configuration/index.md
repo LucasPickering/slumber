@@ -42,6 +42,14 @@ The following fields are available in `config.yml`:
 
 Shell used to execute commands within the TUI. [More info](#commands)
 
+### `commands.query_default`
+
+**Type:** `string`
+
+**Default:** `""`
+
+Default query command for all responses. [More info](#commands)
+
 ### `debug`
 
 **Type:** `boolean`

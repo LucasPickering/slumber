@@ -477,7 +477,7 @@ mod tests {
     ) {
         let select = SelectState::builder(items.0).build();
         let mut component =
-            TestComponent::new(&harness, &terminal, select, items.1);
+            TestComponent::with_props(&harness, &terminal, select, items.1);
         component.drain_draw().assert_empty();
         assert_eq!(component.data().selected(), Some(&"a"));
         component.send_key(KeyCode::Down).assert_empty();
@@ -499,7 +499,7 @@ mod tests {
             .subscribe([SelectStateEventType::Select])
             .build();
         let mut component =
-            TestComponent::new(&harness, &terminal, select, items.1);
+            TestComponent::with_props(&harness, &terminal, select, items.1);
 
         // Initial selection
         assert_eq!(component.data().selected(), Some(&"a"));
@@ -527,7 +527,7 @@ mod tests {
             .subscribe([SelectStateEventType::Submit])
             .build();
         let mut component =
-            TestComponent::new(&harness, &terminal, select, items.1);
+            TestComponent::with_props(&harness, &terminal, select, items.1);
         component.drain_draw().assert_empty();
 
         component
@@ -550,7 +550,7 @@ mod tests {
     ) {
         let select = SelectState::builder(items.0).build();
         let mut component =
-            TestComponent::new(&harness, &terminal, select, items.1);
+            TestComponent::with_props(&harness, &terminal, select, items.1);
 
         assert_matches!(
             component.send_key(KeyCode::Enter).events(),
@@ -613,7 +613,7 @@ mod tests {
             .items()
             .map(|item| item.0.to_string())
             .collect::<List>();
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::with_props(
             &harness,
             &terminal,
             PersistedLazy::new(Key, select),

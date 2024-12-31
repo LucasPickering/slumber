@@ -5,7 +5,7 @@ use crate::{
             actions::ActionsModal,
             list::List,
             modal::ModalHandle,
-            text_box::{TextBox, TextBoxEvent},
+            text_box::{TextBox, TextBoxEvent, TextBoxProps},
             Pane,
         },
         component::recipe_pane::RecipeMenuAction,
@@ -259,8 +259,12 @@ impl Draw for RecipeListPane {
             true,
         );
 
-        self.filter
-            .draw(frame, (), filter_area, self.filter_focused);
+        self.filter.draw(
+            frame,
+            TextBoxProps::default(),
+            filter_area,
+            self.filter_focused,
+        );
     }
 }
 
@@ -461,7 +465,6 @@ mod tests {
             &harness,
             &terminal,
             RecipeListPane::new(&harness.collection.recipes),
-            (),
         );
         // Clear initial events
         assert_matches!(

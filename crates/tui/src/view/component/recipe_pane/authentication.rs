@@ -341,7 +341,6 @@ mod tests {
             &harness,
             &terminal,
             AuthenticationDisplay::new(RecipeId::factory(()), authentication),
-            (),
         );
 
         // Check initial state
@@ -394,7 +393,6 @@ mod tests {
             &harness,
             &terminal,
             AuthenticationDisplay::new(RecipeId::factory(()), authentication),
-            (),
         );
 
         // Edit password
@@ -419,7 +417,6 @@ mod tests {
             &harness,
             &terminal,
             AuthenticationDisplay::new(RecipeId::factory(()), authentication),
-            (),
         );
 
         // Check initial state
@@ -459,7 +456,6 @@ mod tests {
             &harness,
             &terminal,
             AuthenticationDisplay::new(recipe_id, authentication),
-            (),
         );
 
         assert_eq!(
@@ -487,7 +483,6 @@ mod tests {
             &harness,
             &terminal,
             AuthenticationDisplay::new(recipe_id, authentication),
-            (),
         );
 
         assert_eq!(

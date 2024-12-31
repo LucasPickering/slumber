@@ -51,6 +51,18 @@ where
     Props: Clone,
     T: Draw<Props> + ToChild,
 {
+    /// [Self::with_props], but with default initial props
+    pub fn new(
+        harness: &TestHarness,
+        terminal: &'term TestTerminal,
+        data: T,
+    ) -> Self
+    where
+        Props: Default,
+    {
+        Self::with_props(harness, terminal, data, Props::default())
+    }
+
     /// Create a new component, then draw it to the screen and drain the event
     /// queue. Components aren't useful until they've been drawn once, because
     /// they won't receive events until they're marked as visible. For this
@@ -59,7 +71,7 @@ where
     ///
     /// This takes a a reference to the terminal so it can draw without having
     /// to plumb the terminal around to every draw call.
-    pub fn new(
+    pub fn with_props(
         harness: &TestHarness,
         terminal: &'term TestTerminal,
         data: T,

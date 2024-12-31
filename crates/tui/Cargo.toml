@@ -27,7 +27,7 @@ ratatui = {workspace = true, features = ["crossterm", "underline-color", "unstab
 reqwest = {workspace = true}
 serde = {workspace = true}
 serde_yaml = {workspace = true}
-shellish_parse = "2.2.0"
+shell-words = "1.1.0"
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}
 strum = {workspace = true}

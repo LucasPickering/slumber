@@ -33,6 +33,7 @@ SLUMBER_CONFIG_PATH=~/dotfiles/slumber.yml slumber
 | Field                      | Type                                | Description                                                                                       | Default                                      |
 | -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | `commands.shell`           | `string[]`                          | Shell used to execute commands within the TUI. [More info](#commands)                             | `[sh, -c]` (Unix), `[cmd, /S, /C]` (Windows) |
+| `commands.query_default`   | `string`                            | Default query command for all responses                                                           | `""`                                         |
 | `debug`                    | `boolean`                           | Enable developer information                                                                      | `false`                                      |
 | `editor`                   | `string`                            | Command to use when opening files for in-app editing. [More info](./editor.md)                    | `VISUAL`/`EDITOR` env vars, or `vim`         |
 | `ignore_certificate_hosts` | `string[]`                          | Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md) | `[]`                                         |

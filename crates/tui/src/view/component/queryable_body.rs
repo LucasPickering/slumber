@@ -41,6 +41,10 @@ pub struct QueryableBody {
 
     /// Are we currently typing in the query box?
     query_focused: bool,
+    /// Default query to use when none is present. We have to store this so we
+    /// can apply it when an empty query is loaded from persistence. Generally
+    /// this will come from the config but it's parameterized for testing
+    query_default: Option<String>,
     /// Shell command used to transform the content body
     query_command: Option<String>,
     /// Track status of the current query command
@@ -58,27 +62,36 @@ impl QueryableBody {
     /// Create a new body, optionally loading the query text from the
     /// persistence DB. This is optional because not all callers use the query
     /// box, or want to persist the value.
-    pub fn new(response: Arc<ResponseRecord>) -> Self {
+    pub fn new(
+        response: Arc<ResponseRecord>,
+        default_query: Option<String>,
+    ) -> Self {
         let input_engine = &TuiContext::get().input_engine;
         let binding = input_engine.binding_display(Action::Search);
 
-        let text_box = TextBox::default()
+        let query_text_box = TextBox::default()
             .placeholder(format!("{binding} to filter"))
             .placeholder_focused("Enter command (ex: `jq .results`)")
             .debounce();
+
         let text_state =
             TextState::new(response.content_type(), &response.body, true);
 
-        Self {
+        let mut slf = Self {
             emitter_id: EmitterId::new(),
             response,
             query_focused: false,
+            query_default: default_query,
             query_command: None,
             query_state: QueryState::None,
-            query_text_box: text_box.into(),
+            query_text_box: query_text_box.into(),
             text_window: Default::default(),
             text_state,
-        }
+        };
+        // Do *not* use the default_value method here, because we want to
+        // trigger a change event so the query is applied
+        slf.apply_default_query();
+        slf
     }
 
     /// If the original body text is _not_ what the user is looking at (because
@@ -99,10 +112,17 @@ impl QueryableBody {
         &self.text_state.text
     }
 
+    /// Set query to whatever the user passed in as the default
+    fn apply_default_query(&mut self) {
+        if let Some(query) = self.query_default.clone() {
+            self.query_text_box.data_mut().set_text(query);
+        }
+    }
+
     /// Update query command based on the current text in the box, and start
     /// a task to run the command
     fn update_query(&mut self) {
-        let command = self.query_text_box.data().text();
+        let command = self.query_text_box.data().text().trim();
         let response = &self.response;
 
         // If a command is already running, abort it
@@ -248,7 +268,17 @@ impl PersistedContainer for QueryableBody {
     }
 
     fn restore_persisted(&mut self, value: Self::Value) {
-        self.query_text_box.data_mut().restore_persisted(value)
+        let text_box = self.query_text_box.data_mut();
+        text_box.restore_persisted(value);
+
+        // It's pretty common to clear the whole text box without thinking about
+        // it. In that case, we want to restore the default the next time we
+        // reload from persistence (probably either app restart or next response
+        // for this recipe). It's possible the user really wants an empty box
+        // and this is annoying, but I think it'll be more good than bad.
+        if text_box.text().is_empty() {
+            self.apply_default_query();
+        }
     }
 }
 
@@ -388,6 +418,11 @@ mod tests {
 
     const TEXT: &[u8] = b"{\"greeting\":\"hello\"}";
 
+    /// Persisted key for testing
+    #[derive(Debug, Serialize, PersistedKey)]
+    #[persisted(String)]
+    struct Key;
+
     /// Style text to match the text window gutter
     fn gutter(text: &str) -> Span {
         let styles = &TuiContext::get().styles;
@@ -418,7 +453,7 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            QueryableBody::new(response),
+            QueryableBody::new(response, None),
         );
 
         // Assert initial state/view
@@ -483,29 +518,91 @@ mod tests {
     #[tokio::test]
     async fn test_persistence(
         harness: TestHarness,
-        #[with(30, 4)] terminal: TestTerminal,
+        terminal: TestTerminal,
         response: Arc<ResponseRecord>,
     ) {
-        #[derive(Debug, Serialize, PersistedKey)]
-        #[persisted(String)]
-        struct Key;
-
         // Add initial query to the DB
         DatabasePersistedStore::store_persisted(&Key, &"head -n 1".to_owned());
 
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            PersistedLazy::new(Key, QueryableBody::new(response)),
-        );
-
-        // We already have another test to check that querying works via typing
-        // in the box, so we just need to make sure state is initialized
-        // correctly here. Command execution requires a localset
-        run_local(async {
-            component.drain_draw().assert_empty();
+        // Loading from persistence triggers a debounce event, which needs a
+        // local set
+        let mut component = run_local(async {
+            TestComponent::new(
+                &harness,
+                &terminal,
+                PersistedLazy::new(
+                    Key,
+                    // Default value should get tossed out
+                    QueryableBody::new(response, Some("initial".into())),
+                ),
+            )
         })
         .await;
+
+        // After the debounce, there's a change event that spawns the command
+        run_local(async { component.drain_draw().assert_empty() }).await;
+
+        assert_eq!(
+            component.data().query_command.as_deref(),
+            Some("head -n 1")
+        );
+    }
+
+    /// Test that the user's configured query default is applied on a fresh load
+    #[rstest]
+    #[tokio::test]
+    async fn test_query_default_initial(
+        harness: TestHarness,
+        terminal: TestTerminal,
+        response: Arc<ResponseRecord>,
+    ) {
+        // Setting initial value triggers a debounce event
+        let mut component = run_local(async {
+            TestComponent::new(
+                &harness,
+                &terminal,
+                QueryableBody::new(response, Some("head -n 1".into())),
+            )
+        })
+        .await;
+
+        // After the debounce, there's a change event that spawns the command
+        run_local(async { component.drain_draw().assert_empty() }).await;
+
+        assert_eq!(
+            component.data().query_command.as_deref(),
+            Some("head -n 1")
+        );
+    }
+
+    /// Test that the user's configured query default is applied when there's a
+    /// persisted value, but it's an empty string
+    #[rstest]
+    #[tokio::test]
+    async fn test_query_default_persisted(
+        harness: TestHarness,
+        terminal: TestTerminal,
+        response: Arc<ResponseRecord>,
+    ) {
+        DatabasePersistedStore::store_persisted(&Key, &"".to_owned());
+
+        // Setting initial value triggers a debounce event
+        let mut component = run_local(async {
+            TestComponent::new(
+                &harness,
+                &terminal,
+                PersistedLazy::new(
+                    Key,
+                    // Default should override the persisted value
+                    QueryableBody::new(response, Some("head -n 1".into())),
+                ),
+            )
+        })
+        .await;
+
+        // After the debounce, there's a change event that spawns the command
+        run_local(async { component.drain_draw().assert_empty() }).await;
+
         assert_eq!(
             component.data().query_command.as_deref(),
             Some("head -n 1")

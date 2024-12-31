@@ -143,10 +143,11 @@ impl TestTerminal {
 
 /// Run a future in a local set, so it can use [tokio::task::spawn_local]. This
 /// will wait until all spawned tasks are done.
-pub async fn run_local(future: impl Future<Output = ()>) {
+pub async fn run_local<T>(future: impl Future<Output = T>) -> T {
     let local = LocalSet::new();
-    local.run_until(future).await; // Let the future spawn tasks
+    let output = local.run_until(future).await; // Let the future spawn tasks
     local.await; // Wait until all tasks are done
+    output
 }
 
 /// Assert that the event queue matches the given list of patterns. Each event

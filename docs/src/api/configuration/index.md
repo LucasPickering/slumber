@@ -30,14 +30,35 @@ SLUMBER_CONFIG_PATH=~/dotfiles/slumber.yml slumber
 
 ## Fields
 
-| Field                      | Type                                | Description                                                                                       | Default                              |
-| -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `debug`                    | `boolean`                           | Enable developer information                                                                      | `false`                              |
-| `editor`                   | `string`                            | Command to use when opening files for in-app editing. [More info](./editor.md)                    | `VISUAL`/`EDITOR` env vars, or `vim` |
-| `ignore_certificate_hosts` | `string[]`                          | Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md) | `[]`                                 |
-| `input_bindings`           | `mapping[Action, KeyCombination[]]` | Override default input bindings. [More info](./input_bindings.md)                                 | `{}`                                 |
-| `large_body_size`          | `number`                            | Size over which request/response bodies are not formatted/highlighted, for performance (bytes)    | `1000000` (1 MB)                     |
-| `preview_templates`        | `boolean`                           | Render template values in the TUI? If false, the raw template will be shown.                      | `true`                               |
-| `theme`                    | [`Theme`](./theme.md)               | Visual customizations                                                                             | `{}`                                 |
-| `pager`                    | `string`                            | Command to use when opening files for viewing. [More info](./editor.md)                           | `less` (Unix), `more` (Windows)      |
-| `viewer`                   | See `pager`                         | Alias for `pager`, for backward compatibility                                                     | See `pager`                          |
+| Field                      | Type                                | Description                                                                                       | Default                                      |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `commands.shell`           | `string[]`                          | Shell used to execute commands within the TUI. [More info](#commands)                             | `[sh, -c]` (Unix), `[cmd, /S, /C]` (Windows) |
+| `debug`                    | `boolean`                           | Enable developer information                                                                      | `false`                                      |
+| `editor`                   | `string`                            | Command to use when opening files for in-app editing. [More info](./editor.md)                    | `VISUAL`/`EDITOR` env vars, or `vim`         |
+| `ignore_certificate_hosts` | `string[]`                          | Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md) | `[]`                                         |
+| `input_bindings`           | `mapping[Action, KeyCombination[]]` | Override default input bindings. [More info](./input_bindings.md)                                 | `{}`                                         |
+| `large_body_size`          | `number`                            | Size over which request/response bodies are not formatted/highlighted, for performance (bytes)    | `1000000` (1 MB)                             |
+| `preview_templates`        | `boolean`                           | Render template values in the TUI? If false, the raw template will be shown.                      | `true`                                       |
+| `theme`                    | [`Theme`](./theme.md)               | Visual customizations                                                                             | `{}`                                         |
+| `pager`                    | `string`                            | Command to use when opening files for viewing. [More info](./editor.md)                           | `less` (Unix), `more` (Windows)              |
+| `viewer`                   | See `pager`                         | Alias for `pager`, for backward compatibility                                                     | See `pager`                                  |
+
+## Commands
+
+Slumber allows you to execute shell commands within the TUI, e.g. for querying and transforming response bodies. By default, the command you enter is passed to `sh` (or `cmd` on Windows) for parsing and execution. This allows you to access shell behavior such as piping. The command to execute is passed as the final argument to the shell, and the response body is passed as stdin to the spawned process.
+
+If you want to use a different shell (e.g. to access your shell aliases), you can override the `commands.shell` config field. For example, to use [fish](https://fishshell.com/):
+
+```yaml
+commands:
+  shell: ["fish", "-c"]
+```
+
+If you don't want to use a shell at all, you can pass `[]`:
+
+```yaml
+commands:
+  shell: []
+```
+
+In this case, any commands to be executed will be parsed with [shell-words](https://docs.rs/shell-words/1.1.0/shell_words/fn.split.html) and executed directly. For example, `echo -n test` will run `echo` with the arguments `-n` and `test`.

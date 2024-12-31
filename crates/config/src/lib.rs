@@ -39,6 +39,8 @@ const FILE: &str = "config.yml";
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    /// Configuration for in-app query and side effect commands
+    pub commands: CommandsConfig,
     /// Command to use for in-app editing. If provided, overrides
     /// `VISUAL`/`EDITOR` environment variables
     pub editor: Option<String>,
@@ -114,6 +116,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            commands: CommandsConfig::default(),
             editor: None,
             pager: None,
             http: HttpEngineConfig::default(),
@@ -121,6 +124,32 @@ impl Default for Config {
             input_bindings: Default::default(),
             theme: Default::default(),
             debug: false,
+        }
+    }
+}
+
+/// Configuration for in-app query and side effect commands
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CommandsConfig {
+    /// Wrapping shell to parse and execute commands
+    /// If empty, commands will be parsed with shell-words and run natievly
+    pub shell: Vec<String>,
+}
+
+impl Default for CommandsConfig {
+    fn default() -> Self {
+        // We use the defaults from docker, because it's well tested and
+        // reasonably intuitive
+        // https://docs.docker.com/reference/dockerfile/#shell
+        let default_shell: &[&str] = if cfg!(windows) {
+            &["cmd", "/S", "/C"]
+        } else {
+            &["/bin/sh", "-c"]
+        };
+
+        Self {
+            shell: default_shell.iter().map(|s| s.to_string()).collect(),
         }
     }
 }

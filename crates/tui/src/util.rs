@@ -3,7 +3,7 @@ use crate::{
     message::{Message, MessageSender},
     view::Confirm,
 };
-use anyhow::{anyhow, bail, Context};
+use anyhow::{bail, Context};
 use bytes::Bytes;
 use crossterm::event;
 use editor_command::EditorBuilder;
@@ -230,19 +230,35 @@ pub fn get_pager_command(file: &Path) -> anyhow::Result<Command> {
         })
 }
 
-/// Run a shellish command, optionally piping some stdin to it
+/// Run a command, optionally piping some stdin to it. This will use given shell
+/// (e.g. `["sh", "-c"]`) to execute the command, or parse+run it natively if no
+/// shell is set. The shell should generally come from the config, but is
+/// taken as param for testing.
 pub async fn run_command(
-    command: &str,
+    shell: &[String],
+    command_str: &str,
     stdin: Option<&[u8]>,
 ) -> anyhow::Result<Vec<u8>> {
-    let _ = debug_span!("Command", command).entered();
+    let _ = debug_span!("Command", command = command_str).entered();
 
-    let mut parsed = shellish_parse::parse(command, true)?;
-    let mut tokens = parsed.drain(..);
-    let program = tokens.next().ok_or_else(|| anyhow!("Command is empty"))?;
-    let args = tokens;
-    let mut process = tokio::process::Command::new(program)
-        .args(args)
+    let mut command = if let [program, args @ ..] = shell {
+        // Invoke the shell with our command as the final arg
+        let mut command = tokio::process::Command::new(program);
+        command.args(args).arg(command_str);
+        command
+    } else {
+        // Shell command is empty - we should execute the command directly.
+        // We'll have to do our own parsing of it
+        let tokens = shell_words::split(command_str)?;
+        let [program, args @ ..] = tokens.as_slice() else {
+            bail!("Command is empty")
+        };
+        let mut command = tokio::process::Command::new(program);
+        command.args(args);
+        command
+    };
+
+    let mut process = command
         // Stop the command on drop. This will leave behind a zombie process,
         // but tokio should reap it in the background. See method docs
         .kill_on_drop(true)
@@ -308,6 +324,7 @@ mod tests {
     use super::*;
     use crate::test_util::{harness, TestHarness};
     use rstest::rstest;
+    use slumber_config::CommandsConfig;
     use slumber_core::{
         assert_matches,
         test_util::{temp_dir, TempDir},
@@ -380,5 +397,29 @@ mod tests {
             expected,
             "{expected_path:?}"
         );
+    }
+
+    #[rstest]
+    #[case::default_shell(
+        &CommandsConfig::default().shell,
+        "echo test | head -c 1",
+        "t",
+    )]
+    #[case::no_shell(&[], "echo -n test | head -c 1", "test | head -c 1")]
+    // I don't feel like getting this case to work with powershell
+    #[cfg_attr(not(windows), case::custom_shell(
+        &["bash".into(), "-c".into()],
+        "echo test | head -c 1",
+        "t",
+    ))]
+    #[tokio::test]
+    async fn test_run_command(
+        #[case] shell: &[String],
+        #[case] command: &str,
+        #[case] expected: &str,
+    ) {
+        let bytes = run_command(shell, command, None).await.unwrap();
+        let s = std::str::from_utf8(&bytes).unwrap();
+        assert_eq!(s, expected);
     }
 }

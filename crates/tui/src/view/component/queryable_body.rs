@@ -128,7 +128,8 @@ impl QueryableBody {
             let command = command.to_owned();
             let emitter = self.detach();
             let handle = task::spawn_local(async move {
-                let result = run_command(&command, Some(&body))
+                let shell = &TuiContext::get().config.commands.shell;
+                let result = run_command(shell, &command, Some(&body))
                     .await
                     .with_context(|| format!("Error running `{command}`"));
                 emitter.emit(QueryComplete(result.map_err(Rc::new)));

@@ -47,6 +47,7 @@ type Validator = Box<dyn Fn(&str) -> bool>;
 impl TextBox {
     /// Set initialize value for the text box
     pub fn default_value(mut self, default: String) -> Self {
+        // Don't call set_text here, because we don't want to emit an event
         self.state.text = default;
         self.state.end();
         self
@@ -101,10 +102,15 @@ impl TextBox {
         self.state.text
     }
 
-    /// Set text, and move the cursor to the end. This will **not** emit events
+    /// Set text, and move the cursor to the end. If the text changed, emit a
+    /// change event.
     pub fn set_text(&mut self, text: String) {
+        let changed = text != self.state.text;
         self.state.text = text;
         self.state.end();
+        if changed {
+            self.change();
+        }
     }
 
     /// Check if the current input text is valid. Always returns true if there
@@ -166,6 +172,7 @@ impl TextBox {
 
     /// Emit a change event. Should be called whenever text _content_ is changed
     fn change(&mut self) {
+        println!("change");
         let is_valid = self.is_valid();
         if let Some(debounce) = &self.on_change_debounce {
             if self.is_valid() {
@@ -402,7 +409,6 @@ impl PersistedContainer for TextBox {
 
     fn restore_persisted(&mut self, value: Self::Value) {
         self.set_text(value);
-        self.submit();
     }
 }
 

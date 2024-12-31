@@ -9,7 +9,7 @@ pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 
-use crate::js::JsRuntime;
+use crate::js::JsVm;
 use anyhow::anyhow;
 use itertools::Itertools;
 use std::{
@@ -57,16 +57,19 @@ impl CollectionFile {
     /// Load config from the given file. The caller is responsible for using
     /// [Self::try_path] to find the file themself. This pattern enables the
     /// TUI to start up and watch the collection file, even if it's invalid.
-    pub async fn load(path: PathBuf) -> anyhow::Result<Self> {
-        let collection = load_collection(path.clone()).await?.into();
+    pub async fn load(js: &JsVm, path: PathBuf) -> anyhow::Result<Self> {
+        let collection = load_collection(js, path.clone()).await?.into();
         Ok(Self { path, collection })
     }
 
     /// Reload a new collection from the same file used for this one.
     ///
     /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
-    pub fn reload(&self) -> impl Future<Output = anyhow::Result<Collection>> {
-        load_collection(self.path.clone())
+    pub fn reload<'a>(
+        &'a self,
+        js: &'a JsVm,
+    ) -> impl 'a + Future<Output = anyhow::Result<Collection>> {
+        load_collection(js, self.path.clone())
     }
 
     /// Get the path of the file that this collection was loaded from
@@ -153,11 +156,14 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 
 /// Load a collection from the given file. Takes an owned path because it
 /// needs to be passed to a future
-async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
+async fn load_collection(
+    js: &JsVm,
+    path: PathBuf,
+) -> anyhow::Result<Collection> {
     // YAML parsing is blocking so do it in a different thread. We could use
     // tokio::fs for this but that just uses std::fs underneath anyway.
     // TODO update comment
-    JsRuntime::new().load_collection(&path).await
+    js.load_collection(&path).await
 }
 
 #[cfg(test)]

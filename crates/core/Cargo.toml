@@ -24,10 +24,10 @@ mime = {workspace = true}
 regex = {version = "1.10.5", default-features = false}
 reqwest = {workspace = true, features = ["multipart", "rustls-tls", "rustls-tls-native-roots"]}
 rmp-serde = "1.1.2"
+rquickjs = {version = "0.8.1", features = ["futures"], default-features = false}
 rstest = {workspace = true, optional = true}
 rusqlite = {version = "0.31.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
 rusqlite_migration = "1.2.0"
-rustyscript = {workspace = true}
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 serde_json_path = "0.7.1"

@@ -42,7 +42,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{RequestId, RequestSeed},
-    js::Renderer,
+    js::{JsVm, Renderer},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
 use std::{
@@ -112,12 +112,14 @@ impl Tui {
 
         // ===== Initialize collection & view =====
 
+        let js = JsVm::new().await;
         // If the collection fails to load, create an empty one just so we can
         // move along. We'll watch the file and hopefully the user can fix it
-        let collection_file = CollectionFile::load(collection_path.clone())
-            .await
-            .reported(&messages_tx)
-            .unwrap_or_else(|| CollectionFile::with_path(collection_path));
+        let collection_file =
+            CollectionFile::load(&js, collection_path.clone())
+                .await
+                .reported(&messages_tx)
+                .unwrap_or_else(|| CollectionFile::with_path(collection_path));
         let view =
             View::new(&collection_file, database.clone(), messages_tx.clone());
 
@@ -127,7 +129,7 @@ impl Tui {
         let terminal = initialize_terminal()?;
 
         let request_store = RequestStore::new(database.clone());
-        let render_queue = js::run();
+        let render_queue = js::run(js);
 
         let app = Tui {
             terminal,
@@ -235,8 +237,8 @@ impl Tui {
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::CollectionStartReload => {
-                let future = self.collection_file.reload();
-                let messages_tx = self.messages_tx();
+                // let future = self.collection_file.reload();
+                // let messages_tx = self.messages_tx();
                 // TODO
                 // self.spawn(async move {
                 //     let collection = future.await?;

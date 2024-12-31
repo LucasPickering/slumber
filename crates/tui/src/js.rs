@@ -1,6 +1,6 @@
 use slumber_core::{
     collection::FunctionId,
-    js::{JsRuntime, Renderer},
+    js::{JsVm, Renderer},
     template::TemplateContext,
 };
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use tokio::{
 // TODO rename module
 
 /// TODO
-pub fn run() -> RenderQueue {
+pub fn run(js: JsVm) -> RenderQueue {
     let (tx, mut rx) = mpsc::unbounded_channel::<RenderMessage>();
 
     // TODO explain
@@ -25,10 +25,9 @@ pub fn run() -> RenderQueue {
         let local = LocalSet::new();
 
         local.spawn_local(async move {
-            let runtime = JsRuntime::new();
             while let Some(message) = rx.recv().await {
                 let output = String::new(); // TODO
-                message.channel.send(Ok(output));
+                message.channel.send(Ok(output)).expect("TODO");
             }
         });
 

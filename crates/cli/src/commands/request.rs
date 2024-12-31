@@ -16,7 +16,7 @@ use slumber_core::{
         BuildOptions, HttpEngine, RequestRecord, RequestSeed, RequestTicket,
         ResponseRecord,
     },
-    js::{JsRuntime, PlainRenderer},
+    js::{JsVm, PlainRenderer},
     template::{Prompt, Prompter, Select, TemplateContext, TemplateError},
     util::{MaybeStr, ResultTraced},
 };
@@ -155,8 +155,8 @@ impl BuildRequestCommand {
     ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
         let collection_path = CollectionFile::try_path(None, global.file)?;
         let config = Config::load()?;
-        let mut runtime = JsRuntime::new();
-        let collection = runtime.load_collection(&collection_path).await?;
+        let mut js = JsVm::new().await;
+        let collection = js.load_collection(&collection_path).await?;
         // Open DB in readonly. Storing requests in history from the CLI isn't
         // really intuitive, and could have a large perf impact for scripting
         // and large responses
@@ -197,10 +197,7 @@ impl BuildRequestCommand {
             prompter: Box::new(CliPrompter),
             state: Default::default(),
         };
-        let renderer = PlainRenderer {
-            runtime: &runtime,
-            context: &template_context,
-        };
+        let renderer = PlainRenderer::new(&js, &template_context);
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
         let request = http_engine.build(seed, &renderer).await?;
         Ok((database, request))

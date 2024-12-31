@@ -5,76 +5,116 @@ use crate::{
     },
     template::{Template, TemplateContext},
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use indexmap::IndexMap;
-use rustyscript::{js_value::Function, Module};
+use rquickjs::{AsyncContext, AsyncRuntime, Function, Module};
 use std::{collections::HashMap, hash::Hash, path::Path};
-use tokio::{runtime::Handle, sync::Mutex};
+use tokio::fs;
 use tracing::{debug, info, info_span};
 
 /// TODO
+/// TODO rename
 #[derive(derive_more::Debug)]
-pub struct JsRuntime {
+pub struct JsVm {
     #[debug(skip)]
-    runtime: Mutex<rustyscript::Runtime>,
-    functions: FunctionRegistry,
+    runtime: AsyncRuntime,
+    #[debug(skip)]
+    context: AsyncContext,
 }
 
-impl JsRuntime {
+impl JsVm {
     /// TODO
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
         // This function is independent from app state or user input, so an
         // error is very exceptional. It also means we probably can't do
         // anything meaningful, so it's alright to panic.
 
         let _ = info_span!("Initializing JS runtime").entered();
-        let runtime = rustyscript::Runtime::with_tokio_runtime(
-            Default::default(),
-            Handle::current(),
-        )
-        .unwrap();
-        // TODO enable sandboxing?
+        let runtime = AsyncRuntime::new().unwrap();
+        // TODO should we use a more limited context?
+        let context = AsyncContext::full(&runtime).await.unwrap();
 
-        Self {
-            runtime: runtime.into(),
-            functions: FunctionRegistry::default(),
-        }
+        Self { runtime, context }
     }
 
     /// Load a recipe collection from a JS file
     pub async fn load_collection(
-        &mut self,
+        &self,
         path: &Path,
     ) -> anyhow::Result<Collection> {
         info!(?path, "Loading collection file");
-        async {
-            let module = Module::load(path)?;
-            // Exported value should be a unary function that returns the
-            // collection
-            let mut runtime = self.runtime.lock().await;
-            let handle = runtime.load_module_async(&module).await?;
-            // Deserialize with real function pointers
-            let collection: Collection<Function> =
-                runtime.call_entrypoint_async(&handle, &()).await?;
+        let source = fs::read_to_string(path).await.context("TODO")?;
+        self.context
+            .with(|context| {
+                let func =
+                    context.eval_file::<Function, _>(path).context("asdf")?;
+                // let func = Module::evaluate(context.clone(), "test", source)?
+                //     .finish::<Function>()?;
 
-            // Replace the function pointers with unique IDs. This allows the
-            // collection to impl Send. During rendering we'll use the map to
-            // convert IDs back to functions
-            self.functions.functions.clear();
-            let collection = collection.convert(&mut self.functions);
+                // Deserialize with real function pointers
+                let collection = func.call::<_, Collection<Function>>(())?;
 
-            Ok::<_, anyhow::Error>(collection)
+                // Replace the function pointers with unique IDs. This allows
+                // the collection to impl Send. During rendering
+                // we'll use the map to convert IDs back to
+                // functions TODO where to store the functions?
+                let mut functions = FunctionRegistry::default();
+                Ok::<_, anyhow::Error>(collection.convert(&mut functions))
+            })
+            .await
+            .with_context(|| format!("Error loading collection from {path:?}"))
+    }
+}
+/*
+/// A helper for rendering templates. This handles the JS side of rendering,
+/// i.e. calling deferred render functions.
+#[derive(derive_more::Debug)]
+pub struct JsRenderer {
+    #[debug(skip)]
+    js: AsyncContext,
+    /// Template context, to provide values and utilities to Slumber functions
+    /// during template renders. We hold a reference here, as well as one in
+    /// the JS runtime, so that Rust-in-JS functions can use it.
+    template_context: Arc<TemplateContext>,
+}
+
+impl JsRenderer {
+    /// TODO
+    pub fn context(&self) -> &TemplateContext {
+        &self.template_context
+    }
+
+    /// TODO
+    pub async fn render_bytes(
+        &self,
+        template: &Template,
+    ) -> anyhow::Result<Vec<u8>> {
+        match template {
+            Template::Value(s) => Ok(s.clone().into_bytes()),
+            Template::Lazy(function_id) => self
+                .render_function(function_id)
+                .await
+                .map(String::into_bytes),
         }
-        .await
-        .with_context(|| format!("Error loading collection from {path:?}"))
     }
-}
 
-impl Default for JsRuntime {
-    fn default() -> Self {
-        Self::new()
+    /// TODO
+    pub async fn render_string(
+        &self,
+        template: &Template,
+    ) -> anyhow::Result<String> {
+        match template {
+            Template::Value(s) => Ok(s.clone()),
+            Template::Lazy(function_id) => {
+                self.render_function(function_id).await
+            }
+        }
     }
-}
+
+    async fn render_function(&self, _: &FunctionId) -> anyhow::Result<String> {
+        todo!()
+    }
+} */
 
 pub trait Renderer {
     /// TODO
@@ -115,8 +155,17 @@ pub trait Renderer {
 }
 
 pub struct PlainRenderer<'a> {
-    pub runtime: &'a JsRuntime,
-    pub context: &'a TemplateContext,
+    js_context: &'a AsyncContext,
+    template_context: &'a TemplateContext,
+}
+
+impl<'a> PlainRenderer<'a> {
+    pub fn new(js: &'a JsVm, template_context: &'a TemplateContext) -> Self {
+        Self {
+            js_context: &js.context,
+            template_context,
+        }
+    }
 }
 
 impl<'a> Renderer for PlainRenderer<'a> {
@@ -125,41 +174,25 @@ impl<'a> Renderer for PlainRenderer<'a> {
         &self,
         function_id: &FunctionId,
     ) -> anyhow::Result<String> {
-        let func = self.runtime.functions.get(function_id);
         let empty = IndexMap::new();
         // TODO render profile fields first
         let profile_data = self
-            .context
+            .template_context
             .profile()
             .map(|profile| &profile.data)
             .unwrap_or(&empty);
-        let mut runtime = self.runtime.runtime.lock().await;
-        func.call_async(&mut runtime, None, &[profile_data])
-            .await
-            .context("TODO")
+        todo!()
+        // func.call_async(&mut runtime, None, &[profile_data])
+        //     .await
+        //     .context("TODO")
     }
 
     fn context(&self) -> &TemplateContext {
-        self.context
+        self.template_context
     }
 }
 
-#[derive(Debug, Default)]
-struct FunctionRegistry {
-    functions: HashMap<FunctionId, Function>,
-}
-
-impl FunctionRegistry {
-    fn register(&mut self, function: Function) -> FunctionId {
-        let id = FunctionId::new();
-        self.functions.insert(id, function);
-        id
-    }
-
-    fn get(&self, id: &FunctionId) -> &Function {
-        self.functions.get(id).expect("TODO")
-    }
-}
+type FunctionRegistry = HashMap<FunctionId, ()>;
 
 trait ConvertFns {
     type Output;
@@ -167,7 +200,7 @@ trait ConvertFns {
     fn convert(self, registry: &mut FunctionRegistry) -> Self::Output;
 }
 
-impl ConvertFns for Collection<Function> {
+impl<'js> ConvertFns for Collection<Function<'js>> {
     type Output = Collection<FunctionId>;
 
     fn convert(self, registry: &mut FunctionRegistry) -> Self::Output {
@@ -188,7 +221,7 @@ impl<K: Eq + Hash + PartialEq, V: ConvertFns> ConvertFns for IndexMap<K, V> {
     }
 }
 
-impl ConvertFns for Profile<Function> {
+impl<'js> ConvertFns for Profile<Function<'js>> {
     type Output = Profile<FunctionId>;
 
     fn convert(self, registry: &mut FunctionRegistry) -> Self::Output {
@@ -201,7 +234,7 @@ impl ConvertFns for Profile<Function> {
     }
 }
 
-impl ConvertFns for RecipeTree<Function> {
+impl<'js> ConvertFns for RecipeTree<Function<'js>> {
     type Output = RecipeTree<FunctionId>;
 
     fn convert(self, registry: &mut FunctionRegistry) -> Self::Output {
@@ -212,7 +245,7 @@ impl ConvertFns for RecipeTree<Function> {
     }
 }
 
-impl ConvertFns for RecipeNode<Function> {
+impl<'js> ConvertFns for RecipeNode<Function<'js>> {
     type Output = RecipeNode<FunctionId>;
 
     fn convert(self, registry: &mut FunctionRegistry) -> Self::Output {
@@ -227,7 +260,7 @@ impl ConvertFns for RecipeNode<Function> {
     }
 }
 
-impl ConvertFns for Recipe<Function> {
+impl<'js> ConvertFns for Recipe<Function<'js>> {
     type Output = Recipe<FunctionId>;
 
     fn convert(self, registry: &mut FunctionRegistry) -> Self::Output {
@@ -250,7 +283,7 @@ impl ConvertFns for Recipe<Function> {
     }
 }
 
-impl ConvertFns for RecipeBody<Function> {
+impl<'js> ConvertFns for RecipeBody<Function<'js>> {
     type Output = RecipeBody<FunctionId>;
 
     fn convert(self, registry: &mut FunctionRegistry) -> Self::Output {
@@ -269,7 +302,7 @@ impl ConvertFns for RecipeBody<Function> {
     }
 }
 
-impl ConvertFns for Authentication<Template<Function>> {
+impl<'js> ConvertFns for Authentication<Template<Function<'js>>> {
     type Output = Authentication<Template<FunctionId>>;
 
     fn convert(self, registry: &mut FunctionRegistry) -> Self::Output {
@@ -285,7 +318,7 @@ impl ConvertFns for Authentication<Template<Function>> {
     }
 }
 
-impl ConvertFns for Folder<Function> {
+impl<'js> ConvertFns for Folder<Function<'js>> {
     type Output = Folder<FunctionId>;
 
     fn convert(self, registry: &mut FunctionRegistry) -> Self::Output {
@@ -297,14 +330,16 @@ impl ConvertFns for Folder<Function> {
     }
 }
 
-impl ConvertFns for Template<Function> {
+impl<'js> ConvertFns for Template<Function<'js>> {
     type Output = Template<FunctionId>;
 
     fn convert(self, registry: &mut FunctionRegistry) -> Self::Output {
         match self {
             Self::Value(s) => Template::Value(s),
-            Self::Lazy(function) => {
-                let id = registry.register(function);
+            Self::Lazy(_) => {
+                let id = FunctionId::new();
+                // TODO store the actual fn
+                registry.insert(id, ());
                 Template::Lazy(id)
             }
         }

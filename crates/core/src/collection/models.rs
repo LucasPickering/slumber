@@ -12,6 +12,7 @@ use anyhow::anyhow;
 use derive_more::{Deref, Display, From, FromStr};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use rquickjs::{FromJs, Function};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use strum::{EnumIter, IntoEnumIterator};
@@ -47,6 +48,15 @@ impl<F> Default for Collection<F> {
             profiles: Default::default(),
             recipes: Default::default(),
         }
+    }
+}
+
+impl<'js> FromJs<'js> for Collection<Function<'js>> {
+    fn from_js(
+        ctx: &rquickjs::Ctx<'js>,
+        value: rquickjs::Value<'js>,
+    ) -> rquickjs::Result<Self> {
+        todo!()
     }
 }
 

@@ -1,6 +1,7 @@
 //! Display for HTTP responses
 
 use crate::{
+    context::TuiContext,
     message::Message,
     view::{
         common::{
@@ -144,7 +145,10 @@ impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
             request_id: props.request_id,
             body: PersistedLazy::new(
                 ResponseQueryPersistedKey(props.recipe_id.clone()),
-                QueryableBody::new(Arc::clone(props.response)),
+                QueryableBody::new(
+                    Arc::clone(props.response),
+                    TuiContext::get().config.commands.query_default.clone(),
+                ),
             )
             .into(),
         });

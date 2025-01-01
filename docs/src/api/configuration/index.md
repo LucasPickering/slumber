@@ -33,11 +33,11 @@ SLUMBER_CONFIG_PATH=~/dotfiles/slumber.yml slumber
 | Field                      | Type                                | Description                                                                                       | Default                              |
 | -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | `debug`                    | `boolean`                           | Enable developer information                                                                      | `false`                              |
-| `editor`                   | `string`                            | Command to use when opening files for in-app editing. [More info](./editor.md)                    | `VISUAL`/`EDITOR` env vars, or `vim` |
+| `editor`                   | `string`                            | Command to use when opening files for in-app editing. [More info](../../user_guide/tui/editor.md) | `VISUAL`/`EDITOR` env vars, or `vim` |
 | `ignore_certificate_hosts` | `string[]`                          | Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md) | `[]`                                 |
 | `input_bindings`           | `mapping[Action, KeyCombination[]]` | Override default input bindings. [More info](./input_bindings.md)                                 | `{}`                                 |
 | `large_body_size`          | `number`                            | Size over which request/response bodies are not formatted/highlighted, for performance (bytes)    | `1000000` (1 MB)                     |
 | `preview_templates`        | `boolean`                           | Render template values in the TUI? If false, the raw template will be shown.                      | `true`                               |
 | `theme`                    | [`Theme`](./theme.md)               | Visual customizations                                                                             | `{}`                                 |
-| `pager`                    | `string`                            | Command to use when opening files for viewing. [More info](./editor.md)                           | `less` (Unix), `more` (Windows)      |
+| `pager`                    | `string`                            | Command to use when opening files for viewing. [More info](../../user_guide/tui/editor.md)        | `less` (Unix), `more` (Windows)      |
 | `viewer`                   | See `pager`                         | Alias for `pager`, for backward compatibility                                                     | See `pager`                          |

@@ -1,4 +1,4 @@
-# In-App Editing and File Viewing
+# In-App Editing & File Viewing
 
 ## Editing
 
@@ -21,7 +21,7 @@ The command will be parsed like a shell command (although a shell is never actua
 
 ## Paging
 
-You can open your response bodies in a separate file browser if you want additional features beyond what Slumber provides. To configure the command to use, set the `PAGER` environment variable or the `pager` configuration field:
+You can open request and response bodies in a separate file browser if you want additional features beyond what Slumber provides. To configure the command to use, set the `PAGER` environment variable or the `pager` configuration field:
 
 ```yaml
 pager: bat

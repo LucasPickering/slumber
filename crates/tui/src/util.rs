@@ -203,7 +203,7 @@ pub fn get_editor_command(file: &Path) -> anyhow::Result<Command> {
         .with_context(|| {
             format!(
                 "Error opening editor; see {}",
-                doc_link("api/configuration/editor"),
+                doc_link("user_guide/tui/editor"),
             )
         })
 }
@@ -225,7 +225,7 @@ pub fn get_pager_command(file: &Path) -> anyhow::Result<Command> {
         .with_context(|| {
             format!(
                 "Error opening pager; see {}",
-                doc_link("api/configuration/editor"),
+                doc_link("user_guide/tui/editor"),
             )
         })
 }

@@ -7,7 +7,8 @@
 # User Guide
 
 - [Key Concepts](./user_guide/key_concepts.md)
-- [Terminal User Interface (TUI)](./user_guide/tui.md)
+- [Terminal User Interface (TUI)](./user_guide/tui/index.md)
+  - [In-App Editing & File Viewing](./user_guide/tui/editor.md)
 - [Command Line Interface (CLI)](./user_guide/cli.md)
 - [Templates](./user_guide/templates.md)
   - [Chains - Complex Template Values](./user_guide/chains.md)
@@ -39,7 +40,6 @@
 - [Configuration](./api/configuration/index.md)
   - [Input Bindings](./api/configuration/input_bindings.md)
   - [Theme](./api/configuration/theme.md)
-  - [In-App Editing](./api/configuration/editor.md)
 
 # Troubleshooting
 

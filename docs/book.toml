@@ -6,6 +6,10 @@ multilingual = false
 src = "src"
 title = "Slumber"
 
+[preprocessor.toc]
+command = "mdbook-toc"
+renderer = ["html"]
+
 [output.html]
 edit-url-template = "https://github.com/LucasPickering/slumber/edit/master/docs/{path}"
 git-repository-url = "https://github.com/LucasPickering/slumber"

@@ -30,14 +30,72 @@ SLUMBER_CONFIG_PATH=~/dotfiles/slumber.yml slumber
 
 ## Fields
 
-| Field                      | Type                                | Description                                                                                       | Default                              |
-| -------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `debug`                    | `boolean`                           | Enable developer information                                                                      | `false`                              |
-| `editor`                   | `string`                            | Command to use when opening files for in-app editing. [More info](../../user_guide/tui/editor.md) | `VISUAL`/`EDITOR` env vars, or `vim` |
-| `ignore_certificate_hosts` | `string[]`                          | Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md) | `[]`                                 |
-| `input_bindings`           | `mapping[Action, KeyCombination[]]` | Override default input bindings. [More info](./input_bindings.md)                                 | `{}`                                 |
-| `large_body_size`          | `number`                            | Size over which request/response bodies are not formatted/highlighted, for performance (bytes)    | `1000000` (1 MB)                     |
-| `preview_templates`        | `boolean`                           | Render template values in the TUI? If false, the raw template will be shown.                      | `true`                               |
-| `theme`                    | [`Theme`](./theme.md)               | Visual customizations                                                                             | `{}`                                 |
-| `pager`                    | `string`                            | Command to use when opening files for viewing. [More info](../../user_guide/tui/editor.md)        | `less` (Unix), `more` (Windows)      |
-| `viewer`                   | See `pager`                         | Alias for `pager`, for backward compatibility                                                     | See `pager`                          |
+The following fields are available in `config.yml`:
+
+<!-- toc -->
+
+### `debug`
+
+**Type:** `boolean`
+
+**Default:** `false`
+
+Enable developer information in the TUI
+
+### `editor`
+
+**Type:** `string`
+
+**Default:** `VISUAL`/`EDITOR` env vars, or `vim`
+
+Command to use when opening files for in-app editing. [More info](../../user_guide/tui/editor.md)
+
+### `ignore_certificate_hosts`
+
+**Type:** `string`
+
+**Default:** `[]`
+
+Hostnames whose TLS certificate errors will be ignored. [More info](../../troubleshooting/tls.md)
+
+### `input_bindings`
+
+**Type:** `mapping[Action, KeyCombination[]]`
+
+**Default:** `{}`
+
+Override default input bindings. [More info](./input_bindings.md)
+
+### `large_body_size`
+
+**Type:** `number`
+
+**Default:** `1000000` (1 MB)
+
+Size over which request/response bodies are not formatted/highlighted, for performance (bytes)
+
+### `preview_templates`
+
+**Type:** `boolean`
+
+**Default:** `true`
+
+Render template values in the TUI? If false, the raw template will be shown.
+
+### `theme`
+
+**Type:** `Theme`
+
+**Default:** `{}`
+
+Visual customizations for the TUI. [More info](./theme.md)
+
+### `pager`
+
+**Alias:** `viewer` (for historical compatibility)
+
+**Type:** `string`
+
+**Default:** `less` (Unix), `more` (Windows)
+
+Command to use when opening files for viewing. [More info](../../user_guide/tui/editor.md)

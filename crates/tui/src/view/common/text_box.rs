@@ -170,7 +170,7 @@ impl TextBox {
         if let Some(debounce) = &self.on_change_debounce {
             if self.is_valid() {
                 // Defer the change event until after the debounce period
-                let emitter = self.detach();
+                let emitter = self.handle();
                 debounce.start(move || emitter.emit(TextBoxEvent::Change));
             } else {
                 debounce.cancel();

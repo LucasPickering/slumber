@@ -301,8 +301,8 @@ pub trait Emitter {
     /// Get a lightweight version of this emitter, with the same type and ID but
     /// datched from this lifetime. Useful for both emitting and consuming
     /// emissions from across task boundaries, modals, etc.
-    fn detach(&self) -> EmitterToken<Self::Emitted> {
-        EmitterToken {
+    fn handle(&self) -> EmitterHandle<Self::Emitted> {
+        EmitterHandle {
             id: self.id(),
             phantom: PhantomData,
         }
@@ -364,7 +364,7 @@ impl Default for EmitterId {
 /// A lightweight copy of an emitter that can be passed between threads or
 /// callbacks. This has the same emitting capability as the source emitter
 /// because it contains its ID and is bound to its emitted event type. Generate
-/// via [Emitter::detach].
+/// via [Emitter::handle].
 ///
 /// It would be good to impl `!Send` for this type because it shouldn't be
 /// passed between threads, but there is one use case where it needs to be Send
@@ -372,12 +372,12 @@ impl Default for EmitterId {
 /// threads. !Send is more correct because if you try to emit from another
 /// thread it'll panic, because the event queue isn't available there.
 #[derive(Debug)]
-pub struct EmitterToken<T> {
+pub struct EmitterHandle<T> {
     id: EmitterId,
     phantom: PhantomData<T>,
 }
 
-impl<T: LocalEvent> Emitter for EmitterToken<T> {
+impl<T: LocalEvent> Emitter for EmitterHandle<T> {
     type Emitted = T;
 
     fn id(&self) -> EmitterId {

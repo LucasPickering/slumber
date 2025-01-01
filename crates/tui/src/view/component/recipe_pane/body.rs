@@ -166,7 +166,7 @@ impl RawBody {
             return;
         };
 
-        let emitter = self.detach();
+        let emitter = self.handle();
         ViewContext::send_message(Message::FileEdit {
             path,
             on_complete: Box::new(move |path| {

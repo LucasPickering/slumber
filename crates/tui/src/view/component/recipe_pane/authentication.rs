@@ -11,7 +11,7 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{
-            Child, Emitter, EmitterId, EmitterToken, Event, EventHandler,
+            Child, Emitter, EmitterHandle, EmitterId, Event, EventHandler,
             Update,
         },
         state::fixed_select::FixedSelectState,
@@ -101,7 +101,7 @@ impl EventHandler for AuthenticationDisplay {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
         let action = event.action();
         if let Some(Action::Edit) = action {
-            self.state.open_edit_modal(self.detach());
+            self.state.open_edit_modal(self.handle());
         } else if let Some(Action::Reset) = action {
             self.state.reset_override();
         } else if let Some(SaveAuthenticationOverride(value)) =
@@ -218,7 +218,7 @@ impl State {
     /// Open a modal to let the user edit temporary override values
     fn open_edit_modal(
         &self,
-        emitter: EmitterToken<SaveAuthenticationOverride>,
+        emitter: EmitterHandle<SaveAuthenticationOverride>,
     ) {
         let (label, value) = match &self {
             Self::Basic {

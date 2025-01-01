@@ -14,7 +14,7 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{
-            Child, Emitter, EmitterId, EmitterToken, Event, EventHandler,
+            Child, Emitter, EmitterHandle, EmitterId, Event, EventHandler,
             Update,
         },
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
@@ -118,7 +118,7 @@ where
                     // Consume the event even if we have no rows, for
                     // consistency
                     if let Some(selected_row) = self.select.data().selected() {
-                        selected_row.open_edit_modal(self.detach());
+                        selected_row.open_edit_modal(self.handle());
                     }
                 }
                 Action::Reset => {
@@ -266,7 +266,7 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
     }
 
     /// Open a modal to create or edit the value's temporary override
-    fn open_edit_modal(&self, emitter: EmitterToken<SaveRecipeTableOverride>) {
+    fn open_edit_modal(&self, emitter: EmitterHandle<SaveRecipeTableOverride>) {
         let index = self.index;
         ViewContext::open_modal(TextBoxModal::new(
             format!("Edit value for {}", self.key),

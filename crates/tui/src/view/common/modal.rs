@@ -3,7 +3,7 @@ use crate::{
     view::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Child, Emitter, EmitterToken, Event, EventHandler, Update},
+        event::{Child, Emitter, EmitterHandle, Event, EventHandler, Update},
         util::centered_rect,
         Component, ViewContext,
     },
@@ -209,7 +209,7 @@ pub struct ModalHandle<T: Emitter> {
     /// plumbing but would not actually accomplish anything. Once a modal is
     /// closed, it won't be emitting anymore so there's no harm in hanging onto
     /// its ID.
-    emitter: Option<EmitterToken<T::Emitted>>,
+    emitter: Option<EmitterHandle<T::Emitted>>,
 }
 
 impl<T: Emitter> ModalHandle<T> {
@@ -222,7 +222,7 @@ impl<T: Emitter> ModalHandle<T> {
     where
         T: 'static + Modal,
     {
-        self.emitter = Some(modal.detach());
+        self.emitter = Some(modal.handle());
         ViewContext::open_modal(modal);
     }
 

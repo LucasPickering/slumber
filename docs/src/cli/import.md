@@ -34,4 +34,6 @@ Supported formats:
 
 Requested formats:
 
+- [Postman](https://github.com/LucasPickering/slumber/issues/417)
+
 If you'd like another format supported, please [open an issue](https://github.com/LucasPickering/slumber/issues/new).

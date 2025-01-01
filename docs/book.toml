@@ -13,3 +13,8 @@ renderer = ["html"]
 [output.html]
 edit-url-template = "https://github.com/LucasPickering/slumber/edit/master/docs/{path}"
 git-repository-url = "https://github.com/LucasPickering/slumber"
+
+[output.html.print]
+# Print seems to have a bug with absolute links to static assets, which causes
+# the link check CI step to fail. I don't see much value in this anyway
+enable = false

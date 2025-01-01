@@ -7,6 +7,7 @@ Generate GIFs from VHS tapes
 import argparse
 import glob
 import os
+import shutil
 import subprocess
 
 TAPE_DIR = "tapes/"
@@ -18,17 +19,24 @@ def main() -> None:
     parser.add_argument(
         "--check", action="store_true", help="Check if all GIFs are up to date"
     )
+    parser.add_argument("tapes", nargs="*", help="Generate or check specific tapes")
     args = parser.parse_args()
 
+    tapes = [get_tape_path(tape) for tape in args.tapes]
     if args.check:
-        check_all()
+        check_all(tapes)
     else:
-        generate_all()
+        generate_all(tapes)
 
 
-def generate_all() -> None:
-    tapes = get_tapes()
+def generate_all(tapes: list[str]) -> None:
+    if not tapes:
+        tapes = get_tapes()
     print(f"Generating GIFs for: {tapes}")
+
+    print("Deleting data/")
+    shutil.rmtree("data/")
+
     run(["cargo", "build"])
     for tape in tapes:
         generate(tape)
@@ -41,9 +49,10 @@ def generate(tape: str) -> None:
     run(["vhs", tape])
 
 
-def check_all() -> None:
+def check_all(tapes: list[str]) -> None:
+    if not tapes:
+        tapes = get_tapes()
     latest_commit = run(["git", "rev-parse", "HEAD"])
-    tapes = get_tapes()
     failed = []
     for tape in tapes:
         gif = get_gif_path(tape)
@@ -67,6 +76,10 @@ def check(gif_path: str, latest_commit: str) -> bool:
 
 def get_tapes() -> list[str]:
     return glob.glob(os.path.join(TAPE_DIR, "*"))
+
+
+def get_tape_path(tape_name: str) -> str:
+    return os.path.join(TAPE_DIR, f"{tape_name}.tape")
 
 
 def get_gif_path(tape_path: str) -> str:

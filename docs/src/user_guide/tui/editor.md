@@ -2,9 +2,11 @@
 
 ## Editing
 
+![Open collection file in vim](/static/editor.gif)
+
 Slumber supports editing your collection file without leaving the app. To do so, open the actions menu (`x` by default), then select `Edit Collection`. Slumber will open an external editor to modify the file. To determine which editor to use, Slumber checks these places in the following order:
 
-- `editor` field of the [configuration file](./index.md)
+- `editor` field of the [configuration file](../../api/configuration/index.md)
 - `VISUAL` environment variable
 - `EDITOR` environment variable
 - Default to `vim`
@@ -27,9 +29,15 @@ You can open request and response bodies in a separate file browser if you want 
 pager: bat
 ```
 
+Slumber will check these places in the following order for a command:
+
+- `pager` field of the [configuration file](../../api/configuration/index.md)
+- `PAGER` environment variable
+- Default to `less` (Unix) or `more` (Windows)
+
 > The pager command uses the same format as the `editor` field. The command is parsed with [shell-words](https://docs.rs/shell-words/1.1.0/shell_words/fn.split.html), then a temporary file path is passed as the final argument.
 
-To open a body in the pager, use the actions menu keybinding (`x` by default, see [input bindings](./input_bindings.md)), and select `View Body`.
+To open a body in the pager, use the actions menu keybinding (`x` by default, see [input bindings](../../api/configuration/input_bindings.md)), and select `View Body`.
 
 Some popular file viewers:
 

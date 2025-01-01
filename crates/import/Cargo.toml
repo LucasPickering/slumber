@@ -16,8 +16,8 @@ indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
 openapiv3 = "2.0.0"
-rest_parser = "0.1.6"
 reqwest = {workspace = true}
+rest_parser = "0.1.6"
 serde = {workspace = true}
 serde_json = {workspace = true}
 serde_yaml = {workspace = true}
@@ -31,6 +31,7 @@ winnow = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 serde_test = {workspace = true}
+slumber_core = {workspace = true, features = ["test"]}
 
 [features]
 

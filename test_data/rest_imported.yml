@@ -1,0 +1,63 @@
+profiles:
+  http_file:
+    name: Jetbrains HTTP File
+    default: true
+    data:
+      HOST: http://httpbin.org
+      FIRST: Joe
+      LAST: Smith
+      FULL: '{{FIRST}} {{LAST}}'
+      ENDPOINT: post
+chains:
+  Pet_json_3_body:
+    source: !file
+      path: ./test_data/rest_pets.json
+    sensitive: false
+    selector: null
+    selector_mode: single
+    content_type: json
+    trim: none
+requests:
+  SimpleGet_0: !request
+    name: SimpleGet
+    method: GET
+    url: '{{HOST}}/get'
+    body: null
+    authentication: null
+    query: []
+    headers: {}
+  JsonPost_1: !request
+    name: JsonPost
+    method: POST
+    url: '{{HOST}}/post'
+    body: !json
+      data: my data
+      name: '{{FULL}}'
+    authentication: !basic
+      username: foo
+      password: bar
+    query:
+    - hello=123
+    headers:
+      Content-Type: application/json
+      X-Http-Method-Override: PUT
+  Request_2: !request
+    name: Request
+    method: POST
+    url: https://httpbin.org/{{ENDPOINT}}
+    body: first={{FIRST}}&last={{LAST}}&full={{FULL}}
+    authentication: !bearer efaxijasdfjasdfa
+    query: []
+    headers:
+      Content-Type: application/x-www-form-urlencoded
+      My-Header: hello
+      Other-Header: goodbye
+  Pet_json_3: !request
+    name: Pet.json
+    method: POST
+    url: '{{HOST}}/post'
+    body: '{{chains.Pet_json_3_body}}'
+    authentication: null
+    query: []
+    headers:
+      Content-Type: application/json

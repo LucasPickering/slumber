@@ -1947,6 +1947,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rest_parser"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "575c220d2c01ec29da1d36c6fbd1deb7fe001597336f54f22f5f1a35cbeaa5c8"
+dependencies = [
+ "anyhow",
+ "base64",
+ "httparse",
+ "indexmap",
+ "nom",
+ "url",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2495,6 +2509,7 @@ dependencies = [
  "openapiv3",
  "pretty_assertions",
  "reqwest",
+ "rest_parser",
  "rstest",
  "serde",
  "serde_json",

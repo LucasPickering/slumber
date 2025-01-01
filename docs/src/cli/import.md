@@ -27,11 +27,11 @@ slumber import insomnia insomnia.json slumber.yml
 Supported formats:
 
 - Insomnia
-- OpenAPI v3.0
+- [OpenAPI v3.0](https://spec.openapis.org/oas/v3.0.3)
   - Note: Despite the minor version bump, OpenAPI v3.1 is _not_ backward compatible with v3.0. If you have a v3.1 spec, it _may_ work with this importer, but no promises.
+- [VSCode `.rest`](https://github.com/Huachao/vscode-restclient)
+- [JetBrains `.http`](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html)
 
 Requested formats:
-
-- [JetBrains HTTP](https://github.com/LucasPickering/slumber/issues/122)
 
 If you'd like another format supported, please [open an issue](https://github.com/LucasPickering/slumber/issues/new).

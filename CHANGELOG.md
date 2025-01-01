@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Add REST Importer for VSCode and Jetbrains
+- Add REST Importer for VSCode and Jetbrains [#122](https://github.com/LucasPickering/slumber/issues/122) (thanks @benfaerber)
 
 ### Changed
 

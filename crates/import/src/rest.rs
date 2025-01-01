@@ -344,10 +344,6 @@ mod tests {
         ])
     }
 
-    fn test_template(value: &str) -> Template {
-        value.parse().unwrap()
-    }
-
     #[test]
     fn can_convert_basic_request() {
         let test_req = RestRequest {
@@ -364,11 +360,8 @@ mod tests {
         let CompleteRecipe { recipe, .. } =
             try_build_recipe(test_req, 0, &IndexMap::new()).unwrap();
 
-        assert_eq!(recipe.url, test_template("https://httpbin.org"));
-        assert_eq!(
-            recipe.query.get(1).unwrap(),
-            &("age".into(), test_template("46"))
-        );
+        assert_eq!(recipe.url, "https://httpbin.org".into());
+        assert_eq!(&recipe.query[1], &("age".into(), "46".into()));
         assert_eq!(recipe.method, Method::Get);
         assert_eq!(recipe.id().clone(), RecipeId::from("My_Request__0"));
     }
@@ -389,14 +382,14 @@ mod tests {
         let CompleteRecipe { recipe, .. } =
             try_build_recipe(test_req, 0, &vars).unwrap();
 
-        assert_eq!(recipe.url, test_template("{{HOST}}/get"));
+        assert_eq!(recipe.url, "{{HOST}}/get".into());
         assert_eq!(
-            recipe.query.get(0).unwrap(),
-            &("first_name".into(), test_template("{{FIRST_NAME}}"))
+            &recipe.query[0],
+            &("first_name".into(), ("{{FIRST_NAME}}").into())
         );
         assert_eq!(
-            recipe.query.get(1).unwrap(),
-            &("full_name".into(), test_template("{{FULL_NAME}}"))
+            &recipe.query[1],
+            &("full_name".into(), ("{{FULL_NAME}}").into())
         );
         assert_eq!(recipe.method, Method::Post);
     }
@@ -458,7 +451,7 @@ mod tests {
         assert_eq!(
             body,
             RecipeBody::Raw {
-                body: test_template("test data"),
+                body: ("test data").into(),
                 content_type: None,
             }
         );
@@ -486,7 +479,7 @@ mod tests {
         assert_eq!(
             body,
             RecipeBody::Raw {
-                body: test_template("{\"animal\": \"penguin\"}"),
+                body: ("{\"animal\": \"penguin\"}").into(),
                 content_type: Some(ContentType::Json),
             }
         );
@@ -539,7 +532,7 @@ mod tests {
                 assert_eq!(
                     body2,
                     &Some(RecipeBody::Raw {
-                        body: test_template("{\"animal\": \"penguin\"}"),
+                        body: ("{\"animal\": \"penguin\"}").into(),
                         content_type: Some(ContentType::Json),
                     })
                 );

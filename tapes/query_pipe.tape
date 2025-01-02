@@ -1,4 +1,4 @@
-Output "docs/src/images/query.gif"
+Output "docs/src/images/query_pipe.gif"
 Set Shell bash
 Set Width 1200
 Set Height 800
@@ -12,6 +12,7 @@ Hide
 Type "cargo run"
 Enter
 Sleep 2s
+
 Enter # Send login request
 Type "hunter2"
 Enter
@@ -19,10 +20,7 @@ Sleep 2s
 Type "rf" # Fullscreen response pane
 Show
 
-Sleep 1s
 Type "/"
 Sleep 1s
-Type "$.args"
-Sleep 2s
-Type ".fast"
+Type "jq .args | head -n 3"
 Sleep 2s

@@ -1,6 +1,6 @@
 # Content Type
 
-Content type defines the various data formats that Slumber recognizes and can manipulate. Slumber is capable of displaying any text-based data format, but only specific formats support additional features such as [querying](../../user_guide/filter_query.md) and formatting.
+Content type defines the various data formats that Slumber recognizes and can manipulate. Slumber is capable of displaying any text-based data format, but only specific formats support additional features such as [querying](../../user_guide/tui/filter_query.md) and formatting.
 
 ## Auto-detection
 

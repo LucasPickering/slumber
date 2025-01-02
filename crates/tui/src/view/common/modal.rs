@@ -9,6 +9,7 @@ use crate::{
     },
 };
 use ratatui::{
+    layout::Margin,
     prelude::Constraint,
     text::Line,
     widgets::{Block, Borders, Clear},
@@ -174,19 +175,24 @@ impl Draw for ModalQueue {
             let (width, height) = modal.data().dimensions();
 
             // The child gave us the content dimensions, we need to add one cell
-            // of buffer for the border
+            // of buffer for the border, plus one cell of padding in X so text
+            // doesn't butt up against the border, which interferes with
+            // word-based selection
+            let margin = Margin::new(1, 0);
             let mut area = centered_rect(width, height, metadata.area());
-            area.x -= 1;
-            area.y -= 1;
-            area.width += 2;
-            area.height += 2;
+            let x_buffer = margin.horizontal + 1;
+            let y_buffer = margin.vertical + 1;
+            area.x -= x_buffer;
+            area.y -= y_buffer;
+            area.width += x_buffer * 2;
+            area.height += y_buffer * 2;
 
             let block = Block::default()
                 .title(modal.data().title())
                 .borders(Borders::ALL)
                 .border_style(styles.modal.border)
                 .border_type(styles.modal.border_type);
-            let inner_area = block.inner(area);
+            let inner_area = block.inner(area).inner(margin);
 
             // Draw the outline of the modal
             frame.render_widget(Clear, area);

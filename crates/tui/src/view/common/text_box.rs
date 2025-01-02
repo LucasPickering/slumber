@@ -172,7 +172,6 @@ impl TextBox {
 
     /// Emit a change event. Should be called whenever text _content_ is changed
     fn change(&mut self) {
-        println!("change");
         let is_valid = self.is_valid();
         if let Some(debounce) = &self.on_change_debounce {
             if self.is_valid() {

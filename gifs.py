@@ -7,11 +7,12 @@ Generate GIFs from VHS tapes
 import argparse
 import glob
 import os
+import re
 import shutil
 import subprocess
 
 TAPE_DIR = "tapes/"
-GIF_DIR = "static/"
+OUTPUT_REGEX = re.compile(r"^Output \"(?P<path>.*)\"$")
 
 
 def main() -> None:
@@ -83,9 +84,12 @@ def get_tape_path(tape_name: str) -> str:
 
 
 def get_gif_path(tape_path: str) -> str:
-    file_name = os.path.basename(tape_path)
-    (name, _) = os.path.splitext(file_name)
-    return os.path.join(GIF_DIR, f"{name}.gif")
+    with open(tape_path) as f:
+        for line in f:
+            m = OUTPUT_REGEX.match(line)
+            if m:
+                return m.group("path")
+    raise ValueError(f"Tape file {tape_path} missing Output declaration")
 
 
 def run(command: list[str]) -> str:

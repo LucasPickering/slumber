@@ -6,7 +6,7 @@ Most string values in a request collection (e.g. URL, request body, etc.) are te
 
 The syntax for injecting a dynamic value into a template is double curly braces `{{...}}`. The contents inside the braces tell Slumber how to retrieve the dynamic value.
 
-This guide serves as a functional example of how to use templates. For detailed information on options available, see [the API reference](../api/request_collection/template.md).
+This guide serves as a functional example of how to use templates. For detailed information on options available, see [the API reference](../../api/request_collection/template.md).
 
 > **A note on YAML string syntax**
 >

@@ -36,7 +36,7 @@ requests:
     authentication: !bearer "{{chains.auth_token}}"
 ```
 
-> For more info on the `selector` field, see [Data Filtering & Querying](./filter_query.md)
+> For more info on the `selector` field, see [Data Extraction via JSONPath](./selector.md)
 
 ### Automatically Executing the Upstream Request
 
@@ -69,11 +69,11 @@ chains:
     selector: $.token
 ```
 
-For more detail about the various trigger variants, including the syntax of the `expire` variant, see [the API docs](../api/request_collection/chain_source.md#chain-request-trigger).
+For more detail about the various trigger variants, including the syntax of the `expire` variant, see [the API docs](../../api/request_collection/chain_source.md#chain-request-trigger).
 
 ## Chaining Chains
 
-Chains on their own are powerful enough, but what makes them _really_ cool is that the arguments to a chain are templates in themselves, meaning you can use [nested templates](./templates.md#nested-templates) to chain chains to other chains! Wait, what?
+Chains on their own are powerful enough, but what makes them _really_ cool is that the arguments to a chain are templates in themselves, meaning you can use [nested templates](./index.md#nested-templates) to chain chains to other chains! Wait, what?
 
 Let's say the login response doesn't return JSON, but instead the response looks like this:
 

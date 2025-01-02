@@ -146,7 +146,7 @@ impl QueryableBody {
             // Clone is cheap because Bytes uses refcounting
             let body = response.body.bytes().clone();
             let command = command.to_owned();
-            let emitter = self.detach();
+            let emitter = self.handle();
             let handle = task::spawn_local(async move {
                 let shell = &TuiContext::get().config.commands.shell;
                 let result = run_command(shell, &command, Some(&body))

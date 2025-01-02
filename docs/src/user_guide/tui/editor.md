@@ -2,7 +2,7 @@
 
 ## Editing
 
-![Open collection file in vim](/static/editor.gif)
+![Open collection file in vim](../../images/editor.gif)
 
 Slumber supports editing your collection file without leaving the app. To do so, open the actions menu (`x` by default), then select `Edit Collection`. Slumber will open an external editor to modify the file. To determine which editor to use, Slumber checks these places in the following order:
 

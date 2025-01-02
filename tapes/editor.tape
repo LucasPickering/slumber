@@ -1,4 +1,4 @@
-Output "static/editor.gif"
+Output "docs/src/images/editor.gif"
 Set Shell bash
 Set Width 1200
 Set Height 800

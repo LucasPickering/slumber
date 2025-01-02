@@ -45,12 +45,12 @@ pub struct QueryableBody {
     /// can apply it when an empty query is loaded from persistence. Generally
     /// this will come from the config but it's parameterized for testing
     query_default: Option<String>,
-    /// Shell command used to transform the content body
-    query_command: Option<String>,
     /// Track status of the current query command
     query_state: QueryState,
     /// Where the user enters their body query
     query_text_box: Component<TextBox>,
+    /// Command to reset back to when the user hits cancel
+    last_executed_command: Option<String>,
     /// Filtered text display
     text_window: Component<TextWindow>,
 
@@ -82,7 +82,7 @@ impl QueryableBody {
             response,
             query_focused: false,
             query_default: default_query,
-            query_command: None,
+            last_executed_command: None,
             query_state: QueryState::None,
             query_text_box: query_text_box.into(),
             text_window: Default::default(),
@@ -100,7 +100,8 @@ impl QueryableBody {
     /// Binary bodies will return `None` here. Return an owned value because we
     /// have to join the text to a string.
     pub fn modified_text(&self) -> Option<String> {
-        if self.query_command.is_some() || self.text_state.pretty {
+        if matches!(self.query_state, QueryState::Ok) || self.text_state.pretty
+        {
             Some(self.text_state.text.to_string())
         } else {
             None
@@ -132,15 +133,16 @@ impl QueryableBody {
 
         if command.is_empty() {
             // Reset to initial body
-            self.query_command = None;
+            self.last_executed_command = None;
+            self.query_state = QueryState::None;
             self.text_state = TextState::new(
                 self.response.content_type(),
                 &self.response.body,
                 true, // Prettify
             );
-        } else if self.query_command.as_deref() != Some(command) {
+        } else if self.last_executed_command.as_deref() != Some(command) {
             // If the command has changed, execute it
-            self.query_command = Some(command.to_owned());
+            self.last_executed_command = Some(command.to_owned());
 
             // Spawn the command in the background because it could be slow.
             // Clone is cheap because Bytes uses refcounting
@@ -177,7 +179,7 @@ impl EventHandler for QueryableBody {
                 TextBoxEvent::Cancel => {
                     // Reset text to whatever was submitted last
                     self.query_text_box.data_mut().set_text(
-                        self.query_command.clone().unwrap_or_default(),
+                        self.last_executed_command.clone().unwrap_or_default(),
                     );
                     self.query_focused = false;
                 }

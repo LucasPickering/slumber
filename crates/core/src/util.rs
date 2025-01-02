@@ -20,7 +20,6 @@ use std::{
 use tokio::sync::{Mutex, OwnedRwLockWriteGuard, RwLock};
 use tracing::error;
 
-const WEBSITE: &str = "https://slumber.lucaspickering.me";
 /// Link to the GitHub New Issue form
 pub const NEW_ISSUE_LINK: &str =
     "https://github.com/LucasPickering/slumber/issues/new/choose";
@@ -36,7 +35,12 @@ pub const NEW_ISSUE_LINK: &str =
 /// );
 /// ```
 pub fn doc_link(path: &str) -> String {
-    format!("{WEBSITE}/book/{path}.html")
+    const ROOT: &str = "https://slumber.lucaspickering.me/book/";
+    if path.is_empty() {
+        ROOT.into()
+    } else {
+        format!("{ROOT}{path}.html")
+    }
 }
 
 /// Parse bytes from a reader into YAML. This will merge any anchors/aliases.

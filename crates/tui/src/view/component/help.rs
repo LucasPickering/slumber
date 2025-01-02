@@ -14,7 +14,7 @@ use ratatui::{
     Frame,
 };
 use slumber_config::{Action, Config, InputBinding};
-use slumber_core::util::paths;
+use slumber_core::util::{doc_link, paths};
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -53,7 +53,7 @@ pub struct HelpModal;
 
 impl HelpModal {
     /// Number of lines in the general section (not including header)
-    const GENERAL_LENGTH: u16 = 4;
+    const GENERAL_LENGTH: u16 = 5;
 
     /// Get the list of bindings that will be shown in the modal
     fn bindings() -> impl Iterator<Item = (Action, &'static InputBinding)> {
@@ -97,6 +97,7 @@ impl Draw for HelpModal {
             title: Some("General"),
             rows: [
                 ("Version", Line::from(CRATE_VERSION)),
+                ("Docs", doc_link("").into()),
                 ("Configuration", Config::path().display().to_string().into()),
                 ("Log", paths::log_file().display().to_string().into()),
                 (

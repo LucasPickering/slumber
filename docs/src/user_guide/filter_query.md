@@ -102,10 +102,6 @@ You can use this capability to manipulate responses via `grep`, `awk`, or any ot
 
 ## Querying Response in TUI
 
-You can visually query a response body using the filter box at the bottom. Here is a full response, with no query applied:
+You can visually query a response body using the filter box at the bottom:
 
-![Unfiltered response](../images/filter_full.png)
-
-And here it is with the query `$.data` applied:
-
-![Filtered response](../images/filter_small.png)
+![Querying response via JSONPath](../images/query.gif)

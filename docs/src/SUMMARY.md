@@ -9,11 +9,12 @@
 - [Key Concepts](./user_guide/key_concepts.md)
 - [Terminal User Interface (TUI)](./user_guide/tui/index.md)
   - [In-App Editing & File Viewing](./user_guide/tui/editor.md)
+  - [Data Filtering & Querying](./user_guide/tui/filter_query.md)
 - [Command Line Interface (CLI)](./user_guide/cli.md)
-- [Templates](./user_guide/templates.md)
-  - [Chains - Complex Template Values](./user_guide/chains.md)
+- [Templates](./user_guide/templates/index.md)
+  - [Chains - Complex Template Values](./user_guide/templates/chains.md)
+  - [Data Extraction via JSONPath](./user_guide/templates/selector.md)
 - [Collection Reuse & Inheritance](./user_guide/inheritance.md)
-- [Data Filtering & Querying](./user_guide/filter_query.md)
 - [Importing External Collections](./user_guide/import.md)
 
 # CLI Commands

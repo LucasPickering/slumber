@@ -22,8 +22,8 @@ Slumber is a TUI (terminal user interface) HTTP client. Define, execute, and sha
 - Usable as a TUI or CLI
 - Source-first configuration, for easy persistence and sharing
 - [Import from external formats (e.g. Insomnia)](https://slumber.lucaspickering.me/book/user_guide/import.html)
-- [Build requests dynamically from other requests, files, and shell commands](https://slumber.lucaspickering.me/book/user_guide/templates.html)
-- [Browse response data using JSONPath selectors](https://slumber.lucaspickering.me/book/user_guide/filter_query.html)
+- [Build requests dynamically from other requests, files, and shell commands](https://slumber.lucaspickering.me/book/user_guide/templates/index.html)
+- [Browse response data using JSONPath selectors](https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.html)
 - Switch between different environments easily using [profiles](https://slumber.lucaspickering.me/book/api/request_collection/profile.html)
 - And more!
 

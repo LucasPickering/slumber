@@ -4,7 +4,7 @@ A template is represented in YAML as a normal string, and thus supports [all of 
 
 Templates can generally be used in any _value_ in a request recipe (_not_ in keys), as well as in profile values and chains. This makes them very powerful, because you can compose templates with complex transformations.
 
-For more detail on usage and examples, see the [user guide page on templates](../../user_guide/templates.md).
+For more detail on usage and examples, see the [user guide page on templates](../../user_guide/templates/index.md).
 
 ## Template Sources
 

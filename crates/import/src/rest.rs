@@ -522,7 +522,6 @@ mod tests {
         let recipe_1 = recipes.get(&RecipeId::from("Query_Request_0")).unwrap();
         let recipe_2 = recipes.get(&RecipeId::from("Request_1")).unwrap();
 
-        println!("{recipe_1:?}");
         match (recipe_1, recipe_2) {
             (
                 RecipeNode::Recipe(Recipe { body: body1, .. }),

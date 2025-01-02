@@ -25,6 +25,8 @@ const COMMAND_NAME: &str = "slumber";
 /// Configurable HTTP client with both TUI and CLI interfaces
 ///
 /// If subcommand is omitted, start the TUI.
+///
+/// https://slumber.lucaspickering.me/book/
 #[derive(Debug, Parser)]
 #[clap(author, version, about, name = COMMAND_NAME)]
 pub struct Args {

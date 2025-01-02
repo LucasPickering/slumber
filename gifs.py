@@ -35,9 +35,6 @@ def generate_all(tapes: list[str]) -> None:
         tapes = get_tapes()
     print(f"Generating GIFs for: {tapes}")
 
-    print("Deleting data/")
-    shutil.rmtree("data/")
-
     run(["cargo", "build"])
     for tape in tapes:
         generate(tape)
@@ -45,8 +42,8 @@ def generate_all(tapes: list[str]) -> None:
 
 
 def generate(tape: str) -> None:
-    gif = get_gif_path(tape)
-    print(f"Generating {tape} -> {gif}")
+    print("Deleting data/")
+    shutil.rmtree("data/")
     run(["vhs", tape])
 
 

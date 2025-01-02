@@ -51,6 +51,6 @@ requests:
 
 > Note: the `!request` tag, which tells Slumber that this is a request recipe, not a folder. This is [YAML's tag syntax](https://yaml.org/spec/1.2.2/#24-tags), which is used commonly throughout Slumber to provide explicit configuration.
 
-This request collection uses [templates](./user_guide//templates.md) and [profiles](./api/request_collection/profile.md), allowing you to dynamically change the target host.
+This request collection uses [templates](./user_guide/templates/index.md) and [profiles](./api/request_collection/profile.md), allowing you to dynamically change the target host.
 
 To learn more about the powerful features of Slumber you can use in your collections, keep reading with [Key Concepts](./user_guide/key_concepts.md).

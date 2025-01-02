@@ -10,7 +10,7 @@ The collection is the main form of configuration. It defines a set of request re
 
 A recipe defines which HTTP requests Slumber can make. A recipe generally corresponds to one endpoint on an API, although you can create as many recipes per endpoint as you'd like.
 
-## [Template](./templates.md)
+## [Template](./templates/index.md)
 
 Templates are Slumber's most powerful feature. They allow you to dynamically build URLs, query parameters, request bodies, etc. using predefined _or_ dynamic values.
 

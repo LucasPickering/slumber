@@ -1,12 +1,6 @@
-# Data Filtering & Querying
+# Data Extraction via JSONPath
 
-Slumber supports querying data structures to transform or reduce response data.
-
-There are two main use cases for querying:
-
-- In [chained template values](../api/request_collection/chain.md), to extract data
-  - Provided via chain's `selector` argument
-- In the TUI response body browser, to limit the response data shown
+[Chains](./chains.md) support querying data structures to transform or reduce response data. THis is done via the `selector` field of a chain.
 
 **Regardless of data format, querying is done via [JSONPath](https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html).** For non-JSON formats, the data will be converted to JSON, queried, and converted back. This keeps querying simple and uniform across data types.
 
@@ -99,9 +93,3 @@ requests:
 ```
 
 You can use this capability to manipulate responses via `grep`, `awk`, or any other program you like.
-
-## Querying Response in TUI
-
-You can visually query a response body using the filter box at the bottom:
-
-![Querying response via JSONPath](../images/query.gif)

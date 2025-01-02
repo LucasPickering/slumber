@@ -40,7 +40,7 @@ The following fields are available in `config.yml`:
 
 **Default:** `[sh, -c]` (Unix), `[cmd, /S, /C]` (Windows)
 
-Shell used to execute commands within the TUI. [More info](#commands)
+Shell used to execute commands within the TUI. Use `[]` for no shell (commands will be parsed and executed directly). [More info](../../user_guide/tui/filter_query.md)
 
 ### `commands.query_default`
 
@@ -48,7 +48,7 @@ Shell used to execute commands within the TUI. [More info](#commands)
 
 **Default:** `""`
 
-Default query command for all responses. [More info](#commands)
+Default query command for all responses. [More info](../../user_guide/tui/filter_query.md)
 
 ### `debug`
 

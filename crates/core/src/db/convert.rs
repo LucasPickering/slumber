@@ -210,6 +210,7 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for Exchange {
                     .map(|wrap| wrap.0),
             }),
             response: Arc::new(ResponseRecord {
+                id,
                 status: row.get::<_, SqlWrap<StatusCode>>("status_code")?.0,
                 headers: row
                     .get::<_, SqlWrap<HeaderMap>>("response_headers")?

@@ -441,6 +441,7 @@ mod tests {
             ..RequestRecord::factory(())
         };
         let response = ResponseRecord {
+            id: request.id,
             body: response_body.into(),
             headers: response_headers,
             ..ResponseRecord::factory(())
@@ -1043,6 +1044,7 @@ mod tests {
             ..RequestRecord::factory(())
         };
         let response = ResponseRecord {
+            id: request.id,
             body: json!(["foo", "bar"]).into(),
             headers: response_headers,
             ..ResponseRecord::factory(())

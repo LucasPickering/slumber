@@ -17,7 +17,7 @@ use std::{
     sync::Arc,
 };
 use tokio::task::JoinHandle;
-use tracing::{error, warn};
+use tracing::warn;
 
 /// Simple in-memory "database" for request state. This serves a few purposes:
 ///
@@ -75,8 +75,8 @@ impl RequestStore {
         self.requests.insert(id, state);
     }
 
-    /// Mark a request as loading
-    pub fn loading(&mut self, request: Arc<RequestRecord>) {
+    /// Mark a request as loading. Return the updated state.
+    pub fn loading(&mut self, request: Arc<RequestRecord>) -> &RequestState {
         self.replace(request.id, |state| {
             // Requests should go building->loading, but it's possible it got
             // cancelled right before this was called
@@ -95,11 +95,12 @@ impl RequestStore {
                 );
                 state
             }
-        });
+        })
     }
 
-    /// Mark a request as failed because of a build error
-    pub fn build_error(&mut self, error: RequestBuildError) {
+    /// Mark a request as failed because of a build error. Return the updated
+    /// state.
+    pub fn build_error(&mut self, error: RequestBuildError) -> &RequestState {
         // Use replace just to help catch bugs
         self.replace(error.id, |state| {
             // This indicates a bug or race condition (e.g. build cancelled as
@@ -112,11 +113,12 @@ impl RequestStore {
             }
 
             RequestState::BuildError { error }
-        });
+        })
     }
 
-    /// Mark a request as successful, i.e. we received a response
-    pub fn response(&mut self, exchange: Exchange) {
+    /// Mark a request as successful, i.e. we received a response. Return the
+    /// updated state.
+    pub fn response(&mut self, exchange: Exchange) -> &RequestState {
         let response_state = RequestState::response(exchange);
         // Use replace just to help catch bugs
         self.replace(response_state.id(), |state| {
@@ -130,11 +132,12 @@ impl RequestStore {
             }
 
             response_state
-        });
+        })
     }
 
-    /// Mark a request as failed because of an HTTP error
-    pub fn request_error(&mut self, error: RequestError) {
+    /// Mark a request as failed because of an HTTP error. Return the updated
+    /// state.
+    pub fn request_error(&mut self, error: RequestError) -> &RequestState {
         // Use replace just to help catch bugs
         self.replace(error.request.id, |state| {
             // This indicates a bug or race condition (e.g. request cancelled as
@@ -147,12 +150,12 @@ impl RequestStore {
             }
 
             RequestState::RequestError { error }
-        });
+        })
     }
 
     /// Cancel a request that is either building or loading. If it's in any
-    /// other state, it will be left alone.
-    pub fn cancel(&mut self, id: RequestId) {
+    /// other state, it will be left alone. Return the updated state.
+    pub fn cancel(&mut self, id: RequestId) -> &RequestState {
         let end_time = Utc::now();
         self.replace(id, |state| match state {
             RequestState::Building {
@@ -194,7 +197,7 @@ impl RequestStore {
                 );
                 state
             }
-        });
+        })
     }
 
     /// Load a request from the database by ID. If already present in the store,
@@ -300,19 +303,16 @@ impl RequestStore {
         &mut self,
         id: RequestId,
         f: impl FnOnce(RequestState) -> RequestState,
-    ) {
+    ) -> &RequestState {
         // Remove the existing value, map it, then reinsert. We need to remove
         // the value first so we can pass ownership to the fn
         if let Some(state) = self.requests.remove(&id) {
             self.requests.insert(id, f(state));
-        } else if cfg!(debug_assertions) {
-            // Only crash in dev. In prd this bug shouldn't be fatal
-            panic!("Cannot replace request {id}: not in store");
+            &self.requests[&id]
         } else {
-            // This indicates a logic error. We shouldn't ever hit a code
-            // path that calls this fn if the request isn't
-            // in the store at all.
-            error!(%id, "Cannot replace request: not in store");
+            // This indicates a logic error somewhere. Ideally we could just log
+            // it instead of crashing, but we need to return a value
+            panic!("Cannot replace request {id}: not in store");
         }
     }
 }
@@ -346,7 +346,10 @@ pub enum RequestState {
         join_handle: JoinHandle<()>,
     },
 
-    /// User cancelled the request mid-flight
+    /// User cancelled the request mid-flight. We don't store the request here,
+    /// just the metadata, because we could've cancelled during build OR load.
+    /// We could split this into two different states to handle that, but not
+    /// worth.
     Cancelled {
         id: RequestId,
         recipe_id: RecipeId,
@@ -412,7 +415,7 @@ impl RequestState {
             Self::Building { start_time, .. }
             | Self::Loading { start_time, .. } => RequestMetadata {
                 start_time: *start_time,
-                duration: Utc::now() - start_time,
+                end_time: None,
             },
 
             // Error states
@@ -438,13 +441,13 @@ impl RequestState {
                 ..
             } => RequestMetadata {
                 start_time: *start_time,
-                duration: *end_time - *start_time,
+                end_time: Some(*end_time),
             },
 
             // Completed
             Self::Response { exchange, .. } => RequestMetadata {
                 start_time: exchange.start_time,
-                duration: exchange.duration(),
+                end_time: Some(exchange.end_time),
             },
         }
     }
@@ -554,14 +557,23 @@ impl PartialEq for RequestState {
 pub struct RequestMetadata {
     /// When was the request launched?
     pub start_time: DateTime<Utc>,
-    /// Elapsed time for the active request. If pending, this is a running
-    /// total. Otherwise end time - start time.
-    pub duration: TimeDelta,
+    /// When did the request end? This could be when the response came back, or
+    /// the request failed/was cancelled. `None` if still loading.
+    pub end_time: Option<DateTime<Utc>>,
+}
+
+impl RequestMetadata {
+    /// Elapsed time for this request. If pending, this is a running total.
+    /// Otherwise end time - start time.
+    pub fn duration(&self) -> TimeDelta {
+        let end_time = self.end_time.unwrap_or_else(Utc::now);
+        end_time - self.start_time
+    }
 }
 
 /// Metadata derived from a response. This is only available for requests that
 /// have completed successfully.
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct ResponseMetadata {
     pub status: StatusCode,
     /// Size of the response *body*

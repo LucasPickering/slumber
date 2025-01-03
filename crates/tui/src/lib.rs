@@ -114,15 +114,18 @@ impl Tui {
             .await
             .reported(&messages_tx)
             .unwrap_or_else(|| CollectionFile::with_path(collection_path));
-        let view =
-            View::new(&collection_file, database.clone(), messages_tx.clone());
+        let request_store = RequestStore::new(database.clone());
+        let view = View::new(
+            &collection_file,
+            &request_store,
+            database.clone(),
+            messages_tx.clone(),
+        );
 
         // The code to revert the terminal takeover is in `Tui::drop`, so we
         // shouldn't take over the terminal until right before creating the
         // `Tui`.
         let terminal = initialize_terminal()?;
-
-        let request_store = RequestStore::new(database.clone());
 
         let app = Tui {
             terminal,
@@ -288,17 +291,23 @@ impl Tui {
                 self.send_request(request_config)?
             }
             Message::HttpBuildError { error } => {
-                self.request_store.build_error(error);
+                let state = self.request_store.build_error(error);
+                self.view.update_request(state);
             }
             Message::HttpLoading { request } => {
-                self.request_store.loading(request);
+                let state = self.request_store.loading(request);
+                self.view.update_request(state);
             }
-            Message::HttpComplete(result) => match result {
-                Ok(exchange) => self.request_store.response(exchange),
-                Err(error) => self.request_store.request_error(error),
-            },
+            Message::HttpComplete(result) => {
+                let state = match result {
+                    Ok(exchange) => self.request_store.response(exchange),
+                    Err(error) => self.request_store.request_error(error),
+                };
+                self.view.update_request(state);
+            }
             Message::HttpCancel(request_id) => {
-                self.request_store.cancel(request_id)
+                let state = self.request_store.cancel(request_id);
+                self.view.update_request(state);
             }
 
             // Force quit short-circuits the view/message cycle, to make sure
@@ -409,13 +418,15 @@ impl Tui {
         self.collection_file.collection = collection.into();
 
         // Rebuild the whole view, because tons of things can change
-        let database = self.database.clone();
-        let messages_tx = self.messages_tx();
-        let collection_file = &self.collection_file;
-        self.view = View::new(collection_file, database, messages_tx);
+        self.view = View::new(
+            &self.collection_file,
+            &self.request_store,
+            self.database.clone(),
+            self.messages_tx(),
+        );
         self.view.notify(format!(
             "Reloaded collection from {}",
-            collection_file.path().to_string_lossy()
+            self.collection_file.path().to_string_lossy()
         ));
     }
 
@@ -427,8 +438,7 @@ impl Tui {
 
     /// Draw the view onto the screen
     fn draw(&mut self) -> anyhow::Result<()> {
-        self.terminal
-            .draw(|frame| self.view.draw(frame, &self.request_store))?;
+        self.terminal.draw(|frame| self.view.draw(frame))?;
         Ok(())
     }
 

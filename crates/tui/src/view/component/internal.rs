@@ -212,6 +212,15 @@ impl<T> Component<T> {
         self.data().emitted(event)
     }
 
+    /// Forward to [Emitter::emitted_owned]
+    /// TODO rename
+    pub fn emitted_owned(&self, event: Event) -> Result<T::Emitted, Event>
+    where
+        T: Emitter,
+    {
+        self.data().emitted_owned(event)
+    }
+
     /// Draw the component to the frame. This will update global state, then
     /// defer to the component's [Draw] implementation for the actual draw.
     pub fn draw<Props>(

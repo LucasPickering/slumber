@@ -363,7 +363,7 @@ impl RequestTicket {
         let result = async {
             let response = self.client.execute(self.request).await?;
             // Load the full response and convert it to our format
-            ResponseRecord::from_response(response).await
+            ResponseRecord::from_response(id, response).await
         }
         .await;
         let end_time = Utc::now();
@@ -404,6 +404,7 @@ impl ResponseRecord {
     /// because the response content is not necessarily loaded when we first get
     /// the response. Only fails if the response content fails to load.
     async fn from_response(
+        id: RequestId,
         response: Response,
     ) -> reqwest::Result<ResponseRecord> {
         // Copy response metadata out first, because we need to move the
@@ -415,6 +416,7 @@ impl ResponseRecord {
         let body = response.bytes().await?.into();
 
         Ok(ResponseRecord {
+            id,
             status,
             headers,
             body,
@@ -1365,6 +1367,7 @@ mod tests {
         assert_eq!(
             *exchange.response,
             ResponseRecord {
+                id: exchange.id,
                 status: StatusCode::OK,
                 headers: header_map([
                     ("content-type", "text/plain"),

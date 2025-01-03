@@ -112,8 +112,9 @@ where
     RowToggleKey: PersistedKey<Value = bool>,
 {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(action) = event.action() {
-            match action {
+        event
+            .m()
+            .action(|action, propagate| match action {
                 Action::Edit => {
                     // Consume the event even if we have no rows, for
                     // consistency
@@ -128,26 +129,26 @@ where
                         selected_row.value.reset_override();
                     }
                 }
-                _ => return Update::Propagate(event),
-            }
-        } else if let Some(event) = self.select.emitted(&event) {
-            if let SelectStateEvent::Toggle(index) = event {
-                self.select.data_mut().get_mut()[*index].toggle();
-            }
-        } else if let Some(SaveRecipeTableOverride { row_index, value }) =
-            self.emitted(&event)
-        {
-            // The row we're modifying *should* still be the selected row,
-            // because it shouldn't be possible to change the selection while
-            // the edit modal is open. It's safer to re-grab the modal by index
-            // though, just to be sure we've got the right one.
-            self.select.data_mut().get_mut().items_mut()[*row_index]
-                .value
-                .set_override(value);
-        } else {
-            return Update::Propagate(event);
-        }
-        Update::Consumed
+                _ => propagate.set(),
+            })
+            .emitted(self.select.handle(), |event| {
+                if let SelectStateEvent::Toggle(index) = event {
+                    self.select.data_mut().get_mut()[index].toggle();
+                }
+            })
+            .emitted(
+                self.handle(),
+                |SaveRecipeTableOverride { row_index, value }| {
+                    // The row we're modifying *should* still be the selected
+                    // row, because it shouldn't be possible to change the
+                    // selection while the edit modal is open. It's safer to
+                    // re-grab the modal by index though, just to be sure we've
+                    // got the right one.
+                    self.select.data_mut().get_mut().items_mut()[row_index]
+                        .value
+                        .set_override(&value);
+                },
+            )
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

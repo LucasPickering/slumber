@@ -88,10 +88,15 @@ impl ResponseBodyView {
 
 impl EventHandler for ResponseBodyView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(Action::OpenActions) = event.action() {
-            self.actions_handle.open(ActionsModal::default());
-        } else if let Some(menu_action) = self.actions_handle.emitted(&event) {
-            match menu_action {
+        event
+            .m()
+            .action(|action, propagate| match action {
+                Action::OpenActions => {
+                    self.actions_handle.open(ActionsModal::default())
+                }
+                _ => propagate.set(),
+            })
+            .emitted(self.actions_handle, |menu_action| match menu_action {
                 BodyMenuAction::EditCollection => {
                     ViewContext::send_message(Message::CollectionEdit)
                 }
@@ -118,11 +123,7 @@ impl EventHandler for ResponseBodyView {
                         });
                     }
                 }
-            }
-        } else {
-            return Update::Propagate(event);
-        }
-        Update::Consumed
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

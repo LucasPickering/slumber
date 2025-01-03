@@ -66,17 +66,15 @@ where
     ActionsModal<T>: Draw,
 {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(event) = self.actions.emitted(&event) {
+        event.m().emitted(self.actions.handle(), |event| {
             if let SelectStateEvent::Submit(index) = event {
-                // Close modal first so the parent can consume the emitted event
+                // Close modal first so the parent can consume the emitted
+                // event
                 self.close(true);
-                let action = self.actions.data()[*index];
+                let action = self.actions.data()[index];
                 self.emit(action);
             }
-            Update::Consumed
-        } else {
-            Update::Propagate(event)
-        }
+        })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

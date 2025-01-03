@@ -162,7 +162,7 @@ impl View {
                 match self.root.update_all(&mut context, event) {
                     None => trace!("View event consumed"),
                     // Consumer didn't eat the event - huh?
-                    Some(_) => warn!("View event was unhandled"),
+                    Some(event) => warn!(?event, "View event was unhandled"),
                 }
             });
         }

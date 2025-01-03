@@ -71,6 +71,7 @@ impl QueryableBody {
         let query_text_box = TextBox::default()
             .placeholder(format!("{binding} to filter"))
             .placeholder_focused("Enter command (ex: `jq .results`)")
+            .default_value(default_query.clone().unwrap_or_default())
             .debounce();
 
         let text_state =
@@ -87,9 +88,8 @@ impl QueryableBody {
             text_window: Default::default(),
             text_state,
         };
-        // Do *not* use the default_value method here, because we want to
-        // trigger a change event so the query is applied
-        slf.apply_default_query();
+        // If we have an initial query from the default value, run it now
+        slf.update_query();
         slf
     }
 
@@ -112,20 +112,17 @@ impl QueryableBody {
         &self.text_state.text
     }
 
-    /// Set query to whatever the user passed in as the default
-    fn apply_default_query(&mut self) {
-        if let Some(query) = self.query_default.clone() {
-            self.query_text_box.data_mut().set_text(query);
-        }
-    }
-
     /// Update query command based on the current text in the box, and start
     /// a task to run the command
     fn update_query(&mut self) {
         let command = self.query_text_box.data().text().trim();
-        let response = &self.response;
 
-        // If a command is already running, abort it
+        // If the command hasn't changed, do nothing
+        if self.last_executed_command.as_deref() == Some(command) {
+            return;
+        }
+
+        // If a different command is already running, abort it
         if let Some(handle) = self.query_state.take_abort_handle() {
             handle.abort();
         }
@@ -139,15 +136,16 @@ impl QueryableBody {
                 &self.response.body,
                 true, // Prettify
             );
-        } else if self.last_executed_command.as_deref() != Some(command) {
-            // If the command has changed, execute it
+        } else {
+            // Send it
             self.last_executed_command = Some(command.to_owned());
 
             // Spawn the command in the background because it could be slow.
             // Clone is cheap because Bytes uses refcounting
-            let body = response.body.bytes().clone();
+            let body = self.response.body.bytes().clone();
             let command = command.to_owned();
             let emitter = self.handle();
+
             let handle = task::spawn_local(async move {
                 let shell = &TuiContext::get().config.commands.shell;
                 let result = run_command(shell, &command, Some(&body))
@@ -281,8 +279,13 @@ impl PersistedContainer for QueryableBody {
         // for this recipe). It's possible the user really wants an empty box
         // and this is annoying, but I think it'll be more good than bad.
         if text_box.text().is_empty() {
-            self.apply_default_query();
+            if let Some(query) = self.query_default.clone() {
+                self.query_text_box.data_mut().set_text(query);
+            }
         }
+
+        // Update local state and execute the query command (if any)
+        self.update_query();
     }
 }
 
@@ -525,10 +528,10 @@ mod tests {
         response: Arc<ResponseRecord>,
     ) {
         // Add initial query to the DB
-        DatabasePersistedStore::store_persisted(&Key, &"head -n 1".to_owned());
+        DatabasePersistedStore::store_persisted(&Key, &"head -c 1".to_owned());
 
-        // Loading from persistence triggers a debounce event, which needs a
-        // local set
+        // On init, we'll start executing the command in a local task. Wait for
+        // that to finish
         let mut component = run_local(async {
             TestComponent::new(
                 &harness,
@@ -542,13 +545,14 @@ mod tests {
         })
         .await;
 
-        // After the debounce, there's a change event that spawns the command
-        run_local(async { component.drain_draw().assert_empty() }).await;
+        // After the command is done, there's a subsequent event with the result
+        component.drain_draw().assert_empty();
 
         assert_eq!(
             component.data().last_executed_command.as_deref(),
-            Some("head -n 1")
+            Some("head -c 1")
         );
+        assert_eq!(&component.data().visible_text().to_string(), "{");
     }
 
     /// Test that the user's configured query default is applied on a fresh load

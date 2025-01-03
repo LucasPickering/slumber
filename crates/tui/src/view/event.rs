@@ -233,7 +233,7 @@ pub enum Event {
     Emitted {
         emitter: EmitterId,
         /// Store the type name for better debug messages
-        _emitter_type: &'static str,
+        emitter_type: &'static str,
         event: Box<dyn LocalEvent>,
     },
 }
@@ -259,18 +259,37 @@ pub trait LocalEvent: Any + Debug {
     // unstable: Delete this once we get trait upcasting
     // https://github.com/rust-lang/rust/issues/65991
     fn any(&self) -> &dyn Any;
+
+    /// TODO
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
 impl<T: Any + Debug> LocalEvent for T {
     fn any(&self) -> &dyn Any {
         self
     }
+
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
 }
+
+// impl Box<dyn LocalEvent> {
+//     /// Alias for `Any::downcast`, to downcast into a concrete type
+//     pub fn downcast<T: Any>(self: Box<dyn LocalEvent>) -> Option<T> {
+//         self.any().downcast().ok()
+//     }
+// }
 
 impl dyn LocalEvent {
     /// Alias for `Any::downcast_ref`, to downcast into a concrete type
     pub fn downcast_ref<'a, T: Any>(self: &'a dyn LocalEvent) -> Option<&'a T> {
         self.any().downcast_ref()
+    }
+
+    /// Alias for `Any::downcast`, to downcast into a concrete type
+    pub fn downcast<T: Any>(self: Box<dyn LocalEvent>) -> Option<T> {
+        self.into_any().downcast().map(|b| *b).ok()
     }
 }
 
@@ -293,7 +312,7 @@ pub trait Emitter {
     fn emit(&self, event: Self::Emitted) {
         ViewContext::push_event(Event::Emitted {
             emitter: self.id(),
-            _emitter_type: any::type_name::<Self>(), // For debugging
+            emitter_type: any::type_name::<Self>(), // For debugging
             event: Box::new(event),
         });
     }
@@ -324,6 +343,30 @@ pub trait Emitter {
                 }))
             }
             _ => None,
+        }
+    }
+
+    /// Check if an event is an emitted event from this emitter, and return
+    /// the emitted data if so
+    /// TODO rename
+    fn emitted_owned(&self, event: Event) -> Result<Self::Emitted, Event> {
+        match event {
+            Event::Emitted {
+                emitter,
+                event,
+                emitter_type,
+            } if emitter == self.id() => {
+                // This cast should be infallible because emitter IDs are unique
+                // and each emitter can only emit one type
+                Ok(event.downcast().unwrap_or_else(|| {
+                    panic!(
+                        "Incorrect emitted event type for emitter `{emitter}`. \
+                        Expected type {}, received type {emitter_type}",
+                        any::type_name::<Self::Emitted>()
+                    )
+                }))
+            }
+            _ => Err(event),
         }
     }
 }
@@ -400,3 +443,33 @@ pub enum Update {
     /// the entire event.
     Propagate(Event),
 }
+
+/// TODO
+macro_rules! event {
+    ($action:pat = action($event:ident, $(,)?) => $block:block) => {
+        if let Some($action) = $event.action() {
+            $block
+            return Update::Consumed;
+        }
+    };
+    ($emitted:pat = emitted($event:ident, $emitter:expr, $(,)?) => $block:block) => {
+        // TODO explain
+        match $emitter.emitted_owned($event) {
+            Ok(value) => {
+                let $emitted = value;
+                $block;
+                return Update::Consumed;
+            }
+            Err(e) => $event = e,
+        }
+    };
+}
+
+/// TODO
+macro_rules! events {
+    ($event:ident, $($bind:pat = $case:ident($($args:expr)*) => $block:block)*) => {
+        $($crate::view::event::event!($bind = $case($event, $($args,)*) => $block);)*
+    };
+}
+pub(crate) use event;
+pub(crate) use events;

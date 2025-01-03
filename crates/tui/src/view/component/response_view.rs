@@ -12,37 +12,46 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Child, Event, EventHandler, OptionEvent},
-        state::StateCell,
         util::{persistence::PersistedLazy, view_text},
         Component, ViewContext,
     },
 };
 use derive_more::Display;
 use persisted::PersistedKey;
-use ratatui::{text::Text, Frame};
+use ratatui::Frame;
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::{
-    collection::RecipeId,
-    http::{RequestId, ResponseRecord},
-};
+use slumber_core::{collection::RecipeId, http::ResponseRecord};
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
 /// Display response body
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ResponseBodyView {
-    /// Persist the response body to track view state. Update whenever the
-    /// loaded request changes
-    state: StateCell<RequestId, State>,
+    response: Arc<ResponseRecord>,
+    /// The presentable version of the response body, which may or may not
+    /// match the response body. We apply transformations such as filter,
+    /// prettification, or in the case of binary responses, a hex dump.
+    body: Component<PersistedLazy<ResponseQueryPersistedKey, QueryableBody>>,
     actions_handle: ModalHandle<ActionsModal<BodyMenuAction>>,
 }
 
-#[derive(Clone)]
-pub struct ResponseBodyViewProps<'a> {
-    pub request_id: RequestId,
-    pub recipe_id: &'a RecipeId,
-    pub response: &'a Arc<ResponseRecord>,
+impl ResponseBodyView {
+    pub fn new(recipe_id: RecipeId, response: Arc<ResponseRecord>) -> Self {
+        let body = PersistedLazy::new(
+            ResponseQueryPersistedKey(recipe_id),
+            QueryableBody::new(
+                Arc::clone(&response),
+                TuiContext::get().config.commands.query_default.clone(),
+            ),
+        )
+        .into();
+        Self {
+            response,
+            body,
+            actions_handle: Default::default(),
+        }
+    }
 }
 
 /// Items in the actions popup menu for the Body
@@ -63,28 +72,10 @@ enum BodyMenuAction {
 
 impl ToStringGenerate for BodyMenuAction {}
 
-/// Internal state
-#[derive(Debug)]
-struct State {
-    request_id: RequestId,
-    /// The presentable version of the response body, which may or may not
-    /// match the response body. We apply transformations such as filter,
-    /// prettification, or in the case of binary responses, a hex dump.
-    body: Component<PersistedLazy<ResponseQueryPersistedKey, QueryableBody>>,
-}
-
 /// Persisted key for response body JSONPath query text box
 #[derive(Debug, Serialize, PersistedKey)]
 #[persisted(String)]
 struct ResponseQueryPersistedKey(RecipeId);
-
-impl ResponseBodyView {
-    fn with_body(&self, f: impl Fn(&Text)) {
-        if let Some(state) = self.state.get() {
-            f(state.body.data().visible_text())
-        }
-    }
-}
 
 impl EventHandler for ResponseBodyView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
@@ -100,81 +91,57 @@ impl EventHandler for ResponseBodyView {
                 BodyMenuAction::EditCollection => {
                     ViewContext::send_message(Message::CollectionEdit)
                 }
-                BodyMenuAction::ViewBody => self.with_body(view_text),
+                BodyMenuAction::ViewBody => {
+                    view_text(self.body.data().visible_text());
+                }
                 BodyMenuAction::CopyBody => {
                     // Use whatever text is visible to the user. This differs
-                    // from saving the body, because:
-                    // 1. We need an owned string no matter what, so there's no
-                    //   point in avoiding the allocation
-                    // 2. We can't copy binary content, so if the file is binary
-                    //   we'll copy the hexcode text
-                    self.with_body(|body| {
-                        ViewContext::send_message(Message::CopyText(
-                            body.to_string(),
-                        ));
-                    });
+                    // from saving the body, because we can't copy binary
+                    // content, so if the file is binary we'll copy the hexcode
+                    // text
+                    ViewContext::send_message(Message::CopyText(
+                        self.body.data().visible_text().to_string(),
+                    ));
                 }
                 BodyMenuAction::SaveBody => {
-                    if let Some(state) = self.state.get() {
-                        // This will trigger a modal to ask the user for a path
-                        ViewContext::send_message(Message::SaveResponseBody {
-                            request_id: state.request_id,
-                            data: state.body.data().modified_text(),
-                        });
-                    }
+                    // This will trigger a modal to ask the user for a path
+                    ViewContext::send_message(Message::SaveResponseBody {
+                        request_id: self.response.id,
+                        data: self.body.data().modified_text(),
+                    });
                 }
             })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        if let Some(state) = self.state.get_mut() {
-            vec![state.body.to_child_mut()]
-        } else {
-            vec![]
-        }
+        vec![self.body.to_child_mut()]
     }
 }
 
-impl<'a> Draw<ResponseBodyViewProps<'a>> for ResponseBodyView {
-    fn draw(
-        &self,
-        frame: &mut Frame,
-        props: ResponseBodyViewProps,
-        metadata: DrawMetadata,
-    ) {
-        let state = self.state.get_or_update(&props.request_id, || State {
-            request_id: props.request_id,
-            body: PersistedLazy::new(
-                ResponseQueryPersistedKey(props.recipe_id.clone()),
-                QueryableBody::new(
-                    Arc::clone(props.response),
-                    TuiContext::get().config.commands.query_default.clone(),
-                ),
-            )
-            .into(),
-        });
-
-        state.body.draw(frame, (), metadata.area(), true);
+impl Draw for ResponseBodyView {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        self.body.draw(frame, (), metadata.area(), true);
     }
 }
 
-#[derive(Debug, Default)]
-pub struct ResponseHeadersView;
-
-pub struct ResponseHeadersViewProps<'a> {
-    pub response: &'a ResponseRecord,
+#[derive(Debug)]
+pub struct ResponseHeadersView {
+    response: Arc<ResponseRecord>,
 }
 
-impl<'a> Draw<ResponseHeadersViewProps<'a>> for ResponseHeadersView {
-    fn draw(
-        &self,
-        frame: &mut Frame,
-        props: ResponseHeadersViewProps,
-        metadata: DrawMetadata,
-    ) {
+impl ResponseHeadersView {
+    pub fn new(response: Arc<ResponseRecord>) -> Self {
+        Self { response }
+    }
+}
+
+impl EventHandler for ResponseHeadersView {}
+
+impl Draw for ResponseHeadersView {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         frame.render_widget(
             HeaderTable {
-                headers: &props.response.headers,
+                headers: &self.response.headers,
             }
             .generate(),
             metadata.area(),
@@ -233,15 +200,13 @@ mod tests {
             response: response.into(),
             ..Exchange::factory(())
         };
-        let mut component = TestComponent::with_props(
+        let mut component = TestComponent::new(
             &harness,
             &terminal,
-            ResponseBodyView::default(),
-            ResponseBodyViewProps {
-                request_id: exchange.id,
-                recipe_id: &exchange.request.recipe_id,
-                response: &exchange.response,
-            },
+            ResponseBodyView::new(
+                exchange.request.recipe_id.clone(),
+                exchange.response,
+            ),
         );
 
         // Open actions modal and select the copy action
@@ -307,19 +272,18 @@ mod tests {
     ) {
         use crate::test_util::run_local;
 
+        let exchange_id = response.id;
         let exchange = Exchange {
             response: response.into(),
-            ..Exchange::factory(())
+            ..Exchange::factory(exchange_id)
         };
-        let mut component = TestComponent::with_props(
+        let mut component = TestComponent::new(
             &harness,
             &terminal,
-            ResponseBodyView::default(),
-            ResponseBodyViewProps {
-                request_id: exchange.id,
-                recipe_id: &exchange.request.recipe_id,
-                response: &exchange.response,
-            },
+            ResponseBodyView::new(
+                exchange.request.recipe_id.clone(),
+                exchange.response,
+            ),
         );
 
         if let Some(query) = query {

@@ -105,4 +105,4 @@ jobs:
           RUST_BACKTRACE: 1
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --workspace --no-fail-fast

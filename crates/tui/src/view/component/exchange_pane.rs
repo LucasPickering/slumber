@@ -1,13 +1,11 @@
 use crate::{
     context::TuiContext,
+    http::{RequestMetadata, ResponseMetadata},
     view::{
         common::{tabs::Tabs, Pane},
         component::{
-            request_view::{RequestView, RequestViewProps},
-            response_view::{
-                ResponseBodyView, ResponseBodyViewProps, ResponseHeadersView,
-                ResponseHeadersViewProps,
-            },
+            request_view::RequestView,
+            response_view::{ResponseBodyView, ResponseHeadersView},
             Component,
         },
         context::UpdateContext,
@@ -23,35 +21,125 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout},
     style::Style,
     text::{Line, Span},
-    widgets::block::Title,
+    widgets::{block::Title, Paragraph},
     Frame,
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
-use slumber_core::{
-    collection::RecipeNodeType, http::RequestRecord, util::format_byte_size,
-};
+use slumber_core::{collection::RecipeNodeType, util::format_byte_size};
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
 /// Display for a request/response exchange. This allows the user to switch
-/// between request and response. Parent is responsible for switching between
-/// tabs, because switching is done by hotkey and we can't see hotkeys if the
-/// pane isn't selected.
-#[derive(Debug, Default)]
+/// between request and response. This is bound to a particular [RequestState],
+/// and should be recreated whenever the selected request changes state, or a
+/// new request is selected.
+#[derive(Debug)]
 pub struct ExchangePane {
     emitter_id: EmitterId,
     tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
-    request: Component<RequestView>,
-    response_headers: Component<ResponseHeadersView>,
-    response_body: Component<ResponseBodyView>,
+    state: State,
 }
 
-pub struct ExchangePaneProps<'a> {
-    /// Do we have a recipe, folder, or neither selected? Used to determine
-    /// placeholder
-    pub selected_recipe_kind: Option<RecipeNodeType>,
-    pub request_state: Option<&'a RequestState>,
+impl ExchangePane {
+    pub fn new(
+        selected_request: Option<&RequestState>,
+        selected_recipe_kind: Option<RecipeNodeType>,
+    ) -> Self {
+        Self {
+            emitter_id: Default::default(),
+            tabs: Default::default(),
+            state: State::new(selected_request, selected_recipe_kind),
+        }
+    }
+}
+
+impl EventHandler for ExchangePane {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().action(|action, propagate| match action {
+            Action::LeftClick => self.emit(ExchangePaneEvent::Click),
+            _ => propagate.set(),
+        })
+    }
+
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        match &mut self.state {
+            // Tabs won't be visible in these empty states so we don't *need*
+            // to return it, but it doesn't matter
+            State::None | State::Folder | State::NoHistory => {
+                vec![self.tabs.to_child_mut()]
+            }
+
+            // Tabs last so the children get priority
+            State::Content { content, .. } => {
+                vec![content.to_child_mut(), self.tabs.to_child_mut()]
+            }
+        }
+    }
+}
+
+impl Draw for ExchangePane {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        let input_engine = &TuiContext::get().input_engine;
+        let title =
+            input_engine.add_hint("Request / Response", Action::SelectResponse);
+        let mut block = Pane {
+            title: &title,
+            has_focus: metadata.has_focus(),
+        }
+        .generate();
+
+        // If a recipe is selected, history is available so show the hint
+        if matches!(self.state, State::Content { .. }) {
+            let text = input_engine.add_hint("History", Action::History);
+            block = block.title(Title::from(text).alignment(Alignment::Right));
+        }
+        frame.render_widget(&block, metadata.area());
+        let area = block.inner(metadata.area());
+
+        match &self.state {
+            // Recipe pane will show a note about how to add a recipe, so we
+            // don't need anything here
+            State::None => {}
+            State::Folder => frame.render_widget(
+                "Select a recipe to see its request history",
+                area,
+            ),
+            State::NoHistory => frame.render_widget(
+                "No request history for this recipe & profile",
+                area,
+            ),
+            State::Content { metadata, content } => {
+                let [metadata_area, tabs_area, content_area] =
+                    Layout::vertical([
+                        Constraint::Length(1),
+                        Constraint::Length(1),
+                        Constraint::Min(0),
+                    ])
+                    .areas(area);
+
+                metadata.draw(frame, (), metadata_area, true);
+                self.tabs.draw(frame, (), tabs_area, true);
+                content.draw(
+                    frame,
+                    ExchangePaneContentProps {
+                        selected_tab: self.tabs.data().selected(),
+                    },
+                    content_area,
+                    true,
+                );
+            }
+        }
+    }
+}
+
+/// Notify parent when this pane is clicked
+impl Emitter for ExchangePane {
+    type Emitted = ExchangePaneEvent;
+
+    fn id(&self) -> EmitterId {
+        self.emitter_id
+    }
 }
 
 #[derive(
@@ -73,91 +161,78 @@ enum Tab {
     Headers,
 }
 
-impl EventHandler for ExchangePane {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().action(|action, propagate| match action {
-            Action::LeftClick => self.emit(ExchangePaneEvent::Click),
-            _ => propagate.set(),
-        })
-    }
+/// Emitted event for the exchange pane component
+#[derive(Debug)]
+pub enum ExchangePaneEvent {
+    Click,
+}
 
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        vec![
-            self.request.to_child_mut(),
-            self.response_body.to_child_mut(),
-            // Tabs last so the children get priority
-            self.tabs.to_child_mut(),
-        ]
+/// Inner state for the exchange pane. This contains all the empty states, as
+/// well as one variant for the populated state
+#[derive(Debug)]
+enum State {
+    /// Recipe list is empty
+    None,
+    /// Folder selected
+    Folder,
+    /// Recipe selected, but it has no request history
+    NoHistory,
+    /// We have a real bonafide request state available
+    Content {
+        metadata: Component<ExchangePaneMetadata>,
+        content: Component<ExchangePaneContent>,
+    },
+}
+
+impl State {
+    fn new(
+        selected_request: Option<&RequestState>,
+        selected_recipe_kind: Option<RecipeNodeType>,
+    ) -> Self {
+        match (selected_request, selected_recipe_kind) {
+            (_, None) => Self::None,
+            (_, Some(RecipeNodeType::Folder)) => Self::Folder,
+            (None, Some(RecipeNodeType::Recipe)) => Self::NoHistory,
+            (Some(request_state), Some(RecipeNodeType::Recipe)) => {
+                Self::Content {
+                    metadata: ExchangePaneMetadata {
+                        request: request_state.request_metadata(),
+                        response: request_state.response_metadata(),
+                    }
+                    .into(),
+                    content: ExchangePaneContent::new(request_state).into(),
+                }
+            }
+        }
     }
 }
 
-impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
-    fn draw(
-        &self,
-        frame: &mut Frame,
-        props: ExchangePaneProps<'a>,
-        metadata: DrawMetadata,
-    ) {
+/// Top bar of the exchange pane, above the tabs
+#[derive(Debug)]
+struct ExchangePaneMetadata {
+    request: RequestMetadata,
+    response: Option<ResponseMetadata>,
+}
+
+impl Draw for ExchangePaneMetadata {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let tui_context = TuiContext::get();
         let config = &tui_context.config;
-        let input_engine = &tui_context.input_engine;
         let styles = &tui_context.styles;
-        let title =
-            input_engine.add_hint("Request / Response", Action::SelectResponse);
-        let mut block = Pane {
-            title: &title,
-            has_focus: metadata.has_focus(),
-        }
-        .generate();
-        // If a recipe is selected, history is available so show the hint
-        if matches!(props.selected_recipe_kind, Some(RecipeNodeType::Recipe)) {
-            let text = input_engine.add_hint("History", Action::History);
-            block = block.title(Title::from(text).alignment(Alignment::Right));
-        }
-        frame.render_widget(&block, metadata.area());
-        let area = block.inner(metadata.area());
+        let area = metadata.area();
 
-        // Empty states
-        match props.selected_recipe_kind {
-            None => {
-                return;
-            }
-            Some(RecipeNodeType::Folder) => {
-                frame.render_widget(
-                    "Select a recipe to see its request history",
-                    area,
-                );
-                return;
-            }
-            Some(RecipeNodeType::Recipe) => {}
-        }
+        // Request metadata
+        frame.render_widget(
+            Line::from(vec![
+                self.request.start_time.generate(),
+                " / ".into(),
+                self.request.duration().generate(),
+            ]),
+            area,
+        );
 
-        // Split out the areas we *may* need
-        let [metadata_area, tabs_area, content_area] = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(0),
-        ])
-        .areas(area);
-
-        // Draw timing metadata
-        if let Some(metadata) =
-            props.request_state.map(RequestState::request_metadata)
-        {
-            frame.render_widget(
-                Line::from(vec![
-                    metadata.start_time.generate(),
-                    " / ".into(),
-                    metadata.duration.generate(),
-                ]),
-                metadata_area,
-            );
-        }
-        // Draw response metadata
-        if let Some(metadata) = props
-            .request_state
-            .and_then(RequestState::response_metadata)
-        {
+        // Response metadata
+        if let Some(metadata) = self.response {
             frame.render_widget(
                 Line::from(vec![
                     metadata.status.generate(),
@@ -174,105 +249,125 @@ impl<'a> Draw<ExchangePaneProps<'a>> for ExchangePane {
                     ),
                 ])
                 .alignment(Alignment::Right),
-                metadata_area,
+                area,
             );
         }
+    }
+}
 
-        // Render request/response based on state. Lambdas help with code dupe
-        let selected_tab = self.tabs.data().selected();
-        let render_tabs = |frame| self.tabs.draw(frame, (), tabs_area, true);
-        let render_request = |frame, request: &Arc<RequestRecord>| {
-            self.request.draw(
-                frame,
-                RequestViewProps {
-                    request: Arc::clone(request),
-                },
-                content_area,
-                true,
-            )
-        };
-        match props.request_state {
-            None => frame.render_widget(
-                "No request history for this recipe & profile",
-                area,
-            ),
-            Some(RequestState::Building { .. }) => {
-                frame.render_widget("Initializing request...", content_area)
-            }
-            Some(RequestState::BuildError { error, .. }) => {
-                frame.render_widget(error.generate(), content_area)
-            }
-            Some(RequestState::Loading { request, .. }) => {
-                render_tabs(frame);
-                match selected_tab {
-                    Tab::Request => render_request(frame, request),
-                    Tab::Body | Tab::Headers => {
-                        frame.render_widget("Loading...", content_area)
-                    }
-                }
-            }
-            Some(RequestState::Cancelled { .. }) => {
-                frame.render_widget("Request cancelled", content_area)
-            }
-            Some(RequestState::Response { exchange }) => {
-                render_tabs(frame);
-                match selected_tab {
-                    Tab::Request => render_request(frame, &exchange.request),
-                    Tab::Body => {
-                        // Don't draw body if empty, so we don't have to set
-                        // up state, and don't offer impossible actions
-                        if !exchange.response.body.bytes().is_empty() {
-                            self.response_body.draw(
-                                frame,
-                                ResponseBodyViewProps {
-                                    request_id: exchange.id,
-                                    recipe_id: &exchange.request.recipe_id,
-                                    response: &exchange.response,
-                                },
-                                content_area,
-                                true,
-                            );
-                        } else {
-                            frame.render_widget(
-                                "No response body",
-                                content_area,
-                            );
-                        }
-                    }
-                    Tab::Headers => self.response_headers.draw(
-                        frame,
-                        ResponseHeadersViewProps {
-                            response: &exchange.response,
-                        },
-                        content_area,
-                        true,
-                    ),
-                }
-            }
-            Some(RequestState::RequestError { error }) => {
-                render_tabs(frame);
-                match selected_tab {
-                    Tab::Request => render_request(frame, &error.request),
-                    Tab::Body | Tab::Headers => {
-                        frame.render_widget(error.generate(), content_area)
-                    }
-                }
-            }
+/// Content under the tab bar. Only rendered when a request state is present
+#[derive(Debug)]
+enum ExchangePaneContent {
+    Building,
+    BuildError {
+        error: Paragraph<'static>,
+    },
+    Loading {
+        request: Component<RequestView>,
+    },
+    Cancelled,
+    Response {
+        request: Component<RequestView>,
+        response_headers: Component<ResponseHeadersView>,
+        response_body: Component<ResponseBodyView>,
+    },
+    RequestError {
+        request: Component<RequestView>,
+        error: Paragraph<'static>,
+    },
+}
+
+struct ExchangePaneContentProps {
+    selected_tab: Tab,
+}
+
+impl ExchangePaneContent {
+    fn new(request_state: &RequestState) -> Self {
+        match request_state {
+            RequestState::Building { .. } => Self::Building,
+            RequestState::BuildError { error } => Self::BuildError {
+                error: error.generate(),
+            },
+            RequestState::Loading { request, .. } => Self::Loading {
+                request: RequestView::new(Arc::clone(request)).into(),
+            },
+            RequestState::Cancelled { .. } => Self::Cancelled,
+            RequestState::Response { exchange } => Self::Response {
+                request: RequestView::new(Arc::clone(&exchange.request)).into(),
+                response_headers: ResponseHeadersView::new(Arc::clone(
+                    &exchange.response,
+                ))
+                .into(),
+                response_body: ResponseBodyView::new(
+                    exchange.request.recipe_id.clone(),
+                    Arc::clone(&exchange.response),
+                )
+                .into(),
+            },
+            RequestState::RequestError { error } => Self::RequestError {
+                request: RequestView::new(Arc::clone(&error.request)).into(),
+                error: error.generate(),
+            },
         }
     }
 }
 
-/// Notify parent when this pane is clicked
-impl Emitter for ExchangePane {
-    type Emitted = ExchangePaneEvent;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+impl EventHandler for ExchangePaneContent {
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        match self {
+            Self::Building | Self::BuildError { .. } | Self::Cancelled => {
+                vec![]
+            }
+            Self::Loading { request } => vec![request.to_child_mut()],
+            Self::Response {
+                request,
+                response_headers,
+                response_body,
+            } => vec![
+                request.to_child_mut(),
+                response_headers.to_child_mut(),
+                response_body.to_child_mut(),
+            ],
+            Self::RequestError { request, .. } => vec![request.to_child_mut()],
+        }
     }
 }
 
-/// Emitted event for the exchange pane component
-#[derive(Debug)]
-pub enum ExchangePaneEvent {
-    Click,
+impl Draw<ExchangePaneContentProps> for ExchangePaneContent {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: ExchangePaneContentProps,
+        metadata: DrawMetadata,
+    ) {
+        let area = metadata.area();
+        match self {
+            Self::Building => {
+                frame.render_widget("Initializing request...", area)
+            }
+            Self::BuildError { error } => frame.render_widget(error, area),
+            Self::Loading { request } => match props.selected_tab {
+                Tab::Request => request.draw(frame, (), area, true),
+                Tab::Body | Tab::Headers => {
+                    frame.render_widget("Loading...", area)
+                }
+            },
+            // Can't show cancelled request here because we might've cancelled
+            // during the build
+            Self::Cancelled => frame.render_widget("Request cancelled", area),
+            Self::Response {
+                request,
+                response_body,
+                response_headers,
+            } => match props.selected_tab {
+                Tab::Request => request.draw(frame, (), area, true),
+                Tab::Body => response_body.draw(frame, (), area, true),
+                Tab::Headers => response_headers.draw(frame, (), area, true),
+            },
+            Self::RequestError { request, error } => match props.selected_tab {
+                Tab::Request => request.draw(frame, (), area, true),
+                Tab::Body | Tab::Headers => frame.render_widget(error, area),
+            },
+        }
+    }
 }

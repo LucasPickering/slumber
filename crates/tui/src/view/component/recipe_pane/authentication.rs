@@ -99,19 +99,17 @@ impl AuthenticationDisplay {
 
 impl EventHandler for AuthenticationDisplay {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        let action = event.action();
-        if let Some(Action::Edit) = action {
-            self.state.open_edit_modal(self.handle());
-        } else if let Some(Action::Reset) = action {
-            self.state.reset_override();
-        } else if let Some(SaveAuthenticationOverride(value)) =
-            self.emitted(&event)
-        {
-            self.state.set_override(value);
-        } else {
-            return Update::Propagate(event);
-        }
-        Update::Consumed
+        event
+            .m()
+            .action(|action, propagate| match action {
+                Action::Edit => self.state.open_edit_modal(self.handle()),
+                Action::Reset => self.state.reset_override(),
+
+                _ => propagate.set(),
+            })
+            .emitted(self.handle(), |SaveAuthenticationOverride(value)| {
+                self.state.set_override(&value)
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

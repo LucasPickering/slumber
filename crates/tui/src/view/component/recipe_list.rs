@@ -159,8 +159,9 @@ impl RecipeListPane {
 
 impl EventHandler for RecipeListPane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(action) = event.action() {
-            match action {
+        event
+            .m()
+            .action(|action, propagate| match action {
                 Action::LeftClick => self.emit(RecipeListPaneEvent::Click),
                 Action::Left => {
                     self.set_selected_collapsed(CollapseState::Collapse);
@@ -193,10 +194,9 @@ impl EventHandler for RecipeListPane {
                         ),
                     ));
                 }
-                _ => return Update::Propagate(event),
-            }
-        } else if let Some(event) = self.select.emitted(&event) {
-            match event {
+                _ => propagate.set(),
+            })
+            .emitted(self.select.handle(), |event| match event {
                 SelectStateEvent::Select(_) => {
                     // When highlighting a new recipe, load its most recent
                     // request from the DB. If a recipe isn't selected, this
@@ -207,23 +207,18 @@ impl EventHandler for RecipeListPane {
                 SelectStateEvent::Toggle(_) => {
                     self.set_selected_collapsed(CollapseState::Toggle);
                 }
-            }
-        } else if let Some(event) = self.filter.emitted(&event) {
-            match event {
+            })
+            .emitted(self.filter.handle(), |event| match event {
                 TextBoxEvent::Focus => self.filter_focused = true,
                 TextBoxEvent::Change => self.rebuild_select_state(),
                 TextBoxEvent::Cancel | TextBoxEvent::Submit => {
                     self.filter_focused = false
                 }
-            }
-        } else if let Some(menu_action) = self.actions_handle.emitted(&event) {
-            // Menu actions are handled by the parent, so forward them
-            self.emit(RecipeListPaneEvent::MenuAction(*menu_action));
-        } else {
-            return Update::Propagate(event);
-        }
-
-        Update::Consumed
+            })
+            .emitted(self.actions_handle, |menu_action| {
+                // Menu actions are handled by the parent, so forward them
+                self.emit(RecipeListPaneEvent::MenuAction(menu_action))
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

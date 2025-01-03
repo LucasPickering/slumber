@@ -3,7 +3,10 @@ use crate::{
     view::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Child, Emitter, EmitterHandle, Event, EventHandler, Update},
+        event::{
+            Child, Emitter, EmitterHandle, EmitterId, Event, EventHandler,
+            Update,
+        },
         util::centered_rect,
         Component, ViewContext,
     },
@@ -123,40 +126,41 @@ impl ModalQueue {
 
 impl EventHandler for ModalQueue {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            // Close the active modal. If there's no modal open, we'll propagate
-            // the event down
-            Event::Input {
-                // Enter to close is a convenience thing, modals may override.
-                // We eat the Quit action here because it's (hopefully)
+        event
+            .m()
+            .action(|action, propagate| match action {
+                // Close the active modal. If there's no modal open, we'll
+                // propagate the event down. Enter to close is a
+                // convenience thing, modals may override. We
+                // eat the Quit action here because it's  (hopefully)
                 // intuitive and consistent with other TUIs
-                action:
-                    Some(
-                        action @ (Action::Cancel
-                        | Action::Quit
-                        | Action::Submit),
-                    ),
-                event: _,
-            } if self.is_open() => {
-                self.close(action == Action::Submit);
-            }
-            Event::CloseModal { submitted } if self.is_open() => {
-                self.close(submitted);
-            }
+                Action::Cancel | Action::Quit if self.is_open() => {
+                    self.close(false)
+                }
+                Action::Submit if self.is_open() => self.close(true),
+                _ => propagate.set(),
+            })
+            .any(|event| match event {
+                Event::CloseModal { submitted } if self.is_open() => {
+                    self.close(submitted);
+                    Update::Consumed
+                }
 
-            // If open, eat all cursor events so they don't get sent to
-            // background components
-            Event::Input {
-                action: _,
-                event: crossterm::event::Event::Mouse(_),
-            } if self.is_open() => {}
+                // If open, eat all cursor events so they don't get sent to
+                // background components
+                Event::Input {
+                    action: _,
+                    event: crossterm::event::Event::Mouse(_),
+                } if self.is_open() => Update::Consumed,
 
-            // Open a new modal
-            Event::OpenModal(modal) => self.open(modal),
+                // Open a new modal
+                Event::OpenModal(modal) => {
+                    self.open(modal);
+                    Update::Consumed
+                }
 
-            _ => return Update::Propagate(event),
-        }
-        Update::Consumed
+                _ => Update::Propagate(event),
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -218,6 +222,15 @@ pub struct ModalHandle<T: Emitter> {
     emitter: Option<EmitterHandle<T::Emitted>>,
 }
 
+// Manual impls needed to bypass bounds
+impl<T: Emitter> Copy for ModalHandle<T> {}
+
+impl<T: Emitter> Clone for ModalHandle<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
 impl<T: Emitter> ModalHandle<T> {
     pub fn new() -> Self {
         Self { emitter: None }
@@ -231,17 +244,22 @@ impl<T: Emitter> ModalHandle<T> {
         self.emitter = Some(modal.handle());
         ViewContext::open_modal(modal);
     }
-
-    /// Check if an event was emitted by the most recently opened modal
-    pub fn emitted<'a>(&self, event: &'a Event) -> Option<&'a T::Emitted> {
-        self.emitter
-            .as_ref()
-            .and_then(|emitter| emitter.emitted(event))
-    }
 }
 
 impl<T: Emitter> Default for ModalHandle<T> {
     fn default() -> Self {
         Self { emitter: None }
+    }
+}
+
+impl<T: Emitter> Emitter for ModalHandle<T> {
+    type Emitted = T::Emitted;
+
+    fn id(&self) -> EmitterId {
+        // If we don't have an ID stored yet, use an empty one
+        self.emitter
+            .as_ref()
+            .map(Emitter::id)
+            .unwrap_or(EmitterId::nil())
     }
 }

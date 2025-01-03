@@ -8,10 +8,11 @@ use crate::{
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
-        component::misc::ErrorModal,
         context::UpdateContext,
-        draw::{Draw, DrawMetadata},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
+        draw::{Draw, DrawMetadata, Generate},
+        event::{
+            events, Child, Emitter, EmitterId, Event, EventHandler, Update,
+        },
         state::Identified,
         util::{highlight, str_to_text},
         Component, ViewContext,
@@ -29,7 +30,7 @@ use slumber_core::{
     http::{content_type::ContentType, ResponseBody, ResponseRecord},
     util::MaybeStr,
 };
-use std::{borrow::Cow, mem, rc::Rc, sync::Arc};
+use std::{borrow::Cow, mem, sync::Arc};
 use tokio::task::{self, AbortHandle};
 
 /// Display response body as text, with a query box to run commands on the body.
@@ -154,7 +155,7 @@ impl QueryableBody {
                 let result = run_command(shell, &command, Some(&body))
                     .await
                     .with_context(|| format!("Error running `{command}`"));
-                emitter.emit(QueryComplete(result.map_err(Rc::new)));
+                emitter.emit(QueryComplete(result));
             });
             self.query_state = QueryState::Running(handle.abort_handle());
         }
@@ -162,64 +163,63 @@ impl QueryableBody {
 }
 
 impl EventHandler for QueryableBody {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(Action::Search) = event.action() {
-            self.query_focused = true;
-        } else if let Some(Action::OpenHelp) = event.action() {
-            if let QueryState::Error(error) = &self.query_state {
-                ViewContext::open_modal(ErrorModal::new(Rc::clone(error)));
-            } else {
-                // Let the parent handle it
-                return Update::Propagate(event);
+    fn update(&mut self, _: &mut UpdateContext, mut event: Event) -> Update {
+        events! {
+            event,
+            Action::Search = action() => {
+                self.query_focused = true;
             }
-        } else if let Some(event) = self.query_text_box.emitted(&event) {
-            match event {
-                TextBoxEvent::Focus => self.query_focused = true,
-                TextBoxEvent::Change => self.update_query(),
-                TextBoxEvent::Cancel => {
-                    // Reset text to whatever was submitted last
-                    self.query_text_box.data_mut().set_text(
-                        self.last_executed_command.clone().unwrap_or_default(),
-                    );
-                    self.query_focused = false;
-                }
-                TextBoxEvent::Submit => {
-                    self.update_query();
-                    self.query_focused = false;
-                }
-            }
-        } else if let Some(QueryComplete(result)) = self.emitted(&event) {
-            match result {
-                Ok(stdout) => {
-                    self.query_state = QueryState::Ok;
-                    self.text_state = TextState::new(
-                        // Assume the output has the same content type
-                        self.response.content_type(),
-                        &ResponseBody::new(stdout),
-                        // Don't prettify - user has control over this output,
-                        // so if it isn't pretty already that's on them
-                        false,
-                    );
-                }
-                // Trigger error state. We DON'T want to show a modal here by
-                // default because it's incredibly annoying. Instead the user
-                // can open the modal by hitting  a key
-                Err(error) => {
-                    // It'd be nice to get the owned error here, but it makes
-                    // the downcasting for the emitted event more complicated
-                    self.query_state = QueryState::Error(Rc::clone(error));
-                    let binding = TuiContext::get()
-                        .input_engine
-                        .binding_display(Action::OpenHelp);
-                    ViewContext::notify(format!(
-                        "Error query response; {binding} for detail"
-                    ));
+            QueryComplete(result) = emitted(self) => {
+                match result {
+                    Ok(stdout) => {
+                        self.query_state = QueryState::Ok;
+                        self.text_state = TextState::new(
+                            // Assume the output has the same content type
+                            self.response.content_type(),
+                            &ResponseBody::new(stdout),
+                            // Don't prettify - user has control over this output,
+                            // so if it isn't pretty already that's on them
+                            false,
+                        );
+                    }
+                    // Trigger error state. We DON'T want to show a modal here
+                    // by default because it's incredibly
+                    // annoying. Instead the user
+                    // can open the modal by hitting  a key
+                    Err(error) => {
+                        // It'd be nice to get the owned error here, but it
+                        // makes the downcasting for the
+                        // emitted event more complicated
+                        self.query_state = QueryState::Error(error);
+                        let binding = TuiContext::get()
+                            .input_engine
+                            .binding_display(Action::OpenHelp);
+                        ViewContext::notify(format!(
+                            "Error query response; {binding} for detail"
+                        ));
+                    }
                 }
             }
-        } else {
-            return Update::Propagate(event);
+            event = emitted(self.query_text_box) => {
+                match event {
+                    TextBoxEvent::Focus => self.query_focused = true,
+                    TextBoxEvent::Change => self.update_query(),
+                    TextBoxEvent::Cancel => {
+                        // Reset text to whatever was submitted last
+                        self.query_text_box.data_mut().set_text(
+                            self.last_executed_command.clone().unwrap_or_default(),
+                        );
+                        self.query_focused = false;
+                    }
+                    TextBoxEvent::Submit => {
+                        self.update_query();
+                        self.query_focused = false;
+                    }
+                }
+            }
         }
-        Update::Consumed
+
+        Update::Propagate(event)
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -236,19 +236,23 @@ impl Draw for QueryableBody {
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
 
-        self.text_window.draw(
-            frame,
-            TextWindowProps {
-                text: &self.text_state.text,
-                margins: ScrollbarMargins {
-                    bottom: 2, // Extra margin to jump over the search box
-                    ..Default::default()
+        if let QueryState::Error(error) = &self.query_state {
+            frame.render_widget(error.generate(), body_area);
+        } else {
+            self.text_window.draw(
+                frame,
+                TextWindowProps {
+                    text: &self.text_state.text,
+                    margins: ScrollbarMargins {
+                        bottom: 2, // Extra margin to jump over the search box
+                        ..Default::default()
+                    },
+                    footer: None,
                 },
-                footer: None,
-            },
-            body_area,
-            true,
-        );
+                body_area,
+                true,
+            );
+        }
 
         self.query_text_box.draw(
             frame,
@@ -367,7 +371,7 @@ impl TextState {
 /// Emitted event to notify when a query subprocess has completed. Contains the
 /// stdout of the process if successful.
 #[derive(Debug)]
-pub struct QueryComplete(Result<Vec<u8>, Rc<anyhow::Error>>);
+pub struct QueryComplete(Result<Vec<u8>, anyhow::Error>);
 
 #[derive(Debug, Default)]
 enum QueryState {
@@ -376,11 +380,8 @@ enum QueryState {
     None,
     /// Command is running. Handle can be used to kill it
     Running(AbortHandle),
-    /// Command failed. Error is stored in an Rc so we can pass it to the modal
-    /// but still hold onto it, allowing the modal to be opened multiple times.
-    /// The modals needs ownership because it lives at the top of the component
-    /// tree.
-    Error(Rc<anyhow::Error>),
+    /// Command failed
+    Error(anyhow::Error),
     // Success! The result is immediately transformed and stored in the text
     // window, so we don't need to store it here
     Ok,

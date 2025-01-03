@@ -26,25 +26,15 @@ use ratatui::{
     Frame,
 };
 use slumber_core::template::{Prompt, Select};
-use std::{fmt::Debug, rc::Rc};
+use std::fmt::Debug;
 use strum::{EnumCount, EnumIter};
 
 /// Modal to display an error. Typically the error is [anyhow::Error], but it
 /// could also be wrapped in a smart pointer.
 #[derive(Debug)]
-pub struct ErrorModal<E = anyhow::Error>(E);
+pub struct ErrorModal(anyhow::Error);
 
-impl<E> ErrorModal<E> {
-    pub fn new(error: E) -> Self {
-        Self(error)
-    }
-}
-
-impl<E> Modal for ErrorModal<E>
-where
-    E: Debug,
-    Self: Draw,
-{
+impl Modal for ErrorModal {
     fn priority(&self) -> ModalPriority {
         ModalPriority::High // beep beep coming through
     }
@@ -58,22 +48,16 @@ where
     }
 }
 
-impl<E> EventHandler for ErrorModal<E> {}
+impl EventHandler for ErrorModal {}
 
-impl Draw for ErrorModal<anyhow::Error> {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        frame.render_widget(self.0.generate(), metadata.area());
-    }
-}
-
-impl Draw for ErrorModal<Rc<anyhow::Error>> {
+impl Draw for ErrorModal {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         frame.render_widget(self.0.generate(), metadata.area());
     }
 }
 
 impl IntoModal for anyhow::Error {
-    type Target = ErrorModal<anyhow::Error>;
+    type Target = ErrorModal;
 
     fn into_modal(self) -> Self::Target {
         ErrorModal(self)

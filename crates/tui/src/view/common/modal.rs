@@ -5,7 +5,7 @@ use crate::{
         draw::{Draw, DrawMetadata},
         event::{
             Child, Emitter, EmitterHandle, EmitterId, Event, EventHandler,
-            Update,
+            OptionEvent,
         },
         util::centered_rect,
         Component, ViewContext,
@@ -57,7 +57,11 @@ pub trait Modal: Debug + Draw<()> + EventHandler {
 }
 
 impl EventHandler for Box<dyn Modal> {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> Option<Event> {
         self.deref_mut().update(context, event)
     }
 
@@ -125,9 +129,9 @@ impl ModalQueue {
 }
 
 impl EventHandler for ModalQueue {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 // Close the active modal. If there's no modal open, we'll
                 // propagate the event down. Enter to close is a
@@ -143,7 +147,7 @@ impl EventHandler for ModalQueue {
             .any(|event| match event {
                 Event::CloseModal { submitted } if self.is_open() => {
                     self.close(submitted);
-                    Update::Consumed
+                    None
                 }
 
                 // If open, eat all cursor events so they don't get sent to
@@ -151,15 +155,15 @@ impl EventHandler for ModalQueue {
                 Event::Input {
                     action: _,
                     event: crossterm::event::Event::Mouse(_),
-                } if self.is_open() => Update::Consumed,
+                } if self.is_open() => None,
 
                 // Open a new modal
                 Event::OpenModal(modal) => {
                     self.open(modal);
-                    Update::Consumed
+                    None
                 }
 
-                _ => Update::Propagate(event),
+                _ => Some(event),
             })
     }
 

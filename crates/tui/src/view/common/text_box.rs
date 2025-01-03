@@ -5,7 +5,7 @@ use crate::{
     view::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Emitter, EmitterId, Event, EventHandler, Update},
+        event::{Emitter, EmitterId, Event, EventHandler, OptionEvent},
         util::Debounce,
     },
 };
@@ -204,9 +204,9 @@ impl TextBox {
 }
 
 impl EventHandler for TextBox {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::Submit => self.submit(),
                 Action::Cancel => {
@@ -222,11 +222,11 @@ impl EventHandler for TextBox {
                     event: crossterm::event::Event::Key(key_event),
                     ..
                 } if self.handle_key(key_event.code, key_event.modifiers) => {
-                    Update::Consumed
+                    None
                 }
                 // Propagate any keystrokes we don't handle (e.g. f keys), as
                 // well as other event types
-                _ => Update::Propagate(event),
+                _ => Some(event),
             })
     }
 }

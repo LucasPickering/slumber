@@ -5,7 +5,7 @@
 use crate::view::{
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
-    event::{Child, Emitter, Event, ToChild, Update},
+    event::{Child, Emitter, EmitterId, Event, ToChild, Update},
 };
 use crossterm::event::MouseEvent;
 use derive_more::Display;
@@ -204,23 +204,6 @@ impl<T> Component<T> {
         self.inner
     }
 
-    /// Forward to [Emitter::emitted]
-    pub fn emitted<'a>(&self, event: &'a Event) -> Option<&'a T::Emitted>
-    where
-        T: Emitter,
-    {
-        self.data().emitted(event)
-    }
-
-    /// Forward to [Emitter::emitted_owned]
-    /// TODO rename
-    pub fn emitted_owned(&self, event: Event) -> Result<T::Emitted, Event>
-    where
-        T: Emitter,
-    {
-        self.data().emitted_owned(event)
-    }
-
     /// Draw the component to the frame. This will update global state, then
     /// defer to the component's [Draw] implementation for the actual draw.
     pub fn draw<Props>(
@@ -281,6 +264,19 @@ impl<T: Default> Default for Component<T> {
 impl<T> From<T> for Component<T> {
     fn from(inner: T) -> Self {
         Self::new(inner)
+    }
+}
+
+impl<T: Emitter> Emitter for Component<T> {
+    type Emitted = T::Emitted;
+
+    fn id(&self) -> EmitterId {
+        self.data().id()
+    }
+
+    fn type_name(&self) -> &'static str {
+        // Use the name of the contained emitter
+        self.name
     }
 }
 

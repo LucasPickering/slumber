@@ -177,10 +177,7 @@ impl TextWindow {
 
 impl EventHandler for TextWindow {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        let Some(action) = event.action() else {
-            return Update::Propagate(event);
-        };
-        match action {
+        event.m().action(|action, propagate| match action {
             Action::Up | Action::ScrollUp => self.scroll_up(1),
             Action::Down | Action::ScrollDown => self.scroll_down(1),
             Action::ScrollLeft => self.scroll_left(1),
@@ -189,9 +186,8 @@ impl EventHandler for TextWindow {
             Action::PageDown => self.scroll_down(self.window_height.get()),
             Action::Home => self.scroll_to(0),
             Action::End => self.scroll_to(usize::MAX),
-            _ => return Update::Propagate(event),
-        }
-        Update::Consumed
+            _ => propagate.set(),
+        })
     }
 }
 

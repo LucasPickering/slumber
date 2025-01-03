@@ -56,19 +56,15 @@ pub struct ButtonGroup<T: FixedSelect> {
 
 impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        let Some(action) = event.action() else {
-            return Update::Propagate(event);
-        };
-        match action {
+        event.m().action(|action, propagate| match action {
             Action::Left => self.select.previous(),
             Action::Right => self.select.next(),
             Action::Submit => {
                 // Propagate the selected item as a dynamic event
                 self.emit(self.select.selected());
             }
-            _ => return Update::Propagate(event),
-        }
-        Update::Consumed
+            _ => propagate.set(),
+        })
     }
 
     // Do *not* treat the select state as a child, because the default select

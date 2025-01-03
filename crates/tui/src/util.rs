@@ -49,6 +49,17 @@ where
     }
 }
 
+/// A flag that starts as false and can only be enabled
+#[derive(Copy, Clone, Debug, Default, derive_more::Deref)]
+pub struct Flag(bool);
+
+impl Flag {
+    /// Enable the flag
+    pub fn set(&mut self) {
+        self.0 = true;
+    }
+}
+
 /// Clear all input events in the terminal event buffer
 pub fn clear_event_buffer() {
     while let Ok(true) = event::poll(Duration::from_millis(0)) {

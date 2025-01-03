@@ -311,28 +311,27 @@ impl<'a, Component> PropagatedEvents<'a, Component> {
     /// a specific sequence. Requires `PartialEq` to be implemented for the
     /// emitted event type.
     pub fn assert_emitted(
-        &self,
+        self,
         expected: impl IntoIterator<Item = Component::Emitted>,
     ) where
         Component: Emitter,
         Component::Emitted: PartialEq,
     {
+        let handle = self.component.handle();
         let emitted = self
             .events
-            .iter()
+            .into_iter()
             .map(|event| {
-                self.component.emitted(event).unwrap_or_else(|| {
+                handle.emitted(event).unwrap_or_else(|event| {
                     panic!(
                         "Expected only emitted events to have been propagated, \
-                        but received: {event:#?}\nAll: {:#?}",
-                        self.events()
+                        but received: {event:#?}",
                     )
                 })
             })
             .collect::<Vec<_>>();
         let expected = expected.into_iter().collect_vec();
-        let expected = expected.iter().collect_vec();
-        assert_eq!(emitted.as_slice(), expected.as_slice());
+        assert_eq!(emitted, expected);
     }
 
     /// Get propagated events as a slice

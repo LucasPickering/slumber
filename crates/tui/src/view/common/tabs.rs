@@ -26,15 +26,11 @@ impl<T: FixedSelect> Tabs<T> {
 
 impl<T: FixedSelect> EventHandler for Tabs<T> {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        let Some(action) = event.action() else {
-            return Update::Propagate(event);
-        };
-        match action {
+        event.m().action(|action, propagate| match action {
             Action::Left => self.tabs.previous(),
             Action::Right => self.tabs.next(),
-            _ => return Update::Propagate(event),
-        }
-        Update::Consumed
+            _ => propagate.set(),
+        })
     }
 }
 

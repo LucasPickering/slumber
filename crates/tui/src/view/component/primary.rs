@@ -286,8 +286,9 @@ impl PrimaryView {
 
 impl EventHandler for PrimaryView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(action) = event.action() {
-            match action {
+        event
+            .m()
+            .action(|action, propagate| match action {
                 Action::PreviousPane => self.selected_pane.get_mut().previous(),
                 Action::NextPane => self.selected_pane.get_mut().next(),
                 // Send a request from anywhere
@@ -332,48 +333,43 @@ impl EventHandler for PrimaryView {
                 Action::Cancel if self.fullscreen_mode.is_some() => {
                     *self.fullscreen_mode.get_mut() = None;
                 }
-                _ => return Update::Propagate(event),
-            }
-        } else if let Some(event) = self.selected_pane.emitted(&event) {
-            if let SelectStateEvent::Select(_) = event {
-                // Exit fullscreen when pane changes
-                self.maybe_exit_fullscreen();
-            }
-        } else if let Some(event) = self.recipe_list_pane.emitted(&event) {
-            match event {
+                _ => propagate.set(),
+            })
+            .emitted(self.selected_pane.handle(), |event| {
+                if let SelectStateEvent::Select(_) = event {
+                    // Exit fullscreen when pane changes
+                    self.maybe_exit_fullscreen();
+                }
+            })
+            .emitted(self.recipe_list_pane.handle(), |event| match event {
                 RecipeListPaneEvent::Click => {
                     self.selected_pane
                         .get_mut()
                         .select(&PrimaryPane::RecipeList);
                 }
                 RecipeListPaneEvent::MenuAction(action) => {
-                    self.handle_recipe_menu_action(*action);
+                    self.handle_recipe_menu_action(action);
                 }
-            }
-        } else if let Some(event) = self.recipe_pane.emitted(&event) {
-            match event {
+            })
+            .emitted(self.recipe_pane.handle(), |event| match event {
                 RecipePaneEvent::Click => {
                     self.selected_pane.get_mut().select(&PrimaryPane::Recipe);
                 }
                 RecipePaneEvent::MenuAction(action) => {
-                    self.handle_recipe_menu_action(*action);
+                    self.handle_recipe_menu_action(action);
                 }
-            }
-        } else if let Some(ExchangePaneEvent::Click) =
-            self.exchange_pane.emitted(&event)
-        {
-            self.selected_pane.get_mut().select(&PrimaryPane::Exchange);
-        } else if let Some(action) = self.actions_handle.emitted(&event) {
-            // Handle our own menu action type
-            match action {
+            })
+            .emitted(self.exchange_pane.handle(), |event| match event {
+                ExchangePaneEvent::Click => {
+                    self.selected_pane.get_mut().select(&PrimaryPane::Exchange)
+                }
+            })
+            .emitted(self.actions_handle, |menu_action| match menu_action {
+                // Handle our own menu action type
                 MenuAction::EditCollection => {
                     ViewContext::send_message(Message::CollectionEdit)
                 }
-            }
-        } else {
-            return Update::Propagate(event);
-        }
-        Update::Consumed
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

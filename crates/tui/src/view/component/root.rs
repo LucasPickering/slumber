@@ -150,22 +150,9 @@ impl Root {
 
 impl EventHandler for Root {
     fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            // Set selected request, and load it from the DB if needed
-            Event::HttpSelectRequest(request_id) => {
-                self.select_request(context.request_store, request_id)
-                    .reported(&ViewContext::messages_tx());
-            }
-
-            Event::Notify(notification) => {
-                self.notification_text =
-                    Some(NotificationText::new(notification)).into()
-            }
-
-            Event::Input {
-                action: Some(action),
-                ..
-            } => match action {
+        event
+            .m()
+            .action(|action, propagate| match action {
                 Action::History => {
                     self.open_history(context.request_store)
                         .reported(&ViewContext::messages_tx());
@@ -191,17 +178,30 @@ impl EventHandler for Root {
                 Action::ReloadCollection => {
                     ViewContext::send_message(Message::CollectionStartReload)
                 }
-                _ => return Update::Propagate(event),
-            },
+                _ => propagate.set(),
+            })
+            .any(|event| match event {
+                // Set selected request, and load it from the DB if needed
+                Event::HttpSelectRequest(request_id) => {
+                    self.select_request(context.request_store, request_id)
+                        .reported(&ViewContext::messages_tx());
+                    Update::Consumed
+                }
 
-            // Any other unhandled input event should *not* log an error,
-            // because it is probably just unmapped input, and not a bug
-            Event::Input { .. } => {}
+                Event::Notify(notification) => {
+                    self.notification_text =
+                        Some(NotificationText::new(notification)).into();
+                    Update::Consumed
+                }
 
-            // There shouldn't be anything left unhandled. Bubble up to log it
-            _ => return Update::Propagate(event),
-        }
-        Update::Consumed
+                // Any other unhandled input event should *not* log an error,
+                // because it is probably just unmapped input, and not a bug
+                Event::Input { .. } => Update::Consumed,
+
+                // There shouldn't be anything left unhandled. Bubble up to log
+                // it
+                _ => Update::Propagate(event),
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

@@ -210,17 +210,16 @@ impl RawBody {
 
 impl EventHandler for RawBody {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        let action = event.action();
-        if let Some(Action::Edit) = action {
-            self.open_editor();
-        } else if let Some(Action::Reset) = action {
-            self.body.reset_override();
-        } else if let Some(SaveBodyOverride(path)) = self.emitted(&event) {
-            self.load_override(path);
-        } else {
-            return Update::Propagate(event);
-        }
-        Update::Consumed
+        event
+            .m()
+            .action(|action, propagate| match action {
+                Action::Edit => self.open_editor(),
+                Action::Reset => self.body.reset_override(),
+                _ => propagate.set(),
+            })
+            .emitted(self.handle(), |SaveBodyOverride(path)| {
+                self.load_override(&path)
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

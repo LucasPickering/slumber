@@ -205,37 +205,29 @@ impl TextBox {
 
 impl EventHandler for TextBox {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        match event {
-            // Warning: all actions need to be handled here, because unhandled
-            // actions have to get treated as text input instead of being
-            // propagated
-            Event::Input {
-                action: Some(Action::Submit),
-                ..
-            } => self.submit(),
-            Event::Input {
-                action: Some(Action::Cancel),
-                ..
-            } => {
-                self.cancel_debounce();
-                self.emit(TextBoxEvent::Cancel);
-            }
-            Event::Input {
-                action: Some(Action::LeftClick),
-                ..
-            } => self.emit(TextBoxEvent::Focus),
-            Event::Input {
-                event: crossterm::event::Event::Key(key_event),
-                ..
-            } => {
-                if !self.handle_key(key_event.code, key_event.modifiers) {
-                    // Propagate any keystrokes we don't handle (e.g. f keys)
-                    return Update::Propagate(event);
+        event
+            .m()
+            .action(|action, propagate| match action {
+                Action::Submit => self.submit(),
+                Action::Cancel => {
+                    self.cancel_debounce();
+                    self.emit(TextBoxEvent::Cancel);
                 }
-            }
-            _ => return Update::Propagate(event),
-        }
-        Update::Consumed
+                Action::LeftClick => self.emit(TextBoxEvent::Focus),
+                _ => propagate.set(),
+            })
+            .any(|event| match event {
+                // Handle any other input as text
+                Event::Input {
+                    event: crossterm::event::Event::Key(key_event),
+                    ..
+                } if self.handle_key(key_event.code, key_event.modifiers) => {
+                    Update::Consumed
+                }
+                // Propagate any keystrokes we don't handle (e.g. f keys), as
+                // well as other event types
+                _ => Update::Propagate(event),
+            })
     }
 }
 

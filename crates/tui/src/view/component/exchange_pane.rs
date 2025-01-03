@@ -75,11 +75,10 @@ enum Tab {
 
 impl EventHandler for ExchangePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        match event.action() {
-            Some(Action::LeftClick) => self.emit(ExchangePaneEvent::Click),
-            _ => return Update::Propagate(event),
-        }
-        Update::Consumed
+        event.m().action(|action, propagate| match action {
+            Action::LeftClick => self.emit(ExchangePaneEvent::Click),
+            _ => propagate.set(),
+        })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

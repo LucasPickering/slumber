@@ -98,19 +98,18 @@ impl ProfilePane {
 
 impl EventHandler for ProfilePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(Action::LeftClick) = event.action() {
-            self.open_modal();
-        } else if let Some(SelectProfile(profile_id)) =
-            self.modal_handle.emitted(&event)
-        {
-            // Handle message from the modal
-            *self.selected_profile_id.get_mut() = Some(profile_id.clone());
-            // Refresh template previews
-            ViewContext::push_event(Event::HttpSelectRequest(None));
-        } else {
-            return Update::Propagate(event);
-        }
-        Update::Consumed
+        event
+            .m()
+            .action(|action, propagate| match action {
+                Action::LeftClick => self.open_modal(),
+                _ => propagate.set(),
+            })
+            .emitted(self.modal_handle, |SelectProfile(profile_id)| {
+                // Handle message from the modal
+                *self.selected_profile_id.get_mut() = Some(profile_id.clone());
+                // Refresh template previews
+                ViewContext::push_event(Event::HttpSelectRequest(None));
+            })
     }
 }
 
@@ -184,18 +183,15 @@ impl Modal for ProfileListModal {
 
 impl EventHandler for ProfileListModal {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(event) = self.select.emitted(&event) {
+        event.m().emitted(self.select.handle(), |event| {
             // Loaded request depends on the profile, so refresh on change
             if let SelectStateEvent::Submit(index) = event {
                 // Close modal first so the parent can consume the emitted event
                 self.close(true);
-                let profile_id = self.select.data()[*index].id.clone();
+                let profile_id = self.select.data()[index].id.clone();
                 self.emit(SelectProfile(profile_id));
             }
-        } else {
-            return Update::Propagate(event);
-        }
-        Update::Consumed
+        })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

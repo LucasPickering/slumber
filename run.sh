@@ -6,7 +6,7 @@
 # latest watchexec we can get rid of this.
 # https://github.com/watchexec/cargo-watch/issues/269
 
-RUST_LOG=${RUST_LOG:-slumber=${LOG:-DEBUG}} watchexec --restart --no-process-group \
+RUST_LOG=${RUST_LOG:-slumber=${LOG:-DEBUG}} RUST_BACKTRACE=1 watchexec --restart --no-process-group \
     --watch Cargo.toml --watch Cargo.lock --watch src/ --watch crates/ \
     -- cargo run \
     -- $@

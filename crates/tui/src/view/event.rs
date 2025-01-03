@@ -393,6 +393,7 @@ pub trait Emitter {
     fn handle(&self) -> EmitterHandle<Self::Emitted> {
         EmitterHandle {
             id: self.id(),
+            type_name: self.type_name(),
             phantom: PhantomData,
         }
     }
@@ -472,6 +473,7 @@ impl Default for EmitterId {
 #[derive(Debug)]
 pub struct EmitterHandle<T> {
     id: EmitterId,
+    type_name: &'static str,
     phantom: PhantomData<T>,
 }
 
@@ -489,5 +491,9 @@ impl<T: LocalEvent> Emitter for EmitterHandle<T> {
 
     fn id(&self) -> EmitterId {
         self.id
+    }
+
+    fn type_name(&self) -> &'static str {
+        self.type_name
     }
 }

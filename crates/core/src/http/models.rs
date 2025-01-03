@@ -329,14 +329,16 @@ impl RequestRecord {
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for RequestRecord {
     fn factory(_: ()) -> Self {
+        Self::factory(RequestId::new())
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl crate::test_util::Factory<RequestId> for RequestRecord {
+    fn factory(id: RequestId) -> Self {
         Self {
-            id: RequestId::new(),
-            profile_id: None,
-            recipe_id: RecipeId::factory(()),
-            method: reqwest::Method::GET,
-            url: "http://localhost/url".parse().unwrap(),
-            headers: HeaderMap::new(),
-            body: None,
+            id,
+            ..Self::factory((None, RecipeId::factory(())))
         }
     }
 }
@@ -367,7 +369,15 @@ impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for ResponseRecord {
     fn factory(_: ()) -> Self {
+        Self::factory(RequestId::new())
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl crate::test_util::Factory<RequestId> for ResponseRecord {
+    fn factory(id: RequestId) -> Self {
         Self {
+            id,
             status: StatusCode::OK,
             headers: HeaderMap::new(),
             body: ResponseBody::default(),
@@ -379,6 +389,7 @@ impl crate::test_util::Factory for ResponseRecord {
 impl crate::test_util::Factory<StatusCode> for ResponseRecord {
     fn factory(status: StatusCode) -> Self {
         Self {
+            id: RequestId::new(),
             status,
             headers: HeaderMap::new(),
             body: ResponseBody::default(),
@@ -405,17 +416,27 @@ impl crate::test_util::Factory<RecipeId> for Exchange {
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
     fn factory(params: (Option<ProfileId>, RecipeId)) -> Self {
+        let id = RequestId::new();
         Self::factory((
-            RequestRecord::factory(params),
-            ResponseRecord::factory(()),
+            RequestRecord {
+                id,
+                ..RequestRecord::factory(params)
+            },
+            ResponseRecord::factory(id),
         ))
     }
 }
 
-/// Customize profile and recipe ID
+/// Custom request and response
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
     fn factory((request, response): (RequestRecord, ResponseRecord)) -> Self {
+        // Request and response should've been generated from the same ID,
+        // otherwise we're going to see some shitty bugs
+        assert_eq!(
+            request.id, response.id,
+            "Request and response have different IDs"
+        );
         Self {
             id: request.id,
             request: request.into(),
@@ -423,6 +444,13 @@ impl crate::test_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
             start_time: Utc::now(),
             end_time: Utc::now(),
         }
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl crate::test_util::Factory<RequestId> for Exchange {
+    fn factory(id: RequestId) -> Self {
+        Self::factory((RequestRecord::factory(id), ResponseRecord::factory(id)))
     }
 }
 
@@ -436,6 +464,7 @@ impl crate::test_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
 #[derive(Debug)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct ResponseRecord {
+    pub id: RequestId,
     pub status: StatusCode,
     pub headers: HeaderMap,
     pub body: ResponseBody,

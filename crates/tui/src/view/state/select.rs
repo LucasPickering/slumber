@@ -1,7 +1,7 @@
 use crate::view::{
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
-    event::{Emitter, EmitterId, Event, EventHandler, Update},
+    event::{Emitter, EmitterId, Event, EventHandler, OptionEvent},
 };
 use persisted::PersistedContainer;
 use ratatui::{
@@ -313,8 +313,8 @@ where
     Item: Debug,
     State: Debug + SelectStateData,
 {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        event.m().action(|action, propagate| match action {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().action(|action, propagate| match action {
             // Up/down keys and scrolling. Scrolling will only work if
             // .set_area() is called on the wrapping Component by our parent
             Action::Up | Action::ScrollUp => self.previous(),

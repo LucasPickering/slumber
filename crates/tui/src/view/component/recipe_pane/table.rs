@@ -15,7 +15,7 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate},
         event::{
             Child, Emitter, EmitterHandle, EmitterId, Event, EventHandler,
-            Update,
+            OptionEvent,
         },
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
         util::persistence::{Persisted, PersistedKey, PersistedLazy},
@@ -111,9 +111,9 @@ where
     RowSelectKey: PersistedKey<Value = Option<String>>,
     RowToggleKey: PersistedKey<Value = bool>,
 {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::Edit => {
                     // Consume the event even if we have no rows, for

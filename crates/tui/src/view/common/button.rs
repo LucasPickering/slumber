@@ -5,7 +5,7 @@ use crate::{
     view::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Emitter, EmitterId, Event, EventHandler, Update},
+        event::{Emitter, EmitterId, Event, EventHandler, OptionEvent},
         state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
@@ -55,8 +55,8 @@ pub struct ButtonGroup<T: FixedSelect> {
 }
 
 impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        event.m().action(|action, propagate| match action {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().action(|action, propagate| match action {
             Action::Left => self.select.previous(),
             Action::Right => self.select.next(),
             Action::Submit => {

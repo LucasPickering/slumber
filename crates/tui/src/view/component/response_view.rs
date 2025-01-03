@@ -11,7 +11,7 @@ use crate::{
         component::queryable_body::QueryableBody,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Child, Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, OptionEvent},
         state::StateCell,
         util::{persistence::PersistedLazy, view_text},
         Component, ViewContext,
@@ -87,9 +87,9 @@ impl ResponseBodyView {
 }
 
 impl EventHandler for ResponseBodyView {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::OpenActions => {
                     self.actions_handle.open(ActionsModal::default())

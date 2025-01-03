@@ -10,7 +10,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Child, Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, OptionEvent},
         state::{Identified, StateCell},
         util::{highlight, view_text},
         Component, ViewContext,
@@ -68,9 +68,9 @@ enum MenuAction {
 impl ToStringGenerate for MenuAction {}
 
 impl EventHandler for RequestView {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::OpenActions => {
                     let disabled = if self

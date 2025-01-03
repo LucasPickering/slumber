@@ -10,7 +10,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
+        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
         state::Identified,
         Component, ViewContext,
     },
@@ -209,9 +209,9 @@ impl RawBody {
 }
 
 impl EventHandler for RawBody {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::Edit => self.open_editor(),
                 Action::Reset => self.body.reset_override(),

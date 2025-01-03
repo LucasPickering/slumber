@@ -19,7 +19,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, ToStringGenerate},
-        event::{Child, Emitter, Event, EventHandler, Update},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent},
         state::{
             fixed_select::FixedSelectState,
             select::{SelectStateEvent, SelectStateEventType},
@@ -285,9 +285,9 @@ impl PrimaryView {
 }
 
 impl EventHandler for PrimaryView {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::PreviousPane => self.selected_pane.get_mut().previous(),
                 Action::NextPane => self.selected_pane.get_mut().next(),

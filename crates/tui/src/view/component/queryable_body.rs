@@ -412,10 +412,12 @@ mod tests {
     use crossterm::event::KeyCode;
     use persisted::{PersistedKey, PersistedStore};
     use ratatui::text::Span;
-    use reqwest::StatusCode;
     use rstest::{fixture, rstest};
     use serde::Serialize;
-    use slumber_core::http::{ResponseBody, ResponseRecord};
+    use slumber_core::{
+        http::{ResponseBody, ResponseRecord},
+        test_util::Factory,
+    };
 
     const TEXT: &[u8] = b"{\"greeting\":\"hello\"}";
 
@@ -433,12 +435,12 @@ mod tests {
     #[fixture]
     fn response() -> Arc<ResponseRecord> {
         ResponseRecord {
-            status: StatusCode::OK,
             // Note: do NOT set the content-type header here. It enables syntax
             // highlighting, which makes buffer assertions hard. JSON-specific
             // behavior is tested in ResponseView
             headers: Default::default(),
             body: ResponseBody::new(TEXT.into()),
+            ..ResponseRecord::factory(())
         }
         .into()
     }

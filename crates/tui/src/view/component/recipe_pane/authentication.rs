@@ -12,7 +12,7 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate},
         event::{
             Child, Emitter, EmitterHandle, EmitterId, Event, EventHandler,
-            Update,
+            OptionEvent,
         },
         state::fixed_select::FixedSelectState,
         ViewContext,
@@ -98,9 +98,9 @@ impl AuthenticationDisplay {
 }
 
 impl EventHandler for AuthenticationDisplay {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::Edit => self.state.open_edit_modal(self.handle()),
                 Action::Reset => self.state.reset_override(),

@@ -23,7 +23,7 @@ use crate::{
     view::{
         component::{Component, Root, RootProps},
         debug::DebugMonitor,
-        event::{Event, Update},
+        event::Event,
     },
 };
 use anyhow::anyhow;
@@ -163,13 +163,9 @@ impl View {
             handled = true;
             trace_span!("View event", ?event).in_scope(|| {
                 match self.root.update_all(&mut context, event) {
-                    Update::Consumed => {
-                        trace!("View event consumed")
-                    }
+                    None => trace!("View event consumed"),
                     // Consumer didn't eat the event - huh?
-                    Update::Propagate(_) => {
-                        warn!("View event was unhandled");
-                    }
+                    Some(_) => warn!("View event was unhandled"),
                 }
             });
         }

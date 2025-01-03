@@ -3,7 +3,7 @@ use crate::{
     view::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Event, EventHandler, Update},
+        event::{Event, EventHandler, OptionEvent},
         state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
@@ -25,8 +25,8 @@ impl<T: FixedSelect> Tabs<T> {
 }
 
 impl<T: FixedSelect> EventHandler for Tabs<T> {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        event.m().action(|action, propagate| match action {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().action(|action, propagate| match action {
             Action::Left => self.tabs.previous(),
             Action::Right => self.tabs.next(),
             _ => propagate.set(),

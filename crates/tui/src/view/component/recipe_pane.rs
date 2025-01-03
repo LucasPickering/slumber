@@ -14,7 +14,7 @@ use crate::{
         component::recipe_pane::recipe::RecipeDisplay,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
+        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
         state::StateCell,
         Component,
     },
@@ -83,9 +83,9 @@ impl RecipePane {
 }
 
 impl EventHandler for RecipePane {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::LeftClick => self.emit(RecipePaneEvent::Click),
                 Action::OpenActions => {

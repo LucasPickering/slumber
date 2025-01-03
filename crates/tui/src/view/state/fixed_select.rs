@@ -1,7 +1,7 @@
 use crate::view::{
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
-    event::{Emitter, EmitterId, Event, EventHandler, Update},
+    event::{Emitter, EmitterId, Event, EventHandler},
     state::select::{
         SelectItem, SelectState, SelectStateBuilder, SelectStateData,
         SelectStateEvent, SelectStateEventType,
@@ -197,7 +197,11 @@ where
     Item: FixedSelect,
     State: Debug + SelectStateData,
 {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> Option<Event> {
         self.inner.update(context, event)
     }
 }

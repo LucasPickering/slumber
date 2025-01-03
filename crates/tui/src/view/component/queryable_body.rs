@@ -10,7 +10,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
+        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
         state::Identified,
         util::{highlight, str_to_text},
         Component, ViewContext,
@@ -161,9 +161,9 @@ impl QueryableBody {
 }
 
 impl EventHandler for QueryableBody {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::Search => self.query_focused = true,
                 _ => propagate.set(),

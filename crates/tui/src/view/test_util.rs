@@ -9,7 +9,7 @@ use crate::{
         component::Component,
         context::ViewContext,
         draw::{Draw, DrawMetadata},
-        event::{Child, Emitter, Event, EventHandler, ToChild, Update},
+        event::{Child, Emitter, Event, EventHandler, ToChild},
         UpdateContext,
     },
 };
@@ -152,7 +152,7 @@ where
             request_store: &mut self.request_store.borrow_mut(),
         };
         while let Some(event) = ViewContext::pop_event() {
-            if let Update::Propagate(event) =
+            if let Some(event) =
                 self.component.update_all(&mut update_context, event)
             {
                 propagated.push(event);

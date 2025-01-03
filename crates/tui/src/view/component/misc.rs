@@ -11,7 +11,7 @@ use crate::view::{
     component::Component,
     context::UpdateContext,
     draw::{Draw, DrawMetadata, Generate},
-    event::{Child, Emitter, Event, EventHandler, Update},
+    event::{Child, Emitter, Event, EventHandler, OptionEvent},
     state::{
         select::{SelectState, SelectStateEvent, SelectStateEventType},
         Notification,
@@ -112,9 +112,9 @@ impl Modal for TextBoxModal {
 }
 
 impl EventHandler for TextBoxModal {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .emitted(self.text_box.handle(), |event| match event {
                 TextBoxEvent::Focus | TextBoxEvent::Change => {}
                 TextBoxEvent::Cancel => {
@@ -220,8 +220,8 @@ impl Modal for SelectListModal {
 }
 
 impl EventHandler for SelectListModal {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        event.m().emitted(self.options.handle(), |event| {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().emitted(self.options.handle(), |event| {
             if let SelectStateEvent::Submit(_) = event {
                 self.close(true);
             }
@@ -317,8 +317,8 @@ impl Modal for ConfirmModal {
 }
 
 impl EventHandler for ConfirmModal {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        event.m().emitted(self.buttons.handle(), |button| {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().emitted(self.buttons.handle(), |button| {
             // When user selects a button, send the response and close
             self.answer = button == ConfirmButton::Yes;
             self.close(true);

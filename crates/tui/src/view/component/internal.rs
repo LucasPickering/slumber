@@ -113,7 +113,7 @@ impl<T> Component<T> {
 
         // None of our children handled it, we'll take it ourselves. Event is
         // already traced in the root span, so don't dupe it.
-        (trace_span!("component.update")).in_scope(|| {
+        trace_span!("component.update").in_scope(|| {
             let update = self_dyn.update(context, event);
             trace!(?update);
             update

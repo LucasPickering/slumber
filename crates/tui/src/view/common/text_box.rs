@@ -102,15 +102,14 @@ impl TextBox {
         self.state.text
     }
 
-    /// Set text, and move the cursor to the end. If the text changed, emit a
-    /// change event.
+    /// Set text, and move the cursor to the end. This does *not* trigger a
+    /// change event, because it's assumed this is being called by the parent
+    /// and therefore the parent doesn't need to be notified about it. Instead,
+    /// you should manually call whatever would be trigger by the change event.
+    /// This simplies logic and makes it easier to follow.
     pub fn set_text(&mut self, text: String) {
-        let changed = text != self.state.text;
         self.state.text = text;
         self.state.end();
-        if changed {
-            self.change();
-        }
     }
 
     /// Check if the current input text is valid. Always returns true if there
@@ -174,7 +173,7 @@ impl TextBox {
     fn change(&mut self) {
         let is_valid = self.is_valid();
         if let Some(debounce) = &self.on_change_debounce {
-            if self.is_valid() {
+            if is_valid {
                 // Defer the change event until after the debounce period
                 let emitter = self.handle();
                 debounce.start(move || emitter.emit(TextBoxEvent::Change));

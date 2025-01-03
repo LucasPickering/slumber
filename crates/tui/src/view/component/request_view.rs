@@ -69,21 +69,26 @@ impl ToStringGenerate for MenuAction {}
 
 impl EventHandler for RequestView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(Action::OpenActions) = event.action() {
-            let disabled = if self
-                .state
-                .get_mut()
-                .and_then(|state| state.body.as_ref())
-                .is_some()
-            {
-                [].as_slice()
-            } else {
-                // No body available - disable these actions
-                &[MenuAction::CopyBody, MenuAction::ViewBody]
-            };
-            self.actions_handle.open(ActionsModal::new(disabled));
-        } else if let Some(menu_action) = self.actions_handle.emitted(&event) {
-            match menu_action {
+        event
+            .m()
+            .action(|action, propagate| match action {
+                Action::OpenActions => {
+                    let disabled = if self
+                        .state
+                        .get_mut()
+                        .and_then(|state| state.body.as_ref())
+                        .is_some()
+                    {
+                        [].as_slice()
+                    } else {
+                        // No body available - disable these actions
+                        &[MenuAction::CopyBody, MenuAction::ViewBody]
+                    };
+                    self.actions_handle.open(ActionsModal::new(disabled));
+                }
+                _ => propagate.set(),
+            })
+            .emitted(self.actions_handle, |menu_action| match menu_action {
                 MenuAction::EditCollection => {
                     ViewContext::send_message(Message::CollectionEdit)
                 }
@@ -111,11 +116,7 @@ impl EventHandler for RequestView {
                         }
                     }
                 }
-            }
-        } else {
-            return Update::Propagate(event);
-        }
-        Update::Consumed
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

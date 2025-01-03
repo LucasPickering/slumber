@@ -84,8 +84,9 @@ impl RecipePane {
 
 impl EventHandler for RecipePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(action) = event.action() {
-            match action {
+        event
+            .m()
+            .action(|action, propagate| match action {
                 Action::LeftClick => self.emit(RecipePaneEvent::Click),
                 Action::OpenActions => {
                     let state = self.recipe_state.get_mut();
@@ -98,15 +99,12 @@ impl EventHandler for RecipePane {
                         ),
                     ))
                 }
-                _ => return Update::Propagate(event),
-            }
-        } else if let Some(menu_action) = self.actions_handle.emitted(&event) {
-            // Menu actions are handled by the parent, so forward them
-            self.emit(RecipePaneEvent::MenuAction(*menu_action));
-        } else {
-            return Update::Propagate(event);
-        }
-        Update::Consumed
+                _ => propagate.set(),
+            })
+            .emitted(self.actions_handle, |menu_action| {
+                // Menu actions are handled by the parent, so forward them
+                self.emit(RecipePaneEvent::MenuAction(menu_action));
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

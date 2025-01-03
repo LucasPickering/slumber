@@ -1,9 +1,12 @@
 //! Utilities for handling input events from users, as well as external async
 //! events (e.g. HTTP responses)
 
-use crate::view::{
-    common::modal::Modal, context::UpdateContext, state::Notification,
-    Component, ViewContext,
+use crate::{
+    util::Flag,
+    view::{
+        common::modal::Modal, context::UpdateContext, state::Notification,
+        Component, ViewContext,
+    },
 };
 use derive_more::derive::Display;
 use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
@@ -239,54 +242,105 @@ pub enum Event {
 }
 
 impl Event {
-    /// Get the mapped input action for this event, if any. A lot of components
-    /// only handle mapped input events, so this is shorthand to check if this
-    /// is one of those events.
-    pub fn action(&self) -> Option<Action> {
-        match self {
-            Self::Input { action, .. } => *action,
-            _ => None,
+    /// Get a matcher that can be used to chain method calls together for
+    /// ergonomically matching events
+    pub fn m(self) -> Update {
+        Update::Propagate(self)
+    }
+}
+
+/// The result of a component state update operation. This corresponds to a
+/// single input [Event]. This is the output of an event handler's `update`
+/// call, but can also be used within an event handler to match against various
+/// event types using the provided methods.
+#[derive(Debug)]
+pub enum Update {
+    /// The consuming component updated its state accordingly, and no further
+    /// changes are necessary
+    Consumed,
+    /// The message was not consumed by this component, and should be passed to
+    /// the parent component. While technically possible, this should *not* be
+    /// used to trigger additional events. Instead, use
+    /// [ViewContext::push_event](crate::view::ViewContext::push_event)
+    /// for that. That will ensure the entire tree has a chance to respond to
+    /// the entire event.
+    Propagate(Event),
+}
+
+impl Update {
+    /// Match and handle any event
+    pub fn any(self, f: impl FnOnce(Event) -> Update) -> Self {
+        let Self::Propagate(event) = self else {
+            return self;
+        };
+        f(event)
+    }
+
+    /// Handle any input event bound to an action. If the action is unhandled
+    /// and the event should continue to be propagated, set the given flag.
+    pub fn action(self, f: impl FnOnce(Action, &mut Flag)) -> Self {
+        let Self::Propagate(event) = self else {
+            return self;
+        };
+        if let Event::Input {
+            action: Some(action),
+            ..
+        } = &event
+        {
+            let mut propagate = Flag::default();
+            f(*action, &mut propagate);
+            if *propagate {
+                Self::Propagate(event)
+            } else {
+                Self::Consumed
+            }
+        } else {
+            Self::Propagate(event)
+        }
+    }
+
+    /// Handle an emitted event for a particular emitter. Each emitter should
+    /// only be handled by a single parent, so this doesn't provide any way to
+    /// propagate the event if it matches the emitter.
+    ///
+    /// Typically you'll need to pass a handle for the emitter here, in order
+    /// to detach the emitter's lifetime from `self`, so that `self` can be used
+    /// in the lambda.
+    pub fn emitted<T: Emitter>(
+        self,
+        emitter: T,
+        f: impl FnOnce(T::Emitted),
+    ) -> Self {
+        let Self::Propagate(event) = self else {
+            return self;
+        };
+        match emitter.emitted(event) {
+            Ok(output) => {
+                f(output);
+                Self::Consumed
+            }
+            Err(event) => Self::Propagate(event),
         }
     }
 }
 
 /// A wrapper trait for [Any] that also gives us access to the type's [Debug]
 /// impl. This makes testing and logging much more effective, because we get the
-/// value's underlying debug representation, rather than just `Event::Local(Any
-/// {..})`.
+/// value's underlying debug representation, rather than just `Any {..}`.
 pub trait LocalEvent: Any + Debug {
     // Workaround for trait upcasting
     // unstable: Delete this once we get trait upcasting
     // https://github.com/rust-lang/rust/issues/65991
-    fn any(&self) -> &dyn Any;
-
-    /// TODO
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
 impl<T: Any + Debug> LocalEvent for T {
-    fn any(&self) -> &dyn Any {
-        self
-    }
-
     fn into_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }
 }
 
-// impl Box<dyn LocalEvent> {
-//     /// Alias for `Any::downcast`, to downcast into a concrete type
-//     pub fn downcast<T: Any>(self: Box<dyn LocalEvent>) -> Option<T> {
-//         self.any().downcast().ok()
-//     }
-// }
-
 impl dyn LocalEvent {
-    /// Alias for `Any::downcast_ref`, to downcast into a concrete type
-    pub fn downcast_ref<'a, T: Any>(self: &'a dyn LocalEvent) -> Option<&'a T> {
-        self.any().downcast_ref()
-    }
-
     /// Alias for `Any::downcast`, to downcast into a concrete type
     pub fn downcast<T: Any>(self: Box<dyn LocalEvent>) -> Option<T> {
         self.into_any().downcast().map(|b| *b).ok()
@@ -308,11 +362,16 @@ pub trait Emitter {
     /// emitters to be used in contexts where a component wrapper doesn't exist.
     fn id(&self) -> EmitterId;
 
+    /// Get the name of the implementing type, for logging/debugging
+    fn type_name(&self) -> &'static str {
+        any::type_name::<Self>()
+    }
+
     /// Push an event onto the event queue
     fn emit(&self, event: Self::Emitted) {
         ViewContext::push_event(Event::Emitted {
             emitter: self.id(),
-            emitter_type: any::type_name::<Self>(), // For debugging
+            emitter_type: self.type_name(),
             event: Box::new(event),
         });
     }
@@ -329,27 +388,7 @@ pub trait Emitter {
 
     /// Check if an event is an emitted event from this emitter, and return
     /// the emitted data if so
-    fn emitted<'a>(&self, event: &'a Event) -> Option<&'a Self::Emitted> {
-        match event {
-            Event::Emitted { emitter, event, .. } if emitter == &self.id() => {
-                Some(event.downcast_ref().unwrap_or_else(|| {
-                    // Should be unreachable because emitter IDs are unique and
-                    // each emitter can only emit one type
-                    panic!(
-                        "Incorrect emitted event type for emitter `{emitter}`. \
-                        Expected type {}, received {event:?}",
-                        any::type_name::<Self::Emitted>()
-                    )
-                }))
-            }
-            _ => None,
-        }
-    }
-
-    /// Check if an event is an emitted event from this emitter, and return
-    /// the emitted data if so
-    /// TODO rename
-    fn emitted_owned(&self, event: Event) -> Result<Self::Emitted, Event> {
+    fn emitted(&self, event: Event) -> Result<Self::Emitted, Event> {
         match event {
             Event::Emitted {
                 emitter,
@@ -395,6 +434,11 @@ impl EmitterId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
+
+    /// Empty emitted ID, to be used when no emitter is present
+    pub fn nil() -> Self {
+        Self(Uuid::nil())
+    }
 }
 
 /// Generate a new random ID
@@ -420,6 +464,15 @@ pub struct EmitterHandle<T> {
     phantom: PhantomData<T>,
 }
 
+// Manual impls needed to bypass bounds
+impl<T> Copy for EmitterHandle<T> {}
+
+impl<T> Clone for EmitterHandle<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
 impl<T: LocalEvent> Emitter for EmitterHandle<T> {
     type Emitted = T;
 
@@ -427,49 +480,3 @@ impl<T: LocalEvent> Emitter for EmitterHandle<T> {
         self.id
     }
 }
-
-/// The result of a component state update operation. This corresponds to a
-/// single input [Event].
-#[derive(Debug)]
-pub enum Update {
-    /// The consuming component updated its state accordingly, and no further
-    /// changes are necessary
-    Consumed,
-    /// The message was not consumed by this component, and should be passed to
-    /// the parent component. While technically possible, this should *not* be
-    /// used to trigger additional events. Instead, use
-    /// [ViewContext::push_event](crate::view::ViewContext::push_event)
-    /// for that. That will ensure the entire tree has a chance to respond to
-    /// the entire event.
-    Propagate(Event),
-}
-
-/// TODO
-macro_rules! event {
-    ($action:pat = action($event:ident, $(,)?) => $block:block) => {
-        if let Some($action) = $event.action() {
-            $block
-            return Update::Consumed;
-        }
-    };
-    ($emitted:pat = emitted($event:ident, $emitter:expr, $(,)?) => $block:block) => {
-        // TODO explain
-        match $emitter.emitted_owned($event) {
-            Ok(value) => {
-                let $emitted = value;
-                $block;
-                return Update::Consumed;
-            }
-            Err(e) => $event = e,
-        }
-    };
-}
-
-/// TODO
-macro_rules! events {
-    ($event:ident, $($bind:pat = $case:ident($($args:expr)*) => $block:block)*) => {
-        $($crate::view::event::event!($bind = $case($event, $($args,)*) => $block);)*
-    };
-}
-pub(crate) use event;
-pub(crate) use events;

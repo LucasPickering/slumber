@@ -314,13 +314,9 @@ where
     State: Debug + SelectStateData,
 {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        let Some(action) = event.action() else {
-            return Update::Propagate(event);
-        };
-
-        // Up/down keys and scrolling. Scrolling will only work if .set_area()
-        // is called on the wrapping Component by our parent
-        match action {
+        event.m().action(|action, propagate| match action {
+            // Up/down keys and scrolling. Scrolling will only work if
+            // .set_area() is called on the wrapping Component by our parent
             Action::Up | Action::ScrollUp => self.previous(),
             Action::Down | Action::ScrollDown => self.next(),
             // Don't eat these events unless the user has subscribed
@@ -334,9 +330,8 @@ where
             {
                 self.emit_for_selected(SelectStateEvent::Submit)
             }
-            _ => return Update::Propagate(event),
-        }
-        Update::Consumed
+            _ => propagate.set(),
+        })
     }
 }
 

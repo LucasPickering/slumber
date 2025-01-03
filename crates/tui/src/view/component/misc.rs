@@ -11,7 +11,7 @@ use crate::view::{
     component::Component,
     context::UpdateContext,
     draw::{Draw, DrawMetadata, Generate},
-    event::{Child, Event, EventHandler, Update},
+    event::{Child, Emitter, Event, EventHandler, Update},
     state::{
         select::{SelectState, SelectStateEvent, SelectStateEventType},
         Notification,
@@ -113,8 +113,9 @@ impl Modal for TextBoxModal {
 
 impl EventHandler for TextBoxModal {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(event) = self.text_box.emitted(&event) {
-            match event {
+        event
+            .m()
+            .emitted(self.text_box.handle(), |event| match event {
                 TextBoxEvent::Focus | TextBoxEvent::Change => {}
                 TextBoxEvent::Cancel => {
                     // Propagate cancel to close the modal
@@ -125,11 +126,7 @@ impl EventHandler for TextBoxModal {
                     // the owned value of `self.on_submit`
                     self.close(true);
                 }
-            }
-            Update::Consumed
-        } else {
-            Update::Propagate(event)
-        }
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -224,14 +221,11 @@ impl Modal for SelectListModal {
 
 impl EventHandler for SelectListModal {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        if let Some(event) = self.options.emitted(&event) {
+        event.m().emitted(self.options.handle(), |event| {
             if let SelectStateEvent::Submit(_) = event {
                 self.close(true);
             }
-        } else {
-            return Update::Propagate(event);
-        }
-        Update::Consumed
+        })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -324,14 +318,11 @@ impl Modal for ConfirmModal {
 
 impl EventHandler for ConfirmModal {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        // When user selects a button, send the response and close
-        let Some(button) = self.buttons.emitted(&event) else {
-            return Update::Propagate(event);
-        };
-
-        self.answer = *button == ConfirmButton::Yes;
-        self.close(true);
-        Update::Consumed
+        event.m().emitted(self.buttons.handle(), |button| {
+            // When user selects a button, send the response and close
+            self.answer = button == ConfirmButton::Yes;
+            self.close(true);
+        })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

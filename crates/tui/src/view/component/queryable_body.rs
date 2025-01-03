@@ -10,9 +10,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{
-            events, Child, Emitter, EmitterId, Event, EventHandler, Update,
-        },
+        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
         state::Identified,
         util::{highlight, str_to_text},
         Component, ViewContext,
@@ -163,13 +161,14 @@ impl QueryableBody {
 }
 
 impl EventHandler for QueryableBody {
-    fn update(&mut self, _: &mut UpdateContext, mut event: Event) -> Update {
-        events! {
-            event,
-            Action::Search = action() => {
-                self.query_focused = true;
-            }
-            QueryComplete(result) = emitted(self) => {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+        event
+            .m()
+            .action(|action, propagate| match action {
+                Action::Search => self.query_focused = true,
+                _ => propagate.set(),
+            })
+            .emitted(self.handle(), |QueryComplete(result)| {
                 match result {
                     Ok(stdout) => {
                         self.query_state = QueryState::Ok;
@@ -177,8 +176,8 @@ impl EventHandler for QueryableBody {
                             // Assume the output has the same content type
                             self.response.content_type(),
                             &ResponseBody::new(stdout),
-                            // Don't prettify - user has control over this output,
-                            // so if it isn't pretty already that's on them
+                            // Don't prettify - user controls this output. If
+                            // it's not pretty already, that's on them
                             false,
                         );
                     }
@@ -199,15 +198,17 @@ impl EventHandler for QueryableBody {
                         ));
                     }
                 }
-            }
-            event = emitted(self.query_text_box) => {
+            })
+            .emitted(self.query_text_box.handle(), |event| {
                 match event {
                     TextBoxEvent::Focus => self.query_focused = true,
                     TextBoxEvent::Change => self.update_query(),
                     TextBoxEvent::Cancel => {
                         // Reset text to whatever was submitted last
                         self.query_text_box.data_mut().set_text(
-                            self.last_executed_command.clone().unwrap_or_default(),
+                            self.last_executed_command
+                                .clone()
+                                .unwrap_or_default(),
                         );
                         self.query_focused = false;
                     }
@@ -216,10 +217,7 @@ impl EventHandler for QueryableBody {
                         self.query_focused = false;
                     }
                 }
-            }
-        }
-
-        Update::Propagate(event)
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -461,7 +459,7 @@ mod tests {
 
         // Assert initial state/view
         let data = component.data();
-        assert_eq!(data.query_command, None);
+        assert_eq!(data.last_executed_command, None);
         assert_eq!(data.modified_text().as_deref(), None);
         let styles = &TuiContext::get().styles.text_box;
         terminal.assert_buffer_lines([
@@ -490,7 +488,7 @@ mod tests {
 
         // Make sure state updated correctly
         let data = component.data();
-        assert_eq!(data.query_command.as_deref(), Some("head -c 1"));
+        assert_eq!(data.last_executed_command.as_deref(), Some("head -c 1"));
         assert_eq!(data.modified_text().as_deref(), Some("{"));
         assert!(!data.query_focused);
 
@@ -503,7 +501,7 @@ mod tests {
         })
         .await;
         let data = component.data();
-        assert_eq!(data.query_command.as_deref(), Some("head -c 1"));
+        assert_eq!(data.last_executed_command.as_deref(), Some("head -c 1"));
         assert_eq!(data.query_text_box.data().text(), "head -c 1");
         assert!(!data.query_focused);
 
@@ -546,7 +544,7 @@ mod tests {
         run_local(async { component.drain_draw().assert_empty() }).await;
 
         assert_eq!(
-            component.data().query_command.as_deref(),
+            component.data().last_executed_command.as_deref(),
             Some("head -n 1")
         );
     }
@@ -573,7 +571,7 @@ mod tests {
         run_local(async { component.drain_draw().assert_empty() }).await;
 
         assert_eq!(
-            component.data().query_command.as_deref(),
+            component.data().last_executed_command.as_deref(),
             Some("head -n 1")
         );
     }
@@ -607,7 +605,7 @@ mod tests {
         run_local(async { component.drain_draw().assert_empty() }).await;
 
         assert_eq!(
-            component.data().query_command.as_deref(),
+            component.data().last_executed_command.as_deref(),
             Some("head -n 1")
         );
     }

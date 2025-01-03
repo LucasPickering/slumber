@@ -5,7 +5,7 @@
 use crate::view::{
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
-    event::{Child, Emitter, EmitterId, Event, ToChild, Update},
+    event::{Child, Emitter, EmitterId, Event, ToChild},
 };
 use crossterm::event::MouseEvent;
 use derive_more::Display;
@@ -83,13 +83,13 @@ impl<T> Component<T> {
         &mut self,
         context: &mut UpdateContext,
         mut event: Event,
-    ) -> Update
+    ) -> Option<Event>
     where
         T: ToChild,
     {
         // If we can't handle the event, our children can't either
         if !self.should_handle(&event) {
-            return Update::Propagate(event);
+            return Some(event);
         }
 
         let mut self_dyn = self.data_mut().to_child_mut();
@@ -99,13 +99,13 @@ impl<T> Component<T> {
             // RECURSION
             let update = child.update_all(context, event);
             match update {
-                Update::Propagate(returned) => {
+                Some(returned) => {
                     // Keep going to the next child. The propagated event
                     // *should* just be whatever we passed in, but we have
                     // no way of verifying that
                     event = returned;
                 }
-                Update::Consumed => {
+                None => {
                     return update;
                 }
             }
@@ -360,7 +360,7 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{harness, terminal, TestHarness, TestTerminal},
-        view::event::{EventHandler, Update},
+        view::event::EventHandler,
     };
     use crossterm::event::{
         KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
@@ -402,9 +402,9 @@ mod tests {
     }
 
     impl EventHandler for Branch {
-        fn update(&mut self, _: &mut UpdateContext, _: Event) -> Update {
+        fn update(&mut self, _: &mut UpdateContext, _: Event) -> Option<Event> {
             self.count += 1;
-            Update::Consumed
+            None
         }
 
         fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -456,9 +456,9 @@ mod tests {
     }
 
     impl EventHandler for Leaf {
-        fn update(&mut self, _: &mut UpdateContext, _: Event) -> Update {
+        fn update(&mut self, _: &mut UpdateContext, _: Event) -> Option<Event> {
             self.count += 1;
-            Update::Consumed
+            None
         }
     }
 
@@ -643,7 +643,7 @@ mod tests {
                 },
                 keyboard_event()
             ),
-            Update::Propagate(_)
+            Some(_)
         );
     }
 
@@ -678,7 +678,7 @@ mod tests {
                 },
                 keyboard_event()
             ),
-            Update::Propagate(_)
+            Some(_)
         );
     }
 }

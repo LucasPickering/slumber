@@ -13,7 +13,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
+        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
         state::{
             select::{SelectState, SelectStateEvent, SelectStateEventType},
             StateCell,
@@ -97,9 +97,9 @@ impl ProfilePane {
 }
 
 impl EventHandler for ProfilePane {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::LeftClick => self.open_modal(),
                 _ => propagate.set(),
@@ -182,8 +182,8 @@ impl Modal for ProfileListModal {
 }
 
 impl EventHandler for ProfileListModal {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        event.m().emitted(self.select.handle(), |event| {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().emitted(self.select.handle(), |event| {
             // Loaded request depends on the profile, so refresh on change
             if let SelectStateEvent::Submit(index) = event {
                 // Close modal first so the parent can consume the emitted event

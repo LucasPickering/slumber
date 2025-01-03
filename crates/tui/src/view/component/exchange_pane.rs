@@ -12,7 +12,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
+        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
         util::persistence::PersistedLazy,
         RequestState,
     },
@@ -74,8 +74,8 @@ enum Tab {
 }
 
 impl EventHandler for ExchangePane {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        event.m().action(|action, propagate| match action {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().action(|action, propagate| match action {
             Action::LeftClick => self.emit(ExchangePaneEvent::Click),
             _ => propagate.set(),
         })

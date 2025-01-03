@@ -28,11 +28,15 @@ use uuid::Uuid;
 /// element has the opportunity to consume the event so it stops bubbling.
 pub trait EventHandler {
     /// Update the state of *just* this component according to the event.
-    /// Returned outcome indicates whether the event was consumed, or it should
-    /// be propagated to our parent. Use [EventQueue] to queue subsequent
-    /// events, and the given message sender to queue async messages.
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        Update::Propagate(event)
+    /// Returned outcome indicates whether the event was consumed (`None`), or
+    /// it should be propagated to our parent (`Some`). Use [EventQueue] to
+    /// queue subsequent events, and the given message sender to queue async
+    /// messages.
+    ///
+    /// Generally event matching should be done with [Event::m] and the
+    /// matching methods defined by [OptionEvent].
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        Some(event)
     }
 
     /// Get **all** children of this component. This includes children that are
@@ -57,11 +61,15 @@ pub trait EventHandler {
 
 /// Enable `Component<Option<T>>` with an empty event handler
 impl<T: EventHandler> EventHandler for Option<T> {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> Option<Event> {
         if let Some(inner) = self.as_mut() {
             inner.update(context, event)
         } else {
-            Update::Propagate(event)
+            Some(event)
         }
     }
 
@@ -79,7 +87,11 @@ impl<T: EventHandler> EventHandler for Option<T> {
 // ToChild impl
 
 impl<'a> EventHandler for Child<'a> {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> Option<Event> {
         self.deref_mut().update(context, event)
     }
 
@@ -95,7 +107,11 @@ where
     K::Value: Debug + PartialEq,
     C: EventHandler + PersistedContainer<Value = K::Value>,
 {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> Option<Event> {
         self.deref_mut().update(context, event)
     }
 
@@ -242,44 +258,46 @@ pub enum Event {
 }
 
 impl Event {
-    /// Get a matcher that can be used to chain method calls together for
-    /// ergonomically matching events
-    pub fn m(self) -> Update {
-        Update::Propagate(self)
+    /// Convert to `Option<Event>` so the methods from [OptionEvent] can be used
+    /// to match the event
+    pub fn opt(self) -> Option<Event> {
+        Some(self)
     }
 }
 
-/// The result of a component state update operation. This corresponds to a
-/// single input [Event]. This is the output of an event handler's `update`
-/// call, but can also be used within an event handler to match against various
-/// event types using the provided methods.
-#[derive(Debug)]
-pub enum Update {
-    /// The consuming component updated its state accordingly, and no further
-    /// changes are necessary
-    Consumed,
-    /// The message was not consumed by this component, and should be passed to
-    /// the parent component. While technically possible, this should *not* be
-    /// used to trigger additional events. Instead, use
-    /// [ViewContext::push_event](crate::view::ViewContext::push_event)
-    /// for that. That will ensure the entire tree has a chance to respond to
-    /// the entire event.
-    Propagate(Event),
+/// Extension trait for `Option<Event>`
+pub trait OptionEvent {
+    /// Match and handle any event
+    fn any(self, f: impl FnOnce(Event) -> Option<Event>) -> Self;
+
+    /// Handle any input event bound to an action. If the action is unhandled
+    /// and the event should continue to be propagated, set the given flag.
+    fn action(self, f: impl FnOnce(Action, &mut Flag)) -> Self;
+
+    /// Handle an emitted event for a particular emitter. Each emitter should
+    /// only be handled by a single parent, so this doesn't provide any way to
+    /// propagate the event if it matches the emitter.
+    ///
+    /// Typically you'll need to pass a handle for the emitter here, in order
+    /// to detach the emitter's lifetime from `self`, so that `self` can be used
+    /// in the lambda.
+    fn emitted<T: Emitter>(
+        self,
+        emitter: T,
+        f: impl FnOnce(T::Emitted),
+    ) -> Self;
 }
 
-impl Update {
-    /// Match and handle any event
-    pub fn any(self, f: impl FnOnce(Event) -> Update) -> Self {
-        let Self::Propagate(event) = self else {
+impl OptionEvent for Option<Event> {
+    fn any(self, f: impl FnOnce(Event) -> Option<Event>) -> Self {
+        let Some(event) = self else {
             return self;
         };
         f(event)
     }
 
-    /// Handle any input event bound to an action. If the action is unhandled
-    /// and the event should continue to be propagated, set the given flag.
-    pub fn action(self, f: impl FnOnce(Action, &mut Flag)) -> Self {
-        let Self::Propagate(event) = self else {
+    fn action(self, f: impl FnOnce(Action, &mut Flag)) -> Self {
+        let Some(event) = self else {
             return self;
         };
         if let Event::Input {
@@ -290,36 +308,29 @@ impl Update {
             let mut propagate = Flag::default();
             f(*action, &mut propagate);
             if *propagate {
-                Self::Propagate(event)
+                Some(event)
             } else {
-                Self::Consumed
+                None
             }
         } else {
-            Self::Propagate(event)
+            Some(event)
         }
     }
 
-    /// Handle an emitted event for a particular emitter. Each emitter should
-    /// only be handled by a single parent, so this doesn't provide any way to
-    /// propagate the event if it matches the emitter.
-    ///
-    /// Typically you'll need to pass a handle for the emitter here, in order
-    /// to detach the emitter's lifetime from `self`, so that `self` can be used
-    /// in the lambda.
-    pub fn emitted<T: Emitter>(
+    fn emitted<T: Emitter>(
         self,
         emitter: T,
         f: impl FnOnce(T::Emitted),
     ) -> Self {
-        let Self::Propagate(event) = self else {
+        let Some(event) = self else {
             return self;
         };
         match emitter.emitted(event) {
             Ok(output) => {
                 f(output);
-                Self::Consumed
+                None
             }
-            Err(event) => Self::Propagate(event),
+            Err(event) => Some(event),
         }
     }
 }

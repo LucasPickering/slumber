@@ -12,7 +12,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Event, EventHandler, Update},
+        event::{Child, Event, EventHandler, OptionEvent},
         util::persistence::PersistedLazy,
         Component, ViewContext,
     },
@@ -149,9 +149,13 @@ impl Root {
 }
 
 impl EventHandler for Root {
-    fn update(&mut self, context: &mut UpdateContext, event: Event) -> Update {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> Option<Event> {
         event
-            .m()
+            .opt()
             .action(|action, propagate| match action {
                 Action::History => {
                     self.open_history(context.request_store)
@@ -185,22 +189,22 @@ impl EventHandler for Root {
                 Event::HttpSelectRequest(request_id) => {
                     self.select_request(context.request_store, request_id)
                         .reported(&ViewContext::messages_tx());
-                    Update::Consumed
+                    None
                 }
 
                 Event::Notify(notification) => {
                     self.notification_text =
                         Some(NotificationText::new(notification)).into();
-                    Update::Consumed
+                    None
                 }
 
                 // Any other unhandled input event should *not* log an error,
                 // because it is probably just unmapped input, and not a bug
-                Event::Input { .. } => Update::Consumed,
+                Event::Input { .. } => None,
 
                 // There shouldn't be anything left unhandled. Bubble up to log
                 // it
-                _ => Update::Propagate(event),
+                _ => Some(event),
             })
     }
 

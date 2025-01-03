@@ -3,7 +3,7 @@ use crate::view::{
     component::Component,
     context::UpdateContext,
     draw::{Draw, DrawMetadata, Generate},
-    event::{Child, Emitter, EmitterId, Event, EventHandler, Update},
+    event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
     state::{
         fixed_select::{FixedSelect, FixedSelectState},
         select::{SelectStateEvent, SelectStateEventType},
@@ -65,8 +65,8 @@ where
     T: FixedSelect,
     ActionsModal<T>: Draw,
 {
-    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Update {
-        event.m().emitted(self.actions.handle(), |event| {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().emitted(self.actions.handle(), |event| {
             if let SelectStateEvent::Submit(index) = event {
                 // Close modal first so the parent can consume the emitted
                 // event

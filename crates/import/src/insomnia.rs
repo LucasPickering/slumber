@@ -9,11 +9,11 @@ use reqwest::header;
 use serde::{de::Error as _, Deserialize, Deserializer};
 use slumber_core::{
     collection::{
-        self, Chain, ChainId, ChainSource, Collection, Folder, HasId, Method,
-        Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
-        RecipeTree, SelectorMode,
+        self, Chain, ChainId, ChainSource, Collection, Folder, HasId, Profile,
+        ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
+        SelectorMode,
     },
-    http::content_type::ContentType,
+    http::{content_type::ContentType, HttpMethod},
     template::{Identifier, Template},
     util::NEW_ISSUE_LINK,
 };
@@ -146,7 +146,7 @@ struct Request {
     meta_sort_key: i64,
     name: String,
     url: String,
-    method: Method,
+    method: HttpMethod,
     #[serde(deserialize_with = "deserialize_shitty_option")]
     authentication: Option<Authentication>,
     headers: Vec<Header>,

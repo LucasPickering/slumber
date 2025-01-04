@@ -9,10 +9,10 @@ use serde::de::IgnoredAny;
 use slumber_core::{
     collection::{
         Authentication, Chain, ChainId, ChainOutputTrim, ChainSource,
-        Collection, HasId, Method, Profile, ProfileId, Recipe, RecipeBody,
-        RecipeId, RecipeNode, RecipeTree, SelectorMode,
+        Collection, HasId, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
+        RecipeNode, RecipeTree, SelectorMode,
     },
-    http::content_type::ContentType,
+    http::{content_type::ContentType, HttpMethod},
     template::{Identifier, Template},
     util::ResultTraced,
 };
@@ -213,7 +213,7 @@ fn try_build_recipe(
 
     // The rest parser does not enforce method names
     // It must be checked here
-    let method: Method = rendered_method
+    let method: HttpMethod = rendered_method
         .parse()
         .map_err(|_| anyhow!("Unsupported method: {:?}!", request.method))?;
     let url = try_build_slumber_template(request.url)?;
@@ -362,7 +362,7 @@ mod tests {
 
         assert_eq!(recipe.url, "https://httpbin.org".into());
         assert_eq!(&recipe.query[1], &("age".into(), "46".into()));
-        assert_eq!(recipe.method, Method::Get);
+        assert_eq!(recipe.method, HttpMethod::Get);
         assert_eq!(recipe.id().clone(), RecipeId::from("My_Request__0"));
     }
 
@@ -391,7 +391,7 @@ mod tests {
             &recipe.query[1],
             &("full_name".into(), ("{{FULL_NAME}}").into())
         );
-        assert_eq!(recipe.method, Method::Post);
+        assert_eq!(recipe.method, HttpMethod::Post);
     }
 
     #[test]

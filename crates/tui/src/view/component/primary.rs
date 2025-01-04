@@ -296,7 +296,9 @@ impl PrimaryView {
                 ViewContext::send_message(Message::CopyRequestBody(config))
             }
             RecipeMenuAction::ViewBody => {
-                self.recipe_pane.data().with_body_text(view_text)
+                let recipe_pane = self.recipe_pane.data();
+                recipe_pane
+                    .with_body_text(|text| view_text(text, recipe_pane.mime()))
             }
         }
     }

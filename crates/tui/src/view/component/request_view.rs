@@ -103,7 +103,7 @@ impl EventHandler for RequestView {
                 }
                 MenuAction::ViewBody => {
                     if let Some(body) = &self.body {
-                        view_text(body);
+                        view_text(body, self.request.mime());
                     }
                 }
             })

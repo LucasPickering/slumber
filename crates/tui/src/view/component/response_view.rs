@@ -92,7 +92,10 @@ impl EventHandler for ResponseBodyView {
                     ViewContext::send_message(Message::CollectionEdit)
                 }
                 BodyMenuAction::ViewBody => {
-                    view_text(self.body.data().visible_text());
+                    view_text(
+                        self.body.data().visible_text(),
+                        self.response.mime(),
+                    );
                 }
                 BodyMenuAction::CopyBody => {
                     // Use whatever text is visible to the user. This differs

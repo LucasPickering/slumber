@@ -44,3 +44,15 @@ Some popular pagers:
 - [bat](https://github.com/sharkdp/bat)
 - [fx](https://fx.wtf/)
 - [jless](https://github.com/PaulJuliusMartinez/jless)
+
+### Setting a content-specific pager
+
+If you want to use a different pager for certain content types, such as using `jless` for JSON, you can pass a map of MIME type patterns to commands. For example:
+
+```yaml
+pager:
+  json: jless
+  default: less
+```
+
+For more details on matching, see [MIME Maps](../../api/configuration/mime.md).

@@ -10,11 +10,13 @@
 //! the compile chain a bit further.
 
 mod input;
+mod mime;
 mod theme;
 
 pub use input::{Action, InputBinding, KeyCombination};
 pub use theme::Theme;
 
+use crate::mime::MimeMap;
 use anyhow::Context;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -42,12 +44,17 @@ pub struct Config {
     /// Configuration for in-app query and side effect commands
     pub commands: CommandsConfig,
     /// Command to use for in-app editing. If provided, overrides
-    /// `VISUAL`/`EDITOR` environment variables
+    /// `VISUAL`/`EDITOR` environment variables. This only supports a single
+    /// command, *not* a content type map. This is because there isn't much
+    /// value in it, and plumbing the content type around to support it is
+    /// annoying.
     pub editor: Option<String>,
-    /// Command to use to browse response bodies. Aliased for backward
-    /// compatibility with the old name
-    #[serde(alias = "viewer")]
-    pub pager: Option<String>,
+    /// Command to use to browse response bodies. If provided, overrides
+    /// `PAGER` environment variable.  This could be a single command, or a map
+    /// of {content_type: command} to use different commands based on response
+    /// type. Aliased for backward compatibility with the old name.
+    #[serde(alias = "viewer", default)]
+    pub pager: MimeMap<String>,
     #[serde(flatten)]
     pub http: HttpEngineConfig,
     /// Should templates be rendered inline in the UI, or should we show the
@@ -117,9 +124,9 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             commands: CommandsConfig::default(),
-            editor: None,
-            pager: None,
-            http: HttpEngineConfig::default(),
+            editor: Default::default(),
+            pager: Default::default(),
+            http: Default::default(),
             preview_templates: true,
             input_bindings: Default::default(),
             theme: Default::default(),

@@ -18,7 +18,7 @@ use ratatui::{
     Frame,
 };
 use slumber_config::Action;
-use std::time::Duration;
+use std::{mem, time::Duration};
 
 const DEBOUNCE: Duration = Duration::from_millis(500);
 
@@ -110,6 +110,11 @@ impl TextBox {
     pub fn set_text(&mut self, text: String) {
         self.state.text = text;
         self.state.end();
+    }
+
+    /// Clear all text, returning whatever was present
+    pub fn clear(&mut self) -> String {
+        mem::take(&mut self.state).text
     }
 
     /// Check if the current input text is valid. Always returns true if there

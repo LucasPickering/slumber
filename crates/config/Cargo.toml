@@ -14,8 +14,10 @@ version = "2.5.0"
 anyhow = {workspace = true}
 crossterm = {workspace = true}
 derive_more = {workspace = true, features = ["display"]}
+glob = "0.3.2"
 indexmap = {workspace = true}
 itertools = {workspace = true}
+mime = {workspace = true}
 ratatui = {workspace = true, features = ["serde"]}
 serde = {workspace = true}
 slumber_core = {workspace = true}

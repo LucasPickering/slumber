@@ -13,6 +13,7 @@ use anyhow::{anyhow, Context};
 use derive_more::{Deref, Display, From, FromStr};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use mime::Mime;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, path::PathBuf, time::Duration};
 use strum::{EnumIter, IntoEnumIterator};
@@ -358,6 +359,22 @@ impl RecipeBody {
         Self::Raw {
             body: Template::raw(format!("{value:#}")),
             content_type: Some(ContentType::Json),
+        }
+    }
+
+    /// Get the anticipated MIME type that will appear in the `Content-Type`
+    /// header of a request containing this body. This is *not* necessarily
+    /// the MIME type that will _actually_ be used, as it could be overidden by
+    /// an explicit header.
+    pub fn mime(&self) -> Option<Mime> {
+        match self {
+            RecipeBody::Raw { content_type, .. } => {
+                content_type.as_ref().map(ContentType::to_mime)
+            }
+            RecipeBody::FormUrlencoded(_) => {
+                Some(mime::APPLICATION_WWW_FORM_URLENCODED)
+            }
+            RecipeBody::FormMultipart(_) => Some(mime::MULTIPART_FORM_DATA),
         }
     }
 }

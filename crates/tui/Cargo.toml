@@ -21,6 +21,7 @@ editor-command = "1.0.0"
 futures = {workspace = true}
 indexmap = {workspace = true}
 itertools = {workspace = true}
+mime = {workspace = true}
 notify = {version = "6.1.1", default-features = false, features = ["macos_fsevent"]}
 persisted = {version = "0.3.1", features = ["serde"]}
 ratatui = {workspace = true, features = ["crossterm", "underline-color", "unstable-widget-ref"]}

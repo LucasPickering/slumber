@@ -475,7 +475,7 @@ impl Recipe {
         // Set Content-Type based on the body type. This can be overwritten
         // below if the user explicitly passed a Content-Type value
         if let Some(content_type) =
-            self.body.as_ref().and_then(|body| body.mime())
+            self.body.as_ref().and_then(|body| body.explicit_mime())
         {
             headers.insert(
                 header::CONTENT_TYPE,
@@ -658,8 +658,10 @@ impl Authentication<String> {
 
 impl RecipeBody {
     /// Get the value that we should set for the `Content-Type` header,
-    /// according to the body
-    fn mime(&self) -> Option<Mime> {
+    /// according to the body. This will only return `Some` for JSON, as the
+    /// form content types will have this header set automatically by reqwest
+    /// via the builder methods we use.
+    fn explicit_mime(&self) -> Option<Mime> {
         match self {
             RecipeBody::Raw { content_type, .. } => {
                 content_type.as_ref().map(ContentType::to_mime)

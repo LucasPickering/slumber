@@ -283,6 +283,11 @@ impl RequestRecord {
         }
     }
 
+    /// Get the value of the request's `Content-Type` header, if any
+    pub fn mime(&self) -> Option<Mime> {
+        content_type_header(&self.headers)
+    }
+
     /// Generate a cURL command equivalent to this request
     ///
     /// This only fails if one of the headers or body is binary and can't be
@@ -471,8 +476,13 @@ pub struct ResponseRecord {
 }
 
 impl ResponseRecord {
-    /// Get the content type of the response body, according to the
-    /// `Content-Type` header
+    /// Get the value of the response's `Content-Type` header, if any
+    pub fn mime(&self) -> Option<Mime> {
+        content_type_header(&self.headers)
+    }
+
+    /// Get the value of the response's `Content-Type` header, and parse it as
+    /// a known/supported content type
     pub fn content_type(&self) -> Option<ContentType> {
         ContentType::from_headers(&self.headers).ok()
     }
@@ -505,6 +515,14 @@ impl ResponseRecord {
                 Some(format!("data.{}", mime.subtype()))
             })
     }
+}
+
+/// Get the value of the `Content-Type` header, parsed as a MIME. `None` if the
+/// header isn't present or isn't a valid MIME type
+fn content_type_header(headers: &HeaderMap) -> Option<Mime> {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok()?.parse().ok())
 }
 
 /// HTTP response body. Content is stored as bytes because it may not

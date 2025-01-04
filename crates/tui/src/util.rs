@@ -8,6 +8,7 @@ use bytes::Bytes;
 use crossterm::event;
 use editor_command::EditorBuilder;
 use futures::{future, FutureExt};
+use mime::Mime;
 use slumber_core::{
     template::Prompt,
     util::{doc_link, paths::expand_home, ResultTraced},
@@ -222,13 +223,20 @@ pub fn get_editor_command(file: &Path) -> anyhow::Result<Command> {
 /// Get a command to open the given file in the user's configured file pager.
 /// Default is `less` on Unix, `more` on Windows. Return an error if the command
 /// couldn't be built.
-pub fn get_pager_command(file: &Path) -> anyhow::Result<Command> {
+pub fn get_pager_command(
+    file: &Path,
+    mime: Option<&Mime>,
+) -> anyhow::Result<Command> {
     // Use a built-in pager
     let default = if cfg!(windows) { "more" } else { "less" };
 
+    // Select command from the config based on content type
+    let config_command =
+        mime.and_then(|mime| TuiContext::get().config.pager.get(mime));
+
     EditorBuilder::new()
         // Config field takes priority over environment variables
-        .source(TuiContext::get().config.pager.as_deref())
+        .source(config_command)
         .source(env::var("PAGER").ok())
         .source(Some(default))
         .path(file)

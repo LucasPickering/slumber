@@ -24,6 +24,7 @@ use ratatui::{
     widgets::Paragraph,
     Frame,
 };
+use reqwest::header::HeaderName;
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::{
@@ -137,6 +138,17 @@ impl RecipeDisplay {
             form_fields,
             body,
         }
+    }
+
+    /// Get the *preview* value of an HTTP header. This only includes headers
+    /// that are visible in the table, so no implied headers such as
+    /// `Authorization`
+    pub fn header(&self, name: HeaderName) -> Option<String> {
+        self.headers
+            .data()
+            .rows()
+            .find(|(k, _)| *k == name)
+            .map(|(_, value)| value.preview().text().to_string())
     }
 
     /// Does the recipe have a body defined?

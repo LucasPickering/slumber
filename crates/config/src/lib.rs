@@ -143,7 +143,7 @@ pub struct CommandsConfig {
     /// If empty, commands will be parsed with shell-words and run natievly
     pub shell: Vec<String>,
     /// Default query command for responses
-    pub query_default: Option<String>,
+    pub default_query: Option<String>,
 }
 
 impl Default for CommandsConfig {
@@ -159,7 +159,7 @@ impl Default for CommandsConfig {
 
         Self {
             shell: default_shell.iter().map(|s| s.to_string()).collect(),
-            query_default: None,
+            default_query: None,
         }
     }
 }

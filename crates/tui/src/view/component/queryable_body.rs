@@ -43,7 +43,7 @@ pub struct QueryableBody {
     /// Default query to use when none is present. We have to store this so we
     /// can apply it when an empty query is loaded from persistence. Generally
     /// this will come from the config but it's parameterized for testing
-    query_default: Option<String>,
+    default_query: Option<String>,
     /// Track status of the current query command
     query_state: QueryState,
     /// Where the user enters their body query
@@ -81,7 +81,7 @@ impl QueryableBody {
             emitter_id: EmitterId::new(),
             response,
             query_focused: false,
-            query_default: default_query,
+            default_query,
             last_executed_command: None,
             query_state: QueryState::None,
             query_text_box: query_text_box.into(),
@@ -279,7 +279,7 @@ impl PersistedContainer for QueryableBody {
         // for this recipe). It's possible the user really wants an empty box
         // and this is annoying, but I think it'll be more good than bad.
         if text_box.text().is_empty() {
-            if let Some(query) = self.query_default.clone() {
+            if let Some(query) = self.default_query.clone() {
                 self.query_text_box.data_mut().set_text(query);
             }
         }
@@ -558,7 +558,7 @@ mod tests {
     /// Test that the user's configured query default is applied on a fresh load
     #[rstest]
     #[tokio::test]
-    async fn test_query_default_initial(
+    async fn test_default_query_initial(
         harness: TestHarness,
         terminal: TestTerminal,
         response: Arc<ResponseRecord>,
@@ -586,7 +586,7 @@ mod tests {
     /// persisted value, but it's an empty string
     #[rstest]
     #[tokio::test]
-    async fn test_query_default_persisted(
+    async fn test_default_query_persisted(
         harness: TestHarness,
         terminal: TestTerminal,
         response: Arc<ResponseRecord>,

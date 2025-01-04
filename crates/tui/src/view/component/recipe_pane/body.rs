@@ -325,7 +325,10 @@ mod tests {
         component.send_key(KeyCode::Char('e')).assert_empty();
         let (path, on_complete) = assert_matches!(
             harness.pop_message_now(),
-            Message::FileEdit { path, on_complete } => (path, on_complete),
+            Message::FileEdit {
+                path,
+                on_complete,
+            } => (path, on_complete),
         );
         assert_eq!(fs::read(&path).unwrap(), b"hello!");
 

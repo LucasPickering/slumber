@@ -134,7 +134,7 @@ requests:
     name: Big File
     method: POST
     url: "{{host}}/anything"
-    body: !json { data: "{{chains.big_file}}" }
+    body: "{{chains.big_file}}"
 
   delay: !request
     <<: *base

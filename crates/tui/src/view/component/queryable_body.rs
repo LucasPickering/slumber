@@ -17,6 +17,7 @@ use crate::{
     },
 };
 use anyhow::Context;
+use bytes::Bytes;
 use persisted::PersistedContainer;
 use ratatui::{
     layout::{Constraint, Layout},
@@ -38,8 +39,8 @@ pub struct QueryableBody {
     emitter_id: EmitterId,
     response: Arc<ResponseRecord>,
 
-    /// Are we currently typing in the query box?
-    query_focused: bool,
+    /// Which command box, if any, are we typing in?
+    command_focus: CommandFocus,
     /// Default query to use when none is present. We have to store this so we
     /// can apply it when an empty query is loaded from persistence. Generally
     /// this will come from the config but it's parameterized for testing
@@ -48,8 +49,13 @@ pub struct QueryableBody {
     query_state: QueryState,
     /// Where the user enters their body query
     query_text_box: Component<TextBox>,
-    /// Command to reset back to when the user hits cancel
-    last_executed_command: Option<String>,
+    /// Query command to reset back to when the user hits cancel
+    last_executed_query: Option<String>,
+
+    /// Export command, for side effects. This isn't persistent, so the state
+    /// is a lot simpler. We'll clear this out whenever the user exits.
+    export_text_box: Component<TextBox>,
+
     /// Filtered text display
     text_window: Component<TextWindow>,
 
@@ -66,13 +72,21 @@ impl QueryableBody {
         default_query: Option<String>,
     ) -> Self {
         let input_engine = &TuiContext::get().input_engine;
-        let binding = input_engine.binding_display(Action::Search);
+        let query_bind = input_engine.binding_display(Action::Search);
+        let export_bind = input_engine.binding_display(Action::Export);
 
         let query_text_box = TextBox::default()
-            .placeholder(format!("{binding} to filter"))
-            .placeholder_focused("Enter command (ex: `jq .results`)")
+            .placeholder(format!(
+                "{query_bind} to query, {export_bind} to export"
+            ))
+            .placeholder_focused("Enter query command (ex: `jq .results`)")
             .default_value(default_query.clone().unwrap_or_default())
             .debounce();
+        // Don't use a debounce on this one, because we don't want to
+        // auto-execute commands that will have a side effect
+        let export_text_box = TextBox::default().placeholder_focused(
+            "Enter export command (ex: `tee > response.json`)",
+        );
 
         let text_state =
             TextState::new(response.content_type(), &response.body, true);
@@ -80,11 +94,12 @@ impl QueryableBody {
         let mut slf = Self {
             emitter_id: EmitterId::new(),
             response,
-            query_focused: false,
+            command_focus: CommandFocus::None,
             default_query,
-            last_executed_command: None,
             query_state: QueryState::None,
             query_text_box: query_text_box.into(),
+            last_executed_query: None,
+            export_text_box: export_text_box.into(),
             text_window: Default::default(),
             text_state,
         };
@@ -112,13 +127,17 @@ impl QueryableBody {
         &self.text_state.text
     }
 
+    fn focus(&mut self, focus: CommandFocus) {
+        self.command_focus = focus;
+    }
+
     /// Update query command based on the current text in the box, and start
     /// a task to run the command
     fn update_query(&mut self) {
         let command = self.query_text_box.data().text().trim();
 
         // If the command hasn't changed, do nothing
-        if self.last_executed_command.as_deref() == Some(command) {
+        if self.last_executed_query.as_deref() == Some(command) {
             return;
         }
 
@@ -129,7 +148,7 @@ impl QueryableBody {
 
         if command.is_empty() {
             // Reset to initial body
-            self.last_executed_command = None;
+            self.last_executed_query = None;
             self.query_state = QueryState::None;
             self.text_state = TextState::new(
                 self.response.content_type(),
@@ -138,23 +157,63 @@ impl QueryableBody {
             );
         } else {
             // Send it
-            self.last_executed_command = Some(command.to_owned());
+            self.last_executed_query = Some(command.to_owned());
 
             // Spawn the command in the background because it could be slow.
             // Clone is cheap because Bytes uses refcounting
             let body = self.response.body.bytes().clone();
             let command = command.to_owned();
             let emitter = self.handle();
-
-            let handle = task::spawn_local(async move {
-                let shell = &TuiContext::get().config.commands.shell;
-                let result = run_command(shell, &command, Some(&body))
-                    .await
-                    .with_context(|| format!("Error running `{command}`"));
-                emitter.emit(QueryComplete(result));
-            });
-            self.query_state = QueryState::Running(handle.abort_handle());
+            let abort_handle =
+                self.spawn_command(command, body, move |_, result| {
+                    emitter.emit(QueryComplete(result))
+                });
+            self.query_state = QueryState::Running(abort_handle);
         }
+    }
+
+    /// Run an export shell command with the response as stdin. The output
+    /// will *not* be reflected in the UI. Used for things like saving a
+    /// response to a file.
+    fn export(&mut self) {
+        let command = self.export_text_box.data_mut().clear();
+
+        if command.is_empty() {
+            return;
+        }
+
+        // If text has been modified by formatting/query, pass that to stdin.
+        // For unadulterated bodies, use the original. For large and/or binary
+        // bodies we'll just clone the Bytes object, which is cheap because it
+        // uses refcounting
+        let body = self
+            .modified_text()
+            .map(Bytes::from)
+            .unwrap_or_else(|| self.response.body.bytes().clone());
+
+        self.spawn_command(command, body, |command, result| match result {
+            // We provide feedback via a global mechanism in both cases, so we
+            // don't need an emitter here
+            Ok(_) => ViewContext::notify(format!("`{command}` succeeded")),
+            Err(error) => ViewContext::open_modal(error),
+        });
+    }
+
+    /// Run a shell command in a background task
+    fn spawn_command(
+        &self,
+        command: String,
+        body: Bytes,
+        on_complete: impl 'static + FnOnce(String, anyhow::Result<Vec<u8>>),
+    ) -> AbortHandle {
+        task::spawn_local(async move {
+            let shell = &TuiContext::get().config.commands.shell;
+            let result = run_command(shell, &command, Some(&body))
+                .await
+                .with_context(|| format!("Error running `{command}`"));
+            on_complete(command, result);
+        })
+        .abort_handle()
     }
 }
 
@@ -163,57 +222,62 @@ impl EventHandler for QueryableBody {
         event
             .opt()
             .action(|action, propagate| match action {
-                Action::Search => self.query_focused = true,
+                Action::Search => self.focus(CommandFocus::Query),
+                Action::Export => self.focus(CommandFocus::Export),
                 _ => propagate.set(),
             })
-            .emitted(self.handle(), |QueryComplete(result)| {
-                match result {
-                    Ok(stdout) => {
-                        self.query_state = QueryState::Ok;
-                        self.text_state = TextState::new(
-                            // Assume the output has the same content type
-                            self.response.content_type(),
-                            &ResponseBody::new(stdout),
-                            // Don't prettify - user controls this output. If
-                            // it's not pretty already, that's on them
-                            false,
-                        );
-                    }
-                    // Trigger error state. We DON'T want to show a modal here
-                    // by default because it's incredibly
-                    // annoying. Instead the user
-                    // can open the modal by hitting  a key
-                    Err(error) => {
-                        // It'd be nice to get the owned error here, but it
-                        // makes the downcasting for the
-                        // emitted event more complicated
-                        self.query_state = QueryState::Error(error);
-                        let binding = TuiContext::get()
-                            .input_engine
-                            .binding_display(Action::OpenHelp);
-                        ViewContext::notify(format!(
-                            "Error query response; {binding} for detail"
-                        ));
-                    }
+            .emitted(self.handle(), |QueryComplete(result)| match result {
+                Ok(stdout) => {
+                    self.query_state = QueryState::Ok;
+                    self.text_state = TextState::new(
+                        // Assume the output has the same content type
+                        self.response.content_type(),
+                        &ResponseBody::new(stdout),
+                        // Don't prettify - user controls this output. If
+                        // it's not pretty already, that's on them
+                        false,
+                    );
+                }
+                // Trigger error state. We DON'T want to show a modal here by
+                // default because it's incredibly annoying. Instead the user
+                // can open the modal by hitting  a key
+                Err(error) => {
+                    // It'd be nice to get the owned error here, but it makes
+                    // the downcasting for the emitted event more complicated
+                    self.query_state = QueryState::Error(error);
+                    let binding = TuiContext::get()
+                        .input_engine
+                        .binding_display(Action::OpenHelp);
+                    ViewContext::notify(format!(
+                        "Error query response; {binding} for detail"
+                    ));
                 }
             })
-            .emitted(self.query_text_box.handle(), |event| {
-                match event {
-                    TextBoxEvent::Focus => self.query_focused = true,
-                    TextBoxEvent::Change => self.update_query(),
-                    TextBoxEvent::Cancel => {
-                        // Reset text to whatever was submitted last
-                        self.query_text_box.data_mut().set_text(
-                            self.last_executed_command
-                                .clone()
-                                .unwrap_or_default(),
-                        );
-                        self.query_focused = false;
-                    }
-                    TextBoxEvent::Submit => {
-                        self.update_query();
-                        self.query_focused = false;
-                    }
+            .emitted(self.query_text_box.handle(), |event| match event {
+                TextBoxEvent::Focus => self.focus(CommandFocus::Query),
+                TextBoxEvent::Change => self.update_query(),
+                TextBoxEvent::Cancel => {
+                    // Reset text to whatever was submitted last
+                    self.query_text_box.data_mut().set_text(
+                        self.last_executed_query.clone().unwrap_or_default(),
+                    );
+                    self.focus(CommandFocus::None);
+                }
+                TextBoxEvent::Submit => {
+                    self.update_query();
+                    self.focus(CommandFocus::None);
+                }
+            })
+            .emitted(self.export_text_box.handle(), |event| match event {
+                TextBoxEvent::Focus => self.focus(CommandFocus::Export),
+                TextBoxEvent::Change => {}
+                TextBoxEvent::Cancel => {
+                    self.export_text_box.data_mut().clear();
+                    self.focus(CommandFocus::None);
+                }
+                TextBoxEvent::Submit => {
+                    self.export();
+                    self.focus(CommandFocus::None);
                 }
             })
     }
@@ -221,6 +285,7 @@ impl EventHandler for QueryableBody {
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![
             self.query_text_box.to_child_mut(),
+            self.export_text_box.to_child_mut(),
             self.text_window.to_child_mut(),
         ]
     }
@@ -250,14 +315,24 @@ impl Draw for QueryableBody {
             );
         }
 
-        self.query_text_box.draw(
-            frame,
-            TextBoxProps {
-                has_error: matches!(self.query_state, QueryState::Error(_)),
-            },
-            query_area,
-            self.query_focused,
-        );
+        // Only show the export box when focused, otherwise show query
+        if self.command_focus == CommandFocus::Export {
+            self.export_text_box.draw(
+                frame,
+                TextBoxProps::default(),
+                query_area,
+                true,
+            );
+        } else {
+            self.query_text_box.draw(
+                frame,
+                TextBoxProps {
+                    has_error: matches!(self.query_state, QueryState::Error(_)),
+                },
+                query_area,
+                self.command_focus == CommandFocus::Query,
+            );
+        }
     }
 }
 
@@ -369,6 +444,14 @@ impl TextState {
     }
 }
 
+/// Which command box, if any, is focused?
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum CommandFocus {
+    None,
+    Query,
+    Export,
+}
+
 /// Emitted event to notify when a query subprocess has completed. Contains the
 /// stdout of the process if successful.
 #[derive(Debug)]
@@ -418,11 +501,13 @@ mod tests {
     use rstest::{fixture, rstest};
     use serde::Serialize;
     use slumber_core::{
+        assert_matches,
         http::{ResponseBody, ResponseRecord},
-        test_util::Factory,
+        test_util::{temp_dir, Factory, TempDir},
     };
+    use tokio::fs;
 
-    const TEXT: &[u8] = b"{\"greeting\":\"hello\"}";
+    const TEXT: &str = "{\"greeting\":\"hello\"}";
 
     /// Persisted key for testing
     #[derive(Debug, Serialize, PersistedKey)]
@@ -464,7 +549,7 @@ mod tests {
 
         // Assert initial state/view
         let data = component.data();
-        assert_eq!(data.last_executed_command, None);
+        assert_eq!(data.last_executed_query, None);
         assert_eq!(data.modified_text().as_deref(), None);
         let styles = &TuiContext::get().styles.text_box;
         terminal.assert_buffer_lines([
@@ -472,10 +557,10 @@ mod tests {
             vec![gutter(" "), "                       ".into()],
             vec![
                 Span::styled(
-                    "/ to filter",
+                    "/ to query, : to export",
                     styles.text.patch(styles.placeholder),
                 ),
-                Span::styled("               ", styles.text),
+                Span::styled("   ", styles.text),
             ],
         ]);
 
@@ -493,9 +578,9 @@ mod tests {
 
         // Make sure state updated correctly
         let data = component.data();
-        assert_eq!(data.last_executed_command.as_deref(), Some("head -c 1"));
+        assert_eq!(data.last_executed_query.as_deref(), Some("head -c 1"));
         assert_eq!(data.modified_text().as_deref(), Some("{"));
-        assert!(!data.query_focused);
+        assert_eq!(data.command_focus, CommandFocus::None);
 
         // Cancelling out of the text box should reset the query value
         component.send_key(KeyCode::Char('/')).assert_empty();
@@ -506,9 +591,9 @@ mod tests {
         })
         .await;
         let data = component.data();
-        assert_eq!(data.last_executed_command.as_deref(), Some("head -c 1"));
+        assert_eq!(data.last_executed_query.as_deref(), Some("head -c 1"));
         assert_eq!(data.query_text_box.data().text(), "head -c 1");
-        assert!(!data.query_focused);
+        assert_eq!(data.command_focus, CommandFocus::None);
 
         // Check the view again
         terminal.assert_buffer_lines([
@@ -549,7 +634,7 @@ mod tests {
         component.drain_draw().assert_empty();
 
         assert_eq!(
-            component.data().last_executed_command.as_deref(),
+            component.data().last_executed_query.as_deref(),
             Some("head -c 1")
         );
         assert_eq!(&component.data().visible_text().to_string(), "{");
@@ -577,7 +662,7 @@ mod tests {
         run_local(async { component.drain_draw().assert_empty() }).await;
 
         assert_eq!(
-            component.data().last_executed_command.as_deref(),
+            component.data().last_executed_query.as_deref(),
             Some("head -n 1")
         );
     }
@@ -611,8 +696,47 @@ mod tests {
         run_local(async { component.drain_draw().assert_empty() }).await;
 
         assert_eq!(
-            component.data().last_executed_command.as_deref(),
+            component.data().last_executed_query.as_deref(),
             Some("head -n 1")
         );
+    }
+
+    /// Test an export command
+    #[rstest]
+    #[tokio::test]
+    async fn test_export(
+        harness: TestHarness,
+        terminal: TestTerminal,
+        response: Arc<ResponseRecord>,
+        temp_dir: TempDir,
+    ) {
+        // Setting initial value triggers a debounce event
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            QueryableBody::new(response, None),
+        );
+
+        let path = temp_dir.join("test_export.json");
+        let command = format!("tee {}", path.display());
+        component.send_key(KeyCode::Char(':')).assert_empty();
+        component.send_text(&command).assert_empty();
+        // Triggers the background task
+        run_local(async { component.send_key(KeyCode::Enter).assert_empty() })
+            .await;
+        // Success should push a notification
+        assert_matches!(component.drain_draw().events(), &[Event::Notify(_)]);
+        let file_content = fs::read_to_string(&path).await.unwrap();
+        assert_eq!(file_content, TEXT);
+
+        // Error should appear as a modal
+        component.send_text(":bad!").assert_empty();
+        run_local(async { component.send_key(KeyCode::Enter).assert_empty() })
+            .await;
+        component.drain_draw().assert_empty();
+        // Asserting on the modal within the view is a pain, so a shortcut is
+        // to just make sure an error modal is present
+        let modal = component.modal().expect("Error modal should be visible");
+        assert_eq!(&modal.title().to_string(), "Error");
     }
 }

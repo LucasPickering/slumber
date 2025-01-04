@@ -10,9 +10,19 @@ _Example of querying with jq_
 
 _Example of using pipes in a query command_
 
-## Side Effects
+## Exporting data
 
-Keep in mind that your queries are being executed as shell commands on your system. You should avoid running any commands that interact with the file system, such as using `>` or `<` to pipe to/from files. TODO add more about side-effect commands once implemented
+Keep in mind that your queries are being executed as shell commands on your system. You should avoid running any commands that interact with the file system, such as using `>` or `<` to pipe to/from files. However, if you want to export response data from Slumber, you can do so with the export command palette. To open the export palette, select the Response pane and press the `export` key binding (`:` by default). Then enter any shell command, which will receive the response body as stdin.
+
+> **Note:** For text bodies, whatever text is visible in the response pane is what will be passed to stdin. So if you have a query applied, the queried body will be exported. For binary bodies, the original bytes will be exported.
+
+Some useful commands for exporting data:
+
+- `tee > response.json` - Save the response to `response.json`
+  - `tee` takes data from stdin and sends it to zero or more files as well as stdout. Another way to write this would be `tee response.json`
+- `pbcopy` - Copy the body to the clipboard (MacOS only - search online to find the correct command for your platform)
+
+Remember: This is a real shell, so you can pipe through whatever transformation commands you want here!
 
 ## Default command
 

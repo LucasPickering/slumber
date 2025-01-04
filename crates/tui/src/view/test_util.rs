@@ -5,7 +5,7 @@ use crate::{
     http::RequestStore,
     test_util::{TestHarness, TestTerminal},
     view::{
-        common::modal::ModalQueue,
+        common::modal::{Modal, ModalQueue},
         component::Component,
         context::ViewContext,
         draw::{Draw, DrawMetadata},
@@ -102,6 +102,11 @@ where
         self.component.data_mut().inner_mut()
     }
 
+    /// Get the current visible modal, if any
+    pub fn modal(&self) -> Option<&dyn Modal> {
+        self.component.data().modal_queue.data().get()
+    }
+
     /// Modify the area the component will be drawn to
     pub fn set_area(&mut self, area: Rect) {
         self.area = area;
@@ -196,7 +201,7 @@ where
         ViewContext::inspect_event_queue(|queue| {
             assert!(
                 queue.is_empty(),
-                "Event queue is not empty. To prevent unintended side-effects, \
+                "Event queue is not empty. To prevent unintended side effects, \
                 the queue must be empty before an update. {queue:?}"
             )
         });

@@ -206,7 +206,10 @@ impl DisplayExchangeCommand {
     pub fn write_request(&self, request: &RequestRecord) {
         // The request is entirely hidden unless verbose mode is enabled
         if self.verbose {
-            eprintln!("> {}", request.url);
+            eprintln!(
+                "> {} {} {}",
+                request.method, request.url, request.http_version
+            );
             for (header, value) in &request.headers {
                 eprintln!("> {}: {}", header, MaybeStr(value.as_bytes()));
             }

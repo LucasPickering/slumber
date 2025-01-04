@@ -28,8 +28,8 @@ use reqwest::header::HeaderName;
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Method, Recipe, RecipeId},
-    http::BuildOptions,
+    collection::{Recipe, RecipeId},
+    http::{BuildOptions, HttpMethod},
 };
 use std::ops::Deref;
 use strum::{EnumCount, EnumIter};
@@ -41,7 +41,7 @@ use strum::{EnumCount, EnumIter};
 pub struct RecipeDisplay {
     tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
     url: TemplatePreview,
-    method: Method,
+    method: HttpMethod,
     query: Component<RecipeFieldTable<QueryRowKey, QueryRowToggleKey>>,
     headers: Component<RecipeFieldTable<HeaderRowKey, HeaderRowToggleKey>>,
     body: Component<Option<RecipeBodyDisplay>>,

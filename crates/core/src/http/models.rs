@@ -12,10 +12,11 @@ use anyhow::Context;
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use derive_more::{Display, From, FromStr};
+use itertools::Itertools;
 use mime::Mime;
 use reqwest::{
     header::{self, HeaderMap},
-    Body, Client, Method, Request, StatusCode, Url,
+    Body, Client, Request, StatusCode, Url,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -23,6 +24,7 @@ use std::{
     fmt::{Debug, Write},
     sync::Arc,
 };
+use strum::{EnumIter, IntoEnumIterator};
 use thiserror::Error;
 use tracing::error;
 use uuid::Uuid;
@@ -54,6 +56,190 @@ impl Default for RequestId {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// HTTP protocl version. This is duplicated from [reqwest::Version] because
+/// that type doesn't provide any way to construct it. It only allows you to use
+/// the existing constants.
+#[derive(Copy, Clone, Debug, Default, EnumIter, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(into = "&str", try_from = "String")]
+pub enum HttpVersion {
+    Http09,
+    Http10,
+    #[default]
+    Http11,
+    Http2,
+    Http3,
+}
+
+impl HttpVersion {
+    pub fn to_str(self) -> &'static str {
+        match self {
+            Self::Http09 => "HTTP/0.9",
+            Self::Http10 => "HTTP/1.0",
+            Self::Http11 => "HTTP/1.1",
+            Self::Http2 => "HTTP/2.0",
+            Self::Http3 => "HTTP/3.0",
+        }
+    }
+}
+
+impl Display for HttpVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_str())
+    }
+}
+
+impl From<reqwest::Version> for HttpVersion {
+    fn from(version: reqwest::Version) -> Self {
+        match version {
+            reqwest::Version::HTTP_09 => Self::Http09,
+            reqwest::Version::HTTP_10 => Self::Http10,
+            reqwest::Version::HTTP_11 => Self::Http11,
+            reqwest::Version::HTTP_2 => Self::Http2,
+            reqwest::Version::HTTP_3 => Self::Http3,
+            _ => panic!("Unrecognized HTTP version: {version:?}"),
+        }
+    }
+}
+
+impl FromStr for HttpVersion {
+    type Err = HttpVersionParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "HTTP/0.9" => Ok(Self::Http09),
+            "HTTP/1.0" => Ok(Self::Http10),
+            "HTTP/1.1" => Ok(Self::Http11),
+            "HTTP/2.0" => Ok(Self::Http2),
+            "HTTP/3.0" => Ok(Self::Http3),
+            _ => Err(HttpVersionParseError {
+                input: s.to_owned(),
+            }),
+        }
+    }
+}
+
+/// For serialization
+impl From<HttpVersion> for &'static str {
+    fn from(version: HttpVersion) -> Self {
+        version.to_str()
+    }
+}
+
+/// For deserialization
+impl TryFrom<String> for HttpVersion {
+    type Error = <Self as FromStr>::Err;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
+#[derive(Debug, Error)]
+#[error(
+    "Invalid HTTP version `{input}`. Must be one of: {}",
+    HttpVersion::iter().map(|method| method.to_str()).format(", "),
+)]
+pub struct HttpVersionParseError {
+    input: String,
+}
+
+/// HTTP method. This is duplicated from [reqwest::Method] so we can enforce
+/// the method is valid during deserialization. This is also generally more
+/// ergonomic at the cost of some flexibility.
+///
+/// The FromStr implementation will be case-insensitive
+#[derive(Copy, Clone, Debug, EnumIter, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(into = "&str", try_from = "String")]
+pub enum HttpMethod {
+    Connect,
+    Delete,
+    Get,
+    Head,
+    Options,
+    Patch,
+    Post,
+    Put,
+    Trace,
+}
+
+impl HttpMethod {
+    pub fn to_str(self) -> &'static str {
+        match self {
+            Self::Connect => "CONNECT",
+            Self::Delete => "DELETE",
+            Self::Get => "GET",
+            Self::Head => "HEAD",
+            Self::Options => "OPTIONS",
+            Self::Patch => "PATCH",
+            Self::Post => "POST",
+            Self::Put => "PUT",
+            Self::Trace => "TRACE",
+        }
+    }
+}
+
+impl Display for HttpMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.to_str())
+    }
+}
+
+impl FromStr for HttpMethod {
+    type Err = HttpMethodParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_uppercase().as_str() {
+            "CONNECT" => Ok(Self::Connect),
+            "DELETE" => Ok(Self::Delete),
+            "GET" => Ok(Self::Get),
+            "HEAD" => Ok(Self::Head),
+            "OPTIONS" => Ok(Self::Options),
+            "PATCH" => Ok(Self::Patch),
+            "POST" => Ok(Self::Post),
+            "PUT" => Ok(Self::Put),
+            "TRACE" => Ok(Self::Trace),
+            _ => Err(HttpMethodParseError {
+                input: s.to_owned(),
+            }),
+        }
+    }
+}
+
+impl From<&reqwest::Method> for HttpMethod {
+    fn from(method: &reqwest::Method) -> Self {
+        // reqwest supports custom methods, but we don't provide any
+        // mechanism for users to use them, so we should never panic
+        method.as_str().parse().unwrap()
+    }
+}
+
+/// For serialization
+impl From<HttpMethod> for &'static str {
+    fn from(method: HttpMethod) -> Self {
+        method.to_str()
+    }
+}
+
+/// For deserialization
+impl TryFrom<String> for HttpMethod {
+    type Error = <Self as FromStr>::Err;
+
+    fn try_from(method: String) -> Result<Self, Self::Error> {
+        method.parse()
+    }
+}
+
+#[derive(Debug, Error)]
+#[error(
+    "Invalid HTTP method `{input}`. Must be one of: {}",
+    HttpMethod::iter().map(|method| method.to_str()).format(", "),
+)]
+pub struct HttpMethodParseError {
+    input: String,
 }
 
 /// The first stage in building a request. This contains the initialization data
@@ -238,7 +424,11 @@ pub struct RequestRecord {
     /// The recipe used to generate this request (for historical context)
     pub recipe_id: RecipeId,
 
-    pub method: Method,
+    /// HTTP protocol version. Unlike `method`, we can't use the reqwest type
+    /// here because there's way to externally construct the type.
+    pub http_version: HttpVersion,
+    /// HTTP method
+    pub method: HttpMethod,
     /// URL, including query params/fragment
     pub url: Url,
     pub headers: HeaderMap,
@@ -268,7 +458,8 @@ impl RequestRecord {
             profile_id,
             recipe_id: seed.recipe_id,
 
-            method: request.method().clone(),
+            http_version: request.version().into(),
+            method: request.method().into(),
             url: request.url().clone(),
             headers: request.headers().clone(),
             body: request
@@ -359,7 +550,8 @@ impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
             id: RequestId::new(),
             profile_id,
             recipe_id,
-            method: reqwest::Method::GET,
+            method: HttpMethod::Get,
+            http_version: HttpVersion::Http11,
             url: "http://localhost/url".parse().unwrap(),
             headers: header_map([
                 ("Accept", "application/json"),
@@ -726,7 +918,7 @@ mod tests {
         };
         let body = json!({"data": "value"});
         let request = RequestRecord {
-            method: Method::DELETE,
+            method: HttpMethod::Delete,
             headers: header_map(headers),
             body: Some(serde_json::to_vec(&body).unwrap().into()),
             ..RequestRecord::factory(())

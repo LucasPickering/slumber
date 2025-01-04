@@ -22,10 +22,10 @@ use openapiv3::{
 };
 use slumber_core::{
     collection::{
-        Authentication, Collection, DuplicateRecipeIdError, Folder, Method,
-        Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
-        RecipeTree,
+        Authentication, Collection, DuplicateRecipeIdError, Folder, Profile,
+        ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
+    http::HttpMethod,
     template::Template,
     util::{ResultTraced, NEW_ISSUE_LINK},
 };
@@ -188,7 +188,7 @@ fn build_recipe_tree(
                 // ordering is already lost because the openapi lib deserializes
                 // into static fields instead of a map, so there's nothing we
                 // can do to preserve the old order
-                for method in Method::iter() {
+                for method in HttpMethod::iter() {
                     if let Some(op) = take_operation(&mut path_item, method) {
                         add_recipe(&path, op, method);
                     }
@@ -216,18 +216,18 @@ fn build_recipe_tree(
 /// an owned value. The goal here is to prevent a clone.
 fn take_operation(
     path_item: &mut PathItem,
-    method: Method,
+    method: HttpMethod,
 ) -> Option<Operation> {
     match method {
-        Method::Connect => None,
-        Method::Delete => path_item.delete.take(),
-        Method::Get => path_item.get.take(),
-        Method::Head => path_item.head.take(),
-        Method::Options => path_item.options.take(),
-        Method::Patch => path_item.patch.take(),
-        Method::Post => path_item.post.take(),
-        Method::Put => path_item.put.take(),
-        Method::Trace => path_item.trace.take(),
+        HttpMethod::Connect => None,
+        HttpMethod::Delete => path_item.delete.take(),
+        HttpMethod::Get => path_item.get.take(),
+        HttpMethod::Head => path_item.head.take(),
+        HttpMethod::Options => path_item.options.take(),
+        HttpMethod::Patch => path_item.patch.take(),
+        HttpMethod::Post => path_item.post.take(),
+        HttpMethod::Put => path_item.put.take(),
+        HttpMethod::Trace => path_item.trace.take(),
     }
 }
 
@@ -236,7 +236,7 @@ fn take_operation(
 struct RecipeBuilder<'a> {
     id: RecipeId,
     name: String,
-    method: Method,
+    method: HttpMethod,
     url: String,
     body: Option<RecipeBody>,
     authentication: Option<Authentication>,
@@ -251,7 +251,7 @@ impl<'a> RecipeBuilder<'a> {
         operation: Operation,
         reference_resolver: &'a ReferenceResolver,
         path_name: &str,
-        method: Method,
+        method: HttpMethod,
     ) -> Recipe {
         // Use operation_id if one is provided, otherwise generate one
         let id: RecipeId = operation
@@ -810,7 +810,7 @@ mod tests {
         RecipeBuilder {
             id: "test".into(),
             name: "test".into(),
-            method: Method::Get,
+            method: HttpMethod::Get,
             url: "{{host}}/get".into(),
             body: None,
             authentication: None,

@@ -166,7 +166,7 @@ mod tests {
     use super::*;
     use crate::{
         assert_err,
-        http::content_type::ContentType,
+        http::{content_type::ContentType, HttpMethod},
         test_util::{by_id, temp_dir, test_data_dir, TempDir},
     };
     use indexmap::indexmap;
@@ -457,7 +457,7 @@ mod tests {
                 RecipeNode::Recipe(Recipe {
                     id: "text_body".into(),
                     name: None,
-                    method: Method::Post,
+                    method: HttpMethod::Post,
                     url: "{{host}}/anything/login".into(),
 
                     body: Some(RecipeBody::Raw {
@@ -482,7 +482,7 @@ mod tests {
                         RecipeNode::Recipe(Recipe {
                             id: "simple".into(),
                             name: Some("Get User".into()),
-                            method: Method::Get,
+                            method: HttpMethod::Get,
                             url: "{{host}}/anything/{{user_guid}}".into(),
                             body: None,
                             authentication: None,
@@ -495,7 +495,7 @@ mod tests {
                         RecipeNode::Recipe(Recipe {
                             id: "json_body".into(),
                             name: Some("Modify User".into()),
-                            method: Method::Put,
+                            method: HttpMethod::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
                             body: Some(RecipeBody::Raw {
                                 body: json!({"username": "new username"})
@@ -513,7 +513,7 @@ mod tests {
                         RecipeNode::Recipe(Recipe {
                             id: "json_body_but_not".into(),
                             name: Some("Modify User".into()),
-                            method: Method::Put,
+                            method: HttpMethod::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
 
                             body: Some(RecipeBody::Raw {
@@ -533,7 +533,7 @@ mod tests {
                         RecipeNode::Recipe(Recipe {
                             id: "form_urlencoded_body".into(),
                             name: Some("Modify User".into()),
-                            method: Method::Put,
+                            method: HttpMethod::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
 
                             body: Some(RecipeBody::FormUrlencoded(indexmap! {

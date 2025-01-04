@@ -5,18 +5,16 @@ use crate::{
         cereal,
         recipe_tree::{RecipeNode, RecipeTree},
     },
-    http::{content_type::ContentType, query::Query},
+    http::{content_type::ContentType, query::Query, HttpMethod},
     template::{Identifier, Template},
     util::{parse_yaml, ResultTraced},
 };
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use derive_more::{Deref, Display, From, FromStr};
 use indexmap::IndexMap;
-use itertools::Itertools;
 use mime::Mime;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, path::PathBuf, time::Duration};
-use strum::{EnumIter, IntoEnumIterator};
 use tracing::info;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
@@ -180,7 +178,7 @@ impl crate::test_util::Factory for Recipe {
         Self {
             id: RecipeId::factory(()),
             name: None,
-            method: Method::Get,
+            method: HttpMethod::Get,
             url: "http://localhost/url".into(),
             body: None,
             authentication: None,
@@ -215,7 +213,7 @@ pub struct Recipe {
     /// *Not* a template string because the usefulness doesn't justify the
     /// complexity. This gives the user an immediate error if the method is
     /// wrong which is helpful.
-    pub method: Method,
+    pub method: HttpMethod,
     pub url: Template,
     pub body: Option<RecipeBody>,
     pub authentication: Option<Authentication>,
@@ -253,44 +251,6 @@ impl From<&str> for RecipeId {
 impl crate::test_util::Factory for RecipeId {
     fn factory(_: ()) -> Self {
         uuid::Uuid::new_v4().to_string().into()
-    }
-}
-
-/// HTTP method. This is duplicated from reqwest's Method so we can enforce
-/// the method is valid during deserialization. This is also generally more
-/// ergonomic at the cost of some flexibility.
-///
-/// The FromStr implementation will be case-insensitive
-#[derive(
-    Copy, Clone, Debug, Display, EnumIter, FromStr, Serialize, Deserialize,
-)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(into = "String", try_from = "String")]
-pub enum Method {
-    #[display("CONNECT")]
-    Connect,
-    #[display("DELETE")]
-    Delete,
-    #[display("GET")]
-    Get,
-    #[display("HEAD")]
-    Head,
-    #[display("OPTIONS")]
-    Options,
-    #[display("PATCH")]
-    Patch,
-    #[display("POST")]
-    Post,
-    #[display("PUT")]
-    Put,
-    #[display("TRACE")]
-    Trace,
-}
-
-/// For serialization
-impl From<Method> for String {
-    fn from(method: Method) -> Self {
-        method.to_string()
     }
 }
 
@@ -620,20 +580,5 @@ impl crate::test_util::Factory for Collection {
             profiles: by_id([profile]),
             ..Collection::default()
         }
-    }
-}
-
-/// For deserialization
-impl TryFrom<String> for Method {
-    type Error = anyhow::Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        // Provide a better error than what's generated
-        value.parse().map_err(|_| {
-            anyhow!(
-                "Invalid HTTP method `{value}`. Must be one of: {}",
-                Method::iter().map(|method| method.to_string()).format(", ")
-            )
-        })
     }
 }

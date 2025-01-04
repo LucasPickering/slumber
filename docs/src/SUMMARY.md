@@ -40,6 +40,7 @@
   - [Content Type](./api/request_collection/content_type.md)
 - [Configuration](./api/configuration/index.md)
   - [Input Bindings](./api/configuration/input_bindings.md)
+  - [MIME Maps](./api/configuration/mime.md)
   - [Theme](./api/configuration/theme.md)
 
 # Troubleshooting

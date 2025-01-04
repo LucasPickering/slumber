@@ -277,8 +277,8 @@ impl Tui {
                 // The callback may queue an event to read the file, so we can't
                 // delete it yet. Caller is responsible for cleaning up
             }
-            Message::FileView { path } => {
-                let command = get_pager_command(&path)?;
+            Message::FileView { path, mime } => {
+                let command = get_pager_command(&path, mime.as_ref())?;
                 self.run_command(command)?;
                 // We don't need to read the contents back so we can clean up
                 delete_temp_file(&path);

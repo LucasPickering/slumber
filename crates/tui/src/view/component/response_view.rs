@@ -38,12 +38,14 @@ pub struct ResponseBodyView {
 
 impl ResponseBodyView {
     pub fn new(recipe_id: RecipeId, response: Arc<ResponseRecord>) -> Self {
+        // Select default query based on content type
+        let config = &TuiContext::get().config.commands;
+        let default_query = response
+            .mime()
+            .and_then(|mime| config.default_query.get(&mime).cloned());
         let body = PersistedLazy::new(
             ResponseQueryPersistedKey(recipe_id),
-            QueryableBody::new(
-                Arc::clone(&response),
-                TuiContext::get().config.commands.default_query.clone(),
-            ),
+            QueryableBody::new(Arc::clone(&response), default_query),
         )
         .into();
         Self {

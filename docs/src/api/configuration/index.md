@@ -42,7 +42,7 @@ The following fields are available in `config.yml`:
 
 Shell used to execute commands within the TUI. Use `[]` for no shell (commands will be parsed and executed directly). [More info](../../user_guide/tui/filter_query.md)
 
-### `commands.query_default`
+### `commands.default_query`
 
 **Type:** `string`
 

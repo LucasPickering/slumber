@@ -42,7 +42,7 @@ impl ResponseBodyView {
             ResponseQueryPersistedKey(recipe_id),
             QueryableBody::new(
                 Arc::clone(&response),
-                TuiContext::get().config.commands.query_default.clone(),
+                TuiContext::get().config.commands.default_query.clone(),
             ),
         )
         .into();

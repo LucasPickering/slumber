@@ -119,7 +119,7 @@ impl ViewContext {
 
     /// Queue a view event to be handled by the component tree
     pub fn push_event(event: Event) {
-        Self::with_mut(|context| context.event_queue.push(event))
+        Self::with_mut(|context| context.event_queue.push(event));
     }
 
     /// Pop an event off the event queue

@@ -154,10 +154,10 @@ pub enum Message {
         #[debug(skip)]
         on_complete: Callback<Vec<TemplateChunk>>,
     },
-    /// An empty event to trigger a draw when a template preview is done being
-    /// rendered. This is a bit hacky, but it's an explicit way to tell the TUI
-    /// "we know something in the view has changed asynchronously".
-    TemplatePreviewComplete,
+
+    /// Trigger a redraw. This should be called whenever we have reason to
+    /// believe the UI may have changed due to a background task
+    Tick,
 }
 
 /// A static callback included in a message

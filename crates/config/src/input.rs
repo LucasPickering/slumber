@@ -151,6 +151,9 @@ pub enum Action {
     /// Start a search/filter operation
     #[display("Search/Filter")]
     Search,
+    /// Enter a command to export data
+    #[display("Export")]
+    Export,
     /// Force a collection reload (typically it's automatic)
     #[display("Reload Collection")]
     ReloadCollection,

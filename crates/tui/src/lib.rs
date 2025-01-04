@@ -384,23 +384,21 @@ impl Tui {
     fn watch_collection(&self) -> anyhow::Result<impl Watcher> {
         // Spawn a watcher for the collection file
         let messages_tx = self.messages_tx();
-        let f = move |result: notify::Result<_>| {
-            match result {
-                // Only reload if the file *content* changes
-                Ok(
-                    event @ notify::Event {
-                        kind: notify::EventKind::Modify(ModifyKind::Data(_)),
-                        ..
-                    },
-                ) => {
-                    info!(?event, "Collection file changed, reloading");
-                    messages_tx.send(Message::CollectionStartReload);
-                }
-                // Do nothing for other event kinds
-                Ok(_) => {}
-                Err(err) => {
-                    error!(error = %err, "Error watching collection file");
-                }
+        let f = move |result: notify::Result<_>| match result {
+            // Only reload if the file *content* changes
+            Ok(
+                event @ notify::Event {
+                    kind: notify::EventKind::Modify(ModifyKind::Data(_)),
+                    ..
+                },
+            ) => {
+                info!(?event, "Collection file changed, reloading");
+                messages_tx.send(Message::CollectionStartReload);
+            }
+            // Do nothing for other event kinds
+            Ok(_) => {}
+            Err(err) => {
+                error!(error = %err, "Error watching collection file");
             }
         };
         let mut watcher = notify::recommended_watcher(f)?;

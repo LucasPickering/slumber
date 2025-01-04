@@ -81,6 +81,14 @@ pub trait IntoModal {
     fn into_modal(self) -> Self::Target;
 }
 
+impl<T: Modal> IntoModal for T {
+    type Target = Self;
+
+    fn into_modal(self) -> Self::Target {
+        self
+    }
+}
+
 /// A singleton component to hold all modals at the root of the tree, so that
 /// they render on top.
 #[derive(Debug, Default)]
@@ -125,6 +133,12 @@ impl ModalQueue {
         if let Some(modal) = self.queue.pop_front().map(Component::into_data) {
             modal.on_close(submitted);
         }
+    }
+
+    /// Get the visible modal
+    #[cfg(test)]
+    pub fn get(&self) -> Option<&dyn Modal> {
+        self.queue.front().map(|modal| &**modal.data())
     }
 }
 

@@ -4,7 +4,8 @@ use crate::{
     collection::{ProfileId, RecipeId},
     db::{CollectionId, ProfileFilter},
     http::{
-        Exchange, ExchangeSummary, RequestId, RequestRecord, ResponseRecord,
+        Exchange, ExchangeSummary, HttpMethod, HttpVersion, RequestId,
+        RequestRecord, ResponseRecord,
     },
     util::ResultTraced,
 };
@@ -14,7 +15,7 @@ use core::str;
 use derive_more::Display;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
-    Method, StatusCode,
+    StatusCode,
 };
 use rusqlite::{
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
@@ -82,6 +83,30 @@ impl ToSql for RecipeId {
 impl FromSql for RecipeId {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         Ok(String::column_result(value)?.into())
+    }
+}
+
+impl ToSql for HttpVersion {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        self.to_str().to_sql()
+    }
+}
+
+impl FromSql for HttpVersion {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        String::column_result(value)?.parse().map_err(error_other)
+    }
+}
+
+impl ToSql for HttpMethod {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        self.to_str().to_sql()
+    }
+}
+
+impl FromSql for HttpMethod {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        String::column_result(value)?.parse().map_err(error_other)
     }
 }
 
@@ -201,8 +226,9 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for Exchange {
                 id,
                 profile_id: row.get("profile_id")?,
                 recipe_id: row.get("recipe_id")?,
+                http_version: row.get("http_version")?,
+                method: row.get("method")?,
                 // Use wrappers for all of these to specify the conversion
-                method: row.get::<_, SqlWrap<_>>("method")?.0,
                 url: row.get::<_, SqlWrap<_>>("url")?.0,
                 headers: row.get::<_, SqlWrap<HeaderMap>>("request_headers")?.0,
                 body: row
@@ -239,12 +265,6 @@ impl<'a, 'b> TryFrom<&'a Row<'b>> for ExchangeSummary {
 /// A wrapper to define `ToSql`/`FromSql` impls on foreign types, to get around
 /// the orphan rule
 pub struct SqlWrap<T>(pub T);
-
-impl FromSql for SqlWrap<Method> {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        value.as_str()?.parse().map(Self).map_err(error_other)
-    }
-}
 
 impl FromSql for SqlWrap<Url> {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {

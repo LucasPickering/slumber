@@ -117,15 +117,21 @@ impl EventHandler for RequestView {
 impl Draw for RequestView {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let request = &self.request;
-        let [url_area, headers_area, body_area] = Layout::vertical([
-            Constraint::Length(2),
-            Constraint::Length(request.headers.len() as u16 + 2),
-            Constraint::Min(0),
-        ])
-        .areas(metadata.area());
+        let [version_area, url_area, headers_area, body_area] =
+            Layout::vertical([
+                Constraint::Length(1),
+                Constraint::Length(2),
+                Constraint::Length(request.headers.len() as u16 + 2),
+                Constraint::Min(0),
+            ])
+            .areas(metadata.area());
 
         // This can get cut off which is jank but there isn't a good fix. User
         // can copy the URL to see the full thing
+        frame.render_widget(
+            format!("{} {}", request.method, request.http_version),
+            version_area,
+        );
         frame.render_widget(request.url.to_string(), url_area);
         frame.render_widget(
             HeaderTable {

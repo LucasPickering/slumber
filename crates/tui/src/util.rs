@@ -1,7 +1,7 @@
 use crate::{
     context::TuiContext,
     message::{Message, MessageSender},
-    view::Confirm,
+    view::{Confirm, ViewContext},
 };
 use anyhow::{bail, Context};
 use bytes::Bytes;
@@ -14,13 +14,20 @@ use slumber_core::{
     util::{doc_link, paths::expand_home, ResultTraced},
 };
 use std::{
-    env, io,
+    env,
+    future::Future,
+    io,
     ops::Deref,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::Duration,
 };
-use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::oneshot};
+use tokio::{
+    fs::OpenOptions,
+    io::AsyncWriteExt,
+    sync::oneshot,
+    task::{self, JoinHandle},
+};
 use tracing::{debug, debug_span, error, info, warn};
 use uuid::Uuid;
 
@@ -124,6 +131,19 @@ pub fn delete_temp_file(path: &Path) {
     let _ = std::fs::remove_file(path)
         .with_context(|| format!("Error deleting file {path:?}"))
         .traced();
+}
+
+/// Spawn a task on the main thread. Most tasks can use this because the app is
+/// generally I/O bound, so we can handle all async stuff on a single thread
+pub fn spawn_local(
+    future: impl 'static + Future<Output = ()>,
+) -> JoinHandle<()> {
+    task::spawn_local(async move {
+        future.await;
+        // Assume the task updated _something_ visible to the user, so trigger
+        // a redraw here
+        ViewContext::messages_tx().send(Message::Tick);
+    })
 }
 
 /// Save some data to disk. This will:

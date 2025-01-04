@@ -75,15 +75,10 @@ impl View {
             None
         };
 
-        let mut view = Self {
+        Self {
             root: Root::new(&collection_file.collection).into(),
             debug_monitor,
-        };
-        view.notify(format!(
-            "Loaded collection from {}",
-            collection_file.path().to_string_lossy()
-        ));
-        view
+        }
     }
 
     /// Draw the view to screen. This needs access to the input engine in order
@@ -222,7 +217,6 @@ mod tests {
         assert_events!(
             Event::Emitted { .. }, // Recipe list selection
             Event::Emitted { .. }, // Primary pane selection
-            Event::Notify(_),
         );
 
         // Events should *still* be in the queue, because we haven't drawn yet
@@ -230,19 +224,11 @@ mod tests {
         view.handle_events(UpdateContext {
             request_store: &mut request_store,
         });
-        assert_events!(
-            Event::Emitted { .. },
-            Event::Emitted { .. },
-            Event::Notify(_),
-        );
+        assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // Nothing new
         terminal.draw(|frame| view.draw(frame, &request_store));
-        assert_events!(
-            Event::Emitted { .. },
-            Event::Emitted { .. },
-            Event::Notify(_),
-        );
+        assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // *Now* the queue is drained
         view.handle_events(UpdateContext {

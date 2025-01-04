@@ -426,6 +426,10 @@ impl Tui {
         let messages_tx = self.messages_tx();
         let collection_file = &self.collection_file;
         self.view = View::new(collection_file, database, messages_tx);
+        self.view.notify(format!(
+            "Reloaded collection from {}",
+            collection_file.path().to_string_lossy()
+        ));
     }
 
     /// GOODBYE

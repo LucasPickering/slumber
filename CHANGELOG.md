@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Update [editor-command](https://crates.io/crates/editor-command), which replaces [shellish_parse](https://crates.io/crates/shellish_parse) with [shell-words](https://crates.io/crates/shell-words) for editor and pager command parsing
   - There should be no impact to users
+- Don't show "Loaded collection from ..." notification on initial load
 
 ## [2.4.0] - 2024-12-27
 

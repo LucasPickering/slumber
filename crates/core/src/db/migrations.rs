@@ -91,6 +91,13 @@ pub fn migrations() -> Migrations<'static> {
         // these tables which is a waste, but it's necessary so new  See
         // migrate_v3 for more info.
         M::up("DROP TABLE IF EXISTS requests; DROP TABLE IF EXISTS ui_state"),
+        M::up(
+            // reqwest uses HTTP/1.1 by default, so we know all old requests
+            // are of that version
+            "ALTER TABLE requests_v2 ADD COLUMN \
+            http_version TEXT NOT NULL DEFAULT 'HTTP/1.1'",
+        )
+        .down("ALTER TABLE requests_v2 DROP COLUMN http_version"),
     ])
 }
 

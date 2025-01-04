@@ -42,7 +42,7 @@ pub mod query;
 pub use models::*;
 
 use crate::{
-    collection::{Authentication, Method, Recipe, RecipeBody},
+    collection::{Authentication, Recipe, RecipeBody},
     db::CollectionDatabase,
     http::content_type::ContentType,
     template::{Template, TemplateContext},
@@ -705,18 +705,18 @@ impl RenderedBody {
     }
 }
 
-impl From<Method> for reqwest::Method {
-    fn from(method: Method) -> Self {
+impl From<HttpMethod> for reqwest::Method {
+    fn from(method: HttpMethod) -> Self {
         match method {
-            Method::Connect => reqwest::Method::CONNECT,
-            Method::Delete => reqwest::Method::DELETE,
-            Method::Get => reqwest::Method::GET,
-            Method::Head => reqwest::Method::HEAD,
-            Method::Options => reqwest::Method::OPTIONS,
-            Method::Patch => reqwest::Method::PATCH,
-            Method::Post => reqwest::Method::POST,
-            Method::Put => reqwest::Method::PUT,
-            Method::Trace => reqwest::Method::TRACE,
+            HttpMethod::Connect => reqwest::Method::CONNECT,
+            HttpMethod::Delete => reqwest::Method::DELETE,
+            HttpMethod::Get => reqwest::Method::GET,
+            HttpMethod::Head => reqwest::Method::HEAD,
+            HttpMethod::Options => reqwest::Method::OPTIONS,
+            HttpMethod::Patch => reqwest::Method::PATCH,
+            HttpMethod::Post => reqwest::Method::POST,
+            HttpMethod::Put => reqwest::Method::PUT,
+            HttpMethod::Trace => reqwest::Method::TRACE,
         }
     }
 }
@@ -746,9 +746,7 @@ fn trim_bytes(bytes: &mut Vec<u8>, f: impl Fn(u8) -> bool) {
 mod tests {
     use super::*;
     use crate::{
-        collection::{
-            self, Authentication, Chain, ChainSource, Collection, Profile,
-        },
+        collection::{Authentication, Chain, ChainSource, Collection, Profile},
         test_util::{
             by_id, header_map, http_engine, invalid_utf8_chain, Factory,
             TestPrompter,
@@ -757,7 +755,7 @@ mod tests {
     use indexmap::{indexmap, IndexMap};
     use pretty_assertions::assert_eq;
     use regex::Regex;
-    use reqwest::{Body, Method, StatusCode};
+    use reqwest::{Body, StatusCode};
     use rstest::rstest;
     use serde_json::json;
     use std::ptr;
@@ -835,7 +833,7 @@ mod tests {
     #[tokio::test]
     async fn test_build_request(http_engine: &HttpEngine) {
         let recipe = Recipe {
-            method: collection::Method::Post,
+            method: HttpMethod::Post,
             url: "{{host}}/users/{{user_id}}".into(),
             query: vec![
                 ("mode".into(), "{{mode}}".into()),
@@ -866,7 +864,7 @@ mod tests {
 
         // Assert on the actual request
         let request = &ticket.request;
-        assert_eq!(request.method(), Method::POST);
+        assert_eq!(request.method(), reqwest::Method::POST);
         assert_eq!(request.url(), &expected_url);
         assert_eq!(request.headers(), &expected_headers);
         assert_eq!(
@@ -883,7 +881,8 @@ mod tests {
                     template_context.collection.first_profile_id().clone()
                 ),
                 recipe_id,
-                method: Method::POST,
+                method: HttpMethod::Post,
+                http_version: HttpVersion::Http11,
                 url: expected_url,
                 body: Some(Vec::from(expected_body).into()),
                 headers: expected_headers,
@@ -1020,7 +1019,8 @@ mod tests {
                     template_context.collection.first_profile_id().clone()
                 ),
                 recipe_id,
-                method: Method::GET,
+                method: HttpMethod::Get,
+                http_version: HttpVersion::Http11,
                 url: "http://localhost/url".parse().unwrap(),
                 headers: header_map([
                     ("authorization", "bogus"),
@@ -1236,7 +1236,8 @@ mod tests {
                 id: ticket.record.id,
                 profile_id: template_context.selected_profile.clone(),
                 recipe_id,
-                method: Method::GET,
+                method: HttpMethod::Get,
+                http_version: HttpVersion::Http11,
                 url: "http://localhost/url?mode=sudo&fast=true"
                     .parse()
                     .unwrap(),
@@ -1293,7 +1294,8 @@ mod tests {
                 id: ticket.record.id,
                 profile_id: template_context.selected_profile.clone(),
                 recipe_id,
-                method: Method::GET,
+                method: HttpMethod::Get,
+                http_version: HttpVersion::Http11,
                 url: "http://localhost/url".parse().unwrap(),
                 headers: header_map([(
                     "content-type",
@@ -1310,7 +1312,7 @@ mod tests {
     #[tokio::test]
     async fn test_chain_duplicate(http_engine: &HttpEngine) {
         let recipe = Recipe {
-            method: collection::Method::Post,
+            method: HttpMethod::Post,
             url: "{{host}}/{{chains.text}}".into(),
             body: Some("{{chains.text}}".into()),
             ..Recipe::factory(())

@@ -51,10 +51,10 @@ mod tests {
     use rstest::rstest;
     use slumber_core::{
         collection::{
-            Chain, ChainSource, Collection, Folder, Method, Profile, Recipe,
+            Chain, ChainSource, Collection, Folder, Profile, Recipe,
             RecipeBody, RecipeNode,
         },
-        http::content_type::ContentType,
+        http::{content_type::ContentType, HttpMethod},
         test_util::{by_id, temp_dir, Factory, TempDir},
     };
     use std::{env, fs};
@@ -124,7 +124,7 @@ mod tests {
                 RecipeNode::Recipe(Recipe {
                     id: "example1".into(),
                     name: Some("Example Request 1".into()),
-                    method: Method::Get,
+                    method: HttpMethod::Get,
                     url: "{{host}}/anything".into(),
                     ..Recipe::factory(())
                 }),
@@ -134,7 +134,7 @@ mod tests {
                     children: by_id([RecipeNode::Recipe(Recipe {
                         id: "example2".into(),
                         name: Some("Example Request 2".into()),
-                        method: Method::Post,
+                        method: HttpMethod::Post,
                         url: "{{host}}/anything".into(),
                         body: Some(RecipeBody::Raw {
                             body: "{\n  \"data\": \"{{chains.example}}\"\n}"

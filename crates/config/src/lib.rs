@@ -41,7 +41,7 @@ const FILE: &str = "config.yml";
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
-    /// Configuration for in-app query and side effect commands
+    /// Configuration for in-app query and export commands
     pub commands: CommandsConfig,
     /// Command to use for in-app editing. If provided, overrides
     /// `VISUAL`/`EDITOR` environment variables. This only supports a single
@@ -135,7 +135,7 @@ impl Default for Config {
     }
 }
 
-/// Configuration for in-app query and side effect commands
+/// Configuration for in-app query and export commands
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct CommandsConfig {

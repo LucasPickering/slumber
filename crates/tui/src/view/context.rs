@@ -2,10 +2,10 @@ use crate::{
     http::RequestStore,
     message::{Message, MessageSender},
     view::{
-        common::modal::Modal,
         component::RecipeOverrideStore,
         event::{Event, EventQueue},
         state::Notification,
+        IntoModal,
     },
 };
 use slumber_core::{collection::Collection, db::CollectionDatabase};
@@ -128,8 +128,8 @@ impl ViewContext {
     }
 
     /// Open a modal
-    pub fn open_modal<M: 'static + Modal>(modal: M) {
-        Self::push_event(Event::OpenModal(Box::new(modal)));
+    pub fn open_modal(modal: impl 'static + IntoModal) {
+        Self::push_event(Event::OpenModal(Box::new(modal.into_modal())));
     }
 
     /// Queue an event to send an informational notification to the user

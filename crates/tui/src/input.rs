@@ -162,6 +162,7 @@ impl Default for InputEngine {
                 Action::ReloadCollection => KeyCode::F(5).into(),
                 Action::History => KeyCode::Char('h').into(),
                 Action::Search => KeyCode::Char('/').into(),
+                Action::Export => KeyCode::Char(':').into(),
                 Action::PreviousPane => KeyCode::BackTab.into(),
                 Action::NextPane => KeyCode::Tab.into(),
                 Action::Up => KeyCode::Up.into(),

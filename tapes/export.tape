@@ -1,4 +1,4 @@
-Output "docs/src/images/query_error.gif"
+Output "docs/src/images/export.gif"
 Set Shell bash
 Set Width 1200
 Set Height 800
@@ -20,10 +20,10 @@ Sleep 2s
 Type "rf" # Fullscreen response pane
 Show
 
-Type "/"
 Sleep 1s
-Type "jq error!"
+Type ":"
+Sleep 1s
+Type "jq .args > response.json"
+Sleep 0.5s
 Enter
-Sleep 1s
-Type "?"
-Sleep 3s
+Sleep 2s

@@ -143,7 +143,8 @@ pub struct CommandsConfig {
     /// If empty, commands will be parsed with shell-words and run natievly
     pub shell: Vec<String>,
     /// Default query command for responses
-    pub default_query: Option<String>,
+    #[serde(default)]
+    pub default_query: MimeMap<String>,
 }
 
 impl Default for CommandsConfig {
@@ -159,7 +160,7 @@ impl Default for CommandsConfig {
 
         Self {
             shell: default_shell.iter().map(|s| s.to_string()).collect(),
-            default_query: None,
+            default_query: MimeMap::default(),
         }
     }
 }

@@ -44,7 +44,7 @@ Shell used to execute commands within the TUI. Use `[]` for no shell (commands w
 
 ### `commands.default_query`
 
-**Type:** `string`
+**Type:** `string` or `mapping[Mime, string]` (see [MIME Maps](./mime.md))
 
 **Default:** `""`
 

@@ -14,6 +14,16 @@ _Example of using pipes in a query command_
 
 Keep in mind that your queries are being executed as shell commands on your system. You should avoid running any commands that interact with the file system, such as using `>` or `<` to pipe to/from files. TODO add more about side-effect commands once implemented
 
+## Default command
+
+You can set the default command to query with via the [`commands.default_query`](../../api/configuration/index.md#commandsdefault_query) config field. This accepts either a single string to set it for all content types, or a [MIME map](../../api/configuration/mime.md) to set different defaults based on the response content type. For example, to default to `jq` for all JSON responses:
+
+```yaml
+commands:
+  default_query:
+    json: jq
+```
+
 ## Which shell does Slumber use?
 
 By default, Slumber executes your command via `sh -c` on Unix and `cmd /S /C` on Windows. You can customize this via the [`commands.shell` configuration field](../../api/configuration/index.md#commandsshell). For example, to use `fish` instead of `sh`:

@@ -3,7 +3,11 @@
 pub mod highlight;
 pub mod persistence;
 
-use crate::{message::Message, util::temp_file, view::ViewContext};
+use crate::{
+    message::Message,
+    util::{spawn_local, temp_file},
+    view::ViewContext,
+};
 use anyhow::Context;
 use itertools::Itertools;
 use mime::Mime;
@@ -16,7 +20,7 @@ use slumber_core::{
     util::ResultTraced,
 };
 use std::{io::Write, path::Path, time::Duration};
-use tokio::{select, sync::broadcast, task, time};
+use tokio::{task::AbortHandle, time};
 
 /// A data structure for representation a yes/no confirmation. This is similar
 /// to [Prompt], but it only asks a yes/no question.
@@ -47,47 +51,40 @@ impl Prompter for PreviewPrompter {
 #[derive(Debug)]
 pub struct Debounce {
     duration: Duration,
-    /// Broadcast channel to send on when previous tasks should be cancelled
-    cancel_send: broadcast::Sender<()>,
+    abort_handle: Option<AbortHandle>,
 }
 
 impl Debounce {
     pub fn new(duration: Duration) -> Self {
-        let (cancel_send, _) = broadcast::channel(1);
         Self {
             duration,
-            cancel_send,
+            abort_handle: None,
         }
     }
 
     /// Trigger a debounced callback. The given callback will be invoked after
     /// the debounce period _if_ this method is not called again during the
     /// debounce period.
-    pub fn start(&self, on_complete: impl 'static + Fn()) {
-        // Cancel existing tasks, _then_ start a new listener, so we don't
-        // cancel ourselves
+    pub fn start(&mut self, on_complete: impl 'static + Fn()) {
+        // Cancel the existing debounce, if any
         self.cancel();
-        let mut cancel_recv = self.cancel_send.subscribe();
 
         // Run debounce in a local task so component behavior can access the
         // view context, e.g. to push events
         let duration = self.duration;
-        task::spawn_local(async move {
-            // Start a timer. If it expires before cancellation, then submit
-            select! {
-                _ = time::sleep(duration) => {
-                    on_complete()
-                },
-                _ = cancel_recv.recv() => {}
-            };
+        let handle = spawn_local(async move {
+            time::sleep(duration).await;
+            on_complete();
         });
+        self.abort_handle = Some(handle.abort_handle());
     }
 
     /// Cancel the current pending callback (if any) without registering a new
     /// one
-    pub fn cancel(&self) {
-        // An error on the send just means there are no listeners; we can ignore
-        let _ = self.cancel_send.send(());
+    pub fn cancel(&mut self) {
+        if let Some(abort_handle) = self.abort_handle.take() {
+            abort_handle.abort();
+        }
     }
 }
 

@@ -2,7 +2,7 @@
 
 use crate::{
     context::TuiContext,
-    util::run_command,
+    util::{run_command, spawn_local},
     view::{
         common::{
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
@@ -30,7 +30,7 @@ use slumber_core::{
     util::MaybeStr,
 };
 use std::{borrow::Cow, mem, sync::Arc};
-use tokio::task::{self, AbortHandle};
+use tokio::task::AbortHandle;
 
 /// Display response body as text, with a query box to run commands on the body.
 /// The query state can be persisted by persisting this entire container.
@@ -206,7 +206,7 @@ impl QueryableBody {
         body: Bytes,
         on_complete: impl 'static + FnOnce(String, anyhow::Result<Vec<u8>>),
     ) -> AbortHandle {
-        task::spawn_local(async move {
+        spawn_local(async move {
             let shell = &TuiContext::get().config.commands.shell;
             let result = run_command(shell, &command, Some(&body))
                 .await

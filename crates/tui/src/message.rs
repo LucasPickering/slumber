@@ -4,6 +4,7 @@
 use crate::view::Confirm;
 use anyhow::Context;
 use derive_more::From;
+use mime::Mime;
 use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
@@ -90,7 +91,11 @@ pub enum Message {
         on_complete: Callback<PathBuf>,
     },
     /// Open a file to be viewed in the user's external pager
-    FileView { path: PathBuf },
+    FileView {
+        path: PathBuf,
+        /// MIME type of the file being viewed
+        mime: Option<Mime>,
+    },
 
     /// Launch an HTTP request from the given recipe/profile.
     HttpBeginRequest(RequestConfig),

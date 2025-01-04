@@ -6,6 +6,7 @@ pub mod persistence;
 use crate::{message::Message, util::temp_file, view::ViewContext};
 use anyhow::Context;
 use itertools::Itertools;
+use mime::Mime;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     text::{Line, Text},
@@ -135,8 +136,10 @@ pub fn str_to_text(s: &str) -> Text<'static> {
 
 /// Open a [Text] object in the user's external pager. This will write the text
 /// to a random temporary file, without having to copy the contents. If an
-/// error occurs, it will be traced and reported to the user.
-pub fn view_text(text: &Text) {
+/// error occurs, it will be traced and reported to the user. `content_type`
+/// should be the value of an associated `Content-Type` header, if any. This is
+/// used to select the correct pager command.
+pub fn view_text(text: &Text, mime: Option<Mime>) {
     // Shitty try block
     fn helper(text: &Text, path: &Path) -> anyhow::Result<()> {
         let mut file = std::fs::OpenOptions::new()
@@ -159,7 +162,7 @@ pub fn view_text(text: &Text) {
         .with_context(|| format!("Error writing to file {path:?}"))
         .traced();
     match result {
-        Ok(()) => ViewContext::send_message(Message::FileView { path }),
+        Ok(()) => ViewContext::send_message(Message::FileView { path, mime }),
         Err(error) => ViewContext::send_message(Message::Error { error }),
     }
 }

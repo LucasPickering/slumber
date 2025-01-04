@@ -64,7 +64,7 @@ Enable developer information in the TUI
 
 **Default:** `VISUAL`/`EDITOR` env vars, or `vim`
 
-Command to use when opening files for in-app editing. [More info](../../user_guide/tui/editor.md)
+Command to use when opening files for in-app editing. [More info](../../user_guide/tui/editor.md#editing)
 
 ### `ignore_certificate_hosts`
 
@@ -110,8 +110,8 @@ Visual customizations for the TUI. [More info](./theme.md)
 
 **Alias:** `viewer` (for historical compatibility)
 
-**Type:** `string`
+**Type:** `string` or `mapping[Mime, string]` (see [MIME Maps](./mime.md))
 
 **Default:** `less` (Unix), `more` (Windows)
 
-Command to use when opening files for viewing. [More info](../../user_guide/tui/editor.md)
+Command to use when opening files for viewing. [More info](../../user_guide/tui/editor.md#paging)

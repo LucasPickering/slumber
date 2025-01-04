@@ -16,20 +16,23 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
         event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
         state::StateCell,
-        Component,
+        Component, ViewContext,
     },
 };
 use derive_more::Display;
 use itertools::{Itertools, Position};
+use mime::Mime;
 use ratatui::{
     text::{Line, Text},
     Frame,
 };
+use reqwest::header;
 use slumber_config::Action;
 use slumber_core::{
     collection::{Folder, HasId, ProfileId, RecipeId, RecipeNode},
     util::doc_link,
 };
+use std::cell::Ref;
 use strum::{EnumCount, EnumIter};
 
 /// Display for the current recipe node, which could be a recipe, a folder, or
@@ -64,6 +67,29 @@ impl RecipePane {
             profile_id,
             options,
         })
+    }
+
+    /// Get the value that the `Content-Type` header will have for a generated
+    /// request. This will use the preview of the header if present, otherwise
+    /// it will fall back to the content type of the body, if known (e.g. JSON).
+    /// Otherwise, return `None`.
+    pub fn mime(&self) -> Option<Mime> {
+        let state = self.recipe_state.get()?;
+        let display = state.data().as_ref()?;
+        display
+            .header(header::CONTENT_TYPE)
+            .and_then(|value| value.parse::<Mime>().ok())
+            .or_else(|| {
+                // Use the type of the body to determine MIME
+                let recipe_id =
+                    Ref::filter_map(self.recipe_state.get_key()?, |key| {
+                        key.recipe_id.as_ref()
+                    })
+                    .ok()?;
+                let collection = ViewContext::collection();
+                let recipe = collection.recipes.get(&recipe_id)?.recipe()?;
+                recipe.body.as_ref()?.mime()
+            })
     }
 
     /// Execute a function with the recipe's body text, if available. Body text

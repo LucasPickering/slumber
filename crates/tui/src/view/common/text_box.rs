@@ -177,10 +177,10 @@ impl TextBox {
     /// Emit a change event. Should be called whenever text _content_ is changed
     fn change(&mut self) {
         let is_valid = self.is_valid();
-        if let Some(debounce) = &self.on_change_debounce {
+        let emitter = self.handle();
+        if let Some(debounce) = &mut self.on_change_debounce {
             if is_valid {
                 // Defer the change event until after the debounce period
-                let emitter = self.handle();
                 debounce.start(move || emitter.emit(TextBoxEvent::Change));
             } else {
                 debounce.cancel();
@@ -201,7 +201,7 @@ impl TextBox {
     /// Cancel any pending debounce. Should be called on submit or cancel, when
     /// the user is no longer making changes
     fn cancel_debounce(&mut self) {
-        if let Some(debounce) = &self.on_change_debounce {
+        if let Some(debounce) = &mut self.on_change_debounce {
             debounce.cancel();
         }
     }

@@ -302,6 +302,8 @@ mod tests {
                 // component
             })
             .await;
+            // Background task sends a message to redraw
+            assert_matches!(harness.pop_message_now(), Message::Tick);
             component.drain_draw().assert_empty();
         }
 

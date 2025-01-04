@@ -22,7 +22,7 @@ use crate::{
     message::{Callback, Message, MessageSender, RequestConfig},
     util::{
         clear_event_buffer, delete_temp_file, get_editor_command,
-        get_pager_command, save_file, signals, ResultReported,
+        get_pager_command, save_file, signals, spawn_local, ResultReported,
     },
     view::{PreviewPrompter, UpdateContext, View},
 };
@@ -356,8 +356,9 @@ impl Tui {
                     on_complete,
                 )?;
             }
+
             // This message exists just to trigger a draw
-            Message::TemplatePreviewComplete => {}
+            Message::Tick => {}
 
             Message::Quit => self.quit(),
         }
@@ -657,13 +658,10 @@ impl Tui {
         on_complete: Callback<Vec<TemplateChunk>>,
     ) -> anyhow::Result<()> {
         let context = self.template_context(profile_id, true)?;
-        let messages_tx = self.messages_tx();
-        tokio::spawn(async move {
+        spawn_local(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render_chunks(&context).await;
             on_complete(chunks);
-            // Trigger a draw
-            messages_tx.send(Message::TemplatePreviewComplete);
         });
         Ok(())
     }

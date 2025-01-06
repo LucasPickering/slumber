@@ -63,7 +63,7 @@ anyhow = {workspace = true, features = ["backtrace"]}
 slumber_cli = {workspace = true}
 slumber_core = {workspace = true}
 slumber_tui = {workspace = true, optional = true}
-tokio = {workspace = true, features = ["macros", "rt-multi-thread"]}
+tokio = {workspace = true, features = ["macros", "rt"]}
 tracing = {workspace = true}
 tracing-subscriber = {version = "0.3.17", default-features = false, features = ["ansi", "fmt", "registry"]}
 

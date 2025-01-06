@@ -140,10 +140,7 @@ impl Tui {
             request_store,
         };
 
-        // Run the main loop in a local task set. This allows simple UI behavior
-        // requires async (e.g. event debouncing) to run on the main thread and
-        // retain access to the view context. This allows some tasks to avoid
-        // using the message channel, simplifying the process
+        // Run everything in one local set, so that we can use !Send values
         let local = task::LocalSet::new();
         local.spawn_local(app.run());
         local.await;
@@ -607,7 +604,7 @@ impl Tui {
         // We can't use self.spawn here because HTTP errors are handled
         // differently from all other error types
         let database = self.database.clone();
-        let join_handle = tokio::spawn(async move {
+        let join_handle = task::spawn_local(async move {
             // Build the request
             let result = TuiContext::get()
                 .http_engine
@@ -673,7 +670,7 @@ impl Tui {
         future: impl Future<Output = anyhow::Result<()>> + Send + 'static,
     ) {
         let messages_tx = self.messages_tx();
-        tokio::spawn(async move { future.await.reported(&messages_tx) });
+        task::spawn_local(async move { future.await.reported(&messages_tx) });
     }
 
     /// Expose app state to the templater. Most of the data has to be cloned out

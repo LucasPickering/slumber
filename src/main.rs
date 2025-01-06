@@ -12,7 +12,7 @@ use std::{
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{filter::Targets, fmt::format::FmtSpan, prelude::*};
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<ExitCode> {
     // Global initialization
     Args::complete(); // If COMPLETE var is enabled, process will stop here

@@ -32,7 +32,7 @@ pub struct ResponseBodyView {
     /// The presentable version of the response body, which may or may not
     /// match the response body. We apply transformations such as filter,
     /// prettification, or in the case of binary responses, a hex dump.
-    body: Component<PersistedLazy<ResponseQueryPersistedKey, QueryableBody>>,
+    body: Component<PersistedLazy<ResponseQueryKey, QueryableBody>>,
     actions_handle: ModalHandle<ActionsModal<BodyMenuAction>>,
 }
 
@@ -44,7 +44,7 @@ impl ResponseBodyView {
             .mime()
             .and_then(|mime| config.default_query.get(&mime).cloned());
         let body = PersistedLazy::new(
-            ResponseQueryPersistedKey(recipe_id),
+            ResponseQueryKey(recipe_id),
             QueryableBody::new(Arc::clone(&response), default_query),
         )
         .into();
@@ -77,7 +77,7 @@ impl ToStringGenerate for BodyMenuAction {}
 /// Persisted key for response body JSONPath query text box
 #[derive(Debug, Serialize, PersistedKey)]
 #[persisted(String)]
-struct ResponseQueryPersistedKey(RecipeId);
+struct ResponseQueryKey(RecipeId);
 
 impl EventHandler for ResponseBodyView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {

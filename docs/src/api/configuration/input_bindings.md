@@ -13,7 +13,7 @@ input_bindings:
   right: [l]
   scroll_left: [shift h]
   scroll_right: [shift l]
-  select_recipe_list: [p] # Rebind from `l`
+  select_recipe_list: [e] # Rebind from `l`
 ```
 
 Each action maps to a _list_ of key combinations, because you can map multiple combinations to a single action. Hitting any of these combinations will trigger the action. By defining a binding in the config, **you will replace the default binding for that action**. If you want to retain the default binding but add an additional, you will need to include the default in your list of custom bindings. For example, if you want vim bindings but also want to leave the existing arrow key controls in place:
@@ -26,7 +26,7 @@ input_bindings:
   right: [right, l]
   scroll_left: [shift left, shift h]
   scroll_right: [shift right, shift l]
-  select_recipe_list: [p] # Rebind from `l`
+  select_recipe_list: [e] # Rebind from `l`
 ```
 
 ## Actions

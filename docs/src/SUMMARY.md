@@ -41,6 +41,10 @@
   - [Input Bindings](./api/configuration/input_bindings.md)
   - [Theme](./api/configuration/theme.md)
 
+# Integration
+
+- [Neovim Integration](./integration/neovim-integration.md)
+
 # Troubleshooting
 
 - [Logs](./troubleshooting/logs.md)

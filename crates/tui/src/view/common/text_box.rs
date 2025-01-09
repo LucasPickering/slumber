@@ -469,7 +469,7 @@ mod tests {
         terminal.assert_buffer_lines([vec![cursor(" "), text("         ")]]);
 
         // Type some text
-        component.send_text("hi!").assert_emitted([
+        component.int().send_text("hi!").assert_emitted([
             TextBoxEvent::Change,
             TextBoxEvent::Change,
             TextBoxEvent::Change,
@@ -484,14 +484,16 @@ mod tests {
         // Sending with a modifier applied should do nothing, unless it's shift
 
         component
+            .int()
             .send_key_modifiers(KeyCode::Char('W'), KeyModifiers::SHIFT)
             .assert_emitted([TextBoxEvent::Change]);
         assert_state(&component.data().state, "hi!W", 4);
         assert_matches!(
             component
+                .int()
                 .send_key_modifiers(
-                    KeyCode::Char('W'), /* this is what crossterm actually
-                                         * sends */
+                    // This is what crossterm actually sends
+                    KeyCode::Char('W'),
                     KeyModifiers::CONTROL | KeyModifiers::SHIFT,
                 )
                 .events(),
@@ -501,13 +503,18 @@ mod tests {
 
         // Test emitted events
 
-        component.click(0, 0).assert_emitted([TextBoxEvent::Focus]);
+        component
+            .int()
+            .click(0, 0)
+            .assert_emitted([TextBoxEvent::Focus]);
 
         component
+            .int()
             .send_key(KeyCode::Enter)
             .assert_emitted([TextBoxEvent::Submit]);
 
         component
+            .int()
             .send_key(KeyCode::Esc)
             .assert_emitted([TextBoxEvent::Cancel]);
     }
@@ -527,11 +534,12 @@ mod tests {
         );
         run_local(async {
             // Type some text. Change event isn't emitted immediately
-            component.send_text("hi").assert_emitted([]);
+            component.int().send_text("hi").assert_emitted([]);
         })
         .await;
         // Once the debounce task is done, event is emitted
         component
+            .int()
             .drain_draw()
             .assert_emitted([TextBoxEvent::Change]);
     }
@@ -547,7 +555,7 @@ mod tests {
             TestComponent::new(&harness, &terminal, TextBox::default());
 
         // Type some text
-        component.send_text("hello!").assert_emitted([
+        component.int().send_text("hello!").assert_emitted([
             // One change event per letter
             TextBoxEvent::Change,
             TextBoxEvent::Change,
@@ -559,26 +567,28 @@ mod tests {
         assert_state(&component.data().state, "hello!", 6);
 
         // Move around, delete some text.
-        component.send_key(KeyCode::Left).assert_empty();
+        component.int().send_key(KeyCode::Left).assert_empty();
         assert_state(&component.data().state, "hello!", 5);
 
         component
+            .int()
             .send_key(KeyCode::Backspace)
             .assert_emitted([TextBoxEvent::Change]);
         assert_state(&component.data().state, "hell!", 4);
 
         component
+            .int()
             .send_key(KeyCode::Delete)
             .assert_emitted([TextBoxEvent::Change]);
         assert_state(&component.data().state, "hell", 4);
 
-        component.send_key(KeyCode::Home).assert_empty();
+        component.int().send_key(KeyCode::Home).assert_empty();
         assert_state(&component.data().state, "hell", 0);
 
-        component.send_key(KeyCode::Right).assert_empty();
+        component.int().send_key(KeyCode::Right).assert_empty();
         assert_state(&component.data().state, "hell", 1);
 
-        component.send_key(KeyCode::End).assert_empty();
+        component.int().send_key(KeyCode::End).assert_empty();
         assert_state(&component.data().state, "hell", 4);
     }
 
@@ -594,6 +604,7 @@ mod tests {
         );
 
         component
+            .int()
             .send_text("hi")
             .assert_emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
 
@@ -645,7 +656,7 @@ mod tests {
 
         // Unfocused
         component.unfocus();
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
         terminal.assert_buffer_lines([vec![Span::styled(
             "unfocused",
             styles.text.patch(styles.placeholder),
@@ -665,6 +676,7 @@ mod tests {
 
         // Valid text, everything is normal
         component
+            .int()
             .send_text("he")
             .assert_emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
         terminal.assert_buffer_lines([vec![
@@ -674,16 +686,17 @@ mod tests {
         ]]);
 
         component
+            .int()
             .send_key(KeyCode::Enter)
             .assert_emitted([TextBoxEvent::Submit]);
 
         // Invalid text, styling changes and no events are emitted
-        component.send_text("llo").assert_emitted([]);
+        component.int().send_text("llo").assert_emitted([]);
         terminal.assert_buffer_lines([vec![
             Span::styled("hello", TuiContext::get().styles.text_box.invalid),
             cursor(" "),
         ]]);
-        component.send_key(KeyCode::Enter).assert_emitted([]);
+        component.int().send_key(KeyCode::Enter).assert_emitted([]);
     }
 
     #[test]

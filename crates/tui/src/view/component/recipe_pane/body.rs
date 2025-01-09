@@ -364,7 +364,7 @@ mod tests {
 
         // Open the editor
         harness.clear_messages();
-        component.send_key(KeyCode::Char('e')).assert_empty();
+        component.int().send_key(KeyCode::Char('e')).assert_empty();
         let (path, on_complete) = assert_matches!(
             harness.pop_message_now(),
             Message::FileEdit {
@@ -377,7 +377,7 @@ mod tests {
         // Simulate the editor modifying the file
         fs::write(&path, "goodbye!").unwrap();
         on_complete(path);
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         assert_eq!(
             component.data().override_value(),
@@ -398,7 +398,7 @@ mod tests {
         );
 
         // Reset edited state
-        component.send_key(KeyCode::Char('z')).assert_empty();
+        component.int().send_key(KeyCode::Char('z')).assert_empty();
         assert_eq!(component.data().override_value(), None);
     }
 

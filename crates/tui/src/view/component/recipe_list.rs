@@ -473,18 +473,18 @@ mod tests {
         );
         // Clear initial events
         assert_matches!(
-            component.drain_draw().events(),
+            component.int().drain_draw().events(),
             &[Event::HttpSelectRequest(None)],
         );
 
         // Enter filter
-        component.send_key(KeyCode::Char('/')).assert_empty();
+        component.int().send_key(KeyCode::Char('/')).assert_empty();
         assert!(component.data().filter_focused);
 
         // Find something. Match should be caseless. Should trigger an event to
         // load the latest request
         assert_matches!(
-            component.send_text("2").events(),
+            component.int().send_text("2").events(),
             &[Event::HttpSelectRequest(None)]
         );
         let select = component.data().select.data();
@@ -502,7 +502,7 @@ mod tests {
         );
 
         // Exit filter
-        component.send_key(KeyCode::Esc).assert_empty();
+        component.int().send_key(KeyCode::Esc).assert_empty();
         assert!(!component.data().filter_focused);
     }
 

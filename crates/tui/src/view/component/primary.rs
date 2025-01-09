@@ -500,7 +500,7 @@ mod tests {
         let mut component = TestComponent::new(harness, terminal, view);
         // Initial events
         assert_matches!(
-            component.drain_draw().events(),
+            component.int().drain_draw().events(),
             &[Event::HttpSelectRequest(None)]
         );
         // Clear template preview messages so we can test what we want
@@ -535,13 +535,15 @@ mod tests {
     #[rstest]
     fn test_edit_collection(mut harness: TestHarness, terminal: TestTerminal) {
         let mut component = create_component(&mut harness, &terminal);
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         harness.clear_messages(); // Clear init junk
 
-        component.open_actions().assert_empty();
-        // Select first action - Edit Collection
-        component.send_key(KeyCode::Enter).assert_empty();
+        component
+            .int()
+            .open_actions()
+            .send_key(KeyCode::Enter) // Select first action - Edit Collection
+            .assert_empty();
         // Event should be converted into a message appropriately
         assert_matches!(harness.pop_message_now(), Message::CollectionEdit);
     }
@@ -558,12 +560,11 @@ mod tests {
         let mut component = create_component(&mut harness, &terminal);
 
         component
-            .send_keys([
-                KeyCode::Char('l'), // Select recipe list
-                KeyCode::Char('x'), // Open actions modal
-                KeyCode::Down,
-                KeyCode::Enter, // Copy URL
-            ])
+            .int()
+            .send_key(KeyCode::Char('l')) // Select recipe list
+            .open_actions()
+            // Copy URL
+            .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
         let request_config = assert_matches!(
@@ -585,14 +586,16 @@ mod tests {
         let mut component = create_component(&mut harness, &terminal);
 
         component
+            .int()
+            .send_key(KeyCode::Char('l')) // Select recipe list
+            .open_actions()
+            // Copy Body
             .send_keys([
-                KeyCode::Char('l'), // Select recipe list
-                KeyCode::Char('x'), // Open actions modal
                 KeyCode::Down,
                 KeyCode::Down,
                 KeyCode::Down,
                 KeyCode::Down,
-                KeyCode::Enter, // Copy Body
+                KeyCode::Enter,
             ])
             .assert_empty();
 
@@ -615,13 +618,11 @@ mod tests {
         let mut component = create_component(&mut harness, &terminal);
 
         component
-            .send_keys([
-                KeyCode::Char('l'), // Select recipe list
-                KeyCode::Char('x'), // Open actions modal
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Enter, // Copy as cURL
-            ])
+            .int()
+            .send_key(KeyCode::Char('l')) // Select recipe list
+            .open_actions()
+            // Copy as cURL
+            .send_keys([KeyCode::Down, KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
         let request_config = assert_matches!(

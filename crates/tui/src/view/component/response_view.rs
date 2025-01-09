@@ -213,9 +213,10 @@ mod tests {
         );
 
         // Open actions modal and select the copy action
-        component.open_actions().assert_empty();
-        // Note: Edit Collections action isn't visible here
         component
+            .int()
+            .open_actions()
+            // Note: Edit Collections action isn't visible here
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
@@ -290,21 +291,25 @@ mod tests {
             // Querying requires a LocalSet to run the command in the background
             run_local(async {
                 // Type something into the query box
-                component.send_key(KeyCode::Char('/')).assert_empty();
-                component.send_text(query).assert_empty();
-                component.send_key(KeyCode::Enter).assert_empty();
+                component
+                    .int()
+                    .send_key(KeyCode::Char('/'))
+                    .send_text(query)
+                    .send_key(KeyCode::Enter)
+                    .assert_empty();
                 // Wait for the command to finish, pass results back to the
                 // component
             })
             .await;
             // Background task sends a message to redraw
             assert_matches!(harness.pop_message_now(), Message::Tick);
-            component.drain_draw().assert_empty();
+            component.int().drain_draw().assert_empty();
         }
 
         // Open actions modal and select the save action
-        component.open_actions().assert_empty();
         component
+            .int()
+            .open_actions()
             // Note: Edit Collections action isn't visible here
             .send_keys([KeyCode::Down, KeyCode::Down, KeyCode::Enter])
             .assert_empty();

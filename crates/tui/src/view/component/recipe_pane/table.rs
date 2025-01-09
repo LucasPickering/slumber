@@ -486,8 +486,10 @@ mod tests {
         );
 
         // Disable the second row
-        component.send_key(KeyCode::Down).assert_empty();
-        component.send_key(KeyCode::Char(' ')).assert_empty();
+        component
+            .int()
+            .send_keys([KeyCode::Down, KeyCode::Char(' ')])
+            .assert_empty();
         let selected_row = component.data().select.data().selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
         assert!(!*selected_row.enabled);
@@ -497,7 +499,7 @@ mod tests {
         );
 
         // Re-enable the row
-        component.send_key(KeyCode::Char(' ')).assert_empty();
+        component.int().send_key(KeyCode::Char(' ')).assert_empty();
         let selected_row = component.data().select.data().selected().unwrap();
         assert!(*selected_row.enabled);
         assert_eq!(
@@ -547,10 +549,13 @@ mod tests {
         );
 
         // Edit the second row
-        component.send_key(KeyCode::Down).assert_empty();
-        component.send_key(KeyCode::Char('e')).assert_empty(); // Open the modal
-        component.send_text("!!!").assert_empty();
-        component.send_key(KeyCode::Enter).assert_empty();
+        component
+            .int()
+            // Open the modal
+            .send_keys([KeyCode::Down, KeyCode::Char('e')])
+            .send_text("!!!")
+            .send_key(KeyCode::Enter)
+            .assert_empty();
 
         let selected_row = component.data().select.data().selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
@@ -564,7 +569,7 @@ mod tests {
         );
 
         // Reset edited state
-        component.send_key(KeyCode::Char('z')).assert_empty();
+        component.int().send_key(KeyCode::Char('z')).assert_empty();
         let selected_row = component.data().select.data().selected().unwrap();
         assert!(!selected_row.value.is_overridden());
     }
@@ -592,8 +597,9 @@ mod tests {
             },
         );
 
-        component.open_actions().assert_empty();
         component
+            .int()
+            .open_actions()
             .send_keys([KeyCode::Enter, KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
 

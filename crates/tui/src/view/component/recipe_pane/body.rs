@@ -309,6 +309,13 @@ enum RawBodyMenuAction {
 }
 
 impl IntoMenuAction<RawBody> for RawBodyMenuAction {
+    fn enabled(&self, data: &RawBody) -> bool {
+        match self {
+            Self::Edit => true,
+            Self::Reset => data.body.is_overridden(),
+        }
+    }
+
     fn shortcut(&self, _: &RawBody) -> Option<Action> {
         match self {
             Self::Edit => Some(Action::Edit),

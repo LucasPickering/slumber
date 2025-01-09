@@ -274,9 +274,11 @@ where
         &self,
         data: &RecipeFieldTable<RowSelectKey, RowToggleKey>,
     ) -> bool {
+        let selected = data.select.data().selected();
         match self {
-            Self::Edit { .. } | Self::Reset { .. } => {
-                data.select.data().selected().is_some()
+            Self::Edit { .. } => selected.is_some(),
+            Self::Reset { .. } => {
+                selected.is_some_and(|row| row.value.is_overridden())
             }
         }
     }

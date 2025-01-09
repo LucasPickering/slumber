@@ -3,9 +3,10 @@
 //! component state.
 
 use crate::view::{
+    common::actions::MenuAction,
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
-    event::{Child, Emitter, EmitterId, Event, ToChild},
+    event::{Child, Emitter, Event, LocalEvent, ToChild, ToEmitter},
 };
 use crossterm::event::MouseEvent;
 use derive_more::Display;
@@ -75,6 +76,31 @@ impl<T> Component<T> {
         self.name
     }
 
+    /// Collect all available menu actions from all **focused** components. This
+    /// takes a mutable reference so we don't have to duplicate the code that
+    /// provides children; it will *not* mutate anything.
+    pub fn collect_actions(&mut self) -> Vec<MenuAction>
+    where
+        T: ToChild,
+    {
+        fn inner(
+            actions: &mut Vec<MenuAction>,
+            mut component: Component<Child>,
+        ) {
+            // Only include actions from visible+focused components
+            if component.is_visible() && component.has_focus() {
+                actions.extend(component.data().menu_actions());
+                for child in component.data_mut().children() {
+                    inner(actions, child)
+                }
+            }
+        }
+
+        let mut actions = Vec::new();
+        inner(&mut actions, self.to_child_mut());
+        actions
+    }
+
     /// Handle an event for this component *or* its children, starting at the
     /// lowest descendant. Recursively walk up the tree until a component
     /// consumes the event.
@@ -137,7 +163,7 @@ impl<T> Component<T> {
         use crossterm::event::Event::*;
         if let Event::Input { event, .. } = event {
             match event {
-                Key(_) | Paste(_) => self.metadata.get().has_focus(),
+                Key(_) | Paste(_) => self.has_focus(),
 
                 Mouse(mouse_event) => {
                     // Check if the mouse is over the component
@@ -158,6 +184,11 @@ impl<T> Component<T> {
     /// Was this component drawn to the screen during the previous draw phase?
     pub fn is_visible(&self) -> bool {
         VISIBLE_COMPONENTS.with_borrow(|tree| tree.contains(&self.id))
+    }
+
+    /// Was this component in focus during the previous draw phase?
+    fn has_focus(&self) -> bool {
+        self.metadata.get().has_focus()
     }
 
     /// Did the given mouse event occur over/on this component?
@@ -267,16 +298,13 @@ impl<T> From<T> for Component<T> {
     }
 }
 
-impl<T: Emitter> Emitter for Component<T> {
-    type Emitted = T::Emitted;
-
-    fn id(&self) -> EmitterId {
-        self.data().id()
-    }
-
-    fn type_name(&self) -> &'static str {
-        // Use the name of the contained emitter
-        self.name
+impl<E, T> ToEmitter<E> for Component<T>
+where
+    E: LocalEvent,
+    T: ToEmitter<E>,
+{
+    fn to_emitter(&self) -> Emitter<E> {
+        self.data().to_emitter()
     }
 }
 

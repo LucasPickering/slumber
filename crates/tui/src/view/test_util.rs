@@ -5,11 +5,17 @@ use crate::{
     http::RequestStore,
     test_util::{TestHarness, TestTerminal},
     view::{
-        common::modal::{Modal, ModalQueue},
+        common::{
+            actions::ActionsModal,
+            modal::{Modal, ModalQueue},
+        },
         component::Component,
         context::ViewContext,
         draw::{Draw, DrawMetadata},
-        event::{Child, Emitter, Event, EventHandler, ToChild},
+        event::{
+            Child, Event, EventHandler, LocalEvent, OptionEvent, ToChild,
+            ToEmitter,
+        },
         UpdateContext,
     },
 };
@@ -19,6 +25,7 @@ use crossterm::event::{
 };
 use itertools::Itertools;
 use ratatui::{layout::Rect, Frame};
+use slumber_config::Action;
 use std::{cell::RefCell, rc::Rc};
 
 /// A wrapper around a component that makes it easy to test. This provides lots
@@ -33,7 +40,7 @@ pub struct TestComponent<'term, T, Props> {
     /// terminal but can be modified to test things like resizes, using
     /// [Self::set_area]
     area: Rect,
-    component: Component<WithModalQueue<T>>,
+    component: Component<TestWrapper<T>>,
     /// Whatever props were used for the most recent draw. We store these for
     /// convenience, because in most test cases we use the same props over and
     /// over, and just care about changes in response to events. This requires
@@ -77,8 +84,8 @@ where
         data: T,
         initial_props: Props,
     ) -> Self {
-        let component: Component<WithModalQueue<T>> =
-            WithModalQueue::new(data).into();
+        let component: Component<TestWrapper<T>> =
+            TestWrapper::new(data).into();
         let mut slf = Self {
             terminal,
             request_store: Rc::clone(&harness.request_store),
@@ -315,19 +322,17 @@ impl<'a, Component> PropagatedEvents<'a, Component> {
     /// Assert that only emitted events were propagated, and those events match
     /// a specific sequence. Requires `PartialEq` to be implemented for the
     /// emitted event type.
-    pub fn assert_emitted(
-        self,
-        expected: impl IntoIterator<Item = Component::Emitted>,
-    ) where
-        Component: Emitter,
-        Component::Emitted: PartialEq,
+    pub fn assert_emitted<E>(self, expected: impl IntoIterator<Item = E>)
+    where
+        Component: ToEmitter<E>,
+        E: LocalEvent + PartialEq,
     {
-        let handle = self.component.handle();
+        let emitter = self.component.to_emitter();
         let emitted = self
             .events
             .into_iter()
             .map(|event| {
-                handle.emitted(event).unwrap_or_else(|event| {
+                emitter.emitted(event).unwrap_or_else(|event| {
                     panic!(
                         "Expected only emitted events to have been propagated, \
                         but received: {event:#?}",
@@ -345,15 +350,19 @@ impl<'a, Component> PropagatedEvents<'a, Component> {
     }
 }
 
-/// A wrapper component to pair a component with a modal queue. Useful when the
-/// component opens modals. This is included automatically in all tests, because
-/// the modal queue is always present in the real app.
-struct WithModalQueue<T> {
+/// A wrapper component to provide global functionality to a component in unit
+/// tests. This provides a modal queue and action menu, which are provided by
+/// the root component during app operation. This is included automatically in
+/// all tests.
+///
+/// In a sense this is a duplicate of the root component. Maybe someday we could
+/// make that component generic and get rid of this?
+struct TestWrapper<T> {
     inner: Component<T>,
     modal_queue: Component<ModalQueue>,
 }
 
-impl<T> WithModalQueue<T> {
+impl<T> TestWrapper<T> {
     pub fn new(component: T) -> Self {
         Self {
             inner: component.into(),
@@ -370,13 +379,27 @@ impl<T> WithModalQueue<T> {
     }
 }
 
-impl<T: ToChild> EventHandler for WithModalQueue<T> {
+impl<T: ToChild> EventHandler for TestWrapper<T> {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().action(|action, propagate| match action {
+            // Unfortunately we have to duplicate this with Root because the
+            // child component is different
+            Action::OpenActions => {
+                // Walk down the component tree and collect actions from
+                // all visible+focused components
+                let actions = self.inner.collect_actions();
+                ActionsModal::new(actions).open();
+            }
+            _ => propagate.set(),
+        })
+    }
+
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![self.modal_queue.to_child_mut(), self.inner.to_child_mut()]
     }
 }
 
-impl<Props, T: Draw<Props>> Draw<Props> for WithModalQueue<T> {
+impl<Props, T: Draw<Props>> Draw<Props> for TestWrapper<T> {
     fn draw(&self, frame: &mut Frame, props: Props, metadata: DrawMetadata) {
         self.inner
             .draw(frame, props, metadata.area(), metadata.has_focus());

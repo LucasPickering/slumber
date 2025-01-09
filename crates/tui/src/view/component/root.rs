@@ -3,7 +3,10 @@ use crate::{
     message::Message,
     util::ResultReported,
     view::{
-        common::modal::ModalQueue,
+        common::{
+            actions::ActionsModal,
+            modal::{Modal, ModalQueue},
+        },
         component::{
             help::HelpFooter,
             history::History,
@@ -148,11 +151,8 @@ impl Root {
                 .map(RequestStateSummary::from)
                 .collect();
 
-            ViewContext::open_modal(History::new(
-                recipe_id,
-                requests,
-                self.selected_request_id(),
-            ));
+            History::new(recipe_id, requests, self.selected_request_id())
+                .open();
         }
         Ok(())
     }
@@ -167,6 +167,12 @@ impl EventHandler for Root {
         event
             .opt()
             .action(|action, propagate| match action {
+                Action::OpenActions => {
+                    // Walk down the component tree and collect actions from
+                    // all visible+focused components
+                    let actions = self.primary_view.collect_actions();
+                    ActionsModal::new(actions).open();
+                }
                 Action::History => {
                     self.open_history(context.request_store)
                         .reported(&ViewContext::messages_tx());
@@ -175,7 +181,7 @@ impl EventHandler for Root {
                     if let Some(request_id) = self.selected_request_id.0 {
                         // 2024 edition: if-let chain
                         if context.request_store.is_in_progress(request_id) {
-                            ViewContext::open_modal(ConfirmModal::new(
+                            ConfirmModal::new(
                                 "Cancel request?".into(),
                                 move |response| {
                                     if response {
@@ -184,7 +190,8 @@ impl EventHandler for Root {
                                         );
                                     }
                                 },
-                            ))
+                            )
+                            .open()
                         }
                     }
                 }
@@ -291,10 +298,9 @@ mod tests {
             test_util::TestComponent, util::persistence::DatabasePersistedStore,
         },
     };
-    use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
-    use slumber_core::{assert_matches, http::Exchange, test_util::Factory};
+    use slumber_core::{http::Exchange, test_util::Factory};
 
     /// Test that, on first render, the view loads the most recent historical
     /// request for the first recipe+profile
@@ -406,24 +412,5 @@ mod tests {
             component.data().selected_request_id(),
             Some(new_exchange.id)
         );
-    }
-
-    #[rstest]
-    fn test_edit_collection(mut harness: TestHarness, terminal: TestTerminal) {
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            Root::new(&harness.collection, &harness.request_store.borrow()),
-        );
-        component.drain_draw().assert_empty();
-
-        harness.clear_messages(); // Clear init junk
-
-        // Open action menu
-        component.send_key(KeyCode::Char('x')).assert_empty();
-        // Select first action - Edit Collection
-        component.send_key(KeyCode::Enter).assert_empty();
-        // Event should be converted into a message appropriately
-        assert_matches!(harness.pop_message_now(), Message::CollectionEdit);
     }
 }

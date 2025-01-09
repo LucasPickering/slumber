@@ -3,14 +3,13 @@ use crate::{
     message::Message,
     view::{
         common::{
-            actions::ActionsModal,
+            actions::{IntoMenuActions, MenuAction},
             header_table::HeaderTable,
-            modal::ModalHandle,
             text_window::{TextWindow, TextWindowProps},
         },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Child, Event, EventHandler, OptionEvent},
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::Identified,
         util::{highlight, view_text},
         Component, ViewContext,
@@ -18,24 +17,23 @@ use crate::{
 };
 use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, text::Text, Frame};
-use slumber_config::Action;
 use slumber_core::{
     http::{content_type::ContentType, RequestRecord},
     util::{format_byte_size, MaybeStr},
 };
 use std::sync::Arc;
-use strum::{EnumCount, EnumIter};
+use strum::EnumIter;
 
 /// Display rendered HTTP request state. The request could still be in flight,
 /// it just needs to have been built successfully.
 #[derive(Debug)]
 pub struct RequestView {
+    actions_emitter: Emitter<RequestMenuAction>,
     /// Store pointer to the request, so we can access it in the update step
     request: Arc<RequestRecord>,
     /// Persist the visible body, because it may vary from the actual body.
     /// `None` iff the request has no body
     body: Option<Identified<Text<'static>>>,
-    actions_handle: ModalHandle<ActionsModal<MenuAction>>,
     body_text_window: Component<TextWindow>,
 }
 
@@ -43,56 +41,22 @@ impl RequestView {
     pub fn new(request: Arc<RequestRecord>) -> Self {
         let body = init_body(&request);
         Self {
+            actions_emitter: Default::default(),
             request,
             body,
-            actions_handle: Default::default(),
             body_text_window: Default::default(),
         }
     }
 }
 
-/// Items in the actions popup menu
-#[derive(
-    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
-)]
-enum MenuAction {
-    #[default]
-    #[display("Edit Collection")]
-    EditCollection,
-    #[display("Copy URL")]
-    CopyUrl,
-    #[display("Copy Body")]
-    CopyBody,
-    #[display("View Body")]
-    ViewBody,
-}
-
-impl ToStringGenerate for MenuAction {}
-
 impl EventHandler for RequestView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event
-            .opt()
-            .action(|action, propagate| match action {
-                Action::OpenActions => {
-                    let disabled = if self.body.is_some() {
-                        [].as_slice()
-                    } else {
-                        // No body available - disable these actions
-                        &[MenuAction::CopyBody, MenuAction::ViewBody]
-                    };
-                    self.actions_handle.open(ActionsModal::new(disabled));
-                }
-                _ => propagate.set(),
-            })
-            .emitted(self.actions_handle, |menu_action| match menu_action {
-                MenuAction::EditCollection => {
-                    ViewContext::send_message(Message::CollectionEdit)
-                }
-                MenuAction::CopyUrl => ViewContext::send_message(
+        event.opt().emitted(self.actions_emitter, |menu_action| {
+            match menu_action {
+                RequestMenuAction::CopyUrl => ViewContext::send_message(
                     Message::CopyText(self.request.url.to_string()),
                 ),
-                MenuAction::CopyBody => {
+                RequestMenuAction::CopyBody => {
                     // Copy exactly what the user sees. Currently requests
                     // don't support formatting/querying but that could change
                     if let Some(body) = &self.body {
@@ -101,12 +65,17 @@ impl EventHandler for RequestView {
                         ));
                     }
                 }
-                MenuAction::ViewBody => {
+                RequestMenuAction::ViewBody => {
                     if let Some(body) = &self.body {
                         view_text(body, self.request.mime());
                     }
                 }
-            })
+            }
+        })
+    }
+
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        RequestMenuAction::into_actions(self)
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -151,6 +120,32 @@ impl Draw for RequestView {
                 body_area,
                 true,
             );
+        }
+    }
+}
+
+impl ToEmitter<RequestMenuAction> for RequestView {
+    fn to_emitter(&self) -> Emitter<RequestMenuAction> {
+        self.actions_emitter
+    }
+}
+
+/// Items in the actions popup menu
+#[derive(Copy, Clone, Debug, Display, EnumIter)]
+pub enum RequestMenuAction {
+    #[display("Copy URL")]
+    CopyUrl,
+    #[display("Copy Body")]
+    CopyBody,
+    #[display("View Body")]
+    ViewBody,
+}
+
+impl IntoMenuActions<RequestView> for RequestMenuAction {
+    fn enabled(&self, data: &RequestView) -> bool {
+        match self {
+            Self::CopyUrl => true,
+            Self::CopyBody | Self::ViewBody => data.body.is_some(),
         }
     }
 }

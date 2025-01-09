@@ -1,7 +1,7 @@
 use crate::view::{
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
-    event::{Emitter, EmitterId, Event, EventHandler, OptionEvent},
+    event::{Emitter, Event, EventHandler, OptionEvent, ToEmitter},
 };
 use persisted::PersistedContainer;
 use ratatui::{
@@ -28,7 +28,7 @@ pub struct SelectState<Item, State = ListState>
 where
     State: SelectStateData,
 {
-    emitter_id: EmitterId,
+    emitter: Emitter<SelectStateEvent>,
     /// Which event types to emit
     subscribed_events: Vec<SelectStateEventType>,
     /// Use interior mutability because this needs to be modified during the
@@ -85,6 +85,23 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         self
     }
 
+    /// Disable certain items in the list by index. Disabled items can still be
+    /// selected, but do not emit events.
+    pub fn disabled_indexes(
+        mut self,
+        disabled_indexes: impl IntoIterator<Item = usize>,
+    ) -> Self {
+        // O(n^2)! We expect both lists to be very small so it's not an issue
+        for disabled in disabled_indexes {
+            for (i, item) in self.items.iter_mut().enumerate() {
+                if disabled == i {
+                    item.disabled = true;
+                }
+            }
+        }
+        self
+    }
+
     /// Which types of events should this emit?
     pub fn subscribe(
         mut self,
@@ -127,7 +144,7 @@ impl<Item, State> SelectStateBuilder<Item, State> {
         State: SelectStateData,
     {
         let mut select = SelectState {
-            emitter_id: EmitterId::new(),
+            emitter: Default::default(),
             subscribed_events: self.subscribed_events,
             state: RefCell::default(),
             items: self.items,
@@ -202,6 +219,12 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         self.items.get_mut(index).map(|item| &mut item.value)
     }
 
+    /// Move the selected item out of the list, if there is any
+    pub fn into_selected(mut self) -> Option<Item> {
+        let index = self.selected_index()?;
+        Some(self.items.swap_remove(index).value)
+    }
+
     /// Select an item by value. Generally the given value will be the type
     /// `Item`, but it could be anything that compares to `Item` (e.g. an ID
     /// type).
@@ -263,7 +286,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
                 let event = event_fn(selected);
                 // Check if the parent subscribed to this event type
                 if self.is_subscribed(SelectStateEventType::from(&event)) {
-                    self.emit(event);
+                    self.emitter.emit(event);
                 }
             }
             _ => {}
@@ -376,11 +399,12 @@ where
     }
 }
 
-impl<Item, State: SelectStateData> Emitter for SelectState<Item, State> {
-    type Emitted = SelectStateEvent;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+impl<Item, State> ToEmitter<SelectStateEvent> for SelectState<Item, State>
+where
+    State: SelectStateData,
+{
+    fn to_emitter(&self) -> Emitter<SelectStateEvent> {
+        self.emitter
     }
 }
 

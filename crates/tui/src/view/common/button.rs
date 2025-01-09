@@ -5,7 +5,7 @@ use crate::{
     view::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Emitter, EmitterId, Event, EventHandler, OptionEvent},
+        event::{Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::fixed_select::{FixedSelect, FixedSelectState},
     },
 };
@@ -50,7 +50,9 @@ impl<'a> Generate for Button<'a> {
 /// type `T`.
 #[derive(Debug, Default)]
 pub struct ButtonGroup<T: FixedSelect> {
-    emitter_id: EmitterId,
+    /// The only type of event we can emit is a button being selected, so just
+    /// emit the button type
+    emitter: Emitter<T>,
     select: FixedSelectState<T>,
 }
 
@@ -61,7 +63,7 @@ impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
             Action::Right => self.select.next(),
             Action::Submit => {
                 // Propagate the selected item as a dynamic event
-                self.emit(self.select.selected());
+                self.emitter.emit(self.select.selected());
             }
             _ => propagate.set(),
         })
@@ -99,12 +101,8 @@ impl<T: FixedSelect> Draw for ButtonGroup<T> {
     }
 }
 
-/// The only type of event we can emit is a button being selected, so just
-/// emit the button type
-impl<T: FixedSelect> Emitter for ButtonGroup<T> {
-    type Emitted = T;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+impl<T: FixedSelect> ToEmitter<T> for ButtonGroup<T> {
+    fn to_emitter(&self) -> Emitter<T> {
+        self.emitter
     }
 }

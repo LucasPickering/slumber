@@ -34,7 +34,7 @@ use slumber_core::{
 use std::ops::Deref;
 use strum::{EnumCount, EnumIter};
 
-/// Display a recipe. Note a recipe *node*, this is for genuine bonafide recipe.
+/// Display a recipe. Not a recipe *node*, this is for genuine bonafide recipe.
 /// This maintains internal state specific to a recipe, so it should be
 /// recreated every time the recipe/profile changes.
 #[derive(Debug)]

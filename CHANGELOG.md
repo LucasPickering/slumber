@@ -27,6 +27,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add `--output` flag to `slumber request` to control where the response body is written to
 - Support MIME type mapping for `pager` config field, so you can set different pagers based on media type. [See docs](https://slumber.lucaspickering.me/book/api/configuration/mime.html)
 
+### Fixed
+
+- Fix certain recipe-related menu actions being enabled when they shouldn't be
+
 ## [2.5.0] - 2025-01-06
 
 ### Added

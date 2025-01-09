@@ -454,7 +454,7 @@ enum CommandFocus {
 /// Emitted event to notify when a query subprocess has completed. Contains the
 /// stdout of the process if successful.
 #[derive(Debug)]
-pub struct QueryComplete(Result<Vec<u8>, anyhow::Error>);
+struct QueryComplete(Result<Vec<u8>, anyhow::Error>);
 
 #[derive(Debug, Default)]
 enum QueryState {

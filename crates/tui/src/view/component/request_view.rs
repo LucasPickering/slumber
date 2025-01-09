@@ -3,7 +3,7 @@ use crate::{
     message::Message,
     view::{
         common::{
-            actions::{IntoMenuActions, MenuAction},
+            actions::{IntoMenuAction, MenuAction},
             header_table::HeaderTable,
             text_window::{TextWindow, TextWindowProps},
         },
@@ -22,7 +22,7 @@ use slumber_core::{
     util::{format_byte_size, MaybeStr},
 };
 use std::sync::Arc;
-use strum::EnumIter;
+use strum::{EnumIter, IntoEnumIterator};
 
 /// Display rendered HTTP request state. The request could still be in flight,
 /// it just needs to have been built successfully.
@@ -75,7 +75,9 @@ impl EventHandler for RequestView {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        RequestMenuAction::into_actions(self)
+        RequestMenuAction::iter()
+            .map(MenuAction::with_data(self))
+            .collect()
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -132,7 +134,7 @@ impl ToEmitter<RequestMenuAction> for RequestView {
 
 /// Items in the actions popup menu
 #[derive(Copy, Clone, Debug, Display, EnumIter)]
-pub enum RequestMenuAction {
+enum RequestMenuAction {
     #[display("Copy URL")]
     CopyUrl,
     #[display("Copy Body")]
@@ -141,7 +143,7 @@ pub enum RequestMenuAction {
     ViewBody,
 }
 
-impl IntoMenuActions<RequestView> for RequestMenuAction {
+impl IntoMenuAction<RequestView> for RequestMenuAction {
     fn enabled(&self, data: &RequestView) -> bool {
         match self {
             Self::CopyUrl => true,

@@ -5,7 +5,7 @@ use crate::{
     message::Message,
     view::{
         common::{
-            actions::{IntoMenuActions, MenuAction},
+            actions::{IntoMenuAction, MenuAction},
             header_table::HeaderTable,
         },
         component::queryable_body::QueryableBody,
@@ -22,7 +22,7 @@ use ratatui::Frame;
 use serde::Serialize;
 use slumber_core::{collection::RecipeId, http::ResponseRecord};
 use std::sync::Arc;
-use strum::EnumIter;
+use strum::{EnumIter, IntoEnumIterator};
 
 /// Display response body
 #[derive(Debug)]
@@ -67,13 +67,7 @@ enum ResponseBodyMenuAction {
     SaveBody,
 }
 
-impl IntoMenuActions<ResponseBodyView> for ResponseBodyMenuAction {
-    fn enabled(&self, _: &ResponseBodyView) -> bool {
-        match self {
-            Self::ViewBody | Self::CopyBody | Self::SaveBody => true,
-        }
-    }
-}
+impl IntoMenuAction<ResponseBodyView> for ResponseBodyMenuAction {}
 
 /// Persisted key for response body JSONPath query text box
 #[derive(Debug, Serialize, PersistedKey)]
@@ -111,7 +105,9 @@ impl EventHandler for ResponseBodyView {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        ResponseBodyMenuAction::into_actions(self)
+        ResponseBodyMenuAction::iter()
+            .map(MenuAction::with_data(self))
+            .collect()
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {

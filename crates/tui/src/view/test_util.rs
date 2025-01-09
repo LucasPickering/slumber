@@ -296,6 +296,11 @@ where
             events,
         }
     }
+
+    /// Open the actions menu
+    pub fn open_actions(&mut self) -> PropagatedEvents<'_, T> {
+        self.send_key(KeyCode::Char('x'))
+    }
 }
 
 /// A collection of events that were propagated out from a particular

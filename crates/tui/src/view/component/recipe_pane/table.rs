@@ -280,6 +280,16 @@ where
             }
         }
     }
+
+    fn shortcut(
+        &self,
+        _: &RecipeFieldTable<RowSelectKey, RowToggleKey>,
+    ) -> Option<Action> {
+        match self {
+            Self::Edit { .. } => Some(Action::Edit),
+            Self::Reset { .. } => Some(Action::Reset),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -582,13 +592,9 @@ mod tests {
             },
         );
 
+        component.open_actions().assert_empty();
         component
-            .send_keys([
-                KeyCode::Char('x'),
-                KeyCode::Enter,
-                KeyCode::Char('!'),
-                KeyCode::Enter,
-            ])
+            .send_keys([KeyCode::Enter, KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
 
         let selected_row = component.data().select.data().selected().unwrap();

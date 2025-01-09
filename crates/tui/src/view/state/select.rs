@@ -497,12 +497,12 @@ mod tests {
         let select = SelectState::builder(items.0).build();
         let mut component =
             TestComponent::with_props(&harness, &terminal, select, items.1);
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
         assert_eq!(component.data().selected(), Some(&"a"));
-        component.send_key(KeyCode::Down).assert_empty();
+        component.int().send_key(KeyCode::Down).assert_empty();
         assert_eq!(component.data().selected(), Some(&"b"));
 
-        component.send_key(KeyCode::Up).assert_empty();
+        component.int().send_key(KeyCode::Up).assert_empty();
         assert_eq!(component.data().selected(), Some(&"a"));
     }
 
@@ -523,15 +523,17 @@ mod tests {
         // Initial selection
         assert_eq!(component.data().selected(), Some(&"a"));
         component
+            .int()
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(0)]);
 
         component
+            .int()
             .send_key(KeyCode::Down)
             .assert_emitted([SelectStateEvent::Select(1)]);
 
         // "c" is disabled, should not trigger events
-        component.send_key(KeyCode::Down).assert_empty();
+        component.int().send_key(KeyCode::Down).assert_empty();
     }
 
     /// Test submit emitted event
@@ -547,14 +549,16 @@ mod tests {
             .build();
         let mut component =
             TestComponent::with_props(&harness, &terminal, select, items.1);
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         component
+            .int()
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_emitted([SelectStateEvent::Submit(1)]);
 
         // "c" is disabled, should not trigger events
         component
+            .int()
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_empty();
     }
@@ -572,14 +576,14 @@ mod tests {
             TestComponent::with_props(&harness, &terminal, select, items.1);
 
         assert_matches!(
-            component.send_key(KeyCode::Enter).events(),
+            component.int().send_key(KeyCode::Enter).events(),
             &[Event::Input {
                 action: Some(Action::Submit),
                 ..
             }]
         );
         assert_matches!(
-            component.send_key(KeyCode::Char(' ')).events(),
+            component.int().send_key(KeyCode::Char(' ')).events(),
             &[Event::Input {
                 action: Some(Action::Toggle),
                 ..
@@ -642,7 +646,7 @@ mod tests {
             component.data().selected().map(ProfileItem::id),
             Some(&profile_id)
         );
-        component.drain_draw().assert_emitted([
+        component.int().drain_draw().assert_emitted([
             // First item gets selected by preselection, second by persistence
             SelectStateEvent::Select(0),
             SelectStateEvent::Select(1),

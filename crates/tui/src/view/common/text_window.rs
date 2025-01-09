@@ -349,7 +349,7 @@ mod tests {
         ]);
 
         // Scroll down
-        component.send_key(KeyCode::Down).assert_empty();
+        component.int().send_key(KeyCode::Down).assert_empty();
         terminal.assert_buffer_lines([
             vec![line_num(2), " line 2 ▲".into()],
             vec![line_num(3), " line 3 █".into()],
@@ -358,8 +358,11 @@ mod tests {
         ]);
 
         // Scroll back up
-        component.send_key(KeyCode::Up).assert_empty();
-        component.send_key(KeyCode::Up).assert_empty(); // Does nothing
+        component
+            .int()
+            // Second does nothing
+            .send_keys([KeyCode::Up, KeyCode::Up])
+            .assert_empty();
         terminal.assert_buffer_lines([
             vec![line_num(1), " line 1 ▲".into()],
             vec![line_num(2), " line 2 █".into()],
@@ -369,12 +372,9 @@ mod tests {
 
         // Scroll right
         component
+            .int()
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
-            .assert_empty();
-        component
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
-            .assert_empty();
-        component
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
             .assert_empty();
         terminal.assert_buffer_lines([
@@ -386,17 +386,13 @@ mod tests {
 
         // Scroll back left
         component
+            .int()
+            .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
+            .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
+            .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
+            // Does nothing
             .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
             .assert_empty();
-        component
-            .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
-            .assert_empty();
-        component
-            .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
-            .assert_empty();
-        component
-            .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
-            .assert_empty(); // Does nothing
         terminal.assert_buffer_lines([
             vec![line_num(1), " line 1 ▲".into()],
             vec![line_num(2), " line 2 █".into()],
@@ -499,7 +495,7 @@ mod tests {
             },
             footer: None,
         });
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         assert_eq!(component.data().offset_x.get(), 8);
         assert_eq!(component.data().offset_y.get(), 1);
@@ -528,7 +524,7 @@ mod tests {
         );
 
         component.set_area(Rect::new(0, 0, 10, 3));
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         // Scroll out a bit
         component.data_mut().scroll_down(2);
@@ -537,7 +533,7 @@ mod tests {
         assert_eq!(component.data().offset_y.get(), 2);
 
         component.set_area(Rect::new(0, 0, 15, 4));
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         assert_eq!(component.data().offset_x.get(), 8);
         assert_eq!(component.data().offset_y.get(), 1);

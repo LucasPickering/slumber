@@ -261,20 +261,23 @@ mod tests {
             TestComponent::new(&harness, &terminal, Actionable::default());
 
         // Select a basic action
-        component.open_actions().assert_empty();
         component
+            .int()
+            .open_actions()
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_emitted([TestMenuAction::Profilate]);
 
         // Selecting a disabled action does nothing
-        component.open_actions().assert_empty();
         component
+            .int()
+            .open_actions()
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_emitted([TestMenuAction::Profilate]);
 
         // Actions can be selected by shortcut
-        component.open_actions().assert_empty();
         component
+            .int()
+            .open_actions()
             .send_keys([KeyCode::Char('e')])
             .assert_emitted([TestMenuAction::Shortcutticated]);
     }

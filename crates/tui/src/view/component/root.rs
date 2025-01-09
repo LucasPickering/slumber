@@ -320,7 +320,7 @@ mod tests {
             &terminal,
             Root::new(&collection, &harness.request_store.borrow()),
         );
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         // Make sure profile+recipe were preselected correctly
         let primary_view = component.data().primary_view.data();
@@ -359,7 +359,7 @@ mod tests {
             &terminal,
             Root::new(&collection, &harness.request_store.borrow()),
         );
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         // Make sure everything was preselected correctly
         assert_eq!(
@@ -406,7 +406,7 @@ mod tests {
             &terminal,
             Root::new(&collection, &harness.request_store.borrow()),
         );
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         assert_eq!(
             component.data().selected_request_id(),

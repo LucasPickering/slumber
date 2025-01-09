@@ -134,6 +134,14 @@ where
         self.has_focus = false;
     }
 
+    /// Get a helper to chain interactions and assertions on this component
+    pub fn int(&mut self) -> Interact<'term, '_, T, Props> {
+        Interact {
+            component: self,
+            propagated: Vec::new(),
+        }
+    }
+
     /// Draw this component onto the terminal, using the entire terminal frame
     /// as the draw area. If props are given, use them for the draw. If not,
     /// use the same props from the last draw.
@@ -172,20 +180,34 @@ where
         }
         propagated
     }
+}
 
+/// Utility class for interacting with a test component. This allows chaining
+/// various interactions. All chains should be terminated with an assertion
+/// on the events propagated by the interactions.
+#[must_use = "Propagated events must be checked"]
+#[derive(derive_more::Debug)]
+pub struct Interact<'term, 'a, Component, Props> {
+    component: &'a mut TestComponent<'term, Component, Props>,
+    propagated: Vec<Event>,
+}
+
+impl<'term, 'a, Component, Props> Interact<'term, 'a, Component, Props>
+where
+    Props: Clone,
+    Component: Draw<Props> + ToChild,
+{
     /// Drain all events in the queue, then draw the component to the terminal.
     ///
     /// This similar to [update_draw](Self::update_draw), but doesn't require
     /// you to queue a new event first. This is helpful in the rare occasions
     /// where the UI needs to respond to some asynchronous event, such as a
     /// callback that would normally be called by the main loop.
-    pub fn drain_draw(&mut self) -> PropagatedEvents<'_, T> {
-        let propagated = self.drain_events();
-        self.draw();
-        PropagatedEvents {
-            component: self.data(),
-            events: propagated,
-        }
+    pub fn drain_draw(mut self) -> Self {
+        let propagated = self.component.drain_events();
+        self.component.draw();
+        self.propagated.extend(propagated);
+        self
     }
 
     /// Put an event on the event queue, handle **all** events in the queue,
@@ -202,7 +224,7 @@ where
     /// if you're just checking that it's empty. This is important because
     /// propagated events *may* be intentional, but could also indicate a bug
     /// where you component isn't handling events it should (or vice versa).
-    pub fn update_draw(&mut self, event: Event) -> PropagatedEvents<'_, T> {
+    pub fn update_draw(self, event: Event) -> Self {
         // This is a safety check, so we don't end up handling events we didn't
         // expect to
         ViewContext::inspect_event_queue(|queue| {
@@ -219,10 +241,7 @@ where
     /// Push a terminal input event onto the event queue, then drain events and
     /// draw. This will include the bound action for the event, based on the key
     /// code or mouse button. See [Self::update_draw] about return value.
-    pub fn send_input(
-        &mut self,
-        crossterm_event: crossterm::event::Event,
-    ) -> PropagatedEvents<'_, T> {
+    pub fn send_input(self, crossterm_event: crossterm::event::Event) -> Self {
         let action = TuiContext::get().input_engine.action(&crossterm_event);
         let event = Event::Input {
             event: crossterm_event,
@@ -233,7 +252,7 @@ where
 
     /// Simulate a left click at the given location, then drain events and draw.
     /// See [Self::update_draw] about return value.
-    pub fn click(&mut self, x: u16, y: u16) -> PropagatedEvents<'_, T> {
+    pub fn click(self, x: u16, y: u16) -> Self {
         let crossterm_event = crossterm::event::Event::Mouse(MouseEvent {
             kind: MouseEventKind::Up(MouseButton::Left),
             column: x,
@@ -247,16 +266,16 @@ where
     /// corresponding event (including bound action, if any), send it to the
     /// component, then drain events and draw.  See
     /// [Self::update_draw] about return value.
-    pub fn send_key(&mut self, code: KeyCode) -> PropagatedEvents<'_, T> {
+    pub fn send_key(self, code: KeyCode) -> Self {
         self.send_key_modifiers(code, KeyModifiers::NONE)
     }
 
     /// [Self::send_key], but with modifier keys applied
     pub fn send_key_modifiers(
-        &mut self,
+        self,
         code: KeyCode,
         modifiers: KeyModifiers,
-    ) -> PropagatedEvents<'_, T> {
+    ) -> Self {
         let crossterm_event = crossterm::event::Event::Key(KeyEvent {
             code,
             modifiers,
@@ -268,17 +287,13 @@ where
 
     /// Send multiple key events in sequence
     pub fn send_keys(
-        &mut self,
+        mut self,
         codes: impl IntoIterator<Item = KeyCode>,
-    ) -> PropagatedEvents<'_, T> {
-        let events = codes
-            .into_iter()
-            .flat_map(|code| self.send_key(code).events)
-            .collect();
-        PropagatedEvents {
-            component: self.data(),
-            events,
+    ) -> Self {
+        for code in codes {
+            self = self.send_key(code);
         }
+        self
     }
 
     /// Send some text as a series of key events, handling each event and
@@ -286,41 +301,22 @@ where
     /// closely simulates what happens in the real world. Return propagated
     /// events from *all* updates, e.g. the concatenation of propagated events
     /// from each individual call to [Self::update_draw].
-    pub fn send_text(&mut self, text: &str) -> PropagatedEvents<'_, T> {
-        let events = text
-            .chars()
-            .flat_map(|c| self.send_key(KeyCode::Char(c)).events)
-            .collect();
-        PropagatedEvents {
-            component: self.data(),
-            events,
-        }
+    pub fn send_text(self, text: &str) -> Self {
+        self.send_keys(text.chars().map(KeyCode::Char))
     }
 
     /// Open the actions menu
-    pub fn open_actions(&mut self) -> PropagatedEvents<'_, T> {
+    pub fn open_actions(self) -> Self {
         self.send_key(KeyCode::Char('x'))
     }
-}
 
-/// A collection of events that were propagated out from a particular
-/// [TestComponent::update_draw] call. This wrapper makes it easy to check
-/// which, if any, events were propagated.
-#[must_use = "Propagated events must be checked"]
-#[derive(derive_more::Debug)]
-pub struct PropagatedEvents<'a, Component> {
-    component: &'a Component,
-    events: Vec<Event>,
-}
-
-impl<'a, Component> PropagatedEvents<'a, Component> {
     /// Assert that no events were propagated, i.e. the component handled all
     /// given and generated events.
     pub fn assert_empty(self) {
         assert!(
-            self.events.is_empty(),
+            self.propagated.is_empty(),
             "Expected no propagated events, but got {:?}",
-            self.events
+            self.propagated
         )
     }
 
@@ -332,9 +328,9 @@ impl<'a, Component> PropagatedEvents<'a, Component> {
         Component: ToEmitter<E>,
         E: LocalEvent + PartialEq,
     {
-        let emitter = self.component.to_emitter();
+        let emitter = self.component.data().to_emitter();
         let emitted = self
-            .events
+            .propagated
             .into_iter()
             .map(|event| {
                 emitter.emitted(event).unwrap_or_else(|event| {
@@ -351,7 +347,7 @@ impl<'a, Component> PropagatedEvents<'a, Component> {
 
     /// Get propagated events as a slice
     pub fn events(&self) -> &[Event] {
-        &self.events
+        &self.propagated
     }
 }
 

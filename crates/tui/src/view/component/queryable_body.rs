@@ -564,16 +564,19 @@ mod tests {
         ]);
 
         // Type something into the query box
-        component.send_key(KeyCode::Char('/')).assert_empty();
+        component.int().send_key(KeyCode::Char('/')).assert_empty();
         // Both the debounce and the subprocess use local tasks, so we need to
         // run in a local set. When this future exits, all tasks are done
         run_local(async {
-            component.send_text("head -c 1").assert_empty();
-            component.send_key(KeyCode::Enter).assert_empty();
+            component
+                .int()
+                .send_text("head -c 1")
+                .send_key(KeyCode::Enter)
+                .assert_empty();
         })
         .await;
         // Command is done, handle its resulting event
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         // Make sure state updated correctly
         let data = component.data();
@@ -582,11 +585,14 @@ mod tests {
         assert_eq!(data.command_focus, CommandFocus::None);
 
         // Cancelling out of the text box should reset the query value
-        component.send_key(KeyCode::Char('/')).assert_empty();
+        component.int().send_key(KeyCode::Char('/')).assert_empty();
         run_local(async {
             // Local task needed for the debounce
-            component.send_text("more text").assert_empty();
-            component.send_key(KeyCode::Esc).assert_empty();
+            component
+                .int()
+                .send_text("more text")
+                .send_key(KeyCode::Esc)
+                .assert_empty();
         })
         .await;
         let data = component.data();
@@ -630,7 +636,7 @@ mod tests {
         .await;
 
         // After the command is done, there's a subsequent event with the result
-        component.drain_draw().assert_empty();
+        component.int().drain_draw().assert_empty();
 
         assert_eq!(
             component.data().last_executed_query.as_deref(),
@@ -658,7 +664,7 @@ mod tests {
         .await;
 
         // After the debounce, there's a change event that spawns the command
-        run_local(async { component.drain_draw().assert_empty() }).await;
+        run_local(async { component.int().drain_draw().assert_empty() }).await;
 
         assert_eq!(
             component.data().last_executed_query.as_deref(),
@@ -692,7 +698,7 @@ mod tests {
         .await;
 
         // After the debounce, there's a change event that spawns the command
-        run_local(async { component.drain_draw().assert_empty() }).await;
+        run_local(async { component.int().drain_draw().assert_empty() }).await;
 
         assert_eq!(
             component.data().last_executed_query.as_deref(),
@@ -718,21 +724,31 @@ mod tests {
 
         let path = temp_dir.join("test_export.json");
         let command = format!("tee {}", path.display());
-        component.send_key(KeyCode::Char(':')).assert_empty();
-        component.send_text(&command).assert_empty();
+        component
+            .int()
+            .send_key(KeyCode::Char(':'))
+            .send_text(&command)
+            .assert_empty();
         // Triggers the background task
-        run_local(async { component.send_key(KeyCode::Enter).assert_empty() })
-            .await;
+        run_local(async {
+            component.int().send_key(KeyCode::Enter).assert_empty()
+        })
+        .await;
         // Success should push a notification
-        assert_matches!(component.drain_draw().events(), &[Event::Notify(_)]);
+        assert_matches!(
+            component.int().drain_draw().events(),
+            &[Event::Notify(_)]
+        );
         let file_content = fs::read_to_string(&path).await.unwrap();
         assert_eq!(file_content, TEXT);
 
         // Error should appear as a modal
-        component.send_text(":bad!").assert_empty();
-        run_local(async { component.send_key(KeyCode::Enter).assert_empty() })
-            .await;
-        component.drain_draw().assert_empty();
+        component.int().send_text(":bad!").assert_empty();
+        run_local(async {
+            component.int().send_key(KeyCode::Enter).assert_empty()
+        })
+        .await;
+        component.int().drain_draw().assert_empty();
         // Asserting on the modal within the view is a pain, so a shortcut is
         // to just make sure an error modal is present
         let modal = component.modal().expect("Error modal should be visible");

@@ -57,6 +57,7 @@ impl RecipeDisplay {
             method: recipe.method,
             url: TemplatePreview::new(recipe.url.clone(), None),
             query: RecipeFieldTable::new(
+                "Parameter",
                 QueryRowKey(recipe.id.clone()),
                 recipe.query.iter().enumerate().map(|(i, (param, value))| {
                     (
@@ -72,6 +73,7 @@ impl RecipeDisplay {
             )
             .into(),
             headers: RecipeFieldTable::new(
+                "Header",
                 HeaderRowKey(recipe.id.clone()),
                 recipe.headers.iter().enumerate().map(
                     |(i, (header, value))| {

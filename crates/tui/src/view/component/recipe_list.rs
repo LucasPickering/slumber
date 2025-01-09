@@ -2,7 +2,7 @@ use crate::{
     context::TuiContext,
     view::{
         common::{
-            actions::{IntoMenuActions, MenuAction},
+            actions::{IntoMenuAction, MenuAction},
             list::List,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
             Pane,
@@ -29,6 +29,7 @@ use slumber_core::collection::{
     HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType, RecipeTree,
 };
 use std::collections::HashSet;
+use strum::IntoEnumIterator;
 
 /// List/tree of recipes and folders. This is mostly just a list, but with some
 /// extra logic to allow expanding/collapsing nodes. This could be made into a
@@ -193,7 +194,9 @@ impl EventHandler for RecipeListPane {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        RecipeMenuAction::into_actions(self)
+        RecipeMenuAction::iter()
+            .map(MenuAction::with_data(self))
+            .collect()
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -252,7 +255,7 @@ impl ToEmitter<RecipeMenuAction> for RecipeListPane {
     }
 }
 
-impl IntoMenuActions<RecipeListPane> for RecipeMenuAction {
+impl IntoMenuAction<RecipeListPane> for RecipeMenuAction {
     fn enabled(&self, data: &RecipeListPane) -> bool {
         let recipe = data
             .select

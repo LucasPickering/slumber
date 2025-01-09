@@ -11,7 +11,6 @@ use crate::view::{
 use itertools::Itertools;
 use ratatui::{layout::Constraint, text::Line, Frame};
 use std::fmt::Display;
-use strum::IntoEnumIterator;
 
 /// Modal to list and trigger arbitrary actions. The user opens the action menu
 /// with a keybinding, at which point the list of available actions is built
@@ -114,29 +113,31 @@ pub struct MenuAction {
     enabled: bool,
 }
 
+impl MenuAction {
+    /// Get a mapping function to generate menu actions from some type. Useful
+    /// for mapping an iterator of specific action types to this type.
+    pub fn with_data<Data, T>(data: &Data) -> impl '_ + Fn(T) -> Self
+    where
+        Data: ToEmitter<T>,
+        T: IntoMenuAction<Data>,
+    {
+        |action| Self {
+            name: action.to_string(),
+            enabled: action.enabled(data),
+            emitter: data.to_emitter().upcast(),
+            value: Box::new(action),
+        }
+    }
+}
+
 impl ToStringGenerate for MenuAction {}
 
-/// Trait for an enum that can be converted into a list of actions. Most
-/// components have a static list of actions available, so this trait makes it
+/// Trait for an enum that can be converted into menu actions. Most components
+/// have a static list of actions available, so this trait makes it
 /// easy to implement [EventHandler::menu_actions].
-pub trait IntoMenuActions<Data>:
-    Display + IntoEnumIterator + LocalEvent
-{
-    /// Create a list of actions, one per variant in this enum
-    fn into_actions(data: &Data) -> Vec<MenuAction>
-    where
-        Data: ToEmitter<Self>,
-    {
-        Self::iter()
-            .map(|action| MenuAction {
-                name: action.to_string(),
-                enabled: action.enabled(data),
-                emitter: data.to_emitter().upcast(),
-                value: Box::new(action),
-            })
-            .collect()
-    }
-
+pub trait IntoMenuAction<Data>: Display + LocalEvent {
     /// Should this action be enabled in the menu?
-    fn enabled(&self, data: &Data) -> bool;
+    fn enabled(&self, _: &Data) -> bool {
+        true
+    }
 }

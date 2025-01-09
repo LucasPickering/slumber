@@ -6,7 +6,7 @@ use crate::{
     util::ResultReported,
     view::{
         common::{
-            actions::{IntoMenuActions, MenuAction},
+            actions::{IntoMenuAction, MenuAction},
             modal::Modal,
         },
         component::{
@@ -44,7 +44,7 @@ use slumber_config::Action;
 use slumber_core::collection::{
     Collection, ProfileId, RecipeId, RecipeNodeType,
 };
-use strum::{EnumCount, EnumIter};
+use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Primary TUI view, which shows request/response panes
 #[derive(Debug)]
@@ -346,7 +346,9 @@ impl EventHandler for PrimaryView {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        GlobalMenuAction::into_actions(self)
+        GlobalMenuAction::iter()
+            .map(MenuAction::with_data(self))
+            .collect()
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -457,13 +459,7 @@ enum GlobalMenuAction {
     EditCollection,
 }
 
-impl IntoMenuActions<PrimaryView> for GlobalMenuAction {
-    fn enabled(&self, _: &PrimaryView) -> bool {
-        match self {
-            Self::EditCollection => true,
-        }
-    }
-}
+impl IntoMenuAction<PrimaryView> for GlobalMenuAction {}
 
 /// Helper for adjusting pane behavior according to state
 struct Panes {

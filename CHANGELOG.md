@@ -26,6 +26,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `slumber history get` prints a specific request/response
 - Add `--output` flag to `slumber request` to control where the response body is written to
 - Support MIME type mapping for `pager` config field, so you can set different pagers based on media type. [See docs](https://slumber.lucaspickering.me/book/api/configuration/mime.html)
+- Add "Edit" and "Reset" actions to menus on the recipe pane
+  - These don't provide any new functionality, as the `e` and `z` keys are already bound to those actions, but it should make them more discoverable
 
 ### Fixed
 

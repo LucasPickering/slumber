@@ -183,9 +183,9 @@ impl Generate for &MenuAction {
     }
 }
 
-/// Trait for an enum that can be converted into menu actions. Most components
-/// have a static list of actions available, so this trait makes it
-/// easy to implement [EventHandler::menu_actions].
+/// Trait for any type that can be converted into menu actions. This is useful
+/// both for static lists of actions (i.e. enums) and dynamic lists. Combine
+/// with [MenuAction::with_data] to implement [EventHandler::menu_actions].
 pub trait IntoMenuAction<Data>: Display + LocalEvent {
     /// Should this action be enabled in the menu?
     fn enabled(&self, _: &Data) -> bool {

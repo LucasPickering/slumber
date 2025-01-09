@@ -211,7 +211,6 @@ impl ToEmitter<AuthenticationMenuAction> for AuthenticationDisplay {
 #[derive(Debug)]
 struct SaveAuthenticationOverride(String);
 
-/// Action menu items for a raw body
 #[derive(Copy, Clone, Debug, derive_more::Display, EnumIter)]
 enum AuthenticationMenuAction {
     #[display("Edit Authentication")]
@@ -221,6 +220,13 @@ enum AuthenticationMenuAction {
 }
 
 impl IntoMenuAction<AuthenticationDisplay> for AuthenticationMenuAction {
+    fn enabled(&self, data: &AuthenticationDisplay) -> bool {
+        match self {
+            Self::Edit => true,
+            Self::Reset => data.state.is_overridden(),
+        }
+    }
+
     fn shortcut(&self, _: &AuthenticationDisplay) -> Option<Action> {
         match self {
             Self::Edit => Some(Action::Edit),

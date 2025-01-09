@@ -11,7 +11,7 @@ use crate::{
     message::RequestConfig,
     view::{
         common::{
-            actions::{IntoMenuActions, MenuAction},
+            actions::{IntoMenuAction, MenuAction},
             Pane,
         },
         component::recipe_pane::recipe::RecipeDisplay,
@@ -36,7 +36,7 @@ use slumber_core::{
     util::doc_link,
 };
 use std::cell::Ref;
-use strum::EnumIter;
+use strum::{EnumIter, IntoEnumIterator};
 
 /// Display for the current recipe node, which could be a recipe, a folder, or
 /// empty
@@ -124,7 +124,9 @@ impl EventHandler for RecipePane {
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        RecipeMenuAction::into_actions(self)
+        RecipeMenuAction::iter()
+            .map(MenuAction::with_data(self))
+            .collect()
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -242,7 +244,7 @@ pub enum RecipeMenuAction {
     CopyBody,
 }
 
-impl IntoMenuActions<RecipePane> for RecipeMenuAction {
+impl IntoMenuAction<RecipePane> for RecipeMenuAction {
     fn enabled(&self, data: &RecipePane) -> bool {
         let recipe = data.recipe_state.get().and_then(|state| {
             Ref::filter_map(state, |state| state.data().as_ref()).ok()

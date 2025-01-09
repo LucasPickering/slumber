@@ -2,7 +2,12 @@ use crate::{
     context::TuiContext,
     util::ResultReported,
     view::{
-        common::{modal::Modal, table::Table, text_box::TextBox},
+        common::{
+            actions::{IntoMenuAction, MenuAction},
+            modal::Modal,
+            table::Table,
+            text_box::TextBox,
+        },
         component::{
             misc::TextBoxModal,
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
@@ -28,12 +33,15 @@ use slumber_core::{
     collection::{Authentication, RecipeId},
     template::Template,
 };
-use strum::{EnumCount, EnumIter};
+use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Display authentication settings for a recipe
 #[derive(Debug)]
 pub struct AuthenticationDisplay {
-    emitter: Emitter<SaveAuthenticationOverride>,
+    /// Emitter for the callback from editing the body
+    override_emitter: Emitter<SaveAuthenticationOverride>,
+    /// Emitter for menu actions
+    actions_emitter: Emitter<AuthenticationMenuAction>,
     state: State,
 }
 
@@ -67,7 +75,8 @@ impl AuthenticationDisplay {
             },
         };
         Self {
-            emitter: Default::default(),
+            override_emitter: Default::default(),
+            actions_emitter: Default::default(),
             state,
         }
     }
@@ -99,14 +108,30 @@ impl EventHandler for AuthenticationDisplay {
         event
             .opt()
             .action(|action, propagate| match action {
-                Action::Edit => self.state.open_edit_modal(self.emitter),
+                Action::Edit => {
+                    self.state.open_edit_modal(self.override_emitter)
+                }
                 Action::Reset => self.state.reset_override(),
-
                 _ => propagate.set(),
             })
-            .emitted(self.emitter, |SaveAuthenticationOverride(value)| {
-                self.state.set_override(&value)
+            .emitted(
+                self.override_emitter,
+                |SaveAuthenticationOverride(value)| {
+                    self.state.set_override(&value)
+                },
+            )
+            .emitted(self.actions_emitter, |menu_action| match menu_action {
+                AuthenticationMenuAction::Edit => {
+                    self.state.open_edit_modal(self.override_emitter)
+                }
+                AuthenticationMenuAction::Reset => self.state.reset_override(),
             })
+    }
+
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        AuthenticationMenuAction::iter()
+            .map(MenuAction::with_data(self))
+            .collect()
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -169,7 +194,14 @@ impl Draw for AuthenticationDisplay {
 /// Emit events to ourselves for override editing
 impl ToEmitter<SaveAuthenticationOverride> for AuthenticationDisplay {
     fn to_emitter(&self) -> Emitter<SaveAuthenticationOverride> {
-        self.emitter
+        self.override_emitter
+    }
+}
+
+/// Emit events from the actions menu back to us
+impl ToEmitter<AuthenticationMenuAction> for AuthenticationDisplay {
+    fn to_emitter(&self) -> Emitter<AuthenticationMenuAction> {
+        self.actions_emitter
     }
 }
 
@@ -177,7 +209,18 @@ impl ToEmitter<SaveAuthenticationOverride> for AuthenticationDisplay {
 /// modal. These will be raw string values, consumer has to parse them to
 /// templates.
 #[derive(Debug)]
-pub struct SaveAuthenticationOverride(String);
+struct SaveAuthenticationOverride(String);
+
+/// Action menu items for a raw body
+#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter)]
+enum AuthenticationMenuAction {
+    #[display("Edit Authentication")]
+    Edit,
+    #[display("Reset Authentication")]
+    Reset,
+}
+
+impl IntoMenuAction<AuthenticationDisplay> for AuthenticationMenuAction {}
 
 /// Private to hide enum variants
 #[derive(Debug)]
@@ -425,6 +468,30 @@ mod tests {
         // Reset token
         component.send_key(KeyCode::Char('z')).assert_empty();
         assert_eq!(component.data().override_value(), None);
+    }
+
+    /// Test edit menu action
+    #[rstest]
+    fn test_edit_action(harness: TestHarness, terminal: TestTerminal) {
+        let authentication = Authentication::Bearer("i am a token".into());
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            AuthenticationDisplay::new(RecipeId::factory(()), authentication),
+        );
+
+        component
+            .send_keys([
+                KeyCode::Char('x'),
+                KeyCode::Enter,
+                KeyCode::Char('!'),
+                KeyCode::Enter,
+            ])
+            .assert_empty();
+        assert_eq!(
+            component.data().override_value(),
+            Some(Authentication::Bearer("i am a token!".into()))
+        );
     }
 
     /// Basic auth fields should load persisted overrides

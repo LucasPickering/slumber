@@ -3,7 +3,10 @@ use crate::{
     message::Message,
     util::{delete_temp_file, temp_file, ResultReported},
     view::{
-        common::text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
+        common::{
+            actions::{IntoMenuAction, MenuAction},
+            text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
+        },
         component::recipe_pane::{
             persistence::{RecipeOverrideKey, RecipeTemplate},
             table::{RecipeFieldTable, RecipeFieldTableProps},
@@ -29,6 +32,7 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
 };
+use strum::{EnumIter, IntoEnumIterator};
 use tracing::debug;
 
 /// Render recipe body. The variant is based on the incoming body type, and
@@ -49,6 +53,7 @@ impl RecipeBodyDisplay {
             RecipeBody::FormUrlencoded(fields)
             | RecipeBody::FormMultipart(fields) => {
                 let inner = RecipeFieldTable::new(
+                    "Field",
                     FormRowKey(recipe_id.clone()),
                     fields.iter().enumerate().map(|(i, (field, value))| {
                         (
@@ -127,7 +132,10 @@ impl Draw for RecipeBodyDisplay {
 
 #[derive(Debug)]
 pub struct RawBody {
-    emitter: Emitter<SaveBodyOverride>,
+    /// Emitter for the callback from editing the body
+    override_emitter: Emitter<SaveBodyOverride>,
+    /// Emitter for menu actions
+    actions_emitter: Emitter<RawBodyMenuAction>,
     body: RecipeTemplate,
     text_window: Component<TextWindow>,
 }
@@ -139,7 +147,8 @@ impl RawBody {
         content_type: Option<ContentType>,
     ) -> Self {
         Self {
-            emitter: Default::default(),
+            override_emitter: Default::default(),
+            actions_emitter: Default::default(),
             body: RecipeTemplate::new(
                 RecipeOverrideKey::body(recipe_id),
                 template,
@@ -166,7 +175,7 @@ impl RawBody {
             return;
         };
 
-        let emitter = self.emitter;
+        let emitter = self.override_emitter;
         ViewContext::send_message(Message::FileEdit {
             path,
             on_complete: Box::new(move |path| {
@@ -217,9 +226,19 @@ impl EventHandler for RawBody {
                 Action::Reset => self.body.reset_override(),
                 _ => propagate.set(),
             })
-            .emitted(self.emitter, |SaveBodyOverride(path)| {
+            .emitted(self.override_emitter, |SaveBodyOverride(path)| {
                 self.load_override(&path)
             })
+            .emitted(self.actions_emitter, |menu_action| match menu_action {
+                RawBodyMenuAction::Edit => self.open_editor(),
+                RawBodyMenuAction::Reset => self.body.reset_override(),
+            })
+    }
+
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        RawBodyMenuAction::iter()
+            .map(MenuAction::with_data(self))
+            .collect()
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -256,7 +275,14 @@ impl Draw for RawBody {
 /// Emit events to ourselves for override editing
 impl ToEmitter<SaveBodyOverride> for RawBody {
     fn to_emitter(&self) -> Emitter<SaveBodyOverride> {
-        self.emitter
+        self.override_emitter
+    }
+}
+
+/// Emit events from the actions menu back to us
+impl ToEmitter<RawBodyMenuAction> for RawBody {
+    fn to_emitter(&self) -> Emitter<RawBodyMenuAction> {
+        self.actions_emitter
     }
 }
 
@@ -273,10 +299,21 @@ pub struct FormRowToggleKey {
     field: String,
 }
 
+/// Action menu items for a raw body
+#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter)]
+enum RawBodyMenuAction {
+    #[display("Edit Body")]
+    Edit,
+    #[display("Reset Body")]
+    Reset,
+}
+
+impl IntoMenuAction<RawBody> for RawBodyMenuAction {}
+
 /// Local event to save a user's override body. Triggered from the on_complete
 /// callback when the user closes the editor.
 #[derive(Debug)]
-pub struct SaveBodyOverride(PathBuf);
+struct SaveBodyOverride(PathBuf);
 
 #[cfg(test)]
 mod tests {

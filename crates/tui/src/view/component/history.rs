@@ -6,7 +6,7 @@ use crate::{
         common::{list::List, modal::Modal},
         component::Component,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent},
+        event::{Child, Event, EventHandler, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
         UpdateContext, ViewContext,
     },
@@ -73,7 +73,7 @@ impl Modal for History {
 
 impl EventHandler for History {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().emitted(self.select.handle(), |event| {
+        event.opt().emitted(self.select.to_emitter(), |event| {
             if let SelectStateEvent::Select(index) = event {
                 ViewContext::push_event(Event::HttpSelectRequest(Some(
                     self.select.data()[index].id(),

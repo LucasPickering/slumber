@@ -3,6 +3,7 @@ use crate::{
     util::ResultReported,
     view::{
         common::{
+            modal::Modal,
             table::{Table, ToggleRow},
             text_box::TextBox,
         },
@@ -13,10 +14,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{
-            Child, Emitter, EmitterHandle, EmitterId, Event, EventHandler,
-            OptionEvent,
-        },
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
         util::persistence::{Persisted, PersistedKey, PersistedLazy},
         ViewContext,
@@ -50,7 +48,7 @@ where
     RowSelectKey: PersistedKey<Value = Option<String>>,
     RowToggleKey: PersistedKey<Value = bool>,
 {
-    emitter_id: EmitterId,
+    emitter: Emitter<SaveRecipeTableOverride>,
     select: Component<
         PersistedLazy<
             RowSelectKey,
@@ -88,7 +86,7 @@ where
             .subscribe([SelectStateEventType::Toggle])
             .build();
         Self {
-            emitter_id: EmitterId::new(),
+            emitter: Default::default(),
             select: PersistedLazy::new(select_key, select).into(),
         }
     }
@@ -126,7 +124,7 @@ where
                     // Consume the event even if we have no rows, for
                     // consistency
                     if let Some(selected_row) = self.select.data().selected() {
-                        selected_row.open_edit_modal(self.handle());
+                        selected_row.open_edit_modal(self.emitter);
                     }
                 }
                 Action::Reset => {
@@ -138,13 +136,13 @@ where
                 }
                 _ => propagate.set(),
             })
-            .emitted(self.select.handle(), |event| {
+            .emitted(self.select.to_emitter(), |event| {
                 if let SelectStateEvent::Toggle(index) = event {
                     self.select.data_mut().get_mut()[index].toggle();
                 }
             })
             .emitted(
-                self.handle(),
+                self.emitter,
                 |SaveRecipeTableOverride { row_index, value }| {
                     // The row we're modifying *should* still be the selected
                     // row, because it shouldn't be possible to change the
@@ -196,16 +194,14 @@ where
 }
 
 /// Emit events to ourselves for override editing
-impl<RowSelectKey, RowToggleKey> Emitter
+impl<RowSelectKey, RowToggleKey> ToEmitter<SaveRecipeTableOverride>
     for RecipeFieldTable<RowSelectKey, RowToggleKey>
 where
     RowSelectKey: PersistedKey<Value = Option<String>>,
     RowToggleKey: PersistedKey<Value = bool>,
 {
-    type Emitted = SaveRecipeTableOverride;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+    fn to_emitter(&self) -> Emitter<SaveRecipeTableOverride> {
+        self.emitter
     }
 }
 
@@ -274,9 +270,9 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
     }
 
     /// Open a modal to create or edit the value's temporary override
-    fn open_edit_modal(&self, emitter: EmitterHandle<SaveRecipeTableOverride>) {
+    fn open_edit_modal(&self, emitter: Emitter<SaveRecipeTableOverride>) {
         let index = self.index;
-        ViewContext::open_modal(TextBoxModal::new(
+        TextBoxModal::new(
             format!("Edit value for {}", self.key),
             TextBox::default()
                 // Edit as a raw template
@@ -289,7 +285,8 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
                     value,
                 });
             },
-        ));
+        )
+        .open();
     }
 
     /// Override the value template and re-render the preview

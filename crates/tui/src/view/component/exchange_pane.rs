@@ -10,7 +10,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         util::persistence::PersistedLazy,
         RequestState,
     },
@@ -36,7 +36,7 @@ use strum::{EnumCount, EnumIter};
 /// new request is selected.
 #[derive(Debug)]
 pub struct ExchangePane {
-    emitter_id: EmitterId,
+    emitter: Emitter<ExchangePaneEvent>,
     tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
     state: State,
 }
@@ -47,7 +47,7 @@ impl ExchangePane {
         selected_recipe_kind: Option<RecipeNodeType>,
     ) -> Self {
         Self {
-            emitter_id: Default::default(),
+            emitter: Default::default(),
             tabs: Default::default(),
             state: State::new(selected_request, selected_recipe_kind),
         }
@@ -57,7 +57,7 @@ impl ExchangePane {
 impl EventHandler for ExchangePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event.opt().action(|action, propagate| match action {
-            Action::LeftClick => self.emit(ExchangePaneEvent::Click),
+            Action::LeftClick => self.emitter.emit(ExchangePaneEvent::Click),
             _ => propagate.set(),
         })
     }
@@ -134,11 +134,9 @@ impl Draw for ExchangePane {
 }
 
 /// Notify parent when this pane is clicked
-impl Emitter for ExchangePane {
-    type Emitted = ExchangePaneEvent;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+impl ToEmitter<ExchangePaneEvent> for ExchangePane {
+    fn to_emitter(&self) -> Emitter<ExchangePaneEvent> {
+        self.emitter
     }
 }
 

@@ -2,16 +2,15 @@ use crate::{
     context::TuiContext,
     view::{
         common::{
-            actions::ActionsModal,
+            actions::{IntoMenuActions, MenuAction},
             list::List,
-            modal::ModalHandle,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
             Pane,
         },
         component::recipe_pane::RecipeMenuAction,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
         util::persistence::{Persisted, PersistedLazy},
         Component, ViewContext,
@@ -43,7 +42,10 @@ use std::collections::HashSet;
 /// implementation.
 #[derive(Debug)]
 pub struct RecipeListPane {
-    emitter_id: EmitterId,
+    /// Emitter for the on-click event, to focus the pane
+    click_emitter: Emitter<RecipeListPaneEvent>,
+    /// Emitter for menu actions, to be handled by our parent
+    actions_emitter: Emitter<RecipeMenuAction>,
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
@@ -61,14 +63,7 @@ pub struct RecipeListPane {
 
     filter: Component<TextBox>,
     filter_focused: bool,
-
-    actions_handle: ModalHandle<ActionsModal<RecipeMenuAction>>,
 }
-
-/// Persisted key for the ID of the selected recipe
-#[derive(Debug, Serialize, PersistedKey)]
-#[persisted(Option<RecipeId>)]
-struct SelectedRecipeKey;
 
 impl RecipeListPane {
     pub fn new(recipes: &RecipeTree) -> Self {
@@ -86,12 +81,12 @@ impl RecipeListPane {
         let filter =
             TextBox::default().placeholder(format!("{binding} to filter"));
         Self {
-            emitter_id: EmitterId::new(),
+            click_emitter: Default::default(),
+            actions_emitter: Default::default(),
             select: select.into(),
             collapsed,
             filter: filter.into(),
             filter_focused: false,
-            actions_handle: ModalHandle::default(),
         }
     }
 
@@ -162,7 +157,9 @@ impl EventHandler for RecipeListPane {
         event
             .opt()
             .action(|action, propagate| match action {
-                Action::LeftClick => self.emit(RecipeListPaneEvent::Click),
+                Action::LeftClick => {
+                    self.click_emitter.emit(RecipeListPaneEvent::Click)
+                }
                 Action::Left => {
                     self.set_selected_collapsed(CollapseState::Collapse);
                 }
@@ -172,31 +169,9 @@ impl EventHandler for RecipeListPane {
                 Action::Search => {
                     self.filter_focused = true;
                 }
-                Action::OpenActions => {
-                    let recipe = self
-                        .select
-                        .data()
-                        .selected()
-                        .filter(|node| node.is_recipe());
-                    let has_body = recipe
-                        .map(|recipe| {
-                            ViewContext::collection()
-                                .recipes
-                                .get_recipe(&recipe.id)
-                                .and_then(|recipe| recipe.body.as_ref())
-                                .is_some()
-                        })
-                        .unwrap_or(false);
-                    self.actions_handle.open(ActionsModal::new(
-                        RecipeMenuAction::disabled_actions(
-                            recipe.is_some(),
-                            has_body,
-                        ),
-                    ));
-                }
                 _ => propagate.set(),
             })
-            .emitted(self.select.handle(), |event| match event {
+            .emitted(self.select.to_emitter(), |event| match event {
                 SelectStateEvent::Select(_) => {
                     // When highlighting a new recipe, load its most recent
                     // request from the DB. If a recipe isn't selected, this
@@ -208,17 +183,17 @@ impl EventHandler for RecipeListPane {
                     self.set_selected_collapsed(CollapseState::Toggle);
                 }
             })
-            .emitted(self.filter.handle(), |event| match event {
+            .emitted(self.filter.to_emitter(), |event| match event {
                 TextBoxEvent::Focus => self.filter_focused = true,
                 TextBoxEvent::Change => self.rebuild_select_state(),
                 TextBoxEvent::Cancel | TextBoxEvent::Submit => {
                     self.filter_focused = false
                 }
             })
-            .emitted(self.actions_handle, |menu_action| {
-                // Menu actions are handled by the parent, so forward them
-                self.emit(RecipeListPaneEvent::MenuAction(menu_action))
-            })
+    }
+
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        RecipeMenuAction::into_actions(self)
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -264,19 +239,51 @@ impl Draw for RecipeListPane {
 }
 
 /// Notify parent when this pane is clicked
-impl Emitter for RecipeListPane {
-    type Emitted = RecipeListPaneEvent;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+impl ToEmitter<RecipeListPaneEvent> for RecipeListPane {
+    fn to_emitter(&self) -> Emitter<RecipeListPaneEvent> {
+        self.click_emitter
     }
 }
+
+/// Notify parent when one of this pane's actions is selected
+impl ToEmitter<RecipeMenuAction> for RecipeListPane {
+    fn to_emitter(&self) -> Emitter<RecipeMenuAction> {
+        self.actions_emitter
+    }
+}
+
+impl IntoMenuActions<RecipeListPane> for RecipeMenuAction {
+    fn enabled(&self, data: &RecipeListPane) -> bool {
+        let recipe = data
+            .select
+            .data()
+            .selected()
+            .filter(|node| node.is_recipe());
+        match self {
+            Self::CopyUrl | Self::CopyCurl => recipe.is_some(),
+            // Check if the recipe has a body
+            Self::ViewBody | Self::CopyBody => recipe
+                .map(|recipe| {
+                    ViewContext::collection()
+                        .recipes
+                        .get_recipe(&recipe.id)
+                        .and_then(|recipe| recipe.body.as_ref())
+                        .is_some()
+                })
+                .unwrap_or(false),
+        }
+    }
+}
+
+/// Persisted key for the ID of the selected recipe
+#[derive(Debug, Serialize, PersistedKey)]
+#[persisted(Option<RecipeId>)]
+struct SelectedRecipeKey;
 
 /// Emitted event type for the recipe list pane
 #[derive(Debug)]
 pub enum RecipeListPaneEvent {
     Click,
-    MenuAction(RecipeMenuAction),
 }
 
 /// Simplified version of [RecipeNode], to be used in the display tree. This

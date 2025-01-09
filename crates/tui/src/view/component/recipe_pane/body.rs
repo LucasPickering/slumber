@@ -10,7 +10,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::Identified,
         Component, ViewContext,
     },
@@ -127,7 +127,7 @@ impl Draw for RecipeBodyDisplay {
 
 #[derive(Debug)]
 pub struct RawBody {
-    emitter_id: EmitterId,
+    emitter: Emitter<SaveBodyOverride>,
     body: RecipeTemplate,
     text_window: Component<TextWindow>,
 }
@@ -139,7 +139,7 @@ impl RawBody {
         content_type: Option<ContentType>,
     ) -> Self {
         Self {
-            emitter_id: EmitterId::new(),
+            emitter: Default::default(),
             body: RecipeTemplate::new(
                 RecipeOverrideKey::body(recipe_id),
                 template,
@@ -166,7 +166,7 @@ impl RawBody {
             return;
         };
 
-        let emitter = self.handle();
+        let emitter = self.emitter;
         ViewContext::send_message(Message::FileEdit {
             path,
             on_complete: Box::new(move |path| {
@@ -217,7 +217,7 @@ impl EventHandler for RawBody {
                 Action::Reset => self.body.reset_override(),
                 _ => propagate.set(),
             })
-            .emitted(self.handle(), |SaveBodyOverride(path)| {
+            .emitted(self.emitter, |SaveBodyOverride(path)| {
                 self.load_override(&path)
             })
     }
@@ -254,11 +254,9 @@ impl Draw for RawBody {
 }
 
 /// Emit events to ourselves for override editing
-impl Emitter for RawBody {
-    type Emitted = SaveBodyOverride;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+impl ToEmitter<SaveBodyOverride> for RawBody {
+    fn to_emitter(&self) -> Emitter<SaveBodyOverride> {
+        self.emitter
     }
 }
 

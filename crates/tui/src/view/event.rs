@@ -4,11 +4,12 @@
 use crate::{
     util::Flag,
     view::{
-        common::modal::Modal, context::UpdateContext, state::Notification,
+        common::{actions::MenuAction, modal::Modal},
+        context::UpdateContext,
+        state::Notification,
         Component, ViewContext,
     },
 };
-use derive_more::derive::Display;
 use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
 use slumber_config::Action;
 use slumber_core::http::RequestId;
@@ -37,6 +38,15 @@ pub trait EventHandler {
     /// matching methods defined by [OptionEvent].
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         Some(event)
+    }
+
+    /// Provide a list of actions that are accessible from the actions menu.
+    /// This list may be static (e.g. determined from an enum) or dynamic. When
+    /// the user opens the actions menu, all available actions for all
+    /// **focused** components will be collected and show in the menu. If an
+    /// action is selected, an event will be emitted with that action value.
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        Vec::new()
     }
 
     /// Get **all** children of this component. This includes children that are
@@ -73,11 +83,19 @@ impl<T: EventHandler> EventHandler for Option<T> {
         }
     }
 
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        if let Some(inner) = &self {
+            inner.menu_actions()
+        } else {
+            Vec::new()
+        }
+    }
+
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         if let Some(inner) = self.as_mut() {
             inner.children()
         } else {
-            vec![]
+            Vec::new()
         }
     }
 }
@@ -250,7 +268,8 @@ pub enum Event {
     /// makes sure this will only be consumed by the intended recipient. Use
     /// [Emitter::emitted] to match on and consume this event type.
     Emitted {
-        emitter: EmitterId,
+        /// Who emitted this event?
+        emitter_id: EmitterId,
         /// Store the type name for better debug messages
         emitter_type: &'static str,
         event: Box<dyn LocalEvent>,
@@ -281,11 +300,9 @@ pub trait OptionEvent {
     /// Typically you'll need to pass a handle for the emitter here, in order
     /// to detach the emitter's lifetime from `self`, so that `self` can be used
     /// in the lambda.
-    fn emitted<T: Emitter>(
-        self,
-        emitter: T,
-        f: impl FnOnce(T::Emitted),
-    ) -> Self;
+    fn emitted<E>(self, emitter: Emitter<E>, f: impl FnOnce(E)) -> Self
+    where
+        E: LocalEvent;
 }
 
 impl OptionEvent for Option<Event> {
@@ -317,11 +334,10 @@ impl OptionEvent for Option<Event> {
         }
     }
 
-    fn emitted<T: Emitter>(
-        self,
-        emitter: T,
-        f: impl FnOnce(T::Emitted),
-    ) -> Self {
+    fn emitted<E>(self, emitter: Emitter<E>, f: impl FnOnce(E)) -> Self
+    where
+        E: LocalEvent,
+    {
         let Some(event) = self else {
             return self;
         };
@@ -360,77 +376,124 @@ impl dyn LocalEvent {
 
 /// An emitter generates events of a particular type. This is used for
 /// components that need to respond to actions performed on their children, e.g.
-/// listen to select and submit events on a child list.
-pub trait Emitter {
-    /// The type of event emitted by this emitter. This will be converted into
-    /// a trait object when pushed onto the event queue, and converted back by
-    /// [Self::emitted]
-    type Emitted: LocalEvent;
+/// listen to select and submit events on a child list. It can also be used for
+/// components to communicate with themselves from async actions, e.g. reporting
+/// back the result of a modal interaction.
+///
+/// It would be good to impl `!Send` for this type because this relies on the
+/// ViewContext and therefore shouldn't be passed off the main thread, but there
+/// is one use case where it needs to be Send to be passed to the main loop via
+/// Message without actually changing threads.
+#[derive(Debug)]
+pub struct Emitter<T: ?Sized> {
+    id: EmitterId,
+    phantom: PhantomData<T>,
+}
 
-    /// Return a unique ID for this emitter. Unlike components, where the
-    /// `Component` wrapper holds the ID, emitters are responsible for holding
-    /// their own IDs. This makes the ergonomics much simpler, and allows for
-    /// emitters to be used in contexts where a component wrapper doesn't exist.
-    fn id(&self) -> EmitterId;
-
-    /// Get the name of the implementing type, for logging/debugging
-    fn type_name(&self) -> &'static str {
-        any::type_name::<Self>()
+impl<T: ?Sized> Emitter<T> {
+    fn new(id: EmitterId) -> Self {
+        Self {
+            id,
+            phantom: PhantomData,
+        }
     }
+}
 
+impl<T: Sized + LocalEvent> Emitter<T> {
     /// Push an event onto the event queue
-    fn emit(&self, event: Self::Emitted) {
+    pub fn emit(&self, event: T) {
         ViewContext::push_event(Event::Emitted {
-            emitter: self.id(),
-            emitter_type: self.type_name(),
+            emitter_id: self.id,
+            emitter_type: any::type_name::<T>(),
             event: Box::new(event),
         });
     }
 
-    /// Get a lightweight version of this emitter, with the same type and ID but
-    /// datched from this lifetime. Useful for both emitting and consuming
-    /// emissions from across task boundaries, modals, etc.
-    fn handle(&self) -> EmitterHandle<Self::Emitted> {
-        EmitterHandle {
-            id: self.id(),
-            type_name: self.type_name(),
-            phantom: PhantomData,
-        }
-    }
-
     /// Check if an event is an emitted event from this emitter, and return
     /// the emitted data if so
-    fn emitted(&self, event: Event) -> Result<Self::Emitted, Event> {
+    pub fn emitted(&self, event: Event) -> Result<T, Event> {
         match event {
             Event::Emitted {
-                emitter,
+                emitter_id,
                 event,
                 emitter_type,
-            } if emitter == self.id() => {
+            } if emitter_id == self.id => {
                 // This cast should be infallible because emitter IDs are unique
                 // and each emitter can only emit one type
-                Ok(event.downcast().unwrap_or_else(|| {
+                Ok(event.downcast::<T>().unwrap_or_else(|| {
                     panic!(
-                        "Incorrect emitted event type for emitter `{emitter}`. \
-                        Expected type {}, received type {emitter_type}",
-                        any::type_name::<Self::Emitted>()
+                        "Incorrect emitted event type for emitter \
+                        `{emitter_id}`. Expected type {}, received type \
+                        {emitter_type}",
+                        any::type_name::<T>()
                     )
                 }))
             }
             _ => Err(event),
         }
     }
+
+    /// Cast this to an emitter of `dyn LocalEvent`, so that it can emit events
+    /// of any type. This should be used when emitting events of multiple types
+    /// from the same spot. The original type must be known at consumption time,
+    /// so [Self::emitted] can be used to downcast back.
+    pub fn upcast(self) -> Emitter<dyn LocalEvent> {
+        Emitter {
+            id: self.id,
+            phantom: PhantomData,
+        }
+    }
 }
 
-impl<T> Emitter for T
+impl Emitter<dyn LocalEvent> {
+    /// Push a type-erased event onto the event queue
+    pub fn emit(&self, event: Box<dyn LocalEvent>) {
+        ViewContext::push_event(Event::Emitted {
+            emitter_id: self.id,
+            // We lose the original type name :(
+            emitter_type: any::type_name_of_val(&event),
+            // The event is already boxed, so do *not* double box it
+            event,
+        });
+    }
+}
+
+// Manual impls needed to bypass bounds
+impl<T> Copy for Emitter<T> {}
+
+impl<T> Clone for Emitter<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Default for Emitter<T> {
+    fn default() -> Self {
+        Self::new(EmitterId::new())
+    }
+}
+
+/// An emitter generates events of a particular type. This is used for
+/// components that need to respond to actions performed on their children, e.g.
+/// listen to select and submit events on a child list.
+///
+/// In most cases a component will emit only one type of event and therefore
+/// one impl of this trait, but it's possible for a single component to have
+/// multiple implementations. In the case of multiple implementations, the
+/// component must store a different emitter for each implementation, since each
+/// emitter is bound to a particular event type.
+pub trait ToEmitter<E: LocalEvent> {
+    fn to_emitter(&self) -> Emitter<E>;
+}
+
+impl<T, E> ToEmitter<E> for T
 where
     T: Deref,
-    T::Target: Emitter,
+    T::Target: ToEmitter<E>,
+    E: LocalEvent,
 {
-    type Emitted = <<T as Deref>::Target as Emitter>::Emitted;
-
-    fn id(&self) -> EmitterId {
-        self.deref().id()
+    fn to_emitter(&self) -> Emitter<E> {
+        self.deref().to_emitter()
     }
 }
 
@@ -439,61 +502,11 @@ where
 /// instance, so that events from multiple instances of the same component type
 /// cannot be mixed up. This should never be compared directly; use
 /// [Emitter::emitted] instead.
-#[derive(Copy, Clone, Debug, Display, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Debug, derive_more::Display, Eq, Hash, PartialEq)]
 pub struct EmitterId(Uuid);
 
 impl EmitterId {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self(Uuid::new_v4())
-    }
-
-    /// Empty emitted ID, to be used when no emitter is present
-    pub fn nil() -> Self {
-        Self(Uuid::nil())
-    }
-}
-
-/// Generate a new random ID
-impl Default for EmitterId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// A lightweight copy of an emitter that can be passed between threads or
-/// callbacks. This has the same emitting capability as the source emitter
-/// because it contains its ID and is bound to its emitted event type. Generate
-/// via [Emitter::handle].
-///
-/// It would be good to impl `!Send` for this type because it shouldn't be
-/// passed between threads, but there is one use case where it needs to be Send
-/// to be passed to the main loop via Message, but doesn't actually change
-/// threads. !Send is more correct because if you try to emit from another
-/// thread it'll panic, because the event queue isn't available there.
-#[derive(Debug)]
-pub struct EmitterHandle<T> {
-    id: EmitterId,
-    type_name: &'static str,
-    phantom: PhantomData<T>,
-}
-
-// Manual impls needed to bypass bounds
-impl<T> Copy for EmitterHandle<T> {}
-
-impl<T> Clone for EmitterHandle<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<T: LocalEvent> Emitter for EmitterHandle<T> {
-    type Emitted = T;
-
-    fn id(&self) -> EmitterId {
-        self.id
-    }
-
-    fn type_name(&self) -> &'static str {
-        self.type_name
     }
 }

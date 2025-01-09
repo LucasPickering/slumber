@@ -5,7 +5,6 @@ use crate::{
         component::RecipeOverrideStore,
         event::{Event, EventQueue},
         state::Notification,
-        IntoModal,
     },
 };
 use slumber_core::{collection::Collection, db::CollectionDatabase};
@@ -125,11 +124,6 @@ impl ViewContext {
     /// Pop an event off the event queue
     pub fn pop_event() -> Option<Event> {
         Self::with_mut(|context| context.event_queue.pop())
-    }
-
-    /// Open a modal
-    pub fn open_modal(modal: impl 'static + IntoModal) {
-        Self::push_event(Event::OpenModal(Box::new(modal.into_modal())));
     }
 
     /// Queue an event to send an informational notification to the user

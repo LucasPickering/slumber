@@ -5,15 +5,16 @@ use crate::{
     util::{run_command, spawn_local},
     view::{
         common::{
+            modal::Modal,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::Identified,
         util::{highlight, str_to_text},
-        Component, ViewContext,
+        Component, IntoModal, ViewContext,
     },
 };
 use anyhow::Context;
@@ -36,7 +37,7 @@ use tokio::task::AbortHandle;
 /// The query state can be persisted by persisting this entire container.
 #[derive(Debug)]
 pub struct QueryableBody {
-    emitter_id: EmitterId,
+    emitter: Emitter<QueryComplete>,
     response: Arc<ResponseRecord>,
 
     /// Which command box, if any, are we typing in?
@@ -92,7 +93,7 @@ impl QueryableBody {
             TextState::new(response.content_type(), &response.body, true);
 
         let mut slf = Self {
-            emitter_id: EmitterId::new(),
+            emitter: Default::default(),
             response,
             command_focus: CommandFocus::None,
             default_query,
@@ -163,7 +164,7 @@ impl QueryableBody {
             // Clone is cheap because Bytes uses refcounting
             let body = self.response.body.bytes().clone();
             let command = command.to_owned();
-            let emitter = self.handle();
+            let emitter = self.emitter;
             let abort_handle =
                 self.spawn_command(command, body, move |_, result| {
                     emitter.emit(QueryComplete(result))
@@ -195,7 +196,7 @@ impl QueryableBody {
             // We provide feedback via a global mechanism in both cases, so we
             // don't need an emitter here
             Ok(_) => ViewContext::notify(format!("`{command}` succeeded")),
-            Err(error) => ViewContext::open_modal(error),
+            Err(error) => error.into_modal().open(),
         });
     }
 
@@ -226,7 +227,7 @@ impl EventHandler for QueryableBody {
                 Action::Export => self.focus(CommandFocus::Export),
                 _ => propagate.set(),
             })
-            .emitted(self.handle(), |QueryComplete(result)| match result {
+            .emitted(self.emitter, |QueryComplete(result)| match result {
                 Ok(stdout) => {
                     self.query_state = QueryState::Ok;
                     self.text_state = TextState::new(
@@ -253,7 +254,7 @@ impl EventHandler for QueryableBody {
                     ));
                 }
             })
-            .emitted(self.query_text_box.handle(), |event| match event {
+            .emitted(self.query_text_box.to_emitter(), |event| match event {
                 TextBoxEvent::Focus => self.focus(CommandFocus::Query),
                 TextBoxEvent::Change => self.update_query(),
                 TextBoxEvent::Cancel => {
@@ -268,7 +269,7 @@ impl EventHandler for QueryableBody {
                     self.focus(CommandFocus::None);
                 }
             })
-            .emitted(self.export_text_box.handle(), |event| match event {
+            .emitted(self.export_text_box.to_emitter(), |event| match event {
                 TextBoxEvent::Focus => self.focus(CommandFocus::Export),
                 TextBoxEvent::Change => {}
                 TextBoxEvent::Cancel => {
@@ -364,11 +365,9 @@ impl PersistedContainer for QueryableBody {
     }
 }
 
-impl Emitter for QueryableBody {
-    type Emitted = QueryComplete;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+impl ToEmitter<QueryComplete> for QueryableBody {
+    fn to_emitter(&self) -> Emitter<QueryComplete> {
+        self.emitter
     }
 }
 

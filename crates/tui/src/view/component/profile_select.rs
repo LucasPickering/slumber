@@ -13,7 +13,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::{
             select::{SelectState, SelectStateEvent, SelectStateEventType},
             StateCell,
@@ -48,7 +48,7 @@ pub struct ProfilePane {
     /// actually selecting it.
     selected_profile_id: Persisted<SelectedProfileKey>,
     /// Handle events from the opened modal
-    modal_handle: ModalHandle<ProfileListModal>,
+    modal_handle: ModalHandle<SelectProfile>,
 }
 
 /// Persisted key for the ID of the selected profile
@@ -104,12 +104,16 @@ impl EventHandler for ProfilePane {
                 Action::LeftClick => self.open_modal(),
                 _ => propagate.set(),
             })
-            .emitted(self.modal_handle, |SelectProfile(profile_id)| {
-                // Handle message from the modal
-                *self.selected_profile_id.get_mut() = Some(profile_id.clone());
-                // Refresh template previews
-                ViewContext::push_event(Event::HttpSelectRequest(None));
-            })
+            .emitted(
+                self.modal_handle.to_emitter(),
+                |SelectProfile(profile_id)| {
+                    // Handle message from the modal
+                    *self.selected_profile_id.get_mut() =
+                        Some(profile_id.clone());
+                    // Refresh template previews
+                    ViewContext::push_event(Event::HttpSelectRequest(None));
+                },
+            )
     }
 }
 
@@ -146,7 +150,7 @@ impl Draw for ProfilePane {
 /// fields
 #[derive(Debug)]
 struct ProfileListModal {
-    emitter_id: EmitterId,
+    emitter: Emitter<SelectProfile>,
     select: Component<SelectState<ProfileListItem>>,
     detail: Component<ProfileDetail>,
 }
@@ -164,7 +168,7 @@ impl ProfileListModal {
             .subscribe([SelectStateEventType::Submit])
             .build();
         Self {
-            emitter_id: EmitterId::new(),
+            emitter: Default::default(),
             select: select.into(),
             detail: Default::default(),
         }
@@ -183,13 +187,13 @@ impl Modal for ProfileListModal {
 
 impl EventHandler for ProfileListModal {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().emitted(self.select.handle(), |event| {
+        event.opt().emitted(self.select.to_emitter(), |event| {
             // Loaded request depends on the profile, so refresh on change
             if let SelectStateEvent::Submit(index) = event {
                 // Close modal first so the parent can consume the emitted event
                 self.close(true);
                 let profile_id = self.select.data()[index].id.clone();
-                self.emit(SelectProfile(profile_id));
+                self.emitter.emit(SelectProfile(profile_id));
             }
         })
     }
@@ -235,11 +239,9 @@ impl Draw for ProfileListModal {
     }
 }
 
-impl Emitter for ProfileListModal {
-    type Emitted = SelectProfile;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+impl ToEmitter<SelectProfile> for ProfileListModal {
+    fn to_emitter(&self) -> Emitter<SelectProfile> {
+        self.emitter
     }
 }
 

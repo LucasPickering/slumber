@@ -5,13 +5,13 @@ use crate::{
     message::Message,
     view::{
         common::{
-            actions::ActionsModal, header_table::HeaderTable,
-            modal::ModalHandle,
+            actions::{IntoMenuActions, MenuAction},
+            header_table::HeaderTable,
         },
         component::queryable_body::QueryableBody,
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Child, Event, EventHandler, OptionEvent},
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         util::{persistence::PersistedLazy, view_text},
         Component, ViewContext,
     },
@@ -20,20 +20,19 @@ use derive_more::Display;
 use persisted::PersistedKey;
 use ratatui::Frame;
 use serde::Serialize;
-use slumber_config::Action;
 use slumber_core::{collection::RecipeId, http::ResponseRecord};
 use std::sync::Arc;
-use strum::{EnumCount, EnumIter};
+use strum::EnumIter;
 
 /// Display response body
 #[derive(Debug)]
 pub struct ResponseBodyView {
+    actions_emitter: Emitter<ResponseBodyMenuAction>,
     response: Arc<ResponseRecord>,
     /// The presentable version of the response body, which may or may not
     /// match the response body. We apply transformations such as filter,
     /// prettification, or in the case of binary responses, a hex dump.
     body: Component<PersistedLazy<ResponseQueryKey, QueryableBody>>,
-    actions_handle: ModalHandle<ActionsModal<BodyMenuAction>>,
 }
 
 impl ResponseBodyView {
@@ -49,21 +48,17 @@ impl ResponseBodyView {
         )
         .into();
         Self {
+            actions_emitter: Default::default(),
             response,
             body,
-            actions_handle: Default::default(),
         }
     }
 }
 
 /// Items in the actions popup menu for the Body
-#[derive(
-    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
-)]
-enum BodyMenuAction {
-    #[default]
-    #[display("Edit Collection")]
-    EditCollection,
+#[derive(Copy, Clone, Debug, Display, EnumIter)]
+#[allow(clippy::enum_variant_names)]
+enum ResponseBodyMenuAction {
     #[display("View Body")]
     ViewBody,
     #[display("Copy Body")]
@@ -72,7 +67,13 @@ enum BodyMenuAction {
     SaveBody,
 }
 
-impl ToStringGenerate for BodyMenuAction {}
+impl IntoMenuActions<ResponseBodyView> for ResponseBodyMenuAction {
+    fn enabled(&self, _: &ResponseBodyView) -> bool {
+        match self {
+            Self::ViewBody | Self::CopyBody | Self::SaveBody => true,
+        }
+    }
+}
 
 /// Persisted key for response body JSONPath query text box
 #[derive(Debug, Serialize, PersistedKey)]
@@ -81,25 +82,15 @@ struct ResponseQueryKey(RecipeId);
 
 impl EventHandler for ResponseBodyView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event
-            .opt()
-            .action(|action, propagate| match action {
-                Action::OpenActions => {
-                    self.actions_handle.open(ActionsModal::default())
-                }
-                _ => propagate.set(),
-            })
-            .emitted(self.actions_handle, |menu_action| match menu_action {
-                BodyMenuAction::EditCollection => {
-                    ViewContext::send_message(Message::CollectionEdit)
-                }
-                BodyMenuAction::ViewBody => {
+        event.opt().emitted(self.actions_emitter, |menu_action| {
+            match menu_action {
+                ResponseBodyMenuAction::ViewBody => {
                     view_text(
                         self.body.data().visible_text(),
                         self.response.mime(),
                     );
                 }
-                BodyMenuAction::CopyBody => {
+                ResponseBodyMenuAction::CopyBody => {
                     // Use whatever text is visible to the user. This differs
                     // from saving the body, because we can't copy binary
                     // content, so if the file is binary we'll copy the hexcode
@@ -108,14 +99,19 @@ impl EventHandler for ResponseBodyView {
                         self.body.data().visible_text().to_string(),
                     ));
                 }
-                BodyMenuAction::SaveBody => {
+                ResponseBodyMenuAction::SaveBody => {
                     // This will trigger a modal to ask the user for a path
                     ViewContext::send_message(Message::SaveResponseBody {
                         request_id: self.response.id,
                         data: self.body.data().modified_text(),
                     });
                 }
-            })
+            }
+        })
+    }
+
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        ResponseBodyMenuAction::into_actions(self)
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -126,6 +122,12 @@ impl EventHandler for ResponseBodyView {
 impl Draw for ResponseBodyView {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         self.body.draw(frame, (), metadata.area(), true);
+    }
+}
+
+impl ToEmitter<ResponseBodyMenuAction> for ResponseBodyView {
+    fn to_emitter(&self) -> Emitter<ResponseBodyMenuAction> {
+        self.actions_emitter
     }
 }
 
@@ -216,12 +218,8 @@ mod tests {
 
         // Open actions modal and select the copy action
         component
-            .send_keys([
-                KeyCode::Char('x'),
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Enter,
-            ])
+            // Note: Edit Collections action isn't visible here
+            .send_keys([KeyCode::Char('x'), KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
         let body = assert_matches!(
@@ -311,7 +309,7 @@ mod tests {
         component
             .send_keys([
                 KeyCode::Char('x'),
-                KeyCode::Down,
+                // Note: Edit Collections action isn't visible here
                 KeyCode::Down,
                 KeyCode::Down,
                 KeyCode::Enter,

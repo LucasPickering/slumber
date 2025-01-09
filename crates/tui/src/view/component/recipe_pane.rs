@@ -10,11 +10,14 @@ use crate::{
     context::TuiContext,
     message::RequestConfig,
     view::{
-        common::{actions::ActionsModal, modal::ModalHandle, Pane},
+        common::{
+            actions::{IntoMenuActions, MenuAction},
+            Pane,
+        },
         component::recipe_pane::recipe::RecipeDisplay,
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate, ToStringGenerate},
-        event::{Child, Emitter, EmitterId, Event, EventHandler, OptionEvent},
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::StateCell,
         Component, ViewContext,
     },
@@ -33,17 +36,19 @@ use slumber_core::{
     util::doc_link,
 };
 use std::cell::Ref;
-use strum::{EnumCount, EnumIter};
+use strum::EnumIter;
 
 /// Display for the current recipe node, which could be a recipe, a folder, or
 /// empty
 #[derive(Debug, Default)]
 pub struct RecipePane {
-    emitter_id: EmitterId,
+    /// Emitter for the on-click event, to focus the pane
+    click_emitter: Emitter<RecipePaneEvent>,
+    /// Emitter for menu actions, to be handled by our parent
+    actions_emitter: Emitter<RecipeMenuAction>,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
     recipe_state: StateCell<RecipeStateKey, Component<Option<RecipeDisplay>>>,
-    actions_handle: ModalHandle<ActionsModal<RecipeMenuAction>>,
 }
 
 #[derive(Clone)]
@@ -110,27 +115,16 @@ impl RecipePane {
 
 impl EventHandler for RecipePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event
-            .opt()
-            .action(|action, propagate| match action {
-                Action::LeftClick => self.emit(RecipePaneEvent::Click),
-                Action::OpenActions => {
-                    let state = self.recipe_state.get_mut();
-                    self.actions_handle.open(ActionsModal::new(
-                        RecipeMenuAction::disabled_actions(
-                            state.is_some(),
-                            state
-                                .and_then(|state| state.data().as_ref())
-                                .is_some_and(|state| state.has_body()),
-                        ),
-                    ))
-                }
-                _ => propagate.set(),
-            })
-            .emitted(self.actions_handle, |menu_action| {
-                // Menu actions are handled by the parent, so forward them
-                self.emit(RecipePaneEvent::MenuAction(menu_action));
-            })
+        event.opt().action(|action, propagate| match action {
+            Action::LeftClick => {
+                self.click_emitter.emit(RecipePaneEvent::Click)
+            }
+            _ => propagate.set(),
+        })
+    }
+
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        RecipeMenuAction::into_actions(self)
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -207,11 +201,17 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
     }
 }
 
-impl Emitter for RecipePane {
-    type Emitted = RecipePaneEvent;
+/// Notify parent when this pane is clicked
+impl ToEmitter<RecipePaneEvent> for RecipePane {
+    fn to_emitter(&self) -> Emitter<RecipePaneEvent> {
+        self.click_emitter
+    }
+}
 
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+/// Notify parent when one of this pane's actions is selected
+impl ToEmitter<RecipeMenuAction> for RecipePane {
+    fn to_emitter(&self) -> Emitter<RecipeMenuAction> {
+        self.actions_emitter
     }
 }
 
@@ -219,7 +219,6 @@ impl Emitter for RecipePane {
 #[derive(Debug)]
 pub enum RecipePaneEvent {
     Click,
-    MenuAction(RecipeMenuAction),
 }
 
 /// Template preview state will be recalculated when any of these fields change
@@ -231,13 +230,8 @@ struct RecipeStateKey {
 
 /// Items in the actions popup menu. This is also used by the recipe list
 /// component, so the action is handled in the parent.
-#[derive(
-    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
-)]
+#[derive(Copy, Clone, Debug, Display, EnumIter)]
 pub enum RecipeMenuAction {
-    #[default]
-    #[display("Edit Collection")]
-    EditCollection,
     #[display("Copy URL")]
     CopyUrl,
     #[display("Copy as cURL")]
@@ -248,24 +242,21 @@ pub enum RecipeMenuAction {
     CopyBody,
 }
 
-impl RecipeMenuAction {
-    pub fn disabled_actions(
-        has_recipe: bool,
-        has_body: bool,
-    ) -> &'static [Self] {
-        if has_recipe {
-            if has_body {
-                &[]
-            } else {
-                &[Self::CopyBody, Self::ViewBody]
+impl IntoMenuActions<RecipePane> for RecipeMenuAction {
+    fn enabled(&self, data: &RecipePane) -> bool {
+        let recipe = data.recipe_state.get().and_then(|state| {
+            Ref::filter_map(state, |state| state.data().as_ref()).ok()
+        });
+        match self {
+            // Enabled if we have any recipe
+            Self::CopyUrl | Self::CopyCurl => recipe.is_some(),
+            // Enabled if we have a body
+            Self::ViewBody | Self::CopyBody => {
+                recipe.is_some_and(|recipe| recipe.has_body())
             }
-        } else {
-            &[Self::CopyUrl, Self::CopyBody, Self::CopyCurl]
         }
     }
 }
-
-impl ToStringGenerate for RecipeMenuAction {}
 
 /// Render folder as a tree
 impl<'a> Generate for &'a Folder {

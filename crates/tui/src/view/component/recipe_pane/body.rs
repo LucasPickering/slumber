@@ -308,7 +308,14 @@ enum RawBodyMenuAction {
     Reset,
 }
 
-impl IntoMenuAction<RawBody> for RawBodyMenuAction {}
+impl IntoMenuAction<RawBody> for RawBodyMenuAction {
+    fn shortcut(&self, _: &RawBody) -> Option<Action> {
+        match self {
+            Self::Edit => Some(Action::Edit),
+            Self::Reset => Some(Action::Reset),
+        }
+    }
+}
 
 /// Local event to save a user's override body. Triggered from the on_complete
 /// callback when the user closes the editor.

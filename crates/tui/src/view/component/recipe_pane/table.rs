@@ -182,7 +182,7 @@ where
             RecipeTableMenuAction::Reset { noun: self.noun },
         ]
         .into_iter()
-        .map(MenuAction::with_data(self))
+        .map(MenuAction::with_data(self, self.actions_emitter))
         .collect()
     }
 
@@ -220,30 +220,6 @@ where
         };
         self.select
             .draw(frame, table.generate(), metadata.area(), true);
-    }
-}
-
-/// Emit events to ourselves for override editing
-impl<RowSelectKey, RowToggleKey> ToEmitter<SaveRecipeTableOverride>
-    for RecipeFieldTable<RowSelectKey, RowToggleKey>
-where
-    RowSelectKey: PersistedKey<Value = Option<String>>,
-    RowToggleKey: PersistedKey<Value = bool>,
-{
-    fn to_emitter(&self) -> Emitter<SaveRecipeTableOverride> {
-        self.override_emitter
-    }
-}
-
-/// Emit events from the actions menu back to us
-impl<RowSelectKey, RowToggleKey> ToEmitter<RecipeTableMenuAction>
-    for RecipeFieldTable<RowSelectKey, RowToggleKey>
-where
-    RowSelectKey: PersistedKey<Value = Option<String>>,
-    RowToggleKey: PersistedKey<Value = bool>,
-{
-    fn to_emitter(&self) -> Emitter<RecipeTableMenuAction> {
-        self.actions_emitter
     }
 }
 

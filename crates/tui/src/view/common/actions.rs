@@ -147,14 +147,16 @@ pub struct MenuAction {
 impl MenuAction {
     /// Get a mapping function to generate menu actions from some type. Useful
     /// for mapping an iterator of specific action types to this type.
-    pub fn with_data<Data, T>(data: &Data) -> impl '_ + Fn(T) -> Self
+    pub fn with_data<Data, T>(
+        data: &Data,
+        emitter: Emitter<T>,
+    ) -> impl '_ + Fn(T) -> Self
     where
-        Data: ToEmitter<T>,
         T: IntoMenuAction<Data>,
     {
-        |action| Self {
+        move |action| Self {
             name: action.to_string(),
-            emitter: data.to_emitter().upcast(),
+            emitter: emitter.upcast(),
             enabled: action.enabled(data),
             shortcut: action.shortcut(data),
             value: Box::new(action),
@@ -218,7 +220,7 @@ mod tests {
     impl EventHandler for Actionable {
         fn menu_actions(&self) -> Vec<MenuAction> {
             TestMenuAction::iter()
-                .map(MenuAction::with_data(self))
+                .map(MenuAction::with_data(&(), self.emitter))
                 .collect()
         }
     }
@@ -241,12 +243,12 @@ mod tests {
         Shortcutticated,
     }
 
-    impl IntoMenuAction<Actionable> for TestMenuAction {
-        fn enabled(&self, _: &Actionable) -> bool {
+    impl IntoMenuAction<()> for TestMenuAction {
+        fn enabled(&self, _: &()) -> bool {
             !matches!(self, Self::Disablify)
         }
 
-        fn shortcut(&self, _: &Actionable) -> Option<Action> {
+        fn shortcut(&self, _: &()) -> Option<Action> {
             match self {
                 Self::Shortcutticated => Some(Action::Edit),
                 _ => None,

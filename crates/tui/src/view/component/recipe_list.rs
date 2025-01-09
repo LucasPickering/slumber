@@ -195,7 +195,7 @@ impl EventHandler for RecipeListPane {
 
     fn menu_actions(&self) -> Vec<MenuAction> {
         RecipeMenuAction::iter()
-            .map(MenuAction::with_data(self))
+            .map(MenuAction::with_data(self, self.actions_emitter))
             .collect()
     }
 

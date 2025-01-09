@@ -13,7 +13,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent},
         state::Identified,
         Component, ViewContext,
     },
@@ -237,7 +237,7 @@ impl EventHandler for RawBody {
 
     fn menu_actions(&self) -> Vec<MenuAction> {
         RawBodyMenuAction::iter()
-            .map(MenuAction::with_data(self))
+            .map(MenuAction::with_data(self, self.actions_emitter))
             .collect()
     }
 
@@ -269,20 +269,6 @@ impl Draw for RawBody {
             area,
             true,
         );
-    }
-}
-
-/// Emit events to ourselves for override editing
-impl ToEmitter<SaveBodyOverride> for RawBody {
-    fn to_emitter(&self) -> Emitter<SaveBodyOverride> {
-        self.override_emitter
-    }
-}
-
-/// Emit events from the actions menu back to us
-impl ToEmitter<RawBodyMenuAction> for RawBody {
-    fn to_emitter(&self) -> Emitter<RawBodyMenuAction> {
-        self.actions_emitter
     }
 }
 

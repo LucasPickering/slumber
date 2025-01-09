@@ -15,7 +15,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent},
         state::fixed_select::FixedSelectState,
         ViewContext,
     },
@@ -130,7 +130,7 @@ impl EventHandler for AuthenticationDisplay {
 
     fn menu_actions(&self) -> Vec<MenuAction> {
         AuthenticationMenuAction::iter()
-            .map(MenuAction::with_data(self))
+            .map(MenuAction::with_data(self, self.actions_emitter))
             .collect()
     }
 
@@ -188,20 +188,6 @@ impl Draw for AuthenticationDisplay {
             title.push_span(Span::styled(" (edited)", styles.text.hint));
         }
         frame.render_widget(title, label_area);
-    }
-}
-
-/// Emit events to ourselves for override editing
-impl ToEmitter<SaveAuthenticationOverride> for AuthenticationDisplay {
-    fn to_emitter(&self) -> Emitter<SaveAuthenticationOverride> {
-        self.override_emitter
-    }
-}
-
-/// Emit events from the actions menu back to us
-impl ToEmitter<AuthenticationMenuAction> for AuthenticationDisplay {
-    fn to_emitter(&self) -> Emitter<AuthenticationMenuAction> {
-        self.actions_emitter
     }
 }
 

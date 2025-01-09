@@ -347,7 +347,7 @@ impl EventHandler for PrimaryView {
 
     fn menu_actions(&self) -> Vec<MenuAction> {
         GlobalMenuAction::iter()
-            .map(MenuAction::with_data(self))
+            .map(MenuAction::with_data(self, self.global_actions_emitter))
             .collect()
     }
 
@@ -408,12 +408,6 @@ impl Draw for PrimaryView {
             panes.exchange.area,
             panes.exchange.focus,
         );
-    }
-}
-
-impl ToEmitter<GlobalMenuAction> for PrimaryView {
-    fn to_emitter(&self) -> Emitter<GlobalMenuAction> {
-        self.global_actions_emitter
     }
 }
 

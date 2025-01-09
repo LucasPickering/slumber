@@ -11,7 +11,7 @@ use crate::{
         component::queryable_body::QueryableBody,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent},
         util::{persistence::PersistedLazy, view_text},
         Component, ViewContext,
     },
@@ -106,7 +106,7 @@ impl EventHandler for ResponseBodyView {
 
     fn menu_actions(&self) -> Vec<MenuAction> {
         ResponseBodyMenuAction::iter()
-            .map(MenuAction::with_data(self))
+            .map(MenuAction::with_data(self, self.actions_emitter))
             .collect()
     }
 
@@ -118,12 +118,6 @@ impl EventHandler for ResponseBodyView {
 impl Draw for ResponseBodyView {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         self.body.draw(frame, (), metadata.area(), true);
-    }
-}
-
-impl ToEmitter<ResponseBodyMenuAction> for ResponseBodyView {
-    fn to_emitter(&self) -> Emitter<ResponseBodyMenuAction> {
-        self.actions_emitter
     }
 }
 

@@ -9,7 +9,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent},
         state::Identified,
         util::{highlight, view_text},
         Component, ViewContext,
@@ -76,7 +76,7 @@ impl EventHandler for RequestView {
 
     fn menu_actions(&self) -> Vec<MenuAction> {
         RequestMenuAction::iter()
-            .map(MenuAction::with_data(self))
+            .map(MenuAction::with_data(self, self.actions_emitter))
             .collect()
     }
 
@@ -123,12 +123,6 @@ impl Draw for RequestView {
                 true,
             );
         }
-    }
-}
-
-impl ToEmitter<RequestMenuAction> for RequestView {
-    fn to_emitter(&self) -> Emitter<RequestMenuAction> {
-        self.actions_emitter
     }
 }
 

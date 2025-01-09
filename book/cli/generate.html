@@ -1,0 +1,227 @@
+<!DOCTYPE HTML>
+<html lang="en" class="sidebar-visible no-js oranda-dark">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>slumber generate - Slumber</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="Terminal-based HTTP client">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff" />
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+        <link rel="stylesheet" href="../oranda-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "oranda-dark" : "oranda-dark";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('orandamdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('orandamdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('orandamdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('no-js')
+            html.classList.remove('oranda-dark')
+            html.classList.add(theme);
+            html.classList.add('js');
+        </script>
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var html = document.querySelector('html');
+            var sidebar = 'hidden';
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            }
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="../install.html"><strong aria-hidden="true">2.</strong> Install</a></li><li class="chapter-item expanded "><a href="../getting_started.html"><strong aria-hidden="true">3.</strong> Getting Started</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../user_guide/key_concepts.html"><strong aria-hidden="true">4.</strong> Key Concepts</a></li><li class="chapter-item expanded "><a href="../user_guide/tui/index.html"><strong aria-hidden="true">5.</strong> Terminal User Interface (TUI)</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../user_guide/tui/editor.html"><strong aria-hidden="true">5.1.</strong> In-App Editing & File Viewing</a></li></ol></li><li class="chapter-item expanded "><a href="../user_guide/cli.html"><strong aria-hidden="true">6.</strong> Command Line Interface (CLI)</a></li><li class="chapter-item expanded "><a href="../user_guide/templates.html"><strong aria-hidden="true">7.</strong> Templates</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../user_guide/chains.html"><strong aria-hidden="true">7.1.</strong> Chains - Complex Template Values</a></li></ol></li><li class="chapter-item expanded "><a href="../user_guide/inheritance.html"><strong aria-hidden="true">8.</strong> Collection Reuse & Inheritance</a></li><li class="chapter-item expanded "><a href="../user_guide/filter_query.html"><strong aria-hidden="true">9.</strong> Data Filtering & Querying</a></li><li class="chapter-item expanded "><a href="../user_guide/import.html"><strong aria-hidden="true">10.</strong> Importing External Collections</a></li><li class="chapter-item expanded affix "><li class="part-title">CLI Commands</li><li class="chapter-item expanded "><a href="../cli/collections.html"><strong aria-hidden="true">11.</strong> slumber collections</a></li><li class="chapter-item expanded "><a href="../cli/generate.html" class="active"><strong aria-hidden="true">12.</strong> slumber generate</a></li><li class="chapter-item expanded "><a href="../cli/import.html"><strong aria-hidden="true">13.</strong> slumber import</a></li><li class="chapter-item expanded "><a href="../cli/new.html"><strong aria-hidden="true">14.</strong> slumber new</a></li><li class="chapter-item expanded "><a href="../cli/request.html"><strong aria-hidden="true">15.</strong> slumber request</a></li><li class="chapter-item expanded "><a href="../cli/show.html"><strong aria-hidden="true">16.</strong> slumber show</a></li><li class="chapter-item expanded affix "><li class="part-title">API Reference</li><li class="chapter-item expanded "><a href="../api/request_collection/index.html"><strong aria-hidden="true">17.</strong> Request Collection</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../api/request_collection/profile.html"><strong aria-hidden="true">17.1.</strong> Profile</a></li><li class="chapter-item expanded "><a href="../api/request_collection/template.html"><strong aria-hidden="true">17.2.</strong> Template</a></li><li class="chapter-item expanded "><a href="../api/request_collection/request_recipe.html"><strong aria-hidden="true">17.3.</strong> Request Recipe</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../api/request_collection/query_parameters.html"><strong aria-hidden="true">17.3.1.</strong> Query Parameters</a></li><li class="chapter-item expanded "><a href="../api/request_collection/authentication.html"><strong aria-hidden="true">17.3.2.</strong> Authentication</a></li><li class="chapter-item expanded "><a href="../api/request_collection/recipe_body.html"><strong aria-hidden="true">17.3.3.</strong> Recipe Body</a></li></ol></li><li class="chapter-item expanded "><a href="../api/request_collection/chain.html"><strong aria-hidden="true">17.4.</strong> Chain</a></li><li class="chapter-item expanded "><a href="../api/request_collection/chain_source.html"><strong aria-hidden="true">17.5.</strong> Chain Source</a></li><li class="chapter-item expanded "><a href="../api/request_collection/content_type.html"><strong aria-hidden="true">17.6.</strong> Content Type</a></li></ol></li><li class="chapter-item expanded "><a href="../api/configuration/index.html"><strong aria-hidden="true">18.</strong> Configuration</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../api/configuration/input_bindings.html"><strong aria-hidden="true">18.1.</strong> Input Bindings</a></li><li class="chapter-item expanded "><a href="../api/configuration/theme.html"><strong aria-hidden="true">18.2.</strong> Theme</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Integration</li><li class="chapter-item expanded "><a href="../integration/neovim-integration.html"><strong aria-hidden="true">19.</strong> Neovim Integration</a></li><li class="chapter-item expanded affix "><li class="part-title">Troubleshooting</li><li class="chapter-item expanded "><a href="../troubleshooting/logs.html"><strong aria-hidden="true">20.</strong> Logs</a></li><li class="chapter-item expanded "><a href="../troubleshooting/lost_history.html"><strong aria-hidden="true">21.</strong> Lost Request History</a></li><li class="chapter-item expanded "><a href="../troubleshooting/shell_completions.html"><strong aria-hidden="true">22.</strong> Shell Completions</a></li><li class="chapter-item expanded "><a href="../troubleshooting/tls.html"><strong aria-hidden="true">23.</strong> TLS Certificate Errors</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky bordered">
+                    <div class="left-buttons">
+                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="oranda-dark">Oranda Dark</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="oranda-light">Oranda Light</button></li>
+
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Slumber</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/LucasPickering/slumber" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/LucasPickering/slumber/edit/master/docs/src/cli/generate.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="slumber-generate"><a class="header" href="#slumber-generate"><code>slumber generate</code></a></h1>
+<p>Generate an HTTP request in an external format. Currently the only supported format is cURL.</p>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<p>Given this request collection:</p>
+<pre><code class="language-yaml">profiles:
+  production:
+    data:
+      host: https://myfishes.fish
+
+requests:
+  list_fish: !request
+    method: GET
+    url: "{{host}}/fishes"
+    query:
+      - big=true
+</code></pre>
+<pre><code class="language-sh">slumber generate curl --profile production list_fishes
+</code></pre>
+<h2 id="overrides"><a class="header" href="#overrides">Overrides</a></h2>
+<p>The <code>generate</code> subcommand supports overriding template values in the same that <code>slumber request</code> does. See the <a href="./request.html#overrides"><code>request</code> subcommand docs</a> for more.</p>
+<p>See <code>slumber generate --help</code> for more options.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../cli/collections.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next" href="../cli/import.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../cli/collections.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next" href="../cli/import.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

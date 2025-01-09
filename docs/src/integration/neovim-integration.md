@@ -1,6 +1,6 @@
 # Neovim Integration 
 
-Slumber can be integrated into Neovim to allow you quickly switch between your codebase and slumber.
+Slumber can be integrated into Neovim to allow you quickly switch between your codebase and Slumber.
 
 Ensure you have `which-key` and `toggleterm` installed. Most premade distros (LunarVim, etc) will have these installed by default. 
 

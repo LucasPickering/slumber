@@ -1,15 +1,24 @@
-use crate::view::{
-    common::{list::List, modal::Modal},
-    component::Component,
-    context::UpdateContext,
-    draw::{Draw, DrawMetadata, ToStringGenerate},
-    event::{
-        Child, Emitter, Event, EventHandler, LocalEvent, OptionEvent, ToEmitter,
+use crate::{
+    context::TuiContext,
+    view::{
+        common::{list::List, modal::Modal},
+        component::Component,
+        context::UpdateContext,
+        draw::{Draw, DrawMetadata, Generate},
+        event::{
+            Child, Emitter, Event, EventHandler, LocalEvent, OptionEvent,
+            ToEmitter,
+        },
+        state::select::{SelectState, SelectStateEvent, SelectStateEventType},
     },
-    state::select::{SelectState, SelectStateEvent, SelectStateEventType},
 };
 use itertools::Itertools;
-use ratatui::{layout::Constraint, text::Line, Frame};
+use ratatui::{
+    layout::Constraint,
+    text::{Line, Span},
+    Frame,
+};
+use slumber_config::Action;
 use std::fmt::Display;
 
 /// Modal to list and trigger arbitrary actions. The user opens the action menu
@@ -75,11 +84,31 @@ impl Modal for ActionsModal {
 
 impl EventHandler for ActionsModal {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().emitted(self.actions.to_emitter(), |event| {
-            if let SelectStateEvent::Submit(_) = event {
-                self.close(true);
-            }
-        })
+        event
+            .opt()
+            .action(|action, propagate| {
+                // For any input action, check if any menu items are bound to it
+                // as a shortcut. If there are multiple menu actions bound to
+                // the same shortcut, we'll just take the first.
+                let bound_index =
+                    self.actions.data().items().position(|menu_action| {
+                        menu_action.shortcut == Some(action)
+                    });
+                if let Some(index) = bound_index {
+                    // We need ownership of the menu action to emit it, so defer
+                    // into the on_close handler. Selecting the item is how we
+                    // know which one to submit
+                    self.actions.data_mut().select_index(index);
+                    self.close(true);
+                } else {
+                    propagate.set();
+                }
+            })
+            .emitted(self.actions.to_emitter(), |event| {
+                if let SelectStateEvent::Submit(_) = event {
+                    self.close(true);
+                }
+            })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -111,6 +140,8 @@ pub struct MenuAction {
     /// update() handler.
     emitter: Emitter<dyn LocalEvent>,
     enabled: bool,
+    /// Input action bound to this menu action
+    shortcut: Option<Action>,
 }
 
 impl MenuAction {
@@ -123,14 +154,34 @@ impl MenuAction {
     {
         |action| Self {
             name: action.to_string(),
-            enabled: action.enabled(data),
             emitter: data.to_emitter().upcast(),
+            enabled: action.enabled(data),
+            shortcut: action.shortcut(data),
             value: Box::new(action),
         }
     }
 }
 
-impl ToStringGenerate for MenuAction {}
+impl Generate for &MenuAction {
+    type Output<'this> = Span<'this>
+    where
+        Self: 'this;
+
+    fn generate<'this>(self) -> Self::Output<'this>
+    where
+        Self: 'this,
+    {
+        // If a shortcut is given, include the binding in the text
+        self.shortcut
+            .map(|shortcut| {
+                TuiContext::get()
+                    .input_engine
+                    .add_hint(&self.name, shortcut)
+                    .into()
+            })
+            .unwrap_or_else(|| self.name.as_str().into())
+    }
+}
 
 /// Trait for an enum that can be converted into menu actions. Most components
 /// have a static list of actions available, so this trait makes it
@@ -139,5 +190,92 @@ pub trait IntoMenuAction<Data>: Display + LocalEvent {
     /// Should this action be enabled in the menu?
     fn enabled(&self, _: &Data) -> bool {
         true
+    }
+
+    /// What input action, if any, should trigger this menu action?
+    fn shortcut(&self, _: &Data) -> Option<Action> {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        test_util::{harness, terminal, TestHarness, TestTerminal},
+        view::test_util::TestComponent,
+    };
+    use crossterm::event::KeyCode;
+    use rstest::rstest;
+    use strum::{EnumIter, IntoEnumIterator};
+
+    /// A component that provides some actions
+    #[derive(Default)]
+    struct Actionable {
+        emitter: Emitter<TestMenuAction>,
+    }
+
+    impl EventHandler for Actionable {
+        fn menu_actions(&self) -> Vec<MenuAction> {
+            TestMenuAction::iter()
+                .map(MenuAction::with_data(self))
+                .collect()
+        }
+    }
+
+    impl Draw for Actionable {
+        fn draw(&self, _: &mut Frame, _: (), _: DrawMetadata) {}
+    }
+
+    impl ToEmitter<TestMenuAction> for Actionable {
+        fn to_emitter(&self) -> Emitter<TestMenuAction> {
+            self.emitter
+        }
+    }
+
+    #[derive(Debug, derive_more::Display, PartialEq, EnumIter)]
+    enum TestMenuAction {
+        Flobrigate,
+        Profilate,
+        Disablify,
+        Shortcutticated,
+    }
+
+    impl IntoMenuAction<Actionable> for TestMenuAction {
+        fn enabled(&self, _: &Actionable) -> bool {
+            !matches!(self, Self::Disablify)
+        }
+
+        fn shortcut(&self, _: &Actionable) -> Option<Action> {
+            match self {
+                Self::Shortcutticated => Some(Action::Edit),
+                _ => None,
+            }
+        }
+    }
+
+    /// Test basic action menu interactions
+    #[rstest]
+    fn test_actions(harness: TestHarness, terminal: TestTerminal) {
+        let mut component =
+            TestComponent::new(&harness, &terminal, Actionable::default());
+
+        // Select a basic action
+        component.open_actions().assert_empty();
+        component
+            .send_keys([KeyCode::Down, KeyCode::Enter])
+            .assert_emitted([TestMenuAction::Profilate]);
+
+        // Selecting a disabled action does nothing
+        component.open_actions().assert_empty();
+        component
+            .send_keys([KeyCode::Down, KeyCode::Enter])
+            .assert_emitted([TestMenuAction::Profilate]);
+
+        // Actions can be selected by shortcut
+        component.open_actions().assert_empty();
+        component
+            .send_keys([KeyCode::Char('e')])
+            .assert_emitted([TestMenuAction::Shortcutticated]);
     }
 }

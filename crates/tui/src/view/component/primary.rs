@@ -539,8 +539,7 @@ mod tests {
 
         harness.clear_messages(); // Clear init junk
 
-        // Open action menu
-        component.send_key(KeyCode::Char('x')).assert_empty();
+        component.open_actions().assert_empty();
         // Select first action - Edit Collection
         component.send_key(KeyCode::Enter).assert_empty();
         // Event should be converted into a message appropriately

@@ -234,18 +234,8 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         }
     }
 
-    /// Select the previous item in the list
-    pub fn previous(&mut self) {
-        self.select_delta(-1);
-    }
-
-    /// Select the next item in the list
-    pub fn next(&mut self) {
-        self.select_delta(1);
-    }
-
     /// Select an item by index
-    fn select_index(&mut self, index: usize) {
+    pub fn select_index(&mut self, index: usize) {
         let state = self.state.get_mut();
         let current = state.selected();
         state.select(index);
@@ -255,6 +245,16 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         if current != new {
             self.emit_for_selected(SelectStateEvent::Select);
         }
+    }
+
+    /// Select the previous item in the list
+    pub fn previous(&mut self) {
+        self.select_delta(-1);
+    }
+
+    /// Select the next item in the list
+    pub fn next(&mut self) {
+        self.select_delta(1);
     }
 
     /// Move some number of items up or down the list. Selection will wrap if

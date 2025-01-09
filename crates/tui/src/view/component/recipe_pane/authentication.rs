@@ -220,7 +220,14 @@ enum AuthenticationMenuAction {
     Reset,
 }
 
-impl IntoMenuAction<AuthenticationDisplay> for AuthenticationMenuAction {}
+impl IntoMenuAction<AuthenticationDisplay> for AuthenticationMenuAction {
+    fn shortcut(&self, _: &AuthenticationDisplay) -> Option<Action> {
+        match self {
+            Self::Edit => Some(Action::Edit),
+            Self::Reset => Some(Action::Reset),
+        }
+    }
+}
 
 /// Private to hide enum variants
 #[derive(Debug)]
@@ -480,13 +487,9 @@ mod tests {
             AuthenticationDisplay::new(RecipeId::factory(()), authentication),
         );
 
+        component.open_actions().assert_empty();
         component
-            .send_keys([
-                KeyCode::Char('x'),
-                KeyCode::Enter,
-                KeyCode::Char('!'),
-                KeyCode::Enter,
-            ])
+            .send_keys([KeyCode::Enter, KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
         assert_eq!(
             component.data().override_value(),

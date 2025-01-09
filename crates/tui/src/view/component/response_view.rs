@@ -213,9 +213,10 @@ mod tests {
         );
 
         // Open actions modal and select the copy action
+        component.open_actions().assert_empty();
+        // Note: Edit Collections action isn't visible here
         component
-            // Note: Edit Collections action isn't visible here
-            .send_keys([KeyCode::Char('x'), KeyCode::Down, KeyCode::Enter])
+            .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
         let body = assert_matches!(
@@ -302,14 +303,10 @@ mod tests {
         }
 
         // Open actions modal and select the save action
+        component.open_actions().assert_empty();
         component
-            .send_keys([
-                KeyCode::Char('x'),
-                // Note: Edit Collections action isn't visible here
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Enter,
-            ])
+            // Note: Edit Collections action isn't visible here
+            .send_keys([KeyCode::Down, KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
         let (request_id, data) = assert_matches!(

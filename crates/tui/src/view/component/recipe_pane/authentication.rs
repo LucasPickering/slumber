@@ -2,7 +2,7 @@ use crate::{
     context::TuiContext,
     util::ResultReported,
     view::{
-        common::{table::Table, text_box::TextBox},
+        common::{modal::Modal, table::Table, text_box::TextBox},
         component::{
             misc::TextBoxModal,
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
@@ -10,10 +10,7 @@ use crate::{
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{
-            Child, Emitter, EmitterHandle, EmitterId, Event, EventHandler,
-            OptionEvent,
-        },
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::fixed_select::FixedSelectState,
         ViewContext,
     },
@@ -36,7 +33,7 @@ use strum::{EnumCount, EnumIter};
 /// Display authentication settings for a recipe
 #[derive(Debug)]
 pub struct AuthenticationDisplay {
-    emitter_id: EmitterId,
+    emitter: Emitter<SaveAuthenticationOverride>,
     state: State,
 }
 
@@ -70,7 +67,7 @@ impl AuthenticationDisplay {
             },
         };
         Self {
-            emitter_id: EmitterId::new(),
+            emitter: Default::default(),
             state,
         }
     }
@@ -102,12 +99,12 @@ impl EventHandler for AuthenticationDisplay {
         event
             .opt()
             .action(|action, propagate| match action {
-                Action::Edit => self.state.open_edit_modal(self.handle()),
+                Action::Edit => self.state.open_edit_modal(self.emitter),
                 Action::Reset => self.state.reset_override(),
 
                 _ => propagate.set(),
             })
-            .emitted(self.handle(), |SaveAuthenticationOverride(value)| {
+            .emitted(self.emitter, |SaveAuthenticationOverride(value)| {
                 self.state.set_override(&value)
             })
     }
@@ -170,11 +167,9 @@ impl Draw for AuthenticationDisplay {
 }
 
 /// Emit events to ourselves for override editing
-impl Emitter for AuthenticationDisplay {
-    type Emitted = SaveAuthenticationOverride;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+impl ToEmitter<SaveAuthenticationOverride> for AuthenticationDisplay {
+    fn to_emitter(&self) -> Emitter<SaveAuthenticationOverride> {
+        self.emitter
     }
 }
 
@@ -214,10 +209,7 @@ impl State {
     }
 
     /// Open a modal to let the user edit temporary override values
-    fn open_edit_modal(
-        &self,
-        emitter: EmitterHandle<SaveAuthenticationOverride>,
-    ) {
+    fn open_edit_modal(&self, emitter: Emitter<SaveAuthenticationOverride>) {
         let (label, value) = match &self {
             Self::Basic {
                 username,
@@ -236,7 +228,7 @@ impl State {
                 ("bearer token", token.template().display())
             }
         };
-        ViewContext::open_modal(TextBoxModal::new(
+        TextBoxModal::new(
             format!("Edit {label}"),
             TextBox::default()
                 .default_value(value.into_owned())
@@ -245,7 +237,8 @@ impl State {
                 // Defer the state update into an event, so it can get &mut
                 emitter.emit(SaveAuthenticationOverride(value))
             },
-        ))
+        )
+        .open()
     }
 
     /// Override the value template for whichever field is selected, and

@@ -4,8 +4,8 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{
-            Child, Emitter, EmitterHandle, EmitterId, Event, EventHandler,
-            OptionEvent,
+            Child, Emitter, Event, EventHandler, LocalEvent, OptionEvent,
+            ToEmitter,
         },
         util::centered_rect,
         Component, ViewContext,
@@ -43,6 +43,14 @@ pub trait Modal: Debug + Draw<()> + EventHandler {
 
     /// Dimensions of the modal, relative to the whole screen
     fn dimensions(&self) -> (Constraint, Constraint);
+
+    /// Send an event to open this modal
+    fn open(self)
+    where
+        Self: 'static + Sized,
+    {
+        ViewContext::push_event(Event::OpenModal(Box::new(self)));
+    }
 
     /// Send an event to close this modal. `submitted` flag will be forwarded
     /// to the `on_close` handler.
@@ -229,55 +237,54 @@ impl Draw for ModalQueue {
 /// A helper to manage opened modals. Useful for components that need to open
 /// a modal of a particular type, then listen for emitted events from that
 /// modal. This only supports **a single modal at a time** of that type.
+///
+/// The generic parameter here is the type of *event* emitted by the modal, not
+/// the modal type itself. This event is what the opener will receive back from
+/// the modal.
 #[derive(Debug)]
-pub struct ModalHandle<T: Emitter> {
-    /// Track the emitter ID of the opened modal, so we can check for emitted
-    /// events from it later. This is `None` on initialization. Note: this does
-    /// *not* get cleared when a modal is closed, because that requires extra
-    /// plumbing but would not actually accomplish anything. Once a modal is
-    /// closed, it won't be emitting anymore so there's no harm in hanging onto
-    /// its ID.
-    emitter: Option<EmitterHandle<T::Emitted>>,
+pub struct ModalHandle<E> {
+    /// Track the emitter of the opened modal, so we can check for emitted
+    /// events from it later. We'll reuse the same emitter for every opened
+    /// modal. This makes it simpler, and shouldn't create issues since you
+    /// can't have multiple instances of the same modal open+visible at once.
+    emitter: Emitter<E>,
+}
+
+impl<E: LocalEvent> ModalHandle<E> {
+    pub fn new() -> Self {
+        Self {
+            emitter: Emitter::default(),
+        }
+    }
+
+    /// Open a modal and store its emitter ID
+    pub fn open<M>(&mut self, modal: M)
+    where
+        M: 'static + ToEmitter<E> + Modal,
+    {
+        modal.open();
+    }
 }
 
 // Manual impls needed to bypass bounds
-impl<T: Emitter> Copy for ModalHandle<T> {}
+impl<E> Copy for ModalHandle<E> {}
 
-impl<T: Emitter> Clone for ModalHandle<T> {
+impl<E> Clone for ModalHandle<E> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T: Emitter> ModalHandle<T> {
-    pub fn new() -> Self {
-        Self { emitter: None }
-    }
-
-    /// Open a modal and store its emitter ID
-    pub fn open(&mut self, modal: T)
-    where
-        T: 'static + Modal,
-    {
-        self.emitter = Some(modal.handle());
-        ViewContext::open_modal(modal);
-    }
-}
-
-impl<T: Emitter> Default for ModalHandle<T> {
+impl<E> Default for ModalHandle<E> {
     fn default() -> Self {
-        Self { emitter: None }
+        Self {
+            emitter: Emitter::default(),
+        }
     }
 }
 
-impl<T: Emitter> Emitter for ModalHandle<T> {
-    type Emitted = T::Emitted;
-
-    fn id(&self) -> EmitterId {
-        // If we don't have an ID stored yet, use an empty one
+impl<E: 'static + Debug> ToEmitter<E> for ModalHandle<E> {
+    fn to_emitter(&self) -> Emitter<E> {
         self.emitter
-            .as_ref()
-            .map(Emitter::id)
-            .unwrap_or(EmitterId::nil())
     }
 }

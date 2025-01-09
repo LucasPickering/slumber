@@ -1,7 +1,7 @@
 use crate::view::{
     context::UpdateContext,
     draw::{Draw, DrawMetadata},
-    event::{Emitter, EmitterId, Event, EventHandler},
+    event::{Emitter, Event, EventHandler, ToEmitter},
     state::select::{
         SelectItem, SelectState, SelectStateBuilder, SelectStateData,
         SelectStateEvent, SelectStateEventType,
@@ -235,11 +235,9 @@ where
     }
 }
 
-impl<T: FixedSelect> Emitter for FixedSelectState<T> {
-    type Emitted = SelectStateEvent;
-
-    fn id(&self) -> EmitterId {
-        self.inner.id()
+impl<T: FixedSelect> ToEmitter<SelectStateEvent> for FixedSelectState<T> {
+    fn to_emitter(&self) -> Emitter<SelectStateEvent> {
+        self.inner.to_emitter()
     }
 }
 

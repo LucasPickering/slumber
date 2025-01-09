@@ -5,7 +5,10 @@ use crate::{
     message::Message,
     util::ResultReported,
     view::{
-        common::{actions::ActionsModal, modal::ModalHandle},
+        common::{
+            actions::{IntoMenuActions, MenuAction},
+            modal::Modal,
+        },
         component::{
             exchange_pane::{ExchangePane, ExchangePaneEvent},
             help::HelpModal,
@@ -16,8 +19,8 @@ use crate::{
             },
         },
         context::UpdateContext,
-        draw::{Draw, DrawMetadata, ToStringGenerate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent},
+        draw::{Draw, DrawMetadata},
+        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::{
             fixed_select::FixedSelectState,
             select::{SelectStateEvent, SelectStateEventType},
@@ -56,55 +59,9 @@ pub struct PrimaryView {
     recipe_list_pane: Component<RecipeListPane>,
     recipe_pane: Component<RecipePane>,
     exchange_pane: Component<ExchangePane>,
-    actions_handle: ModalHandle<ActionsModal<MenuAction>>,
-}
 
-/// Selectable panes in the primary view mode
-#[derive(
-    Copy,
-    Clone,
-    Debug,
-    Default,
-    Display,
-    EnumCount,
-    EnumIter,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-enum PrimaryPane {
-    #[default]
-    RecipeList,
-    Recipe,
-    Exchange,
+    global_actions_emitter: Emitter<GlobalMenuAction>,
 }
-
-/// Panes that can be fullscreened. This is separate from [PrimaryPane] because
-/// it makes it easy to check when we should exit fullscreen mode.
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
-enum FullscreenMode {
-    /// Fullscreen the active request recipe
-    Recipe,
-    /// Fullscreen the active request/response exchange
-    Exchange,
-}
-
-/// Persistence key for fullscreen mode
-#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
-#[persisted(Option<FullscreenMode>)]
-struct FullscreenModeKey;
-
-/// Action menu items. This is the fallback menu if none of our children have
-/// one
-#[derive(
-    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
-)]
-enum MenuAction {
-    #[default]
-    #[display("Edit Collection")]
-    EditCollection,
-}
-impl ToStringGenerate for MenuAction {}
 
 impl PrimaryView {
     pub fn new(
@@ -133,7 +90,8 @@ impl PrimaryView {
             profile_pane: profile_pane.into(),
             recipe_pane: Default::default(),
             exchange_pane: exchange_pane.into(),
-            actions_handle: Default::default(),
+
+            global_actions_emitter: Default::default(),
         }
     }
 
@@ -283,9 +241,6 @@ impl PrimaryView {
         };
 
         match action {
-            RecipeMenuAction::EditCollection => {
-                ViewContext::send_message(Message::CollectionEdit)
-            }
             RecipeMenuAction::CopyUrl => {
                 ViewContext::send_message(Message::CopyRequestUrl(config))
             }
@@ -313,12 +268,7 @@ impl EventHandler for PrimaryView {
                 Action::NextPane => self.selected_pane.get_mut().next(),
                 // Send a request from anywhere
                 Action::Submit => self.send_request(),
-                Action::OpenActions => {
-                    self.actions_handle.open(ActionsModal::default());
-                }
-                Action::OpenHelp => {
-                    ViewContext::open_modal(HelpModal);
-                }
+                Action::OpenHelp => HelpModal.open(),
 
                 // Pane hotkeys
                 Action::SelectProfileList => {
@@ -355,41 +305,48 @@ impl EventHandler for PrimaryView {
                 }
                 _ => propagate.set(),
             })
-            .emitted(self.selected_pane.handle(), |event| {
+            .emitted(self.selected_pane.to_emitter(), |event| {
                 if let SelectStateEvent::Select(_) = event {
                     // Exit fullscreen when pane changes
                     self.maybe_exit_fullscreen();
                 }
             })
-            .emitted(self.recipe_list_pane.handle(), |event| match event {
+            .emitted(self.recipe_list_pane.to_emitter(), |event| match event {
                 RecipeListPaneEvent::Click => {
                     self.selected_pane
                         .get_mut()
                         .select(&PrimaryPane::RecipeList);
                 }
-                RecipeListPaneEvent::MenuAction(action) => {
-                    self.handle_recipe_menu_action(action);
-                }
             })
-            .emitted(self.recipe_pane.handle(), |event| match event {
+            .emitted(self.recipe_pane.to_emitter(), |event| match event {
                 RecipePaneEvent::Click => {
                     self.selected_pane.get_mut().select(&PrimaryPane::Recipe);
                 }
-                RecipePaneEvent::MenuAction(action) => {
-                    self.handle_recipe_menu_action(action);
-                }
             })
-            .emitted(self.exchange_pane.handle(), |event| match event {
+            .emitted(self.exchange_pane.to_emitter(), |event| match event {
                 ExchangePaneEvent::Click => {
                     self.selected_pane.get_mut().select(&PrimaryPane::Exchange)
                 }
             })
-            .emitted(self.actions_handle, |menu_action| match menu_action {
+            .emitted(self.global_actions_emitter, |menu_action| {
                 // Handle our own menu action type
-                MenuAction::EditCollection => {
-                    ViewContext::send_message(Message::CollectionEdit)
+                match menu_action {
+                    GlobalMenuAction::EditCollection => {
+                        ViewContext::send_message(Message::CollectionEdit)
+                    }
                 }
             })
+            // Handle all recipe actions here, for deduplication
+            .emitted(self.recipe_list_pane.to_emitter(), |menu_action| {
+                self.handle_recipe_menu_action(menu_action)
+            })
+            .emitted(self.recipe_pane.to_emitter(), |menu_action| {
+                self.handle_recipe_menu_action(menu_action)
+            })
+    }
+
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        GlobalMenuAction::into_actions(self)
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -449,6 +406,62 @@ impl Draw for PrimaryView {
             panes.exchange.area,
             panes.exchange.focus,
         );
+    }
+}
+
+impl ToEmitter<GlobalMenuAction> for PrimaryView {
+    fn to_emitter(&self) -> Emitter<GlobalMenuAction> {
+        self.global_actions_emitter
+    }
+}
+
+/// Selectable panes in the primary view mode
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Display,
+    EnumCount,
+    EnumIter,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
+enum PrimaryPane {
+    #[default]
+    RecipeList,
+    Recipe,
+    Exchange,
+}
+
+/// Panes that can be fullscreened. This is separate from [PrimaryPane] because
+/// it makes it easy to check when we should exit fullscreen mode.
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+enum FullscreenMode {
+    /// Fullscreen the active request recipe
+    Recipe,
+    /// Fullscreen the active request/response exchange
+    Exchange,
+}
+
+/// Persistence key for fullscreen mode
+#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
+#[persisted(Option<FullscreenMode>)]
+struct FullscreenModeKey;
+
+/// Menu actions available in all contexts
+#[derive(Copy, Clone, Debug, Display, EnumIter)]
+enum GlobalMenuAction {
+    #[display("Edit Collection")]
+    EditCollection,
+}
+
+impl IntoMenuActions<PrimaryView> for GlobalMenuAction {
+    fn enabled(&self, _: &PrimaryView) -> bool {
+        match self {
+            Self::EditCollection => true,
+        }
     }
 }
 
@@ -520,6 +533,22 @@ mod tests {
             *component.data().fullscreen_mode,
             Some(FullscreenMode::Exchange)
         );
+    }
+
+    /// Test "Edit Collection" action
+    #[rstest]
+    fn test_edit_collection(mut harness: TestHarness, terminal: TestTerminal) {
+        let mut component = create_component(&mut harness, &terminal);
+        component.drain_draw().assert_empty();
+
+        harness.clear_messages(); // Clear init junk
+
+        // Open action menu
+        component.send_key(KeyCode::Char('x')).assert_empty();
+        // Select first action - Edit Collection
+        component.send_key(KeyCode::Enter).assert_empty();
+        // Event should be converted into a message appropriately
+        assert_matches!(harness.pop_message_now(), Message::CollectionEdit);
     }
 
     /// Test "Copy URL" action, which is available via the Recipe List or Recipe

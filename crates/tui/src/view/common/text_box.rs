@@ -5,7 +5,7 @@ use crate::{
     view::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
-        event::{Emitter, EmitterId, Event, EventHandler, OptionEvent},
+        event::{Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         util::Debounce,
     },
 };
@@ -25,7 +25,7 @@ const DEBOUNCE: Duration = Duration::from_millis(500);
 /// Single line text submission component
 #[derive(derive_more::Debug, Default)]
 pub struct TextBox {
-    emitter_id: EmitterId,
+    emitter: Emitter<TextBoxEvent>,
     // Parameters
     sensitive: bool,
     /// Text to show when text content is empty
@@ -177,16 +177,16 @@ impl TextBox {
     /// Emit a change event. Should be called whenever text _content_ is changed
     fn change(&mut self) {
         let is_valid = self.is_valid();
-        let emitter = self.handle();
         if let Some(debounce) = &mut self.on_change_debounce {
             if is_valid {
                 // Defer the change event until after the debounce period
+                let emitter = self.emitter;
                 debounce.start(move || emitter.emit(TextBoxEvent::Change));
             } else {
                 debounce.cancel();
             }
         } else if is_valid {
-            self.emit(TextBoxEvent::Change);
+            self.emitter.emit(TextBoxEvent::Change);
         }
     }
 
@@ -194,7 +194,7 @@ impl TextBox {
     fn submit(&mut self) {
         if self.is_valid() {
             self.cancel_debounce();
-            self.emit(TextBoxEvent::Submit);
+            self.emitter.emit(TextBoxEvent::Submit);
         }
     }
 
@@ -215,9 +215,9 @@ impl EventHandler for TextBox {
                 Action::Submit => self.submit(),
                 Action::Cancel => {
                     self.cancel_debounce();
-                    self.emit(TextBoxEvent::Cancel);
+                    self.emitter.emit(TextBoxEvent::Cancel);
                 }
-                Action::LeftClick => self.emit(TextBoxEvent::Focus),
+                Action::LeftClick => self.emitter.emit(TextBoxEvent::Focus),
                 _ => propagate.set(),
             })
             .any(|event| match event {
@@ -407,11 +407,9 @@ impl PersistedContainer for TextBox {
     }
 }
 
-impl Emitter for TextBox {
-    type Emitted = TextBoxEvent;
-
-    fn id(&self) -> EmitterId {
-        self.emitter_id
+impl ToEmitter<TextBoxEvent> for TextBox {
+    fn to_emitter(&self) -> Emitter<TextBoxEvent> {
+        self.emitter
     }
 }
 

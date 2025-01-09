@@ -21,6 +21,7 @@ use crate::{
     message::{Message, MessageSender},
     util::ResultReported,
     view::{
+        common::modal::Modal,
         component::{Component, Root},
         debug::DebugMonitor,
         event::Event,
@@ -123,7 +124,7 @@ impl View {
     /// Queue an event to open a new modal. The input can be anything that
     /// converts to modal content
     pub fn open_modal(&mut self, modal: impl IntoModal + 'static) {
-        ViewContext::open_modal(modal.into_modal());
+        modal.into_modal().open();
     }
 
     /// Queue an event to send an informational notification to the user

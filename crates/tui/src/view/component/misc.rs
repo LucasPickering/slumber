@@ -11,7 +11,7 @@ use crate::view::{
     component::Component,
     context::UpdateContext,
     draw::{Draw, DrawMetadata, Generate},
-    event::{Child, Emitter, Event, EventHandler, OptionEvent},
+    event::{Child, Event, EventHandler, OptionEvent, ToEmitter},
     state::{
         select::{SelectState, SelectStateEvent, SelectStateEventType},
         Notification,
@@ -115,7 +115,7 @@ impl EventHandler for TextBoxModal {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
-            .emitted(self.text_box.handle(), |event| match event {
+            .emitted(self.text_box.to_emitter(), |event| match event {
                 TextBoxEvent::Focus | TextBoxEvent::Change => {}
                 TextBoxEvent::Cancel => {
                     // Propagate cancel to close the modal
@@ -214,14 +214,19 @@ impl Modal for SelectListModal {
         // because the user selected a value (submitted).
         if submitted {
             // Return the user's value and close the prompt
-            (self.on_submit)(self.options.data().selected().unwrap().clone());
+            (self.on_submit)(
+                self.options
+                    .into_data()
+                    .into_selected()
+                    .expect("User submitted something"),
+            );
         }
     }
 }
 
 impl EventHandler for SelectListModal {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().emitted(self.options.handle(), |event| {
+        event.opt().emitted(self.options.to_emitter(), |event| {
             if let SelectStateEvent::Submit(_) = event {
                 self.close(true);
             }
@@ -318,7 +323,7 @@ impl Modal for ConfirmModal {
 
 impl EventHandler for ConfirmModal {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().emitted(self.buttons.handle(), |button| {
+        event.opt().emitted(self.buttons.to_emitter(), |button| {
             // When user selects a button, send the response and close
             self.answer = button == ConfirmButton::Yes;
             self.close(true);

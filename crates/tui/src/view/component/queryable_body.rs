@@ -309,7 +309,6 @@ impl Draw for QueryableBody {
                         bottom: 2, // Extra margin to jump over the search box
                         ..Default::default()
                     },
-                    footer: None,
                 },
                 body_area,
                 true,

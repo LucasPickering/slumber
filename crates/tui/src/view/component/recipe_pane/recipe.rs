@@ -1,32 +1,24 @@
-use crate::{
-    context::TuiContext,
-    view::{
-        common::{tabs::Tabs, template_preview::TemplatePreview},
-        component::recipe_pane::{
-            authentication::AuthenticationDisplay,
-            body::RecipeBodyDisplay,
-            persistence::RecipeOverrideKey,
-            table::{RecipeFieldTable, RecipeFieldTableProps},
-        },
-        draw::{Draw, DrawMetadata},
-        event::{Child, EventHandler},
-        state::Identified,
-        util::persistence::PersistedLazy,
-        Component,
+use crate::view::{
+    common::{tabs::Tabs, template_preview::TemplatePreview},
+    component::recipe_pane::{
+        authentication::AuthenticationDisplay,
+        body::RecipeBodyDisplay,
+        persistence::RecipeOverrideKey,
+        table::{RecipeFieldTable, RecipeFieldTableProps},
     },
+    draw::{Draw, DrawMetadata},
+    event::{Child, EventHandler},
+    state::Identified,
+    util::persistence::PersistedLazy,
+    Component,
 };
 use derive_more::Display;
 use persisted::SingletonKey;
 use ratatui::{
-    layout::{Alignment, Layout},
-    prelude::Constraint,
-    text::{Span, Text},
-    widgets::Paragraph,
-    Frame,
+    layout::Layout, prelude::Constraint, text::Text, widgets::Paragraph, Frame,
 };
 use reqwest::header::HeaderName;
 use serde::{Deserialize, Serialize};
-use slumber_config::Action;
 use slumber_core::{
     collection::{Recipe, RecipeId},
     http::{BuildOptions, HttpMethod},
@@ -55,7 +47,7 @@ impl RecipeDisplay {
         Self {
             tabs: Default::default(),
             method: recipe.method,
-            url: TemplatePreview::new(recipe.url.clone(), None),
+            url: TemplatePreview::new(recipe.url.clone(), None, false),
             query: RecipeFieldTable::new(
                 "Parameter",
                 QueryRowKey(recipe.id.clone()),
@@ -181,19 +173,15 @@ impl EventHandler for RecipeDisplay {
 
 impl Draw for RecipeDisplay {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        let tui_context = TuiContext::get();
-
         // Render request contents
         let method = self.method.to_string();
 
-        let [metadata_area, tabs_area, content_area, footer_area] =
-            Layout::vertical([
-                Constraint::Length(1),
-                Constraint::Length(1),
-                Constraint::Min(0),
-                Constraint::Length(1),
-            ])
-            .areas(metadata.area());
+        let [metadata_area, tabs_area, content_area] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .areas(metadata.area());
 
         let [method_area, url_area] = Layout::horizontal(
             // Method gets just as much as it needs, URL gets the rest
@@ -207,20 +195,6 @@ impl Draw for RecipeDisplay {
 
         // Navigation tabs
         self.tabs.draw(frame, (), tabs_area, true);
-
-        // Helper footer
-        frame.render_widget(
-            Paragraph::new(Span::styled(
-                format!(
-                    "Press {} to edit value, {} to reset",
-                    tui_context.input_engine.binding_display(Action::Edit),
-                    tui_context.input_engine.binding_display(Action::Reset),
-                ),
-                tui_context.styles.text.hint,
-            ))
-            .alignment(Alignment::Right),
-            footer_area,
-        );
 
         // Recipe content
         match self.tabs.data().selected() {

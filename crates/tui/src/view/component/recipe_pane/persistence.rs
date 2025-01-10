@@ -76,7 +76,7 @@ impl RecipeTemplate {
             RecipeTemplateInner {
                 original_template: template.clone(),
                 override_template: None,
-                preview: TemplatePreview::new(template, content_type),
+                preview: TemplatePreview::new(template, content_type, false),
                 content_type,
             },
         ))
@@ -140,8 +140,11 @@ impl RecipeTemplateInner {
     }
 
     fn render_preview(&mut self) {
-        self.preview =
-            TemplatePreview::new(self.template().clone(), self.content_type);
+        self.preview = TemplatePreview::new(
+            self.template().clone(),
+            self.content_type,
+            self.override_template.is_some(),
+        );
     }
 }
 

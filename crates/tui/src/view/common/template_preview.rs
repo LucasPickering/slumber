@@ -6,7 +6,7 @@ use crate::{
 use ratatui::{
     buffer::Buffer,
     prelude::Rect,
-    style::Style,
+    style::{Style, Styled},
     text::{Line, Span, Text},
     widgets::Widget,
 };
@@ -44,7 +44,18 @@ impl TemplatePreview {
     /// defines which profile to use for the render. Optionally provide content
     /// type to enable syntax highlighting, which will be applied to both
     /// unrendered and rendered content.
-    pub fn new(template: Template, content_type: Option<ContentType>) -> Self {
+    pub fn new(
+        template: Template,
+        content_type: Option<ContentType>,
+        overridden: bool,
+    ) -> Self {
+        let tui_context = TuiContext::get();
+        let style = if overridden {
+            tui_context.styles.text.edited
+        } else {
+            Style::default()
+        };
+
         // Calculate raw text
         let text: Identified<Text> = highlight::highlight_if(
             content_type,
@@ -55,15 +66,21 @@ impl TemplatePreview {
             // self-referential
             template.display().into_owned().into(),
         )
+        .set_style(style)
         .into();
         let text = Arc::new(Mutex::new(text));
 
         // Trigger a task to render the preview and write the answer back into
         // the mutex
-        if TuiContext::get().config.preview_templates {
+        if tui_context.config.preview_templates {
             let destination = Arc::clone(&text);
             let on_complete = move |c| {
-                Self::calculate_rendered_text(c, &destination, content_type)
+                Self::calculate_rendered_text(
+                    c,
+                    &destination,
+                    content_type,
+                    style,
+                )
             };
 
             ViewContext::send_message(Message::TemplatePreview {
@@ -75,30 +92,31 @@ impl TemplatePreview {
         Self { text }
     }
 
+    pub fn text(&self) -> impl '_ + Deref<Target = Identified<Text<'static>>> {
+        self.text
+            .lock()
+            .expect("Template preview text lock is poisoned")
+    }
+
     /// Generate text from the rendered template, and replace the text in the
     /// mutex
     fn calculate_rendered_text(
         chunks: Vec<TemplateChunk>,
         destination: &Mutex<Identified<Text<'static>>>,
         content_type: Option<ContentType>,
+        style: Style,
     ) {
         let text = TextStitcher::stitch_chunks(&chunks);
-        let text = highlight::highlight_if(content_type, text);
+        let text = highlight::highlight_if(content_type, text).set_style(style);
         *destination
             .lock()
             .expect("Template preview text lock is poisoned") = text.into();
-    }
-
-    pub fn text(&self) -> impl '_ + Deref<Target = Identified<Text<'static>>> {
-        self.text
-            .lock()
-            .expect("Template preview text lock is poisoned")
     }
 }
 
 impl From<Template> for TemplatePreview {
     fn from(template: Template) -> Self {
-        Self::new(template, None)
+        Self::new(template, None, false)
     }
 }
 

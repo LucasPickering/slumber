@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     message::Message,
     util::{delete_temp_file, temp_file, ResultReported},
     view::{
@@ -19,7 +18,7 @@ use crate::{
     },
 };
 use anyhow::Context;
-use ratatui::{style::Styled, text::Text, Frame};
+use ratatui::{text::Text, Frame};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
@@ -248,7 +247,6 @@ impl EventHandler for RawBody {
 
 impl Draw for RawBody {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        let styles = &TuiContext::get().styles;
         let area = metadata.area();
         self.text_window.draw(
             frame,
@@ -258,12 +256,7 @@ impl Draw for RawBody {
                 text: &self.body.preview().text(),
                 margins: ScrollbarMargins {
                     right: 1,
-                    bottom: 2, // Extra buffer for edit/reset note
-                },
-                footer: if self.body.is_overridden() {
-                    Some("(edited)".set_style(styles.text.hint).into())
-                } else {
-                    None
+                    bottom: 1,
                 },
             },
             area,
@@ -319,6 +312,7 @@ struct SaveBodyOverride(PathBuf);
 mod tests {
     use super::*;
     use crate::{
+        context::TuiContext,
         test_util::{harness, terminal, TestHarness, TestTerminal},
         view::{
             component::recipe_pane::persistence::{
@@ -329,7 +323,7 @@ mod tests {
     };
     use crossterm::event::KeyCode;
     use persisted::PersistedStore;
-    use ratatui::text::Span;
+    use ratatui::{style::Styled, text::Span};
     use rstest::rstest;
     use slumber_core::{assert_matches, test_util::Factory};
 
@@ -379,7 +373,11 @@ mod tests {
                 content_type: Some(ContentType::Json),
             })
         );
-        terminal.assert_buffer_lines([vec![gutter("1"), " goodbye!".into()]]);
+        terminal.assert_buffer_lines([vec![
+            gutter("1"),
+            " ".into(),
+            edited("goodbye!"),
+        ]]);
 
         // Persistence store should be updated
         let persisted = RecipeOverrideStore::load_persisted(
@@ -424,12 +422,23 @@ mod tests {
                 content_type: Some(ContentType::Json),
             })
         );
-        terminal.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
+        terminal.assert_buffer_lines([vec![
+            gutter("1"),
+            " ".into(),
+            edited("hello!"),
+            "  ".into(),
+        ]]);
     }
 
     /// Style text to match the text window gutter
     fn gutter(text: &str) -> Span {
         let styles = &TuiContext::get().styles;
         Span::styled(text, styles.text_window.gutter)
+    }
+
+    /// Style text to match the edited/overridden style
+    fn edited(text: &str) -> Span {
+        let styles = &TuiContext::get().styles;
+        Span::from(text).set_style(styles.text.edited)
     }
 }

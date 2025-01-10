@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     util::ResultReported,
     view::{
         common::{
@@ -24,7 +23,6 @@ use crate::{
 use itertools::Itertools;
 use ratatui::{
     layout::Constraint,
-    text::Span,
     widgets::{Row, TableState},
     Frame,
 };
@@ -311,13 +309,11 @@ impl<K: PersistedKey<Value = bool>> Generate for &RowState<K> {
     where
         Self: 'this,
     {
-        let styles = &TuiContext::get().styles;
-        let mut preview_text = self.value.preview().generate();
-        if self.value.is_overridden() {
-            preview_text.push_span(Span::styled(" (edited)", styles.text.hint));
-        }
-        ToggleRow::new([self.key.as_str().into(), preview_text], *self.enabled)
-            .generate()
+        ToggleRow::new(
+            [self.key.as_str().into(), self.value.preview().generate()],
+            *self.enabled,
+        )
+        .generate()
     }
 }
 

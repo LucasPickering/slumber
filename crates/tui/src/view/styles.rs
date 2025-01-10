@@ -102,10 +102,10 @@ pub struct TextStyle {
     pub highlight: Style,
     /// Text in the primary color
     pub primary: Style,
+    /// Templates that have been overridden in this session
+    pub edited: Style,
     /// Text that means BAD BUSINESS
     pub error: Style,
-    /// Subtle text to provide a hint to the user
-    pub hint: Style,
     /// Text at the top of something
     pub title: Style,
 }
@@ -187,8 +187,8 @@ impl Styles {
                     .fg(theme.primary_text_color)
                     .bg(theme.primary_color),
                 primary: Style::default().fg(theme.primary_color),
+                edited: Style::default().add_modifier(Modifier::ITALIC),
                 error: Style::default().bg(theme.error_color),
-                hint: Style::default().fg(Color::DarkGray),
                 title: Style::default().add_modifier(Modifier::BOLD),
             },
             text_box: TextBoxStyle {

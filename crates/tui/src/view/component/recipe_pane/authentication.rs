@@ -22,11 +22,7 @@ use crate::{
 };
 use derive_more::derive::Display;
 use ratatui::{
-    layout::Layout,
-    prelude::Constraint,
-    text::{Line, Span},
-    widgets::TableState,
-    Frame,
+    layout::Layout, prelude::Constraint, text::Span, widgets::TableState, Frame,
 };
 use slumber_config::Action;
 use slumber_core::{
@@ -147,11 +143,23 @@ impl EventHandler for AuthenticationDisplay {
 impl Draw for AuthenticationDisplay {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles;
-
         let [label_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
                 .areas(metadata.area());
+
         let label = match &self.state {
+            State::Basic { .. } => "Basic",
+            State::Bearer { .. } => "Bearer",
+        };
+        frame.render_widget(
+            Span::styled(
+                format!("Authentication Type: {label}"),
+                styles.text.title,
+            ),
+            label_area,
+        );
+
+        match &self.state {
             State::Basic {
                 username,
                 password,
@@ -171,23 +179,11 @@ impl Draw for AuthenticationDisplay {
                     content_area,
                     true,
                 );
-                "Basic"
             }
             State::Bearer { token } => {
                 frame.render_widget(token.preview().generate(), content_area);
-                "Bearer"
             }
-        };
-
-        let mut title: Line = Span::styled(
-            format!("Authentication Type: {label}"),
-            styles.text.title,
-        )
-        .into();
-        if self.state.is_overridden() {
-            title.push_span(Span::styled(" (edited)", styles.text.hint));
         }
-        frame.render_widget(title, label_area);
     }
 }
 

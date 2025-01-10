@@ -117,7 +117,6 @@ impl Draw for RequestView {
                 TextWindowProps {
                     text: body,
                     margins: Default::default(),
-                    footer: None,
                 },
                 body_area,
                 true,

@@ -29,6 +29,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add "Edit" and "Reset" actions to menus on the recipe pane
   - These don't provide any new functionality, as the `e` and `z` keys are already bound to those actions, but it should make them more discoverable
 
+### Changed
+
+- Denote templates that have been edited during the current session with italics instead of a faint "(edited)" note
+
 ### Fixed
 
 - Fix certain recipe-related menu actions being enabled when they shouldn't be

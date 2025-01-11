@@ -64,7 +64,6 @@ chains:
     authentication: !bearer "{{chains.auth_token}}"
     headers:
       Accept: application/json
-      Content-Type: application/json
 
 requests:
   login: !request
@@ -135,6 +134,18 @@ requests:
     method: POST
     url: "{{host}}/anything"
     body: "{{chains.big_file}}"
+
+  raw_json: !request
+    name: Raw JSON
+    method: POST
+    url: "{{host}}/anything"
+    headers:
+      Content-Type: application/json
+    body: >
+      {
+        "location": "boston",
+        "size": "HUGE"
+      }
 
   delay: !request
     <<: *base

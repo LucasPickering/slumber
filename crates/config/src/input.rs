@@ -146,6 +146,8 @@ pub enum Action {
     Edit,
     /// Reset temporary recipe override to its default value
     Reset,
+    /// Open content in the configured external pager
+    View,
     /// Browse request history
     History,
     /// Start a search/filter operation

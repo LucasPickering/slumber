@@ -2,7 +2,7 @@
 
 use crate::{
     http::RequestState,
-    message::Message,
+    message::{Message, RequestConfig},
     util::ResultReported,
     view::{
         common::{
@@ -14,9 +14,7 @@ use crate::{
             help::HelpModal,
             profile_select::ProfilePane,
             recipe_list::{RecipeListPane, RecipeListPaneEvent},
-            recipe_pane::{
-                RecipeMenuAction, RecipePane, RecipePaneEvent, RecipePaneProps,
-            },
+            recipe_pane::{RecipePane, RecipePaneEvent, RecipePaneProps},
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
@@ -25,10 +23,7 @@ use crate::{
             fixed_select::FixedSelectState,
             select::{SelectStateEvent, SelectStateEventType},
         },
-        util::{
-            persistence::{Persisted, PersistedLazy},
-            view_text,
-        },
+        util::persistence::{Persisted, PersistedLazy},
         Component, ViewContext,
     },
 };
@@ -131,6 +126,12 @@ impl PrimaryView {
         .into();
     }
 
+    /// Get a definition of the request that should be sent from the current
+    /// recipe settings
+    pub fn request_config(&self) -> Option<RequestConfig> {
+        self.recipe_pane.data().request_config()
+    }
+
     /// Is the given pane selected?
     fn is_selected(&self, primary_pane: PrimaryPane) -> bool {
         self.selected_pane.is_selected(&primary_pane)
@@ -224,38 +225,9 @@ impl PrimaryView {
         .areas(area)
     }
 
-    /// Send a request for the currently selected recipe (if any)
+    /// Send a request for the currently selected recipe
     fn send_request(&self) {
-        if let Some(config) = self.recipe_pane.data().request_config() {
-            ViewContext::send_message(Message::HttpBeginRequest(config));
-        }
-    }
-
-    /// Handle menu actions for recipe list or detail panes. We handle this here
-    /// for code de-duplication, and because we have access to all the needed
-    /// context.
-    fn handle_recipe_menu_action(&self, action: RecipeMenuAction) {
-        // If no recipes are available, we can't do anything
-        let Some(config) = self.recipe_pane.data().request_config() else {
-            return;
-        };
-
-        match action {
-            RecipeMenuAction::CopyUrl => {
-                ViewContext::send_message(Message::CopyRequestUrl(config))
-            }
-            RecipeMenuAction::CopyCurl => {
-                ViewContext::send_message(Message::CopyRequestCurl(config))
-            }
-            RecipeMenuAction::CopyBody => {
-                ViewContext::send_message(Message::CopyRequestBody(config))
-            }
-            RecipeMenuAction::ViewBody => {
-                let recipe_pane = self.recipe_pane.data();
-                recipe_pane
-                    .with_body_text(|text| view_text(text, recipe_pane.mime()))
-            }
-        }
+        ViewContext::send_message(Message::HttpBeginRequest);
     }
 }
 
@@ -335,13 +307,6 @@ impl EventHandler for PrimaryView {
                         ViewContext::send_message(Message::CollectionEdit)
                     }
                 }
-            })
-            // Handle all recipe actions here, for deduplication
-            .emitted(self.recipe_list_pane.to_emitter(), |menu_action| {
-                self.handle_recipe_menu_action(menu_action)
-            })
-            .emitted(self.recipe_pane.to_emitter(), |menu_action| {
-                self.handle_recipe_menu_action(menu_action)
             })
     }
 
@@ -525,6 +490,18 @@ mod tests {
         );
     }
 
+    /// Test the request_config() getter
+    #[rstest]
+    fn test_request_config(mut harness: TestHarness, terminal: TestTerminal) {
+        let component = create_component(&mut harness, &terminal);
+        let expected_config = RequestConfig {
+            recipe_id: harness.collection.first_recipe_id().clone(),
+            profile_id: Some(harness.collection.first_profile_id().clone()),
+            options: BuildOptions::default(),
+        };
+        assert_eq!(component.data().request_config(), Some(expected_config));
+    }
+
     /// Test "Edit Collection" action
     #[rstest]
     fn test_edit_collection(mut harness: TestHarness, terminal: TestTerminal) {
@@ -546,11 +523,6 @@ mod tests {
     /// panes
     #[rstest]
     fn test_copy_url(mut harness: TestHarness, terminal: TestTerminal) {
-        let expected_config = RequestConfig {
-            recipe_id: harness.collection.first_recipe_id().clone(),
-            profile_id: Some(harness.collection.first_profile_id().clone()),
-            options: BuildOptions::default(),
-        };
         let mut component = create_component(&mut harness, &terminal);
 
         component
@@ -561,54 +533,13 @@ mod tests {
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
-        let request_config = assert_matches!(
-            harness.pop_message_now(),
-            Message::CopyRequestUrl(request_config) => request_config,
-        );
-        assert_eq!(request_config, expected_config);
-    }
-
-    /// Test "Copy Body" action, which is available via the Recipe List or
-    /// Recipe panes
-    #[rstest]
-    fn test_copy_body(mut harness: TestHarness, terminal: TestTerminal) {
-        let expected_config = RequestConfig {
-            recipe_id: harness.collection.first_recipe_id().clone(),
-            profile_id: Some(harness.collection.first_profile_id().clone()),
-            options: BuildOptions::default(),
-        };
-        let mut component = create_component(&mut harness, &terminal);
-
-        component
-            .int()
-            .send_key(KeyCode::Char('l')) // Select recipe list
-            .open_actions()
-            // Copy Body
-            .send_keys([
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Down,
-                KeyCode::Enter,
-            ])
-            .assert_empty();
-
-        let request_config = assert_matches!(
-            harness.pop_message_now(),
-            Message::CopyRequestBody(request_config) => request_config,
-        );
-        assert_eq!(request_config, expected_config);
+        assert_matches!(harness.pop_message_now(), Message::CopyRequestUrl);
     }
 
     /// Test "Copy as cURL" action, which is available via the Recipe List or
     /// Recipe panes
     #[rstest]
     fn test_copy_as_curl(mut harness: TestHarness, terminal: TestTerminal) {
-        let expected_config = RequestConfig {
-            recipe_id: harness.collection.first_recipe_id().clone(),
-            profile_id: Some(harness.collection.first_profile_id().clone()),
-            options: BuildOptions::default(),
-        };
         let mut component = create_component(&mut harness, &terminal);
 
         component
@@ -619,10 +550,6 @@ mod tests {
             .send_keys([KeyCode::Down, KeyCode::Down, KeyCode::Enter])
             .assert_empty();
 
-        let request_config = assert_matches!(
-            harness.pop_message_now(),
-            Message::CopyRequestCurl(request_config) => request_config,
-        );
-        assert_eq!(request_config, expected_config);
+        assert_matches!(harness.pop_message_now(), Message::CopyRequestCurl);
     }
 }

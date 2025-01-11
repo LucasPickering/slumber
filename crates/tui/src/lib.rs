@@ -246,14 +246,14 @@ impl Tui {
                 self.run_command(command)?;
             }
 
-            Message::CopyRequestUrl(request_config) => {
-                self.copy_request_url(request_config)?;
+            Message::CopyRequestUrl => {
+                self.copy_request_url()?;
             }
-            Message::CopyRequestBody(request_config) => {
-                self.copy_request_body(request_config)?;
+            Message::CopyRequestBody => {
+                self.copy_request_body()?;
             }
-            Message::CopyRequestCurl(request_config) => {
-                self.copy_request_curl(request_config)?;
+            Message::CopyRequestCurl => {
+                self.copy_request_curl()?;
             }
             Message::CopyText(text) => self.view.copy_text(text),
             Message::SaveResponseBody { request_id, data } => {
@@ -284,9 +284,7 @@ impl Tui {
             Message::Error { error } => self.view.open_modal(error),
 
             // Manage HTTP life cycle
-            Message::HttpBeginRequest(request_config) => {
-                self.send_request(request_config)?
-            }
+            Message::HttpBeginRequest => self.send_request()?,
             Message::HttpBuildError { error } => {
                 let state = self.request_store.build_error(error);
                 self.view.update_request(state);
@@ -478,14 +476,12 @@ impl Tui {
     }
 
     /// Render URL for a request, then copy it to the clipboard
-    fn copy_request_url(
-        &self,
-        RequestConfig {
+    fn copy_request_url(&self) -> anyhow::Result<()> {
+        let RequestConfig {
             profile_id,
             recipe_id,
             options,
-        }: RequestConfig,
-    ) -> anyhow::Result<()> {
+        } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
         let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
@@ -502,14 +498,12 @@ impl Tui {
     }
 
     /// Render body for a request, then copy it to the clipboard
-    fn copy_request_body(
-        &self,
-        RequestConfig {
+    fn copy_request_body(&self) -> anyhow::Result<()> {
+        let RequestConfig {
             profile_id,
             recipe_id,
             options,
-        }: RequestConfig,
-    ) -> anyhow::Result<()> {
+        } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
         let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
@@ -530,14 +524,12 @@ impl Tui {
     }
 
     /// Render a request, then copy the equivalent curl command to the clipboard
-    fn copy_request_curl(
-        &self,
-        RequestConfig {
+    fn copy_request_curl(&self) -> anyhow::Result<()> {
+        let RequestConfig {
             profile_id,
             recipe_id,
             options,
-        }: RequestConfig,
-    ) -> anyhow::Result<()> {
+        } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
         let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
@@ -582,15 +574,24 @@ impl Tui {
         Ok(())
     }
 
+    /// Get the current request config for the selected recipe. The config
+    /// defines how to build a request. If no recipe is selected, this returns
+    /// an error. This should only be called in contexts where we can safely
+    /// assume that a recipe is selected (e.g. triggered via an action on a
+    /// recipe), so an error indicates a bug.
+    fn request_config(&self) -> anyhow::Result<RequestConfig> {
+        self.view
+            .request_config()
+            .ok_or_else(|| anyhow!("No recipe selected"))
+    }
+
     /// Launch an HTTP request in a separate task
-    fn send_request(
-        &mut self,
-        RequestConfig {
+    fn send_request(&mut self) -> anyhow::Result<()> {
+        let RequestConfig {
             profile_id,
             recipe_id,
             options,
-        }: RequestConfig,
-    ) -> anyhow::Result<()> {
+        } = self.request_config()?;
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
 

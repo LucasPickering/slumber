@@ -1,6 +1,6 @@
 use crate::{
     http::{RequestState, RequestStateSummary, RequestStore},
-    message::Message,
+    message::{Message, RequestConfig},
     util::ResultReported,
     view::{
         common::{
@@ -66,6 +66,12 @@ impl Root {
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
         self.primary_view.data().selected_profile_id()
+    }
+
+    /// Get a definition of the request that should be sent from the current
+    /// recipe settings
+    pub fn request_config(&self) -> Option<RequestConfig> {
+        self.primary_view.data().request_config()
     }
 
     /// What request should be shown in the request/response pane right now?

@@ -71,11 +71,11 @@ pub enum Message {
     ConfirmStart(Confirm),
 
     /// Render request URL from a recipe, then copy rendered URL
-    CopyRequestUrl(RequestConfig),
-    /// Render request body from a recipe, then copy rendered text
-    CopyRequestBody(RequestConfig),
+    CopyRequestUrl,
+    /// Render request body from the selected recipe, then copy rendered text
+    CopyRequestBody,
     /// Render request, then generate an equivalent cURL command and copy it
-    CopyRequestCurl(RequestConfig),
+    CopyRequestCurl,
     /// Copy some text to the clipboard
     CopyText(String),
 
@@ -98,7 +98,7 @@ pub enum Message {
     },
 
     /// Launch an HTTP request from the given recipe/profile.
-    HttpBeginRequest(RequestConfig),
+    HttpBeginRequest,
     /// Request failed to build
     HttpBuildError { error: RequestBuildError },
     /// We launched the HTTP request

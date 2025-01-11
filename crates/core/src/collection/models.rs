@@ -13,6 +13,7 @@ use anyhow::Context;
 use derive_more::{Deref, Display, From, FromStr};
 use indexmap::IndexMap;
 use mime::Mime;
+use reqwest::header;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, path::PathBuf, time::Duration};
 use tracing::info;
@@ -165,10 +166,55 @@ impl crate::test_util::Factory for Folder {
     }
 }
 
+/// A definition of how to make a request. This is *not* called `Request` in
+/// order to distinguish it from a single instance of an HTTP request. And it's
+/// not called `RequestTemplate` because the word "template" has a specific
+/// meaning related to string interpolation.
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(deny_unknown_fields)]
+pub struct Recipe {
+    #[serde(skip)] // This will be auto-populated from the map key
+    pub id: RecipeId,
+    pub name: Option<String>,
+    /// *Not* a template string because the usefulness doesn't justify the
+    /// complexity. This gives the user an immediate error if the method is
+    /// wrong which is helpful.
+    pub method: HttpMethod,
+    pub url: Template,
+    pub body: Option<RecipeBody>,
+    pub authentication: Option<Authentication>,
+    #[serde(default, with = "cereal::serde_query_parameters")]
+    pub query: Vec<(String, Template)>,
+    #[serde(default)]
+    pub headers: IndexMap<String, Template>,
+}
+
 impl Recipe {
     /// Get a presentable name for this recipe
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
+    }
+
+    /// Guess the value that the `Content-Type` header will have for a generated
+    /// request. This will use the raw header if it's present and a valid MIME
+    /// type, otherwise it will fall back to the content type of the body, if
+    /// known (e.g. JSON). Otherwise, return `None`. If the header is a
+    /// dynamic template, we will *not* attempt to render it, so MIME parsing
+    /// will fail.
+    /// TODO update - forms don't count
+    pub fn mime(&self) -> Option<Mime> {
+        self.headers
+            .get(header::CONTENT_TYPE.as_str())
+            .and_then(|template| template.display().parse::<Mime>().ok())
+            .or_else(|| {
+                // Use the type of the body to determine MIME
+                if let Some(RecipeBody::Raw { content_type, .. }) = &self.body {
+                    content_type.as_ref().map(ContentType::to_mime)
+                } else {
+                    None
+                }
+            })
     }
 }
 
@@ -197,30 +243,6 @@ impl crate::test_util::Factory<&str> for Recipe {
             ..Self::factory(())
         }
     }
-}
-
-/// A definition of how to make a request. This is *not* called `Request` in
-/// order to distinguish it from a single instance of an HTTP request. And it's
-/// not called `RequestTemplate` because the word "template" has a specific
-/// meaning related to string interpolation.
-#[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
-pub struct Recipe {
-    #[serde(skip)] // This will be auto-populated from the map key
-    pub id: RecipeId,
-    pub name: Option<String>,
-    /// *Not* a template string because the usefulness doesn't justify the
-    /// complexity. This gives the user an immediate error if the method is
-    /// wrong which is helpful.
-    pub method: HttpMethod,
-    pub url: Template,
-    pub body: Option<RecipeBody>,
-    pub authentication: Option<Authentication>,
-    #[serde(default, with = "cereal::serde_query_parameters")]
-    pub query: Vec<(String, Template)>,
-    #[serde(default)]
-    pub headers: IndexMap<String, Template>,
 }
 
 #[derive(
@@ -580,5 +602,50 @@ impl crate::test_util::Factory for Collection {
             profiles: by_id([profile]),
             ..Collection::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::Factory;
+    use rstest::rstest;
+
+    /// TODO
+    #[rstest]
+    #[case::none(None, None, None)]
+    #[case::header(
+        // Header takes precedence over body
+        Some("text/plain"),
+        Some(ContentType::Json),
+        Some("text/plain")
+    )]
+    #[case::body(None, Some(ContentType::Json), Some("application/json"))]
+    #[case::unknown_mime(
+        // Fall back to body type
+        Some("bogus"),
+        Some(ContentType::Json),
+        Some("application/json")
+    )]
+    fn test_recipe_mime(
+        #[case] header: Option<&str>,
+        #[case] content_type: Option<ContentType>,
+        #[case] expected: Option<&str>,
+    ) {
+        let mut headers = IndexMap::new();
+        if let Some(header) = header {
+            headers.insert("content-type".into(), header.into());
+        }
+        let body = RecipeBody::Raw {
+            body: "body!".into(),
+            content_type,
+        };
+        let recipe = Recipe {
+            headers,
+            body: Some(body),
+            ..Recipe::factory(())
+        };
+        let expected = expected.and_then(|value| value.parse::<Mime>().ok());
+        assert_eq!(recipe.mime(), expected);
     }
 }

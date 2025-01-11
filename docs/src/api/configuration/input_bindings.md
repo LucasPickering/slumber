@@ -56,6 +56,7 @@ input_bindings:
 | `cancel`              | `esc`                       | Cancel current dialog or request                      |
 | `edit`                | `e`                         | Apply a temporary override to a recipe value          |
 | `reset`               | `r`                         | Reset temporary recipe override to its default        |
+| `view`                | `v`                         | Open the selected content (e.g. body) in your pager   |
 | `history`             | `h`                         | Open request history for a recipe                     |
 | `search`              | `/`                         | Open/select search for current pane                   |
 | `export`              | `:`                         | Enter command for exporting response data             |

@@ -35,21 +35,26 @@ impl ContentType {
     const EXTENSIONS: Mapping<'static, ContentType> =
         Mapping::new(&[(Self::Json, &["json"])]);
 
-    /// Parse the value of the content-type header and map it to a known content
-    /// type
-    fn from_mime(mime_type: &str) -> anyhow::Result<Self> {
-        let mime_type: Mime = mime_type
+    /// Parse a MIME string and map it to a known content type
+    fn parse_mime(mime_type: &str) -> anyhow::Result<Self> {
+        let mime: Mime = mime_type
             .parse()
             .with_context(|| format!("Invalid content type `{mime_type}`"))?;
+        Self::from_mime(&mime)
+            .ok_or_else(|| anyhow!("Unknown content type `{mime_type}`"))
+    }
 
-        let suffix = mime_type.suffix().map(|name| name.as_str());
-        match (mime_type.type_(), mime_type.subtype(), suffix) {
+    /// Get a known content type from a pre-parsed MIME type. Return `None` if
+    /// the MIME type isn't supported.
+    pub fn from_mime(mime: &Mime) -> Option<Self> {
+        let suffix = mime.suffix().map(|name| name.as_str());
+        match (mime.type_(), mime.subtype(), suffix) {
             // JSON has a lot of extended types that follow the pattern
             // "application/*+json", match those too
             (APPLICATION, JSON, _) | (APPLICATION, _, Some("json")) => {
-                Ok(Self::Json)
+                Some(Self::Json)
             }
-            _ => Err(anyhow!("Unknown content type `{mime_type}`")),
+            _ => None,
         }
     }
 
@@ -79,7 +84,7 @@ impl ContentType {
             .ok_or_else(|| anyhow!("Response has no content-type header"))?;
         let header_value = std::str::from_utf8(header_value)
             .context("content-type header is not valid utf-8")?;
-        Self::from_mime(header_value)
+        Self::parse_mime(header_value)
     }
 
     /// Parse some content of this type. Return a dynamically dispatched content
@@ -212,7 +217,7 @@ mod tests {
         #[case] mime_type: &str,
         #[case] expected: ContentType,
     ) {
-        assert_eq!(ContentType::from_mime(mime_type).unwrap(), expected);
+        assert_eq!(ContentType::parse_mime(mime_type).unwrap(), expected);
     }
 
     /// Test invalid/unknown MIME types
@@ -225,7 +230,7 @@ mod tests {
         #[case] mime_type: &str,
         #[case] expected_error: &str,
     ) {
-        assert_err!(ContentType::from_mime(mime_type), expected_error);
+        assert_err!(ContentType::parse_mime(mime_type), expected_error);
     }
 
     #[test]

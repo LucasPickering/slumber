@@ -13,22 +13,22 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Child, Emitter, Event, EventHandler, OptionEvent},
-        state::Identified,
+        util::view_text,
         Component, ViewContext,
     },
 };
 use anyhow::Context;
-use ratatui::{text::Text, Frame};
+use mime::Mime;
+use ratatui::Frame;
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{RecipeBody, RecipeId},
+    collection::{Recipe, RecipeBody, RecipeId},
     http::content_type::ContentType,
     template::Template,
 };
 use std::{
     fs,
-    ops::Deref,
     path::{Path, PathBuf},
 };
 use strum::{EnumIter, IntoEnumIterator};
@@ -43,24 +43,26 @@ pub enum RecipeBodyDisplay {
 }
 
 impl RecipeBodyDisplay {
-    /// Build a component to display the body, based on the body type
-    pub fn new(body: &RecipeBody, recipe_id: RecipeId) -> Self {
+    /// Build a component to display the body, based on the body type. This
+    /// takes in the full recipe as well as the body so we can guarantee the
+    /// body is not `None`.
+    pub fn new(body: &RecipeBody, recipe: &Recipe) -> Self {
         match body {
-            RecipeBody::Raw { body, content_type } => Self::Raw(
-                RawBody::new(recipe_id, body.clone(), *content_type).into(),
-            ),
+            RecipeBody::Raw { body, .. } => {
+                Self::Raw(RawBody::new(body.clone(), recipe).into())
+            }
             RecipeBody::FormUrlencoded(fields)
             | RecipeBody::FormMultipart(fields) => {
                 let inner = RecipeFieldTable::new(
                     "Field",
-                    FormRowKey(recipe_id.clone()),
+                    FormRowKey(recipe.id.clone()),
                     fields.iter().enumerate().map(|(i, (field, value))| {
                         (
                             field.clone(),
                             value.clone(),
-                            RecipeOverrideKey::form_field(recipe_id.clone(), i),
+                            RecipeOverrideKey::form_field(recipe.id.clone(), i),
                             FormRowToggleKey {
-                                recipe_id: recipe_id.clone(),
+                                recipe_id: recipe.id.clone(),
                                 field: field.clone(),
                             },
                         )
@@ -68,18 +70,6 @@ impl RecipeBodyDisplay {
                 );
                 Self::Form(inner.into())
             }
-        }
-    }
-
-    /// Get body text. Return `None` for form bodies
-    pub fn text(
-        &self,
-    ) -> Option<impl '_ + Deref<Target = Identified<Text<'static>>>> {
-        match self {
-            RecipeBodyDisplay::Raw(body) => {
-                Some(body.data().body.preview().text())
-            }
-            RecipeBodyDisplay::Form(_) => None,
         }
     }
 
@@ -136,25 +126,30 @@ pub struct RawBody {
     /// Emitter for menu actions
     actions_emitter: Emitter<RawBodyMenuAction>,
     body: RecipeTemplate,
+    mime: Option<Mime>,
     text_window: Component<TextWindow>,
 }
 
 impl RawBody {
-    fn new(
-        recipe_id: RecipeId,
-        template: Template,
-        content_type: Option<ContentType>,
-    ) -> Self {
+    fn new(template: Template, recipe: &Recipe) -> Self {
+        let mime = recipe.mime();
+        let content_type = mime.as_ref().and_then(ContentType::from_mime);
         Self {
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
             body: RecipeTemplate::new(
-                RecipeOverrideKey::body(recipe_id),
+                RecipeOverrideKey::body(recipe.id.clone()),
                 template,
                 content_type,
             ),
+            mime,
             text_window: Component::default(),
         }
+    }
+
+    /// Open rendered body in the pager
+    fn view_body(&self) {
+        view_text(&self.body.preview().text(), self.mime.clone());
     }
 
     /// Send a message to open the body in an external editor. We have to write
@@ -221,6 +216,7 @@ impl EventHandler for RawBody {
         event
             .opt()
             .action(|action, propagate| match action {
+                Action::View => self.view_body(),
                 Action::Edit => self.open_editor(),
                 Action::Reset => self.body.reset_override(),
                 _ => propagate.set(),
@@ -229,6 +225,10 @@ impl EventHandler for RawBody {
                 self.load_override(&path)
             })
             .emitted(self.actions_emitter, |menu_action| match menu_action {
+                RawBodyMenuAction::View => self.view_body(),
+                RawBodyMenuAction::Copy => {
+                    ViewContext::send_message(Message::CopyRequestBody)
+                }
                 RawBodyMenuAction::Edit => self.open_editor(),
                 RawBodyMenuAction::Reset => self.body.reset_override(),
             })
@@ -281,6 +281,10 @@ pub struct FormRowToggleKey {
 /// Action menu items for a raw body
 #[derive(Copy, Clone, Debug, derive_more::Display, EnumIter)]
 enum RawBodyMenuAction {
+    #[display("View Body")]
+    View,
+    #[display("Copy Body")]
+    Copy,
     #[display("Edit Body")]
     Edit,
     #[display("Reset Body")]
@@ -290,13 +294,15 @@ enum RawBodyMenuAction {
 impl IntoMenuAction<RawBody> for RawBodyMenuAction {
     fn enabled(&self, data: &RawBody) -> bool {
         match self {
-            Self::Edit => true,
+            Self::View | Self::Copy | Self::Edit => true,
             Self::Reset => data.body.is_overridden(),
         }
     }
 
     fn shortcut(&self, _: &RawBody) -> Option<Action> {
         match self {
+            Self::View => Some(Action::View),
+            Self::Copy => None,
             Self::Edit => Some(Action::Edit),
             Self::Reset => Some(Action::Reset),
         }
@@ -334,15 +340,17 @@ mod tests {
         mut harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {
-        let body: RecipeBody = RecipeBody::Raw {
-            body: "hello!".into(),
-            content_type: Some(ContentType::Json),
+        let recipe = Recipe {
+            body: Some(RecipeBody::Raw {
+                body: "hello!".into(),
+                content_type: Some(ContentType::Json),
+            }),
+            ..Recipe::factory(())
         };
-        let recipe_id = RecipeId::factory(());
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            RecipeBodyDisplay::new(&body, recipe_id.clone()),
+            RecipeBodyDisplay::new(recipe.body.as_ref().unwrap(), &recipe),
         );
 
         // Check initial state
@@ -381,7 +389,7 @@ mod tests {
 
         // Persistence store should be updated
         let persisted = RecipeOverrideStore::load_persisted(
-            &RecipeOverrideKey::body(recipe_id),
+            &RecipeOverrideKey::body(recipe.id.clone()),
         );
         assert_eq!(
             persisted,
@@ -399,20 +407,22 @@ mod tests {
         harness: TestHarness,
         #[with(10, 1)] terminal: TestTerminal,
     ) {
-        let recipe_id = RecipeId::factory(());
+        let recipe = Recipe {
+            body: Some(RecipeBody::Raw {
+                body: "".into(),
+                content_type: Some(ContentType::Json),
+            }),
+            ..Recipe::factory(())
+        };
         RecipeOverrideStore::store_persisted(
-            &RecipeOverrideKey::body(recipe_id.clone()),
+            &RecipeOverrideKey::body(recipe.id.clone()),
             &RecipeOverrideValue::Override("hello!".into()),
         );
 
-        let body: RecipeBody = RecipeBody::Raw {
-            body: "".into(),
-            content_type: Some(ContentType::Json),
-        };
         let component = TestComponent::new(
             &harness,
             &terminal,
-            RecipeBodyDisplay::new(&body, recipe_id),
+            RecipeBodyDisplay::new(recipe.body.as_ref().unwrap(), &recipe),
         );
 
         assert_eq!(

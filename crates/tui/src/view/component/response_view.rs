@@ -20,6 +20,7 @@ use derive_more::Display;
 use persisted::PersistedKey;
 use ratatui::Frame;
 use serde::Serialize;
+use slumber_config::Action;
 use slumber_core::{collection::RecipeId, http::ResponseRecord};
 use std::sync::Arc;
 use strum::{EnumIter, IntoEnumIterator};
@@ -53,55 +54,41 @@ impl ResponseBodyView {
             body,
         }
     }
+
+    fn view_body(&self) {
+        view_text(self.body.data().visible_text(), self.response.mime());
+    }
 }
-
-/// Items in the actions popup menu for the Body
-#[derive(Copy, Clone, Debug, Display, EnumIter)]
-#[allow(clippy::enum_variant_names)]
-enum ResponseBodyMenuAction {
-    #[display("View Body")]
-    ViewBody,
-    #[display("Copy Body")]
-    CopyBody,
-    #[display("Save Body as File")]
-    SaveBody,
-}
-
-impl IntoMenuAction<ResponseBodyView> for ResponseBodyMenuAction {}
-
-/// Persisted key for response body JSONPath query text box
-#[derive(Debug, Serialize, PersistedKey)]
-#[persisted(String)]
-struct ResponseQueryKey(RecipeId);
 
 impl EventHandler for ResponseBodyView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().emitted(self.actions_emitter, |menu_action| {
-            match menu_action {
-                ResponseBodyMenuAction::ViewBody => {
-                    view_text(
-                        self.body.data().visible_text(),
-                        self.response.mime(),
-                    );
+        event
+            .opt()
+            .action(|action, propagate| match action {
+                Action::View => self.view_body(),
+                _ => propagate.set(),
+            })
+            .emitted(self.actions_emitter, |menu_action| {
+                match menu_action {
+                    ResponseBodyMenuAction::ViewBody => self.view_body(),
+                    ResponseBodyMenuAction::CopyBody => {
+                        // Use whatever text is visible to the user. This
+                        // differs from saving the body, because we can't copy
+                        // binary content, so if the file is binary we'll copy
+                        // the hexcode text
+                        ViewContext::send_message(Message::CopyText(
+                            self.body.data().visible_text().to_string(),
+                        ));
+                    }
+                    ResponseBodyMenuAction::SaveBody => {
+                        // This will trigger a modal to ask the user for a path
+                        ViewContext::send_message(Message::SaveResponseBody {
+                            request_id: self.response.id,
+                            data: self.body.data().modified_text(),
+                        });
+                    }
                 }
-                ResponseBodyMenuAction::CopyBody => {
-                    // Use whatever text is visible to the user. This differs
-                    // from saving the body, because we can't copy binary
-                    // content, so if the file is binary we'll copy the hexcode
-                    // text
-                    ViewContext::send_message(Message::CopyText(
-                        self.body.data().visible_text().to_string(),
-                    ));
-                }
-                ResponseBodyMenuAction::SaveBody => {
-                    // This will trigger a modal to ask the user for a path
-                    ViewContext::send_message(Message::SaveResponseBody {
-                        request_id: self.response.id,
-                        data: self.body.data().modified_text(),
-                    });
-                }
-            }
-        })
+            })
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
@@ -120,6 +107,32 @@ impl Draw for ResponseBodyView {
         self.body.draw(frame, (), metadata.area(), true);
     }
 }
+
+/// Items in the actions popup menu for the Body
+#[derive(Copy, Clone, Debug, Display, EnumIter)]
+#[allow(clippy::enum_variant_names)]
+enum ResponseBodyMenuAction {
+    #[display("View Body")]
+    ViewBody,
+    #[display("Copy Body")]
+    CopyBody,
+    #[display("Save Body as File")]
+    SaveBody,
+}
+
+impl IntoMenuAction<ResponseBodyView> for ResponseBodyMenuAction {
+    fn shortcut(&self, _: &ResponseBodyView) -> Option<Action> {
+        match self {
+            Self::ViewBody => Some(Action::View),
+            Self::CopyBody | Self::SaveBody => None,
+        }
+    }
+}
+
+/// Persisted key for response body JSONPath query text box
+#[derive(Debug, Serialize, PersistedKey)]
+#[persisted(String)]
+struct ResponseQueryKey(RecipeId);
 
 #[derive(Debug)]
 pub struct ResponseHeadersView {

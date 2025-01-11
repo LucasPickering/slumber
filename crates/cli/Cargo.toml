@@ -1,14 +1,14 @@
 [package]
-authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
+authors = {workspace = true}
 description = "Command line interface for Slumber. Not intended for external use."
-edition = "2021"
-homepage = "https://slumber.lucaspickering.me"
-keywords = ["rest", "http", "terminal", "tui"]
-license = "MIT"
+edition = {workspace = true}
+homepage = {workspace = true}
+keywords = {workspace = true}
+license = {workspace = true}
 name = "slumber_cli"
-repository = "https://github.com/LucasPickering/slumber"
-version = "2.5.0"
-# Rely on parent for rust-version
+repository = {workspace = true}
+rust-version = {workspace = true}
+version = {workspace = true}
 
 [dependencies]
 anyhow = {workspace = true}

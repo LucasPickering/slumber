@@ -1,5 +1,6 @@
 use crate::{
     context::TuiContext,
+    message::Message,
     view::{
         common::{
             actions::{IntoMenuAction, MenuAction},
@@ -7,7 +8,6 @@ use crate::{
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
             Pane,
         },
-        component::recipe_pane::RecipeMenuAction,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
@@ -29,7 +29,7 @@ use slumber_core::collection::{
     HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType, RecipeTree,
 };
 use std::collections::HashSet;
-use strum::IntoEnumIterator;
+use strum::{EnumIter, IntoEnumIterator};
 
 /// List/tree of recipes and folders. This is mostly just a list, but with some
 /// extra logic to allow expanding/collapsing nodes. This could be made into a
@@ -46,7 +46,7 @@ pub struct RecipeListPane {
     /// Emitter for the on-click event, to focus the pane
     click_emitter: Emitter<RecipeListPaneEvent>,
     /// Emitter for menu actions, to be handled by our parent
-    actions_emitter: Emitter<RecipeMenuAction>,
+    actions_emitter: Emitter<RecipeListMenuAction>,
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
@@ -191,10 +191,18 @@ impl EventHandler for RecipeListPane {
                     self.filter_focused = false
                 }
             })
+            .emitted(self.actions_emitter, |menu_action| match menu_action {
+                RecipeListMenuAction::CopyUrl => {
+                    ViewContext::send_message(Message::CopyRequestUrl)
+                }
+                RecipeListMenuAction::CopyCurl => {
+                    ViewContext::send_message(Message::CopyRequestCurl)
+                }
+            })
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        RecipeMenuAction::iter()
+        RecipeListMenuAction::iter()
             .map(MenuAction::with_data(self, self.actions_emitter))
             .collect()
     }
@@ -248,36 +256,6 @@ impl ToEmitter<RecipeListPaneEvent> for RecipeListPane {
     }
 }
 
-/// Notify parent when one of this pane's actions is selected
-impl ToEmitter<RecipeMenuAction> for RecipeListPane {
-    fn to_emitter(&self) -> Emitter<RecipeMenuAction> {
-        self.actions_emitter
-    }
-}
-
-impl IntoMenuAction<RecipeListPane> for RecipeMenuAction {
-    fn enabled(&self, data: &RecipeListPane) -> bool {
-        let recipe = data
-            .select
-            .data()
-            .selected()
-            .filter(|node| node.is_recipe());
-        match self {
-            Self::CopyUrl | Self::CopyCurl => recipe.is_some(),
-            // Check if the recipe has a body
-            Self::ViewBody | Self::CopyBody => recipe
-                .map(|recipe| {
-                    ViewContext::collection()
-                        .recipes
-                        .get_recipe(&recipe.id)
-                        .and_then(|recipe| recipe.body.as_ref())
-                        .is_some()
-                })
-                .unwrap_or(false),
-        }
-    }
-}
-
 /// Persisted key for the ID of the selected recipe
 #[derive(Debug, Serialize, PersistedKey)]
 #[persisted(Option<RecipeId>)]
@@ -287,6 +265,28 @@ struct SelectedRecipeKey;
 #[derive(Debug)]
 pub enum RecipeListPaneEvent {
     Click,
+}
+
+/// Items in the actions popup menu
+#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter)]
+enum RecipeListMenuAction {
+    #[display("Copy URL")]
+    CopyUrl,
+    #[display("Copy as cURL")]
+    CopyCurl,
+}
+
+impl IntoMenuAction<RecipeListPane> for RecipeListMenuAction {
+    fn enabled(&self, data: &RecipeListPane) -> bool {
+        let recipe = data
+            .select
+            .data()
+            .selected()
+            .filter(|node| node.is_recipe());
+        match self {
+            Self::CopyUrl | Self::CopyCurl => recipe.is_some(),
+        }
+    }
 }
 
 /// Simplified version of [RecipeNode], to be used in the display tree. This

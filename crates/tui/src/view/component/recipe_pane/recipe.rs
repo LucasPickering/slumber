@@ -8,22 +8,18 @@ use crate::view::{
     },
     draw::{Draw, DrawMetadata},
     event::{Child, EventHandler},
-    state::Identified,
     util::persistence::PersistedLazy,
     Component,
 };
 use derive_more::Display;
 use persisted::SingletonKey;
-use ratatui::{
-    layout::Layout, prelude::Constraint, text::Text, widgets::Paragraph, Frame,
-};
+use ratatui::{layout::Layout, prelude::Constraint, widgets::Paragraph, Frame};
 use reqwest::header::HeaderName;
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     collection::{Recipe, RecipeId},
     http::{BuildOptions, HttpMethod},
 };
-use std::ops::Deref;
 use strum::{EnumCount, EnumIter};
 
 /// Display a recipe. Not a recipe *node*, this is for genuine bonafide recipe.
@@ -85,7 +81,7 @@ impl RecipeDisplay {
             body: recipe
                 .body
                 .as_ref()
-                .map(|body| RecipeBodyDisplay::new(body, recipe.id.clone()))
+                .map(|body| RecipeBodyDisplay::new(body, recipe))
                 .into(),
             // Map authentication type
             authentication: recipe
@@ -148,14 +144,6 @@ impl RecipeDisplay {
     /// Does the recipe have a body defined?
     pub fn has_body(&self) -> bool {
         self.body.data().is_some()
-    }
-
-    /// Get visible body text
-    pub fn body_text(
-        &self,
-    ) -> Option<impl '_ + Deref<Target = Identified<Text<'static>>>> {
-        let body = self.body.data().as_ref()?;
-        body.text()
     }
 }
 

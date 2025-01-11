@@ -18,7 +18,7 @@ pub use util::{Confirm, PreviewPrompter};
 use crate::{
     context::TuiContext,
     http::{RequestState, RequestStore},
-    message::{Message, MessageSender},
+    message::{Message, MessageSender, RequestConfig},
     util::ResultReported,
     view::{
         common::modal::Modal,
@@ -101,6 +101,12 @@ impl View {
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
         self.root.data().selected_profile_id()
+    }
+
+    /// Get a definition of the request that should be sent from the current
+    /// recipe settings
+    pub fn request_config(&self) -> Option<RequestConfig> {
+        self.root.data().request_config()
     }
 
     /// Select a particular request

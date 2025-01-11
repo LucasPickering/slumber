@@ -17,6 +17,7 @@ use crate::{
 };
 use derive_more::Display;
 use ratatui::{layout::Layout, prelude::Constraint, text::Text, Frame};
+use slumber_config::Action;
 use slumber_core::{
     http::{content_type::ContentType, RequestRecord},
     util::{format_byte_size, MaybeStr},
@@ -47,31 +48,40 @@ impl RequestView {
             body_text_window: Default::default(),
         }
     }
+
+    fn view_body(&self) {
+        if let Some(body) = &self.body {
+            view_text(body, self.request.mime());
+        }
+    }
 }
 
 impl EventHandler for RequestView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().emitted(self.actions_emitter, |menu_action| {
-            match menu_action {
-                RequestMenuAction::CopyUrl => ViewContext::send_message(
-                    Message::CopyText(self.request.url.to_string()),
-                ),
-                RequestMenuAction::CopyBody => {
-                    // Copy exactly what the user sees. Currently requests
-                    // don't support formatting/querying but that could change
-                    if let Some(body) = &self.body {
-                        ViewContext::send_message(Message::CopyText(
-                            body.to_string(),
-                        ));
+        event
+            .opt()
+            .action(|action, propagate| match action {
+                Action::View => self.view_body(),
+                _ => propagate.set(),
+            })
+            .emitted(self.actions_emitter, |menu_action| {
+                match menu_action {
+                    RequestMenuAction::CopyUrl => ViewContext::send_message(
+                        Message::CopyText(self.request.url.to_string()),
+                    ),
+                    RequestMenuAction::CopyBody => {
+                        // Copy exactly what the user sees. Currently requests
+                        // don't support formatting/querying but that could
+                        // change
+                        if let Some(body) = &self.body {
+                            ViewContext::send_message(Message::CopyText(
+                                body.to_string(),
+                            ));
+                        }
                     }
+                    RequestMenuAction::ViewBody => self.view_body(),
                 }
-                RequestMenuAction::ViewBody => {
-                    if let Some(body) = &self.body {
-                        view_text(body, self.request.mime());
-                    }
-                }
-            }
-        })
+            })
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
@@ -141,6 +151,13 @@ impl IntoMenuAction<RequestView> for RequestMenuAction {
         match self {
             Self::CopyUrl => true,
             Self::CopyBody | Self::ViewBody => data.body.is_some(),
+        }
+    }
+
+    fn shortcut(&self, _: &RequestView) -> Option<Action> {
+        match self {
+            Self::CopyUrl | Self::CopyBody => None,
+            Self::ViewBody => Some(Action::View),
         }
     }
 }

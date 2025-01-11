@@ -178,6 +178,7 @@ impl Default for InputEngine {
                 Action::Cancel => KeyCode::Esc.into(),
                 Action::Edit => KeyCode::Char('e').into(),
                 Action::Reset => KeyCode::Char('z').into(),
+                Action::View => KeyCode::Char('v').into(),
                 Action::SelectProfileList => KeyCode::Char('p').into(),
                 Action::SelectRecipeList => KeyCode::Char('l').into(),
                 Action::SelectRecipe => KeyCode::Char('c').into(),

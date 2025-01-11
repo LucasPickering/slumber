@@ -26,8 +26,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `slumber history get` prints a specific request/response
 - Add `--output` flag to `slumber request` to control where the response body is written to
 - Support MIME type mapping for `pager` config field, so you can set different pagers based on media type. [See docs](https://slumber.lucaspickering.me/book/api/configuration/mime.html)
-- Add "Edit" and "Reset" actions to menus on the recipe pane
-  - These don't provide any new functionality, as the `e` and `z` keys are already bound to those actions, but it should make them more discoverable
+- Several changes related to keybinds and action menus to make the two feel more cohesive
+  - Add "Edit" and "Reset" actions to menus on the recipe pane
+    - These don't provide any new functionality, as the `e` and `z` keys are already bound to those actions, but it should make them more discoverable
+  - Add keybind (`v` by defualt) to open a recipe/request/response body in your pager
+    - Previously this was available only through the actions menu
+  - "View Body" and "Copy Body" actions for a **recipe** are now only available within the Body tab of the Recipe pane
+    - Previously they were available anywhere in the Recipe List or Recipe panes. With the addition of other actions to the menu it was started to feel cluttered
 
 ### Changed
 

@@ -8,7 +8,7 @@ pub use persistence::RecipeOverrideStore;
 
 use crate::{
     context::TuiContext,
-    message::RequestConfig,
+    message::{Message, RequestConfig},
     view::{
         common::{
             actions::{IntoMenuAction, MenuAction},
@@ -24,12 +24,10 @@ use crate::{
 };
 use derive_more::Display;
 use itertools::{Itertools, Position};
-use mime::Mime;
 use ratatui::{
     text::{Line, Text},
     Frame,
 };
-use reqwest::header;
 use slumber_config::Action;
 use slumber_core::{
     collection::{Folder, HasId, ProfileId, RecipeId, RecipeNode},
@@ -45,7 +43,7 @@ pub struct RecipePane {
     /// Emitter for the on-click event, to focus the pane
     click_emitter: Emitter<RecipePaneEvent>,
     /// Emitter for menu actions, to be handled by our parent
-    actions_emitter: Emitter<RecipeMenuAction>,
+    actions_emitter: Emitter<RecipePaneMenuAction>,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
     recipe_state: StateCell<RecipeStateKey, Component<Option<RecipeDisplay>>>,
@@ -73,58 +71,30 @@ impl RecipePane {
             options,
         })
     }
-
-    /// Get the value that the `Content-Type` header will have for a generated
-    /// request. This will use the preview of the header if present, otherwise
-    /// it will fall back to the content type of the body, if known (e.g. JSON).
-    /// Otherwise, return `None`.
-    pub fn mime(&self) -> Option<Mime> {
-        let state = self.recipe_state.get()?;
-        let display = state.data().as_ref()?;
-        display
-            .header(header::CONTENT_TYPE)
-            .and_then(|value| value.parse::<Mime>().ok())
-            .or_else(|| {
-                // Use the type of the body to determine MIME
-                let recipe_id =
-                    Ref::filter_map(self.recipe_state.get_key()?, |key| {
-                        key.recipe_id.as_ref()
-                    })
-                    .ok()?;
-                let collection = ViewContext::collection();
-                let recipe = collection.recipes.get(&recipe_id)?.recipe()?;
-                recipe.body.as_ref()?.mime()
-            })
-    }
-
-    /// Execute a function with the recipe's body text, if available. Body text
-    /// is only available for recipes with non-form bodies.
-    pub fn with_body_text(&self, f: impl FnOnce(&Text)) {
-        let Some(state) = self.recipe_state.get() else {
-            return;
-        };
-        let Some(display) = state.data().as_ref() else {
-            return;
-        };
-        let Some(body_text) = display.body_text() else {
-            return;
-        };
-        f(&body_text)
-    }
 }
 
 impl EventHandler for RecipePane {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().action(|action, propagate| match action {
-            Action::LeftClick => {
-                self.click_emitter.emit(RecipePaneEvent::Click)
-            }
-            _ => propagate.set(),
-        })
+        event
+            .opt()
+            .action(|action, propagate| match action {
+                Action::LeftClick => {
+                    self.click_emitter.emit(RecipePaneEvent::Click)
+                }
+                _ => propagate.set(),
+            })
+            .emitted(self.actions_emitter, |menu_action| match menu_action {
+                RecipePaneMenuAction::CopyUrl => {
+                    ViewContext::send_message(Message::CopyRequestUrl)
+                }
+                RecipePaneMenuAction::CopyCurl => {
+                    ViewContext::send_message(Message::CopyRequestCurl)
+                }
+            })
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        RecipeMenuAction::iter()
+        RecipePaneMenuAction::iter()
             .map(MenuAction::with_data(self, self.actions_emitter))
             .collect()
     }
@@ -210,13 +180,6 @@ impl ToEmitter<RecipePaneEvent> for RecipePane {
     }
 }
 
-/// Notify parent when one of this pane's actions is selected
-impl ToEmitter<RecipeMenuAction> for RecipePane {
-    fn to_emitter(&self) -> Emitter<RecipeMenuAction> {
-        self.actions_emitter
-    }
-}
-
 /// Emitted event for the recipe pane component
 #[derive(Debug)]
 pub enum RecipePaneEvent {
@@ -230,21 +193,16 @@ struct RecipeStateKey {
     recipe_id: Option<RecipeId>,
 }
 
-/// Items in the actions popup menu. This is also used by the recipe list
-/// component, so the action is handled in the parent.
+/// Items in the actions popup menu
 #[derive(Copy, Clone, Debug, Display, EnumIter)]
-pub enum RecipeMenuAction {
+enum RecipePaneMenuAction {
     #[display("Copy URL")]
     CopyUrl,
     #[display("Copy as cURL")]
     CopyCurl,
-    #[display("View Body")]
-    ViewBody,
-    #[display("Copy Body")]
-    CopyBody,
 }
 
-impl IntoMenuAction<RecipePane> for RecipeMenuAction {
+impl IntoMenuAction<RecipePane> for RecipePaneMenuAction {
     fn enabled(&self, data: &RecipePane) -> bool {
         let recipe = data.recipe_state.get().and_then(|state| {
             Ref::filter_map(state, |state| state.data().as_ref()).ok()
@@ -252,10 +210,6 @@ impl IntoMenuAction<RecipePane> for RecipeMenuAction {
         match self {
             // Enabled if we have any recipe
             Self::CopyUrl | Self::CopyCurl => recipe.is_some(),
-            // Enabled if we have a body
-            Self::ViewBody | Self::CopyBody => {
-                recipe.is_some_and(|recipe| recipe.has_body())
-            }
         }
     }
 }

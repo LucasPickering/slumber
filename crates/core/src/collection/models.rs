@@ -186,7 +186,7 @@ pub struct Recipe {
     pub authentication: Option<Authentication>,
     #[serde(default, with = "cereal::serde_query_parameters")]
     pub query: Vec<(String, Template)>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "cereal::deserialize_headers")]
     pub headers: IndexMap<String, Template>,
 }
 
@@ -202,19 +202,11 @@ impl Recipe {
     /// known (e.g. JSON). Otherwise, return `None`. If the header is a
     /// dynamic template, we will *not* attempt to render it, so MIME parsing
     /// will fail.
-    /// TODO update - forms don't count
     pub fn mime(&self) -> Option<Mime> {
         self.headers
             .get(header::CONTENT_TYPE.as_str())
             .and_then(|template| template.display().parse::<Mime>().ok())
-            .or_else(|| {
-                // Use the type of the body to determine MIME
-                if let Some(RecipeBody::Raw { content_type, .. }) = &self.body {
-                    content_type.as_ref().map(ContentType::to_mime)
-                } else {
-                    None
-                }
-            })
+            .or_else(|| self.body.as_ref()?.mime())
     }
 }
 
@@ -609,40 +601,67 @@ impl crate::test_util::Factory for Collection {
 mod tests {
     use super::*;
     use crate::test_util::Factory;
+    use indexmap::indexmap;
     use rstest::rstest;
 
-    /// TODO
     #[rstest]
     #[case::none(None, None, None)]
     #[case::header(
         // Header takes precedence over body
         Some("text/plain"),
-        Some(ContentType::Json),
+        Some(RecipeBody::Raw {
+            body: "hi!".into(),
+            content_type: Some(ContentType::Json),
+        }),
         Some("text/plain")
     )]
-    #[case::body(None, Some(ContentType::Json), Some("application/json"))]
     #[case::unknown_mime(
         // Fall back to body type
         Some("bogus"),
-        Some(ContentType::Json),
+        Some(RecipeBody::Raw {
+            body: "hi!".into(),
+            content_type: Some(ContentType::Json),
+        }),
         Some("application/json")
+    )]
+    #[case::json_body(
+        None,
+        Some(RecipeBody::Raw {
+            body: "hi!".into(),
+            content_type: Some(ContentType::Json),
+        }),
+        Some("application/json")
+    )]
+    #[case::unknown_body(
+        None,
+        Some(RecipeBody::Raw {
+            body: "hi!".into(),
+            content_type: None,
+        }),
+        None,
+    )]
+    #[case::form_urlencoded_body(
+        None,
+        Some(RecipeBody::FormUrlencoded(indexmap! {})),
+        Some("application/x-www-form-urlencoded")
+    )]
+    #[case::form_multipart_body(
+        None,
+        Some(RecipeBody::FormMultipart(indexmap! {})),
+        Some("multipart/form-data")
     )]
     fn test_recipe_mime(
         #[case] header: Option<&str>,
-        #[case] content_type: Option<ContentType>,
+        #[case] body: Option<RecipeBody>,
         #[case] expected: Option<&str>,
     ) {
         let mut headers = IndexMap::new();
         if let Some(header) = header {
             headers.insert("content-type".into(), header.into());
         }
-        let body = RecipeBody::Raw {
-            body: "body!".into(),
-            content_type,
-        };
         let recipe = Recipe {
             headers,
-            body: Some(body),
+            body,
             ..Recipe::factory(())
         };
         let expected = expected.and_then(|value| value.parse::<Mime>().ok());

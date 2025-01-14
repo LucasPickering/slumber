@@ -226,6 +226,26 @@ pub mod serde_query_parameters {
     }
 }
 
+/// Deserialize a header map, lowercasing all header names. Headers are
+/// case-insensitive (and must be lowercase in HTTP/2+), so forcing the case
+/// makes lookups on the map easier.
+pub fn deserialize_headers<'de, D>(
+    deserializer: D,
+) -> Result<IndexMap<String, Template>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // This involves an extra allocation, but it makes the logic a lot easier.
+    // These maps should be small anyway
+    let headers: IndexMap<String, Template> =
+        IndexMap::deserialize(deserializer)?;
+    Ok(headers
+        .into_iter()
+        // TODO should be ascii only?
+        .map(|(k, v)| (k.to_lowercase(), v))
+        .collect())
+}
+
 impl RecipeBody {
     // Constants for serialize/deserialization. Typically these are generated
     // by macros, but we need custom implementation

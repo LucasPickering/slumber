@@ -12,8 +12,8 @@ GET {{ HOST}}/get HTTP/1.1
 @FULL={{ FIRST }} {{LAST}}
 
 POST {{HOST}}/post?hello=123 HTTP/1.1
-Authorization: Basic Zm9vOmJhcg==
-Content-Type: application/json
+authorization: Basic Zm9vOmJhcg==
+content-type: application/json
 X-Http-Method-Override: PUT
 
 {
@@ -26,16 +26,16 @@ X-Http-Method-Override: PUT
 @ENDPOINT = post
 
 POST https://httpbin.org/{{ENDPOINT}} HTTP/1.1
-Authorization: Bearer efaxijasdfjasdfa
-Content-Type: application/x-www-form-urlencoded
-My-Header: hello
-Other-Header: goodbye
+authorization: Bearer efaxijasdfjasdfa
+content-type: application/x-www-form-urlencoded
+my-header: hello
+other-header: goodbye
 
 first={{ FIRST}}&last={{LAST}}&full={{FULL}}
 
 ### Pet.json
 
 POST {{HOST}}/post HTTP/1.1
-Content-Type: application/json
+content-type: application/json
 
 < ./test_data/rest_pets.json

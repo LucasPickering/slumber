@@ -472,7 +472,7 @@ mod tests {
                         ("fast".into(), "no_thanks".into()),
                     ],
                     headers: indexmap! {
-                        "Accept".into() => "application/json".into(),
+                        "accept".into() => "application/json".into(),
                     },
                 }),
                 RecipeNode::Folder(Folder {
@@ -507,7 +507,7 @@ mod tests {
                             )),
                             query: vec![],
                             headers: indexmap! {
-                                "Accept".into() => "application/json".into(),
+                                "accept".into() => "application/json".into(),
                             },
                         }),
                         RecipeNode::Recipe(Recipe {
@@ -527,7 +527,7 @@ mod tests {
                             }),
                             query: vec![],
                             headers: indexmap! {
-                                "Accept".into() => "application/json".into(),
+                                "accept".into() => "application/json".into(),
                             },
                         }),
                         RecipeNode::Recipe(Recipe {
@@ -542,7 +542,7 @@ mod tests {
                             authentication: None,
                             query: vec![],
                             headers: indexmap! {
-                                "Accept".into() => "application/json".into(),
+                                "accept".into() => "application/json".into(),
                             },
                         }),
                     ]),

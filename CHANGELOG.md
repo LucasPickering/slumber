@@ -37,6 +37,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Denote templates that have been edited during the current session with italics instead of a faint "(edited)" note
+- Header names in recipes are now lowercased in the UI
+  - They have always been lowercased when the request is actually sent, so now the UI is just more representative of what will be sent
 
 ### Fixed
 

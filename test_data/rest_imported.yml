@@ -6,7 +6,7 @@ profiles:
       HOST: http://httpbin.org
       FIRST: Joe
       LAST: Smith
-      FULL: '{{FIRST}} {{LAST}}'
+      FULL: "{{FIRST}} {{LAST}}"
       ENDPOINT: post
 chains:
   Pet_json_3_body:
@@ -21,7 +21,7 @@ requests:
   SimpleGet_0: !request
     name: SimpleGet
     method: GET
-    url: '{{HOST}}/get'
+    url: "{{HOST}}/get"
     body: null
     authentication: null
     query: []
@@ -29,15 +29,15 @@ requests:
   JsonPost_1: !request
     name: JsonPost
     method: POST
-    url: '{{HOST}}/post'
+    url: "{{HOST}}/post"
     body: !json
       data: my data
-      name: '{{FULL}}'
+      name: "{{FULL}}"
     authentication: !basic
       username: foo
       password: bar
     query:
-    - hello=123
+      - hello=123
     headers:
       Content-Type: application/json
       X-Http-Method-Override: PUT
@@ -55,8 +55,8 @@ requests:
   Pet_json_3: !request
     name: Pet.json
     method: POST
-    url: '{{HOST}}/post'
-    body: '{{chains.Pet_json_3_body}}'
+    url: "{{HOST}}/post"
+    body: "{{chains.Pet_json_3_body}}"
     authentication: null
     query: []
     headers:

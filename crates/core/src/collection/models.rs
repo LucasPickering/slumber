@@ -55,7 +55,7 @@ impl Collection {
         };
 
         load()
-            .context(format!("Error loading data from {path:?}"))
+            .context(format!("Error loading collection from {path:?}"))
             .traced()
     }
 }

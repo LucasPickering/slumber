@@ -14,6 +14,7 @@ use itertools::Itertools;
 use std::{
     env,
     fmt::Debug,
+    fs,
     future::Future,
     path::{Path, PathBuf},
     sync::Arc,
@@ -75,23 +76,41 @@ impl CollectionFile {
 
     /// Get the path to the collection file, returning an error if none is
     /// available. This will use the override if given, otherwise it will fall
-    /// back to searching the given directory for a collection. If the directory
-    /// to search is not given, default to the current directory. This is
-    /// configurable just for testing.
+    /// back to searching the given directory for a collection. If a directory
+    /// is given for the override, search that directory (relative to the
+    /// given/current).
+    ///
+    /// If the directory to search is not given, default to the current
+    /// directory. This is configurable just for testing.
     pub fn try_path(
         dir: Option<PathBuf>,
         override_path: Option<PathBuf>,
     ) -> anyhow::Result<PathBuf> {
-        let dir = if let Some(dir) = dir {
+        let mut dir = if let Some(dir) = dir {
             dir
         } else {
             env::current_dir()?
         };
-        override_path
-            .map(|override_path| dir.join(override_path))
-            .or_else(|| detect_path(&dir)).ok_or_else(|| {
-                anyhow!("No collection file found in current or ancestor directories")
-            })
+
+        // If the override is a dir, search that dir instead. If it's a file,
+        // just return it
+        if let Some(override_path) = override_path {
+            let joined = dir.join(override_path);
+            if fs::metadata(&joined)
+                .with_context(|| format!("Error loading {joined:?}"))?
+                .is_dir()
+            {
+                dir = joined;
+            } else {
+                return Ok(joined);
+            }
+        }
+
+        detect_path(&dir).ok_or_else(|| {
+            anyhow!(
+                "No collection file found in current or ancestor directories"
+            )
+        })
     }
 }
 
@@ -181,10 +200,16 @@ mod tests {
     #[case::parent_only(None, true, false, "slumber.yml")]
     #[case::child_only(None, false, true, "child/slumber.yml")]
     #[case::parent_and_child(None, true, true, "child/slumber.yml")]
+    #[case::directory(
+        Some("grandchild"),
+        true,
+        true,
+        "child/grandchild/slumber.yml"
+    )]
     #[case::overriden(Some("override.yml"), true, true, "child/override.yml")]
     fn test_try_path(
         temp_dir: TempDir,
-        #[case] override_file: Option<&str>,
+        #[case] override_path: Option<&str>,
         #[case] has_parent: bool,
         #[case] has_child: bool,
         #[case] expected: &str,
@@ -197,28 +222,48 @@ mod tests {
         }
         if has_child {
             File::create(child_dir.join(file)).unwrap();
+            let grandchild_dir = child_dir.join("grandchild");
+            fs::create_dir(&grandchild_dir).unwrap();
+            File::create(grandchild_dir.join(file)).unwrap();
         }
-        if let Some(override_file) = override_file {
-            File::create(temp_dir.join(override_file)).unwrap();
-        }
+        File::create(child_dir.join("override.yml")).unwrap();
         let expected: PathBuf = temp_dir.join(expected);
 
-        let override_file = override_file.map(PathBuf::from);
-        assert_eq!(
-            CollectionFile::try_path(Some(child_dir), override_file).unwrap(),
-            expected
-        );
+        let actual = CollectionFile::try_path(
+            Some(child_dir),
+            override_path.map(PathBuf::from),
+        )
+        .unwrap();
+        assert_eq!(actual, expected);
     }
 
     /// Test that try_path fails when no collection file is found and no
     /// override is given
     #[rstest]
-    fn test_try_path_error(temp_dir: TempDir) {
+    #[case::no_file(
+        None,
+        "No collection file found in current or ancestor directories"
+    )]
+    #[case::override_doesnt_exist(
+        Some("./bogus/"),
+        if cfg!(unix) {
+            "No such file or directory"
+        } else {
+            "The system cannot find the file specified"
+        }
+    )]
+    fn test_try_path_error(
+        temp_dir: TempDir,
+        #[case] override_path: Option<&str>,
+        #[case] expected_err: &str,
+    ) {
         assert_err!(
-            CollectionFile::try_path(Some(temp_dir.to_path_buf()), None),
-            "No collection file found in current or ancestor directories"
+            CollectionFile::try_path(
+                Some(temp_dir.to_path_buf()),
+                override_path.map(PathBuf::from)
+            ),
+            expected_err
         );
-        drop(temp_dir); // Dropping deletes the directory
     }
 
     /// A catch-all regression test, to make sure we don't break anything in the

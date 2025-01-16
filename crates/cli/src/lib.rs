@@ -53,7 +53,9 @@ impl Args {
 pub struct GlobalArgs {
     /// Collection file, which defines profiles, recipes, etc. If omitted,
     /// check the current and all parent directories for the following files
-    /// (in this order): slumber.yml, slumber.yaml, .slumber.yml, .slumber.yaml
+    /// (in this order): slumber.yml, slumber.yaml, .slumber.yml,
+    /// .slumber.yaml. If a directory is passed, apply the same search
+    /// logic from the given directory rather than the current.
     #[clap(long, short)]
     pub file: Option<PathBuf>,
 }

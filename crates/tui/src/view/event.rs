@@ -20,7 +20,7 @@ use std::{
     marker::PhantomData,
     ops::{Deref, DerefMut},
 };
-use tracing::trace;
+use tracing::{error, trace};
 use uuid::Uuid;
 
 /// A UI element that can handle user/async input. This trait facilitates an
@@ -397,11 +397,21 @@ impl<T: ?Sized> Emitter<T> {
             phantom: PhantomData,
         }
     }
+
+    /// An emitter with the null ID, which shouldn't actually be used to emit.
+    /// This is a bit jank :(
+    pub fn null() -> Self {
+        Self::new(EmitterId(Uuid::nil()))
+    }
 }
 
 impl<T: Sized + LocalEvent> Emitter<T> {
     /// Push an event onto the event queue
     pub fn emit(&self, event: T) {
+        if self.id.0.is_nil() {
+            error!(?event, "Event emitted from null emitter");
+        }
+
         ViewContext::push_event(Event::Emitted {
             emitter_id: self.id,
             emitter_type: any::type_name::<T>(),

@@ -244,16 +244,18 @@ impl Draw for ModalQueue {
 #[derive(Debug)]
 pub struct ModalHandle<E> {
     /// Track the emitter of the opened modal, so we can check for emitted
-    /// events from it later. We'll reuse the same emitter for every opened
-    /// modal. This makes it simpler, and shouldn't create issues since you
-    /// can't have multiple instances of the same modal open+visible at once.
+    /// events from it later. This will start as the null emitter, and we'll
+    /// update it whenever the mdoal is open. It *doesn't* get cleared when the
+    /// modal is closed, because hooking into the close is complicated. This
+    /// shouldn't create issues since you can't have multiple instances of the
+    /// same modal open+visible at once.
     emitter: Emitter<E>,
 }
 
 impl<E: LocalEvent> ModalHandle<E> {
     pub fn new() -> Self {
         Self {
-            emitter: Emitter::default(),
+            emitter: Emitter::null(),
         }
     }
 
@@ -262,6 +264,7 @@ impl<E: LocalEvent> ModalHandle<E> {
     where
         M: 'static + ToEmitter<E> + Modal,
     {
+        self.emitter = modal.to_emitter();
         modal.open();
     }
 }

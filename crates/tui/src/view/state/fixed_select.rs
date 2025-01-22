@@ -42,19 +42,6 @@ pub struct FixedSelectStateBuilder<Item, State> {
 }
 
 impl<Item, State> FixedSelectStateBuilder<Item, State> {
-    /// Disable certain items in the list by value. Disabled items can still be
-    /// selected, but do not trigger callbacks.
-    pub fn disabled_items<'a, T>(
-        mut self,
-        disabled_items: impl IntoIterator<Item = &'a T>,
-    ) -> Self
-    where
-        T: 'a + PartialEq<Item>,
-    {
-        self.inner = self.inner.disabled_items(disabled_items);
-        self
-    }
-
     /// Which types of events should this emit?
     pub fn subscribe(
         mut self,

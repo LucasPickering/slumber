@@ -20,16 +20,23 @@ use std::{
     ops::Deref,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::LazyLock,
     time::Duration,
 };
 use tokio::{
     fs::OpenOptions,
     io::AsyncWriteExt,
+    select,
     sync::oneshot,
     task::{self, JoinHandle},
 };
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, debug_span, error, info, warn};
 use uuid::Uuid;
+
+/// Token to manage cancellation of background tasks
+pub static CANCEL_TOKEN: LazyLock<CancellationToken> =
+    LazyLock::new(CancellationToken::new);
 
 /// Extension trait for [Result]
 pub trait ResultReported<T, E>: Sized {
@@ -134,15 +141,35 @@ pub fn delete_temp_file(path: &Path) {
 }
 
 /// Spawn a task on the main thread. Most tasks can use this because the app is
-/// generally I/O bound, so we can handle all async stuff on a single thread
-pub fn spawn_local(
+/// generally I/O bound, so we can handle all async stuff on a single thread.
+/// The UI will be redrawn when the task is done. This redraw may be redundant,
+/// but it's thorough and the cost is minimal.
+pub fn spawn(
+    name: &str,
     future: impl 'static + Future<Output = ()>,
 ) -> JoinHandle<()> {
-    task::spawn_local(async move {
-        future.await;
-        // Assume the task updated _something_ visible to the user, so trigger
-        // a redraw here
-        ViewContext::messages_tx().send(Message::Tick);
+    task::Builder::new()
+        .name(name)
+        .spawn_local(async move {
+            select! {
+                _ = future => {
+                    // Assume the task updated _something_ visible to the user,
+                    // so trigger a redraw here
+                    ViewContext::messages_tx().send(Message::Tick);
+                },
+                _ = CANCEL_TOKEN.cancelled() => {},
+            }
+        })
+        .unwrap()
+}
+
+/// Spawn a fallible task. If it fails, report the error to the user
+pub fn spawn_result(
+    name: &str,
+    future: impl 'static + Future<Output = anyhow::Result<()>>,
+) -> JoinHandle<()> {
+    spawn(name, async move {
+        future.await.reported(&ViewContext::messages_tx());
     })
 }
 

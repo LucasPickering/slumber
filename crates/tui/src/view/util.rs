@@ -5,7 +5,7 @@ pub mod persistence;
 
 use crate::{
     message::Message,
-    util::{spawn_local, temp_file},
+    util::{spawn, temp_file},
     view::ViewContext,
 };
 use anyhow::Context;
@@ -72,7 +72,7 @@ impl Debounce {
         // Run debounce in a local task so component behavior can access the
         // view context, e.g. to push events
         let duration = self.duration;
-        let handle = spawn_local(async move {
+        let handle = spawn("Debounce", async move {
             time::sleep(duration).await;
             on_complete();
         });

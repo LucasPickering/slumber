@@ -174,7 +174,10 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
     // YAML parsing is blocking so do it in a different thread. We could use
     // tokio::fs for this but that just uses std::fs underneath anyway.
-    task::spawn_blocking(move || Collection::load(&path))
+    task::Builder::new()
+        .name("Load collection")
+        .spawn_blocking(move || Collection::load(&path))
+        .unwrap()
         .await
         // This error only occurs if the task panics
         .context("Error parsing collection")?

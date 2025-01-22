@@ -239,20 +239,8 @@ impl EventHandler for QueryableBody {
                         false,
                     );
                 }
-                // Trigger error state. We DON'T want to show a modal here by
-                // default because it's incredibly annoying. Instead the user
-                // can open the modal by hitting  a key
-                Err(error) => {
-                    // It'd be nice to get the owned error here, but it makes
-                    // the downcasting for the emitted event more complicated
-                    self.query_state = QueryState::Error(error);
-                    let binding = TuiContext::get()
-                        .input_engine
-                        .binding_display(Action::OpenHelp);
-                    ViewContext::notify(format!(
-                        "Error query response; {binding} for detail"
-                    ));
-                }
+                // Trigger error state. Error will be shown in the pane
+                Err(error) => self.query_state = QueryState::Error(error),
             })
             .emitted(self.query_text_box.to_emitter(), |event| match event {
                 TextBoxEvent::Focus => self.focus(CommandFocus::Query),

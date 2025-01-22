@@ -307,12 +307,15 @@ pub async fn run_command(
         .spawn()?;
 
     if let Some(stdin) = stdin {
-        process
+        // If writing to stdin fails, it's probably because the process exited
+        // immediately. This typically indicates some other error. We _don't_
+        // want to show the stdin error, because it will mask the actual error.
+        let _ = process
             .stdin
             .as_mut()
             .expect("Process missing stdin")
             .write_all(stdin)
-            .await?;
+            .await;
     }
     let output = process.wait_with_output().await?;
     debug!(

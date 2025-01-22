@@ -241,8 +241,7 @@ where
         IndexMap::deserialize(deserializer)?;
     Ok(headers
         .into_iter()
-        // TODO should be ascii only?
-        .map(|(k, v)| (k.to_lowercase(), v))
+        .map(|(k, v)| (k.to_ascii_lowercase(), v))
         .collect())
 }
 

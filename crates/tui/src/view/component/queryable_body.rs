@@ -2,7 +2,7 @@
 
 use crate::{
     context::TuiContext,
-    util::{run_command, spawn_local},
+    util::{run_command, spawn},
     view::{
         common::{
             modal::Modal,
@@ -207,7 +207,7 @@ impl QueryableBody {
         body: Bytes,
         on_complete: impl 'static + FnOnce(String, anyhow::Result<Vec<u8>>),
     ) -> AbortHandle {
-        spawn_local(async move {
+        spawn("Command", async move {
             let shell = &TuiContext::get().config.commands.shell;
             let result = run_command(shell, &command, Some(&body))
                 .await

@@ -22,7 +22,8 @@ use crate::{
     message::{Callback, Message, MessageSender, RequestConfig},
     util::{
         clear_event_buffer, delete_temp_file, get_editor_command,
-        get_pager_command, save_file, signals, spawn_local, ResultReported,
+        get_pager_command, save_file, signals, spawn, spawn_result,
+        ResultReported, CANCEL_TOKEN,
     },
     view::{PreviewPrompter, UpdateContext, View},
 };
@@ -43,7 +44,6 @@ use slumber_core::{
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
 use std::{
-    future::Future,
     io::{self, Stdout},
     ops::Deref,
     path::PathBuf,
@@ -142,7 +142,10 @@ impl Tui {
 
         // Run everything in one local set, so that we can use !Send values
         let local = task::LocalSet::new();
-        local.spawn_local(app.run());
+        task::Builder::new()
+            .name("Main")
+            .spawn_local_on(app.run(), &local)
+            .unwrap();
         local.await;
         Ok(())
     }
@@ -231,7 +234,7 @@ impl Tui {
             Message::CollectionStartReload => {
                 let future = self.collection_file.reload();
                 let messages_tx = self.messages_tx();
-                self.spawn(async move {
+                spawn_result("Collection reload", async move {
                     let collection = future.await?;
                     messages_tx.send(Message::CollectionEndReload(collection));
                     Ok(())
@@ -368,7 +371,7 @@ impl Tui {
     /// Spawn a task to listen in the background for quit signals
     fn listen_for_signals(&self) {
         let messages_tx = self.messages_tx();
-        self.spawn(async move {
+        spawn_result("Signal listener", async move {
             signals().await?;
             messages_tx.send(Message::Quit);
             Ok(())
@@ -428,6 +431,8 @@ impl Tui {
     fn quit(&mut self) {
         info!("Initiating graceful shutdown");
         self.should_run = false;
+        // Kill all background tasks
+        CANCEL_TOKEN.cancel();
     }
 
     /// Draw the view onto the screen
@@ -486,7 +491,7 @@ impl Tui {
         let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
-        self.spawn(async move {
+        spawn_result("Copy request URL", async move {
             let url = TuiContext::get()
                 .http_engine
                 .build_url(seed, &template_context)
@@ -508,7 +513,7 @@ impl Tui {
         let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
-        self.spawn(async move {
+        spawn_result("Copy request body", async move {
             let body = TuiContext::get()
                 .http_engine
                 .build_body(seed, &template_context)
@@ -534,7 +539,7 @@ impl Tui {
         let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
-        self.spawn(async move {
+        spawn_result("Copy request curl", async move {
             let ticket = TuiContext::get()
                 .http_engine
                 .build(seed, &template_context)
@@ -570,7 +575,10 @@ impl Tui {
             // never parsed. This clone is cheap so we're being efficient!
             exchange.response.body.bytes().clone()
         });
-        self.spawn(save_file(self.messages_tx(), default_path, data));
+        spawn_result(
+            "Save response body",
+            save_file(self.messages_tx(), default_path, data),
+        );
         Ok(())
     }
 
@@ -602,10 +610,10 @@ impl Tui {
         let seed = RequestSeed::new(recipe_id.clone(), options);
         let request_id = seed.id;
 
-        // We can't use self.spawn here because HTTP errors are handled
-        // differently from all other error types
         let database = self.database.clone();
-        let join_handle = task::spawn_local(async move {
+        // Don't use spawn_result here, because errors are handled specially for
+        // requests
+        let join_handle = spawn("HTTP request", async move {
             // Build the request
             let result = TuiContext::get()
                 .http_engine
@@ -656,22 +664,12 @@ impl Tui {
         on_complete: Callback<Vec<TemplateChunk>>,
     ) -> anyhow::Result<()> {
         let context = self.template_context(profile_id, true)?;
-        spawn_local(async move {
+        spawn("Template preview", async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render_chunks(&context).await;
             on_complete(chunks);
         });
         Ok(())
-    }
-
-    /// Helper for spawning a fallible task. Any error in the resolved future
-    /// will be shown to the user in a modal.
-    fn spawn(
-        &self,
-        future: impl Future<Output = anyhow::Result<()>> + Send + 'static,
-    ) {
-        let messages_tx = self.messages_tx();
-        task::spawn_local(async move { future.await.reported(&messages_tx) });
     }
 
     /// Expose app state to the templater. Most of the data has to be cloned out

@@ -1,0 +1,4 @@
+[build]
+# Unstable: we use the task builder
+# https://docs.rs/tokio/latest/tokio/index.html#unstable-features
+rustflags = ["--cfg", "tokio_unstable"]

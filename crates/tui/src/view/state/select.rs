@@ -65,26 +65,6 @@ pub struct SelectStateBuilder<Item, State> {
 }
 
 impl<Item, State> SelectStateBuilder<Item, State> {
-    /// Disable certain items in the list by value. Disabled items can still be
-    /// selected, but do not emit events.
-    pub fn disabled_items<'a, T>(
-        mut self,
-        disabled_items: impl IntoIterator<Item = &'a T>,
-    ) -> Self
-    where
-        T: 'a + PartialEq<Item>,
-    {
-        // O(n^2)! We expect both lists to be very small so it's not an issue
-        for disabled in disabled_items {
-            for item in &mut self.items {
-                if disabled == &item.value {
-                    item.disabled = true;
-                }
-            }
-        }
-        self
-    }
-
     /// Disable certain items in the list by index. Disabled items can still be
     /// selected, but do not emit events.
     pub fn disabled_indexes(
@@ -514,7 +494,7 @@ mod tests {
         items: (Vec<&'static str>, List<'static>),
     ) {
         let select = SelectState::builder(items.0)
-            .disabled_items(&["c"])
+            .disabled_indexes([2])
             .subscribe([SelectStateEventType::Select])
             .build();
         let mut component =
@@ -544,7 +524,7 @@ mod tests {
         items: (Vec<&'static str>, List<'static>),
     ) {
         let select = SelectState::builder(items.0)
-            .disabled_items(&["c"])
+            .disabled_indexes([2])
             .subscribe([SelectStateEventType::Submit])
             .build();
         let mut component =

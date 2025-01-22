@@ -14,7 +14,6 @@ use crate::view::{
 use derive_more::Display;
 use persisted::SingletonKey;
 use ratatui::{layout::Layout, prelude::Constraint, widgets::Paragraph, Frame};
-use reqwest::header::HeaderName;
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     collection::{Recipe, RecipeId},
@@ -128,22 +127,6 @@ impl RecipeDisplay {
             form_fields,
             body,
         }
-    }
-
-    /// Get the *preview* value of an HTTP header. This only includes headers
-    /// that are visible in the table, so no implied headers such as
-    /// `Authorization`
-    pub fn header(&self, name: HeaderName) -> Option<String> {
-        self.headers
-            .data()
-            .rows()
-            .find(|(k, _)| *k == name)
-            .map(|(_, value)| value.preview().text().to_string())
-    }
-
-    /// Does the recipe have a body defined?
-    pub fn has_body(&self) -> bool {
-        self.body.data().is_some()
     }
 }
 

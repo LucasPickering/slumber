@@ -142,10 +142,7 @@ impl Tui {
 
         // Run everything in one local set, so that we can use !Send values
         let local = task::LocalSet::new();
-        task::Builder::new()
-            .name("Main")
-            .spawn_local_on(app.run(), &local)
-            .unwrap();
+        local.spawn_local(app.run());
         local.await;
         Ok(())
     }
@@ -234,7 +231,7 @@ impl Tui {
             Message::CollectionStartReload => {
                 let future = self.collection_file.reload();
                 let messages_tx = self.messages_tx();
-                spawn_result("Collection reload", async move {
+                spawn_result(async move {
                     let collection = future.await?;
                     messages_tx.send(Message::CollectionEndReload(collection));
                     Ok(())
@@ -371,7 +368,7 @@ impl Tui {
     /// Spawn a task to listen in the background for quit signals
     fn listen_for_signals(&self) {
         let messages_tx = self.messages_tx();
-        spawn_result("Signal listener", async move {
+        spawn_result(async move {
             signals().await?;
             messages_tx.send(Message::Quit);
             Ok(())
@@ -491,7 +488,7 @@ impl Tui {
         let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
-        spawn_result("Copy request URL", async move {
+        spawn_result(async move {
             let url = TuiContext::get()
                 .http_engine
                 .build_url(seed, &template_context)
@@ -513,7 +510,7 @@ impl Tui {
         let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
-        spawn_result("Copy request body", async move {
+        spawn_result(async move {
             let body = TuiContext::get()
                 .http_engine
                 .build_body(seed, &template_context)
@@ -539,7 +536,7 @@ impl Tui {
         let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
-        spawn_result("Copy request curl", async move {
+        spawn_result(async move {
             let ticket = TuiContext::get()
                 .http_engine
                 .build(seed, &template_context)
@@ -575,10 +572,7 @@ impl Tui {
             // never parsed. This clone is cheap so we're being efficient!
             exchange.response.body.bytes().clone()
         });
-        spawn_result(
-            "Save response body",
-            save_file(self.messages_tx(), default_path, data),
-        );
+        spawn_result(save_file(self.messages_tx(), default_path, data));
         Ok(())
     }
 
@@ -613,7 +607,7 @@ impl Tui {
         let database = self.database.clone();
         // Don't use spawn_result here, because errors are handled specially for
         // requests
-        let join_handle = spawn("HTTP request", async move {
+        let join_handle = spawn(async move {
             // Build the request
             let result = TuiContext::get()
                 .http_engine
@@ -664,7 +658,7 @@ impl Tui {
         on_complete: Callback<Vec<TemplateChunk>>,
     ) -> anyhow::Result<()> {
         let context = self.template_context(profile_id, true)?;
-        spawn("Template preview", async move {
+        spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render_chunks(&context).await;
             on_complete(chunks);

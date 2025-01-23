@@ -96,18 +96,9 @@ fn initialize_tracing(console_output: bool) {
         None
     };
 
-    // Spawn tokio subscriber server for tokio-console usage
-    #[cfg(feature = "tokio_tracing")]
-    let tokio_console_subscriber = Some(console_subscriber::spawn());
-    // console_subscriber crate isn't available - use an empty layer to fill
-    // its place
-    #[cfg(not(feature = "tokio_tracing"))]
-    let tokio_console_subscriber = None::<tracing_subscriber::fmt::Layer<_>>;
-
     tracing_subscriber::registry()
         .with(file_subscriber)
         .with(console_subscriber)
-        .with(tokio_console_subscriber)
         .init();
 }
 

@@ -60,7 +60,6 @@ winnow = "0.6.16"
 
 [dependencies]
 anyhow = {workspace = true, features = ["backtrace"]}
-console-subscriber = {version = "0.4.1", optional = true}
 slumber_cli = {workspace = true}
 slumber_core = {workspace = true}
 slumber_tui = {workspace = true, optional = true}
@@ -72,8 +71,6 @@ tracing-subscriber = {version = "0.3.17", default-features = false, features = [
 default = ["tui"]
 # TUI can be disabled in dev to speed compilation while testing CLI
 tui = ["dep:slumber_tui"]
-# Enable tokio tracing, for use with tokio-console
-tokio_tracing = ["tokio/tracing", "dep:console-subscriber"]
 
 # The profile that 'cargo dist' will build with
 [profile.dist]

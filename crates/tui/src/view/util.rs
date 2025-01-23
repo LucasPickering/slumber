@@ -72,7 +72,7 @@ impl Debounce {
         // Run debounce in a local task so component behavior can access the
         // view context, e.g. to push events
         let duration = self.duration;
-        let handle = spawn("Debounce", async move {
+        let handle = spawn(async move {
             time::sleep(duration).await;
             on_complete();
         });

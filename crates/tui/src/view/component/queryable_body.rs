@@ -81,8 +81,7 @@ impl QueryableBody {
                 "{query_bind} to query, {export_bind} to export"
             ))
             .placeholder_focused("Enter query command (ex: `jq .results`)")
-            .default_value(default_query.clone().unwrap_or_default())
-            .debounce();
+            .default_value(default_query.clone().unwrap_or_default());
         // Don't use a debounce on this one, because we don't want to
         // auto-execute commands that will have a side effect
         let export_text_box = TextBox::default().placeholder_focused(
@@ -244,7 +243,7 @@ impl EventHandler for QueryableBody {
             })
             .emitted(self.query_text_box.to_emitter(), |event| match event {
                 TextBoxEvent::Focus => self.focus(CommandFocus::Query),
-                TextBoxEvent::Change => self.update_query(),
+                TextBoxEvent::Change => {}
                 TextBoxEvent::Cancel => {
                     // Reset text to whatever was submitted last
                     self.query_text_box.data_mut().set_text(

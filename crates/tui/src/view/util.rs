@@ -3,11 +3,7 @@
 pub mod highlight;
 pub mod persistence;
 
-use crate::{
-    message::Message,
-    util::{spawn, temp_file},
-    view::ViewContext,
-};
+use crate::{message::Message, util::temp_file, view::ViewContext};
 use anyhow::Context;
 use itertools::Itertools;
 use mime::Mime;
@@ -19,8 +15,7 @@ use slumber_core::{
     template::{Prompt, PromptChannel, Prompter, Select},
     util::ResultTraced,
 };
-use std::{io::Write, path::Path, time::Duration};
-use tokio::{task::AbortHandle, time};
+use std::{io::Write, path::Path};
 
 /// A data structure for representation a yes/no confirmation. This is similar
 /// to [Prompt], but it only asks a yes/no question.
@@ -44,47 +39,6 @@ impl Prompter for PreviewPrompter {
 
     fn select(&self, select: Select) {
         select.channel.respond("<select>".into())
-    }
-}
-
-/// Utility for debouncing repeated calls to a callback
-#[derive(Debug)]
-pub struct Debounce {
-    duration: Duration,
-    abort_handle: Option<AbortHandle>,
-}
-
-impl Debounce {
-    pub fn new(duration: Duration) -> Self {
-        Self {
-            duration,
-            abort_handle: None,
-        }
-    }
-
-    /// Trigger a debounced callback. The given callback will be invoked after
-    /// the debounce period _if_ this method is not called again during the
-    /// debounce period.
-    pub fn start(&mut self, on_complete: impl 'static + Fn()) {
-        // Cancel the existing debounce, if any
-        self.cancel();
-
-        // Run debounce in a local task so component behavior can access the
-        // view context, e.g. to push events
-        let duration = self.duration;
-        let handle = spawn(async move {
-            time::sleep(duration).await;
-            on_complete();
-        });
-        self.abort_handle = Some(handle.abort_handle());
-    }
-
-    /// Cancel the current pending callback (if any) without registering a new
-    /// one
-    pub fn cancel(&mut self) {
-        if let Some(abort_handle) = self.abort_handle.take() {
-            abort_handle.abort();
-        }
     }
 }
 

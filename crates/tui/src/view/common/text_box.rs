@@ -6,7 +6,6 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Emitter, Event, EventHandler, OptionEvent, ToEmitter},
-        util::Debounce,
     },
 };
 use crossterm::event::{KeyCode, KeyModifiers};
@@ -18,9 +17,7 @@ use ratatui::{
     Frame,
 };
 use slumber_config::Action;
-use std::{mem, time::Duration};
-
-const DEBOUNCE: Duration = Duration::from_millis(500);
+use std::mem;
 
 /// Single line text submission component
 #[derive(derive_more::Debug, Default)]
@@ -39,7 +36,6 @@ pub struct TextBox {
 
     // State
     state: TextState,
-    on_change_debounce: Option<Debounce>,
 }
 
 type Validator = Box<dyn Fn(&str) -> bool>;
@@ -82,13 +78,6 @@ impl TextBox {
         validator: impl 'static + Fn(&str) -> bool,
     ) -> Self {
         self.validator = Some(Box::new(validator));
-        self
-    }
-
-    /// Enable debouncing on the change event, meaning the user has to stop
-    /// inputting for a certain delay before the event is emitted
-    pub fn debounce(mut self) -> Self {
-        self.on_change_debounce = Some(Debounce::new(DEBOUNCE));
         self
     }
 
@@ -176,16 +165,7 @@ impl TextBox {
 
     /// Emit a change event. Should be called whenever text _content_ is changed
     fn change(&mut self) {
-        let is_valid = self.is_valid();
-        if let Some(debounce) = &mut self.on_change_debounce {
-            if is_valid {
-                // Defer the change event until after the debounce period
-                let emitter = self.emitter;
-                debounce.start(move || emitter.emit(TextBoxEvent::Change));
-            } else {
-                debounce.cancel();
-            }
-        } else if is_valid {
+        if self.is_valid() {
             self.emitter.emit(TextBoxEvent::Change);
         }
     }
@@ -193,16 +173,7 @@ impl TextBox {
     /// Emit a submit event
     fn submit(&mut self) {
         if self.is_valid() {
-            self.cancel_debounce();
             self.emitter.emit(TextBoxEvent::Submit);
-        }
-    }
-
-    /// Cancel any pending debounce. Should be called on submit or cancel, when
-    /// the user is no longer making changes
-    fn cancel_debounce(&mut self) {
-        if let Some(debounce) = &mut self.on_change_debounce {
-            debounce.cancel();
         }
     }
 }
@@ -213,10 +184,7 @@ impl EventHandler for TextBox {
             .opt()
             .action(|action, propagate| match action {
                 Action::Submit => self.submit(),
-                Action::Cancel => {
-                    self.cancel_debounce();
-                    self.emitter.emit(TextBoxEvent::Cancel);
-                }
+                Action::Cancel => self.emitter.emit(TextBoxEvent::Cancel),
                 Action::LeftClick => self.emitter.emit(TextBoxEvent::Focus),
                 _ => propagate.set(),
             })
@@ -427,7 +395,7 @@ pub enum TextBoxEvent {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, run_local, terminal, TestHarness, TestTerminal},
+        test_util::{harness, terminal, TestHarness, TestTerminal},
         view::test_util::TestComponent,
     };
     use ratatui::text::Span;
@@ -517,31 +485,6 @@ mod tests {
             .int()
             .send_key(KeyCode::Esc)
             .assert_emitted([TextBoxEvent::Cancel]);
-    }
-
-    /// Test on_change debouncing
-    #[rstest]
-    #[tokio::test]
-    async fn test_debounce(
-        harness: TestHarness,
-        #[with(10, 1)] terminal: TestTerminal,
-    ) {
-        // Local task set needed for the debounce task
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            TextBox::default().debounce(),
-        );
-        run_local(async {
-            // Type some text. Change event isn't emitted immediately
-            component.int().send_text("hi").assert_emitted([]);
-        })
-        .await;
-        // Once the debounce task is done, event is emitted
-        component
-            .int()
-            .drain_draw()
-            .assert_emitted([TextBoxEvent::Change]);
     }
 
     /// Test text navigation and deleting. [TextState] has its own tests so

@@ -147,6 +147,15 @@ requests:
         "size": "HUGE"
       }
 
+  file_json: !request
+    name: Raw JSON
+    method: POST
+    url: "{{host}}/anything"
+    headers:
+      Content-Type: application/json
+    body: !file test.json
+      
+
   delay: !request
     <<: *base
     name: Delay

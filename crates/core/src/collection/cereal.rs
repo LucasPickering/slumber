@@ -19,7 +19,7 @@ use serde::{
     ser::Error as _,
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::{hash::Hash, str::FromStr};
+use std::{fs, hash::Hash, str::FromStr};
 
 /// A type that has an `id` field. This is ripe for a derive macro, maybe a fun
 /// project some day?
@@ -252,10 +252,12 @@ impl RecipeBody {
     const VARIANT_JSON: &'static str = "json";
     const VARIANT_FORM_URLENCODED: &'static str = "form_urlencoded";
     const VARIANT_FORM_MULTIPART: &'static str = "form_multipart";
+    const VARIANT_FILE: &'static str = "file";
     const ALL_VARIANTS: &'static [&'static str] = &[
         Self::VARIANT_JSON,
         Self::VARIANT_FORM_URLENCODED,
         Self::VARIANT_FORM_MULTIPART,
+        Self::VARIANT_FILE,
     ];
 }
 
@@ -303,6 +305,18 @@ impl Serialize for RecipeBody {
                     Self::VARIANT_FORM_MULTIPART,
                     value,
                 ),
+            RecipeBody::File(file) => {
+                let json_str = fs::read_to_string(file).expect("No File");
+                let json = serde_json::Value::from_str(&json_str)
+                    .context("Failed to reparse body as JSON")
+                    .map_err(S::Error::custom)?;
+                serializer.serialize_newtype_variant(
+                    Self::STRUCT_NAME,
+                    4,
+                    Self::VARIANT_FILE,
+                    &json,
+                )
+            }
         }
     }
 }
@@ -379,6 +393,21 @@ impl<'de> Deserialize<'de> for RecipeBody {
                     }
                     RecipeBody::VARIANT_FORM_MULTIPART => {
                         Ok(RecipeBody::FormMultipart(value.newtype_variant()?))
+                    }
+                    RecipeBody::VARIANT_FILE => {
+                        let file_path: serde_json::Value =
+                            value.newtype_variant()?;
+
+                        let path_str = file_path.as_str().unwrap();
+                        let json = fs::read_to_string(path_str)
+                            .expect("File doesn't exist.");
+                        let body = format!("{json:#}")
+                            .parse()
+                            .map_err(A::Error::custom)?;
+                        Ok(RecipeBody::Raw {
+                            body,
+                            content_type: Some(ContentType::Json),
+                        })
                     }
                     other => Err(A::Error::unknown_variant(
                         other,

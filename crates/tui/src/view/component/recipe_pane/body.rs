@@ -70,6 +70,9 @@ impl RecipeBodyDisplay {
                 );
                 Self::Form(inner.into())
             }
+            RecipeBody::File(_file) => {
+                todo!();
+            }
         }
     }
 

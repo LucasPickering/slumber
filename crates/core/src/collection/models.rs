@@ -324,6 +324,8 @@ pub enum RecipeBody {
     FormUrlencoded(IndexMap<String, Template>),
     /// `multipart/form-data` fields. Values can be binary
     FormMultipart(IndexMap<String, Template>),
+    /// A JSON file
+    File(String),
 }
 
 impl RecipeBody {
@@ -349,6 +351,7 @@ impl RecipeBody {
                 Some(mime::APPLICATION_WWW_FORM_URLENCODED)
             }
             RecipeBody::FormMultipart(_) => Some(mime::MULTIPART_FORM_DATA),
+            RecipeBody::File(_file) => Some(mime::APPLICATION_JSON),
         }
     }
 }

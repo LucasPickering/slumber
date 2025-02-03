@@ -62,7 +62,7 @@ use reqwest::{
     Client, RequestBuilder, Response, Url,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::{collections::HashSet, fs};
 use tracing::{info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
@@ -640,6 +640,10 @@ impl Recipe {
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormMultipart(rendered)
             }
+            RecipeBody::File(file) => {
+                let data = fs::read(file)?;
+                RenderedBody::Raw(data.into())
+            }
         };
         Ok(Some(rendered))
     }
@@ -670,6 +674,9 @@ impl RecipeBody {
             // automatically and we don't want to interfere
             RecipeBody::FormUrlencoded(_) | RecipeBody::FormMultipart(_) => {
                 None
+            }
+            RecipeBody::File(_) => {
+                todo!()
             }
         }
     }

@@ -1,4 +1,5 @@
 [toolchain]
 # Keep in sync w/ Cargo.toml
-channel = "1.80.0"
+# TODO make stable
+channel = "beta"
 components = ["cargo", "clippy", "rustfmt"]

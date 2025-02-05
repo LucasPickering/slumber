@@ -1,29 +1,26 @@
 //! Generate strings (and bytes) from user-written templates with dynamic data
 
-mod cereal;
 mod error;
-mod parse;
 mod prompt;
 mod render;
 
-pub use error::{ChainError, TemplateError, TriggeredRequestError};
+pub use error::{TemplateError, TriggeredRequestError};
 pub use prompt::{Prompt, PromptChannel, Prompter, Select};
 
 use crate::{
-    collection::{ChainId, Collection, ProfileId},
+    collection::{Collection, Profile, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
-    template::{
-        parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
-        render::RenderGroupState,
-    },
+    template::render::RenderGroupState,
 };
-use derive_more::{Deref, Display};
+use derive_more::Display;
 use indexmap::IndexMap;
+use petit_js::{Function, IntoJs, Module, Object, SerdeJs};
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// A parsed template, which can contain raw and/or templated content. The
 /// string is parsed during creation to identify template keys, hence the
@@ -36,20 +33,111 @@ use std::sync::Arc;
 /// - Two templates with the same source string will have the same set of
 ///   chunks, and vice versa
 /// - No two raw segments will ever be consecutive
-#[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct Template {
-    /// Pre-parsed chunks of the template. For raw chunks we store the
-    /// presentation text (which is not necessarily the source text, as escape
-    /// sequences will be eliminated). For keys, just store the needed
-    /// metadata.
-    #[cfg_attr(
-        test,
-        proptest(
-            strategy = "any::<Vec<TemplateInputChunk>>().prop_map(join_raw)"
-        )
-    )]
-    chunks: Vec<TemplateInputChunk>,
+///
+/// TODO update comment
+#[derive(Clone, Debug, Display, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Template {
+    Value(String),
+    Lazy(Function),
+}
+
+impl Template {
+    /// Create a new template from a raw string, without parsing it at all.
+    /// Useful when importing from external formats where the string isn't
+    /// expected to be a valid Slumber template
+    pub fn raw(template: String) -> Self {
+        Self::Value(template)
+    }
+
+    /// TODO
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::Value(s) => Some(s),
+            Self::Lazy(_) => None,
+        }
+    }
+
+    /// TODO
+    pub async fn render_bytes(
+        &self,
+        context: &TemplateContext,
+    ) -> anyhow::Result<Vec<u8>> {
+        match self {
+            Self::Value(s) => Ok(s.clone().into_bytes()),
+            Self::Lazy(function) => Self::render_function(function, context)
+                .await
+                .map(String::into_bytes),
+        }
+    }
+
+    /// TODO
+    pub async fn render_string(
+        &self,
+        context: &TemplateContext,
+    ) -> anyhow::Result<String> {
+        match self {
+            Self::Value(s) => Ok(s.clone()),
+            Self::Lazy(function) => {
+                Self::render_function(function, context).await
+            }
+        }
+    }
+
+    /// TODO doc
+    /// TODO return bytes instead
+    async fn render_function(
+        function: &Function,
+        context: &TemplateContext,
+    ) -> anyhow::Result<String> {
+        let mut module = context.js_module.write().await;
+        // Get the current profile as a JS object
+        let profile_js = match context.profile() {
+            // TODO serialization should be easier than this
+            Some(profile) => SerdeJs(profile).into_js()?,
+            None => Object::default().into(),
+        };
+        // TODO error context here?
+        let return_value = module.call(function, &[profile_js]).await?;
+        Ok(return_value.to_string())
+    }
+}
+
+impl Default for Template {
+    fn default() -> Self {
+        Self::Value(String::new())
+    }
+}
+
+impl PartialEq for Template {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Value(l0), Self::Value(r0)) => l0 == r0,
+            // Two functions are never equal
+            _ => false,
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<&str> for Template {
+    fn from(value: &str) -> Self {
+        todo!()
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<String> for Template {
+    fn from(value: String) -> Self {
+        value.as_str().into()
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<serde_json::Value> for Template {
+    fn from(value: serde_json::Value) -> Self {
+        format!("{value:#}").into()
+    }
 }
 
 /// A little container struct for all the data that the user can access via
@@ -71,6 +159,8 @@ pub struct TemplateContext {
     pub http_engine: Option<HttpEngine>,
     /// Needed for accessing response bodies for chaining
     pub database: CollectionDatabase,
+    /// TODO
+    pub js_module: Arc<RwLock<Module>>,
     /// Additional key=value overrides passed directly from the user
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
@@ -80,76 +170,12 @@ pub struct TemplateContext {
     pub state: RenderGroupState,
 }
 
-impl Template {
-    /// Create a new template from a raw string, without parsing it at all.
-    /// Useful when importing from external formats where the string isn't
-    /// expected to be a valid Slumber template
-    pub fn raw(template: String) -> Template {
-        let chunks = if template.is_empty() {
-            vec![]
-        } else {
-            // This may seem too easy, but the hard part comes during
-            // stringification, when we need to add backslashes to get the
-            // string to parse correctly later
-            vec![TemplateInputChunk::Raw(template.into())]
-        };
-        Self { chunks }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.chunks.is_empty()
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl From<&str> for Template {
-    fn from(value: &str) -> Self {
-        value.parse().unwrap()
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl From<String> for Template {
-    fn from(value: String) -> Self {
-        value.as_str().into()
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl From<serde_json::Value> for Template {
-    fn from(value: serde_json::Value) -> Self {
-        format!("{value:#}").into()
-    }
-}
-
-/// An identifier that can be used in a template key. A valid identifier is
-/// any non-empty string that contains only alphanumeric characters, `-`, or
-/// `_`.
-///
-/// Construct via [FromStr](std::str::FromStr)
-#[derive(
-    Clone,
-    Debug,
-    Deref,
-    Default,
-    Display,
-    Eq,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-#[serde(transparent)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct Identifier(
-    #[cfg_attr(test, proptest(regex = "[a-zA-Z0-9-_]+"))] String,
-);
-
-/// A shortcut for creating identifiers from static strings. Since the string
-/// is defined in code we're assuming it's valid.
-impl From<&'static str> for Identifier {
-    fn from(value: &'static str) -> Self {
-        Self(value.parse().unwrap())
+impl TemplateContext {
+    /// TODO
+    pub fn profile(&self) -> Option<&Profile> {
+        self.selected_profile
+            .as_ref()
+            .and_then(|profile_id| self.collection.profiles.get(profile_id))
     }
 }
 
@@ -186,33 +212,6 @@ impl TemplateChunk {
     }
 }
 
-/// A parsed template key. The variant of this determines how the key will be
-/// resolved into a value.
-///
-/// This also serves as an enumeration of all possible value types. Once a key
-/// is parsed, we know its value type and can dynamically dispatch for rendering
-/// based on that.
-///
-/// The generic parameter defines *how* the key data is stored. Ideally we could
-/// just store a `&str`, but that isn't possible when this is part of a
-/// `Template`, because it would create a self-referential pointer. In that
-/// case, we can store a `Span` which points back to its source in the template.
-///
-/// The `Display` impl here should return exactly what this was parsed from.
-/// This is important for matching override keys during rendering.
-#[derive(Clone, Debug, Display, PartialEq)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum TemplateKey {
-    /// A plain field, which can come from the profile or an override
-    Field(Identifier),
-    /// A value from a predefined chain of another recipe
-    #[display("{CHAIN_PREFIX}{_0}")]
-    Chain(ChainId),
-    /// A value pulled from the process environment
-    #[display("{ENV_PREFIX}{_0}")]
-    Environment(Identifier),
-}
-
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for TemplateContext {
     fn factory(_: ()) -> Self {
@@ -221,6 +220,7 @@ impl crate::test_util::Factory for TemplateContext {
             collection: Default::default(),
             selected_profile: None,
             http_engine: None,
+            js_module: todo!(),
             database: CollectionDatabase::factory(()),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
@@ -262,8 +262,8 @@ mod tests {
     use crate::{
         assert_err,
         collection::{
-            Chain, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
-            ChainSource, Profile, Recipe, RecipeId, SelectOptions,
+            Chain, ChainRequestSection, ChainSource, Profile, Recipe, RecipeId,
+            RequestTrigger, SelectOptions, TrimMode,
         },
         http::{
             content_type::ContentType, Exchange, RequestRecord, ResponseRecord,

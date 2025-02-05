@@ -8,6 +8,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io,
     process::ExitCode,
+    rc::Rc,
 };
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{filter::Targets, fmt::format::FmtSpan, prelude::*};

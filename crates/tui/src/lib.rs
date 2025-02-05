@@ -41,6 +41,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{RequestId, RequestSeed},
+    js::JsEngine,
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
 use std::{
@@ -53,7 +54,10 @@ use std::{
 };
 use tokio::{
     select,
-    sync::mpsc::{self, UnboundedReceiver},
+    sync::{
+        mpsc::{self, UnboundedReceiver},
+        RwLock,
+    },
     task, time,
 };
 use tracing::{debug, error, info, info_span, trace};
@@ -76,6 +80,10 @@ pub struct Tui {
     collection_file: CollectionFile,
     should_run: bool,
     request_store: RequestStore,
+    /// TODO
+    js_engine: JsEngine,
+    /// TODO
+    js_module: Arc<RwLock<Module>>,
 }
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -138,6 +146,8 @@ impl Tui {
 
             view,
             request_store,
+            js_engine: JsEngine::default(),
+            js_module: Default::default(),
         };
 
         // Run everything in one local set, so that we can use !Send values
@@ -485,13 +495,13 @@ impl Tui {
             options,
         } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
+        let context = self.template_context(profile_id, false)?;
         // Spawn a task to do the render+copy
         spawn_result(async move {
             let url = TuiContext::get()
                 .http_engine
-                .build_url(seed, &template_context)
+                .build_url(seed, &context)
                 .await?;
             messages_tx.send(Message::CopyText(url.to_string()));
             Ok(())
@@ -507,13 +517,13 @@ impl Tui {
             options,
         } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         spawn_result(async move {
             let body = TuiContext::get()
                 .http_engine
-                .build_body(seed, &template_context)
+                .build_body(seed, &context)
                 .await?
                 .ok_or(anyhow!("Request has no body"))?;
             // Clone the bytes :(
@@ -533,7 +543,7 @@ impl Tui {
             options,
         } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         spawn_result(async move {
@@ -597,8 +607,7 @@ impl Tui {
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
 
-        let template_context =
-            self.template_context(profile_id.clone(), false)?;
+        let context = self.template_context(profile_id.clone(), false)?;
         let messages_tx = self.messages_tx();
 
         let seed = RequestSeed::new(recipe_id.clone(), options);
@@ -609,10 +618,8 @@ impl Tui {
         // requests
         let join_handle = spawn(async move {
             // Build the request
-            let result = TuiContext::get()
-                .http_engine
-                .build(seed, &template_context)
-                .await;
+            let result =
+                TuiContext::get().http_engine.build(seed, &context).await;
             let ticket = match result {
                 Ok(ticket) => ticket,
                 Err(error) => {
@@ -660,7 +667,8 @@ impl Tui {
         let context = self.template_context(profile_id, true)?;
         spawn(async move {
             // Render chunks, then write them to the output destination
-            let chunks = template.render_chunks(&context).await;
+            template.render_string(&context).await;
+            let chunks = Vec::new(); // TODO
             on_complete(chunks);
         });
         Ok(())
@@ -690,6 +698,7 @@ impl Tui {
             collection: collection.clone(),
             http_engine,
             database: self.database.clone(),
+            js_engine: self.js_engine.clone(),
             overrides: Default::default(),
             prompter,
             state: Default::default(),

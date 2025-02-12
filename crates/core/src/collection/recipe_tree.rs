@@ -107,6 +107,11 @@ impl RecipeTree {
         Ok(new)
     }
 
+    /// Is the given recipe ID in the tree?
+    pub fn contains_id(&self, id: &RecipeId) -> bool {
+        self.nodes_by_id.contains_key(id)
+    }
+
     /// Get a recipe/folder's tree lookup key by is unique ID
     pub fn get_lookup_key(&self, id: &RecipeId) -> Option<&RecipeLookupKey> {
         self.nodes_by_id.get(id)

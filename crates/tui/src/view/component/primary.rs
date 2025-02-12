@@ -13,8 +13,8 @@ use crate::{
             exchange_pane::{ExchangePane, ExchangePaneEvent},
             help::HelpModal,
             profile_select::ProfilePane,
-            recipe_list::{RecipeListPane, RecipeListPaneEvent},
             recipe_pane::{RecipePane, RecipePaneEvent, RecipePaneProps},
+            recipe_select::RecipeSelectPane,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
@@ -51,7 +51,7 @@ pub struct PrimaryView {
 
     // Children
     profile_pane: Component<ProfilePane>,
-    recipe_list_pane: Component<RecipeListPane>,
+    recipe_list_pane: Component<RecipeSelectPane>,
     recipe_pane: Component<RecipePane>,
     exchange_pane: Component<ExchangePane>,
 
@@ -64,7 +64,7 @@ impl PrimaryView {
         selected_request: Option<&RequestState>,
     ) -> Self {
         let profile_pane = ProfilePane::new(collection);
-        let recipe_list_pane = RecipeListPane::new(&collection.recipes);
+        let recipe_list_pane = RecipeSelectPane::new(&collection.recipes);
         let exchange_pane = ExchangePane::new(
             selected_request,
             recipe_list_pane
@@ -179,16 +179,15 @@ impl PrimaryView {
                 },
             }
         } else {
-            // Split the main pane horizontally
-            let [left_area, right_area] =
-                Layout::horizontal([Constraint::Max(40), Constraint::Min(40)])
-                    .areas(area);
-
+            let [header_area, recipe_area, exchange_area] = Layout::vertical([
+                Constraint::Length(3),
+                Constraint::Ratio(1, 2),
+                Constraint::Ratio(1, 2),
+            ])
+            .areas(area);
             let [profile_area, recipe_list_area] =
-                Layout::vertical([Constraint::Length(3), Constraint::Min(0)])
-                    .areas(left_area);
-            let [recipe_area, exchange_area] =
-                self.get_right_column_layout(right_area);
+                Layout::horizontal([Constraint::Max(40), Constraint::Min(40)])
+                    .areas(header_area);
             Panes {
                 profile: PaneState {
                     area: profile_area,
@@ -196,7 +195,7 @@ impl PrimaryView {
                 },
                 recipe_list: PaneState {
                     area: recipe_list_area,
-                    focus: self.is_selected(PrimaryPane::RecipeList),
+                    focus: true,
                 },
                 recipe: PaneState {
                     area: recipe_area,
@@ -208,21 +207,6 @@ impl PrimaryView {
                 },
             }
         }
-    }
-
-    /// Get layout for the right column of panes
-    fn get_right_column_layout(&self, area: Rect) -> [Rect; 2] {
-        // Split right column vertically. Expand the currently selected pane
-        let (top, bottom) = match self.selected_pane.selected() {
-            PrimaryPane::Recipe => (2, 1),
-            PrimaryPane::Exchange | PrimaryPane::RecipeList => (1, 2),
-        };
-        let denominator = top + bottom;
-        Layout::vertical([
-            Constraint::Ratio(top, denominator),
-            Constraint::Ratio(bottom, denominator),
-        ])
-        .areas(area)
     }
 
     /// Send a request for the currently selected recipe
@@ -246,10 +230,9 @@ impl EventHandler for PrimaryView {
                 Action::SelectProfileList => {
                     self.profile_pane.data_mut().open_modal()
                 }
-                Action::SelectRecipeList => self
-                    .selected_pane
-                    .get_mut()
-                    .select(&PrimaryPane::RecipeList),
+                Action::SelectRecipeList => {
+                    self.recipe_list_pane.data_mut().open_modal()
+                }
                 Action::SelectRecipe => {
                     self.selected_pane.get_mut().select(&PrimaryPane::Recipe)
                 }
@@ -258,19 +241,14 @@ impl EventHandler for PrimaryView {
                 }
 
                 // Toggle fullscreen
-                Action::Fullscreen => {
-                    match self.selected_pane.selected() {
-                        PrimaryPane::Recipe => {
-                            self.toggle_fullscreen(FullscreenMode::Recipe)
-                        }
-                        PrimaryPane::Exchange => {
-                            self.toggle_fullscreen(FullscreenMode::Exchange)
-                        }
-                        // This isn't fullscreenable. Still consume the event
-                        // though, no one else will need it anyway
-                        PrimaryPane::RecipeList => {}
+                Action::Fullscreen => match self.selected_pane.selected() {
+                    PrimaryPane::Recipe => {
+                        self.toggle_fullscreen(FullscreenMode::Recipe)
                     }
-                }
+                    PrimaryPane::Exchange => {
+                        self.toggle_fullscreen(FullscreenMode::Exchange)
+                    }
+                },
                 // Exit fullscreen
                 Action::Cancel if self.fullscreen_mode.is_some() => {
                     *self.fullscreen_mode.get_mut() = None;
@@ -281,13 +259,6 @@ impl EventHandler for PrimaryView {
                 if let SelectStateEvent::Select(_) = event {
                     // Exit fullscreen when pane changes
                     self.maybe_exit_fullscreen();
-                }
-            })
-            .emitted(self.recipe_list_pane.to_emitter(), |event| match event {
-                RecipeListPaneEvent::Click => {
-                    self.selected_pane
-                        .get_mut()
-                        .select(&PrimaryPane::RecipeList);
                 }
             })
             .emitted(self.recipe_pane.to_emitter(), |event| match event {
@@ -391,7 +362,6 @@ impl Draw for PrimaryView {
 )]
 enum PrimaryPane {
     #[default]
-    RecipeList,
     Recipe,
     Exchange,
 }
@@ -552,4 +522,7 @@ mod tests {
 
         assert_matches!(harness.pop_message_now(), Message::CopyRequestCurl);
     }
+
+    // TODO more tests
+    // TODO move tree into submodule
 }

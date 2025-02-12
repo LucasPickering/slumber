@@ -56,6 +56,9 @@ pub fn centered_rect(
             Constraint::Length(length) => {
                 Constraint::Length((full_size.saturating_sub(length)) / 2)
             }
+            Constraint::Max(length) => {
+                Constraint::Max((full_size.saturating_sub(length)) / 2)
+            }
             // Implement these as needed
             _ => unimplemented!("Other center constraints unsupported"),
         }

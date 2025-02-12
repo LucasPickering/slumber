@@ -57,18 +57,15 @@ impl TextBox {
     }
 
     /// Set placeholder (text to show when content is empty) on initialization
-    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
-        self.placeholder_text = placeholder.into();
+    pub fn placeholder(mut self, placeholder: impl ToString) -> Self {
+        self.placeholder_text = placeholder.to_string();
         self
     }
 
     /// Set placeholder text to show only while the text box is focused. If not
     /// set, this will fallback to the general placeholder text.
-    pub fn placeholder_focused(
-        mut self,
-        placeholder: impl Into<String>,
-    ) -> Self {
-        self.placeholder_focused = Some(placeholder.into());
+    pub fn placeholder_focused(mut self, placeholder: impl ToString) -> Self {
+        self.placeholder_focused = Some(placeholder.to_string());
         self
     }
 

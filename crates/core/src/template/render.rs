@@ -190,14 +190,14 @@ impl Template {
     /// will be used to provide a descriptive error.
     async fn render_chain_config<'a>(
         &'a self,
-        field: impl Into<String>,
+        field: impl ToString,
         context: &'a TemplateContext,
         stack: &mut RenderKeyStack<'a>,
     ) -> Result<String, ChainError> {
         self.render_string_impl(context, stack)
             .await
             .map_err(|error| ChainError::Nested {
-                field: field.into(),
+                field: field.to_string(),
                 error: error.into(),
             })
     }

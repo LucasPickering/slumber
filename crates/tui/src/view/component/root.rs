@@ -11,7 +11,9 @@ use crate::{
             help::HelpFooter,
             history::History,
             misc::{ConfirmModal, NotificationText},
-            primary::PrimaryView,
+            primary::{PrimaryView, PrimaryViewProps},
+            profile_select::ProfileSelect,
+            recipe_select::RecipeSelect,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -26,7 +28,7 @@ use ratatui::{layout::Layout, prelude::Constraint, Frame};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Collection, ProfileId},
+    collection::{Collection, ProfileId, RecipeId, RecipeNodeType},
     http::RequestId,
 };
 
@@ -40,6 +42,8 @@ pub struct Root {
     // ==== Children =====
     primary_view: Component<PrimaryView>,
     modal_queue: Component<ModalQueue>,
+    profile_select: Component<ProfileSelect>,
+    recipe_select: Component<RecipeSelect>,
     notification_text: Component<Option<NotificationText>>,
 }
 
@@ -51,7 +55,9 @@ impl Root {
             PersistedLazy::new_default(SelectedRequestKey);
         let selected_request =
             selected_request_id.0.and_then(|id| request_store.get(id));
-        let primary_view = PrimaryView::new(collection, selected_request);
+        let primary_view = PrimaryView::new(selected_request);
+        let profile_pane = ProfileSelect::new(collection);
+        let recipe_list_pane = RecipeSelect::new(&collection.recipes);
         Self {
             // State
             selected_request_id,
@@ -59,13 +65,30 @@ impl Root {
             // Children
             primary_view: primary_view.into(),
             modal_queue: Component::default(),
+            recipe_select: recipe_list_pane.into(),
+            profile_select: profile_pane.into(),
             notification_text: Component::default(),
         }
     }
 
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.primary_view.data().selected_profile_id()
+        self.profile_select.data().selected_profile_id()
+    }
+
+    /// Which recipe in the recipe list is selected? `None` iff the list is
+    /// empty OR a folder is selected.
+    fn selected_recipe_id(&self) -> Option<&RecipeId> {
+        self.recipe_select
+            .data()
+            .selected_node()
+            .and_then(|(id, kind)| {
+                if matches!(kind, RecipeNodeType::Recipe) {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
     }
 
     /// Get a definition of the request that should be sent from the current
@@ -95,7 +118,6 @@ impl Root {
         request_store: &mut RequestStore,
         request_id: Option<RequestId>,
     ) -> anyhow::Result<()> {
-        let primary_view = self.primary_view.data();
         let state = if let Some(request_id) = request_id {
             // TBH I would expect a bug here, if we're loading a persisted
             // request ID that doesn't exist anymore (e.g. we had a failed
@@ -103,7 +125,7 @@ impl Root {
             // to the most recent request for the recipe, as desired. I don't
             // understand it, but I'll take it...
             request_store.load(request_id)?
-        } else if let Some(recipe_id) = primary_view.selected_recipe_id() {
+        } else if let Some(recipe_id) = self.selected_recipe_id() {
             // We don't have a valid persisted ID, find the most recent for
             // the current recipe+profile
 
@@ -118,7 +140,7 @@ impl Root {
             {
                 selected_request
             } else {
-                let profile_id = primary_view.selected_profile_id();
+                let profile_id = self.selected_profile_id();
                 request_store.load_latest(profile_id, recipe_id)?
             }
         } else {
@@ -149,11 +171,10 @@ impl Root {
         &mut self,
         request_store: &mut RequestStore,
     ) -> anyhow::Result<()> {
-        let primary_view = self.primary_view.data();
-        if let Some(recipe_id) = primary_view.selected_recipe_id() {
+        if let Some(recipe_id) = self.selected_recipe_id() {
             // Make sure all requests for this profile+recipe are loaded
             let requests = request_store
-                .load_summaries(primary_view.selected_profile_id(), recipe_id)?
+                .load_summaries(self.selected_profile_id(), recipe_id)?
                 .map(RequestStateSummary::from)
                 .collect();
 
@@ -234,6 +255,8 @@ impl EventHandler for Root {
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![
             self.modal_queue.to_child_mut(),
+            self.profile_select.to_child_mut(),
+            self.recipe_select.to_child_mut(),
             self.primary_view.to_child_mut(),
         ]
     }
@@ -242,28 +265,50 @@ impl EventHandler for Root {
 impl Draw for Root {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         // Create layout
-        let [main_area, footer_area] =
-            Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
+        let [header_area, main_area] =
+            Layout::vertical([Constraint::Length(2), Constraint::Min(0)])
                 .areas(metadata.area());
 
-        // Main content
-        self.primary_view.draw(
-            frame,
-            (),
-            main_area,
-            !self.modal_queue.data().is_open(),
-        );
+        // Header
+        let [header_left_area, header_right_area] =
+            Layout::horizontal([Constraint::Max(40), Constraint::Min(40)])
+                .areas(header_area);
+        let [profile_select_area, recipe_select_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Length(1)])
+                .areas(header_left_area);
+        self.profile_select
+            .draw(frame, (), profile_select_area, true);
+        self.recipe_select.draw(frame, (), recipe_select_area, true);
 
-        // Footer
         let footer = HelpFooter.generate();
-        let [notification_area, help_area] = Layout::horizontal([
-            Constraint::Min(10),
-            Constraint::Length(footer.width() as u16),
-        ])
-        .areas(footer_area);
+        let [help_area, notification_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Length(1)])
+                .areas(header_right_area);
         self.notification_text
             .draw_opt(frame, (), notification_area, false);
         frame.render_widget(footer, help_area);
+
+        // Main content
+        let collection = ViewContext::collection();
+        let selected_recipe_node = self
+            .recipe_select
+            .data()
+            .selected_node()
+            .and_then(|(id, _)| {
+                collection
+                    .recipes
+                    .try_get(id)
+                    .reported(&ViewContext::messages_tx())
+            });
+        self.primary_view.draw(
+            frame,
+            PrimaryViewProps {
+                selected_recipe_node,
+                selected_profile_id: self.selected_profile_id(),
+            },
+            main_area,
+            !self.modal_queue.data().is_open(),
+        );
 
         // Render modals last so they go on top
         self.modal_queue.draw(frame, (), frame.area(), true);
@@ -329,9 +374,8 @@ mod tests {
         component.int().drain_draw().assert_empty();
 
         // Make sure profile+recipe were preselected correctly
-        let primary_view = component.data().primary_view.data();
-        assert_eq!(primary_view.selected_profile_id(), Some(profile_id));
-        assert_eq!(primary_view.selected_recipe_id(), Some(recipe_id));
+        assert_eq!(component.data().selected_profile_id(), Some(profile_id));
+        assert_eq!(component.data().selected_recipe_id(), Some(recipe_id));
         assert_eq!(component.data().selected_request_id(), Some(exchange.id));
 
         // It'd be nice to assert on the view but it's just too complicated to
@@ -368,14 +412,8 @@ mod tests {
         component.int().drain_draw().assert_empty();
 
         // Make sure everything was preselected correctly
-        assert_eq!(
-            component.data().primary_view.data().selected_profile_id(),
-            Some(profile_id)
-        );
-        assert_eq!(
-            component.data().primary_view.data().selected_recipe_id(),
-            Some(recipe_id)
-        );
+        assert_eq!(component.data().selected_profile_id(), Some(profile_id));
+        assert_eq!(component.data().selected_recipe_id(), Some(recipe_id));
         assert_eq!(
             component.data().selected_request_id(),
             Some(old_exchange.id)

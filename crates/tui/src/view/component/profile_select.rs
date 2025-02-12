@@ -9,7 +9,6 @@ use crate::{
             modal::{Modal, ModalHandle},
             table::Table,
             template_preview::TemplatePreview,
-            Pane,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -40,7 +39,7 @@ use slumber_core::{
 /// Minimal pane to show the current profile, and handle interaction to open the
 /// profile list modal
 #[derive(Debug)]
-pub struct ProfilePane {
+pub struct ProfileSelect {
     /// Store just the ID of the selected profile. We'll load the full list
     /// from the view context when opening the modal. It's not possible to
     /// share selection state with the modal, because the two values aren't
@@ -56,7 +55,7 @@ pub struct ProfilePane {
 #[persisted(Option<ProfileId>)]
 struct SelectedProfileKey;
 
-impl ProfilePane {
+impl ProfileSelect {
     pub fn new(collection: &Collection) -> Self {
         let mut selected_profile_id =
             Persisted::new_default(SelectedProfileKey);
@@ -96,12 +95,14 @@ impl ProfilePane {
     }
 }
 
-impl EventHandler for ProfilePane {
+impl EventHandler for ProfileSelect {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
             .action(|action, propagate| match action {
-                Action::LeftClick => self.open_modal(),
+                Action::LeftClick | Action::SelectProfileList => {
+                    self.open_modal()
+                }
                 _ => propagate.set(),
             })
             .emitted(
@@ -117,18 +118,11 @@ impl EventHandler for ProfilePane {
     }
 }
 
-impl Draw for ProfilePane {
+impl Draw for ProfileSelect {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        let title = TuiContext::get()
+        let label = TuiContext::get()
             .input_engine
             .add_hint("Profile", Action::SelectProfileList);
-        let block = Pane {
-            title: &title,
-            has_focus: false,
-        }
-        .generate();
-        frame.render_widget(&block, metadata.area());
-        let area = block.inner(metadata.area());
 
         // Grab global profile selection state
         let collection = ViewContext::collection();
@@ -137,11 +131,11 @@ impl Draw for ProfilePane {
             .and_then(|profile_id| collection.profiles.get(profile_id));
         frame.render_widget(
             if let Some(profile) = selected_profile {
-                profile.name()
+                format!("{label}: {}", profile.name())
             } else {
-                "No profiles defined"
+                format!("{label}: No profiles defined")
             },
-            area,
+            metadata.area(),
         );
     }
 }
@@ -392,7 +386,7 @@ mod tests {
         }
 
         let expected = expected.map(ProfileId::from);
-        let component = ProfilePane::new(&Collection {
+        let component = ProfileSelect::new(&Collection {
             profiles,
             ..Collection::factory(())
         });

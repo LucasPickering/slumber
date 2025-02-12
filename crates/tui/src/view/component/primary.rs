@@ -3,7 +3,6 @@
 use crate::{
     http::RequestState,
     message::{Message, RequestConfig},
-    util::ResultReported,
     view::{
         common::{
             actions::{IntoMenuAction, MenuAction},
@@ -12,9 +11,7 @@ use crate::{
         component::{
             exchange_pane::{ExchangePane, ExchangePaneEvent},
             help::HelpModal,
-            profile_select::ProfilePane,
             recipe_pane::{RecipePane, RecipePaneEvent, RecipePaneProps},
-            recipe_select::RecipeSelectPane,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
@@ -36,9 +33,7 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
-use slumber_core::collection::{
-    Collection, ProfileId, RecipeId, RecipeNodeType,
-};
+use slumber_core::collection::{ProfileId, RecipeNode};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Primary TUI view, which shows request/response panes
@@ -50,8 +45,6 @@ pub struct PrimaryView {
     fullscreen_mode: Persisted<FullscreenModeKey>,
 
     // Children
-    profile_pane: Component<ProfilePane>,
-    recipe_list_pane: Component<RecipeSelectPane>,
     recipe_pane: Component<RecipePane>,
     exchange_pane: Component<ExchangePane>,
 
@@ -59,18 +52,8 @@ pub struct PrimaryView {
 }
 
 impl PrimaryView {
-    pub fn new(
-        collection: &Collection,
-        selected_request: Option<&RequestState>,
-    ) -> Self {
-        let profile_pane = ProfilePane::new(collection);
-        let recipe_list_pane = RecipeSelectPane::new(&collection.recipes);
-        let exchange_pane = ExchangePane::new(
-            selected_request,
-            recipe_list_pane
-                .selected_node()
-                .map(|(_, node_type)| node_type),
-        );
+    pub fn new(selected_request: Option<&RequestState>) -> Self {
+        let exchange_pane = ExchangePane::new(selected_request);
 
         Self {
             selected_pane: PersistedLazy::new(
@@ -81,33 +64,11 @@ impl PrimaryView {
             ),
             fullscreen_mode: Default::default(),
 
-            recipe_list_pane: recipe_list_pane.into(),
-            profile_pane: profile_pane.into(),
             recipe_pane: Default::default(),
             exchange_pane: exchange_pane.into(),
 
             global_actions_emitter: Default::default(),
         }
-    }
-
-    /// Which recipe in the recipe list is selected? `None` iff the list is
-    /// empty OR a folder is selected.
-    pub fn selected_recipe_id(&self) -> Option<&RecipeId> {
-        self.recipe_list_pane
-            .data()
-            .selected_node()
-            .and_then(|(id, kind)| {
-                if matches!(kind, RecipeNodeType::Recipe) {
-                    Some(id)
-                } else {
-                    None
-                }
-            })
-    }
-
-    /// ID of the selected profile. `None` iff the list is empty
-    pub fn selected_profile_id(&self) -> Option<&ProfileId> {
-        self.profile_pane.data().selected_profile_id()
     }
 
     /// Set the state of the currently selected request. Call whenever a new
@@ -116,14 +77,7 @@ impl PrimaryView {
         &mut self,
         selected_request: Option<&RequestState>,
     ) {
-        self.exchange_pane = ExchangePane::new(
-            selected_request,
-            self.recipe_list_pane
-                .data()
-                .selected_node()
-                .map(|(_, node_type)| node_type),
-        )
-        .into();
+        self.exchange_pane = ExchangePane::new(selected_request).into();
     }
 
     /// Get a definition of the request that should be sent from the current
@@ -132,18 +86,19 @@ impl PrimaryView {
         self.recipe_pane.data().request_config()
     }
 
-    /// Is the given pane selected?
-    fn is_selected(&self, primary_pane: PrimaryPane) -> bool {
-        self.selected_pane.is_selected(&primary_pane)
+    /// Is the given pane in focus?
+    fn is_focused(&self, pane: PrimaryPane) -> bool {
+        self.selected_pane.is_selected(&pane)
+            || *self.fullscreen_mode == Some(pane)
     }
 
-    fn toggle_fullscreen(&mut self, mode: FullscreenMode) {
+    fn toggle_fullscreen(&mut self, pane: PrimaryPane) {
         // If we're already in the given mode, exit
-        *self.fullscreen_mode.get_mut() = if Some(mode) == *self.fullscreen_mode
+        *self.fullscreen_mode.get_mut() = if Some(pane) == *self.fullscreen_mode
         {
             None
         } else {
-            Some(mode)
+            Some(pane)
         };
     }
 
@@ -152,60 +107,9 @@ impl PrimaryView {
     /// loading from persistence. In those cases, stay in fullscreen.
     fn maybe_exit_fullscreen(&mut self) {
         match (self.selected_pane.selected(), *self.fullscreen_mode) {
-            (PrimaryPane::Recipe, Some(FullscreenMode::Recipe))
-            | (PrimaryPane::Exchange, Some(FullscreenMode::Exchange)) => {}
+            (PrimaryPane::Recipe, Some(PrimaryPane::Recipe))
+            | (PrimaryPane::Exchange, Some(PrimaryPane::Exchange)) => {}
             _ => *self.fullscreen_mode.get_mut() = None,
-        }
-    }
-
-    /// Get the current placement and focus for all panes, according to current
-    /// selection and fullscreen state. We always draw all panes so they can
-    /// perform their state updates. To hide them we just render to an empty
-    /// rect.
-    fn panes(&self, area: Rect) -> Panes {
-        if let Some(fullscreen_mode) = *self.fullscreen_mode {
-            match fullscreen_mode {
-                FullscreenMode::Recipe => Panes {
-                    profile: PaneState::default(),
-                    recipe_list: PaneState::default(),
-                    recipe: PaneState { area, focus: true },
-                    exchange: PaneState::default(),
-                },
-                FullscreenMode::Exchange => Panes {
-                    profile: PaneState::default(),
-                    recipe_list: PaneState::default(),
-                    recipe: PaneState::default(),
-                    exchange: PaneState { area, focus: true },
-                },
-            }
-        } else {
-            let [header_area, recipe_area, exchange_area] = Layout::vertical([
-                Constraint::Length(3),
-                Constraint::Ratio(1, 2),
-                Constraint::Ratio(1, 2),
-            ])
-            .areas(area);
-            let [profile_area, recipe_list_area] =
-                Layout::horizontal([Constraint::Max(40), Constraint::Min(40)])
-                    .areas(header_area);
-            Panes {
-                profile: PaneState {
-                    area: profile_area,
-                    focus: true,
-                },
-                recipe_list: PaneState {
-                    area: recipe_list_area,
-                    focus: true,
-                },
-                recipe: PaneState {
-                    area: recipe_area,
-                    focus: self.is_selected(PrimaryPane::Recipe),
-                },
-                exchange: PaneState {
-                    area: exchange_area,
-                    focus: self.is_selected(PrimaryPane::Exchange),
-                },
-            }
         }
     }
 
@@ -227,12 +131,6 @@ impl EventHandler for PrimaryView {
                 Action::OpenHelp => HelpModal.open(),
 
                 // Pane hotkeys
-                Action::SelectProfileList => {
-                    self.profile_pane.data_mut().open_modal()
-                }
-                Action::SelectRecipeList => {
-                    self.recipe_list_pane.data_mut().open_modal()
-                }
                 Action::SelectRecipe => {
                     self.selected_pane.get_mut().select(&PrimaryPane::Recipe)
                 }
@@ -243,10 +141,10 @@ impl EventHandler for PrimaryView {
                 // Toggle fullscreen
                 Action::Fullscreen => match self.selected_pane.selected() {
                     PrimaryPane::Recipe => {
-                        self.toggle_fullscreen(FullscreenMode::Recipe)
+                        self.toggle_fullscreen(PrimaryPane::Recipe)
                     }
                     PrimaryPane::Exchange => {
-                        self.toggle_fullscreen(FullscreenMode::Exchange)
+                        self.toggle_fullscreen(PrimaryPane::Exchange)
                     }
                 },
                 // Exit fullscreen
@@ -289,62 +187,56 @@ impl EventHandler for PrimaryView {
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         vec![
-            self.profile_pane.to_child_mut(),
-            self.recipe_list_pane.to_child_mut(),
             self.recipe_pane.to_child_mut(),
             self.exchange_pane.to_child_mut(),
         ]
     }
 }
 
-impl Draw for PrimaryView {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: PrimaryViewProps,
+        metadata: DrawMetadata,
+    ) {
         // We draw all panes regardless of fullscreen state, so they can run
-        // their necessary state updates. We just give the hidden panes an empty
+        // their necessary state updates. We just give the hidden pane an empty
         // rect to draw into so they don't appear at all
-        let panes = self.panes(metadata.area());
+        let area = metadata.area();
+        let [recipe_area, exchange_area] = match *self.fullscreen_mode {
+            None => Layout::vertical([
+                Constraint::Ratio(1, 2),
+                Constraint::Ratio(1, 2),
+            ])
+            .areas(area),
+            Some(PrimaryPane::Recipe) => [area, Rect::default()],
+            Some(PrimaryPane::Exchange) => [Rect::default(), area],
+        };
 
-        self.profile_pane.draw(
-            frame,
-            (),
-            panes.profile.area,
-            panes.profile.focus,
-        );
-        self.recipe_list_pane.draw(
-            frame,
-            (),
-            panes.recipe_list.area,
-            panes.recipe_list.focus,
-        );
-
-        let collection = ViewContext::collection();
-        let selected_recipe_node = self
-            .recipe_list_pane
-            .data()
-            .selected_node()
-            .and_then(|(id, _)| {
-                collection
-                    .recipes
-                    .try_get(id)
-                    .reported(&ViewContext::messages_tx())
-            });
         self.recipe_pane.draw(
             frame,
             RecipePaneProps {
-                selected_recipe_node,
-                selected_profile_id: self.selected_profile_id(),
+                selected_recipe_node: props.selected_recipe_node,
+                selected_profile_id: props.selected_profile_id,
             },
-            panes.recipe.area,
-            panes.recipe.focus,
+            recipe_area,
+            self.is_focused(PrimaryPane::Recipe),
         );
-
         self.exchange_pane.draw(
             frame,
             (),
-            panes.exchange.area,
-            panes.exchange.focus,
+            exchange_area,
+            self.is_focused(PrimaryPane::Exchange),
         );
     }
+}
+
+#[derive(Clone)]
+pub struct PrimaryViewProps<'a> {
+    /// ID of the recipe *or* folder selected
+    pub selected_recipe_node: Option<&'a RecipeNode>,
+    pub selected_profile_id: Option<&'a ProfileId>,
 }
 
 /// Selectable panes in the primary view mode
@@ -366,19 +258,9 @@ enum PrimaryPane {
     Exchange,
 }
 
-/// Panes that can be fullscreened. This is separate from [PrimaryPane] because
-/// it makes it easy to check when we should exit fullscreen mode.
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
-enum FullscreenMode {
-    /// Fullscreen the active request recipe
-    Recipe,
-    /// Fullscreen the active request/response exchange
-    Exchange,
-}
-
 /// Persistence key for fullscreen mode
 #[derive(Debug, Default, persisted::PersistedKey, Serialize)]
-#[persisted(Option<FullscreenMode>)]
+#[persisted(Option<PrimaryPane>)]
 struct FullscreenModeKey;
 
 /// Menu actions available in all contexts
@@ -389,21 +271,6 @@ enum GlobalMenuAction {
 }
 
 impl IntoMenuAction<PrimaryView> for GlobalMenuAction {}
-
-/// Helper for adjusting pane behavior according to state
-struct Panes {
-    profile: PaneState,
-    recipe_list: PaneState,
-    recipe: PaneState,
-    exchange: PaneState,
-}
-
-/// Helper for adjusting pane behavior according to state
-#[derive(Default)]
-struct PaneState {
-    area: Rect,
-    focus: bool,
-}
 
 #[cfg(test)]
 mod tests {

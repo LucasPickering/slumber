@@ -5,7 +5,6 @@ use crate::{
             list::List,
             modal::{Modal, ModalHandle},
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
-            Pane,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -29,10 +28,10 @@ use slumber_core::collection::{
 };
 use std::collections::HashSet;
 
-/// Minimal pane to show the current recipe, and handle interaction to open the
-/// recipe tree modal
+/// Minimal component to show the current recipe, and handle interaction to open
+/// the recipe tree modal
 #[derive(Debug)]
-pub struct RecipeSelectPane {
+pub struct RecipeSelect {
     /// Current selected recipe. We have to duplicate this from the modal's
     /// internal select list, because the modal isn't always open.
     selected_recipe_id: Persisted<SelectedRecipeKey>,
@@ -40,7 +39,7 @@ pub struct RecipeSelectPane {
     modal_handle: ModalHandle<SelectRecipe>,
 }
 
-impl RecipeSelectPane {
+impl RecipeSelect {
     pub fn new(recipes: &RecipeTree) -> Self {
         let mut selected_recipe_id = Persisted::new_default(SelectedRecipeKey);
 
@@ -81,12 +80,14 @@ impl RecipeSelectPane {
     }
 }
 
-impl EventHandler for RecipeSelectPane {
+impl EventHandler for RecipeSelect {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
         event
             .opt()
             .action(|action, propagate| match action {
-                Action::LeftClick => self.open_modal(),
+                Action::LeftClick | Action::SelectRecipeList => {
+                    self.open_modal()
+                }
                 _ => propagate.set(),
             })
             .emitted(
@@ -98,18 +99,11 @@ impl EventHandler for RecipeSelectPane {
     }
 }
 
-impl Draw for RecipeSelectPane {
+impl Draw for RecipeSelect {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        let title = TuiContext::get()
+        let label = TuiContext::get()
             .input_engine
             .add_hint("Recipes", Action::SelectRecipeList);
-        let block = Pane {
-            title: &title,
-            has_focus: false,
-        }
-        .generate();
-        frame.render_widget(&block, metadata.area());
-        let area = block.inner(metadata.area());
 
         // Grab global profile selection state
         let collection = ViewContext::collection();
@@ -118,11 +112,11 @@ impl Draw for RecipeSelectPane {
             .and_then(|recipe_id| collection.recipes.get(recipe_id));
         frame.render_widget(
             if let Some(node) = selected_node {
-                node.name()
+                format!("{label}: {}", node.name())
             } else {
-                "No recipes defined"
+                format!("{label}: No recipes defined")
             },
-            area,
+            metadata.area(),
         );
     }
 }

@@ -26,7 +26,7 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
-use slumber_core::{collection::RecipeNodeType, util::format_byte_size};
+use slumber_core::util::format_byte_size;
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter};
 
@@ -38,18 +38,15 @@ use strum::{EnumCount, EnumIter};
 pub struct ExchangePane {
     emitter: Emitter<ExchangePaneEvent>,
     tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
-    state: State,
+    state: Option<State>,
 }
 
 impl ExchangePane {
-    pub fn new(
-        selected_request: Option<&RequestState>,
-        selected_recipe_kind: Option<RecipeNodeType>,
-    ) -> Self {
+    pub fn new(selected_request: Option<&RequestState>) -> Self {
         Self {
             emitter: Default::default(),
             tabs: Default::default(),
-            state: State::new(selected_request, selected_recipe_kind),
+            state: selected_request.map(State::new),
         }
     }
 }
@@ -63,15 +60,16 @@ impl EventHandler for ExchangePane {
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        // TODO can we combine these with option magic?
         match &mut self.state {
             // Tabs won't be visible in these empty states so we don't *need*
             // to return it, but it doesn't matter
-            State::None | State::Folder | State::NoHistory => {
+            None => {
                 vec![self.tabs.to_child_mut()]
             }
 
             // Tabs last so the children get priority
-            State::Content { content, .. } => {
+            Some(State { content, .. }) => {
                 vec![content.to_child_mut(), self.tabs.to_child_mut()]
             }
         }
@@ -90,7 +88,7 @@ impl Draw for ExchangePane {
         .generate();
 
         // If a recipe is selected, history is available so show the hint
-        if matches!(self.state, State::Content { .. }) {
+        if self.state.is_some() {
             let text = input_engine.add_hint("History", Action::History);
             block = block.title(Title::from(text).alignment(Alignment::Right));
         }
@@ -100,16 +98,8 @@ impl Draw for ExchangePane {
         match &self.state {
             // Recipe pane will show a note about how to add a recipe, so we
             // don't need anything here
-            State::None => {}
-            State::Folder => frame.render_widget(
-                "Select a recipe to see its request history",
-                area,
-            ),
-            State::NoHistory => frame.render_widget(
-                "No request history for this recipe & profile",
-                area,
-            ),
-            State::Content { metadata, content } => {
+            None => frame.render_widget("No data", area),
+            Some(State { metadata, content }) => {
                 let [metadata_area, tabs_area, content_area] =
                     Layout::vertical([
                         Constraint::Length(1),
@@ -165,42 +155,22 @@ pub enum ExchangePaneEvent {
     Click,
 }
 
-/// Inner state for the exchange pane. This contains all the empty states, as
-/// well as one variant for the populated state
+/// Inner state for the exchange pane, for when an exchange is present
 #[derive(Debug)]
-enum State {
-    /// Recipe list is empty
-    None,
-    /// Folder selected
-    Folder,
-    /// Recipe selected, but it has no request history
-    NoHistory,
-    /// We have a real bonafide request state available
-    Content {
-        metadata: Component<ExchangePaneMetadata>,
-        content: Component<ExchangePaneContent>,
-    },
+struct State {
+    metadata: Component<ExchangePaneMetadata>,
+    content: Component<ExchangePaneContent>,
 }
 
 impl State {
-    fn new(
-        selected_request: Option<&RequestState>,
-        selected_recipe_kind: Option<RecipeNodeType>,
-    ) -> Self {
-        match (selected_request, selected_recipe_kind) {
-            (_, None) => Self::None,
-            (_, Some(RecipeNodeType::Folder)) => Self::Folder,
-            (None, Some(RecipeNodeType::Recipe)) => Self::NoHistory,
-            (Some(request_state), Some(RecipeNodeType::Recipe)) => {
-                Self::Content {
-                    metadata: ExchangePaneMetadata {
-                        request: request_state.request_metadata(),
-                        response: request_state.response_metadata(),
-                    }
-                    .into(),
-                    content: ExchangePaneContent::new(request_state).into(),
-                }
+    fn new(selected_request: &RequestState) -> Self {
+        Self {
+            metadata: ExchangePaneMetadata {
+                request: selected_request.request_metadata(),
+                response: selected_request.response_metadata(),
             }
+            .into(),
+            content: ExchangePaneContent::new(selected_request).into(),
         }
     }
 }

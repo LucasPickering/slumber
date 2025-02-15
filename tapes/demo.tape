@@ -50,6 +50,6 @@ Type "r"
 Sleep 2s
 
 # Search response
-Type "/$.headers"
+Type "/jq .headers"
 Enter
 Sleep 2s

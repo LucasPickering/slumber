@@ -24,6 +24,8 @@ Sleep 1s
 Type "/"
 Sleep 1s
 Type "jq .args"
+Enter
 Sleep 2s
-Type ".fast"
+Type "/.fast"
+Enter
 Sleep 2s

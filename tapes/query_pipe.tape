@@ -23,4 +23,5 @@ Show
 Type "/"
 Sleep 1s
 Type "jq .args | head -n 3"
+Enter
 Sleep 2s

@@ -24,7 +24,7 @@ pub struct Button<'a> {
     has_focus: bool,
 }
 
-impl<'a> Generate for Button<'a> {
+impl Generate for Button<'_> {
     type Output<'this> = Span<'this>
     where
         Self: 'this;

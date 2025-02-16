@@ -284,7 +284,7 @@ impl From<&Profile> for ProfileListItem {
     }
 }
 
-impl<'a> Generate for &'a ProfileListItem {
+impl Generate for &ProfileListItem {
     type Output<'this> = Text<'this>
     where
         Self: 'this;

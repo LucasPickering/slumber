@@ -8,7 +8,7 @@ pub struct HeaderTable<'a> {
     pub headers: &'a HeaderMap,
 }
 
-impl<'a> Generate for HeaderTable<'a> {
+impl Generate for HeaderTable<'_> {
     type Output<'this> = ratatui::widgets::Table<'this> where Self: 'this;
 
     fn generate<'this>(self) -> Self::Output<'this>

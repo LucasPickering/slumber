@@ -67,7 +67,7 @@ pub fn create_parent(path: &Path) -> anyhow::Result<()> {
         anyhow!("Cannot create directory for path {path:?}; it has no parent")
     })?;
     fs::create_dir_all(parent)
-        .context("Error creating directory {parent:?}")?;
+        .with_context(|| format!("Error creating directory {parent:?}"))?;
     Ok(())
 }
 

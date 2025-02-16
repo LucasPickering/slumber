@@ -66,7 +66,6 @@ impl IntoIterator for RecipeLookupKey {
 #[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-#[allow(clippy::large_enum_variant)]
 pub enum RecipeNode {
     Folder(Folder),
     /// Rename this variant to match the `requests` field in the root and

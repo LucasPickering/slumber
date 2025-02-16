@@ -9,89 +9,43 @@ pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 
-use anyhow::{anyhow, Context};
+use crate::js::JsEngine;
+use anyhow::{anyhow, Context as _};
 use itertools::Itertools;
+use petit_js::Process;
 use std::{
     env,
     fmt::Debug,
     fs,
     future::Future,
     path::{Path, PathBuf},
-    sync::Arc,
 };
-use tokio::task;
 use tracing::{trace, warn};
 
 /// The support file names to be automatically loaded as a config. We only
 /// support loading from one file at a time, so if more than one of these is
 /// defined, we'll take the earliest and print a warning.
-const CONFIG_FILES: &[&str] = &[
-    "slumber.yml",
-    "slumber.yaml",
-    ".slumber.yml",
-    ".slumber.yaml",
-];
+const CONFIG_FILES: &[&str] = &["slumber.js", ".slumber.js"];
 
-/// A wrapper around a request collection, to handle functionality around the
-/// file system.
+/// A handle for a collection file. This makes it easy to load and reload
+/// the collection in the file
 #[derive(Debug)]
-pub struct CollectionFile {
-    /// Path to the file that this collection was loaded from
-    path: PathBuf,
-    /// The collection is immutable and needs to be shared across threads for
-    /// template rendering, so we stashing it behind an `Arc` to avoid clones.
-    pub collection: Arc<Collection>,
-}
+pub struct CollectionFile(PathBuf);
 
 impl CollectionFile {
-    /// Create a new collection file with the given path and a default
-    /// collection. Useful when the collection failed to load and you want a
-    /// placeholder.
-    pub fn with_path(path: PathBuf) -> Self {
-        Self {
-            path,
-            collection: Default::default(),
-        }
-    }
-
-    /// Load config from the given file. The caller is responsible for using
-    /// [Self::try_path] to find the file themself. This pattern enables the
-    /// TUI to start up and watch the collection file, even if it's invalid.
-    pub async fn load(path: PathBuf) -> anyhow::Result<Self> {
-        let collection = load_collection(path.clone()).await?.into();
-        Ok(Self { path, collection })
-    }
-
-    /// Reload a new collection from the same file used for this one.
-    ///
-    /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
-    pub fn reload(&self) -> impl Future<Output = anyhow::Result<Collection>> {
-        load_collection(self.path.clone())
-    }
-
-    /// Get the path of the file that this collection was loaded from
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    /// Get the path to the collection file, returning an error if none is
+    /// Get a handle to the collection file, returning an error if none is
     /// available. This will use the override if given, otherwise it will fall
-    /// back to searching the given directory for a collection. If a directory
-    /// is given for the override, search that directory (relative to the
-    /// given/current).
-    ///
-    /// If the directory to search is not given, default to the current
-    /// directory. This is configurable just for testing.
-    pub fn try_path(
-        dir: Option<PathBuf>,
-        override_path: Option<PathBuf>,
-    ) -> anyhow::Result<PathBuf> {
-        let mut dir = if let Some(dir) = dir {
-            dir
-        } else {
-            env::current_dir()?
-        };
+    /// back to searching the given directory for a collection.
+    pub fn new(override_path: Option<PathBuf>) -> anyhow::Result<Self> {
+        Self::with_dir(env::current_dir()?, override_path)
+    }
 
+    /// Get a handle to the collection file, seaching a specific directory. This
+    /// is only useful for testing. Typically you just want [Self::new].
+    pub fn with_dir(
+        mut dir: PathBuf,
+        override_path: Option<PathBuf>,
+    ) -> anyhow::Result<Self> {
         // If the override is a dir, search that dir instead. If it's a file,
         // just return it
         if let Some(override_path) = override_path {
@@ -102,27 +56,50 @@ impl CollectionFile {
             {
                 dir = joined;
             } else {
-                return Ok(joined);
+                return Ok(Self(joined));
             }
         }
 
-        detect_path(&dir).ok_or_else(|| {
-            anyhow!(
+        detect_path(&dir)
+            .ok_or_else(|| {
+                anyhow!(
                 "No collection file found in current or ancestor directories"
             )
-        })
+            })
+            .map(Self)
+    }
+
+    /// Load a collection from this file, using the given JS engine to execute
+    /// the file.
+    ///
+    /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
+    pub fn load(
+        &self,
+        engine: &JsEngine,
+    ) -> impl Future<Output = anyhow::Result<LoadedCollection>> {
+        let path = self.0.clone();
+        engine.load_collection(&path)
+    }
+
+    /// Get the path of the file that this collection was loaded from
+    pub fn path(&self) -> &Path {
+        &self.0
     }
 }
 
 /// Create a new file with a placeholder path for testing
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<Collection> for CollectionFile {
-    fn factory(collection: Collection) -> Self {
-        Self {
-            path: PathBuf::default(),
-            collection: collection.into(),
-        }
+impl crate::test_util::Factory<()> for CollectionFile {
+    fn factory(_: ()) -> Self {
+        Self(PathBuf::default())
     }
+}
+
+/// TODO better name
+#[derive(Debug)]
+pub struct LoadedCollection {
+    pub collection: Collection,
+    pub process: Process,
 }
 
 /// Search the current directory for a config file matching one of the known
@@ -167,17 +144,6 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 
     // Walk *up* the tree until we've hit the root
     search_all(dir)
-}
-
-/// Load a collection from the given file. Takes an owned path because it
-/// needs to be passed to a future
-async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
-    // YAML parsing is blocking so do it in a different thread. We could use
-    // tokio::fs for this but that just uses std::fs underneath anyway.
-    task::spawn_blocking(move || Collection::load(&path))
-        .await
-        // This error only occurs if the task panics
-        .context("Error parsing collection")?
 }
 
 #[cfg(test)]
@@ -306,7 +272,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "command_stdin".into(),
@@ -318,7 +284,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "command_trim_none".into(),
@@ -327,7 +293,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "command_trim_start".into(),
@@ -336,7 +302,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::Start,
+                    trim: TrimMode::Start,
                 },
                 Chain {
                     id: "command_trim_end".into(),
@@ -345,7 +311,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::End,
+                    trim: TrimMode::End,
                 },
                 Chain {
                     id: "command_trim_both".into(),
@@ -354,7 +320,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::Both,
+                    trim: TrimMode::Both,
                 },
                 Chain {
                     id: "prompt_sensitive".into(),
@@ -366,7 +332,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "prompt_default".into(),
@@ -378,7 +344,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "file".into(),
@@ -389,7 +355,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "file_content_type".into(),
@@ -400,93 +366,93 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: Some(ContentType::Json),
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_selector".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: Some("$.data".parse().unwrap()),
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_trigger_never".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_trigger_no_history".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_trigger_expire".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Expire(
-                            Duration::from_secs(12 * 60 * 60),
-                        ),
+                        trigger: RequestTrigger::Expire(Duration::from_secs(
+                            12 * 60 * 60,
+                        )),
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_trigger_always".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_section_body".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Body,
                     },
                     sensitive: false,
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
                 Chain {
                     id: "request_section_header".into(),
                     source: ChainSource::Request {
                         recipe: "login".into(),
-                        trigger: ChainRequestTrigger::Never,
+                        trigger: RequestTrigger::Never,
                         section: ChainRequestSection::Header(
                             "content-type".into(),
                         ),
@@ -495,7 +461,7 @@ mod tests {
                     selector: None,
                     selector_mode: SelectorMode::default(),
                     content_type: None,
-                    trim: ChainOutputTrim::None,
+                    trim: TrimMode::None,
                 },
             ]),
             recipes: by_id([

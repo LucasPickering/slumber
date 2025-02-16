@@ -30,7 +30,7 @@ pub struct Table<'a, const COLS: usize, R> {
     pub column_widths: &'a [Constraint; COLS],
 }
 
-impl<'a, const COLS: usize, Rows: Default> Default for Table<'a, COLS, Rows> {
+impl<const COLS: usize, Rows: Default> Default for Table<'_, COLS, Rows> {
     fn default() -> Self {
         Self {
             title: None,
@@ -118,7 +118,7 @@ pub struct ToggleRow<'a, Cells> {
     enabled: bool,
 }
 
-impl<'a, Cells> ToggleRow<'a, Cells> {
+impl<Cells> ToggleRow<'_, Cells> {
     pub fn new(cells: Cells, enabled: bool) -> Self {
         Self {
             phantom: PhantomData,

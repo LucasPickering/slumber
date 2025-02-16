@@ -36,7 +36,7 @@ pub struct Pane<'a> {
     pub has_focus: bool,
 }
 
-impl<'a> Generate for Pane<'a> {
+impl Generate for Pane<'_> {
     type Output<'this> = Block<'this> where Self: 'this;
 
     fn generate<'this>(self) -> Self::Output<'this>

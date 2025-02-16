@@ -1,5 +1,5 @@
 use crate::{
-    http::{RequestState, RequestStateSummary, RequestStore},
+    http::{RequestState, RequestStore},
     message::{Message, RequestConfig},
     util::ResultReported,
     view::{
@@ -154,7 +154,6 @@ impl Root {
             // Make sure all requests for this profile+recipe are loaded
             let requests = request_store
                 .load_summaries(primary_view.selected_profile_id(), recipe_id)?
-                .map(RequestStateSummary::from)
                 .collect();
 
             History::new(recipe_id, requests, self.selected_request_id())

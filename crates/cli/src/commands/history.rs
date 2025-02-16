@@ -65,9 +65,9 @@ enum RecipeOrRequest {
 
 impl Subcommand for HistoryCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let collection_path = CollectionFile::try_path(None, global.file)?;
+        let collection_file = CollectionFile::new(global.file)?;
         let database = Database::load()?
-            .into_collection(&collection_path, DatabaseMode::ReadOnly)?;
+            .into_collection(collection_file.path(), DatabaseMode::ReadOnly)?;
 
         match self.subcommand {
             HistorySubcommand::List { recipe, profile } => {

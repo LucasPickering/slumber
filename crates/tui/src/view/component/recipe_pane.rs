@@ -215,7 +215,7 @@ impl IntoMenuAction<RecipePane> for RecipePaneMenuAction {
 }
 
 /// Render folder as a tree
-impl<'a> Generate for &'a Folder {
+impl Generate for &Folder {
     type Output<'this> = Text<'this>
     where
         Self: 'this;

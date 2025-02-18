@@ -414,6 +414,7 @@ mod tests {
 
     /// Assert that text state matches text/cursor location. Cursor location is
     /// a *character* offset, not byte offset
+    #[track_caller]
     fn assert_state(state: &TextState, text: &str, cursor: usize) {
         assert_eq!(state.text, text, "Text does not match");
         assert_eq!(

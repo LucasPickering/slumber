@@ -312,6 +312,7 @@ where
 
     /// Assert that no events were propagated, i.e. the component handled all
     /// given and generated events.
+    #[track_caller]
     pub fn assert_empty(self) {
         assert!(
             self.propagated.is_empty(),
@@ -323,6 +324,7 @@ where
     /// Assert that only emitted events were propagated, and those events match
     /// a specific sequence. Requires `PartialEq` to be implemented for the
     /// emitted event type.
+    #[track_caller]
     pub fn assert_emitted<E>(self, expected: impl IntoIterator<Item = E>)
     where
         Component: ToEmitter<E>,

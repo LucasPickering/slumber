@@ -129,6 +129,7 @@ impl TestTerminal {
 
     /// Alias for
     /// [TestBackend::assert_buffer_lines](ratatui::backend::TestBackend::assert_buffer_lines)
+    #[track_caller]
     pub fn assert_buffer_lines<'a>(
         &self,
         expected: impl IntoIterator<Item = impl Into<Line<'a>>>,

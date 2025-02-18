@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- Text box now scrolls to the cursor when it's off screen
+
 ## [3.0.0] - 2025-02-15
 
 A major release! The main focus of this release is the introduction of shell commands for data querying and export. Previously, you could query response bodies within the TUI only using JSONPath. This limited querying only to JSON responses, and the limited amount of operators supported by JSON. Now, you can use whatever shell commands you want (such as `head`, `grep`, and `jq`) to filter your reponses bodies, right in the TUI! [Check out the docs](https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.md) for more examples.

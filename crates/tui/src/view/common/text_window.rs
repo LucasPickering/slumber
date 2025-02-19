@@ -305,19 +305,17 @@ mod tests {
         let text =
             Text::from("line 1\nline 2 is longer\nline 3\nline 4\nline 5")
                 .into();
-        let mut component = TestComponent::with_props(
-            &harness,
-            &terminal,
-            TextWindow::default(),
-            TextWindowProps {
-                text: &text,
-                // Don't overflow the frame
-                margins: ScrollbarMargins {
-                    right: 0,
-                    bottom: 0,
-                },
-            },
-        );
+        let mut component =
+            TestComponent::builder(&harness, &terminal, TextWindow::default())
+                .with_props(TextWindowProps {
+                    text: &text,
+                    // Don't overflow the frame
+                    margins: ScrollbarMargins {
+                        right: 0,
+                        bottom: 0,
+                    },
+                })
+                .build();
         terminal.assert_buffer_lines([
             vec![line_num(1), " line 1 ▲".into()],
             vec![line_num(2), " line 2 █".into()],
@@ -385,19 +383,16 @@ mod tests {
     ) {
         let text =
             Text::from("intro\n💚💙💜 this is a longer line\noutro").into();
-        TestComponent::with_props(
-            &harness,
-            &terminal,
-            TextWindow::default(),
-            TextWindowProps {
+        TestComponent::builder(&harness, &terminal, TextWindow::default())
+            .with_props(TextWindowProps {
                 text: &text,
                 // Don't overflow the frame
                 margins: ScrollbarMargins {
                     right: 0,
                     bottom: 0,
                 },
-            },
-        );
+            })
+            .build();
         terminal.assert_buffer_lines([
             vec![line_num(1), " intro                            ".into()],
             vec![line_num(2), " 💚💙💜 this is a longer line    ".into()],
@@ -411,19 +406,16 @@ mod tests {
         harness: TestHarness,
     ) {
         let text = Text::raw("💚💙💜💚💙💜").into();
-        TestComponent::with_props(
-            &harness,
-            &terminal,
-            TextWindow::default(),
-            TextWindowProps {
+        TestComponent::builder(&harness, &terminal, TextWindow::default())
+            .with_props(TextWindowProps {
                 text: &text,
                 // Don't overflow the frame
                 margins: ScrollbarMargins {
                     right: 0,
                     bottom: 0,
                 },
-            },
-        );
+            })
+            .build();
         terminal.assert_buffer_lines([
             vec![line_num(1), " 💚💙💜💚".into()],
             vec![line_num(0), " ◀■■■■══▶".into()],
@@ -440,19 +432,17 @@ mod tests {
         let text =
             Text::from_iter(["1 this is a long line", "2", "3", "4", "5"])
                 .into();
-        let mut component = TestComponent::with_props(
-            &harness,
-            &terminal,
-            TextWindow::default(),
-            TextWindowProps {
-                text: &text,
-                // Don't overflow the frame
-                margins: ScrollbarMargins {
-                    right: 0,
-                    bottom: 0,
-                },
-            },
-        );
+        let mut component =
+            TestComponent::builder(&harness, &terminal, TextWindow::default())
+                .with_props(TextWindowProps {
+                    text: &text,
+                    // Don't overflow the frame
+                    margins: ScrollbarMargins {
+                        right: 0,
+                        bottom: 0,
+                    },
+                })
+                .build();
 
         // Scroll out a bit
         component.data_mut().scroll_down(2);
@@ -481,19 +471,17 @@ mod tests {
         let text =
             Text::from_iter(["1 this is a long line", "2", "3", "4", "5"])
                 .into();
-        let mut component = TestComponent::with_props(
-            &harness,
-            &terminal,
-            TextWindow::default(),
-            TextWindowProps {
-                text: &text,
-                // Don't overflow the frame
-                margins: ScrollbarMargins {
-                    right: 0,
-                    bottom: 0,
-                },
-            },
-        );
+        let mut component =
+            TestComponent::builder(&harness, &terminal, TextWindow::default())
+                .with_props(TextWindowProps {
+                    text: &text,
+                    // Don't overflow the frame
+                    margins: ScrollbarMargins {
+                        right: 0,
+                        bottom: 0,
+                    },
+                })
+                .build();
 
         component.set_area(Rect::new(0, 0, 10, 3));
         component.int().drain_draw().assert_empty();

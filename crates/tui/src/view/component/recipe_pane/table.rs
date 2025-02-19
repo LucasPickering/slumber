@@ -436,15 +436,16 @@ mod tests {
                 },
             ),
         ];
-        let mut component = TestComponent::with_props(
+        let mut component = TestComponent::builder(
             &harness,
             &terminal,
             RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
-            RecipeFieldTableProps {
-                key_header: "Key",
-                value_header: "Value",
-            },
-        );
+        )
+        .with_props(RecipeFieldTableProps {
+            key_header: "Key",
+            value_header: "Value",
+        })
+        .build();
 
         // Check initial state
         assert_eq!(
@@ -499,15 +500,16 @@ mod tests {
                 },
             ),
         ];
-        let mut component = TestComponent::with_props(
+        let mut component = TestComponent::builder(
             &harness,
             &terminal,
             RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
-            RecipeFieldTableProps {
-                key_header: "Key",
-                value_header: "Value",
-            },
-        );
+        )
+        .with_props(RecipeFieldTableProps {
+            key_header: "Key",
+            value_header: "Value",
+        })
+        .build();
 
         // Check initial state
         assert_eq!(
@@ -554,15 +556,16 @@ mod tests {
                 key: "row0".into(),
             },
         )];
-        let mut component = TestComponent::with_props(
+        let mut component = TestComponent::builder(
             &harness,
             &terminal,
             RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
-            RecipeFieldTableProps {
-                key_header: "Key",
-                value_header: "Value",
-            },
-        );
+        )
+        .with_props(RecipeFieldTableProps {
+            key_header: "Key",
+            value_header: "Value",
+        })
+        .build();
 
         component
             .int()
@@ -606,15 +609,16 @@ mod tests {
                 },
             ),
         ];
-        let component = TestComponent::with_props(
+        let component = TestComponent::builder(
             &harness,
             &terminal,
             RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
-            RecipeFieldTableProps {
-                key_header: "Key",
-                value_header: "Value",
-            },
-        );
+        )
+        .with_props(RecipeFieldTableProps {
+            key_header: "Key",
+            value_header: "Value",
+        })
+        .build();
 
         assert_eq!(
             component.data().to_build_overrides(),

@@ -109,7 +109,7 @@ fn height() -> u16 {
 /// needed so we can test multiple components in parallel, with each component
 /// holding an immutable reference to the terminal. Mutable access is
 /// encapulated within [Self::draw], so overlapping mutations is impossible.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TestTerminal(RefCell<Terminal<TestBackend>>);
 
 impl TestTerminal {

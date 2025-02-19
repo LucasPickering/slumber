@@ -482,7 +482,7 @@ mod tests {
     };
     use crossterm::event::KeyCode;
     use persisted::{PersistedKey, PersistedStore};
-    use ratatui::text::Span;
+    use ratatui::{layout::Margin, text::Span};
     use rstest::{fixture, rstest};
     use serde::Serialize;
     use slumber_core::{
@@ -702,11 +702,18 @@ mod tests {
         temp_dir: TempDir,
     ) {
         // Setting initial value triggers a debounce event
-        let mut component = TestComponent::new(
+        let mut component = TestComponent::builder(
             &harness,
             &terminal,
             QueryableBody::new(response, None),
-        );
+        )
+        .with_default_props()
+        .with_area(terminal.area().inner(Margin {
+            horizontal: 0,
+            // Leave room for the text box scroll bar
+            vertical: 1,
+        }))
+        .build();
 
         let path = temp_dir.join("test_export.json");
         let command = format!("tee {}", path.display());

@@ -32,6 +32,10 @@ use std::{cell::RefCell, rc::Rc};
 /// of methods for sending events to the component. The goal is to make
 /// realistic testing the easiest option, so component tests aren't contrived or
 /// verbose.
+///
+/// This takes a a reference to the terminal so it can draw without having
+/// to plumb the terminal around to every draw call.
+#[derive(Debug)]
 pub struct TestComponent<'term, T, Props> {
     /// Terminal to draw to
     terminal: &'term TestTerminal,
@@ -58,7 +62,25 @@ where
     Props: Clone,
     T: Draw<Props> + ToChild,
 {
-    /// [Self::with_props], but with default initial props
+    /// Start building a new component
+    pub fn builder(
+        harness: &TestHarness,
+        terminal: &'term TestTerminal,
+        data: T,
+    ) -> TestComponentBuilder<'term, T, Props> {
+        let component: Component<TestWrapper<T>> =
+            TestWrapper::new(data).into();
+        TestComponentBuilder {
+            terminal,
+            request_store: Rc::clone(&harness.request_store),
+            area: terminal.area(),
+            component,
+            props: None,
+        }
+    }
+
+    /// Shortcut for building and drawing a component with default props and
+    /// the full terminal area
     pub fn new(
         harness: &TestHarness,
         terminal: &'term TestTerminal,
@@ -67,36 +89,9 @@ where
     where
         Props: Default,
     {
-        Self::with_props(harness, terminal, data, Props::default())
-    }
-
-    /// Create a new component, then draw it to the screen and drain the event
-    /// queue. Components aren't useful until they've been drawn once, because
-    /// they won't receive events until they're marked as visible. For this
-    /// reason, this constructor takes care of all the things you would
-    /// immediately have to do anyway.
-    ///
-    /// This takes a a reference to the terminal so it can draw without having
-    /// to plumb the terminal around to every draw call.
-    pub fn with_props(
-        harness: &TestHarness,
-        terminal: &'term TestTerminal,
-        data: T,
-        initial_props: Props,
-    ) -> Self {
-        let component: Component<TestWrapper<T>> =
-            TestWrapper::new(data).into();
-        let mut slf = Self {
-            terminal,
-            request_store: Rc::clone(&harness.request_store),
-            area: terminal.area(),
-            component,
-            props: initial_props,
-            has_focus: true,
-        };
-        // Do an initial draw to set up state, then handle any triggered events
-        slf.draw();
-        slf
+        Self::builder(harness, terminal, data)
+            .with_default_props()
+            .build()
     }
 
     /// Get a reference to the wrapped component's inner data
@@ -179,6 +174,60 @@ where
             }
         }
         propagated
+    }
+}
+
+/// Helper for customizing a [TestComponent] before its initial draw
+pub struct TestComponentBuilder<'term, T, Props> {
+    terminal: &'term TestTerminal,
+    request_store: Rc<RefCell<RequestStore>>,
+    area: Rect,
+    component: Component<TestWrapper<T>>,
+    props: Option<Props>,
+}
+
+impl<'term, T, Props> TestComponentBuilder<'term, T, Props>
+where
+    Props: Clone,
+    T: Draw<Props> + ToChild,
+{
+    /// Set initial props for this component
+    pub fn with_props(mut self, props: Props) -> Self {
+        self.props = Some(props);
+        self
+    }
+
+    /// Use `Props::default()` for props
+    pub fn with_default_props(mut self) -> Self
+    where
+        Props: Default,
+    {
+        self.props = Some(Props::default());
+        self
+    }
+
+    /// Set area to draw the component to (defaults to the full terminal)
+    pub fn with_area(mut self, area: Rect) -> Self {
+        self.area = area;
+        self
+    }
+
+    /// Build the component and do its initial draw. Components aren't useful
+    /// until they've been drawn once, because they won't receive events
+    /// until they're marked as visible. For this reason, this constructor
+    /// takes care of all the things you would immediately have to do anyway.
+    pub fn build(self) -> TestComponent<'term, T, Props> {
+        let mut component = TestComponent {
+            terminal: self.terminal,
+            request_store: self.request_store,
+            area: self.area,
+            component: self.component,
+            props: self.props.expect("Props not set for test component"),
+            has_focus: true,
+        };
+        // Do an initial draw to set up state, then handle any triggered events
+        component.draw();
+        component
     }
 }
 
@@ -360,6 +409,7 @@ where
 ///
 /// In a sense this is a duplicate of the root component. Maybe someday we could
 /// make that component generic and get rid of this?
+#[derive(Debug)]
 struct TestWrapper<T> {
     inner: Component<T>,
     modal_queue: Component<ModalQueue>,

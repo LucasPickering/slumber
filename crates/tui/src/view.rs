@@ -90,6 +90,13 @@ impl View {
             root.draw(frame, (), chunk, true);
         }
 
+        // If the screen is too small to render anything, don't try. This avoids
+        // panics within ratatui from trying to render borders and margins
+        // outside the buffer area
+        if frame.area().width <= 1 || frame.area().height <= 1 {
+            return;
+        }
+
         // If debug monitor is enabled, use it to capture the view duration
         if let Some(debug_monitor) = &self.debug_monitor {
             debug_monitor.draw(frame, |frame| draw_impl(&self.root, frame));

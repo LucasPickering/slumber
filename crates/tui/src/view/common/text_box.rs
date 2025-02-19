@@ -3,6 +3,7 @@
 use crate::{
     context::TuiContext,
     view::{
+        common::scrollbar::Scrollbar,
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Emitter, Event, EventHandler, OptionEvent, ToEmitter},
@@ -13,7 +14,7 @@ use persisted::PersistedContainer;
 use ratatui::{
     layout::Rect,
     text::{Line, Masked, Text},
-    widgets::Paragraph,
+    widgets::{Paragraph, ScrollbarOrientation},
     Frame,
 };
 use slumber_config::Action;
@@ -233,7 +234,8 @@ impl Draw<TextBoxProps> for TextBox {
 
         // Draw the text
         let area = metadata.area();
-        let scroll_x = self.state.update_scroll(area.width);
+        let text_stats = self.state.text_stats();
+        let scroll_x = self.state.update_scroll(text_stats, area.width);
         let style = if self.is_valid() && !props.has_error {
             styles.text_box.text
         } else {
@@ -248,7 +250,7 @@ impl Draw<TextBoxProps> for TextBox {
         if metadata.has_focus() {
             // Apply cursor styling on type
             let cursor_area = Rect {
-                x: area.x + self.state.cursor_offset() as u16 - scroll_x,
+                x: area.x + text_stats.cursor_offset as u16 - scroll_x,
                 y: area.y,
                 width: 1,
                 height: 1,
@@ -256,6 +258,20 @@ impl Draw<TextBoxProps> for TextBox {
             frame
                 .buffer_mut()
                 .set_style(cursor_area, styles.text_box.cursor);
+
+            // Show scroll bar. We only show this while focused so we don't
+            // cover up anyone else's scrollbar, e.g. in the queryable body
+            if text_stats.text_width as u16 > area.width {
+                frame.render_widget(
+                    Scrollbar {
+                        content_length: text_stats.text_width,
+                        offset: scroll_x as usize,
+                        margin: 1,
+                        orientation: ScrollbarOrientation::HorizontalBottom,
+                    },
+                    area,
+                );
+            }
         }
     }
 }
@@ -370,14 +386,14 @@ impl TextState {
     /// Update x scroll to ensure the cursor is visible. This is called on each
     /// render, because that's when we have the width available. Return the new
     /// value
-    fn update_scroll(&self, width: u16) -> u16 {
+    fn update_scroll(&self, text_stats: TextStats, width: u16) -> u16 {
         // All this math is performed in terms of chars, not bytes. Calculating
         // both cursor offset and text with in chars is O(n) because we have
         // to count the width of each char. This component is designed for
         // relatively short text though, so this shouldn't be an issue
-        let cursor_offset = self.cursor_offset() as u16;
+        let cursor_offset = text_stats.cursor_offset as u16;
         let max_scroll =
-            (self.text.chars().count() as u16 + 1).saturating_sub(width);
+            (text_stats.text_width as u16 + 1).saturating_sub(width);
         let scroll_x = self.scroll_x.get();
         let new_scroll_x = if cursor_offset < scroll_x {
             // Scroll left so the cursor is at the left edge
@@ -397,9 +413,14 @@ impl TextState {
         new_scroll_x
     }
 
-    /// Get the **character** offset of the cursor into the text
-    fn cursor_offset(&self) -> usize {
-        self.text[..self.cursor].chars().count()
+    /// Get the **character** cursor offset and text width
+    fn text_stats(&self) -> TextStats {
+        let cursor_offset = self.text[..self.cursor].chars().count();
+        let text_width = self.text.chars().count();
+        TextStats {
+            text_width,
+            cursor_offset,
+        }
     }
 }
 
@@ -431,6 +452,15 @@ pub enum TextBoxEvent {
     Submit,
 }
 
+/// Cached **character**-based stats for the text. We can pass this around to
+/// prevent having to calculate character-based stuff multiple times in one
+/// render.
+#[derive(Copy, Clone)]
+struct TextStats {
+    text_width: usize,
+    cursor_offset: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,7 +468,7 @@ mod tests {
         test_util::{harness, terminal, TestHarness, TestTerminal},
         view::test_util::TestComponent,
     };
-    use ratatui::text::Span;
+    use ratatui::{layout::Margin, text::Span};
     use rstest::rstest;
     use slumber_core::assert_matches;
 
@@ -458,10 +488,10 @@ mod tests {
     fn assert_state(state: &TextState, text: &str, cursor: usize) {
         assert_eq!(state.text, text, "Text does not match");
         assert_eq!(
-            state.cursor_offset(),
+            state.text_stats().cursor_offset,
             cursor,
             "Cursor character offset does not match"
-        )
+        );
     }
 
     /// Test the basic interaction loop on the text box
@@ -579,9 +609,16 @@ mod tests {
     /// Test text navigation and deleting. [TextState] has its own tests so
     /// we're mostly just testing that keys are mapped correctly
     #[rstest]
-    fn test_scroll(harness: TestHarness, #[with(3, 1)] terminal: TestTerminal) {
+    fn test_scroll(harness: TestHarness, #[with(3, 3)] terminal: TestTerminal) {
         let mut component =
-            TestComponent::new(&harness, &terminal, TextBox::default());
+            TestComponent::builder(&harness, &terminal, TextBox::default())
+                .with_default_props()
+                // Leave vertical margin for the scroll bar
+                .with_area(terminal.area().inner(Margin {
+                    horizontal: 0,
+                    vertical: 1,
+                }))
+                .build();
 
         // Type some text
         component.int().send_text("012345").assert_emitted([
@@ -594,33 +631,57 @@ mod tests {
             TextBoxEvent::Change,
         ]);
         // End of the string is visible
-        terminal.assert_buffer_lines([vec![text("45"), cursor(" ")]]);
+        terminal.assert_buffer_lines([
+            Line::from("   "),
+            vec![text("45"), cursor(" ")].into(),
+            "◀■▶".into(),
+        ]);
 
         // Deleting from the end should scroll left
         component
             .int()
             .send_key(KeyCode::Backspace)
             .assert_emitted([TextBoxEvent::Change]);
-        terminal.assert_buffer_lines([vec![text("34"), cursor(" ")]]);
+        terminal.assert_buffer_lines([
+            Line::from("   "),
+            vec![text("34"), cursor(" ")].into(),
+            "◀■▶".into(),
+        ]);
 
         // Back to the beginning
         component.int().send_key(KeyCode::Home).assert_empty();
-        terminal.assert_buffer_lines([vec![cursor("0"), text("12")]]);
+        terminal.assert_buffer_lines([
+            Line::from("   "),
+            vec![cursor("0"), text("12")].into(),
+            "◀■▶".into(),
+        ]);
 
         // Scroll shouldn't move until the cursor gets off screen
         component
             .int()
             .send_keys([KeyCode::Right, KeyCode::Right])
             .assert_empty();
-        terminal.assert_buffer_lines([vec![text("01"), cursor("2")]]);
+        terminal.assert_buffer_lines([
+            Line::from("   "),
+            vec![text("01"), cursor("2")].into(),
+            "◀■▶".into(),
+        ]);
 
         // Push the scroll over
         component.int().send_key(KeyCode::Right).assert_empty();
-        terminal.assert_buffer_lines([vec![text("12"), cursor("3")]]);
+        terminal.assert_buffer_lines([
+            Line::from("   "),
+            vec![text("12"), cursor("3")].into(),
+            "◀■▶".into(),
+        ]);
 
         // Move back doesn't scroll left yet
         component.int().send_key(KeyCode::Left).assert_empty();
-        terminal.assert_buffer_lines([vec![text("1"), cursor("2"), text("3")]]);
+        terminal.assert_buffer_lines([
+            Line::from("   "),
+            vec![text("1"), cursor("2"), text("3")].into(),
+            "◀■▶".into(),
+        ]);
     }
 
     #[rstest]

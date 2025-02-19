@@ -475,8 +475,9 @@ mod tests {
         items: (Vec<&'static str>, List<'static>),
     ) {
         let select = SelectState::builder(items.0).build();
-        let mut component =
-            TestComponent::with_props(&harness, &terminal, select, items.1);
+        let mut component = TestComponent::builder(&harness, &terminal, select)
+            .with_props(items.1)
+            .build();
         component.int().drain_draw().assert_empty();
         assert_eq!(component.data().selected(), Some(&"a"));
         component.int().send_key(KeyCode::Down).assert_empty();
@@ -497,8 +498,9 @@ mod tests {
             .disabled_indexes([2])
             .subscribe([SelectStateEventType::Select])
             .build();
-        let mut component =
-            TestComponent::with_props(&harness, &terminal, select, items.1);
+        let mut component = TestComponent::builder(&harness, &terminal, select)
+            .with_props(items.1)
+            .build();
 
         // Initial selection
         assert_eq!(component.data().selected(), Some(&"a"));
@@ -527,8 +529,9 @@ mod tests {
             .disabled_indexes([2])
             .subscribe([SelectStateEventType::Submit])
             .build();
-        let mut component =
-            TestComponent::with_props(&harness, &terminal, select, items.1);
+        let mut component = TestComponent::builder(&harness, &terminal, select)
+            .with_props(items.1)
+            .build();
         component.int().drain_draw().assert_empty();
 
         component
@@ -552,8 +555,9 @@ mod tests {
         items: (Vec<&'static str>, List<'static>),
     ) {
         let select = SelectState::builder(items.0).build();
-        let mut component =
-            TestComponent::with_props(&harness, &terminal, select, items.1);
+        let mut component = TestComponent::builder(&harness, &terminal, select)
+            .with_props(items.1)
+            .build();
 
         assert_matches!(
             component.int().send_key(KeyCode::Enter).events(),
@@ -616,12 +620,13 @@ mod tests {
             .items()
             .map(|item| item.0.to_string())
             .collect::<List>();
-        let mut component = TestComponent::with_props(
+        let mut component = TestComponent::builder(
             &harness,
             &terminal,
             PersistedLazy::new(Key, select),
-            list,
-        );
+        )
+        .with_props(list)
+        .build();
         assert_eq!(
             component.data().selected().map(ProfileItem::id),
             Some(&profile_id)

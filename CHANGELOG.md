@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Text box now scrolls to the cursor when it's off screen
+- Fix panics when the screen gets very small [#469](https://github.com/LucasPickering/slumber/issues/469)
 
 ## [3.0.0] - 2025-02-15
 

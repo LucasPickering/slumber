@@ -97,12 +97,12 @@ impl Widget for Scrollbar {
                 .thumb_symbol(thumb_symbol)
                 .end_symbol(Some(end_symbol));
 
-        StatefulWidget::render(
-            scrollbar,
-            area.offset(offset),
-            buf,
-            &mut self.state(area),
-        );
+        let area = area.offset(offset);
+        // Avoid panic if there's nowhere to render the scroll bar. This can
+        // occur if the screen gets really small
+        if !area.is_empty() {
+            StatefulWidget::render(scrollbar, area, buf, &mut self.state(area));
+        }
     }
 }
 

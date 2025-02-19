@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [3.0.1] - 2025-02-19
+
 ### Fixed
 
 - Text box now scrolls to the cursor when it's off screen

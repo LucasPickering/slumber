@@ -87,7 +87,6 @@ impl Tui {
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
     pub async fn start(collection_path: Option<PathBuf>) -> anyhow::Result<()> {
-        initialize_panic_handler();
         let collection_path = CollectionFile::try_path(None, collection_path)?;
 
         // ===== Initialize global state =====
@@ -710,13 +709,14 @@ impl Drop for Tui {
 fn initialize_panic_handler() {
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        restore_terminal().unwrap();
+        let _ = restore_terminal();
         original_hook(panic_info);
     }));
 }
 
 /// Set up terminal for TUI
 fn initialize_terminal() -> anyhow::Result<Term> {
+    initialize_panic_handler();
     crossterm::terminal::enable_raw_mode()?;
     let mut stdout = io::stdout();
     crossterm::execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;

@@ -202,7 +202,7 @@ impl View {
 mod tests {
     use super::*;
     use crate::test_util::{
-        assert_events, harness, terminal, TestHarness, TestTerminal,
+        TestHarness, TestTerminal, assert_events, harness, terminal,
     };
     use rstest::rstest;
     use slumber_core::{collection::Collection, test_util::Factory};

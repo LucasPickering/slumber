@@ -1,7 +1,7 @@
 use crate::{
     context::TuiContext,
     message::Message,
-    view::{draw::Generate, state::Identified, util::highlight, ViewContext},
+    view::{ViewContext, draw::Generate, state::Identified, util::highlight},
 };
 use ratatui::{
     buffer::Buffer,
@@ -238,14 +238,14 @@ impl TextStitcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{harness, TestHarness};
+    use crate::test_util::{TestHarness, harness};
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use slumber_core::{
         collection::{Chain, ChainSource, Collection, Profile},
         template::TemplateContext,
-        test_util::{by_id, invalid_utf8_chain, Factory},
+        test_util::{Factory, by_id, invalid_utf8_chain},
     };
 
     /// Test line breaks, multi-byte characters, and binary data

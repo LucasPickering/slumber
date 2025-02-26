@@ -1,5 +1,5 @@
 use glob::{Pattern, PatternError};
-use indexmap::{indexmap, IndexMap};
+use indexmap::{IndexMap, indexmap};
 use mime::Mime;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -121,7 +121,7 @@ impl TryFrom<String> for MimePattern {
 mod tests {
     use super::*;
     use rstest::rstest;
-    use serde_test::{assert_de_tokens, Token};
+    use serde_test::{Token, assert_de_tokens};
 
     fn map(entries: &[(&str, &str)]) -> MimeMap<String> {
         MimeMap {

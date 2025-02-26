@@ -418,7 +418,7 @@ mod tests {
     use super::*;
     use crossterm::event::{KeyEventKind, KeyEventState, MediaKeyCode};
     use rstest::rstest;
-    use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
+    use serde_test::{Token, assert_de_tokens, assert_de_tokens_error};
     use slumber_core::assert_err;
 
     #[rstest]

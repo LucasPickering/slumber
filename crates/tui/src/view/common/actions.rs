@@ -14,9 +14,9 @@ use crate::{
 };
 use itertools::Itertools;
 use ratatui::{
+    Frame,
     layout::Constraint,
     text::{Line, Span},
-    Frame,
 };
 use slumber_config::Action;
 use std::fmt::Display;
@@ -165,7 +165,8 @@ impl MenuAction {
 }
 
 impl Generate for &MenuAction {
-    type Output<'this> = Span<'this>
+    type Output<'this>
+        = Span<'this>
     where
         Self: 'this;
 
@@ -204,7 +205,7 @@ pub trait IntoMenuAction<Data>: Display + LocalEvent {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
     use crossterm::event::KeyCode;

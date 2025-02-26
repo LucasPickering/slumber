@@ -4,13 +4,13 @@ pub mod paths;
 
 use crate::{http::RequestError, template::ChainError};
 use chrono::{
-    format::{DelayedFormat, StrftimeItems},
     DateTime, Duration, Local, Utc,
+    format::{DelayedFormat, StrftimeItems},
 };
 use derive_more::{DerefMut, Display};
 use serde::de::DeserializeOwned;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     fmt::{self, Debug},
     hash::Hash,
     io::Read,
@@ -130,7 +130,7 @@ impl<T> ResultTraced<T, ChainError> for Result<T, ChainError> {
 /// printed in hex representation instead
 pub struct MaybeStr<'a>(pub &'a [u8]);
 
-impl<'a> Display for MaybeStr<'a> {
+impl Display for MaybeStr<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Ok(s) = std::str::from_utf8(self.0) {
             write!(f, "{s}")

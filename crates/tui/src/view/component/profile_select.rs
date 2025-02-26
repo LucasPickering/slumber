@@ -4,31 +4,31 @@ use crate::{
     context::TuiContext,
     util::ResultReported,
     view::{
+        Component, ViewContext,
         common::{
+            Pane,
             list::List,
             modal::{Modal, ModalHandle},
             table::Table,
             template_preview::TemplatePreview,
-            Pane,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::{
-            select::{SelectState, SelectStateEvent, SelectStateEventType},
             StateCell,
+            select::{SelectState, SelectStateEvent, SelectStateEventType},
         },
         util::persistence::Persisted,
-        Component, ViewContext,
     },
 };
 use anyhow::anyhow;
 use itertools::Itertools;
 use persisted::PersistedKey;
 use ratatui::{
+    Frame,
     layout::{Constraint, Layout},
     text::{Line, Text},
-    Frame,
 };
 use serde::Serialize;
 use slumber_config::Action;
@@ -284,8 +284,9 @@ impl From<&Profile> for ProfileListItem {
     }
 }
 
-impl<'a> Generate for &'a ProfileListItem {
-    type Output<'this> = Text<'this>
+impl Generate for &ProfileListItem {
+    type Output<'this>
+        = Text<'this>
     where
         Self: 'this;
 
@@ -356,12 +357,12 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
 #[cfg(test)]
 mod tests {
     use crate::{
-        test_util::{harness, TestHarness},
+        test_util::{TestHarness, harness},
         view::util::persistence::DatabasePersistedStore,
     };
     use persisted::PersistedStore;
     use rstest::rstest;
-    use slumber_core::test_util::{by_id, Factory};
+    use slumber_core::test_util::{Factory, by_id};
 
     use super::*;
 

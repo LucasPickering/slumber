@@ -10,8 +10,8 @@ use crate::view::{
 use itertools::Itertools;
 use persisted::PersistedContainer;
 use ratatui::{
-    widgets::{ListState, StatefulWidget},
     Frame,
+    widgets::{ListState, StatefulWidget},
 };
 use std::{
     fmt::{Debug, Display},

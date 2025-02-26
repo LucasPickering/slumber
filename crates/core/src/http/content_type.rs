@@ -6,9 +6,9 @@
 //! the response's metadata, use [ResponseRecord::parse_body].
 
 use crate::util::Mapping;
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use derive_more::{Deref, Display, From};
-use mime::{Mime, APPLICATION, JSON};
+use mime::{APPLICATION, JSON, Mime};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path};
@@ -197,7 +197,7 @@ mod tests {
     use super::*;
     use crate::{assert_err, http::ResponseRecord, test_util::Factory};
     use reqwest::header::{
-        HeaderMap, HeaderValue, InvalidHeaderValue, CONTENT_TYPE,
+        CONTENT_TYPE, HeaderMap, HeaderValue, InvalidHeaderValue,
     };
     use rstest::rstest;
     use serde_json::json;

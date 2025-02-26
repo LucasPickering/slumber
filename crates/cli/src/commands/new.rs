@@ -54,8 +54,8 @@ mod tests {
             Chain, ChainSource, Collection, Folder, Profile, Recipe,
             RecipeBody, RecipeNode,
         },
-        http::{content_type::ContentType, HttpMethod},
-        test_util::{by_id, temp_dir, Factory, TempDir},
+        http::{HttpMethod, content_type::ContentType},
+        test_util::{Factory, TempDir, by_id, temp_dir},
     };
     use std::{env, fs};
 

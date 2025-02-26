@@ -5,13 +5,13 @@ use crate::{
         ChainId, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
         ChainSource, RecipeId, SelectOptions,
     },
-    http::{content_type::ContentType, Exchange, RequestSeed, ResponseRecord},
+    http::{Exchange, RequestSeed, ResponseRecord, content_type::ContentType},
     template::{
-        error::TriggeredRequestError, parse::TemplateInputChunk, ChainError,
-        Prompt, Select, Template, TemplateChunk, TemplateContext,
-        TemplateError, TemplateKey,
+        ChainError, Prompt, Select, Template, TemplateChunk, TemplateContext,
+        TemplateError, TemplateKey, error::TriggeredRequestError,
+        parse::TemplateInputChunk,
     },
-    util::{paths::expand_home, FutureCache, FutureCacheOutcome, ResultTraced},
+    util::{FutureCache, FutureCacheOutcome, ResultTraced, paths::expand_home},
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -84,7 +84,7 @@ impl Template {
         let len = chunks
             .iter()
             .map(|chunk| match chunk {
-                TemplateChunk::Raw(text) => text.as_bytes().len(),
+                TemplateChunk::Raw(text) => text.len(),
                 TemplateChunk::Rendered { value, .. } => value.len(),
                 TemplateChunk::Error(_) => 0,
             })
@@ -137,8 +137,7 @@ impl Template {
                 Some(value) => {
                     trace!(
                         key = raw,
-                        value,
-                        "Rendered template key from override"
+                        value, "Rendered template key from override"
                     );
                     Ok(RenderedChunk {
                         value: value.clone().into_bytes().into(),

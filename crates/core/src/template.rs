@@ -14,7 +14,7 @@ use crate::{
     db::CollectionDatabase,
     http::HttpEngine,
     template::{
-        parse::{TemplateInputChunk, CHAIN_PREFIX, ENV_PREFIX},
+        parse::{CHAIN_PREFIX, ENV_PREFIX, TemplateInputChunk},
         render::RenderGroupState,
     },
 };
@@ -266,11 +266,11 @@ mod tests {
             ChainSource, Profile, Recipe, RecipeId, SelectOptions,
         },
         http::{
-            content_type::ContentType, Exchange, RequestRecord, ResponseRecord,
+            Exchange, RequestRecord, ResponseRecord, content_type::ContentType,
         },
         test_util::{
-            by_id, header_map, http_engine, invalid_utf8_chain, temp_dir,
-            Factory, TempDir, TestPrompter, TestSelectPrompter,
+            Factory, TempDir, TestPrompter, TestSelectPrompter, by_id,
+            header_map, http_engine, invalid_utf8_chain, temp_dir,
         },
     };
     use chrono::Utc;
@@ -279,7 +279,7 @@ mod tests {
     use serde_json::json;
     use std::time::Duration;
     use tokio::fs;
-    use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
     /// Test overriding all key types, as well as missing keys
     #[tokio::test]

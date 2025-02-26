@@ -2,26 +2,26 @@ use crate::{
     context::TuiContext,
     message::Message,
     view::{
+        Component, ViewContext,
         common::{
+            Pane,
             actions::{IntoMenuAction, MenuAction},
             list::List,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
-            Pane,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
         util::persistence::{Persisted, PersistedLazy},
-        Component, ViewContext,
     },
 };
 use derive_more::{Deref, DerefMut};
 use persisted::{PersistedKey, SingletonKey};
 use ratatui::{
+    Frame,
     layout::{Constraint, Layout},
     text::Text,
-    Frame,
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
@@ -338,8 +338,9 @@ impl PartialEq<RecipeListItem> for RecipeId {
     }
 }
 
-impl<'a> Generate for &'a RecipeListItem {
-    type Output<'this> = Text<'this>
+impl Generate for &RecipeListItem {
+    type Output<'this>
+        = Text<'this>
     where
         Self: 'this;
 
@@ -446,7 +447,7 @@ impl Collapsed {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, terminal},
         view::test_util::TestComponent,
     };
     use crossterm::event::KeyCode;
@@ -455,7 +456,7 @@ mod tests {
     use slumber_core::{
         assert_matches,
         collection::{Collection, Recipe},
-        test_util::{by_id, Factory},
+        test_util::{Factory, by_id},
     };
 
     /// Test the filter box

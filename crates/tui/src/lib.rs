@@ -21,21 +21,21 @@ use crate::{
     http::{RequestState, RequestStore},
     message::{Callback, Message, MessageSender, RequestConfig},
     util::{
-        clear_event_buffer, delete_temp_file, get_editor_command,
-        get_pager_command, save_file, signals, spawn, spawn_result,
-        ResultReported, CANCEL_TOKEN,
+        CANCEL_TOKEN, ResultReported, clear_event_buffer, delete_temp_file,
+        get_editor_command, get_pager_command, save_file, signals, spawn,
+        spawn_result,
     },
     view::{PreviewPrompter, UpdateContext, View},
 };
-use anyhow::{anyhow, bail, Context};
+use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use futures::{pin_mut, StreamExt};
-use notify::{event::ModifyKind, RecursiveMode, Watcher};
-use ratatui::{prelude::CrosstermBackend, Terminal};
+use futures::{StreamExt, pin_mut};
+use notify::{RecursiveMode, Watcher, event::ModifyKind};
+use ratatui::{Terminal, prelude::CrosstermBackend};
 use slumber_config::{Action, Config};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
@@ -376,7 +376,7 @@ impl Tui {
 
     /// Spawn a watcher to automatically reload the collection when the file
     /// changes. Return the watcher because it stops when dropped.
-    fn watch_collection(&self) -> anyhow::Result<impl Watcher> {
+    fn watch_collection(&self) -> anyhow::Result<impl 'static + Watcher> {
         // Spawn a watcher for the collection file
         let messages_tx = self.messages_tx();
         let f = move |result: notify::Result<_>| match result {

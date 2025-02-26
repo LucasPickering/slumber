@@ -1,7 +1,7 @@
 use crate::template::Template;
 use serde::{
-    de::{Error, Visitor},
     Deserialize, Deserializer, Serialize,
+    de::{Error, Visitor},
 };
 
 impl Serialize for Template {
@@ -34,7 +34,7 @@ impl<'de> Deserialize<'de> for Template {
             };
         }
 
-        impl<'de> Visitor<'de> for TemplateVisitor {
+        impl Visitor<'_> for TemplateVisitor {
             type Value = Template;
 
             fn expecting(
@@ -65,7 +65,7 @@ impl<'de> Deserialize<'de> for Template {
 mod tests {
     use super::*;
     use rstest::rstest;
-    use serde_test::{assert_de_tokens, Token};
+    use serde_test::{Token, assert_de_tokens};
 
     /// Test deserialization, which has some additional logic on top of parsing
     #[rstest]

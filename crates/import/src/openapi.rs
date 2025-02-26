@@ -11,7 +11,7 @@
 mod resolve;
 
 use crate::openapi::resolve::ReferenceResolver;
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use mime::Mime;
@@ -27,7 +27,7 @@ use slumber_core::{
     },
     http::HttpMethod,
     template::Template,
-    util::{ResultTraced, NEW_ISSUE_LINK},
+    util::{NEW_ISSUE_LINK, ResultTraced},
 };
 use std::{fs::File, iter, path::Path};
 use strum::IntoEnumIterator;

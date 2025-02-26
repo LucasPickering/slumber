@@ -1,12 +1,12 @@
 //! Recipe/folder tree structure
 
 use crate::collection::{
-    cereal::deserialize_id_map, Folder, HasId, Recipe, RecipeId,
+    Folder, HasId, Recipe, RecipeId, cereal::deserialize_id_map,
 };
 use anyhow::anyhow;
 use derive_more::From;
-use indexmap::{map::Values, IndexMap};
-use serde::{de::Error, Deserialize, Deserializer, Serialize};
+use indexmap::{IndexMap, map::Values};
+use serde::{Deserialize, Deserializer, Serialize, de::Error};
 use strum::EnumDiscriminants;
 use thiserror::Error;
 
@@ -279,14 +279,14 @@ mod tests {
     use super::*;
     use crate::{
         assert_err,
-        test_util::{by_id, Factory},
+        test_util::{Factory, by_id},
     };
     use indexmap::indexmap;
     use itertools::Itertools;
     use rstest::{fixture, rstest};
     use serde_yaml::{
-        value::{Tag, TaggedValue},
         Value,
+        value::{Tag, TaggedValue},
     };
 
     impl<const N: usize> From<[&str; N]> for RecipeLookupKey {

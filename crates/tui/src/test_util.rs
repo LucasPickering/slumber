@@ -7,10 +7,10 @@ use crate::{
     view::ViewContext,
 };
 use ratatui::{
+    Frame, Terminal,
     backend::TestBackend,
     layout::{Position, Rect},
     text::Line,
-    Frame, Terminal,
 };
 use rstest::fixture;
 use slumber_core::{

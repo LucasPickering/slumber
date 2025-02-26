@@ -1,19 +1,19 @@
 //! Import request collections from Insomnia. Based on the Insomnia v4 export
 //! format
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use mime::Mime;
 use reqwest::header;
-use serde::{de::Error as _, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, de::Error as _};
 use slumber_core::{
     collection::{
         self, Chain, ChainId, ChainSource, Collection, Folder, HasId, Profile,
         ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
         SelectorMode,
     },
-    http::{content_type::ContentType, HttpMethod},
+    http::{HttpMethod, content_type::ContentType},
     template::{Identifier, Template},
     util::NEW_ISSUE_LINK,
 };
@@ -617,7 +617,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde::de::DeserializeOwned;
-    use serde_test::{assert_de_tokens, assert_de_tokens_error, Token};
+    use serde_test::{Token, assert_de_tokens, assert_de_tokens_error};
     use slumber_core::test_util::test_data_dir;
     use std::{fmt::Debug, path::PathBuf};
 

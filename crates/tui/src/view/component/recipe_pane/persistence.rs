@@ -1,6 +1,6 @@
 //! Single-session persistence for recipe overrides
 
-use crate::view::{common::template_preview::TemplatePreview, ViewContext};
+use crate::view::{ViewContext, common::template_preview::TemplatePreview};
 use persisted::{PersistedContainer, PersistedLazy, PersistedStore};
 use slumber_core::{
     collection::RecipeId, http::content_type::ContentType, template::Template,

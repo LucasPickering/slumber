@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Layout},
     style::{Color, Style},
     text::Text,
     widgets::Paragraph,
-    Frame,
 };
 use std::{cell::Cell, time::Instant};
 

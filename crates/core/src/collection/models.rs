@@ -5,9 +5,9 @@ use crate::{
         cereal,
         recipe_tree::{RecipeNode, RecipeTree},
     },
-    http::{content_type::ContentType, query::Query, HttpMethod},
+    http::{HttpMethod, content_type::ContentType, query::Query},
     template::{Identifier, Template},
-    util::{parse_yaml, ResultTraced},
+    util::{ResultTraced, parse_yaml},
 };
 use anyhow::Context;
 use derive_more::{Deref, Display, From, FromStr};

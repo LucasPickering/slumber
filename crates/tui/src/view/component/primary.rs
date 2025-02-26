@@ -5,6 +5,7 @@ use crate::{
     message::{Message, RequestConfig},
     util::ResultReported,
     view::{
+        Component, ViewContext,
         common::{
             actions::{IntoMenuAction, MenuAction},
             modal::Modal,
@@ -24,15 +25,14 @@ use crate::{
             select::{SelectStateEvent, SelectStateEventType},
         },
         util::persistence::{Persisted, PersistedLazy},
-        Component, ViewContext,
     },
 };
 use derive_more::Display;
 use persisted::SingletonKey;
 use ratatui::{
+    Frame,
     layout::Layout,
     prelude::{Constraint, Rect},
-    Frame,
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
@@ -440,7 +440,7 @@ mod tests {
     use super::*;
     use crate::{
         message::{Message, RequestConfig},
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
             test_util::TestComponent, util::persistence::DatabasePersistedStore,
         },

@@ -2,7 +2,7 @@
 
 use crate::{
     collection::ChainId,
-    template::{error::TemplateParseError, Identifier, Template, TemplateKey},
+    template::{Identifier, Template, TemplateKey, error::TemplateParseError},
 };
 #[cfg(test)]
 use proptest::strategy::Strategy;
@@ -14,12 +14,12 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use winnow::{
+    PResult, Parser,
     combinator::{
         alt, cut_err, eof, not, peek, preceded, repeat, repeat_till, terminated,
     },
     error::StrContext,
     token::{any, take_while},
-    PResult, Parser,
 };
 
 /// Character used to escape key openings
@@ -267,7 +267,7 @@ mod tests {
     use crate::{assert_err, assert_matches};
     use proptest::proptest;
     use rstest::rstest;
-    use serde_test::{assert_tokens, Token};
+    use serde_test::{Token, assert_tokens};
 
     /// Build a template out of string chunks. Useful when you want to avoid
     /// parsing behavior

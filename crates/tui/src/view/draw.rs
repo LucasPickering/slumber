@@ -1,6 +1,6 @@
 //! Traits for rendering stuff
 
-use ratatui::{layout::Rect, text::Span, Frame};
+use ratatui::{Frame, layout::Rect, text::Span};
 use std::{fmt::Display, ops::Deref};
 
 /// Something that can be drawn onto screen as one or more TUI widgets.
@@ -94,7 +94,8 @@ impl<T> Generate for &T
 where
     T: ToStringGenerate,
 {
-    type Output<'this> = Span<'this>
+    type Output<'this>
+        = Span<'this>
     where
         Self: 'this;
 

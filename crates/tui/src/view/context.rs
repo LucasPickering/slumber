@@ -166,7 +166,7 @@ pub struct UpdateContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{assert_events, harness, TestHarness};
+    use crate::test_util::{TestHarness, assert_events, harness};
     use rstest::rstest;
     use slumber_core::assert_matches;
 

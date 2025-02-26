@@ -2,6 +2,7 @@ use crate::{
     context::TuiContext,
     util::ResultReported,
     view::{
+        ViewContext,
         common::{
             actions::{IntoMenuAction, MenuAction},
             modal::Modal,
@@ -9,20 +10,19 @@ use crate::{
             text_box::TextBox,
         },
         component::{
+            Component,
             misc::TextBoxModal,
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
-            Component,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Emitter, Event, EventHandler, OptionEvent},
         state::fixed_select::FixedSelectState,
-        ViewContext,
     },
 };
 use derive_more::derive::Display;
 use ratatui::{
-    layout::Layout, prelude::Constraint, text::Span, widgets::TableState, Frame,
+    Frame, layout::Layout, prelude::Constraint, text::Span, widgets::TableState,
 };
 use slumber_config::Action;
 use slumber_core::{
@@ -346,11 +346,11 @@ enum BasicFields {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
             component::{
-                recipe_pane::persistence::RecipeOverrideValue,
                 RecipeOverrideStore,
+                recipe_pane::persistence::RecipeOverrideValue,
             },
             test_util::TestComponent,
         },

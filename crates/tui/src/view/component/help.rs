@@ -9,9 +9,9 @@ use crate::{
 };
 use itertools::Itertools;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Layout},
     text::{Line, Text},
-    Frame,
 };
 use slumber_config::{Action, Config, InputBinding};
 use slumber_core::util::{doc_link, paths};
@@ -23,7 +23,8 @@ const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub struct HelpFooter;
 
 impl Generate for HelpFooter {
-    type Output<'this> = Text<'this>
+    type Output<'this>
+        = Text<'this>
     where
         Self: 'this;
 

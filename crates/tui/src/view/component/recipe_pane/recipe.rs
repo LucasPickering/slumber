@@ -1,4 +1,5 @@
 use crate::view::{
+    Component,
     common::{tabs::Tabs, template_preview::TemplatePreview},
     component::recipe_pane::{
         authentication::AuthenticationDisplay,
@@ -9,11 +10,10 @@ use crate::view::{
     draw::{Draw, DrawMetadata},
     event::{Child, EventHandler},
     util::persistence::PersistedLazy,
-    Component,
 };
 use derive_more::Display;
 use persisted::SingletonKey;
-use ratatui::{layout::Layout, prelude::Constraint, widgets::Paragraph, Frame};
+use ratatui::{Frame, layout::Layout, prelude::Constraint, widgets::Paragraph};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     collection::{Recipe, RecipeId},

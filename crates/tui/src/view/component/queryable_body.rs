@@ -4,6 +4,7 @@ use crate::{
     context::TuiContext,
     util::{run_command, spawn},
     view::{
+        Component, IntoModal, ViewContext,
         common::{
             modal::Modal,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
@@ -14,20 +15,19 @@ use crate::{
         event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::Identified,
         util::{highlight, str_to_text},
-        Component, IntoModal, ViewContext,
     },
 };
 use anyhow::Context;
 use bytes::Bytes;
 use persisted::PersistedContainer;
 use ratatui::{
+    Frame,
     layout::{Constraint, Layout},
     text::Text,
-    Frame,
 };
 use slumber_config::Action;
 use slumber_core::{
-    http::{content_type::ContentType, ResponseBody, ResponseRecord},
+    http::{ResponseBody, ResponseRecord, content_type::ContentType},
     util::MaybeStr,
 };
 use std::{borrow::Cow, mem, sync::Arc};
@@ -402,7 +402,8 @@ impl TextState {
             // separate task because it's generally very fast. If this is slow
             // enough that it affects the user, the "large" body size is
             // probably too low
-            // 2024 edition: if-let chain
+            // unstable: if-let chain
+            // https://github.com/rust-lang/rust/pull/132833
             let (text, pretty): (Cow<str>, bool) = match content_type {
                 Some(content_type) if prettify => content_type
                     .prettify(text)
@@ -474,7 +475,7 @@ mod tests {
     use super::*;
     use crate::{
         context::TuiContext,
-        test_util::{harness, run_local, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, run_local, terminal},
         view::{
             test_util::TestComponent,
             util::persistence::{DatabasePersistedStore, PersistedLazy},
@@ -488,7 +489,7 @@ mod tests {
     use slumber_core::{
         assert_matches,
         http::{ResponseBody, ResponseRecord},
-        test_util::{temp_dir, Factory, TempDir},
+        test_util::{Factory, TempDir, temp_dir},
     };
     use tokio::fs;
 

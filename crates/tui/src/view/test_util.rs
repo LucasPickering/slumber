@@ -5,6 +5,7 @@ use crate::{
     http::RequestStore,
     test_util::{TestHarness, TestTerminal},
     view::{
+        UpdateContext,
         common::{
             actions::ActionsModal,
             modal::{Modal, ModalQueue},
@@ -16,7 +17,6 @@ use crate::{
             Child, Event, EventHandler, LocalEvent, OptionEvent, ToChild,
             ToEmitter,
         },
-        UpdateContext,
     },
 };
 use crossterm::event::{
@@ -24,7 +24,7 @@ use crossterm::event::{
     MouseEvent, MouseEventKind,
 };
 use itertools::Itertools;
-use ratatui::{layout::Rect, Frame};
+use ratatui::{Frame, layout::Rect};
 use slumber_config::Action;
 use std::{cell::RefCell, rc::Rc};
 
@@ -117,11 +117,6 @@ where
     /// Set props to be used for future draws
     pub fn set_props(&mut self, props: Props) {
         self.props = props;
-    }
-
-    /// Enable focus for the next draw
-    pub fn focus(&mut self) {
-        self.has_focus = true;
     }
 
     /// Disable focus for the next draw
@@ -241,7 +236,7 @@ pub struct Interact<'term, 'a, Component, Props> {
     propagated: Vec<Event>,
 }
 
-impl<'term, 'a, Component, Props> Interact<'term, 'a, Component, Props>
+impl<Component, Props> Interact<'_, '_, Component, Props>
 where
     Props: Clone,
     Component: Draw<Props> + ToChild,

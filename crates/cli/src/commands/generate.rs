@@ -1,4 +1,4 @@
-use crate::{commands::request::BuildRequestCommand, GlobalArgs, Subcommand};
+use crate::{GlobalArgs, Subcommand, commands::request::BuildRequestCommand};
 use clap::{Parser, ValueEnum};
 use slumber_core::template::TemplateError;
 use std::process::ExitCode;

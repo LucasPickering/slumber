@@ -2,11 +2,7 @@ use crate::{GlobalArgs, Subcommand};
 use clap::Parser;
 use serde::Serialize;
 use slumber_config::Config;
-use slumber_core::{
-    collection::{Collection, CollectionFile},
-    db::Database,
-    util::paths,
-};
+use slumber_core::{collection::Collection, db::Database, util::paths};
 use std::{borrow::Cow, path::Path, process::ExitCode};
 
 /// Print meta information about Slumber (config, collections, etc.)
@@ -30,8 +26,7 @@ impl Subcommand for ShowCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.target {
             ShowTarget::Paths => {
-                let collection_path =
-                    CollectionFile::try_path(None, global.file);
+                let collection_path = global.collection_path();
                 println!("Config: {}", Config::path().display());
                 println!("Database: {}", Database::path().display());
                 println!("Log file: {}", paths::log_file().display());
@@ -48,8 +43,7 @@ impl Subcommand for ShowCommand {
                 println!("{}", to_yaml(&config));
             }
             ShowTarget::Collection => {
-                let collection_path =
-                    CollectionFile::try_path(None, global.file)?;
+                let collection_path = global.collection_path()?;
                 let collection = Collection::load(&collection_path)?;
                 println!("{}", to_yaml(&collection));
             }

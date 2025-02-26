@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{Collection, CollectionFile, ProfileId, RecipeId},
+    collection::{Collection, ProfileId, RecipeId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{
         BuildOptions, HttpEngine, RequestRecord, RequestSeed, RequestTicket,
@@ -152,7 +152,7 @@ impl BuildRequestCommand {
         global: GlobalArgs,
         trigger_dependencies: bool,
     ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
-        let collection_path = CollectionFile::try_path(None, global.file)?;
+        let collection_path = global.collection_path()?;
         let config = Config::load()?;
         let collection = Collection::load(&collection_path)?;
         // Open DB in readonly. Storing requests in history from the CLI isn't

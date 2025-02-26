@@ -17,6 +17,7 @@ use crate::commands::{
 };
 use clap::{CommandFactory, Parser};
 use clap_complete::CompleteEnv;
+use slumber_core::collection::CollectionFile;
 use std::{path::PathBuf, process::ExitCode};
 
 const COMMAND_NAME: &str = "slumber";
@@ -58,6 +59,14 @@ pub struct GlobalArgs {
     /// logic from the given directory rather than the current.
     #[clap(long, short)]
     pub file: Option<PathBuf>,
+}
+
+impl GlobalArgs {
+    /// Get the path to the active collection file. Return an error if there is
+    /// no collection file present, or if the user specified an invalid file.
+    fn collection_path(&self) -> anyhow::Result<PathBuf> {
+        CollectionFile::try_path(None, self.file.clone())
+    }
 }
 
 /// A CLI subcommand

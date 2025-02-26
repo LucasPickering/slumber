@@ -261,6 +261,16 @@ impl From<&str> for RecipeId {
     }
 }
 
+/// For rstest magic conversions
+#[cfg(any(test, feature = "test"))]
+impl FromStr for RecipeId {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok::<_, ()>(s.to_owned().into())
+    }
+}
+
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for RecipeId {
     fn factory(_: ()) -> Self {

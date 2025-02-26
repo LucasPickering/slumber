@@ -1,6 +1,6 @@
 use dialoguer::Confirm;
 use rusqlite::Transaction;
-use rusqlite_migration::{HookError, HookResult, Migrations, M};
+use rusqlite_migration::{HookError, HookResult, M, Migrations};
 
 /// Get all DB migrations in history
 pub fn migrations() -> Migrations<'static> {
@@ -105,9 +105,9 @@ pub fn migrations() -> Migrations<'static> {
 /// changed the schema for the requests and ui_state tables, hence the tables
 /// requests_v2 and ui_state_v2. For versions >=1.8.0,<3.0.0 this migration
 /// would copy over data from the old table to the new one. For versions
-/// >=3.0.0, that copy has been removed because it involved a lot of code and a
+/// \>=3.0.0, that copy has been removed because it involved a lot of code and a
 /// dependency on rmp-serde. Users cannot upgrade from <1.8.0 directly to
-/// >=3.0.0; they'll need to go to something in between (probably the final 2.x
+/// \>=3.0.0; they'll need to go to something in between (probably the final 2.x
 /// version) first.
 ///
 /// See https://github.com/LucasPickering/slumber/issues/306 for more info

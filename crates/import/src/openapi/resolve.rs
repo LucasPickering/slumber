@@ -14,9 +14,9 @@ use openapiv3::{
 use std::borrow::Cow;
 use thiserror::Error;
 use winnow::{
+    Parser,
     combinator::{preceded, rest},
     error::ErrorKind,
-    Parser,
 };
 
 /// Helper struct for resolving references within a single OpenAPI spec. This
@@ -28,9 +28,7 @@ pub struct ReferenceResolver(Components);
 pub enum ResolveError {
     #[error("`{_0}` refers to an object that does not exist in the schema")]
     UnknownReference(String),
-    #[error(
-        "`{reference}` is an invalid reference for type `{expected_type}`"
-    )]
+    #[error("`{reference}` is an invalid reference for type `{expected_type}`")]
     InvalidReference {
         reference: String,
         expected_type: &'static str,
@@ -194,7 +192,7 @@ fn parse_reference<T: ComponentKind>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexmap::{indexmap, IndexMap};
+    use indexmap::{IndexMap, indexmap};
     use openapiv3::{Components, OAuth2Flows};
     use rstest::rstest;
     use slumber_core::assert_err;

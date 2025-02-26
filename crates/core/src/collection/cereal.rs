@@ -2,8 +2,8 @@
 
 use crate::{
     collection::{
-        recipe_tree::RecipeNode, Chain, ChainId, Profile, ProfileId, Recipe,
-        RecipeBody, RecipeId,
+        Chain, ChainId, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
+        recipe_tree::RecipeNode,
     },
     http::content_type::ContentType,
     template::Template,
@@ -12,12 +12,12 @@ use anyhow::Context;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
     de::{
         self, EnumAccess, Error as _, MapAccess, SeqAccess, VariantAccess,
         Visitor,
     },
     ser::Error as _,
-    Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::{hash::Hash, str::FromStr};
 
@@ -403,10 +403,10 @@ impl<'de> Deserialize<'de> for RecipeBody {
 pub mod serde_duration {
     use derive_more::Display;
     use itertools::Itertools;
-    use serde::{de::Error, Deserialize, Deserializer, Serializer};
+    use serde::{Deserialize, Deserializer, Serializer, de::Error};
     use std::time::Duration;
     use strum::{EnumIter, EnumString, IntoEnumIterator};
-    use winnow::{ascii::digit1, token::take_while, PResult, Parser};
+    use winnow::{PResult, Parser, ascii::digit1, token::take_while};
 
     #[derive(Debug, Display, EnumIter, EnumString)]
     enum Unit {
@@ -485,11 +485,11 @@ mod tests {
     use serde::Serialize;
     use serde_json::json;
     use serde_test::{
-        assert_de_tokens, assert_de_tokens_error, assert_ser_tokens, Token,
+        Token, assert_de_tokens, assert_de_tokens_error, assert_ser_tokens,
     };
     use serde_yaml::{
-        value::{Tag, TaggedValue},
         Mapping,
+        value::{Tag, TaggedValue},
     };
     use std::time::Duration;
 

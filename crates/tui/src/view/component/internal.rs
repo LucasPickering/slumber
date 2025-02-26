@@ -10,7 +10,7 @@ use crate::view::{
 };
 use crossterm::event::MouseEvent;
 use derive_more::Display;
-use ratatui::{layout::Rect, Frame};
+use ratatui::{Frame, layout::Rect};
 use std::{
     any,
     cell::{Cell, RefCell},
@@ -387,7 +387,7 @@ impl Drop for DrawGuard {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::event::EventHandler,
     };
     use crossterm::event::{

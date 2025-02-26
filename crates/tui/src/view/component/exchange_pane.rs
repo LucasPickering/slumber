@@ -2,27 +2,27 @@ use crate::{
     context::TuiContext,
     http::{RequestMetadata, ResponseMetadata},
     view::{
-        common::{tabs::Tabs, Pane},
+        RequestState,
+        common::{Pane, tabs::Tabs},
         component::{
+            Component,
             request_view::RequestView,
             response_view::{ResponseBodyView, ResponseHeadersView},
-            Component,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         util::persistence::PersistedLazy,
-        RequestState,
     },
 };
 use derive_more::Display;
 use persisted::SingletonKey;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Layout},
     style::Style,
     text::{Line, Span},
-    widgets::{block::Title, Paragraph},
-    Frame,
+    widgets::{Paragraph, block::Title},
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;

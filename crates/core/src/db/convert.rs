@@ -14,14 +14,14 @@ use bytes::Bytes;
 use core::str;
 use derive_more::Display;
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
     StatusCode,
+    header::{HeaderMap, HeaderName, HeaderValue},
 };
 use rusqlite::{
-    types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
     Row, ToSql,
+    types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::{
     fmt::Debug,
     ops::Deref,
@@ -33,9 +33,9 @@ use thiserror::Error;
 use url::Url;
 use uuid::Uuid;
 use winnow::{
+    PResult, Parser,
     combinator::{repeat, terminated},
     token::take_while,
-    PResult, Parser,
 };
 
 impl ToSql for CollectionId {
@@ -298,7 +298,7 @@ const HEADER_FIELD_DELIM: u8 = b':';
 /// https://www.rfc-editor.org/rfc/rfc9110.html#name-field-values
 const HEADER_LINE_DELIM: u8 = b'\n';
 
-impl<'a> ToSql for SqlWrap<&'a HeaderMap> {
+impl ToSql for SqlWrap<&HeaderMap> {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         // We know the exact capacity we'll need so we can avoid reallocations
         let capacity = self
@@ -306,7 +306,7 @@ impl<'a> ToSql for SqlWrap<&'a HeaderMap> {
             .iter()
             .map(|(name, value)| {
                 // Include extra bytes for the delimiters
-                name.as_str().as_bytes().len() + 1 + value.as_bytes().len() + 1
+                name.as_str().len() + 1 + value.as_bytes().len() + 1
             })
             .sum();
         let mut buf: Vec<u8> = Vec::with_capacity(capacity);
@@ -366,7 +366,7 @@ impl FromSql for SqlWrap<HeaderMap> {
     }
 }
 
-impl<'a> ToSql for ProfileFilter<'a> {
+impl ToSql for ProfileFilter<'_> {
     fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
         match self {
             Self::None => None::<&ProfileId>.to_sql(),

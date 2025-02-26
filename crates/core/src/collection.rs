@@ -9,7 +9,7 @@ pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use itertools::Itertools;
 use std::{
     env,
@@ -65,7 +65,9 @@ impl CollectionFile {
     /// Reload a new collection from the same file used for this one.
     ///
     /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
-    pub fn reload(&self) -> impl Future<Output = anyhow::Result<Collection>> {
+    pub fn reload(
+        &self,
+    ) -> impl 'static + Future<Output = anyhow::Result<Collection>> {
         load_collection(self.path.clone())
     }
 
@@ -185,8 +187,8 @@ mod tests {
     use super::*;
     use crate::{
         assert_err,
-        http::{content_type::ContentType, HttpMethod},
-        test_util::{by_id, temp_dir, test_data_dir, TempDir},
+        http::{HttpMethod, content_type::ContentType},
+        test_util::{TempDir, by_id, temp_dir, test_data_dir},
     };
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;

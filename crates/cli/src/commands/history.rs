@@ -1,7 +1,7 @@
 use crate::{
+    GlobalArgs, Subcommand,
     commands::request::DisplayExchangeCommand,
     completions::{complete_profile, complete_recipe},
-    GlobalArgs, Subcommand,
 };
 use anyhow::anyhow;
 use clap::Parser;

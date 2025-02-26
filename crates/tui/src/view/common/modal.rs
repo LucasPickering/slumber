@@ -1,6 +1,7 @@
 use crate::{
     context::TuiContext,
     view::{
+        Component, ViewContext,
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{
@@ -8,15 +9,14 @@ use crate::{
             ToEmitter,
         },
         util::centered_rect,
-        Component, ViewContext,
     },
 };
 use ratatui::{
+    Frame,
     layout::Margin,
     prelude::Constraint,
     text::Line,
     widgets::{Block, Borders, Clear},
-    Frame,
 };
 use slumber_config::Action;
 use std::{collections::VecDeque, fmt::Debug, ops::DerefMut};

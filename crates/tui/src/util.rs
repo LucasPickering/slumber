@@ -3,15 +3,15 @@ use crate::{
     message::{Message, MessageSender},
     view::{Confirm, ViewContext},
 };
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use bytes::Bytes;
 use crossterm::event;
 use editor_command::EditorBuilder;
-use futures::{future, FutureExt};
+use futures::{FutureExt, future};
 use mime::Mime;
 use slumber_core::{
     template::Prompt,
-    util::{doc_link, paths::expand_home, ResultTraced},
+    util::{ResultTraced, doc_link, paths::expand_home},
 };
 use std::{
     env,
@@ -87,7 +87,7 @@ pub fn clear_event_buffer() {
 #[cfg(unix)]
 pub async fn signals() -> anyhow::Result<()> {
     use itertools::Itertools;
-    use tokio::signal::unix::{signal, Signal, SignalKind};
+    use tokio::signal::unix::{Signal, SignalKind, signal};
 
     let signals: Vec<(Signal, SignalKind)> = [
         SignalKind::interrupt(),
@@ -384,12 +384,12 @@ async fn confirm(messages_tx: &MessageSender, message: impl ToString) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{harness, TestHarness};
+    use crate::test_util::{TestHarness, harness};
     use rstest::rstest;
     use slumber_config::CommandsConfig;
     use slumber_core::{
         assert_matches,
-        test_util::{temp_dir, TempDir},
+        test_util::{TempDir, temp_dir},
     };
     use tokio::fs;
 

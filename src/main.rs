@@ -3,7 +3,7 @@
 
 use anyhow::Context;
 use slumber_cli::Args;
-use slumber_core::util::{paths, ResultTraced};
+use slumber_core::util::{ResultTraced, paths};
 use std::{
     fs::{self, File, OpenOptions},
     io,
@@ -110,8 +110,7 @@ fn initialize_log_file() -> anyhow::Result<File> {
     let path = paths::log_file();
     paths::create_parent(&path)?;
 
-    if fs::metadata(&path)
-        .map_or(false, |metadata| metadata.len() > MAX_FILE_SIZE)
+    if fs::metadata(&path).is_ok_and(|metadata| metadata.len() > MAX_FILE_SIZE)
     {
         // Rename new->old, overwriting old. If that fails, just delete new so
         // it doesn't grow indefinitely. Failure shouldn't stop us from logging

@@ -1,8 +1,9 @@
 use crate::{
-    http::{RequestState, RequestStateSummary, RequestStore},
+    http::{RequestState, RequestStore},
     message::{Message, RequestConfig},
     util::ResultReported,
     view::{
+        Component, ViewContext,
         common::{
             actions::ActionsModal,
             modal::{Modal, ModalQueue},
@@ -17,12 +18,11 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, OptionEvent},
         util::persistence::PersistedLazy,
-        Component, ViewContext,
     },
 };
 use derive_more::From;
 use persisted::{PersistedContainer, PersistedKey};
-use ratatui::{layout::Layout, prelude::Constraint, Frame};
+use ratatui::{Frame, layout::Layout, prelude::Constraint};
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
@@ -154,7 +154,6 @@ impl Root {
             // Make sure all requests for this profile+recipe are loaded
             let requests = request_store
                 .load_summaries(primary_view.selected_profile_id(), recipe_id)?
-                .map(RequestStateSummary::from)
                 .collect();
 
             History::new(recipe_id, requests, self.selected_request_id())
@@ -185,7 +184,8 @@ impl EventHandler for Root {
                 }
                 Action::Cancel => {
                     if let Some(request_id) = self.selected_request_id.0 {
-                        // 2024 edition: if-let chain
+                        // unstable: if-let chain
+                        // https://github.com/rust-lang/rust/pull/132833
                         if context.request_store.is_in_progress(request_id) {
                             ConfirmModal::new(
                                 "Cancel request?".into(),
@@ -299,7 +299,7 @@ impl PersistedContainer for SelectedRequestId {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
             test_util::TestComponent, util::persistence::DatabasePersistedStore,
         },

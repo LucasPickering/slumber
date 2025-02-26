@@ -12,16 +12,16 @@ use slumber_core::{
         Collection, HasId, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
         RecipeNode, RecipeTree, SelectorMode,
     },
-    http::{content_type::ContentType, HttpMethod},
+    http::{HttpMethod, content_type::ContentType},
     template::{Identifier, Template},
     util::ResultTraced,
 };
 
 use reqwest::header;
 use rest_parser::{
+    Body as RestBody, RestFlavor, RestFormat, RestRequest, RestVariables,
     headers::Authorization as RestAuthorization,
     template::{Template as RestTemplate, TemplatePart as RestTemplatePart},
-    Body as RestBody, RestFlavor, RestFormat, RestRequest, RestVariables,
 };
 use std::path::Path;
 use tracing::error;

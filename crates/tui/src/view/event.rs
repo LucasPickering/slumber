@@ -4,10 +4,10 @@
 use crate::{
     util::Flag,
     view::{
+        Component, ViewContext,
         common::{actions::MenuAction, modal::Modal},
         context::UpdateContext,
         state::Notification,
-        Component, ViewContext,
     },
 };
 use persisted::{PersistedContainer, PersistedLazyRefMut, PersistedStore};
@@ -104,7 +104,7 @@ impl<T: EventHandler> EventHandler for Option<T> {
 // PersistedLazy's custom ToChild impl, which interferes with the blanket
 // ToChild impl
 
-impl<'a> EventHandler for Child<'a> {
+impl EventHandler for Child<'_> {
     fn update(
         &mut self,
         context: &mut UpdateContext,
@@ -118,7 +118,7 @@ impl<'a> EventHandler for Child<'a> {
     }
 }
 
-impl<'a, S, K, C> EventHandler for PersistedLazyRefMut<'a, S, K, C>
+impl<S, K, C> EventHandler for PersistedLazyRefMut<'_, S, K, C>
 where
     S: PersistedStore<K>,
     K: persisted::PersistedKey,
@@ -159,7 +159,7 @@ impl<'a> Deref for Child<'a> {
     }
 }
 
-impl<'a> DerefMut for Child<'a> {
+impl DerefMut for Child<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
             Child::Borrowed(inner) => *inner,
@@ -324,11 +324,7 @@ impl OptionEvent for Option<Event> {
         {
             let mut propagate = Flag::default();
             f(*action, &mut propagate);
-            if *propagate {
-                Some(event)
-            } else {
-                None
-            }
+            if *propagate { Some(event) } else { None }
         } else {
             Some(event)
         }

@@ -2,6 +2,7 @@ use crate::{
     context::TuiContext,
     message::Message,
     view::{
+        Component, ViewContext,
         common::{
             actions::{IntoMenuAction, MenuAction},
             header_table::HeaderTable,
@@ -12,15 +13,14 @@ use crate::{
         event::{Child, Emitter, Event, EventHandler, OptionEvent},
         state::Identified,
         util::{highlight, view_text},
-        Component, ViewContext,
     },
 };
 use derive_more::Display;
-use ratatui::{layout::Layout, prelude::Constraint, text::Text, Frame};
+use ratatui::{Frame, layout::Layout, prelude::Constraint, text::Text};
 use slumber_config::Action;
 use slumber_core::{
-    http::{content_type::ContentType, RequestRecord},
-    util::{format_byte_size, MaybeStr},
+    http::{RequestRecord, content_type::ContentType},
+    util::{MaybeStr, format_byte_size},
 };
 use std::sync::Arc;
 use strum::{EnumIter, IntoEnumIterator};

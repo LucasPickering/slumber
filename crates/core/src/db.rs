@@ -8,12 +8,12 @@ use crate::{
     collection::{ProfileId, RecipeId},
     db::convert::{CollectionPath, JsonEncoded, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
-    util::{paths, ResultTraced},
+    util::{ResultTraced, paths},
 };
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use derive_more::Display;
-use rusqlite::{named_params, Connection, DatabaseName, OptionalExtension};
-use serde::{de::DeserializeOwned, Serialize};
+use rusqlite::{Connection, DatabaseName, OptionalExtension, named_params};
+use serde::{Serialize, de::DeserializeOwned};
 use std::{
     fmt::Debug,
     ops::{Deref, DerefMut},

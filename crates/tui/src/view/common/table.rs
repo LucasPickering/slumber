@@ -30,7 +30,7 @@ pub struct Table<'a, const COLS: usize, R> {
     pub column_widths: &'a [Constraint; COLS],
 }
 
-impl<'a, const COLS: usize, Rows: Default> Default for Table<'a, COLS, Rows> {
+impl<const COLS: usize, Rows: Default> Default for Table<'_, COLS, Rows> {
     fn default() -> Self {
         Self {
             title: None,
@@ -47,7 +47,8 @@ impl<'a, const COLS: usize, Cll> Generate for Table<'a, COLS, [Cll; COLS]>
 where
     Cll: Into<Cell<'a>>,
 {
-    type Output<'this> = ratatui::widgets::Table<'this>
+    type Output<'this>
+        = ratatui::widgets::Table<'this>
     where
         Self: 'this;
 
@@ -67,7 +68,8 @@ where
 }
 
 impl<'a, const COLS: usize> Generate for Table<'a, COLS, Row<'a>> {
-    type Output<'this> = ratatui::widgets::Table<'this>
+    type Output<'this>
+        = ratatui::widgets::Table<'this>
     where
         Self: 'this;
 
@@ -118,7 +120,7 @@ pub struct ToggleRow<'a, Cells> {
     enabled: bool,
 }
 
-impl<'a, Cells> ToggleRow<'a, Cells> {
+impl<Cells> ToggleRow<'_, Cells> {
     pub fn new(cells: Cells, enabled: bool) -> Self {
         Self {
             phantom: PhantomData,
@@ -133,7 +135,8 @@ where
     Cells: IntoIterator,
     Cells::Item: Into<Text<'a>>,
 {
-    type Output<'this> = Row<'this>
+    type Output<'this>
+        = Row<'this>
     where
         Self: 'this;
 

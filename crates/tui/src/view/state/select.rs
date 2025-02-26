@@ -5,8 +5,8 @@ use crate::view::{
 };
 use persisted::PersistedContainer;
 use ratatui::{
-    widgets::{ListState, StatefulWidget, TableState},
     Frame,
+    widgets::{ListState, StatefulWidget, TableState},
 };
 use slumber_config::Action;
 use slumber_core::collection::HasId;
@@ -259,7 +259,8 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     /// event will *not* be emitted if no item is select, or the selected item
     /// is disabled.
     fn emit_for_selected(&self, event_fn: impl Fn(usize) -> SelectStateEvent) {
-        // 2024 edition: if-let chain
+        // unstable: if-let chain
+        // https://github.com/rust-lang/rust/pull/132833
         match self.selected_index() {
             // Don't send event for disabled items
             Some(selected) if !self.items[selected].disabled => {
@@ -454,7 +455,7 @@ where
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
             test_util::TestComponent,
             util::persistence::{DatabasePersistedStore, PersistedLazy},

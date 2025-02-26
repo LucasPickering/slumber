@@ -4,6 +4,7 @@ use crate::{
     context::TuiContext,
     message::Message,
     view::{
+        Component, ViewContext,
         common::{
             actions::{IntoMenuAction, MenuAction},
             header_table::HeaderTable,
@@ -13,7 +14,6 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Emitter, Event, EventHandler, OptionEvent},
         util::{persistence::PersistedLazy, view_text},
-        Component, ViewContext,
     },
 };
 use derive_more::Display;
@@ -163,7 +163,7 @@ impl Draw for ResponseHeadersView {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
     use crossterm::event::KeyCode;
@@ -172,7 +172,7 @@ mod tests {
     use slumber_core::{
         assert_matches,
         http::Exchange,
-        test_util::{header_map, Factory},
+        test_util::{Factory, header_map},
     };
 
     /// Test "Copy Body" menu action

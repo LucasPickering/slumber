@@ -23,9 +23,8 @@ use serde::{Deserialize, Serialize};
 use slumber_core::{
     http::HttpEngineConfig,
     util::{
-        parse_yaml,
+        ResultTraced, parse_yaml,
         paths::{self, create_parent, expand_home},
-        ResultTraced,
     },
 };
 use std::{env, fs::OpenOptions, path::PathBuf};

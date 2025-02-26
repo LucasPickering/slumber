@@ -10,9 +10,9 @@ use crate::{
     },
 };
 use ratatui::{
+    Frame,
     layout::{Constraint, Flex, Layout},
     text::Span,
-    Frame,
 };
 use slumber_config::Action;
 
@@ -24,8 +24,9 @@ pub struct Button<'a> {
     has_focus: bool,
 }
 
-impl<'a> Generate for Button<'a> {
-    type Output<'this> = Span<'this>
+impl Generate for Button<'_> {
+    type Output<'this>
+        = Span<'this>
     where
         Self: 'this;
 

@@ -15,8 +15,8 @@ use derive_more::{Display, From, FromStr};
 use itertools::Itertools;
 use mime::Mime;
 use reqwest::{
-    header::{self, HeaderMap},
     Body, Client, Request, StatusCode, Url,
+    header::{self, HeaderMap},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -866,7 +866,7 @@ impl PartialEq for RequestError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{header_map, Factory};
+    use crate::test_util::{Factory, header_map};
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;

@@ -9,12 +9,12 @@ use crate::{
     },
 };
 use ratatui::{
+    Frame,
     buffer::Buffer,
     layout::{Layout, Rect},
     prelude::{Alignment, Constraint},
     text::{Line, StyledGrapheme, Text},
     widgets::{Paragraph, ScrollbarOrientation},
-    Frame,
 };
 use slumber_config::Action;
 use std::{cell::Cell, cmp};
@@ -290,7 +290,7 @@ impl<'a> Draw<TextWindowProps<'a>> for TextWindow {
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::test_util::TestComponent,
     };
     use crossterm::event::{KeyCode, KeyModifiers};

@@ -2,6 +2,7 @@
 //! generic/utility, but don't fall into a clear category.
 
 use crate::view::{
+    Confirm, ModalPriority,
     common::{
         button::ButtonGroup,
         list::List,
@@ -13,17 +14,16 @@ use crate::view::{
     draw::{Draw, DrawMetadata, Generate},
     event::{Child, Event, EventHandler, OptionEvent, ToEmitter},
     state::{
-        select::{SelectState, SelectStateEvent, SelectStateEventType},
         Notification,
+        select::{SelectState, SelectStateEvent, SelectStateEventType},
     },
-    Confirm, ModalPriority,
 };
 use derive_more::Display;
 use ratatui::{
+    Frame,
     prelude::Constraint,
     text::{Line, Text},
     widgets::Paragraph,
-    Frame,
 };
 use slumber_core::template::{Prompt, Select};
 use std::fmt::Debug;

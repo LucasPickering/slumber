@@ -6,7 +6,7 @@ use crossterm::event::{
     MouseEvent, MouseEventKind,
 };
 use derive_more::Display;
-use indexmap::{indexmap, IndexMap};
+use indexmap::{IndexMap, indexmap};
 use slumber_config::{Action, InputBinding, KeyCombination};
 use tracing::trace;
 

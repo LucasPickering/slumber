@@ -1,6 +1,7 @@
 use crate::{
     util::ResultReported,
     view::{
+        ViewContext,
         common::{
             actions::{IntoMenuAction, MenuAction},
             modal::Modal,
@@ -8,23 +9,22 @@ use crate::{
             text_box::TextBox,
         },
         component::{
+            Component,
             misc::TextBoxModal,
             recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
-            Component,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
         util::persistence::{Persisted, PersistedKey, PersistedLazy},
-        ViewContext,
     },
 };
 use itertools::Itertools;
 use ratatui::{
+    Frame,
     layout::Constraint,
     widgets::{Row, TableState},
-    Frame,
 };
 use slumber_config::Action;
 use slumber_core::{
@@ -294,7 +294,8 @@ struct RowState<K: PersistedKey<Value = bool>> {
 }
 
 impl<K: PersistedKey<Value = bool>> Generate for &RowState<K> {
-    type Output<'this> = Row<'this>
+    type Output<'this>
+        = Row<'this>
     where
         Self: 'this;
 
@@ -386,11 +387,11 @@ where
 mod tests {
     use super::*;
     use crate::{
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
             component::{
-                recipe_pane::persistence::RecipeOverrideValue,
                 RecipeOverrideStore,
+                recipe_pane::persistence::RecipeOverrideValue,
             },
             test_util::TestComponent,
         },

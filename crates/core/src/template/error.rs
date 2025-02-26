@@ -1,6 +1,6 @@
 use crate::{
     collection::{ChainId, ProfileId, RecipeId},
-    http::{query::QueryError, RequestBuildError, RequestError},
+    http::{RequestBuildError, RequestError, query::QueryError},
     template::TemplateKey,
     util::doc_link,
 };

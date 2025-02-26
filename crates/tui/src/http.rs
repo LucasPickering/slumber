@@ -15,7 +15,7 @@ use slumber_core::{
     },
 };
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     fmt::Debug,
     sync::Arc,
 };

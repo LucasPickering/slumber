@@ -52,14 +52,15 @@ use anyhow::Context;
 use bytes::Bytes;
 use chrono::Utc;
 use futures::{
-    future::{self, try_join_all, OptionFuture},
-    try_join, Future,
+    Future,
+    future::{self, OptionFuture, try_join_all},
+    try_join,
 };
 use mime::Mime;
 use reqwest::{
+    Client, RequestBuilder, Response, Url,
     header::{self, HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
-    Client, RequestBuilder, Response, Url,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -748,18 +749,18 @@ mod tests {
     use crate::{
         collection::{Authentication, Chain, ChainSource, Collection, Profile},
         test_util::{
-            by_id, header_map, http_engine, invalid_utf8_chain, Factory,
-            TestPrompter,
+            Factory, TestPrompter, by_id, header_map, http_engine,
+            invalid_utf8_chain,
         },
     };
-    use indexmap::{indexmap, IndexMap};
+    use indexmap::{IndexMap, indexmap};
     use pretty_assertions::assert_eq;
     use regex::Regex;
     use reqwest::{Body, StatusCode};
     use rstest::rstest;
     use serde_json::json;
     use std::ptr;
-    use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
     /// Create a template context. Take a set of extra recipes and chains to
     /// add to the created collection

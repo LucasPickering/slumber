@@ -1,7 +1,8 @@
 use crate::{
     message::Message,
-    util::{delete_temp_file, temp_file, ResultReported},
+    util::{ResultReported, delete_temp_file, temp_file},
     view::{
+        Component, ViewContext,
         common::{
             actions::{IntoMenuAction, MenuAction},
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
@@ -14,7 +15,6 @@ use crate::{
         draw::{Draw, DrawMetadata},
         event::{Child, Emitter, Event, EventHandler, OptionEvent},
         util::view_text,
-        Component, ViewContext,
     },
 };
 use anyhow::Context;
@@ -37,6 +37,7 @@ use tracing::debug;
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum RecipeBodyDisplay {
     Raw(Component<RawBody>),
     Form(Component<RecipeFieldTable<FormRowKey, FormRowToggleKey>>),
@@ -319,7 +320,7 @@ mod tests {
     use super::*;
     use crate::{
         context::TuiContext,
-        test_util::{harness, terminal, TestHarness, TestTerminal},
+        test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
             component::recipe_pane::persistence::{
                 RecipeOverrideStore, RecipeOverrideValue,

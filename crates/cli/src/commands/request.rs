@@ -1,8 +1,8 @@
 use crate::{
-    completions::{complete_profile, complete_recipe},
     GlobalArgs, Subcommand,
+    completions::{complete_profile, complete_recipe},
 };
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::{Parser, ValueHint};
 use clap_complete::ArgValueCompleter;
 use dialoguer::{Input, Password, Select as DialoguerSelect};

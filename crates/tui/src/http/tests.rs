@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_util::{harness, TestHarness};
+use crate::test_util::{TestHarness, harness};
 use anyhow::anyhow;
 use chrono::Utc;
 use rstest::rstest;
@@ -10,8 +10,8 @@ use slumber_core::{
 };
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };

@@ -2,7 +2,7 @@
 
 use crate::view::ViewContext;
 use persisted::PersistedStore;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::fmt::Debug;
 
 /// This struct exists solely to hold an impl of [PersistedStore], which

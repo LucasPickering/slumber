@@ -3,18 +3,18 @@ use crate::{
     http::RequestStateSummary,
     util::ResultReported,
     view::{
+        UpdateContext, ViewContext,
         common::{list::List, modal::Modal},
         component::Component,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, OptionEvent, ToEmitter},
         state::select::{SelectState, SelectStateEvent, SelectStateEventType},
-        UpdateContext, ViewContext,
     },
 };
 use ratatui::{
+    Frame,
     layout::Constraint,
     text::{Line, Span},
-    Frame,
 };
 use slumber_core::{collection::RecipeId, http::RequestId};
 
@@ -99,7 +99,10 @@ impl Draw for History {
 }
 
 impl Generate for &RequestStateSummary {
-    type Output<'this> = Line<'this> where Self: 'this;
+    type Output<'this>
+        = Line<'this>
+    where
+        Self: 'this;
 
     fn generate<'this>(self) -> Self::Output<'this>
     where

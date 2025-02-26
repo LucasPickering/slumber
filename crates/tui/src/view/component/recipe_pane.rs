@@ -10,23 +10,23 @@ use crate::{
     context::TuiContext,
     message::{Message, RequestConfig},
     view::{
+        Component, ViewContext,
         common::{
-            actions::{IntoMenuAction, MenuAction},
             Pane,
+            actions::{IntoMenuAction, MenuAction},
         },
         component::recipe_pane::recipe::RecipeDisplay,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::StateCell,
-        Component, ViewContext,
     },
 };
 use derive_more::Display;
 use itertools::{Itertools, Position};
 use ratatui::{
-    text::{Line, Text},
     Frame,
+    text::{Line, Text},
 };
 use slumber_config::Action;
 use slumber_core::{
@@ -215,8 +215,9 @@ impl IntoMenuAction<RecipePane> for RecipePaneMenuAction {
 }
 
 /// Render folder as a tree
-impl<'a> Generate for &'a Folder {
-    type Output<'this> = Text<'this>
+impl Generate for &Folder {
+    type Output<'this>
+        = Text<'this>
     where
         Self: 'this;
 
@@ -278,7 +279,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use slumber_core::{
         collection::Recipe,
-        test_util::{by_id, Factory},
+        test_util::{Factory, by_id},
     };
 
     #[test]

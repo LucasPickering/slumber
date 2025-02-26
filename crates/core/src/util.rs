@@ -8,6 +8,7 @@ use chrono::{
     format::{DelayedFormat, StrftimeItems},
 };
 use derive_more::{DerefMut, Display};
+use dialoguer::Confirm;
 use serde::de::DeserializeOwned;
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -89,6 +90,16 @@ pub fn format_byte_size(size: usize) -> String {
     };
     let size = size as f64 / denom as f64;
     format!("{size:.1} {suffix}B")
+}
+
+/// Show the user a confirmation prompt
+pub fn confirm(prompt: impl Into<String>) -> bool {
+    Confirm::new()
+        .with_prompt(prompt)
+        .default(false)
+        .wait_for_newline(true)
+        .interact()
+        .unwrap_or(false)
 }
 
 /// Extension trait for [Result]

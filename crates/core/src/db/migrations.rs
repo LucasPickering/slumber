@@ -1,4 +1,4 @@
-use dialoguer::Confirm;
+use crate::util::confirm;
 use rusqlite::Transaction;
 use rusqlite_migration::{HookError, HookResult, M, Migrations};
 
@@ -127,19 +127,14 @@ fn migrate_requests_v2(transaction: &Transaction) -> HookResult {
             row.get::<_, u64>(0)
         })?;
     if old_requests_count > 0 {
-        let delete = Confirm::new()
-            .with_prompt(
-                "You are upgrading from Slumber <1.8.0 to Slumber >=3.0.0. \
+        let delete = confirm(
+            "You are upgrading from Slumber <1.8.0 to Slumber >=3.0.0. \
                 Your request history database contains old requests that \
                 cannot be migrated directly to a newer format. You can proceed \
                 with the upgrade by DELETING THE OLD REQUESTS now, or you can \
                 retain the requests by upgrading to an intermediate version \
                 first.\nWould you like to DELETE YOUR REQUEST HISTORY?",
-            )
-            .default(false)
-            .wait_for_newline(true)
-            .interact()
-            .unwrap_or(false);
+        );
         if delete {
             // We can just proceed and a future migration will drop the old
             // table

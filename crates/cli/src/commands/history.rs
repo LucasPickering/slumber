@@ -3,14 +3,14 @@ use crate::{
     commands::request::DisplayExchangeCommand,
     completions::{complete_profile, complete_recipe},
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use clap::Parser;
 use clap_complete::ArgValueCompleter;
 use slumber_core::{
-    collection::{CollectionFile, ProfileId, RecipeId},
+    collection::{ProfileId, RecipeId},
     db::{Database, DatabaseMode, ProfileFilter},
     http::{ExchangeSummary, RequestId},
-    util::format_time_iso,
+    util::{confirm, format_time_iso},
 };
 use std::{process::ExitCode, str::FromStr};
 
@@ -55,6 +55,41 @@ enum HistorySubcommand {
         #[clap(flatten)]
         display: DisplayExchangeCommand,
     },
+
+    /// Delete a single request, or all requests for a single recipe
+    Delete {
+        /// ID of the request or recipe to delete
+        ///
+        /// Pass a request ID to delete a single request, or a recipe ID to
+        /// delete all requests for that recipe
+        #[clap(add = ArgValueCompleter::new(complete_recipe))]
+        request: RecipeOrRequest,
+
+        /// Only delete recipes for a single profile. If this argument is
+        /// passed with no value, requests with no associated profile are
+        /// deleted
+        #[clap(
+            long = "profile",
+            short,
+            add = ArgValueCompleter::new(complete_profile),
+        )]
+        // None -> All profiles
+        // Some(None) -> No profile
+        // Some(Some("profile1")) -> profile1
+        profile: Option<Option<ProfileId>>,
+    },
+
+    /// Delete ALL request history for the current collection
+    ///
+    /// This is a dangerous and irreversible operation!
+    Clear {
+        /// Delete all request history for ALL collections
+        #[clap(long)]
+        all: bool,
+        /// Skip the confirmation prompt
+        #[clap(long, short)]
+        yes: bool,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -65,22 +100,22 @@ enum RecipeOrRequest {
 
 impl Subcommand for HistoryCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let collection_path = CollectionFile::try_path(None, global.file)?;
-        let database = Database::load()?
-            .into_collection(&collection_path, DatabaseMode::ReadOnly)?;
-
         match self.subcommand {
             HistorySubcommand::List { recipe, profile } => {
-                let profile_filter = match &profile {
-                    None => ProfileFilter::All,
-                    Some(None) => ProfileFilter::None,
-                    Some(Some(profile_id)) => ProfileFilter::Some(profile_id),
-                };
-                let exchanges =
-                    database.get_all_requests(profile_filter, &recipe)?;
+                let database = Database::load()?.into_collection(
+                    &global.collection_path()?,
+                    DatabaseMode::ReadOnly,
+                )?;
+                let exchanges = database
+                    .get_recipe_requests(profile.as_ref().into(), &recipe)?;
                 Self::print_list(exchanges);
             }
+
             HistorySubcommand::Get { request, display } => {
+                let database = Database::load()?.into_collection(
+                    &global.collection_path()?,
+                    DatabaseMode::ReadOnly,
+                )?;
                 let exchange = match request {
                     RecipeOrRequest::Recipe(recipe_id) => database
                         .get_latest_request(ProfileFilter::All, &recipe_id)?
@@ -95,6 +130,59 @@ impl Subcommand for HistoryCommand {
                 };
                 display.write_request(&exchange.request);
                 display.write_response(&exchange.response)?;
+            }
+
+            HistorySubcommand::Delete { request, profile } => {
+                let database = Database::load()?.into_collection(
+                    &global.collection_path()?,
+                    DatabaseMode::ReadWrite,
+                )?;
+                match request {
+                    RecipeOrRequest::Recipe(recipe_id) => {
+                        let deleted = database.delete_recipe_requests(
+                            profile.as_ref().into(),
+                            &recipe_id,
+                        )?;
+                        println!("Deleted {deleted} request(s)");
+                    }
+                    RecipeOrRequest::Request(request_id) => {
+                        let deleted = database.delete_request(request_id)?;
+                        println!("Deleted {deleted} request(s)");
+                    }
+                }
+            }
+
+            HistorySubcommand::Clear { all, yes } => {
+                let database = Database::load()?;
+                let deleted = if all {
+                    // Delete history for all collections. This should be
+                    // callable even when a collection file isn't present
+                    if !yes
+                        && !confirm(
+                            "Delete request history for ALL collections?",
+                        )
+                    {
+                        bail!("Cancelled");
+                    }
+                    database.delete_all_requests()?
+                } else {
+                    // Delete just for the current collection
+                    let collection_path = global.collection_path()?;
+                    if !yes
+                        && !confirm(format!(
+                            "Delete request history for {}?",
+                            collection_path.display()
+                        ))
+                    {
+                        bail!("Cancelled");
+                    }
+                    let database = database.into_collection(
+                        &collection_path,
+                        DatabaseMode::ReadWrite,
+                    )?;
+                    database.delete_all_requests()?
+                };
+                println!("Deleted {deleted} request(s)");
             }
         }
         Ok(ExitCode::SUCCESS)

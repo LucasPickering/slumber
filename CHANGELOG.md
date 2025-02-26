@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Add `slumber history delete` and `slumber history clear` for deleting request history
+
 ### Changed
 
 - Upgrade to Rust 1.85 (2024 edition!)

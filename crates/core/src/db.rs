@@ -3,6 +3,8 @@
 
 mod convert;
 mod migrations;
+#[cfg(test)]
+mod tests;
 
 use crate::{
     collection::{ProfileId, RecipeId},
@@ -15,6 +17,7 @@ use derive_more::Display;
 use rusqlite::{Connection, DatabaseName, OptionalExtension, named_params};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{
+    borrow::Cow,
     fmt::Debug,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
@@ -167,6 +170,16 @@ impl Database {
             .context("Error deleting source collection")
             .traced()?;
         Ok(())
+    }
+
+    /// Delete ALL requests for ALL collections. Be careful with this! Return
+    /// the number of deleted requests
+    pub fn delete_all_requests(&self) -> anyhow::Result<usize> {
+        info!("Deleting all requests for ALL collections");
+        self.connection()
+            .execute("DELETE FROM requests_v2", ())
+            .context("Error deleting request history")
+            .traced()
     }
 
     /// Convert this database connection into a handle for a single collection
@@ -323,19 +336,16 @@ impl CollectionDatabase {
     }
 
     /// Get a list of all requests for a profile+recipe combo
-    pub fn get_all_requests(
+    pub fn get_recipe_requests(
         &self,
-        profile_id: ProfileFilter,
+        profile_filter: ProfileFilter,
         recipe_id: &RecipeId,
     ) -> anyhow::Result<Vec<ExchangeSummary>> {
         trace!(
-            profile_id = ?profile_id,
+            profile_id = ?profile_filter,
             recipe_id = %recipe_id,
             "Fetching request history from database"
         );
-        // It would be nice to de-dupe this code with get_all_requests, but
-        // there's no good way to dynamically build a query with sqlite so it
-        // ends up not being worth it
         self.database
             .connection()
             .prepare(
@@ -354,8 +364,8 @@ impl CollectionDatabase {
             .query_map(
                 named_params! {
                     ":collection_id": self.collection_id,
-                    ":ignore_profile_id": profile_id == ProfileFilter::All,
-                    ":profile_id": profile_id,
+                    ":ignore_profile_id": profile_filter == ProfileFilter::All,
+                    ":profile_id": profile_filter,
                     ":recipe_id": recipe_id,
                 },
                 |row| row.try_into(),
@@ -440,6 +450,83 @@ impl CollectionDatabase {
             ))
             .traced()?;
         Ok(())
+    }
+
+    /// Delete all exchanges for this collection. Return the number of deleted
+    /// requests
+    pub fn delete_all_requests(&self) -> anyhow::Result<usize> {
+        self.ensure_write()?;
+        info!(
+            collection_id = %self.collection_id,
+            collection_path = ?self.collection_path(),
+            "Deleting all requests for collection",
+        );
+        self.database
+            .connection()
+            .execute(
+                "DELETE FROM requests_v2 WHERE collection_id = :collection_id",
+                named_params! {":collection_id": self.collection_id},
+            )
+            .context("Error deleting requests")
+            .traced()
+    }
+
+    /// Delete all requests for a recipe+profile combo. Return the number of
+    /// deleted requests
+    pub fn delete_recipe_requests(
+        &self,
+        profile_id: ProfileFilter,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<usize> {
+        self.ensure_write()?;
+        info!(
+            collection_id = %self.collection_id,
+            collection_path = ?self.collection_path(),
+            %recipe_id,
+            ?profile_id,
+            "Deleting all requests for recipe+profile",
+        );
+        self.database
+            .connection()
+            .execute(
+                // `IS` needed for profile_id so `None` will match `NULL`.
+                // We want to dynamically ignore the profile filter if the user
+                // is asking for all profiles. Dynamically modifying the query
+                // is really ugly so the easiest thing is to use an additional
+                // parameter to bypass the filter
+                "DELETE FROM requests_v2 WHERE collection_id = :collection_id
+                    AND (:ignore_profile_id OR profile_id IS :profile_id)
+                    AND recipe_id = :recipe_id",
+                named_params! {
+                    ":collection_id": self.collection_id,
+                    ":ignore_profile_id": profile_id == ProfileFilter::All,
+                    ":profile_id": profile_id,
+                    ":recipe_id": recipe_id,
+                },
+            )
+            .context("Error deleting requests")
+            .traced()
+    }
+
+    /// Delete a single exchange by ID. Return the number of deleted requests
+    pub fn delete_request(
+        &self,
+        request_id: RequestId,
+    ) -> anyhow::Result<usize> {
+        self.ensure_write()?;
+        info!(%request_id, "Deleting request");
+        self.database
+            .connection()
+            .execute(
+                "DELETE FROM requests_v2 WHERE
+                collection_id = :collection_id AND id = :request_id",
+                named_params! {
+                    ":collection_id": self.collection_id,
+                    ":request_id": request_id,
+                },
+            )
+            .context(format!("Error deleting request {request_id}"))
+            .traced()
     }
 
     /// Get the value of a UI state field. Key type is included as part of the
@@ -572,7 +659,7 @@ pub enum ProfileFilter<'a> {
     /// Show requests with _no_ associated profile
     None,
     /// Show requests for a particular profile
-    Some(&'a ProfileId),
+    Some(Cow<'a, ProfileId>),
     /// Show requests for all profiles
     #[default]
     All,
@@ -582,302 +669,19 @@ pub enum ProfileFilter<'a> {
 impl<'a> From<Option<&'a ProfileId>> for ProfileFilter<'a> {
     fn from(value: Option<&'a ProfileId>) -> Self {
         match value {
-            Some(profile_id) => Self::Some(profile_id),
+            Some(profile_id) => Self::Some(Cow::Borrowed(profile_id)),
             None => Self::None,
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{assert_err, test_util::Factory, util::paths::get_repo_root};
-    use itertools::Itertools;
-    use std::collections::HashMap;
-
-    #[test]
-    fn test_merge() {
-        let database = Database::factory(());
-        let path1 = get_repo_root().join("slumber.yml");
-        let path2 = get_repo_root().join("README.md"); // Has to be a real file
-        let collection1 = database
-            .clone()
-            .into_collection(&path1, DatabaseMode::ReadWrite)
-            .unwrap();
-        let collection2 = database
-            .clone()
-            .into_collection(&path2, DatabaseMode::ReadWrite)
-            .unwrap();
-
-        let exchange1 =
-            Exchange::factory((Some("profile1".into()), "recipe1".into()));
-        let exchange2 =
-            Exchange::factory((Some("profile1".into()), "recipe1".into()));
-        let profile_id = exchange1.request.profile_id.as_ref();
-        let recipe_id = &exchange1.request.recipe_id;
-        let key_type = "MyKey";
-        let ui_key = "key1";
-        collection1.insert_exchange(&exchange1).unwrap();
-        collection1.set_ui(key_type, ui_key, "value1").unwrap();
-        collection2.insert_exchange(&exchange2).unwrap();
-        collection2.set_ui(key_type, ui_key, "value2").unwrap();
-
-        // Sanity checks
-        assert_eq!(
-            collection1
-                .get_latest_request(profile_id.into(), recipe_id)
-                .unwrap()
-                .unwrap()
-                .id,
-            exchange1.id
-        );
-        assert_eq!(
-            collection1.get_ui::<_, String>(key_type, ui_key).unwrap(),
-            Some("value1".into())
-        );
-        assert_eq!(
-            collection2
-                .get_latest_request(profile_id.into(), recipe_id)
-                .unwrap()
-                .unwrap()
-                .id,
-            exchange2.id
-        );
-        assert_eq!(
-            collection2.get_ui::<_, String>(key_type, ui_key).unwrap(),
-            Some("value2".into())
-        );
-
-        // Do the merge
-        database.merge_collections(&path2, &path1).unwrap();
-
-        // Collection 2 values should've overwritten
-        assert_eq!(
-            collection1
-                .get_latest_request(profile_id.into(), recipe_id)
-                .unwrap()
-                .unwrap()
-                .id,
-            exchange2.id
-        );
-        assert_eq!(
-            collection1.get_ui::<_, String>(key_type, ui_key).unwrap(),
-            Some("value2".into())
-        );
-
-        // Make sure collection2 was deleted
-        assert_eq!(
-            database.collections().unwrap(),
-            vec![path1.canonicalize().unwrap()]
-        );
-    }
-
-    /// Test request storage and retrieval
-    #[test]
-    fn test_request() {
-        let database = Database::factory(());
-        let collection1 = database
-            .clone()
-            .into_collection(
-                &get_repo_root().join("slumber.yml"),
-                DatabaseMode::ReadWrite,
-            )
-            .unwrap();
-        let collection2 = database
-            .clone()
-            .into_collection(
-                &get_repo_root().join("README.md"),
-                DatabaseMode::ReadWrite,
-            )
-            .unwrap();
-
-        let exchange2 = Exchange::factory(());
-        collection2.insert_exchange(&exchange2).unwrap();
-
-        // We separate requests by 3 columns. Create multiple of each column to
-        // make sure we filter by each column correctly
-        let collections = [collection1, collection2];
-
-        // Store the created request ID for each cell in the matrix, so we can
-        // compare to what the DB spits back later
-        let mut request_ids: HashMap<
-            (CollectionId, Option<ProfileId>, RecipeId),
-            RequestId,
-        > = Default::default();
-
-        // Create and insert each request
-        for collection in &collections {
-            for profile_id in [None, Some("profile1"), Some("profile2")] {
-                for recipe_id in ["recipe1", "recipe2"] {
-                    let recipe_id: RecipeId = recipe_id.into();
-                    let profile_id = profile_id.map(ProfileId::from);
-                    let exchange = Exchange::factory((
-                        profile_id.clone(),
-                        recipe_id.clone(),
-                    ));
-                    collection.insert_exchange(&exchange).unwrap();
-                    request_ids.insert(
-                        (collection.collection_id(), profile_id, recipe_id),
-                        exchange.id,
-                    );
-                }
-            }
+/// Useful for CLI arguments
+impl<'a> From<Option<&'a Option<ProfileId>>> for ProfileFilter<'a> {
+    fn from(value: Option<&'a Option<ProfileId>>) -> Self {
+        match value {
+            Some(Some(profile_id)) => Self::Some(Cow::Borrowed(profile_id)),
+            Some(None) => Self::None,
+            None => Self::All,
         }
-
-        // Try to find each inserted recipe individually. Also try some
-        // expected non-matches
-        for collection in &collections {
-            for profile_id in [None, Some("profile1"), Some("extra_profile")] {
-                for recipe_id in ["recipe1", "extra_recipe"] {
-                    let collection_id = collection.collection_id();
-                    let profile_id = profile_id.map(ProfileId::from);
-                    let recipe_id = recipe_id.into();
-
-                    // Leave the Option here so a non-match will trigger a handy
-                    // assertion error
-                    let exchange_id = collection
-                        .get_latest_request(
-                            profile_id.as_ref().into(),
-                            &recipe_id,
-                        )
-                        .unwrap()
-                        .map(|exchange| exchange.id);
-                    let expected_id = request_ids.get(&(
-                        collection_id,
-                        profile_id.clone(),
-                        recipe_id.clone(),
-                    ));
-
-                    assert_eq!(
-                        exchange_id.as_ref(),
-                        expected_id,
-                        "Request mismatch for collection = {collection_id}, \
-                        profile = {profile_id:?}, recipe = {recipe_id}"
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn test_load_all_requests() {
-        let database = CollectionDatabase::factory(());
-
-        // Create and insert multiple requests per profile+recipe.
-        // Store the created request ID for each cell in the matrix, so we can
-        // compare to what the DB spits back later
-        let mut request_ids: HashMap<
-            (Option<ProfileId>, RecipeId),
-            Vec<RequestId>,
-        > = Default::default();
-        for profile_id in [None, Some("profile1"), Some("profile2")] {
-            for recipe_id in ["recipe1", "recipe2"] {
-                let recipe_id: RecipeId = recipe_id.into();
-                let profile_id = profile_id.map(ProfileId::from);
-                let mut ids = (0..3)
-                    .map(|_| {
-                        let exchange = Exchange::factory((
-                            profile_id.clone(),
-                            recipe_id.clone(),
-                        ));
-                        database.insert_exchange(&exchange).unwrap();
-                        exchange.id
-                    })
-                    .collect_vec();
-                // Order newest->oldest, that's the response we expect
-                ids.reverse();
-                request_ids.insert((profile_id, recipe_id), ids);
-            }
-        }
-
-        // Try to find each inserted recipe individually. Also try some
-        // expected non-matches
-        for profile_id in [None, Some("profile1"), Some("extra_profile")] {
-            for recipe_id in ["recipe1", "extra_recipe"] {
-                let profile_id = profile_id.map(ProfileId::from);
-                let recipe_id = recipe_id.into();
-
-                // Leave the Option here so a non-match will trigger a handy
-                // assertion error
-                let ids = database
-                    .get_all_requests(profile_id.as_ref().into(), &recipe_id)
-                    .unwrap()
-                    .into_iter()
-                    .map(|exchange| exchange.id)
-                    .collect_vec();
-                let expected_id = request_ids
-                    .get(&(profile_id.clone(), recipe_id.clone()))
-                    .cloned()
-                    .unwrap_or_default();
-
-                assert_eq!(
-                    ids, expected_id,
-                    "Requests mismatch for \
-                    profile = {profile_id:?}, recipe = {recipe_id}"
-                );
-            }
-        }
-
-        // Load all requests for a recipe (across all profiles)
-        let recipe_id = "recipe1".into();
-        let ids = database
-            .get_all_requests(ProfileFilter::All, &recipe_id)
-            .unwrap()
-            .into_iter()
-            .map(|exchange| exchange.id)
-            .sorted()
-            .collect_vec();
-        let expected_ids = request_ids
-            .iter()
-            .filter(|((_, r), _)| r == &recipe_id)
-            .flat_map(|(_, request_ids)| request_ids)
-            .sorted()
-            .copied()
-            .collect_vec();
-        assert_eq!(ids, expected_ids)
-    }
-
-    /// Test UI state storage and retrieval
-    #[test]
-    fn test_ui_state() {
-        let database = Database::factory(());
-        let collection1 = database
-            .clone()
-            .into_collection(
-                Path::new("../../slumber.yml"),
-                DatabaseMode::ReadWrite,
-            )
-            .unwrap();
-        let collection2 = database
-            .clone()
-            .into_collection(Path::new("Cargo.toml"), DatabaseMode::ReadWrite)
-            .unwrap();
-
-        let key_type = "MyKey";
-        let ui_key = "key1";
-        collection1.set_ui(key_type, ui_key, "value1").unwrap();
-        collection2.set_ui(key_type, ui_key, "value2").unwrap();
-
-        assert_eq!(
-            collection1.get_ui::<_, String>(key_type, ui_key).unwrap(),
-            Some("value1".into())
-        );
-        assert_eq!(
-            collection2.get_ui::<_, String>(key_type, ui_key).unwrap(),
-            Some("value2".into())
-        );
-    }
-
-    #[test]
-    fn test_readonly_mode() {
-        let database = CollectionDatabase::factory(DatabaseMode::ReadOnly);
-        assert_err!(
-            database.insert_exchange(&Exchange::factory(())),
-            "Database in read-only mode"
-        );
-        assert_err!(
-            database.set_ui("MyKey", "key1", "value1"),
-            "Database in read-only mode"
-        );
     }
 }

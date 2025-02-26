@@ -41,7 +41,7 @@ mime = "0.3.17"
 pretty_assertions = "1.4.0"
 ratatui = {version = "0.28.0", default-features = false}
 reqwest = {version = "0.12.5", default-features = false}
-rstest = {version = "0.21.0", default-features = false}
+rstest = {version = "0.24.0", default-features = false}
 serde = {version = "1.0.204", default-features = false}
 serde_json = {version = "1.0.120", default-features = false, features = ["preserve_order"]}
 serde_test = "1.0.176"

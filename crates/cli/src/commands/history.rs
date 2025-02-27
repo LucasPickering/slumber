@@ -28,15 +28,16 @@ pub struct HistoryCommand {
 
 #[derive(Clone, Debug, clap::Subcommand)]
 enum HistorySubcommand {
-    /// List all requests for a recipe
+    /// List requests
     #[command(visible_alias = "ls")]
     List {
-        /// Recipe to show requests for
+        /// Recipe to show requests for. Omit to show requests for all recipes
         #[clap(add = ArgValueCompleter::new(complete_recipe))]
-        recipe: RecipeId,
+        recipe: Option<RecipeId>,
 
-        /// Only show recipes for a single profile. If this argument is passed
-        /// with no value, requests with no associated profile are shown
+        /// Only show requests for a single profile. To show requests that were
+        /// run under _no_ profile, pass `--profile` with no value. This must
+        /// be used in conjunction with a recipe ID.
         #[clap(
             long = "profile",
             short,
@@ -46,6 +47,10 @@ enum HistorySubcommand {
         // Some(None) -> No profile
         // Some(Some("profile1")) -> profile1
         profile: Option<Option<ProfileId>>,
+
+        /// Show requests for all collections, not just the current
+        #[clap(short, long)]
+        all: bool,
     },
 
     /// Get a single request/response
@@ -69,7 +74,7 @@ enum HistorySubcommand {
     /// irreversible!
     Delete {
         #[clap(subcommand)]
-        selection: RequestSelection,
+        selection: DeleteSelection,
 
         /// Skip the confirmation prompt
         #[clap(long, short)]
@@ -86,11 +91,36 @@ enum RecipeOrRequest {
 impl Subcommand for HistoryCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.subcommand {
-            HistorySubcommand::List { recipe, profile } => {
-                let database = Database::load(DatabaseMode::ReadOnly)?
-                    .into_collection(&global.collection_path()?)?;
-                let exchanges =
-                    database.get_recipe_requests(profile.into(), &recipe)?;
+            HistorySubcommand::List {
+                recipe,
+                profile,
+                all,
+            } => {
+                let database = Database::load(DatabaseMode::ReadOnly)?;
+                let exchanges = match (recipe, profile, all) {
+                    // All requests for all collections
+                    (None, None, true) => database.get_all_requests()?,
+                    // All requests for the current collection
+                    (None, None, false) => database
+                        .into_collection(&global.collection_path()?)?
+                        .get_all_requests()?,
+                    // All requests for a single recipe in current collection
+                    (Some(recipe_id), profile, false) => database
+                        .into_collection(&global.collection_path()?)?
+                        .get_recipe_requests(profile.into(), &recipe_id)?,
+
+                    // Reject invalid arg groupings. This is a bit of a code
+                    // stink because invalid states should generally be
+                    // unrepresentable, but using a more rigid schema like the
+                    // `delete` subcommand makes the whole thing clunkier
+                    (Some(_), _, true) => {
+                        bail!("Cannot specify `--all` with a recipe")
+                    }
+                    (None, Some(_), _) => {
+                        bail!("Cannot specify `--profile` without a recipe")
+                    }
+                };
+
                 print_table(
                     ["Recipe", "Profile", "Time", "Status", "Request ID"],
                     &exchanges
@@ -135,17 +165,17 @@ impl Subcommand for HistoryCommand {
                 if !yes {
                     // Confirmation prompt
                     let prompt = match &selection {
-                        RequestSelection::All => {
+                        DeleteSelection::All => {
                             "Delete ALL requests?".to_owned()
                         }
-                        RequestSelection::Collection => {
+                        DeleteSelection::Collection => {
                             let collection_path = global.collection_path()?;
                             format!(
                                 "Delete requests for {}?",
                                 collection_path.display()
                             )
                         }
-                        RequestSelection::Recipe { recipe, profile } => {
+                        DeleteSelection::Recipe { recipe, profile } => {
                             let profile_label = match profile {
                                 None => "all profiles",
                                 Some(None) => "no profile",
@@ -156,7 +186,7 @@ impl Subcommand for HistoryCommand {
                                 ({profile_label})?"
                             )
                         }
-                        RequestSelection::Request { request } => {
+                        DeleteSelection::Request { request } => {
                             format!("Delete request `{}`?", request)
                         }
                     };
@@ -168,19 +198,19 @@ impl Subcommand for HistoryCommand {
                 // Do the deletion
                 let database = Database::load(DatabaseMode::ReadWrite)?;
                 let deleted = match selection {
-                    RequestSelection::All => database.delete_all_requests()?,
-                    RequestSelection::Collection => {
+                    DeleteSelection::All => database.delete_all_requests()?,
+                    DeleteSelection::Collection => {
                         let database = database
                             .into_collection(&global.collection_path()?)?;
                         database.delete_all_requests()?
                     }
-                    RequestSelection::Recipe { recipe, profile } => {
+                    DeleteSelection::Recipe { recipe, profile } => {
                         let database = database
                             .into_collection(&global.collection_path()?)?;
                         database
                             .delete_recipe_requests(profile.into(), &recipe)?
                     }
-                    RequestSelection::Request { request } => {
+                    DeleteSelection::Request { request } => {
                         database.delete_request(request)?
                     }
                 };
@@ -203,25 +233,29 @@ impl FromStr for RecipeOrRequest {
     }
 }
 
-/// An abstraction for a subcommand that supports selecting multiple requests
-/// at once.
+/// An abstraction for selecting multiple requests for deletion. We use this
+/// for deletion, while the arg grouping is simpler for listing, for a few
+/// reasons:
+/// - Deletion is destructive, so we want the selection to be more explicit
+/// - Deletion also supports a single request by ID, which would be pretty
+///   useless for listing
 #[derive(Clone, Debug, Parser)]
-enum RequestSelection {
-    /// Select all requests across all collections
+enum DeleteSelection {
+    /// Delete all requests across all collections
     All,
-    /// Select all requests for the current collection
+    /// Delete all requests for the current collection
     Collection,
-    /// Select all requests for a recipe in the current collection
+    /// Delete all requests for a recipe in the current collection
     ///
     /// Note: The recipe does not have to currently be in the collection file.
     /// You can view and modify history for recipes that have since been removed
     /// from the collection file.
     Recipe {
-        /// Recipe to select requests for
+        /// Recipe to delete requests for
         #[clap(add = ArgValueCompleter::new(complete_recipe))]
         recipe: RecipeId,
-        /// Optional filter to select requests for only a single profile. To
-        /// select requests that were run under _no_ profile, pass `--profile`
+        /// Optional filter to delete requests for only a single profile. To
+        /// delete requests that _no_ associated profile, pass `--profile`
         /// with no value.
         #[clap(
             long = "profile",
@@ -235,7 +269,7 @@ enum RequestSelection {
         // couldn't figure out how to set that up with clap
         profile: Option<Option<ProfileId>>,
     },
-    /// Select a single request by ID
+    /// Delete a single request by ID
     Request {
         #[clap(add = ArgValueCompleter::new(complete_request_id))]
         request: RequestId,

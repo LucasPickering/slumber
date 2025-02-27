@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Upgrade to Rust 1.85 (2024 edition!)
+- Improve functionality of `slumber history list`
+  - `recipe` argument is optional now. Omit it to show requests for all recipes in the current collection
+  - Add `--all` argument to show requests for all collections
 - Improve format of `slumber history list` table output
 
 ## [3.0.1] - 2025-02-19

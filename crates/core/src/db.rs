@@ -192,8 +192,8 @@ impl Database {
         trace!("Fetching requests for all collections");
         self.connection()
             .prepare(
-                "SELECT id, recipe_id, profile_id, start_time, end_time, status_code
-                FROM requests_v2 ORDER BY start_time DESC",
+                "SELECT id, recipe_id, profile_id, start_time, end_time,
+                    status_code FROM requests_v2 ORDER BY start_time DESC",
             )?
             .query_map((), |row| row.try_into())
             .context("Error fetching request history from database")
@@ -388,8 +388,8 @@ impl CollectionDatabase {
                 // is asking for all profiles. Dynamically modifying the query
                 // is really ugly so the easiest thing is to use an additional
                 // parameter to bypass the filter
-                "SELECT id, recipe_id, profile_id, start_time, end_time, status_code
-                FROM requests_v2
+                "SELECT id, recipe_id, profile_id, start_time, end_time,
+                    status_code FROM requests_v2
                 WHERE collection_id = :collection_id
                     AND (:ignore_profile_id OR profile_id IS :profile_id)
                     AND recipe_id = :recipe_id
@@ -402,6 +402,26 @@ impl CollectionDatabase {
                     ":profile_id": profile_filter,
                     ":recipe_id": recipe_id,
                 },
+                |row| row.try_into(),
+            )
+            .context("Error fetching request history from database")
+            .traced()?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .context("Error extracting request history")
+    }
+
+    /// Get all requests for this collection
+    pub fn get_all_requests(&self) -> anyhow::Result<Vec<ExchangeSummary>> {
+        trace!("Fetching requests for collection");
+        self.database
+            .connection()
+            .prepare(
+                "SELECT id, recipe_id, profile_id, start_time, end_time,
+                    status_code FROM requests_v2
+                WHERE collection_id = :collection_id ORDER BY start_time DESC",
+            )?
+            .query_map(
+                named_params! {":collection_id": self.collection_id},
                 |row| row.try_into(),
             )
             .context("Error fetching request history from database")

@@ -165,9 +165,15 @@ fn test_merge(collection_path: PathBuf, other_collection_path: PathBuf) {
     );
 }
 
-/// Test request storage and retrieval
+/// Test fetching all requests for the whole DB
 #[rstest]
-fn test_request(request_db: RequestDb) {
+fn test_database_get_all_requests(request_db: RequestDb) {
+    assert_eq!(request_db.database.get_all_requests().unwrap().len(), 12);
+}
+
+/// Test getting most recent request by recipe/profile
+#[rstest]
+fn test_get_latest_request(request_db: RequestDb) {
     // Try to find each inserted recipe individually. Also try some
     // expected non-matches
     for collection in &request_db.collections {
@@ -198,6 +204,14 @@ fn test_request(request_db: RequestDb) {
             }
         }
     }
+}
+
+/// Test fetching all requests for a collection
+#[rstest]
+fn test_collection_get_all_requests(request_db: RequestDb) {
+    let [collection1, collection2] = request_db.collections;
+    assert_eq!(collection1.get_all_requests().unwrap().len(), 6);
+    assert_eq!(collection2.get_all_requests().unwrap().len(), 6);
 }
 
 /// Test fetching all requests for a single recipe

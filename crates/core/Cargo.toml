@@ -15,7 +15,7 @@ anyhow = {workspace = true}
 async-trait = "0.1.81"
 bytes = {workspace = true, features = ["serde"]}
 chrono = {workspace = true, features = ["clock", "serde", "std"]}
-derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from", "from_str"]}
+derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from", "from_str", "into"]}
 dialoguer = {workspace = true}
 dirs = {workspace = true}
 futures = {workspace = true}

@@ -10,7 +10,7 @@ use crate::{
     util::{ResultTraced, parse_yaml},
 };
 use anyhow::Context;
-use derive_more::{Deref, Display, From, FromStr};
+use derive_more::{Deref, Display, From, FromStr, Into};
 use indexmap::IndexMap;
 use mime::Mime;
 use reqwest::header;
@@ -109,6 +109,7 @@ impl crate::test_util::Factory for Profile {
     Eq,
     From,
     Hash,
+    Into,
     PartialEq,
     Serialize,
     Deserialize,
@@ -246,6 +247,7 @@ impl crate::test_util::Factory<&str> for Recipe {
     Eq,
     From,
     Hash,
+    Into,
     PartialEq,
     Serialize,
     Deserialize,

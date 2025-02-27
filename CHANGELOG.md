@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Upgrade to Rust 1.85 (2024 edition!)
+- Improve format of `slumber history list` table output
 
 ## [3.0.1] - 2025-02-19
 

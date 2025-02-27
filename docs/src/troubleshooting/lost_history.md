@@ -6,7 +6,7 @@ If none of these fixes worked for you, and you still want your request history b
 
 ## Moved Collection File
 
-If history is lost for an entire collection, the most likely cause is that you moved your collection file. To fix this, you can [migrate your request history](../cli/collections.md#history--migration).
+If history is lost for an entire collection, the most likely cause is that you moved your collection file. To fix this, you can [migrate your request history](../cli/subcommands.md#history--migration).
 
 ## Changed Recipe ID
 

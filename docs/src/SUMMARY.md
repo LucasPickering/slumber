@@ -19,13 +19,8 @@
 
 # CLI Commands
 
-- [slumber collections](./cli/collections.md)
-- [slumber generate](./cli/generate.md)
-- [slumber history](./cli/history.md)
-- [slumber import](./cli/import.md)
-- [slumber new](./cli/new.md)
-- [slumber request](./cli/request.md)
-- [slumber show](./cli/show.md)
+- [Subcommands](./cli/subcommands.md)
+- [Examples](./cli/examples.md)
 
 # API Reference
 

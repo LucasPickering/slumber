@@ -6,14 +6,6 @@ Slumber provides tab completions for most shells. For the full list of supported
 
 To source your completions:
 
-**WARNING:** We recommend re-sourcing your completions on upgrade.
-These completions work by generating shell code that calls into `your_program` while completing.
-That interface is unstable and a mismatch between the shell code and `your_program` may result
-in either invalid completions or no completions being generated.
-
-For this reason, we recommend generating the shell code anew on shell startup so that it is
-"self-correcting" on shell launch, rather than writing the generated completions to a file.
-
 ## Bash
 
 ```bash
@@ -40,7 +32,6 @@ echo "COMPLETE=powershell slumber | Invoke-Expression" >> $PROFILE
 
 ## Zsh
 
-````zsh
+```zsh
 echo "source <(COMPLETE=zsh slumber)" >> ~/.zshrc
 ```
-````

@@ -8,7 +8,7 @@ slumber help
 
 Some common CLI use cases:
 
-- [Send requests](../cli/request.md)
-- [Import from an external format](../cli/import.md)
-- [Generate request in an external format (e.g. curl)](../cli/generate.md)
-- [View Slumber configuration/metadata](../cli/show.md)
+- [Send requests](../cli/subcommands.md#slumber-request)
+- [Import from an external format](../cli/subcommands.md#slumber-import)
+- [Generate request in an external format (e.g. curl)](../cli/subcommands.md#slumber-generate)
+- [View Slumber configuration/metadata](../cli/subcommands.md#slumber-show)

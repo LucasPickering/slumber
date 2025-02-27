@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en" id="oranda" class="dark">
+  <head>
+    <title>slumber</title>
+    
+      <meta property="og:url" content="https://slumber.lucaspickering.me" />
+    
+    
+      <link rel="icon" href="/favicon.ico" />
+    
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+      <meta name="description" content="Terminal-based HTTP client" />
+      <meta property="og:description" content="Terminal-based HTTP client" />
+    
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="slumber" />
+    
+    
+    
+    <meta http-equiv="Permissions-Policy" content="interest-cohort=()" />
+    <link rel="stylesheet" href="/oranda-v0.6.1.css" />
+    
+    
+  </head>
+  <body>
+    <div class="container">
+      <div class="page-body">
+        
+          <div class="repo_banner">
+            <a href="https://github.com/LucasPickering/slumber">
+              <div class="github-icon" aria-hidden="true"></div>
+              Check out our GitHub!
+            </a>
+          </div>
+        
+
+        <main>
+          <header>
+            
+              <img src="/slumber.png" alt="slumber" class="logo" />
+            
+            <h1 class="title">slumber</h1>
+            
+  <nav class="nav">
+    <ul>
+      <li><a href="/">Home</a></li>
+
+      
+
+      
+        <li><a href="/artifacts/">Install</a></li>
+      
+
+      
+        <li><a href="/book/">Docs</a></li>
+      
+
+      
+        <li><a href="/funding/">Funding</a></li>
+      
+
+      
+        <li><a href="/changelog/">Changelog</a></li>
+      
+    </ul>
+  </nav>
+
+          </header>
+
+          
+  <div>
+    <h1>0.17.0 - 2024-04-08</h1>
+    <div class="releases-body">
+      
+      
+      <section class="release ">
+  
+  <div class="release-info">
+    <span class="flex items-center gap-2">
+      <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'>
+    <path stroke-linecap='round' stroke-linejoin='round' d='M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z' />
+    <path stroke-linecap='round' stroke-linejoin='round' d='M6 6h.008v.008H6V6z' /></svg>
+      v0.17.0
+    </span>
+    <span class="flex items-center gap-2">
+      
+        <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'><path stroke-linecap='round' stroke-linejoin='round' d='M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5' /></svg>
+        Apr  8 2024 at 18:38 UTC
+      
+    </span>
+  </div>
+  <div class="release-body">
+    <h3>Breaking</h3>
+<ul>
+<li>All variants of the <code>Chain.source</code> field are now maps
+<ul>
+<li>This is to support the next request auto-execution feature, as well as future proofing for additional chain configuration</li>
+</ul>
+</li>
+<li>Remove <code>send_request</code> keybinding
+<ul>
+<li>The <code>submit</code> keybinding is now used to send requests from all panes (except the profile pane)</li>
+<li>This is only a breaking change if you have <code>send_request</code> remapped in your config file</li>
+</ul>
+</li>
+</ul>
+<p>Follow this mapping to update:</p>
+<pre style="background-color:#263238;"><span style="font-style:italic;color:#546e7a;"># Before
+</span><span style="color:#f07178;">chains</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">auth_token</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!request </span><span style="color:#c3e88d;">login
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">username</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!command </span><span style="color:#89ddff;">["</span><span style="color:#c3e88d;">echo</span><span style="color:#89ddff;">", "</span><span style="color:#c3e88d;">-n</span><span style="color:#89ddff;">", "</span><span style="color:#c3e88d;">hello</span><span style="color:#89ddff;">"]
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">username</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!file </span><span style="color:#c3e88d;">./username.txt
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">password</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!prompt </span><span style="color:#c3e88d;">Enter Password
+</span><span style="color:#eeffff;">---
+</span><span style="font-style:italic;color:#546e7a;"># After
+</span><span style="color:#f07178;">chains</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">auth_token</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!request
+</span><span style="color:#eeffff;">      </span><span style="color:#f07178;">recipe</span><span style="color:#89ddff;">: </span><span style="color:#c3e88d;">login
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">username</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!command
+</span><span style="color:#eeffff;">      </span><span style="color:#f07178;">command</span><span style="color:#89ddff;">: ["</span><span style="color:#c3e88d;">echo</span><span style="color:#89ddff;">", "</span><span style="color:#c3e88d;">-n</span><span style="color:#89ddff;">", "</span><span style="color:#c3e88d;">hello</span><span style="color:#89ddff;">"]
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">username</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!file
+</span><span style="color:#eeffff;">      </span><span style="color:#f07178;">path</span><span style="color:#89ddff;">: </span><span style="color:#c3e88d;">./username.txt
+</span><span style="color:#eeffff;">  </span><span style="color:#f07178;">password</span><span style="color:#89ddff;">:
+</span><span style="color:#eeffff;">    </span><span style="color:#f07178;">source</span><span style="color:#89ddff;">: </span><span style="font-style:italic;color:#c792ea;">!prompt
+</span><span style="color:#eeffff;">      </span><span style="color:#f07178;">message</span><span style="color:#89ddff;">: </span><span style="color:#c3e88d;">Enter Password
+</span></pre>
+
+<h3>Added</h3>
+<ul>
+<li>Chained requests can now be auto-executed according to various criteria (<a href="https://github.com/LucasPickering/slumber/issues/140" rel="noopener noreferrer">#140</a>)
+<ul>
+<li>See <a href="https://slumber.lucaspickering.me/book/user_guide/chaining_requests.html" rel="noopener noreferrer">the docs</a> for more</li>
+</ul>
+</li>
+<li>Add Authentication tab to recipe pane (<a href="https://github.com/LucasPickering/slumber/issues/144" rel="noopener noreferrer">#144</a>)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Don't print full stack trace for failed CLI commands</li>
+<li>Disable formatting and highlighting for response bodies over 1MB (size threshold customizable <a href="https://slumber.lucaspickering.me/book/api/configuration/index.html" rel="noopener noreferrer">in the config</a>)</li>
+</ul>
+<h3>Fixes</h3>
+<ul>
+<li>Improve performance of handling large response bodies</li>
+</ul>
+
+  </div>
+</section>
+    </div>
+  </div>
+
+        </main>
+      </div>
+
+      <footer>
+        
+          <a href="https://github.com/LucasPickering/slumber"><div class="github-icon" aria-hidden="true"></div></a>
+        
+        <span>
+          slumber, MIT
+        </span>
+      </footer>
+    </div>
+
+    
+    
+
+    
+  </body>
+</html>

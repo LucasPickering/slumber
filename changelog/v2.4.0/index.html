@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en" id="oranda" class="dark">
+  <head>
+    <title>slumber</title>
+    
+      <meta property="og:url" content="https://slumber.lucaspickering.me" />
+    
+    
+      <link rel="icon" href="/favicon.ico" />
+    
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+      <meta name="description" content="Terminal-based HTTP client" />
+      <meta property="og:description" content="Terminal-based HTTP client" />
+    
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="slumber" />
+    
+    
+    
+    <meta http-equiv="Permissions-Policy" content="interest-cohort=()" />
+    <link rel="stylesheet" href="/oranda-v0.6.1.css" />
+    
+    
+  </head>
+  <body>
+    <div class="container">
+      <div class="page-body">
+        
+          <div class="repo_banner">
+            <a href="https://github.com/LucasPickering/slumber">
+              <div class="github-icon" aria-hidden="true"></div>
+              Check out our GitHub!
+            </a>
+          </div>
+        
+
+        <main>
+          <header>
+            
+              <img src="/slumber.png" alt="slumber" class="logo" />
+            
+            <h1 class="title">slumber</h1>
+            
+  <nav class="nav">
+    <ul>
+      <li><a href="/">Home</a></li>
+
+      
+
+      
+        <li><a href="/artifacts/">Install</a></li>
+      
+
+      
+        <li><a href="/book/">Docs</a></li>
+      
+
+      
+        <li><a href="/funding/">Funding</a></li>
+      
+
+      
+        <li><a href="/changelog/">Changelog</a></li>
+      
+    </ul>
+  </nav>
+
+          </header>
+
+          
+  <div>
+    <h1>2.4.0 - 2024-12-27</h1>
+    <div class="releases-body">
+      
+      
+      <section class="release ">
+  
+  <div class="release-info">
+    <span class="flex items-center gap-2">
+      <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'>
+    <path stroke-linecap='round' stroke-linejoin='round' d='M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z' />
+    <path stroke-linecap='round' stroke-linejoin='round' d='M6 6h.008v.008H6V6z' /></svg>
+      v2.4.0
+    </span>
+    <span class="flex items-center gap-2">
+      
+        <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'><path stroke-linecap='round' stroke-linejoin='round' d='M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5' /></svg>
+        Dec 27 2024 at 20:45 UTC
+      
+    </span>
+  </div>
+  <div class="release-body">
+    <h3>Added</h3>
+<ul>
+<li>Add filter box to the recipe list
+<ul>
+<li>This behavior is not necessarily final. Please leave feedback if you think it could be improved.</li>
+</ul>
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Wrap long error messages in response pane</li>
+<li>Include data path in config/collection deserialization errors
+<ul>
+<li>This should make errors much less cryptic and frustrating</li>
+</ul>
+</li>
+<li>Improve UX of query text box
+<ul>
+<li>The query is now auto-applied when changed (with a 500ms debounce), and drops focus on the text box when Enter is pressed</li>
+</ul>
+</li>
+<li>Refactor UI event handling logic
+<ul>
+<li>This shouldn't have any noticable impact on the user, but if you notice any bugs please open an issue</li>
+</ul>
+</li>
+<li>Include request duration in History modal</li>
+<li>Rename <code>viewer</code> config field to <code>pager</code>
+<ul>
+<li>The old field name <code>viewer</code> is still supported for backward compatibility, but the docs have been updated to suggest the newer name instead</li>
+</ul>
+</li>
+<li>Load pager command from the <code>PAGER</code> environment variable if available, similar to the <code>EDITOR</code> environment variable</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Don't show request cancellation dialog if the selected request isn't building/loading</li>
+</ul>
+
+  </div>
+</section>
+    </div>
+  </div>
+
+        </main>
+      </div>
+
+      <footer>
+        
+          <a href="https://github.com/LucasPickering/slumber"><div class="github-icon" aria-hidden="true"></div></a>
+        
+        <span>
+          slumber, MIT
+        </span>
+      </footer>
+    </div>
+
+    
+    
+
+    
+  </body>
+</html>

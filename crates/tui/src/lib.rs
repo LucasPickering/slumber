@@ -100,8 +100,8 @@ impl Tui {
         // to default, just show an error to the user
         let config = Config::load().reported(&messages_tx).unwrap_or_default();
         // Load a database for this particular collection
-        let database = Database::load()?
-            .into_collection(&collection_path, DatabaseMode::ReadWrite)?;
+        let database = Database::load(DatabaseMode::ReadWrite)?
+            .into_collection(&collection_path)?;
         // Initialize global view context
         TuiContext::init(config);
 

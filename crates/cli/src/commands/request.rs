@@ -158,8 +158,8 @@ impl BuildRequestCommand {
         // Open DB in readonly. Storing requests in history from the CLI isn't
         // really intuitive, and could have a large perf impact for scripting
         // and large responses
-        let database = Database::load()?
-            .into_collection(&collection_path, DatabaseMode::ReadOnly)?;
+        let database = Database::load(DatabaseMode::ReadOnly)?
+            .into_collection(&collection_path)?;
         let http_engine = HttpEngine::new(&config.http);
 
         // Validate profile ID, so we can provide a good error if it's invalid

@@ -1,6 +1,6 @@
 use crate::{GlobalArgs, Subcommand};
 use clap::Parser;
-use slumber_core::db::Database;
+use slumber_core::db::{Database, DatabaseMode};
 use std::{path::PathBuf, process::ExitCode};
 
 /// View and modify request collection metadata
@@ -29,14 +29,15 @@ enum CollectionsSubcommand {
 
 impl Subcommand for CollectionsCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let database = Database::load()?;
         match self.subcommand {
             CollectionsSubcommand::List => {
+                let database = Database::load(DatabaseMode::ReadOnly)?;
                 for path in database.collections()? {
                     println!("{}", path.display());
                 }
             }
             CollectionsSubcommand::Migrate { from, to } => {
+                let database = Database::load(DatabaseMode::ReadWrite)?;
                 database.merge_collections(&from, &to)?;
                 println!("Migrated {} into {}", from.display(), to.display());
             }

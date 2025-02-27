@@ -38,13 +38,11 @@ fn request_db(
     other_collection_path: PathBuf,
 ) -> RequestDb {
     let database = Database::factory(());
-    let collection1 = database
-        .clone()
-        .into_collection(&collection_path, DatabaseMode::ReadWrite)
-        .unwrap();
+    let collection1 =
+        database.clone().into_collection(&collection_path).unwrap();
     let collection2 = database
         .clone()
-        .into_collection(&other_collection_path, DatabaseMode::ReadWrite)
+        .into_collection(&other_collection_path)
         .unwrap();
 
     // We separate requests by 3 columns. Create multiple of each column to
@@ -95,13 +93,11 @@ struct RequestDb {
 #[rstest]
 fn test_merge(collection_path: PathBuf, other_collection_path: PathBuf) {
     let database = Database::factory(());
-    let collection1 = database
-        .clone()
-        .into_collection(&collection_path, DatabaseMode::ReadWrite)
-        .unwrap();
+    let collection1 =
+        database.clone().into_collection(&collection_path).unwrap();
     let collection2 = database
         .clone()
-        .into_collection(&other_collection_path, DatabaseMode::ReadWrite)
+        .into_collection(&other_collection_path)
         .unwrap();
 
     let exchange1 =
@@ -338,13 +334,11 @@ fn test_delete_request(request_db: RequestDb) {
 #[rstest]
 fn test_ui_state(collection_path: PathBuf) {
     let database = Database::factory(());
-    let collection1 = database
-        .clone()
-        .into_collection(&collection_path, DatabaseMode::ReadWrite)
-        .unwrap();
+    let collection1 =
+        database.clone().into_collection(&collection_path).unwrap();
     let collection2 = database
         .clone()
-        .into_collection(Path::new("Cargo.toml"), DatabaseMode::ReadWrite)
+        .into_collection(Path::new("Cargo.toml"))
         .unwrap();
 
     let key_type = "MyKey";

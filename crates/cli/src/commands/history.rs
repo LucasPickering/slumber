@@ -86,20 +86,16 @@ impl Subcommand for HistoryCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.subcommand {
             HistorySubcommand::List { recipe, profile } => {
-                let database = Database::load()?.into_collection(
-                    &global.collection_path()?,
-                    DatabaseMode::ReadOnly,
-                )?;
+                let database = Database::load(DatabaseMode::ReadOnly)?
+                    .into_collection(&global.collection_path()?)?;
                 let exchanges =
                     database.get_recipe_requests(profile.into(), &recipe)?;
                 print_list(exchanges);
             }
 
             HistorySubcommand::Get { request, display } => {
-                let database = Database::load()?.into_collection(
-                    &global.collection_path()?,
-                    DatabaseMode::ReadOnly,
-                )?;
+                let database = Database::load(DatabaseMode::ReadOnly)?
+                    .into_collection(&global.collection_path()?)?;
                 let exchange = match request {
                     RecipeOrRequest::Recipe(recipe_id) => database
                         .get_latest_request(ProfileFilter::All, &recipe_id)?
@@ -151,28 +147,21 @@ impl Subcommand for HistoryCommand {
                 }
 
                 // Do the deletion
+                let database = Database::load(DatabaseMode::ReadWrite)?;
                 let deleted = match selection {
-                    RequestSelection::All => {
-                        let database = Database::load()?;
-                        database.delete_all_requests()?
-                    }
+                    RequestSelection::All => database.delete_all_requests()?,
                     RequestSelection::Collection => {
-                        let database = Database::load()?.into_collection(
-                            &global.collection_path()?,
-                            DatabaseMode::ReadWrite,
-                        )?;
+                        let database = database
+                            .into_collection(&global.collection_path()?)?;
                         database.delete_all_requests()?
                     }
                     RequestSelection::Recipe { recipe, profile } => {
-                        let database = Database::load()?.into_collection(
-                            &global.collection_path()?,
-                            DatabaseMode::ReadWrite,
-                        )?;
+                        let database = database
+                            .into_collection(&global.collection_path()?)?;
                         database
                             .delete_recipe_requests(profile.into(), &recipe)?
                     }
                     RequestSelection::Request { request } => {
-                        let database = Database::load()?;
                         database.delete_request(request)?
                     }
                 };
@@ -223,6 +212,8 @@ enum RequestSelection {
         // None -> All profiles
         // Some(None) -> No profile
         // Some(Some("profile1")) -> profile1
+        // It'd be nice if we could load directly into ProfileFilter, but I
+        // couldn't figure out how to set that up with clap
         profile: Option<Option<ProfileId>>,
     },
     /// Select a single request by ID

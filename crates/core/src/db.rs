@@ -192,7 +192,7 @@ impl Database {
         trace!("Fetching requests for all collections");
         self.connection()
             .prepare(
-                "SELECT id, profile_id, start_time, end_time, status_code
+                "SELECT id, recipe_id, profile_id, start_time, end_time, status_code
                 FROM requests_v2 ORDER BY start_time DESC",
             )?
             .query_map((), |row| row.try_into())
@@ -388,7 +388,7 @@ impl CollectionDatabase {
                 // is asking for all profiles. Dynamically modifying the query
                 // is really ugly so the easiest thing is to use an additional
                 // parameter to bypass the filter
-                "SELECT id, profile_id, start_time, end_time, status_code
+                "SELECT id, recipe_id, profile_id, start_time, end_time, status_code
                 FROM requests_v2
                 WHERE collection_id = :collection_id
                     AND (:ignore_profile_id OR profile_id IS :profile_id)

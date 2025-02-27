@@ -6,13 +6,14 @@ use crate::{
 use anyhow::{anyhow, bail};
 use clap::Parser;
 use clap_complete::ArgValueCompleter;
+use itertools::Itertools;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
     db::{Database, DatabaseMode, ProfileFilter},
-    http::{ExchangeSummary, RequestId},
+    http::RequestId,
     util::{confirm, format_time_iso},
 };
-use std::{process::ExitCode, str::FromStr};
+use std::{iter, process::ExitCode, str::FromStr};
 
 /// View and modify request history
 ///
@@ -90,7 +91,25 @@ impl Subcommand for HistoryCommand {
                     .into_collection(&global.collection_path()?)?;
                 let exchanges =
                     database.get_recipe_requests(profile.into(), &recipe)?;
-                print_list(exchanges);
+                print_table(
+                    ["Recipe", "Profile", "Time", "Status", "Request ID"],
+                    &exchanges
+                        .into_iter()
+                        .map(|exchange| {
+                            [
+                                exchange.recipe_id.to_string(),
+                                exchange
+                                    .profile_id
+                                    .map(ProfileId::into)
+                                    .unwrap_or_default(),
+                                format_time_iso(&exchange.start_time)
+                                    .to_string(),
+                                exchange.status.as_u16().to_string(),
+                                exchange.id.to_string(),
+                            ]
+                        })
+                        .collect_vec(),
+                );
             }
 
             HistorySubcommand::Get { request, display } => {
@@ -224,14 +243,25 @@ enum RequestSelection {
 }
 
 /// Print request history as a table
-fn print_list(exchanges: Vec<ExchangeSummary>) {
-    for exchange in exchanges {
-        println!(
-            "{}\t{}\t{}\t{}",
-            exchange.profile_id.as_deref().unwrap_or_default(),
-            exchange.id,
-            exchange.status.as_str(),
-            format_time_iso(&exchange.start_time),
-        );
+fn print_table<const N: usize>(header: [&str; N], rows: &[[String; N]]) {
+    // For each column, find the largest width of any cell
+    let mut widths = [0; N];
+    for column in 0..N {
+        widths[column] = iter::once(header[column].len())
+            .chain(rows.iter().map(|row| row[column].len()))
+            .max()
+            .unwrap_or_default()
+            + 1; // Min width, for spacing
+    }
+
+    for (header, width) in header.into_iter().zip(widths.iter()) {
+        print!("{:<width$}", header, width = width);
+    }
+    println!();
+    for row in rows {
+        for (cell, width) in row.iter().zip(widths) {
+            print!("{:<width$}", cell, width = width);
+        }
+        println!();
     }
 }

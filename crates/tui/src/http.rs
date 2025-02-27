@@ -703,7 +703,7 @@ impl From<&RequestState> for RequestStateSummary {
                 end_time: *end_time,
             },
             RequestState::Response { exchange } => {
-                Self::Response(exchange.into())
+                Self::Response(exchange.summary())
             }
             RequestState::RequestError { error } => Self::RequestError {
                 id: error.request.id,

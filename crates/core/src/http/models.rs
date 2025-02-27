@@ -379,6 +379,17 @@ impl Exchange {
     pub fn duration(&self) -> Duration {
         self.end_time - self.start_time
     }
+
+    pub fn summary(&self) -> ExchangeSummary {
+        ExchangeSummary {
+            id: self.id,
+            recipe_id: self.request.recipe_id.clone(),
+            profile_id: self.request.profile_id.clone(),
+            start_time: self.start_time,
+            end_time: self.end_time,
+            status: self.response.status,
+        }
+    }
 }
 
 /// Metadata about an exchange. Useful in lists where request/response content
@@ -386,22 +397,11 @@ impl Exchange {
 #[derive(Clone, Debug)]
 pub struct ExchangeSummary {
     pub id: RequestId,
+    pub recipe_id: RecipeId,
     pub profile_id: Option<ProfileId>,
     pub start_time: DateTime<Utc>,
     pub end_time: DateTime<Utc>,
     pub status: StatusCode,
-}
-
-impl From<&Exchange> for ExchangeSummary {
-    fn from(exchange: &Exchange) -> Self {
-        Self {
-            id: exchange.id,
-            profile_id: exchange.request.profile_id.clone(),
-            start_time: exchange.start_time,
-            end_time: exchange.end_time,
-            status: exchange.response.status,
-        }
-    }
 }
 
 /// Data for an HTTP request. This is similar to [reqwest::Request], but differs

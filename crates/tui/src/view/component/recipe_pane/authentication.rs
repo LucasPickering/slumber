@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    util::ResultReported,
     view::{
         ViewContext,
         common::{
@@ -25,10 +24,7 @@ use ratatui::{
     Frame, layout::Layout, prelude::Constraint, text::Span, widgets::TableState,
 };
 use slumber_config::Action;
-use slumber_core::{
-    collection::{Authentication, RecipeId},
-    template::Template,
-};
+use slumber_core::collection::{Authentication, RecipeId};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Display authentication settings for a recipe
@@ -255,22 +251,17 @@ impl State {
                 selected_field,
                 ..
             } => match selected_field.data().selected() {
-                BasicFields::Username => {
-                    ("username", username.template().display())
-                }
-                BasicFields::Password => {
-                    ("password", password.template().display())
-                }
+                BasicFields::Username => ("username", username.template()),
+                BasicFields::Password => ("password", password.template()),
             },
-            Self::Bearer { token, .. } => {
-                ("bearer token", token.template().display())
-            }
+            Self::Bearer { token, .. } => ("bearer token", token.template()),
         };
         TextBoxModal::new(
             format!("Edit {label}"),
             TextBox::default()
-                .default_value(value.into_owned())
-                .validator(|value| value.parse::<Template>().is_ok()),
+                .default_value(value.to_string())
+                // TODO
+                .validator(|value| true),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
                 emitter.emit(SaveAuthenticationOverride(value))
@@ -282,7 +273,8 @@ impl State {
     /// Override the value template for whichever field is selected, and
     /// recompute the template preview
     fn set_override(&mut self, value: &str) {
-        let Some(template) = value
+        todo!()
+        /* let Some(template) = value
             .parse::<Template>()
             // The template *should* always parse because the text box has a
             // validator, but this is just a safety check
@@ -306,7 +298,7 @@ impl State {
             Self::Bearer { token } => {
                 token.set_override(template);
             }
-        }
+        } */
     }
 
     /// Reset the value template override to the default from the recipe, and

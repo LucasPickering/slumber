@@ -80,3 +80,5 @@ username:
     command: [whoami]
     trim: both # Shell commands often include an unwanted trailing newline
 ```
+
+See [Chain Source](./chain_source.md) for more detailed examples of the various sources, and how they can be combined together.

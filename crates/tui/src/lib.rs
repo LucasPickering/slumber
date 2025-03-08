@@ -35,13 +35,15 @@ use crossterm::{
 };
 use futures::{StreamExt, pin_mut};
 use notify::{RecursiveMode, Watcher, event::ModifyKind};
+use petit_js::Process;
 use ratatui::{Terminal, prelude::CrosstermBackend};
 use slumber_config::{Action, Config};
 use slumber_core::{
-    collection::{Collection, CollectionFile, ProfileId},
+    collection::{Collection, CollectionFile, LoadedCollection, ProfileId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{RequestId, RequestSeed},
-    template::{Prompter, Template, TemplateChunk, TemplateContext},
+    js::JsEngine,
+    template::{Prompter, Renderer, Template, TemplateChunk, TemplateContext},
 };
 use std::{
     io::{self, Stdout},
@@ -74,8 +76,14 @@ pub struct Tui {
     messages_tx: MessageSender,
     view: View,
     collection_file: CollectionFile,
+    collection: Arc<Collection>,
     should_run: bool,
     request_store: RequestStore,
+    /// TODO
+    js_engine: JsEngine,
+    /// JS process in which the collection file was loaded. We'll use this to
+    /// execute render functions from the collection
+    js_process: Process,
 }
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -87,7 +95,8 @@ impl Tui {
     /// Start the TUI. Any errors that occur during startup will be panics,
     /// because they prevent TUI execution.
     pub async fn start(collection_path: Option<PathBuf>) -> anyhow::Result<()> {
-        let collection_path = CollectionFile::try_path(None, collection_path)?;
+        initialize_panic_handler();
+        let collection_file = CollectionFile::new(collection_path)?;
 
         // ===== Initialize global state =====
         // This stuff only needs to be set up *once per session*
@@ -101,21 +110,28 @@ impl Tui {
         let config = Config::load().reported(&messages_tx).unwrap_or_default();
         // Load a database for this particular collection
         let database = Database::load(DatabaseMode::ReadWrite)?
-            .into_collection(&collection_path)?;
+            .into_collection(&collection_file)?;
         // Initialize global view context
         TuiContext::init(config);
 
         // ===== Initialize collection & view =====
 
+        let js_engine = JsEngine::new();
         // If the collection fails to load, create an empty one just so we can
         // move along. We'll watch the file and hopefully the user can fix it
-        let collection_file = CollectionFile::load(collection_path.clone())
+        let LoadedCollection {
+            collection,
+            process: js_process,
+        } = collection_file
+            .load(&js_engine)
             .await
             .reported(&messages_tx)
-            .unwrap_or_else(|| CollectionFile::with_path(collection_path));
+            .expect("TODO handle failed collection");
+        let collection = Arc::new(collection);
+
         let request_store = RequestStore::new(database.clone());
         let view = View::new(
-            &collection_file,
+            &collection,
             &request_store,
             database.clone(),
             messages_tx.clone(),
@@ -133,10 +149,13 @@ impl Tui {
             messages_tx,
 
             collection_file,
+            collection,
             should_run: true,
 
             view,
             request_store,
+            js_engine,
+            js_process,
         };
 
         // Run everything in one local set, so that we can use !Send values
@@ -228,7 +247,7 @@ impl Tui {
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::CollectionStartReload => {
-                let future = self.collection_file.reload();
+                let future = self.collection_file.load(&self.js_engine);
                 let messages_tx = self.messages_tx();
                 spawn_result(async move {
                     let collection = future.await?;
@@ -407,12 +426,13 @@ impl Tui {
     }
 
     /// Reload state with a new collection
-    fn reload_collection(&mut self, collection: Collection) {
-        self.collection_file.collection = collection.into();
+    fn reload_collection(&mut self, collection: LoadedCollection) {
+        self.collection = Arc::new(collection.collection);
+        self.js_process = collection.process;
 
         // Rebuild the whole view, because tons of things can change
         self.view = View::new(
-            &self.collection_file,
+            &self.collection,
             &self.request_store,
             self.database.clone(),
             self.messages_tx(),
@@ -484,13 +504,13 @@ impl Tui {
             options,
         } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
         let messages_tx = self.messages_tx();
+        let renderer = self.renderer(profile_id, false)?;
         // Spawn a task to do the render+copy
         spawn_result(async move {
             let url = TuiContext::get()
                 .http_engine
-                .build_url(seed, &template_context)
+                .build_url(seed, &renderer)
                 .await?;
             messages_tx.send(Message::CopyText(url.to_string()));
             Ok(())
@@ -506,13 +526,13 @@ impl Tui {
             options,
         } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let renderer = self.renderer(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         spawn_result(async move {
             let body = TuiContext::get()
                 .http_engine
-                .build_body(seed, &template_context)
+                .build_body(seed, &renderer)
                 .await?
                 .ok_or(anyhow!("Request has no body"))?;
             // Clone the bytes :(
@@ -532,14 +552,12 @@ impl Tui {
             options,
         } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let renderer = self.renderer(profile_id, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         spawn_result(async move {
-            let ticket = TuiContext::get()
-                .http_engine
-                .build(seed, &template_context)
-                .await?;
+            let ticket =
+                TuiContext::get().http_engine.build(seed, &renderer).await?;
             let command = ticket.record().to_curl()?;
             messages_tx.send(Message::CopyText(command));
             Ok(())
@@ -596,8 +614,7 @@ impl Tui {
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
 
-        let template_context =
-            self.template_context(profile_id.clone(), false)?;
+        let renderer = self.renderer(profile_id.clone(), false)?;
         let messages_tx = self.messages_tx();
 
         let seed = RequestSeed::new(recipe_id.clone(), options);
@@ -608,10 +625,8 @@ impl Tui {
         // requests
         let join_handle = spawn(async move {
             // Build the request
-            let result = TuiContext::get()
-                .http_engine
-                .build(seed, &template_context)
-                .await;
+            let result =
+                TuiContext::get().http_engine.build(seed, &renderer).await;
             let ticket = match result {
                 Ok(ticket) => ticket,
                 Err(error) => {
@@ -656,10 +671,11 @@ impl Tui {
         profile_id: Option<ProfileId>,
         on_complete: Callback<Vec<TemplateChunk>>,
     ) -> anyhow::Result<()> {
-        let context = self.template_context(profile_id, true)?;
+        let renderer = self.renderer(profile_id, true)?;
         spawn(async move {
             // Render chunks, then write them to the output destination
-            let chunks = template.render_chunks(&context).await;
+            renderer.render_string(&template).await;
+            let chunks = Vec::new(); // TODO
             on_complete(chunks);
         });
         Ok(())
@@ -668,13 +684,13 @@ impl Tui {
     /// Expose app state to the templater. Most of the data has to be cloned out
     /// to be passed across async boundaries. This is annoying but in reality
     /// it should be small data.
-    fn template_context(
+    /// TODO update comment
+    fn renderer(
         &self,
         profile_id: Option<ProfileId>,
         is_preview: bool,
-    ) -> anyhow::Result<TemplateContext> {
+    ) -> anyhow::Result<Renderer> {
         let context = TuiContext::get();
-        let collection = &self.collection_file.collection;
         let (http_engine, prompter): (_, Box<dyn Prompter>) = if is_preview {
             (None, Box::new(PreviewPrompter))
         } else {
@@ -684,15 +700,15 @@ impl Tui {
             )
         };
 
-        Ok(TemplateContext {
+        let context = TemplateContext {
             selected_profile: profile_id,
-            collection: collection.clone(),
+            collection: Arc::clone(&self.collection),
             http_engine,
             database: self.database.clone(),
             overrides: Default::default(),
             prompter,
-            state: Default::default(),
-        })
+        };
+        Ok(Renderer::new(self.js_process.clone(), context))
     }
 }
 

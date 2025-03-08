@@ -102,11 +102,11 @@ impl Subcommand for HistoryCommand {
                     (None, None, true) => database.get_all_requests()?,
                     // All requests for the current collection
                     (None, None, false) => database
-                        .into_collection(&global.collection_path()?)?
+                        .into_collection(&global.collection_file()?)?
                         .get_all_requests()?,
                     // All requests for a single recipe in current collection
                     (Some(recipe_id), profile, false) => database
-                        .into_collection(&global.collection_path()?)?
+                        .into_collection(&global.collection_file()?)?
                         .get_recipe_requests(profile.into(), &recipe_id)?,
 
                     // Reject invalid arg groupings. This is a bit of a code
@@ -144,7 +144,7 @@ impl Subcommand for HistoryCommand {
 
             HistorySubcommand::Get { request, display } => {
                 let database = Database::load(DatabaseMode::ReadOnly)?
-                    .into_collection(&global.collection_path()?)?;
+                    .into_collection(&global.collection_file()?)?;
                 let exchange = match request {
                     RecipeOrRequest::Recipe(recipe_id) => database
                         .get_latest_request(ProfileFilter::All, &recipe_id)?
@@ -169,11 +169,8 @@ impl Subcommand for HistoryCommand {
                             "Delete ALL requests?".to_owned()
                         }
                         DeleteSelection::Collection => {
-                            let collection_path = global.collection_path()?;
-                            format!(
-                                "Delete requests for {}?",
-                                collection_path.display()
-                            )
+                            let collection_file = global.collection_file()?;
+                            format!("Delete requests for {collection_file}?")
                         }
                         DeleteSelection::Recipe { recipe, profile } => {
                             let profile_label = match profile {
@@ -201,12 +198,12 @@ impl Subcommand for HistoryCommand {
                     DeleteSelection::All => database.delete_all_requests()?,
                     DeleteSelection::Collection => {
                         let database = database
-                            .into_collection(&global.collection_path()?)?;
+                            .into_collection(&global.collection_file()?)?;
                         database.delete_all_requests()?
                     }
                     DeleteSelection::Recipe { recipe, profile } => {
                         let database = database
-                            .into_collection(&global.collection_path()?)?;
+                            .into_collection(&global.collection_file()?)?;
                         database
                             .delete_recipe_requests(profile.into(), &recipe)?
                     }

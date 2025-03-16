@@ -159,12 +159,11 @@ impl RawBody {
     fn open_editor(&mut self) {
         let path = temp_file();
         debug!(?path, "Writing body to file for editing");
-        let Some(_) =
-            fs::write(&path, self.body.template().display().as_bytes())
-                .with_context(|| {
-                    format!("Error writing body to file {path:?} for editing")
-                })
-                .reported(&ViewContext::messages_tx())
+        let Some(_) = fs::write(&path, self.body.template().to_string())
+            .with_context(|| {
+                format!("Error writing body to file {path:?} for editing")
+            })
+            .reported(&ViewContext::messages_tx())
         else {
             // Write failed
             return;
@@ -199,10 +198,10 @@ impl RawBody {
         // Clean up after ourselves
         delete_temp_file(path);
 
-        let Some(template) = body
-            .parse::<Template>()
-            .reported(&ViewContext::messages_tx())
-        else {
+        // let Some(template) = body
+        //     .parse::<Template>()
+        //     .reported(&ViewContext::messages_tx())
+        let Some(template) = todo!() else {
             // Whatever the user wrote isn't a valid template
             return;
         };

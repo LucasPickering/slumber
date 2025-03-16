@@ -1,7 +1,7 @@
 //! General test utilities, that apply to all parts of the program
 
 use crate::{
-    collection::{ChainSource, HasId},
+    collection::HasId,
     http::HttpEngine,
     template::{Prompt, Prompter, Select},
 };
@@ -9,23 +9,7 @@ use indexmap::IndexMap;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
 use slumber_config::HttpEngineConfig;
-use slumber_util::test_data_dir;
-use std::{
-    path::PathBuf,
-    sync::atomic::{AtomicUsize, Ordering},
-};
-
-/// A chain that spits out bytes that are *not* valid UTF-8
-#[fixture]
-pub fn invalid_utf8_chain(test_data_dir: PathBuf) -> ChainSource {
-    ChainSource::File {
-        path: test_data_dir
-            .join("invalid_utf8.bin")
-            .to_string_lossy()
-            .to_string()
-            .into(),
-    }
-}
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Create an HTTP engine for building/sending requests. This is a singleton
 /// because creation is expensive (~300ms), and the engine is immutable.

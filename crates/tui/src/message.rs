@@ -7,7 +7,7 @@ use derive_more::From;
 use mime::Mime;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::{Collection, LoadedCollection, ProfileId, RecipeId},
     http::{
         BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
         RequestRecord,
@@ -62,7 +62,7 @@ pub enum Message {
     /// Trigger collection reload
     CollectionStartReload,
     /// Store a reloaded collection value in state
-    CollectionEndReload(Collection),
+    CollectionEndReload(LoadedCollection),
     /// Open the collection in the user's editor
     CollectionEdit,
 

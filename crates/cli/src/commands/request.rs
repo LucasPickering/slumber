@@ -10,13 +10,16 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{Collection, ProfileId, RecipeId},
-    db::{CollectionDatabase, Database},
+    collection::{LoadedCollection, ProfileId, RecipeId},
+    db::{CollectionDatabase, Database, DatabaseMode},
     http::{
         BuildOptions, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
     },
-    template::{Prompt, Prompter, Select, TemplateContext},
-    util::MaybeStr,
+    js::JsEngine,
+    template::{
+        Prompt, Prompter, Renderer, Select, TemplateContext, TemplateError,
+    },
+    util::{MaybeStr, ResultTraced},
 };
 use slumber_util::ResultTraced;
 use std::{
@@ -170,21 +173,18 @@ impl BuildRequestCommand {
         global: GlobalArgs,
         persist: bool,
         trigger_dependencies: bool,
-    ) -> anyhow::Result<(
-        CollectionDatabase,
-        HttpEngine,
-        RequestSeed,
-        TemplateContext,
-    )> {
-        let collection_path = global.collection_path()?;
-        let mut config = Config::load()?;
-        // Override the persistence setting based on the --persist flag. By
-        // default the CLI never persists, regardless of the config, because
-        // it's unintuitive and not that useful. The --persist flag overrides
-        // the config as well, forcing persistence.
-        config.http.persist = persist;
-        let collection = Collection::load(&collection_path)?;
-        let database = Database::load()?.into_collection(&collection_path)?;
+    ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
+        let collection_file = global.collection_file()?;
+        let config = Config::load()?;
+        let engine = JsEngine::new();
+        let LoadedCollection {
+            collection,
+            process,
+        } = collection_file.load(&engine)?;
+        // Open DB in readonly. Storing requests in history from the CLI isn't
+        // really intuitive, and could have a large perf impact for scripting
+        // and large responses
+        let database = Database::load()?.into_collection(&collection_file)?;
         let http_engine = HttpEngine::new(&config.http);
 
         // Validate profile ID, so we can provide a good error if it's invalid
@@ -218,15 +218,15 @@ impl BuildRequestCommand {
             database: database.clone(),
             overrides,
             prompter: Box::new(CliPrompter),
-            state: Default::default(),
         };
+        let renderer = Renderer::new(process, template_context);
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
         Ok((database, http_engine, seed, template_context))
     }
 }
 
 impl DisplayExchangeCommand {
-    /// Print request details to stderr
+    /// Print request details to stderrz
     pub fn write_request(&self, request: &RequestRecord) {
         // The request is entirely hidden unless verbose mode is enabled
         if self.verbose {

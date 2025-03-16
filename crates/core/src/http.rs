@@ -43,7 +43,6 @@ pub use models::*;
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     db::CollectionDatabase,
-    http::content_type::ContentType,
     template::{Renderer, Template},
     util::ResultTraced,
 };
@@ -55,10 +54,9 @@ use futures::{
     future::{self, OptionFuture, try_join_all},
     try_join,
 };
-use mime::Mime;
 use reqwest::{
     Client, RequestBuilder, Response, Url,
-    header::{self, HeaderMap, HeaderName, HeaderValue},
+    header::{HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
 };
 use serde::{Deserialize, Serialize};
@@ -249,7 +247,8 @@ impl HttpEngine {
                 // request
                 RenderedBody::Raw(bytes) => Ok(Some(bytes)),
                 // The body is complex - offload the hard work to RequestBuilder
-                RenderedBody::FormUrlencoded(_)
+                RenderedBody::Json(_)
+                | RenderedBody::FormUrlencoded(_)
                 | RenderedBody::FormMultipart(_) => {
                     let url = Url::parse("http://localhost").unwrap();
                     let client = self.get_client(&url);
@@ -443,20 +442,26 @@ impl Recipe {
         options: &BuildOptions,
         renderer: &Renderer,
     ) -> anyhow::Result<Vec<(String, String)>> {
-        let iter = self.query.iter().enumerate().filter_map(|(i, (k, v))| {
-            // Look up and apply override. We do this by index because the
-            // keys aren't necessarily unique
-            let template = options.query_parameters.get(i, v)?;
+        let iter = self
+            .query_iter()
+            // Enumerate so we can look up overrides by index. This relies on
+            // the thing that builds the overrides to use the same iteration
+            // order; this is enforced by using Recipe::query_iter()
+            .enumerate()
+            .filter_map(|(i, (k, v))| {
+                // Look up and apply override. We do this by index because the
+                // keys aren't necessarily unique
+                let template = options.query_parameters.get(i, v)?;
 
-            Some(async move {
-                Ok::<_, anyhow::Error>((
-                    k.clone(),
-                    renderer.render_string(template).await.context(format!(
-                        "Error rendering query parameter `{k}`"
-                    ))?,
-                ))
-            })
-        });
+                Some(async move {
+                    Ok::<_, anyhow::Error>((
+                        k.to_owned(),
+                        renderer.render_string(template).await.context(
+                            format!("Error rendering query parameter `{k}`"),
+                        )?,
+                    ))
+                })
+            });
         future::try_join_all(iter).await
     }
 
@@ -468,21 +473,6 @@ impl Recipe {
         renderer: &Renderer,
     ) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
-
-        // Set Content-Type based on the body type. This can be overwritten
-        // below if the user explicitly passed a Content-Type value
-        if let Some(content_type) =
-            self.body.as_ref().and_then(|body| body.explicit_mime())
-        {
-            headers.insert(
-                header::CONTENT_TYPE,
-                content_type
-                    .as_ref()
-                    // A MIME type should always be a valid header value
-                    .try_into()
-                    .expect("Invalid MIME"),
-            );
-        }
 
         // Render headers in an iterator so we can parallelize
         let iter = self.headers.iter().enumerate().filter_map(
@@ -594,15 +584,25 @@ impl Recipe {
         };
 
         let rendered = match body {
-            RecipeBody::Raw { body, .. } => RenderedBody::Raw(
+            RecipeBody::Raw { data, .. } => RenderedBody::Raw(
                 renderer
-                    .render_bytes(body)
+                    .render_bytes(data)
                     .await
                     .context("Error rendering body")?
                     .into(),
             ),
-            RecipeBody::FormUrlencoded(fields) => {
-                let iter = fields.iter().enumerate().filter_map(
+            RecipeBody::Json { data } => {
+                let value = renderer
+                    .render_value(data)
+                    .await
+                    .context("Error rendering JSON body")?;
+                // Convert from PetitScript to JSON. _Should_ be infallible
+                let json_value = serde_json::to_value(value)
+                    .context("Error serializing JSON body")?;
+                RenderedBody::Json(json_value)
+            }
+            RecipeBody::FormUrlencoded { data } => {
+                let iter = data.iter().enumerate().filter_map(
                     |(i, (field, value_template))| {
                         let template =
                             options.form_fields.get(i, value_template)?;
@@ -620,8 +620,8 @@ impl Recipe {
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormUrlencoded(rendered)
             }
-            RecipeBody::FormMultipart(fields) => {
-                let iter = fields.iter().enumerate().filter_map(
+            RecipeBody::FormMultipart { data } => {
+                let iter = data.iter().enumerate().filter_map(
                     |(i, (field, value_template))| {
                         let template =
                             options.form_fields.get(i, value_template)?;
@@ -655,30 +655,12 @@ impl Authentication<String> {
     }
 }
 
-impl RecipeBody {
-    /// Get the value that we should set for the `Content-Type` header,
-    /// according to the body. This will only return `Some` for JSON, as the
-    /// form content types will have this header set automatically by reqwest
-    /// via the builder methods we use.
-    fn explicit_mime(&self) -> Option<Mime> {
-        match self {
-            RecipeBody::Raw { content_type, .. } => {
-                content_type.as_ref().map(ContentType::to_mime)
-            }
-            // Do *not* set anything for these, because reqwest will do that
-            // automatically and we don't want to interfere
-            RecipeBody::FormUrlencoded(_) | RecipeBody::FormMultipart(_) => {
-                None
-            }
-        }
-    }
-}
-
 /// Body ready to be added to the request. Each variant corresponds to a method
 /// by which we'll add it to the request. This means it is **not** 1:1 with
 /// [RecipeBody]
 enum RenderedBody {
     Raw(Bytes),
+    Json(serde_json::Value),
     /// Field:value mapping. Value is `String` because only string data can be
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
@@ -691,6 +673,7 @@ impl RenderedBody {
         // Set body. The variant tells us _how_ to set it
         match self {
             RenderedBody::Raw(bytes) => builder.body(bytes),
+            RenderedBody::Json(value) => builder.json(&value),
             RenderedBody::FormUrlencoded(fields) => builder.form(&fields),
             RenderedBody::FormMultipart(fields) => {
                 let mut form = Form::new();

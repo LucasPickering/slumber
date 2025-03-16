@@ -25,7 +25,7 @@ use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path};
 /// For the serialization string, obviously use serde. For the others, use
 /// the corresponding methods/associated functions.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub enum ContentType {
     Json,
 }

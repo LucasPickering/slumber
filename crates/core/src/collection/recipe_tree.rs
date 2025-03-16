@@ -65,7 +65,7 @@ impl IntoIterator for RecipeLookupKey {
 #[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
 #[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum RecipeNode {
     Folder(Folder),
     /// Rename this variant to match the `requests` field in the root and

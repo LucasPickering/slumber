@@ -25,16 +25,8 @@ use tokio::task;
 pub struct Template(Value);
 
 impl Template {
-    /// Create a new template from a raw string, without parsing it at all.
-    /// Useful when importing from external formats where the string isn't
-    /// expected to be a valid Slumber template
-    pub fn raw(template: String) -> Self {
-        Self(template.into())
-    }
-
-    /// TODO
-    pub fn as_str(&self) -> Option<&str> {
-        Some("TODO")
+    pub fn new(value: impl Into<Value>) -> Self {
+        Self(value.into())
     }
 }
 

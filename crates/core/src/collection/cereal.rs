@@ -1,7 +1,10 @@
 //! Serialization/deserialization helpers for various types
 
-use crate::collection::{
-    Profile, ProfileId, Recipe, RecipeId, recipe_tree::RecipeNode,
+use crate::{
+    collection::{
+        Profile, ProfileId, Recipe, RecipeId, recipe_tree::RecipeNode,
+    },
+    template::Template,
 };
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -107,6 +110,69 @@ where
     }
 
     Ok(profiles)
+}
+
+/// Deserialize a header map, lowercasing all header names. Headers are
+/// case-insensitive (and must be lowercase in HTTP/2+), so forcing the case
+/// makes lookups on the map easier.
+pub fn deserialize_headers<'de, D>(
+    deserializer: D,
+) -> Result<IndexMap<String, Template>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // This involves an extra allocation, but it makes the logic a lot easier.
+    // These maps should be small anyway
+    let headers: IndexMap<String, Template> =
+        IndexMap::deserialize(deserializer)?;
+    Ok(headers
+        .into_iter()
+        .map(|(k, v)| (k.to_ascii_lowercase(), v))
+        .collect())
+}
+
+/// TODO
+pub mod serde_recipe_body {
+
+    use crate::{collection::RecipeBody, template::Template};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(
+        body: &Option<RecipeBody>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match body {
+            // Serialize a raw body as just the contained value
+            Some(RecipeBody::Raw { data }) => data.serialize(serializer),
+            // Serialize anything else as a tagged enum
+            Some(body) => body.serialize(serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<Option<RecipeBody>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged, rename_all = "camelCase")]
+        enum RecipeBodyWrapper {
+            RecipeBody(RecipeBody),
+            Raw(Template),
+        }
+
+        // TODO explain
+        let wrapper = RecipeBodyWrapper::deserialize(deserializer)?;
+        match wrapper {
+            RecipeBodyWrapper::RecipeBody(body) => Ok(Some(body)),
+            RecipeBodyWrapper::Raw(data) => Ok(Some(RecipeBody::Raw { data })),
+        }
+    }
 }
 
 #[cfg(test)]

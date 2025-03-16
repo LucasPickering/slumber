@@ -64,18 +64,20 @@ struct CommandKwargs {
 /// Run a command in a subprocess
 async fn command(
     _: &Process,
-    (command, SerdeArg(kwargs)): (Vec<String>, SerdeArg<Option<CommandKwargs>>),
+    (
+        command,
+        Kwargs(CommandKwargs {
+            stdin,
+            decode: encoding,
+            trim,
+        }),
+    ): (Vec<String>, Kwargs<CommandKwargs>),
 ) -> Result<Value, FunctionError> {
     let [program, args @ ..] = command.as_slice() else {
         return Err(FunctionError::Argument(
             "command must have at least one element".into(),
         ));
     };
-    let CommandKwargs {
-        stdin,
-        decode: encoding,
-        trim,
-    } = kwargs.unwrap_or_default();
     let _ = debug_span!("Executing command", ?program, ?args).entered();
 
     let output = async {
@@ -173,9 +175,8 @@ async fn profile(
     result.map_err(|error| FunctionError::FieldNested { field, error })
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct PromptKwargs {
-    message: String,
     default: Option<String>,
     #[serde(default)]
     sensitive: bool,
@@ -184,20 +185,23 @@ struct PromptKwargs {
 /// Prompt the user to enter a text value
 async fn prompt(
     process: &Process,
-    SerdeArg(kwargs): SerdeArg<PromptKwargs>,
+    (message, Kwargs(PromptKwargs { default, sensitive })): (
+        String,
+        Kwargs<PromptKwargs>,
+    ),
 ) -> Result<String, FunctionError> {
     let (tx, rx) = oneshot::channel();
     context(process)?.prompter.prompt(Prompt {
-        message: kwargs.message,
-        default: kwargs.default,
-        sensitive: kwargs.sensitive,
+        message,
+        default,
+        sensitive,
         channel: tx.into(),
     });
     let output = rx.await.map_err(|_| FunctionError::PromptNoReply)?;
     Ok(output)
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct ResponseKwargs {
     /// Decoding mode - text or binary?
     #[serde(default)]
@@ -210,7 +214,7 @@ struct ResponseKwargs {
 /// Load the most recent response body for a recipe and the current profile
 async fn response(
     process: &Process,
-    (recipe_id, SerdeArg(kwargs)): (RecipeId, SerdeArg<ResponseKwargs>),
+    (recipe_id, Kwargs(kwargs)): (RecipeId, Kwargs<ResponseKwargs>),
 ) -> Result<Value, FunctionError> {
     let ResponseKwargs { decode, trigger } = kwargs;
     let response = context(process)?
@@ -219,7 +223,7 @@ async fn response(
     decode.decode(response.body.into_bytes())
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct ResponseHeaderKwargs {
     /// Decoding mode - text or binary?
     #[serde(default)]
@@ -233,10 +237,10 @@ struct ResponseHeaderKwargs {
 /// current profile
 async fn response_header(
     process: &Process,
-    (recipe_id, header, SerdeArg(kwargs)): (
+    (recipe_id, header, Kwargs(kwargs)): (
         RecipeId,
         String,
-        SerdeArg<ResponseHeaderKwargs>,
+        Kwargs<ResponseHeaderKwargs>,
     ),
 ) -> Result<Value, FunctionError> {
     let ResponseHeaderKwargs { decode, trigger } = kwargs;
@@ -252,35 +256,40 @@ async fn response_header(
     decode.decode(Bytes::copy_from_slice(header.as_bytes()))
 }
 
-#[derive(Deserialize)]
-struct SelectKwargs {
-    message: String,
-    options: Vec<String>,
-}
-
 /// Ask the user to select a value from a list
 async fn select(
     process: &Process,
-    SerdeArg(kwargs): SerdeArg<SelectKwargs>,
+    (message, options): (String, Vec<String>),
 ) -> Result<String, FunctionError> {
     let (tx, rx) = oneshot::channel();
     context(process)?.prompter.select(Select {
-        message: kwargs.message,
-        options: kwargs.options,
+        message,
+        options,
         channel: tx.into(),
     });
     let output = rx.await.map_err(|_| FunctionError::PromptNoReply)?;
     Ok(output)
 }
 
-/// Convert from [Value] to `T` using `T`'s [Deserialize] implementation
-struct SerdeArg<T>(T);
+/// Wrapper for a keyword argument struct, which will be deserialized from a
+/// a PS object. Kwargs should only be used for additional options to a function
+/// that are not required. As such `T` must implement `Default` to define a
+/// fallback for all fields when the argument isn't passed.
+struct Kwargs<T>(T);
 
-impl<'de, T: Deserialize<'de>> FromPs for SerdeArg<T> {
+impl<'de, T: Default + Deserialize<'de>> FromPs for Kwargs<T> {
     fn from_ps(value: Value) -> Result<Self, ValueError> {
-        let v = serde_path_to_error::deserialize(value.into_deserializer())
-            .map_err(|error| ValueError::Other(error.into()))?;
-        Ok(Self(v))
+        match value {
+            // If the arg wasn't passed, fall back to the default
+            Value::Undefined => Ok(Self(T::default())),
+            // Deserialize the value as the kwarg struct
+            _ => {
+                let deserializer = value.into_deserializer();
+                serde_path_to_error::deserialize(deserializer)
+                    .map(Self)
+                    .map_err(ValueError::other)
+            }
+        }
     }
 }
 
@@ -288,7 +297,7 @@ impl<'de, T: Deserialize<'de>> FromPs for SerdeArg<T> {
 /// dependency request.
 #[derive(Copy, Clone, Debug, Default, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 enum RequestTrigger {
     /// Never trigger the request. This is the default because upstream
     /// requests could be mutating, so we want the user to explicitly opt into
@@ -310,7 +319,7 @@ enum RequestTrigger {
 /// Trim whitespace from rendered output
 #[derive(Copy, Clone, Debug, Default, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 enum TrimMode {
     /// Do not trim the output
     #[default]
@@ -345,7 +354,7 @@ impl TrimMode {
 /// TODO better name
 #[derive(Copy, Clone, Debug, Default, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 enum Decoding {
     /// Load data as a UTF-8 string
     #[default]

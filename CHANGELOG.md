@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Add `--persist` flag to `slumber request`
+  - By default, CLI-based requests are not stored in the history database. Use this flag to enable persistence for the sent request.
 - Add `slumber history delete` subcommand for deleting request history
 
 ### Changed

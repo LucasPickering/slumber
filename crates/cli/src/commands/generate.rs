@@ -1,6 +1,6 @@
 use crate::{GlobalArgs, Subcommand, commands::request::BuildRequestCommand};
 use clap::{Parser, ValueEnum};
-use slumber_core::template::TemplateError;
+use slumber_core::{db::DatabaseMode, template::TemplateError};
 use std::process::ExitCode;
 
 /// Render a request and generate an equivalent for a third-party client
@@ -27,7 +27,11 @@ impl Subcommand for GenerateCommand {
         let (_, ticket) = self
             .build_request
             // User has to explicitly opt into executing triggered requests
-            .build_request(global, self.execute_triggers)
+            .build_request(
+                global,
+                DatabaseMode::ReadOnly,
+                self.execute_triggers,
+            )
             .await
             .map_err(|error| {
                 // If the build failed because triggered requests are disabled,

@@ -52,6 +52,11 @@ pub struct RequestCommand {
     /// <400, exit code is 0. If it's >=400, exit code is 2.
     #[clap(long)]
     exit_status: bool,
+
+    /// Persist the completed request to Slumber's history database. By
+    /// default, CLI-based requests are not persisted
+    #[clap(long)]
+    persist: bool,
 }
 
 /// A helper for any subcommand that needs to build requests. This handles
@@ -102,10 +107,21 @@ pub struct DisplayExchangeCommand {
 
 impl Subcommand for RequestCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
+        // Storing requests in history from the CLI isn't really intuitive, and
+        // could have a large perf impact for scripting and large responses. So
+        // by default we don't, but the --persist flag can enable it. Check
+        // --dry-run as well just to be 100% sure we don't make any
+        // modifications in a dry run
+        let database_mode = if self.persist && !self.dry_run {
+            DatabaseMode::ReadWrite
+        } else {
+            DatabaseMode::ReadOnly
+        };
+        // Don't execute sub-requests in a dry run
+        let trigger_dependencies = !self.dry_run;
         let (database, ticket) = self
             .build_request
-            // Don't execute sub-requests in a dry run
-            .build_request(global, !self.dry_run)
+            .build_request(global, database_mode, trigger_dependencies)
             .await
             .map_err(|error| {
                 // If the build failed because triggered requests are disabled,
@@ -145,21 +161,24 @@ impl BuildRequestCommand {
     /// too so it can be re-used if necessary (iff `trigger_dependencies` is
     /// enabled).
     ///
-    /// `trigger_dependencies` controls whether chained requests can be executed
-    /// if their triggers apply.
+    /// ## Parameters
+    ///
+    /// - `global`: Global arguments for the CLI
+    /// - `database_mode`: Read-write if the request is going to be executed and
+    ///   the result should be persisted in history, read-only otherwise
+    /// - `trigger_dependencies`: Whether chained requests can be executed if
+    ///   their triggers apply
     pub async fn build_request(
         self,
         global: GlobalArgs,
+        database_mode: DatabaseMode,
         trigger_dependencies: bool,
     ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
         let collection_path = global.collection_path()?;
         let config = Config::load()?;
         let collection = Collection::load(&collection_path)?;
-        // Open DB in readonly. Storing requests in history from the CLI isn't
-        // really intuitive, and could have a large perf impact for scripting
-        // and large responses
-        let database = Database::load(DatabaseMode::ReadOnly)?
-            .into_collection(&collection_path)?;
+        let database =
+            Database::load(database_mode)?.into_collection(&collection_path)?;
         let http_engine = HttpEngine::new(&config.http);
 
         // Validate profile ID, so we can provide a good error if it's invalid

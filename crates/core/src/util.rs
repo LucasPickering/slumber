@@ -2,12 +2,12 @@
 
 pub mod paths;
 
-use crate::{http::RequestError, template::ChainError};
+use crate::http::RequestError;
 use chrono::{
     DateTime, Duration, Local, Utc,
     format::{DelayedFormat, StrftimeItems},
 };
-use derive_more::{DerefMut, Display};
+use derive_more::Display;
 use dialoguer::Confirm;
 use serde::de::DeserializeOwned;
 use std::{
@@ -15,7 +15,7 @@ use std::{
     fmt::{self, Debug},
     hash::Hash,
     io::Read,
-    ops::Deref,
+    ops::{Deref, DerefMut},
     sync::Arc,
 };
 use tokio::sync::{Mutex, OwnedRwLockWriteGuard, RwLock};
@@ -128,15 +128,6 @@ impl<T> ResultTraced<T, RequestError> for Result<T, RequestError> {
     }
 }
 
-impl<T> ResultTraced<T, ChainError> for Result<T, ChainError> {
-    fn traced(self) -> Self {
-        if let Err(err) = &self {
-            error!(error = %err);
-        }
-        self
-    }
-}
-
 /// Helper to printing bytes. If the bytes aren't valid UTF-8, they'll be
 /// printed in hex representation instead
 pub struct MaybeStr<'a>(pub &'a [u8]);
@@ -212,7 +203,7 @@ impl<'a, T: Copy> Mapping<'a, T> {
     }
 }
 
-/// A cache of values that either have been computed, or are asynchronously
+/// A cache of values that either have been computed or are asynchronously
 /// being computed. This allows multiple computers of the same async values to
 /// deduplicate their work.
 #[derive(Debug)]
@@ -267,6 +258,7 @@ impl<K: Hash + Eq, V: Clone> Default for FutureCache<K, V> {
 }
 
 /// Outcome of check a future cache for a particular key
+#[derive(Debug)]
 pub(crate) enum FutureCacheOutcome<V> {
     /// The value is already in the cache
     Hit(V),
@@ -283,6 +275,7 @@ pub(crate) enum FutureCacheOutcome<V> {
 /// responsible for calling [FutureCacheGuard::set] to insert the value for
 /// everyone else. Subsequent callers to the cache will block until `set` is
 /// called.
+#[derive(Debug)]
 pub(crate) struct FutureCacheGuard<V>(OwnedRwLockWriteGuard<Option<V>>);
 
 impl<V> FutureCacheGuard<V> {

@@ -2,8 +2,13 @@ use crate::{GlobalArgs, Subcommand};
 use clap::Parser;
 use serde::Serialize;
 use slumber_config::Config;
-use slumber_core::{collection::Collection, db::Database, util::paths};
-use std::{borrow::Cow, path::Path, process::ExitCode};
+use slumber_core::{
+    collection::{CollectionFile, LoadedCollection},
+    db::Database,
+    js::JsEngine,
+    util::paths,
+};
+use std::{borrow::Cow, process::ExitCode};
 
 /// Print meta information about Slumber (config, collections, etc.)
 #[derive(Clone, Debug, Parser)]
@@ -26,15 +31,15 @@ impl Subcommand for ShowCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.target {
             ShowTarget::Paths => {
-                let collection_path = global.collection_path();
+                let collection_file = global.collection_file();
                 println!("Config: {}", Config::path().display());
                 println!("Database: {}", Database::path().display());
                 println!("Log file: {}", paths::log_file().display());
                 println!(
                     "Collection: {}",
-                    collection_path
-                        .as_deref()
-                        .map(Path::to_string_lossy)
+                    collection_file
+                        .as_ref()
+                        .map(|file| file.path().to_string_lossy())
                         .unwrap_or_else(|error| Cow::Owned(error.to_string()))
                 )
             }
@@ -43,8 +48,9 @@ impl Subcommand for ShowCommand {
                 println!("{}", to_yaml(&config));
             }
             ShowTarget::Collection => {
-                let collection_path = global.collection_path()?;
-                let collection = Collection::load(&collection_path)?;
+                let collection_file = CollectionFile::new(global.file)?;
+                let LoadedCollection { collection, .. } =
+                    collection_file.load(&JsEngine::new()).await?;
                 println!("{}", to_yaml(&collection));
             }
         }

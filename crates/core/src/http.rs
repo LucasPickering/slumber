@@ -129,6 +129,11 @@ impl HttpEngine {
             info_span!("Build request", request_id = %id, ?recipe_id, ?options)
                 .entered();
 
+        struct Output<'a> {
+            client: &'a Client,
+            request: reqwest::Request,
+            persist: bool,
+        }
         let future = async {
             let recipe = template_context
                 .collection
@@ -162,10 +167,17 @@ impl HttpEngine {
             }
 
             let request = builder.build()?;
-            Ok((client, request))
+            Ok(Output {
+                client,
+                request,
+                persist: recipe.persist,
+            })
         };
-        let (client, request) =
-            seed.convert_error(future, template_context).await?;
+        let Output {
+            client,
+            request,
+            persist,
+        } = seed.run_future(future, template_context).await?;
 
         Ok(RequestTicket {
             record: RequestRecord::new(
@@ -177,6 +189,7 @@ impl HttpEngine {
             .into(),
             client: client.clone(),
             request,
+            persist,
         })
     }
 
@@ -215,7 +228,7 @@ impl HttpEngine {
                 .build()?;
             Ok(request)
         };
-        let request = seed.convert_error(future, template_context).await?;
+        let request = seed.run_future(future, template_context).await?;
 
         Ok(request.url().clone())
     }
@@ -274,7 +287,7 @@ impl HttpEngine {
                 }
             }
         };
-        seed.convert_error(future, template_context).await
+        seed.run_future(future, template_context).await
     }
 
     /// Render a recipe into a cURL command that will execute the request.
@@ -324,7 +337,7 @@ impl HttpEngine {
             }
             Ok(builder.build())
         };
-        seed.convert_error(future, template_context).await
+        seed.run_future(future, template_context).await
     }
 
     /// Get the appropriate client to use for this request. If the request URL's
@@ -375,7 +388,7 @@ impl Default for HttpEngineConfig {
 
 impl RequestSeed {
     /// Run the given future and convert any error into [RequestBuildError]
-    async fn convert_error<T>(
+    async fn run_future<T>(
         &self,
         future: impl Future<Output = anyhow::Result<T>>,
         template_context: &TemplateContext,
@@ -433,7 +446,7 @@ impl RequestTicket {
                     end_time,
                 };
 
-                if database.can_write() {
+                if database.can_write() && self.persist {
                     // Error here should *not* kill the request
                     let _ = database.insert_exchange(&exchange);
                 }

@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add `--persist` flag to `slumber request`
   - By default, CLI-based requests are not stored in the history database. Use this flag to enable persistence for the sent request.
 - Add `slumber history delete` subcommand for deleting request history
+- Add `persist` field to recipes. It defaults to `true`, but you can now set it to `false` to disable data persistence for all requests of this recipe.
+  - TODO more docs for this
 
 ### Changed
 

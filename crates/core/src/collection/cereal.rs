@@ -85,6 +85,12 @@ impl HasId for Chain {
     }
 }
 
+/// Default value generator for `Recipe::persist`. All recipes are persisted by
+/// default
+pub fn persist_default() -> bool {
+    true
+}
+
 /// Deserialize a map, and update each key so its `id` field matches its key in
 /// the map. Useful if you need to access the ID when you only have a value
 /// available, not the full entry.

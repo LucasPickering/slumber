@@ -344,6 +344,10 @@ pub struct RequestTicket {
     pub(super) client: Client,
     /// Our brave little astronaut, ready to be launched...
     pub(super) request: Request,
+    /// Should the request/response be saved to the DB? This is based on:
+    /// - `persist` field of the recipe
+    /// - TODO more
+    pub(super) persist: bool,
 }
 
 impl RequestTicket {

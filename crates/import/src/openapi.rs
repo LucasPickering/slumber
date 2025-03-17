@@ -299,6 +299,7 @@ impl<'a> RecipeBuilder<'a> {
 
         Recipe {
             id: builder.id,
+            persist: true,
             name: Some(builder.name),
             method: builder.method,
             url,

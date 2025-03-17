@@ -188,7 +188,7 @@ mod tests {
     use crate::{
         assert_err,
         http::{HttpMethod, content_type::ContentType},
-        test_util::{TempDir, by_id, temp_dir, test_data_dir},
+        test_util::{Factory, TempDir, by_id, temp_dir, test_data_dir},
     };
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
@@ -503,17 +503,14 @@ mod tests {
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
                     id: "text_body".into(),
-                    name: None,
                     method: HttpMethod::Post,
                     url: "{{host}}/anything/login".into(),
-
                     body: Some(RecipeBody::Raw {
                         body: "{\"username\": \"{{username}}\", \
                         \"password\": \"{{chains.password}}\"}"
                             .into(),
                         content_type: None,
                     }),
-                    authentication: None,
                     query: vec![
                         ("sudo".into(), "yes_please".into()),
                         ("fast".into(), "no_thanks".into()),
@@ -521,6 +518,7 @@ mod tests {
                     headers: indexmap! {
                         "accept".into() => "application/json".into(),
                     },
+                    ..Recipe::factory(())
                 }),
                 RecipeNode::Folder(Folder {
                     id: "users".into(),
@@ -531,13 +529,11 @@ mod tests {
                             name: Some("Get User".into()),
                             method: HttpMethod::Get,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-                            body: None,
-                            authentication: None,
                             query: vec![
                                 ("value".into(), "{{field1}}".into()),
                                 ("value".into(), "{{field2}}".into()),
                             ],
-                            headers: indexmap! {},
+                            ..Recipe::factory(())
                         }),
                         RecipeNode::Recipe(Recipe {
                             id: "json_body".into(),
@@ -552,17 +548,16 @@ mod tests {
                             authentication: Some(Authentication::Bearer(
                                 "{{chains.auth_token}}".into(),
                             )),
-                            query: vec![],
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
                             },
+                            ..Recipe::factory(())
                         }),
                         RecipeNode::Recipe(Recipe {
                             id: "json_body_but_not".into(),
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-
                             body: Some(RecipeBody::Raw {
                                 body: json!(r#"{"warning": "NOT an object"}"#)
                                     .into(),
@@ -572,25 +567,23 @@ mod tests {
                                 username: "{{username}}".into(),
                                 password: Some("{{password}}".into()),
                             }),
-                            query: vec![],
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
                             },
+                            ..Recipe::factory(())
                         }),
                         RecipeNode::Recipe(Recipe {
                             id: "form_urlencoded_body".into(),
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-
                             body: Some(RecipeBody::FormUrlencoded(indexmap! {
                                 "username".into() => "new username".into()
                             })),
-                            authentication: None,
-                            query: vec![],
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
                             },
+                            ..Recipe::factory(())
                         }),
                     ]),
                 }),

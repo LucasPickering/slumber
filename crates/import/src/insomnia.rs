@@ -343,6 +343,7 @@ impl From<Request> for RecipeNode {
 
         RecipeNode::Recipe(Recipe {
             id: request.id.into(),
+            persist: true,
             name: Some(request.name),
             method: request.method,
             url: Template::raw(request.url),

@@ -177,6 +177,8 @@ impl crate::test_util::Factory for Folder {
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
+    #[serde(default = "cereal::persist_default")]
+    pub persist: bool,
     pub name: Option<String>,
     /// *Not* a template string because the usefulness doesn't justify the
     /// complexity. This gives the user an immediate error if the method is
@@ -216,6 +218,7 @@ impl crate::test_util::Factory for Recipe {
     fn factory(_: ()) -> Self {
         Self {
             id: RecipeId::factory(()),
+            persist: true,
             name: None,
             method: HttpMethod::Get,
             url: "http://localhost/url".into(),

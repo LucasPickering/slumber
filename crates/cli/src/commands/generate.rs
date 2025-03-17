@@ -1,6 +1,6 @@
 use crate::{GlobalArgs, Subcommand, commands::request::BuildRequestCommand};
 use clap::{Parser, ValueEnum};
-use slumber_core::{db::DatabaseMode, template::TemplateError};
+use slumber_core::db::DatabaseMode;
 use std::process::ExitCode;
 
 /// Render a request and generate an equivalent for a third-party client
@@ -24,28 +24,32 @@ pub enum GenerateFormat {
 
 impl Subcommand for GenerateCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        let (_, ticket) = self
-            .build_request
-            // User has to explicitly opt into executing triggered requests
-            .build_request(
-                global,
-                DatabaseMode::ReadOnly,
-                self.execute_triggers,
-            )
-            .await
-            .map_err(|error| {
-                // If the build failed because triggered requests are disabled,
-                // replace it with a custom error message
-                if TemplateError::has_trigger_disabled_error(&error) {
-                    error.context(
-                        "Triggered requests are disabled by default; \
-                         pass `--execute-triggers` to enable",
-                    )
-                } else {
-                    error
-                }
-            })?;
-        println!("{}", ticket.record().to_curl()?);
+        match self.format {
+            GenerateFormat::Curl => {
+                let (_, http_engine, seed, template_context) =
+                    self.build_request.build_seed(
+                        global,
+                        DatabaseMode::ReadOnly,
+                        self.execute_triggers,
+                    )?;
+                let command = http_engine
+                    .build_curl(seed, &template_context)
+                    .await
+                    .map_err(|error| {
+                        // If the build failed because triggered requests are
+                        // disabled, replace it with a custom error message
+                        if error.has_trigger_disabled_error() {
+                            error.source.context(
+                                "Triggered requests are disabled by default; \
+                                 pass `--execute-triggers` to enable",
+                            )
+                        } else {
+                            error.source
+                        }
+                    })?;
+                println!("{}", command);
+            }
+        }
         Ok(ExitCode::SUCCESS)
     }
 }

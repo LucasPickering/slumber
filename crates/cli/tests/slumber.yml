@@ -13,6 +13,15 @@ profiles:
       host: http://server
       username: username2
 
+chains:
+  # chain that triggers a request
+  trigger:
+    source: !request
+      recipe: getUser
+      trigger: !always
+    content_type: json
+    selector: $.username
+
 requests:
   getUser: !request
     method: GET
@@ -23,16 +32,6 @@ requests:
     url: "{{host}}/json"
     body: !json { "username": "{{username}}", "name": "Frederick Smidgen" }
 
-  formUrlencodedBody: !request
-    method: POST
-    url: "{{host}}/formUrlencoded"
-    body: !form_urlencoded
-      username: "{{username}}"
-      name: "Frederick Smidgen"
-
-  formMultipartBody: !request
-    method: POST
-    url: "{{host}}/formMultipart"
-    body: !form_multipart
-      username: "{{username}}"
-      name: "Frederick Smidgen"
+  chained: !request
+    method: GET
+    url: "{{host}}/chained/{{chains.trigger}}"

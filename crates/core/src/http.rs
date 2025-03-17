@@ -36,6 +36,7 @@
 //! ```
 
 pub mod content_type;
+mod curl;
 mod models;
 pub mod query;
 #[cfg(test)]
@@ -46,7 +47,7 @@ pub use models::*;
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     db::CollectionDatabase,
-    http::content_type::ContentType,
+    http::{content_type::ContentType, curl::CurlBuilder},
     template::{Template, TemplateContext},
     util::ResultTraced,
 };
@@ -276,6 +277,56 @@ impl HttpEngine {
         seed.convert_error(future, template_context).await
     }
 
+    /// Render a recipe into a cURL command that will execute the request.
+    ///
+    /// Only fails if a header value or body is binary. We can't represent
+    /// binary values in the command, so we'd have to push them to a temp file
+    /// and have curl extract from there. It's possible, I just haven't done it
+    /// yet.
+    pub async fn build_curl(
+        &self,
+        seed: RequestSeed,
+        template_context: &TemplateContext,
+    ) -> Result<String, RequestBuildError> {
+        let RequestSeed {
+            id,
+            recipe_id,
+            options,
+        } = &seed;
+        let _ =
+            info_span!("Build request cURL", request_id = %id, ?recipe_id, ?options)
+                .entered();
+
+        let future = async {
+            let recipe = template_context
+                .collection
+                .recipes
+                .try_get_recipe(recipe_id)?;
+
+            // Render everything up front so we can parallelize it
+            let (url, query, headers, authentication, body) = try_join!(
+                recipe.render_url(template_context),
+                recipe.render_query(options, template_context),
+                recipe.render_headers(options, template_context),
+                recipe.render_authentication(options, template_context),
+                recipe.render_body(options, template_context),
+            )?;
+
+            // Buidl the command
+            let mut builder = CurlBuilder::new(recipe.method)
+                .url(url, &query)
+                .headers(&headers)?;
+            if let Some(authentication) = authentication {
+                builder = builder.authentication(&authentication);
+            }
+            if let Some(body) = body {
+                builder = builder.body(&body)?;
+            }
+            Ok(builder.build())
+        };
+        seed.convert_error(future, template_context).await
+    }
+
     /// Get the appropriate client to use for this request. If the request URL's
     /// host is one for which the user wants to ignore TLS certs, use the
     /// dangerous client.
@@ -336,7 +387,7 @@ impl RequestSeed {
             id: self.id,
             start_time,
             end_time: Utc::now(),
-            error,
+            source: error,
         })
     }
 }

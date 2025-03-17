@@ -6,7 +6,7 @@
 use crate::{
     collection::{Authentication, ProfileId, RecipeBody, RecipeId},
     http::content_type::ContentType,
-    template::Template,
+    template::{ChainError, Template, TemplateError, TriggeredRequestError},
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -19,11 +19,7 @@ use reqwest::{
     header::{self, HeaderMap},
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Write},
-    sync::Arc,
-};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 use strum::{EnumIter, IntoEnumIterator};
 use thiserror::Error;
 use tracing::error;
@@ -479,32 +475,6 @@ impl RequestRecord {
         content_type_header(&self.headers)
     }
 
-    /// Generate a cURL command equivalent to this request
-    ///
-    /// This only fails if one of the headers or body is binary and can't be
-    /// converted to UTF-8.
-    pub fn to_curl(&self) -> anyhow::Result<String> {
-        let mut buf = String::new();
-
-        // These writes are all infallible because we're writing to a string,
-        // but use ? because it's shorter than unwrap().
-        let method = &self.method;
-        let url = &self.url;
-        write!(&mut buf, "curl -X{method} --url '{url}'")?;
-
-        for (header, value) in &self.headers {
-            let value =
-                value.to_str().context("Error decoding header value")?;
-            write!(&mut buf, " --header '{header}: {value}'")?;
-        }
-
-        if let Some(body) = &self.body_str()? {
-            write!(&mut buf, " --data '{body}'")?;
-        }
-
-        Ok(buf)
-    }
-
     pub fn body(&self) -> Option<&[u8]> {
         self.body.as_deref()
     }
@@ -805,7 +775,7 @@ pub struct RequestBuildError {
     /// There are multiple possible error types and anyhow's Error makes
     /// display easier
     #[source]
-    pub error: anyhow::Error,
+    pub source: anyhow::Error,
 
     /// ID of the profile being rendered under
     pub profile_id: Option<ProfileId>,
@@ -819,6 +789,26 @@ pub struct RequestBuildError {
     pub end_time: DateTime<Utc>,
 }
 
+impl RequestBuildError {
+    /// Does this error have *any* error in its chain that contains
+    /// [TriggeredRequestError::NotAllowed]? This makes it easy to attach
+    /// additional error context.
+    pub fn has_trigger_disabled_error(&self) -> bool {
+        self.source.chain().any(|error| {
+            matches!(
+                error.downcast_ref(),
+                Some(TemplateError::Chain {
+                    error: ChainError::Trigger {
+                        error: TriggeredRequestError::NotAllowed,
+                        ..
+                    },
+                    ..
+                })
+            )
+        })
+    }
+}
+
 #[cfg(any(test, feature = "test"))]
 impl PartialEq for RequestBuildError {
     fn eq(&self, other: &Self) -> bool {
@@ -827,7 +817,7 @@ impl PartialEq for RequestBuildError {
             && self.id == other.id
             && self.start_time == other.start_time
             && self.end_time == other.end_time
-            && self.error.to_string() == other.error.to_string()
+            && self.source.to_string() == other.source.to_string()
     }
 }
 
@@ -869,7 +859,6 @@ mod tests {
     use crate::test_util::{Factory, header_map};
     use indexmap::indexmap;
     use rstest::rstest;
-    use serde_json::json;
 
     #[rstest]
     #[case::content_disposition(
@@ -908,28 +897,5 @@ mod tests {
         #[case] expected: Option<&str>,
     ) {
         assert_eq!(response.file_name().as_deref(), expected);
-    }
-
-    #[test]
-    fn test_to_curl() {
-        let headers = indexmap! {
-            "accept" => "application/json",
-            "content-type" => "application/json",
-        };
-        let body = json!({"data": "value"});
-        let request = RequestRecord {
-            method: HttpMethod::Delete,
-            headers: header_map(headers),
-            body: Some(serde_json::to_vec(&body).unwrap().into()),
-            ..RequestRecord::factory(())
-        };
-
-        assert_eq!(
-            request.to_curl().unwrap(),
-            "curl -XDELETE --url 'http://localhost/url' \
-            --header 'accept: application/json' \
-            --header 'content-type: application/json' \
-            --data '{\"data\":\"value\"}'"
-        );
     }
 }

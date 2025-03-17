@@ -13,10 +13,9 @@ use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{
-        BuildOptions, HttpEngine, RequestRecord, RequestSeed, RequestTicket,
-        ResponseRecord,
+        BuildOptions, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
     },
-    template::{Prompt, Prompter, Select, TemplateContext, TemplateError},
+    template::{Prompt, Prompter, Select, TemplateContext},
     util::{MaybeStr, ResultTraced},
 };
 use std::{
@@ -119,21 +118,22 @@ impl Subcommand for RequestCommand {
         };
         // Don't execute sub-requests in a dry run
         let trigger_dependencies = !self.dry_run;
-        let (database, ticket) = self
+        let (database, http_engine, seed, template_context) = self
             .build_request
-            .build_request(global, database_mode, trigger_dependencies)
-            .await
-            .map_err(|error| {
+            .build_seed(global, database_mode, trigger_dependencies)?;
+        let ticket = http_engine.build(seed, &template_context).await.map_err(
+            |error| {
                 // If the build failed because triggered requests are disabled,
                 // replace it with a custom error message
-                if TemplateError::has_trigger_disabled_error(&error) {
-                    error.context(
+                if error.has_trigger_disabled_error() {
+                    error.source.context(
                         "Triggered requests are disabled with `--dry-run`",
                     )
                 } else {
-                    error
+                    error.source
                 }
-            })?;
+            },
+        )?;
 
         if self.dry_run {
             // With --dry-run, we don't do anything unless the verbose flag is
@@ -161,9 +161,9 @@ impl Subcommand for RequestCommand {
 }
 
 impl BuildRequestCommand {
-    /// Render the request specified by the user. This returns the HTTP engine
-    /// too so it can be re-used if necessary (iff `trigger_dependencies` is
-    /// enabled).
+    /// Get all the components needed to build a request for the recipe selected
+    /// by this command. The returned values can be used to build the request
+    /// in whatever format the consumer needs.
     ///
     /// ## Parameters
     ///
@@ -172,12 +172,17 @@ impl BuildRequestCommand {
     ///   the result should be persisted in history, read-only otherwise
     /// - `trigger_dependencies`: Whether chained requests can be executed if
     ///   their triggers apply
-    pub async fn build_request(
+    pub fn build_seed(
         self,
         global: GlobalArgs,
         database_mode: DatabaseMode,
         trigger_dependencies: bool,
-    ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
+    ) -> anyhow::Result<(
+        CollectionDatabase,
+        HttpEngine,
+        RequestSeed,
+        TemplateContext,
+    )> {
         let collection_path = global.collection_path()?;
         let config = Config::load()?;
         let collection = Collection::load(&collection_path)?;
@@ -219,8 +224,7 @@ impl BuildRequestCommand {
             state: Default::default(),
         };
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
-        let request = http_engine.build(seed, &template_context).await?;
-        Ok((database, request))
+        Ok((database, http_engine, seed, template_context))
     }
 }
 

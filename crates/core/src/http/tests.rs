@@ -179,26 +179,26 @@ async fn test_build_url(http_engine: &HttpEngine) {
 /// Test building just a body. URL/query/headers should *not* be built.
 #[rstest]
 #[case::raw(
-        RecipeBody::Raw {
-            body: r#"{"group_id":"{{group_id}}"}"#.into(),
-            content_type: None,
-        },
-        br#"{"group_id":"3"}"#
-    )]
+    RecipeBody::Raw {
+        body: r#"{"group_id":"{{group_id}}"}"#.into(),
+        content_type: None,
+    },
+    br#"{"group_id":"3"}"#
+)]
 #[case::json(
-        RecipeBody::Raw {
-            body: json!({"group_id": "{{group_id}}"}).into(),
-            content_type: Some(ContentType::Json),
-        },
-        b"{\n  \"group_id\": \"3\"\n}",
-    )]
+    RecipeBody::Raw {
+        body: json!({"group_id": "{{group_id}}"}).into(),
+        content_type: Some(ContentType::Json),
+    },
+    b"{\n  \"group_id\": \"3\"\n}",
+)]
 #[case::binary(
-        RecipeBody::Raw {
-            body: "{{chains.binary}}".into(),
-            content_type: None,
-        },
-        b"\xc3\x28",
-    )]
+    RecipeBody::Raw {
+        body: "{{chains.binary}}".into(),
+        content_type: None,
+    },
+    b"\xc3\x28",
+)]
 #[tokio::test]
 async fn test_build_body(
     http_engine: &HttpEngine,
@@ -233,19 +233,19 @@ async fn test_build_body(
 /// Test building requests with various authentication methods
 #[rstest]
 #[case::basic(
-        Authentication::Basic {
-            username: "{{username}}".into(),
-            password: Some("{{password}}".into()),
-        },
-        "Basic dXNlcjpodW50ZXIy"
-    )]
+    Authentication::Basic {
+        username: "{{username}}".into(),
+        password: Some("{{password}}".into()),
+    },
+    "Basic dXNlcjpodW50ZXIy"
+)]
 #[case::basic_no_password(
-        Authentication::Basic {
-            username: "{{username}}".into(),
-            password: None,
-        },
-        "Basic dXNlcjo="
-    )]
+    Authentication::Basic {
+        username: "{{username}}".into(),
+        password: None,
+    },
+    "Basic dXNlcjo="
+)]
 #[case::bearer(Authentication::Bearer("{{token}}".into()), "Bearer tokenzzz")]
 #[tokio::test]
 async fn test_authentication(
@@ -294,58 +294,58 @@ async fn test_authentication(
 /// hypothetically vary from the request record.
 #[rstest]
 #[case::json(
-        RecipeBody::Raw {
-            body: json!({"group_id": "{{group_id}}"}).into(),
-            content_type: Some(ContentType::Json),
-        },
-        None,
-        Some(b"{\n  \"group_id\": \"3\"\n}".as_slice()),
-        "^application/json$",
-        &[],
-    )]
+    RecipeBody::Raw {
+        body: json!({"group_id": "{{group_id}}"}).into(),
+        content_type: Some(ContentType::Json),
+    },
+    None,
+    Some(b"{\n  \"group_id\": \"3\"\n}".as_slice()),
+    "^application/json$",
+    &[],
+)]
 // Content-Type has been overridden by an explicit header
 #[case::json_content_type_override(
-        RecipeBody::Raw {
-            body: json!({"group_id": "{{group_id}}"}).into(),
-            content_type: Some(ContentType::Json),
-        },
-        Some("text/plain"),
-        Some(b"{\n  \"group_id\": \"3\"\n}".as_slice()),
-        "^text/plain$",
-        &[],
-    )]
+    RecipeBody::Raw {
+        body: json!({"group_id": "{{group_id}}"}).into(),
+        content_type: Some(ContentType::Json),
+    },
+    Some("text/plain"),
+    Some(b"{\n  \"group_id\": \"3\"\n}".as_slice()),
+    "^text/plain$",
+    &[],
+)]
 #[case::form_urlencoded(
-        RecipeBody::FormUrlencoded(indexmap! {
-            "user_id".into() => "{{user_id}}".into(),
-            "token".into() => "{{token}}".into()
-        }),
-        None,
-        Some(b"user_id=1&token=tokenzzz".as_slice()),
-        "^application/x-www-form-urlencoded$",
-        &[],
-    )]
+    RecipeBody::FormUrlencoded(indexmap! {
+        "user_id".into() => "{{user_id}}".into(),
+        "token".into() => "{{token}}".into()
+    }),
+    None,
+    Some(b"user_id=1&token=tokenzzz".as_slice()),
+    "^application/x-www-form-urlencoded$",
+    &[],
+)]
 // reqwest sets the content type when initializing the body, so make sure
 // that doesn't override the user's value
 #[case::form_urlencoded_content_type_override(
-        RecipeBody::FormUrlencoded(Default::default()),
-        Some("text/plain"),
-        Some(b"".as_slice()),
-        "^text/plain$",
-        &[],
-    )]
+    RecipeBody::FormUrlencoded(Default::default()),
+    Some("text/plain"),
+    Some(b"".as_slice()),
+    "^text/plain$",
+    &[],
+)]
 #[case::form_multipart(
-        RecipeBody::FormMultipart(indexmap! {
-            "user_id".into() => "{{user_id}}".into(),
-            "binary".into() => "{{chains.binary}}".into()
-        }),
-        None,
-        // multipart bodies are automatically turned into streams by reqwest,
-        // and we don't store stream bodies atm
-        // https://github.com/LucasPickering/slumber/issues/256
-        None,
-        "^multipart/form-data; boundary=[a-f0-9-]{67}$",
-        &[("content-length", "321")],
-    )]
+    RecipeBody::FormMultipart(indexmap! {
+        "user_id".into() => "{{user_id}}".into(),
+        "binary".into() => "{{chains.binary}}".into()
+    }),
+    None,
+    // multipart bodies are automatically turned into streams by reqwest,
+    // and we don't store stream bodies atm
+    // https://github.com/LucasPickering/slumber/issues/256
+    None,
+    "^multipart/form-data; boundary=[a-f0-9-]{67}$",
+    &[("content-length", "321")],
+)]
 #[tokio::test]
 async fn test_structured_body(
     http_engine: &HttpEngine,
@@ -674,4 +674,129 @@ fn test_trim_bytes(#[case] bytes: &[u8], #[case] expected: &[u8]) {
     let mut bytes = bytes.to_owned();
     trim_bytes(&mut bytes, |b| b == 0);
     assert_eq!(&bytes, expected);
+}
+
+/// Build a curl command with query parameters and headers
+#[rstest]
+#[tokio::test]
+async fn test_build_curl(http_engine: &HttpEngine) {
+    let recipe = Recipe {
+        method: HttpMethod::Get,
+        query: vec![
+            ("mode".into(), "{{mode}}".into()),
+            ("fast".into(), "true".into()),
+            ("fast".into(), "false".into()),
+        ],
+        headers: indexmap! {
+            "Accept".into() => "application/json".into(),
+            "Content-Type".into() => "application/json".into(),
+        },
+        ..Recipe::factory(())
+    };
+    let recipe_id = recipe.id.clone();
+    let template_context = template_context([recipe], []);
+
+    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
+    let command = http_engine
+        .build_curl(seed, &template_context)
+        .await
+        .unwrap();
+    let expected_command = "curl -XGET \
+    --url 'http://localhost/url?mode=sudo&fast=true&fast=false' \
+    --header 'accept: application/json' \
+    --header 'content-type: application/json'";
+    assert_eq!(command, expected_command);
+}
+
+/// Build a curl command with each authentication type
+#[rstest]
+#[case::basic(
+    Authentication::Basic {
+        username: "{{username}}".into(),
+        password: Some("{{password}}".into()),
+    },
+    "--user 'user:hunter2'",
+)]
+#[case::basic_no_password(
+    Authentication::Basic {
+        username: "{{username}}".into(),
+        password: None,
+    },
+    "--user 'user:'",
+)]
+#[case::bearer(
+    Authentication::Bearer("{{token}}".into()),
+    "--header 'authorization: Bearer tokenzzz'",
+)]
+#[tokio::test]
+async fn test_build_curl_authentication(
+    http_engine: &HttpEngine,
+    #[case] authentication: Authentication,
+    #[case] expected_arguments: &str,
+) {
+    let recipe = Recipe {
+        authentication: Some(authentication),
+        ..Recipe::factory(())
+    };
+    let recipe_id = recipe.id.clone();
+    let template_context = template_context([recipe], []);
+
+    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
+    let command = http_engine
+        .build_curl(seed, &template_context)
+        .await
+        .unwrap();
+    let expected_command = format!(
+        "curl -XGET --url 'http://localhost/url' {expected_arguments}",
+    );
+    assert_eq!(command, expected_command);
+}
+
+/// Build a curl command with each possible type of body
+#[rstest]
+#[case::json(
+    RecipeBody::Raw {
+        body: json!({"group_id": "{{group_id}}"}).to_string().into(),
+        content_type: Some(ContentType::Json),
+    },
+    "--header 'content-type: application/json' --data '{\"group_id\":\"3\"}'"
+)]
+#[case::form_urlencoded(
+    RecipeBody::FormUrlencoded(indexmap! {
+        "user_id".into() => "{{user_id}}".into(),
+        "token".into() => "{{token}}".into()
+    }),
+    "--data-urlencode 'user_id=1' --data-urlencode 'token=tokenzzz'"
+)]
+#[case::form_multipart(
+    // This doesn't support binary content because we can't pass it via cmd
+    RecipeBody::FormMultipart(indexmap! {
+        "user_id".into() => "{{user_id}}".into(),
+        "token".into() => "{{token}}".into()
+    }),
+    "-F 'user_id=1' -F 'token=tokenzzz'"
+)]
+#[tokio::test]
+async fn test_build_curl_body(
+    http_engine: &HttpEngine,
+    #[case] body: RecipeBody,
+    #[case] expected_arguments: &str,
+) {
+    let recipe = Recipe {
+        body: Some(body),
+        ..Recipe::factory(())
+    };
+    let recipe_id = recipe.id.clone();
+    let template_context = template_context([recipe], []);
+
+    let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
+    let command = http_engine
+        .build_curl(seed, &template_context)
+        .await
+        .unwrap();
+    let expected_command = format!(
+        "curl -XGET --url 'http://localhost/url' {}",
+        expected_arguments
+    );
+    assert_eq!(command, expected_command);
 }

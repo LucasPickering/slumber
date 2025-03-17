@@ -266,7 +266,7 @@ impl Generate for &RequestBuildError {
         Self: 'this,
     {
         // Defer to the underlying anyhow error
-        self.error.generate()
+        self.source.generate()
     }
 }
 

@@ -92,7 +92,7 @@ async fn test_life_cycle_build_error() {
         id,
         start_time: Utc::now(),
         end_time: Utc::now(),
-        error: anyhow!("oh no!"),
+        source: anyhow!("oh no!"),
     });
     assert_matches!(store.get(id), Some(RequestState::BuildError { .. }));
 }
@@ -295,7 +295,7 @@ async fn test_load_summaries(harness: TestHarness) {
                 id: build_error_id,
                 start_time: Utc::now(),
                 end_time: Utc::now(),
-                error: anyhow!("oh no!"),
+                source: anyhow!("oh no!"),
             },
         },
     );

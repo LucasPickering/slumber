@@ -536,11 +536,10 @@ impl Tui {
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         spawn_result(async move {
-            let ticket = TuiContext::get()
+            let command = TuiContext::get()
                 .http_engine
-                .build(seed, &template_context)
+                .build_curl(seed, &template_context)
                 .await?;
-            let command = ticket.record().to_curl()?;
             messages_tx.send(Message::CopyText(command));
             Ok(())
         });

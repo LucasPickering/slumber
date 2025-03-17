@@ -53,7 +53,8 @@ pub struct RequestCommand {
     exit_status: bool,
 
     /// Persist the completed request to Slumber's history database. By
-    /// default, CLI-based requests are not persisted.
+    /// default, CLI-based requests are not persisted. If `persist` is set to
+    /// `false` in the recipe definition, this will override that.
     #[clap(long)]
     persist: bool,
 }

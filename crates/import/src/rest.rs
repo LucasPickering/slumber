@@ -237,6 +237,7 @@ fn try_build_recipe(
 
     let recipe = Recipe {
         id,
+        persist: true,
         name: name.into(),
         method,
         url,

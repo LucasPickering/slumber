@@ -1,9 +1,13 @@
 use anyhow::{Context, anyhow};
 use std::{
     borrow::Cow,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
+
+/// Set this environment variable to change the data directory. Useful for tests
+#[cfg(debug_assertions)]
+pub const DATA_DIRECTORY_ENV_VARIABLE: &str = "SLUMBER_DB";
 
 /// Get the path of the directory to contain the config file (e.g. the
 /// database). **Directory may not exist yet**, caller must create it.
@@ -53,7 +57,10 @@ fn debug_or(path: PathBuf) -> PathBuf {
     #[cfg(debug_assertions)]
     {
         let _ = path; // Remove unused warning
-        get_repo_root().join("data/")
+        // Check the env var, for tests
+        env::var(DATA_DIRECTORY_ENV_VARIABLE)
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| get_repo_root().join("data/"))
     }
     #[cfg(not(debug_assertions))]
     {

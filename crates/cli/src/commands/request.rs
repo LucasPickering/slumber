@@ -44,7 +44,7 @@ pub struct RequestCommand {
     display: DisplayExchangeCommand,
 
     /// Just print the generated request, instead of sending it. Triggered
-    /// sub-requests will also not be executed.
+    /// sub-requests will also not be executed. Implies `--verbose`.
     #[clap(long)]
     dry_run: bool,
 
@@ -54,7 +54,7 @@ pub struct RequestCommand {
     exit_status: bool,
 
     /// Persist the completed request to Slumber's history database. By
-    /// default, CLI-based requests are not persisted
+    /// default, CLI-based requests are not persisted.
     #[clap(long)]
     persist: bool,
 }
@@ -106,7 +106,7 @@ pub struct DisplayExchangeCommand {
 }
 
 impl Subcommand for RequestCommand {
-    async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
+    async fn execute(mut self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         // Storing requests in history from the CLI isn't really intuitive, and
         // could have a large perf impact for scripting and large responses. So
         // by default we don't, but the --persist flag can enable it. Check
@@ -136,7 +136,11 @@ impl Subcommand for RequestCommand {
             })?;
 
         if self.dry_run {
-            println!("{:#?}", ticket.record());
+            // With --dry-run, we don't do anything unless the verbose flag is
+            // enabled. Exiting with no output is confusing so for it enabled
+            // here.
+            self.display.verbose = true;
+            self.display.write_request(ticket.record());
             Ok(ExitCode::SUCCESS)
         } else {
             self.display.write_request(ticket.record());
@@ -231,6 +235,10 @@ impl DisplayExchangeCommand {
             );
             for (header, value) in &request.headers {
                 eprintln!("> {}: {}", header, MaybeStr(value.as_bytes()));
+            }
+            if let Some(body) = &request.body {
+                let text = std::str::from_utf8(body).unwrap_or("<binary>");
+                eprintln!("> {text}");
             }
         }
     }

@@ -1,0 +1,38 @@
+# Collection for CLI integration tests
+
+profiles:
+  profile1:
+    name: Profile 1
+    default: true
+    data:
+      host: http://server
+      username: username1
+  profile2:
+    name: Profile 2
+    data:
+      host: http://server
+      username: username2
+
+requests:
+  getUser: !request
+    method: GET
+    url: "{{host}}/users/{{username}}"
+
+  jsonBody: !request
+    method: POST
+    url: "{{host}}/json"
+    body: !json { "username": "{{username}}", "name": "Frederick Smidgen" }
+
+  formUrlencodedBody: !request
+    method: POST
+    url: "{{host}}/formUrlencoded"
+    body: !form_urlencoded
+      username: "{{username}}"
+      name: "Frederick Smidgen"
+
+  formMultipartBody: !request
+    method: POST
+    url: "{{host}}/formMultipart"
+    body: !form_multipart
+      username: "{{username}}"
+      name: "Frederick Smidgen"

@@ -394,7 +394,7 @@ impl Exchange {
 
 /// Metadata about an exchange. Useful in lists where request/response content
 /// isn't needed.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ExchangeSummary {
     pub id: RequestId,
     pub recipe_id: RecipeId,

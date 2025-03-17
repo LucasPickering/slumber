@@ -10,6 +10,10 @@ repository = {workspace = true}
 rust-version = {workspace = true}
 version = {workspace = true}
 
+[[bin]]
+name = "slumber_cli"
+path = "src/bin.rs"
+
 [dependencies]
 anyhow = {workspace = true}
 clap = {version = "4.4.2", features = ["derive"]}
@@ -23,14 +27,17 @@ serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}
 slumber_import = {workspace = true}
+tokio = {workspace = true, features = ["rt", "macros"]}
 tracing = {workspace = true}
 
 [dev-dependencies]
+assert_cmd = "2.0.16"
 env-lock = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
+serde_json = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}
-tokio = {workspace = true, features = ["rt", "macros"]}
+wiremock = {workspace = true}
 
 [package.metadata.release]
 tag = false

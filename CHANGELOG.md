@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Add `--all` argument to show requests for all collections
 - Improve format of `slumber history list` table output
 
+### Fixed
+
+- Fix output format of `slumber request --dry-run ...` to match `slumber request --verbose`
+
 ## [3.0.1] - 2025-02-19
 
 ### Fixed

@@ -59,8 +59,21 @@ impl Database {
     /// anywhere in the app. The migrations will run on first connection, and
     /// not after that. Migrations WILL run on a read-only database!
     pub fn load(mode: DatabaseMode) -> anyhow::Result<Self> {
-        let path = Self::path();
-        paths::create_parent(&path)?;
+        Self::from_path(mode, &Self::path())
+    }
+
+    /// [Self::load], but from a particular data directory. Useful only for
+    /// tests, when the default DB path shouldn't be used.
+    pub fn from_directory(
+        mode: DatabaseMode,
+        directory: &Path,
+    ) -> anyhow::Result<Self> {
+        let path = directory.join(Self::FILE);
+        Self::from_path(mode, &path)
+    }
+
+    fn from_path(mode: DatabaseMode, path: &Path) -> anyhow::Result<Self> {
+        paths::create_parent(path)?;
 
         info!(?path, "Loading database");
         let mut connection = Connection::open(path)?;

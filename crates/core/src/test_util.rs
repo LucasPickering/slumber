@@ -70,7 +70,7 @@ pub fn http_engine() -> HttpEngine {
 /// Guard for a temporary directory. Create the directory on creation, delete
 /// it on drop.
 #[derive(Debug, Deref)]
-pub struct TempDir(PathBuf);
+pub struct TempDir(#[deref(forward)] PathBuf);
 
 impl TempDir {
     fn new() -> Self {

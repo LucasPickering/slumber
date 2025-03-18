@@ -90,6 +90,14 @@ Override default input bindings. [More info](./input_bindings.md)
 
 Size over which request/response bodies are not formatted/highlighted, for performance (bytes)
 
+### `persist`
+
+**Type:** `boolean`
+
+**Default:** `true`
+
+Enable/disable the storage of requests and responses in Slumber's local database. [See here for more](../../user_guide/database.md).
+
 ### `preview_templates`
 
 **Type:** `boolean`

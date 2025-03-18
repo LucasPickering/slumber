@@ -10,16 +10,16 @@ Recipes can be organized into folders. This means your set of recipes can form a
 
 The tag for a recipe is `!request` (see examples).
 
-| Field            | Type                                         | Description                            | Default                |
-| ---------------- | -------------------------------------------- | -------------------------------------- | ---------------------- |
-| `name`           | `string`                                     | Descriptive name to use in the UI      | Value of key in parent |
-| `method`         | `string`                                     | HTTP request method                    | Required               |
-| `url`            | [`Template`](./template.md)                  | HTTP request URL                       | Required               |
-| `query`          | [`QueryParameters`](./query_parameters.md)   | URL query parameters                   | `{}`                   |
-| `headers`        | [`mapping[string, Template]`](./template.md) | HTTP request headers                   | `{}`                   |
-| `authentication` | [`Authentication`](./authentication.md)      | Authentication scheme                  | `null`                 |
-| `body`           | [`RecipeBody`](./recipe_body.md)             | HTTP request body                      | `null`                 |
-| `persist`        | `boolean`                                    | Svae requests to the history database? | `true`                 |
+| Field            | Type                                         | Description                                                                   | Default                |
+| ---------------- | -------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------- |
+| `name`           | `string`                                     | Descriptive name to use in the UI                                             | Value of key in parent |
+| `method`         | `string`                                     | HTTP request method                                                           | Required               |
+| `url`            | [`Template`](./template.md)                  | HTTP request URL                                                              | Required               |
+| `query`          | [`QueryParameters`](./query_parameters.md)   | URL query parameters                                                          | `{}`                   |
+| `headers`        | [`mapping[string, Template]`](./template.md) | HTTP request headers                                                          | `{}`                   |
+| `authentication` | [`Authentication`](./authentication.md)      | Authentication scheme                                                         | `null`                 |
+| `body`           | [`RecipeBody`](./recipe_body.md)             | HTTP request body                                                             | `null`                 |
+| `persist`        | `boolean`                                    | Enable/disable request persistence. [Read more](../../user_guide/database.md) | `true`                 |
 
 ## Folder Fields
 

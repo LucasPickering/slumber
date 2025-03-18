@@ -16,6 +16,7 @@
   - [Data Extraction via JSONPath](./user_guide/templates/selector.md)
 - [Collection Reuse & Inheritance](./user_guide/inheritance.md)
 - [Importing External Collections](./user_guide/import.md)
+- [Database & Persistence](./user_guide/database.md)
 
 # CLI Commands
 

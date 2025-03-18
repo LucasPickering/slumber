@@ -345,8 +345,9 @@ pub struct RequestTicket {
     /// Our brave little astronaut, ready to be launched...
     pub(super) request: Request,
     /// Should the request/response be saved to the DB? This is based on:
-    /// - `persist` field of the recipe
-    /// - TODO more
+    /// - Global config `persist` field
+    /// - Recipe `persist` field
+    /// - CLI `--persist` flag
     pub(super) persist: bool,
 }
 

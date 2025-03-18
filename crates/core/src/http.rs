@@ -85,6 +85,7 @@ pub struct HttpEngine {
     /// creating a client because it's expensive.
     danger_client: Option<(Client, HashSet<String>)>,
     large_body_size: usize,
+    persist: bool,
 }
 
 impl HttpEngine {
@@ -110,6 +111,7 @@ impl HttpEngine {
             client,
             danger_client,
             large_body_size: config.large_body_size,
+            persist: config.persist,
         }
     }
 
@@ -170,7 +172,11 @@ impl HttpEngine {
             Ok(Output {
                 client,
                 request,
-                persist: recipe.persist,
+                // Only persist if the global AND local options are enabled, AND
+                // we're allowed to write to the DB (disabled for CLI)
+                persist: self.persist
+                    && recipe.persist
+                    && template_context.database.can_write(),
             })
         };
         let Output {
@@ -366,6 +372,8 @@ pub struct HttpEngineConfig {
     /// Request/response bodies over this size are treated differently, for
     /// performance reasons
     pub large_body_size: usize,
+    /// Enable/disable persistence for _all_ requests?
+    pub persist: bool,
 }
 
 impl HttpEngineConfig {
@@ -382,6 +390,7 @@ impl Default for HttpEngineConfig {
         Self {
             ignore_certificate_hosts: Default::default(),
             large_body_size: 1000 * 1000, // 1MB
+            persist: true,
         }
     }
 }
@@ -446,7 +455,7 @@ impl RequestTicket {
                     end_time,
                 };
 
-                if database.can_write() && self.persist {
+                if self.persist {
                     // Error here should *not* kill the request
                     let _ = database.insert_exchange(&exchange);
                 }

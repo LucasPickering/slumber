@@ -1,5 +1,5 @@
 use super::*;
-use crate::{assert_err, test_util::Factory, util::paths::get_repo_root};
+use crate::{test_util::Factory, util::paths::get_repo_root};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use rstest::{fixture, rstest};
@@ -367,18 +367,5 @@ fn test_ui_state(collection_path: PathBuf) {
     assert_eq!(
         collection2.get_ui::<_, String>(key_type, ui_key).unwrap(),
         Some("value2".into())
-    );
-}
-
-#[test]
-fn test_readonly_mode() {
-    let database = CollectionDatabase::factory(DatabaseMode::ReadOnly);
-    assert_err!(
-        database.insert_exchange(&Exchange::factory(())),
-        "Database in read-only mode"
-    );
-    assert_err!(
-        database.set_ui("MyKey", "key1", "value1"),
-        "Database in read-only mode"
     );
 }

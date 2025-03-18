@@ -96,7 +96,7 @@ Size over which request/response bodies are not formatted/highlighted, for perfo
 
 **Default:** `true`
 
-Enable/disable the storage of requests and responses in Slumber's local database. [See here for more](../../user_guide/database.md).
+Enable/disable the storage of requests and responses in Slumber's local database. This is only used in the TUI. CLI requests are _not_ persisted unless the `--persist` flag is passed, in which case they will always be persisted. [See here for more](../../user_guide/database.md).
 
 ### `preview_templates`
 

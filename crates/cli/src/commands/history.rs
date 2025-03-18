@@ -9,7 +9,7 @@ use clap_complete::ArgValueCompleter;
 use itertools::Itertools;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
-    db::{Database, DatabaseMode, ProfileFilter},
+    db::{Database, ProfileFilter},
     http::RequestId,
     util::{confirm, format_time_iso},
 };
@@ -96,7 +96,7 @@ impl Subcommand for HistoryCommand {
                 profile,
                 all,
             } => {
-                let database = Database::load(DatabaseMode::ReadOnly)?;
+                let database = Database::load()?;
                 let exchanges = match (recipe, profile, all) {
                     // All requests for all collections
                     (None, None, true) => database.get_all_requests()?,
@@ -143,7 +143,7 @@ impl Subcommand for HistoryCommand {
             }
 
             HistorySubcommand::Get { request, display } => {
-                let database = Database::load(DatabaseMode::ReadOnly)?
+                let database = Database::load()?
                     .into_collection(&global.collection_path()?)?;
                 let exchange = match request {
                     RecipeOrRequest::Recipe(recipe_id) => database
@@ -196,7 +196,7 @@ impl Subcommand for HistoryCommand {
                 }
 
                 // Do the deletion
-                let database = Database::load(DatabaseMode::ReadWrite)?;
+                let database = Database::load()?;
                 let deleted = match selection {
                     DeleteSelection::All => database.delete_all_requests()?,
                     DeleteSelection::Collection => {

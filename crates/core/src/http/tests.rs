@@ -654,6 +654,30 @@ async fn test_send_request(http_engine: &HttpEngine) {
     );
 }
 
+/// Test that persistence can be disabled globally
+#[tokio::test]
+async fn test_global_persist_disabled() {
+    let http_engine = HttpEngine::new(&HttpEngineConfig {
+        persist: false,
+        ..Default::default()
+    });
+    let host = mock_server().await;
+    let recipe = Recipe {
+        url: format!("{host}/get").as_str().into(),
+        ..Recipe::factory(())
+    };
+    let recipe_id = recipe.id.clone();
+    let template_context = template_context([recipe], []);
+
+    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
+    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let database = &template_context.database;
+    let exchange = ticket.send(&template_context.database).await.unwrap();
+
+    assert_eq!(exchange.response.status, StatusCode::OK); // Sanity check
+    assert_eq!(&database.get_all_requests().unwrap(), &[]);
+}
+
 /// Test that a request is not persisted if the recipe has `persist` set to
 /// `false`
 #[rstest]

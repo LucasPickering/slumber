@@ -2,11 +2,7 @@
 
 use reqwest::StatusCode;
 use serde_json::json;
-use slumber_core::{
-    assert_matches,
-    db::{Database, DatabaseMode},
-    http::ExchangeSummary,
-};
+use slumber_core::{assert_matches, db::Database, http::ExchangeSummary};
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
 mod common;
@@ -40,8 +36,7 @@ async fn test_request() {
     command.assert().success().stdout(body.to_string());
 
     // Requests are not persisted
-    let database =
-        Database::from_directory(DatabaseMode::ReadOnly, &data_dir).unwrap();
+    let database = Database::from_directory(&data_dir).unwrap();
     assert_eq!(
         &database.get_all_requests().unwrap(),
         &[],
@@ -148,8 +143,7 @@ async fn test_request_persist() {
     command.assert().success().stdout(body.to_string());
 
     // Request was persisted
-    let database =
-        Database::from_directory(DatabaseMode::ReadOnly, &data_dir).unwrap();
+    let database = Database::from_directory(&data_dir).unwrap();
     let requests = database.get_all_requests().unwrap();
     let (recipe_id, profile_id, status) = assert_matches!(
         requests.as_slice(),

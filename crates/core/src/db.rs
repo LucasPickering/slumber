@@ -47,9 +47,6 @@ pub struct Database {
     /// one connection per thread, but the code would be a bit more
     /// complicated.
     connection: Arc<Mutex<Connection>>,
-    /// Read-only or read-write? We use a read-only DB in the CLI to indicate
-    /// to the HTTP engine that requests shouldn't be stored
-    mode: DatabaseMode,
 }
 
 impl Database {
@@ -57,22 +54,19 @@ impl Database {
 
     /// Load the database. This will perform migrations, but can be called from
     /// anywhere in the app. The migrations will run on first connection, and
-    /// not after that. Migrations WILL run on a read-only database!
-    pub fn load(mode: DatabaseMode) -> anyhow::Result<Self> {
-        Self::from_path(mode, &Self::path())
+    /// not after that.
+    pub fn load() -> anyhow::Result<Self> {
+        Self::from_path(&Self::path())
     }
 
     /// [Self::load], but from a particular data directory. Useful only for
     /// tests, when the default DB path shouldn't be used.
-    pub fn from_directory(
-        mode: DatabaseMode,
-        directory: &Path,
-    ) -> anyhow::Result<Self> {
+    pub fn from_directory(directory: &Path) -> anyhow::Result<Self> {
         let path = directory.join(Self::FILE);
-        Self::from_path(mode, &path)
+        Self::from_path(&path)
     }
 
-    fn from_path(mode: DatabaseMode, path: &Path) -> anyhow::Result<Self> {
+    fn from_path(path: &Path) -> anyhow::Result<Self> {
         paths::create_parent(path)?;
 
         info!(?path, "Loading database");
@@ -87,7 +81,6 @@ impl Database {
         Self::migrate(&mut connection)?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
-            mode,
         })
     }
 
@@ -117,16 +110,6 @@ impl Database {
             .context("Error fetching collections")?
             .collect::<rusqlite::Result<Vec<_>>>()
             .context("Error extracting collection data")
-    }
-
-    /// Return an error if we are in read-only mode
-    fn ensure_write(&self) -> anyhow::Result<()> {
-        match self.mode {
-            DatabaseMode::ReadOnly => {
-                Err(anyhow!("Database in read-only mode"))
-            }
-            DatabaseMode::ReadWrite => Ok(()),
-        }
     }
 
     /// Migrate all data for one collection into another, deleting the source
@@ -161,7 +144,6 @@ impl Database {
                 .traced()
         }
 
-        self.ensure_write()?;
         info!(?source, ?target, "Merging database state");
         let connection = self.connection();
 
@@ -231,7 +213,7 @@ impl Database {
         request_id: RequestId,
     ) -> anyhow::Result<usize> {
         info!(%request_id, "Deleting request");
-        self.ensure_write()?;
+
         self.connection()
             .execute(
                 "DELETE FROM requests_v2 WHERE id = :request_id",
@@ -303,11 +285,6 @@ impl CollectionDatabase {
             .context("Error fetching collection path")
             .traced()
             .map(PathBuf::from)
-    }
-
-    /// Is read/write mode enabled for this database?
-    pub fn can_write(&self) -> bool {
-        self.database.mode == DatabaseMode::ReadWrite
     }
 
     /// Get a request by ID, or `None` if it does not exist in history.
@@ -449,8 +426,6 @@ impl CollectionDatabase {
     /// requests that failed to complete (e.g. because of a network error)
     /// should not (and cannot) be stored.
     pub fn insert_exchange(&self, exchange: &Exchange) -> anyhow::Result<()> {
-        self.database.ensure_write()?;
-
         debug!(
             id = %exchange.id,
             url = %exchange.request.url,
@@ -522,7 +497,6 @@ impl CollectionDatabase {
     /// Delete all exchanges for this collection. Return the number of deleted
     /// requests
     pub fn delete_all_requests(&self) -> anyhow::Result<usize> {
-        self.database.ensure_write()?;
         info!(
             collection_id = %self.collection_id,
             collection_path = ?self.collection_path(),
@@ -545,7 +519,6 @@ impl CollectionDatabase {
         profile_id: ProfileFilter,
         recipe_id: &RecipeId,
     ) -> anyhow::Result<usize> {
-        self.database.ensure_write()?;
         info!(
             collection_id = %self.collection_id,
             collection_path = ?self.collection_path(),
@@ -622,8 +595,6 @@ impl CollectionDatabase {
         K: Debug + Serialize,
         V: Debug + Serialize,
     {
-        self.database.ensure_write()?;
-
         debug!(?key, ?value, "Setting UI state");
         self.database
             .connection()
@@ -665,18 +636,10 @@ impl CollectionId {
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for Database {
     fn factory(_: ()) -> Self {
-        Self::factory(DatabaseMode::ReadWrite)
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<DatabaseMode> for Database {
-    fn factory(mode: DatabaseMode) -> Self {
         let mut connection = Connection::open_in_memory().unwrap();
         Self::migrate(&mut connection).unwrap();
         Self {
             connection: Arc::new(Mutex::new(connection)),
-            mode,
         }
     }
 }
@@ -684,25 +647,11 @@ impl crate::test_util::Factory<DatabaseMode> for Database {
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for CollectionDatabase {
     fn factory(_: ()) -> Self {
-        Self::factory(DatabaseMode::ReadWrite)
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<DatabaseMode> for CollectionDatabase {
-    fn factory(mode: DatabaseMode) -> Self {
         use crate::util::paths::get_repo_root;
-        Database::factory(mode)
+        Database::factory(())
             .into_collection(&get_repo_root().join("slumber.yml"))
             .expect("Error initializing DB collection")
     }
-}
-
-/// Is the database read-only or read/write?
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum DatabaseMode {
-    ReadOnly,
-    ReadWrite,
 }
 
 /// Define how to filter requests by profile

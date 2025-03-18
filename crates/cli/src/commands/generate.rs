@@ -1,6 +1,5 @@
 use crate::{GlobalArgs, Subcommand, commands::request::BuildRequestCommand};
 use clap::{Parser, ValueEnum};
-use slumber_core::db::DatabaseMode;
 use std::process::ExitCode;
 
 /// Render a request and generate an equivalent for a third-party client
@@ -26,12 +25,9 @@ impl Subcommand for GenerateCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.format {
             GenerateFormat::Curl => {
-                let (_, http_engine, seed, template_context) =
-                    self.build_request.build_seed(
-                        global,
-                        DatabaseMode::ReadOnly,
-                        self.execute_triggers,
-                    )?;
+                let (_, http_engine, seed, template_context) = self
+                    .build_request
+                    .build_seed(global, false, self.execute_triggers)?;
                 let command = http_engine
                     .build_curl(seed, &template_context)
                     .await

@@ -11,7 +11,7 @@ use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
-    db::{CollectionDatabase, Database, DatabaseMode},
+    db::{CollectionDatabase, Database},
     http::{
         BuildOptions, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
     },
@@ -107,21 +107,11 @@ pub struct DisplayExchangeCommand {
 
 impl Subcommand for RequestCommand {
     async fn execute(mut self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        // Storing requests in history from the CLI isn't really intuitive, and
-        // could have a large perf impact for scripting and large responses. So
-        // by default we don't, but the --persist flag can enable it. Check
-        // --dry-run as well just to be 100% sure we don't make any
-        // modifications in a dry run
-        let database_mode = if self.persist && !self.dry_run {
-            DatabaseMode::ReadWrite
-        } else {
-            DatabaseMode::ReadOnly
-        };
         // Don't execute sub-requests in a dry run
         let trigger_dependencies = !self.dry_run;
         let (database, http_engine, seed, template_context) = self
             .build_request
-            .build_seed(global, database_mode, trigger_dependencies)?;
+            .build_seed(global, self.persist, trigger_dependencies)?;
         let ticket = http_engine.build(seed, &template_context).await.map_err(
             |error| {
                 // If the build failed because triggered requests are disabled,
@@ -169,14 +159,15 @@ impl BuildRequestCommand {
     /// ## Parameters
     ///
     /// - `global`: Global arguments for the CLI
-    /// - `database_mode`: Read-write if the request is going to be executed and
-    ///   the result should be persisted in history, read-only otherwise
+    /// - `persist`: Will the request/response be persisted in history? This
+    ///   needs to be passed here (at build time) because it's baked into the
+    ///   HTTP engine's config.
     /// - `trigger_dependencies`: Whether chained requests can be executed if
     ///   their triggers apply
     pub fn build_seed(
         self,
         global: GlobalArgs,
-        database_mode: DatabaseMode,
+        persist: bool,
         trigger_dependencies: bool,
     ) -> anyhow::Result<(
         CollectionDatabase,
@@ -185,10 +176,14 @@ impl BuildRequestCommand {
         TemplateContext,
     )> {
         let collection_path = global.collection_path()?;
-        let config = Config::load()?;
+        let mut config = Config::load()?;
+        // Override the persistence setting based on the --persist flag. By
+        // default the CLI never persists, regardless of the config, because
+        // it's unintuitive and not that useful. The --persist flag overrides
+        // the config as well, forcing persistence.
+        config.http.persist = persist;
         let collection = Collection::load(&collection_path)?;
-        let database =
-            Database::load(database_mode)?.into_collection(&collection_path)?;
+        let database = Database::load()?.into_collection(&collection_path)?;
         let http_engine = HttpEngine::new(&config.http);
 
         // Validate profile ID, so we can provide a good error if it's invalid

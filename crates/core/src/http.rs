@@ -172,11 +172,8 @@ impl HttpEngine {
             Ok(Output {
                 client,
                 request,
-                // Only persist if the global AND local options are enabled, AND
-                // we're allowed to write to the DB (disabled for CLI)
-                persist: self.persist
-                    && recipe.persist
-                    && template_context.database.can_write(),
+                // Only persist if the global AND local options are enabled
+                persist: self.persist && recipe.persist,
             })
         };
         let Output {
@@ -372,7 +369,8 @@ pub struct HttpEngineConfig {
     /// Request/response bodies over this size are treated differently, for
     /// performance reasons
     pub large_body_size: usize,
-    /// Enable/disable persistence for _all_ requests?
+    /// Enable/disable persistence for _all_ requests? The CLI should override
+    /// this based on the absence/presence of the `--persist` flag
     pub persist: bool,
 }
 

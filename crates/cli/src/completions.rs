@@ -9,7 +9,7 @@
 use clap_complete::CompletionCandidate;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
-    db::{Database, DatabaseMode},
+    db::Database,
 };
 use std::{ffi::OsStr, ops::Deref};
 
@@ -43,7 +43,7 @@ pub fn complete_recipe(current: &OsStr) -> Vec<CompletionCandidate> {
 
 /// Provide completions for request IDs
 pub fn complete_request_id(current: &OsStr) -> Vec<CompletionCandidate> {
-    let Ok(database) = Database::load(DatabaseMode::ReadOnly) else {
+    let Ok(database) = Database::load() else {
         return Vec::new();
     };
     let Ok(exchanges) = database.get_all_requests() else {

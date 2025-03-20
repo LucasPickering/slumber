@@ -3,7 +3,11 @@ use crate::{
     http::{RequestMetadata, ResponseMetadata},
     view::{
         RequestState,
-        common::{Pane, tabs::Tabs},
+        common::{
+            Pane,
+            actions::{IntoMenuAction, MenuAction},
+            tabs::Tabs,
+        },
         component::{
             Component,
             request_view::RequestView,
@@ -28,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::{collection::RecipeNodeType, util::format_byte_size};
 use std::sync::Arc;
-use strum::{EnumCount, EnumIter};
+use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Display for a request/response exchange. This allows the user to switch
 /// between request and response. This is bound to a particular [RequestState],
@@ -37,7 +41,6 @@ use strum::{EnumCount, EnumIter};
 #[derive(Debug)]
 pub struct ExchangePane {
     emitter: Emitter<ExchangePaneEvent>,
-    tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
     state: State,
 }
 
@@ -48,7 +51,6 @@ impl ExchangePane {
     ) -> Self {
         Self {
             emitter: Default::default(),
-            tabs: Default::default(),
             state: State::new(selected_request, selected_recipe_kind),
         }
     }
@@ -64,15 +66,11 @@ impl EventHandler for ExchangePane {
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
         match &mut self.state {
-            // Tabs won't be visible in these empty states so we don't *need*
-            // to return it, but it doesn't matter
             State::None | State::Folder | State::NoHistory => {
-                vec![self.tabs.to_child_mut()]
+                vec![]
             }
-
-            // Tabs last so the children get priority
             State::Content { content, .. } => {
-                vec![content.to_child_mut(), self.tabs.to_child_mut()]
+                vec![content.to_child_mut()]
             }
         }
     }
@@ -110,24 +108,14 @@ impl Draw for ExchangePane {
                 area,
             ),
             State::Content { metadata, content } => {
-                let [metadata_area, tabs_area, content_area] =
-                    Layout::vertical([
-                        Constraint::Length(1),
-                        Constraint::Length(1),
-                        Constraint::Min(0),
-                    ])
-                    .areas(area);
+                let [metadata_area, content_area] = Layout::vertical([
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ])
+                .areas(area);
 
                 metadata.draw(frame, (), metadata_area, true);
-                self.tabs.draw(frame, (), tabs_area, true);
-                content.draw(
-                    frame,
-                    ExchangePaneContentProps {
-                        selected_tab: self.tabs.data().selected(),
-                    },
-                    content_area,
-                    true,
-                );
+                content.draw(frame, (), content_area, true);
             }
         }
     }
@@ -138,25 +126,6 @@ impl ToEmitter<ExchangePaneEvent> for ExchangePane {
     fn to_emitter(&self) -> Emitter<ExchangePaneEvent> {
         self.emitter
     }
-}
-
-#[derive(
-    Copy,
-    Clone,
-    Debug,
-    Display,
-    Default,
-    EnumCount,
-    EnumIter,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-enum Tab {
-    Request,
-    #[default]
-    Body,
-    Headers,
 }
 
 /// Emitted event for the exchange pane component
@@ -253,9 +222,208 @@ impl Draw for ExchangePaneMetadata {
     }
 }
 
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Display,
+    Default,
+    EnumCount,
+    EnumIter,
+    PartialEq,
+    Serialize,
+    Deserialize,
+)]
+enum Tab {
+    Request,
+    #[default]
+    Body,
+    Headers,
+}
+
 /// Content under the tab bar. Only rendered when a request state is present
 #[derive(Debug)]
-enum ExchangePaneContent {
+struct ExchangePaneContent {
+    actions_emitter: Emitter<ExchangePaneMenuAction>,
+    tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
+    state: ExchangePaneContentState,
+}
+
+impl ExchangePaneContent {
+    fn new(request_state: &RequestState) -> Self {
+        let state = match request_state {
+            RequestState::Building { .. } => ExchangePaneContentState::Building,
+            RequestState::BuildError { error } => {
+                ExchangePaneContentState::BuildError {
+                    error: error.generate(),
+                }
+            }
+            RequestState::Loading { request, .. } => {
+                ExchangePaneContentState::Loading {
+                    request: RequestView::new(Arc::clone(request)).into(),
+                }
+            }
+            RequestState::Cancelled { .. } => {
+                ExchangePaneContentState::Cancelled
+            }
+            RequestState::Response { exchange } => {
+                ExchangePaneContentState::Response {
+                    request: RequestView::new(Arc::clone(&exchange.request))
+                        .into(),
+                    response_headers: ResponseHeadersView::new(Arc::clone(
+                        &exchange.response,
+                    ))
+                    .into(),
+                    response_body: ResponseBodyView::new(
+                        exchange.request.recipe_id.clone(),
+                        Arc::clone(&exchange.response),
+                    )
+                    .into(),
+                }
+            }
+            RequestState::RequestError { error } => {
+                ExchangePaneContentState::RequestError {
+                    request: RequestView::new(Arc::clone(&error.request))
+                        .into(),
+                    error: error.generate(),
+                }
+            }
+        };
+        Self {
+            actions_emitter: Default::default(),
+            tabs: Default::default(),
+            state,
+        }
+    }
+}
+
+impl EventHandler for ExchangePaneContent {
+    fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
+        event.opt().emitted(self.actions_emitter, |menu_action| {
+            match menu_action {
+                // Generally if we get an action the corresponding
+                // request/response will be present, but we double check in case
+                // the action got delayed in being handled somehow
+                ExchangePaneMenuAction::CopyUrl => {
+                    if let Some(request) = self.state.request() {
+                        request.copy_url();
+                    }
+                }
+                ExchangePaneMenuAction::ViewRequestBody => {
+                    if let Some(request) = self.state.request() {
+                        request.view_body();
+                    }
+                }
+                ExchangePaneMenuAction::CopyRequestBody => {
+                    if let Some(request) = self.state.request() {
+                        request.copy_body();
+                    }
+                }
+                ExchangePaneMenuAction::CopyResponseBody => {
+                    if let Some(response) = self.state.response() {
+                        response.copy_body();
+                    }
+                }
+                ExchangePaneMenuAction::ViewResponseBody => {
+                    if let Some(response) = self.state.response() {
+                        response.view_body();
+                    }
+                }
+                ExchangePaneMenuAction::SaveResponseBody => {
+                    if let Some(response) = self.state.response() {
+                        response.save_response_body();
+                    }
+                }
+            }
+        })
+    }
+
+    fn menu_actions(&self) -> Vec<MenuAction> {
+        ExchangePaneMenuAction::iter()
+            .map(MenuAction::with_data(self, self.actions_emitter))
+            .collect()
+    }
+
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        match &mut self.state {
+            // Tabs last so the children get priority
+            ExchangePaneContentState::Building
+            | ExchangePaneContentState::BuildError { .. }
+            | ExchangePaneContentState::Cancelled => {
+                vec![self.tabs.to_child_mut()]
+            }
+            ExchangePaneContentState::Loading { request } => {
+                vec![request.to_child_mut(), self.tabs.to_child_mut()]
+            }
+            ExchangePaneContentState::Response {
+                request,
+                response_headers,
+                response_body,
+            } => vec![
+                request.to_child_mut(),
+                response_headers.to_child_mut(),
+                response_body.to_child_mut(),
+                self.tabs.to_child_mut(),
+            ],
+            ExchangePaneContentState::RequestError { request, .. } => {
+                vec![request.to_child_mut(), self.tabs.to_child_mut()]
+            }
+        }
+    }
+}
+
+impl Draw for ExchangePaneContent {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        let [tabs_area, content_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+                .areas(metadata.area());
+        self.tabs.draw(frame, (), tabs_area, true);
+        match &self.state {
+            ExchangePaneContentState::Building => {
+                frame.render_widget("Initializing request...", content_area)
+            }
+            ExchangePaneContentState::BuildError { error } => {
+                frame.render_widget(error, content_area)
+            }
+            ExchangePaneContentState::Loading { request } => {
+                match self.tabs.data().selected() {
+                    Tab::Request => request.draw(frame, (), content_area, true),
+                    Tab::Body | Tab::Headers => {
+                        frame.render_widget("Loading...", content_area)
+                    }
+                }
+            }
+            // Can't show cancelled request here because we might've cancelled
+            // during the build
+            ExchangePaneContentState::Cancelled => {
+                frame.render_widget("Request cancelled", content_area)
+            }
+            ExchangePaneContentState::Response {
+                request,
+                response_body,
+                response_headers,
+            } => match self.tabs.data().selected() {
+                Tab::Request => request.draw(frame, (), content_area, true),
+                Tab::Body => response_body.draw(frame, (), content_area, true),
+                Tab::Headers => {
+                    response_headers.draw(frame, (), content_area, true)
+                }
+            },
+            ExchangePaneContentState::RequestError { request, error } => {
+                match self.tabs.data().selected() {
+                    Tab::Request => request.draw(frame, (), content_area, true),
+                    Tab::Body | Tab::Headers => {
+                        frame.render_widget(error, content_area)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Various request states that can appear under the tab bar
+#[derive(Debug)]
+enum ExchangePaneContentState {
     Building,
     BuildError {
         error: Paragraph<'static>,
@@ -275,97 +443,94 @@ enum ExchangePaneContent {
     },
 }
 
-struct ExchangePaneContentProps {
-    selected_tab: Tab,
-}
+impl ExchangePaneContentState {
+    fn request(&self) -> Option<&RequestView> {
+        match self {
+            Self::Building | Self::BuildError { .. } | Self::Cancelled => None,
+            Self::Loading { request }
+            | Self::Response { request, .. }
+            | Self::RequestError { request, .. } => Some(request.data()),
+        }
+    }
 
-impl ExchangePaneContent {
-    fn new(request_state: &RequestState) -> Self {
-        match request_state {
-            RequestState::Building { .. } => Self::Building,
-            RequestState::BuildError { error } => Self::BuildError {
-                error: error.generate(),
-            },
-            RequestState::Loading { request, .. } => Self::Loading {
-                request: RequestView::new(Arc::clone(request)).into(),
-            },
-            RequestState::Cancelled { .. } => Self::Cancelled,
-            RequestState::Response { exchange } => Self::Response {
-                request: RequestView::new(Arc::clone(&exchange.request)).into(),
-                response_headers: ResponseHeadersView::new(Arc::clone(
-                    &exchange.response,
-                ))
-                .into(),
-                response_body: ResponseBodyView::new(
-                    exchange.request.recipe_id.clone(),
-                    Arc::clone(&exchange.response),
-                )
-                .into(),
-            },
-            RequestState::RequestError { error } => Self::RequestError {
-                request: RequestView::new(Arc::clone(&error.request)).into(),
-                error: error.generate(),
-            },
+    fn has_request_body(&self) -> bool {
+        self.request().is_some_and(|request| request.has_body())
+    }
+
+    fn response(&self) -> Option<&ResponseBodyView> {
+        match self {
+            Self::Building
+            | Self::BuildError { .. }
+            | Self::Cancelled
+            | Self::Loading { .. }
+            | Self::RequestError { .. } => None,
+            Self::Response { response_body, .. } => Some(response_body.data()),
+        }
+    }
+
+    fn has_response_body(&self) -> bool {
+        match self {
+            Self::Building
+            | Self::BuildError { .. }
+            | Self::Cancelled
+            | Self::Loading { .. }
+            | Self::RequestError { .. } => false,
+            Self::Response { .. } => true,
         }
     }
 }
 
-impl EventHandler for ExchangePaneContent {
-    fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        match self {
-            Self::Building | Self::BuildError { .. } | Self::Cancelled => {
-                vec![]
-            }
-            Self::Loading { request } => vec![request.to_child_mut()],
-            Self::Response {
-                request,
-                response_headers,
-                response_body,
-            } => vec![
-                request.to_child_mut(),
-                response_headers.to_child_mut(),
-                response_body.to_child_mut(),
-            ],
-            Self::RequestError { request, .. } => vec![request.to_child_mut()],
-        }
-    }
+/// Items in the actions popup menu for the Body
+#[derive(Copy, Clone, Debug, Display, EnumIter)]
+#[allow(clippy::enum_variant_names)]
+enum ExchangePaneMenuAction {
+    #[display("Copy URL")]
+    CopyUrl,
+    #[display("Copy Request Body")]
+    CopyRequestBody,
+    #[display("View Request Body")]
+    ViewRequestBody,
+    #[display("Copy Response Body")]
+    CopyResponseBody,
+    #[display("View Response Body")]
+    ViewResponseBody,
+    #[display("Save Response Body as File")]
+    SaveResponseBody,
 }
 
-impl Draw<ExchangePaneContentProps> for ExchangePaneContent {
-    fn draw(
-        &self,
-        frame: &mut Frame,
-        props: ExchangePaneContentProps,
-        metadata: DrawMetadata,
-    ) {
-        let area = metadata.area();
+impl IntoMenuAction<ExchangePaneContent> for ExchangePaneMenuAction {
+    fn enabled(&self, data: &ExchangePaneContent) -> bool {
         match self {
-            Self::Building => {
-                frame.render_widget("Initializing request...", area)
+            Self::CopyUrl => true,
+            Self::CopyRequestBody | Self::ViewRequestBody => {
+                data.state.has_request_body()
             }
-            Self::BuildError { error } => frame.render_widget(error, area),
-            Self::Loading { request } => match props.selected_tab {
-                Tab::Request => request.draw(frame, (), area, true),
-                Tab::Body | Tab::Headers => {
-                    frame.render_widget("Loading...", area)
+            Self::ViewResponseBody
+            | Self::CopyResponseBody
+            | Self::SaveResponseBody => data.state.has_response_body(),
+        }
+    }
+
+    fn shortcut(&self, data: &ExchangePaneContent) -> Option<Action> {
+        match self {
+            Self::CopyUrl
+            | Self::CopyRequestBody
+            | Self::CopyResponseBody
+            | Self::SaveResponseBody => None,
+            Self::ViewRequestBody => {
+                if matches!(data.tabs.data().selected(), Tab::Request) {
+                    Some(Action::View)
+                } else {
+                    None
                 }
-            },
-            // Can't show cancelled request here because we might've cancelled
-            // during the build
-            Self::Cancelled => frame.render_widget("Request cancelled", area),
-            Self::Response {
-                request,
-                response_body,
-                response_headers,
-            } => match props.selected_tab {
-                Tab::Request => request.draw(frame, (), area, true),
-                Tab::Body => response_body.draw(frame, (), area, true),
-                Tab::Headers => response_headers.draw(frame, (), area, true),
-            },
-            Self::RequestError { request, error } => match props.selected_tab {
-                Tab::Request => request.draw(frame, (), area, true),
-                Tab::Body | Tab::Headers => frame.render_widget(error, area),
-            },
+            }
+            Self::ViewResponseBody => {
+                if matches!(data.tabs.data().selected(), Tab::Body) {
+                    Some(Action::View)
+                } else {
+                    None
+                }
+            }
         }
     }
 }

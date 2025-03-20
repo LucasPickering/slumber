@@ -5,30 +5,24 @@ use crate::{
     message::Message,
     view::{
         Component, ViewContext,
-        common::{
-            actions::{IntoMenuAction, MenuAction},
-            header_table::HeaderTable,
-        },
+        common::header_table::HeaderTable,
         component::queryable_body::QueryableBody,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent},
+        event::{Child, Event, EventHandler, OptionEvent},
         util::{persistence::PersistedLazy, view_text},
     },
 };
-use derive_more::Display;
 use persisted::PersistedKey;
 use ratatui::Frame;
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{collection::RecipeId, http::ResponseRecord};
 use std::sync::Arc;
-use strum::{EnumIter, IntoEnumIterator};
 
 /// Display response body
 #[derive(Debug)]
 pub struct ResponseBodyView {
-    actions_emitter: Emitter<ResponseBodyMenuAction>,
     response: Arc<ResponseRecord>,
     /// The presentable version of the response body, which may or may not
     /// match the response body. We apply transformations such as filter,
@@ -48,53 +42,37 @@ impl ResponseBodyView {
             QueryableBody::new(Arc::clone(&response), default_query),
         )
         .into();
-        Self {
-            actions_emitter: Default::default(),
-            response,
-            body,
-        }
+        Self { response, body }
     }
 
-    fn view_body(&self) {
+    pub fn view_body(&self) {
         view_text(self.body.data().visible_text(), self.response.mime());
+    }
+
+    pub fn copy_body(&self) {
+        // Use whatever text is visible to the user. This differs from saving
+        // the body, because we can't copy binary content, so if the file is
+        // binary we'll copy the hexcode text
+        ViewContext::send_message(Message::CopyText(
+            self.body.data().visible_text().to_string(),
+        ));
+    }
+
+    pub fn save_response_body(&self) {
+        // This will trigger a modal to ask the user for a path
+        ViewContext::send_message(Message::SaveResponseBody {
+            request_id: self.response.id,
+            data: self.body.data().modified_text(),
+        });
     }
 }
 
 impl EventHandler for ResponseBodyView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event
-            .opt()
-            .action(|action, propagate| match action {
-                Action::View => self.view_body(),
-                _ => propagate.set(),
-            })
-            .emitted(self.actions_emitter, |menu_action| {
-                match menu_action {
-                    ResponseBodyMenuAction::ViewBody => self.view_body(),
-                    ResponseBodyMenuAction::CopyBody => {
-                        // Use whatever text is visible to the user. This
-                        // differs from saving the body, because we can't copy
-                        // binary content, so if the file is binary we'll copy
-                        // the hexcode text
-                        ViewContext::send_message(Message::CopyText(
-                            self.body.data().visible_text().to_string(),
-                        ));
-                    }
-                    ResponseBodyMenuAction::SaveBody => {
-                        // This will trigger a modal to ask the user for a path
-                        ViewContext::send_message(Message::SaveResponseBody {
-                            request_id: self.response.id,
-                            data: self.body.data().modified_text(),
-                        });
-                    }
-                }
-            })
-    }
-
-    fn menu_actions(&self) -> Vec<MenuAction> {
-        ResponseBodyMenuAction::iter()
-            .map(MenuAction::with_data(self, self.actions_emitter))
-            .collect()
+        event.opt().action(|action, propagate| match action {
+            Action::View => self.view_body(),
+            _ => propagate.set(),
+        })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -105,27 +83,6 @@ impl EventHandler for ResponseBodyView {
 impl Draw for ResponseBodyView {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         self.body.draw(frame, (), metadata.area(), true);
-    }
-}
-
-/// Items in the actions popup menu for the Body
-#[derive(Copy, Clone, Debug, Display, EnumIter)]
-#[allow(clippy::enum_variant_names)]
-enum ResponseBodyMenuAction {
-    #[display("View Body")]
-    ViewBody,
-    #[display("Copy Body")]
-    CopyBody,
-    #[display("Save Body as File")]
-    SaveBody,
-}
-
-impl IntoMenuAction<ResponseBodyView> for ResponseBodyMenuAction {
-    fn shortcut(&self, _: &ResponseBodyView) -> Option<Action> {
-        match self {
-            Self::ViewBody => Some(Action::View),
-            Self::CopyBody | Self::SaveBody => None,
-        }
     }
 }
 
@@ -210,7 +167,7 @@ mod tests {
             response: response.into(),
             ..Exchange::factory(())
         };
-        let mut component = TestComponent::new(
+        let component = TestComponent::new(
             &harness,
             &terminal,
             ResponseBodyView::new(
@@ -219,14 +176,7 @@ mod tests {
             ),
         );
 
-        // Open actions modal and select the copy action
-        component
-            .int()
-            .open_actions()
-            // Note: Edit Collections action isn't visible here
-            .send_keys([KeyCode::Down, KeyCode::Enter])
-            .assert_empty();
-
+        component.data().copy_body();
         let body = assert_matches!(
             harness.pop_message_now(),
             Message::CopyText(body) => body,
@@ -313,14 +263,7 @@ mod tests {
             component.int().drain_draw().assert_empty();
         }
 
-        // Open actions modal and select the save action
-        component
-            .int()
-            .open_actions()
-            // Note: Edit Collections action isn't visible here
-            .send_keys([KeyCode::Down, KeyCode::Down, KeyCode::Enter])
-            .assert_empty();
-
+        component.data().save_response_body();
         let (request_id, data) = assert_matches!(
             harness.pop_message_now(),
             Message::SaveResponseBody { request_id, data } => (request_id, data),

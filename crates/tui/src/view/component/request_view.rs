@@ -4,18 +4,16 @@ use crate::{
     view::{
         Component, ViewContext,
         common::{
-            actions::{IntoMenuAction, MenuAction},
             header_table::HeaderTable,
             text_window::{TextWindow, TextWindowProps},
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent},
+        event::{Child, Event, EventHandler, OptionEvent},
         state::Identified,
         util::{highlight, view_text},
     },
 };
-use derive_more::Display;
 use ratatui::{Frame, layout::Layout, prelude::Constraint, text::Text};
 use slumber_config::Action;
 use slumber_core::{
@@ -23,13 +21,11 @@ use slumber_core::{
     util::{MaybeStr, format_byte_size},
 };
 use std::sync::Arc;
-use strum::{EnumIter, IntoEnumIterator};
 
 /// Display rendered HTTP request state. The request could still be in flight,
 /// it just needs to have been built successfully.
 #[derive(Debug)]
 pub struct RequestView {
-    actions_emitter: Emitter<RequestMenuAction>,
     /// Store pointer to the request, so we can access it in the update step
     request: Arc<RequestRecord>,
     /// Persist the visible body, because it may vary from the actual body.
@@ -42,52 +38,43 @@ impl RequestView {
     pub fn new(request: Arc<RequestRecord>) -> Self {
         let body = init_body(&request);
         Self {
-            actions_emitter: Default::default(),
             request,
             body,
             body_text_window: Default::default(),
         }
     }
 
-    fn view_body(&self) {
+    pub fn has_body(&self) -> bool {
+        self.body.is_some()
+    }
+
+    pub fn copy_url(&self) {
+        ViewContext::send_message(Message::CopyText(
+            self.request.url.to_string(),
+        ));
+    }
+
+    pub fn view_body(&self) {
         if let Some(body) = &self.body {
             view_text(body, self.request.mime());
+        }
+    }
+
+    pub fn copy_body(&self) {
+        // Copy exactly what the user sees. Currently requests don't support
+        // formatting/querying but that could change
+        if let Some(body) = &self.body {
+            ViewContext::send_message(Message::CopyText(body.to_string()));
         }
     }
 }
 
 impl EventHandler for RequestView {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event
-            .opt()
-            .action(|action, propagate| match action {
-                Action::View => self.view_body(),
-                _ => propagate.set(),
-            })
-            .emitted(self.actions_emitter, |menu_action| {
-                match menu_action {
-                    RequestMenuAction::CopyUrl => ViewContext::send_message(
-                        Message::CopyText(self.request.url.to_string()),
-                    ),
-                    RequestMenuAction::CopyBody => {
-                        // Copy exactly what the user sees. Currently requests
-                        // don't support formatting/querying but that could
-                        // change
-                        if let Some(body) = &self.body {
-                            ViewContext::send_message(Message::CopyText(
-                                body.to_string(),
-                            ));
-                        }
-                    }
-                    RequestMenuAction::ViewBody => self.view_body(),
-                }
-            })
-    }
-
-    fn menu_actions(&self) -> Vec<MenuAction> {
-        RequestMenuAction::iter()
-            .map(MenuAction::with_data(self, self.actions_emitter))
-            .collect()
+        event.opt().action(|action, propagate| match action {
+            Action::View => self.view_body(),
+            _ => propagate.set(),
+        })
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
@@ -131,33 +118,6 @@ impl Draw for RequestView {
                 body_area,
                 true,
             );
-        }
-    }
-}
-
-/// Items in the actions popup menu
-#[derive(Copy, Clone, Debug, Display, EnumIter)]
-enum RequestMenuAction {
-    #[display("Copy URL")]
-    CopyUrl,
-    #[display("Copy Body")]
-    CopyBody,
-    #[display("View Body")]
-    ViewBody,
-}
-
-impl IntoMenuAction<RequestView> for RequestMenuAction {
-    fn enabled(&self, data: &RequestView) -> bool {
-        match self {
-            Self::CopyUrl => true,
-            Self::CopyBody | Self::ViewBody => data.body.is_some(),
-        }
-    }
-
-    fn shortcut(&self, _: &RequestView) -> Option<Action> {
-        match self {
-            Self::CopyUrl | Self::CopyBody => None,
-            Self::ViewBody => Some(Action::View),
         }
     }
 }

@@ -244,15 +244,9 @@ impl Tui {
                 self.run_command(command)?;
             }
 
-            Message::CopyRequestUrl => {
-                self.copy_request_url()?;
-            }
-            Message::CopyRequestBody => {
-                self.copy_request_body()?;
-            }
-            Message::CopyRequestCurl => {
-                self.copy_request_curl()?;
-            }
+            Message::CopyRequestUrl => self.copy_request_url()?,
+            Message::CopyRequestBody => self.copy_request_body()?,
+            Message::CopyRequestCurl => self.copy_request_curl()?,
             Message::CopyText(text) => self.view.copy_text(text),
             Message::SaveResponseBody { request_id, data } => {
                 self.save_response_body(request_id, data).with_context(

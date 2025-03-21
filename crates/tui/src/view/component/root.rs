@@ -304,6 +304,7 @@ mod tests {
             test_util::TestComponent, util::persistence::DatabasePersistedStore,
         },
     };
+    use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
     use slumber_core::{http::Exchange, test_util::Factory};
@@ -313,10 +314,8 @@ mod tests {
     #[rstest]
     fn test_preload_request(harness: TestHarness, terminal: TestTerminal) {
         // Add a request into the DB that we expect to preload
-
-        let collection = Collection::factory(());
-        let profile_id = collection.first_profile_id();
-        let recipe_id = collection.first_recipe_id();
+        let profile_id = harness.collection.first_profile_id();
+        let recipe_id = harness.collection.first_recipe_id();
         let exchange =
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         harness.database.insert_exchange(&exchange).unwrap();
@@ -324,7 +323,7 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            Root::new(&collection, &harness.request_store.borrow()),
+            Root::new(&harness.collection, &harness.request_store.borrow()),
         );
         component.int().drain_draw().assert_empty();
 
@@ -345,9 +344,8 @@ mod tests {
         harness: TestHarness,
         terminal: TestTerminal,
     ) {
-        let collection = Collection::factory(());
-        let recipe_id = collection.first_recipe_id();
-        let profile_id = collection.first_profile_id();
+        let recipe_id = harness.collection.first_recipe_id();
+        let profile_id = harness.collection.first_profile_id();
         // This is the older one, but it should be loaded because of persistence
         let old_exchange =
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
@@ -363,7 +361,7 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            Root::new(&collection, &harness.request_store.borrow()),
+            Root::new(&harness.collection, &harness.request_store.borrow()),
         );
         component.int().drain_draw().assert_empty();
 
@@ -389,9 +387,8 @@ mod tests {
         harness: TestHarness,
         terminal: TestTerminal,
     ) {
-        let collection = Collection::factory(());
-        let recipe_id = collection.first_recipe_id();
-        let profile_id = collection.first_profile_id();
+        let recipe_id = harness.collection.first_recipe_id();
+        let profile_id = harness.collection.first_profile_id();
         let old_exchange =
             Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
         let new_exchange =
@@ -410,7 +407,7 @@ mod tests {
         let mut component = TestComponent::new(
             &harness,
             &terminal,
-            Root::new(&collection, &harness.request_store.borrow()),
+            Root::new(&harness.collection, &harness.request_store.borrow()),
         );
         component.int().drain_draw().assert_empty();
 
@@ -418,5 +415,151 @@ mod tests {
             component.data().selected_request_id(),
             Some(new_exchange.id)
         );
+    }
+
+    /// Test "Delete Recipe" action via both the recipe pane
+    #[rstest]
+    fn test_delete_recipe_requests(
+        harness: TestHarness,
+        #[with(80, 20)] terminal: TestTerminal,
+    ) {
+        let recipe_id = harness.collection.first_recipe_id();
+        let profile_id = harness.collection.first_profile_id();
+        let old_exchange =
+            Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
+        let new_exchange =
+            Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
+        harness.database.insert_exchange(&old_exchange).unwrap();
+        harness.database.insert_exchange(&new_exchange).unwrap();
+
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.collection, &harness.request_store.borrow()),
+        );
+        // Select recipe pane
+        component
+            .int()
+            .drain_draw()
+            .send_key(KeyCode::Char('c'))
+            .assert_empty();
+
+        // Sanity check for initial state
+        assert_eq!(
+            component.data().selected_request_id(),
+            Some(new_exchange.id)
+        );
+
+        // Select "Delete Recipe" but decline the confirmation
+        component
+            .int()
+            .open_actions()
+            .send_keys([
+                // "Delete Request" action
+                KeyCode::Down,
+                KeyCode::Down,
+                KeyCode::Down,
+                KeyCode::Enter,
+                // Decline
+                KeyCode::Left,
+                KeyCode::Enter,
+            ])
+            .assert_empty();
+
+        // Same request is still selected
+        assert_eq!(
+            component.data().selected_request_id(),
+            Some(new_exchange.id)
+        );
+
+        // Select "Delete Recipe" and accept. I don't feel like testing Delete
+        // for All Profiles
+        component
+            .int()
+            .open_actions()
+            .send_keys([
+                // "Delete Request" action
+                KeyCode::Down,
+                KeyCode::Down,
+                KeyCode::Down,
+                KeyCode::Enter,
+                // Confirm
+                KeyCode::Enter,
+            ])
+            .assert_empty();
+
+        assert_eq!(component.data().selected_request_id(), None);
+    }
+
+    /// Test "Delete Request" action, which is available via the
+    /// Request/Response pane
+    #[rstest]
+    fn test_delete_request(harness: TestHarness, terminal: TestTerminal) {
+        let recipe_id = harness.collection.first_recipe_id();
+        let profile_id = harness.collection.first_profile_id();
+        let old_exchange =
+            Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
+        let new_exchange =
+            Exchange::factory((Some(profile_id.clone()), recipe_id.clone()));
+        harness.database.insert_exchange(&old_exchange).unwrap();
+        harness.database.insert_exchange(&new_exchange).unwrap();
+
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.collection, &harness.request_store.borrow()),
+        );
+        // Select exchange pane
+        component
+            .int()
+            .drain_draw()
+            .send_key(KeyCode::Char('r'))
+            .assert_empty();
+
+        // Sanity check for initial state
+        assert_eq!(
+            component.data().selected_request_id(),
+            Some(new_exchange.id)
+        );
+
+        // Select "Delete Request" but decline the confirmation
+        component
+            .int()
+            .open_actions()
+            .send_keys([
+                // "Delete Request" action
+                KeyCode::Up,
+                KeyCode::Enter,
+                // Decline
+                KeyCode::Left,
+                KeyCode::Enter,
+            ])
+            .assert_empty();
+
+        // Same request is still selected
+        assert_eq!(
+            component.data().selected_request_id(),
+            Some(new_exchange.id)
+        );
+
+        component
+            .int()
+            .send_key(KeyCode::Char('r'))
+            .open_actions()
+            .send_keys([
+                // "Delete Request" action
+                KeyCode::Up,
+                KeyCode::Enter,
+                // Confirm
+                KeyCode::Enter,
+            ])
+            .assert_empty();
+
+        // New exchange is gone
+        assert_eq!(
+            component.data().selected_request_id(),
+            Some(old_exchange.id)
+        );
+        assert_eq!(harness.request_store.borrow().get(new_exchange.id), None);
     }
 }

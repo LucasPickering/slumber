@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add `slumber history delete` subcommand for deleting request history
 - Add `persist` field to the global config and individual recipes
   - Both default to `true`, but you can now set them to `false` to disable data persistence a single recipe, or all instances of the app. [See here for more](https://slumber.lucaspickering.me/book/user_guide/database.html#controlling-persistence)
+- Add actions to delete requests from the TUI
 
 ### Changed
 

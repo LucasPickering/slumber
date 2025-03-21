@@ -1,21 +1,24 @@
 //! Miscellaneous components. They have specific purposes and therefore aren't
 //! generic/utility, but don't fall into a clear category.
 
-use crate::view::{
-    Confirm, ModalPriority,
-    common::{
-        button::ButtonGroup,
-        list::List,
-        modal::{IntoModal, Modal},
-        text_box::{TextBox, TextBoxEvent, TextBoxProps},
-    },
-    component::Component,
-    context::UpdateContext,
-    draw::{Draw, DrawMetadata, Generate},
-    event::{Child, Event, EventHandler, OptionEvent, ToEmitter},
-    state::{
-        Notification,
-        select::{SelectState, SelectStateEvent, SelectStateEventType},
+use crate::{
+    util::ResultReported,
+    view::{
+        Confirm, ModalPriority, ViewContext,
+        common::{
+            button::ButtonGroup,
+            list::List,
+            modal::{IntoModal, Modal},
+            text_box::{TextBox, TextBoxEvent, TextBoxProps},
+        },
+        component::Component,
+        context::UpdateContext,
+        draw::{Draw, DrawMetadata, Generate},
+        event::{Child, Event, EventHandler, OptionEvent, ToEmitter},
+        state::{
+            Notification,
+            select::{SelectState, SelectStateEvent, SelectStateEventType},
+        },
     },
 };
 use derive_more::Display;
@@ -25,7 +28,12 @@ use ratatui::{
     text::{Line, Text},
     widgets::Paragraph,
 };
-use slumber_core::template::{Prompt, Select};
+use slumber_core::{
+    collection::{ProfileId, RecipeId},
+    db::ProfileFilter,
+    http::RequestId,
+    template::{Prompt, Select},
+};
 use std::fmt::Debug;
 use strum::{EnumCount, EnumIter};
 
@@ -291,6 +299,8 @@ enum ConfirmButton {
 }
 
 impl ConfirmModal {
+    const MIN_WIDTH: u16 = 24;
+
     pub fn new(title: String, on_submit: impl 'static + FnOnce(bool)) -> Self {
         Self {
             title,
@@ -309,7 +319,9 @@ impl Modal for ConfirmModal {
     fn dimensions(&self) -> (Constraint, Constraint) {
         (
             // Add some arbitrary padding
-            Constraint::Length((self.title.len() + 4) as u16),
+            Constraint::Length(
+                Self::MIN_WIDTH.max((self.title.len() + 4) as u16),
+            ),
             Constraint::Length(1),
         )
     }
@@ -326,6 +338,8 @@ impl EventHandler for ConfirmModal {
         event.opt().emitted(self.buttons.to_emitter(), |button| {
             // When user selects a button, send the response and close
             self.answer = button == ConfirmButton::Yes;
+            // If the user answers, then they submitted a response, even if the
+            // answer was no
             self.close(true);
         })
     }
@@ -349,6 +363,153 @@ impl IntoModal for Confirm {
             self.channel.respond(response)
         })
     }
+}
+
+/// Confirmation modal to delete a single request
+#[derive(Debug)]
+pub struct DeleteRequestModal {
+    request_id: RequestId,
+    buttons: Component<ButtonGroup<ConfirmButton>>,
+}
+
+impl DeleteRequestModal {
+    pub fn new(request_id: RequestId) -> Self {
+        Self {
+            request_id,
+            buttons: Default::default(),
+        }
+    }
+}
+
+impl EventHandler for DeleteRequestModal {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> Option<Event> {
+        event.opt().emitted(self.buttons.to_emitter(), |button| {
+            // Do the delete here because we have access to the request store
+            if button == ConfirmButton::Yes {
+                context
+                    .request_store
+                    .delete_request(self.request_id)
+                    .reported(&ViewContext::messages_tx());
+                ViewContext::push_event(Event::HttpSelectRequest(None));
+            }
+            self.close(true);
+        })
+    }
+
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.buttons.to_child_mut()]
+    }
+}
+
+impl Modal for DeleteRequestModal {
+    fn title(&self) -> Line<'_> {
+        "Delete Request?".into()
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        (
+            Constraint::Length(ConfirmModal::MIN_WIDTH),
+            Constraint::Length(1),
+        )
+    }
+}
+
+impl Draw for DeleteRequestModal {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        self.buttons.draw(frame, (), metadata.area(), true);
+    }
+}
+
+/// Confirmation modal to delete all requests for a recipe
+#[derive(Debug)]
+pub struct DeleteRecipeRequestsModal {
+    /// Currently selected profile. May be used for the profile filter,
+    /// depending on what the user selects
+    profile_id: Option<ProfileId>,
+    recipe_id: RecipeId,
+    buttons: Component<ButtonGroup<DeleteRecipeRequestsButton>>,
+}
+
+impl DeleteRecipeRequestsModal {
+    pub fn new(profile_id: Option<ProfileId>, recipe_id: RecipeId) -> Self {
+        Self {
+            profile_id,
+            recipe_id,
+            buttons: Default::default(),
+        }
+    }
+}
+
+impl EventHandler for DeleteRecipeRequestsModal {
+    fn update(
+        &mut self,
+        context: &mut UpdateContext,
+        event: Event,
+    ) -> Option<Event> {
+        event.opt().emitted(self.buttons.to_emitter(), |button| {
+            // Do the delete here because we have access to the request store
+            let profile_filter = match button {
+                DeleteRecipeRequestsButton::No => None,
+                DeleteRecipeRequestsButton::Profile => {
+                    Some(self.profile_id.as_ref().into())
+                }
+                DeleteRecipeRequestsButton::All => Some(ProfileFilter::All),
+            };
+            if let Some(profile_filter) = profile_filter {
+                context
+                    .request_store
+                    .delete_recipe_requests(profile_filter, &self.recipe_id)
+                    .reported(&ViewContext::messages_tx());
+                ViewContext::push_event(Event::HttpSelectRequest(None));
+            }
+            self.close(true);
+        })
+    }
+
+    fn children(&mut self) -> Vec<Component<Child<'_>>> {
+        vec![self.buttons.to_child_mut()]
+    }
+}
+
+impl Modal for DeleteRecipeRequestsModal {
+    fn title(&self) -> Line<'_> {
+        format!("Delete Requests for {}?", self.recipe_id).into()
+    }
+
+    fn dimensions(&self) -> (Constraint, Constraint) {
+        const MIN_WIDTH: u16 = 44; // Enough room for the buttons
+        (
+            Constraint::Length(
+                MIN_WIDTH.max((self.title().width() + 4) as u16),
+            ),
+            Constraint::Length(1),
+        )
+    }
+}
+
+impl Draw for DeleteRecipeRequestsModal {
+    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        self.buttons.draw(frame, (), metadata.area(), true);
+    }
+}
+
+/// Buttons for [DeleteRecipeRequestsModal]
+#[derive(
+    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
+)]
+enum DeleteRecipeRequestsButton {
+    No,
+    /// Delete requests only for the current profile
+    #[default]
+    #[display("For this profile")]
+    Profile,
+    /// Delete all requests for all profiles
+    #[display("For all profiles")]
+    All,
 }
 
 /// Show most recent notification with timestamp

@@ -8,7 +8,7 @@ use itertools::Itertools;
 use reqwest::StatusCode;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
-    db::CollectionDatabase,
+    db::{CollectionDatabase, ProfileFilter},
     http::{
         Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
         RequestRecord,
@@ -295,6 +295,29 @@ impl RequestStore {
             self.get(id),
             Some(RequestState::Building { .. } | RequestState::Loading { .. },)
         )
+    }
+
+    /// Delete all requests for a specific recipe+profile combo. Return the
+    /// number of deleted requests
+    pub fn delete_recipe_requests(
+        &mut self,
+        profile_filter: ProfileFilter,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<usize> {
+        self.requests.retain(|_, state| {
+            // Keep items that _don't_ match
+            !(state.recipe_id() == recipe_id
+                && profile_filter.matches(state.profile_id()))
+        });
+        self.database
+            .delete_recipe_requests(profile_filter, recipe_id)
+    }
+
+    /// Delete a single request from the store _and_ the database
+    pub fn delete_request(&mut self, id: RequestId) -> anyhow::Result<()> {
+        self.requests.remove(&id);
+        self.database.delete_request(id)?;
+        Ok(())
     }
 
     /// Replace a request state in the store with new state, by mapping it

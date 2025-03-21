@@ -8,6 +8,22 @@ View and manipulate stored collection history/state. Slumber uses a local databa
 
 See `slumber collections --help` for more options.
 
+## `slumber db`
+
+Access the local Slumber database file. This is an advanced command; most users never need to manually view or modify the database file. By default this executes `sqlite3` and thus requires `sqlite3` to be installed.
+
+Open a shell to the database:
+
+```
+slumber db
+```
+
+Run a single query and exit:
+
+```
+slumber db 'select 1'
+```
+
 ## `slumber generate`
 
 Generate an HTTP request in an external format. Currently the only supported format is cURL.

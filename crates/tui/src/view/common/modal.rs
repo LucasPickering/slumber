@@ -212,8 +212,8 @@ impl Draw for ModalQueue {
             let mut area = centered_rect(width, height, metadata.area());
             let x_buffer = margin.horizontal + 1;
             let y_buffer = margin.vertical + 1;
-            area.x -= x_buffer;
-            area.y -= y_buffer;
+            area.x = area.x.saturating_sub(x_buffer);
+            area.y = area.y.saturating_sub(y_buffer);
             area.width += x_buffer * 2;
             area.height += y_buffer * 2;
 

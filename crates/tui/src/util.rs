@@ -370,7 +370,10 @@ async fn prompt(
 }
 
 /// Ask the user a yes/no question and wait for a response
-async fn confirm(messages_tx: &MessageSender, message: impl ToString) -> bool {
+pub async fn confirm(
+    messages_tx: &MessageSender,
+    message: impl ToString,
+) -> bool {
     let (tx, rx) = oneshot::channel();
     let confirm = Confirm {
         message: message.to_string(),

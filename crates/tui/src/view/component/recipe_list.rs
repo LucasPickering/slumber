@@ -1,6 +1,5 @@
 use crate::{
     context::TuiContext,
-    message::Message,
     view::{
         Component, ViewContext,
         common::{
@@ -9,6 +8,7 @@ use crate::{
             list::List,
             text_box::{TextBox, TextBoxEvent, TextBoxProps},
         },
+        component::recipe_pane::RecipeMenuAction,
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
@@ -29,7 +29,7 @@ use slumber_core::collection::{
     HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType, RecipeTree,
 };
 use std::collections::HashSet;
-use strum::{EnumIter, IntoEnumIterator};
+use strum::IntoEnumIterator;
 
 /// List/tree of recipes and folders. This is mostly just a list, but with some
 /// extra logic to allow expanding/collapsing nodes. This could be made into a
@@ -43,10 +43,10 @@ use strum::{EnumIter, IntoEnumIterator};
 /// implementation.
 #[derive(Debug)]
 pub struct RecipeListPane {
-    /// Emitter for the on-click event, to focus the pane
-    click_emitter: Emitter<RecipeListPaneEvent>,
+    /// Emitter for events that the parent will consume
+    emitter: Emitter<RecipeListPaneEvent>,
     /// Emitter for menu actions, to be handled by our parent
-    actions_emitter: Emitter<RecipeListMenuAction>,
+    actions_emitter: Emitter<RecipeMenuAction>,
     /// The visible list of items is tracked using normal list state, so we can
     /// easily re-use existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
@@ -82,7 +82,7 @@ impl RecipeListPane {
         let filter =
             TextBox::default().placeholder(format!("{binding} to filter"));
         Self {
-            click_emitter: Default::default(),
+            emitter: Default::default(),
             actions_emitter: Default::default(),
             select: select.into(),
             collapsed,
@@ -98,6 +98,16 @@ impl RecipeListPane {
             .data()
             .selected()
             .map(|node| (&node.id, node.kind))
+    }
+
+    /// Get the ID of the selected recipe, if a node is selected and it's a
+    /// recipe
+    fn selected_recipe_id(&self) -> Option<&RecipeId> {
+        self.select
+            .data()
+            .selected()
+            .filter(|node| node.is_recipe())
+            .map(|node| &node.id)
     }
 
     /// Set the currently selected folder as expanded/collapsed (or toggle it).
@@ -159,7 +169,7 @@ impl EventHandler for RecipeListPane {
             .opt()
             .action(|action, propagate| match action {
                 Action::LeftClick => {
-                    self.click_emitter.emit(RecipeListPaneEvent::Click)
+                    self.emitter.emit(RecipeListPaneEvent::Click)
                 }
                 Action::Left => {
                     self.set_selected_collapsed(CollapseState::Collapse);
@@ -191,18 +201,14 @@ impl EventHandler for RecipeListPane {
                     self.filter_focused = false
                 }
             })
-            .emitted(self.actions_emitter, |menu_action| match menu_action {
-                RecipeListMenuAction::CopyUrl => {
-                    ViewContext::send_message(Message::CopyRequestUrl)
-                }
-                RecipeListMenuAction::CopyCurl => {
-                    ViewContext::send_message(Message::CopyRequestCurl)
-                }
+            .emitted(self.actions_emitter, |menu_action| {
+                // Forward this to our parent
+                self.emitter.emit(RecipeListPaneEvent::Action(menu_action))
             })
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        RecipeListMenuAction::iter()
+        RecipeMenuAction::iter()
             .map(MenuAction::with_data(self, self.actions_emitter))
             .collect()
     }
@@ -252,7 +258,7 @@ impl Draw for RecipeListPane {
 /// Notify parent when this pane is clicked
 impl ToEmitter<RecipeListPaneEvent> for RecipeListPane {
     fn to_emitter(&self) -> Emitter<RecipeListPaneEvent> {
-        self.click_emitter
+        self.emitter
     }
 }
 
@@ -264,27 +270,18 @@ struct SelectedRecipeKey;
 /// Emitted event type for the recipe list pane
 #[derive(Debug)]
 pub enum RecipeListPaneEvent {
+    /// Pane was clicked; focus it
     Click,
+    /// Forward menu actions to the parent because it has the needed context
+    Action(RecipeMenuAction),
 }
 
-/// Items in the actions popup menu
-#[derive(Copy, Clone, Debug, derive_more::Display, EnumIter)]
-enum RecipeListMenuAction {
-    #[display("Copy URL")]
-    CopyUrl,
-    #[display("Copy as cURL")]
-    CopyCurl,
-}
-
-impl IntoMenuAction<RecipeListPane> for RecipeListMenuAction {
+impl IntoMenuAction<RecipeListPane> for RecipeMenuAction {
     fn enabled(&self, data: &RecipeListPane) -> bool {
-        let recipe = data
-            .select
-            .data()
-            .selected()
-            .filter(|node| node.is_recipe());
+        let has_recipe = data.selected_recipe_id().is_some();
+        // Use a match so we have to think about this for any new variants
         match self {
-            Self::CopyUrl | Self::CopyCurl => recipe.is_some(),
+            Self::CopyUrl | Self::CopyCurl | Self::DeleteRecipe => has_recipe,
         }
     }
 }

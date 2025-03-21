@@ -8,9 +8,9 @@ pub use persistence::RecipeOverrideStore;
 
 use crate::{
     context::TuiContext,
-    message::{Message, RequestConfig},
+    message::RequestConfig,
     view::{
-        Component, ViewContext,
+        Component,
         common::{
             Pane,
             actions::{IntoMenuAction, MenuAction},
@@ -40,10 +40,10 @@ use strum::{EnumIter, IntoEnumIterator};
 /// empty
 #[derive(Debug, Default)]
 pub struct RecipePane {
-    /// Emitter for the on-click event, to focus the pane
-    click_emitter: Emitter<RecipePaneEvent>,
+    /// Emitter for events that the parent will consume
+    emitter: Emitter<RecipePaneEvent>,
     /// Emitter for menu actions, to be handled by our parent
-    actions_emitter: Emitter<RecipePaneMenuAction>,
+    actions_emitter: Emitter<RecipeMenuAction>,
     /// All UI state derived from the recipe is stored together, and reset when
     /// the recipe or profile changes
     recipe_state: StateCell<RecipeStateKey, Component<Option<RecipeDisplay>>>,
@@ -78,23 +78,16 @@ impl EventHandler for RecipePane {
         event
             .opt()
             .action(|action, propagate| match action {
-                Action::LeftClick => {
-                    self.click_emitter.emit(RecipePaneEvent::Click)
-                }
+                Action::LeftClick => self.emitter.emit(RecipePaneEvent::Click),
                 _ => propagate.set(),
             })
-            .emitted(self.actions_emitter, |menu_action| match menu_action {
-                RecipePaneMenuAction::CopyUrl => {
-                    ViewContext::send_message(Message::CopyRequestUrl)
-                }
-                RecipePaneMenuAction::CopyCurl => {
-                    ViewContext::send_message(Message::CopyRequestCurl)
-                }
+            .emitted(self.actions_emitter, |menu_action| {
+                self.emitter.emit(RecipePaneEvent::Action(menu_action))
             })
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
-        RecipePaneMenuAction::iter()
+        RecipeMenuAction::iter()
             .map(MenuAction::with_data(self, self.actions_emitter))
             .collect()
     }
@@ -176,14 +169,17 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
 /// Notify parent when this pane is clicked
 impl ToEmitter<RecipePaneEvent> for RecipePane {
     fn to_emitter(&self) -> Emitter<RecipePaneEvent> {
-        self.click_emitter
+        self.emitter
     }
 }
 
 /// Emitted event for the recipe pane component
 #[derive(Debug)]
 pub enum RecipePaneEvent {
+    /// Pane was clicked; focus it
     Click,
+    /// Forward menu actions to the parent because it has the needed context
+    Action(RecipeMenuAction),
 }
 
 /// Template preview state will be recalculated when any of these fields change
@@ -193,23 +189,29 @@ struct RecipeStateKey {
     recipe_id: Option<RecipeId>,
 }
 
-/// Items in the actions popup menu
+/// Items in the actions popup menu. This is shared with the recipe list and
+/// handled in our parent to deduplicate the logic. Also the parent has access
+/// to needed context for the delete.
 #[derive(Copy, Clone, Debug, Display, EnumIter)]
-enum RecipePaneMenuAction {
+pub enum RecipeMenuAction {
     #[display("Copy URL")]
     CopyUrl,
     #[display("Copy as cURL")]
     CopyCurl,
+    #[display("Delete Recipe")]
+    DeleteRecipe,
 }
 
-impl IntoMenuAction<RecipePane> for RecipePaneMenuAction {
+impl IntoMenuAction<RecipePane> for RecipeMenuAction {
     fn enabled(&self, data: &RecipePane) -> bool {
         let recipe = data.recipe_state.get().and_then(|state| {
             Ref::filter_map(state, |state| state.data().as_ref()).ok()
         });
         match self {
             // Enabled if we have any recipe
-            Self::CopyUrl | Self::CopyCurl => recipe.is_some(),
+            Self::CopyUrl | Self::CopyCurl | Self::DeleteRecipe => {
+                recipe.is_some()
+            }
         }
     }
 }

@@ -381,6 +381,93 @@ async fn test_load_summaries(harness: TestHarness) {
     );
 }
 
+/// Test deleting all requests for a recipe. This tests a single profile filter
+/// as well as all profiles
+#[rstest]
+fn test_delete_recipe_requests(harness: TestHarness) {
+    let recipe1 = RecipeId::factory(());
+    let recipe2 = RecipeId::factory(());
+    let profile1 = ProfileId::factory(());
+    let profile2 = ProfileId::factory(());
+    let r1p1_id = create_exchange(&harness, Some(&profile1), Some(&recipe1)).id;
+    let r1p2_id = create_exchange(&harness, Some(&profile2), Some(&recipe1)).id;
+    let r2p1_id = create_exchange(&harness, Some(&profile1), Some(&recipe2)).id;
+    let r2p2_id = create_exchange(&harness, Some(&profile2), Some(&recipe2)).id;
+    let all_ids = [r1p1_id, r2p1_id, r1p2_id, r2p2_id];
+    dbg!(all_ids);
+
+    let mut store = harness.request_store.borrow_mut();
+
+    // Load everything into the cache. We'll do this after each modification to
+    // make sure we're deleting from the cache AND the DB
+    let load_all = |store: &mut RequestStore| {
+        for id in all_ids {
+            store.load(id).unwrap();
+        }
+    };
+
+    let assert_present =
+        |store: &mut RequestStore, expected_present: &[RequestId]| {
+            // Assert that all the expected requests are present in both the
+            // cache *and* the DB
+            for id in all_ids {
+                let cached = store.get(id);
+                let db = harness.database.get_request(id).unwrap();
+                if expected_present.contains(&id) {
+                    assert!(
+                        cached.is_some(),
+                        "Expected {id} to be present in cache"
+                    );
+                    assert!(db.is_some(), "Expected {id} to be present in DB");
+                } else {
+                    assert_eq!(
+                        cached, None,
+                        "Expected {id} to be deleted from cache"
+                    );
+                    assert_eq!(db, None, "Expected {id} to be deleted from DB");
+                }
+            }
+        };
+
+    // Sanity check
+    load_all(&mut store);
+    assert_present(&mut store, &all_ids);
+
+    // This delete should do nothing because there are no profile-less requests
+    store
+        .delete_recipe_requests(ProfileFilter::None, &recipe1)
+        .unwrap();
+    assert_present(&mut store, &all_ids);
+
+    // Delete just p1/r1
+    store
+        .delete_recipe_requests(Some(&profile1).into(), &recipe1)
+        .unwrap();
+    assert_present(&mut store, &[r2p1_id, r1p2_id, r2p2_id]);
+
+    // Delete all for r1
+    store
+        .delete_recipe_requests(ProfileFilter::All, &recipe1)
+        .unwrap();
+    assert_present(&mut store, &[r2p1_id, r2p2_id]);
+}
+
+/// Test deleting a single request
+#[rstest]
+fn test_delete_request(harness: TestHarness) {
+    let id = create_exchange(&harness, None, None).id;
+
+    // Load the exchange into the cache
+    let mut store = harness.request_store.borrow_mut();
+    assert!(store.load(id).unwrap().is_some());
+
+    store.delete_request(id).unwrap();
+
+    // It's gone
+    assert_eq!(store.get(id), None);
+    assert_eq!(harness.database.get_request(id).unwrap(), None);
+}
+
 /// Create a exchange with the given profile+recipe ID (or random if
 /// None), and insert it into the DB
 fn create_exchange(

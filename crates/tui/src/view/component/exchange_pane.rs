@@ -6,10 +6,12 @@ use crate::{
         common::{
             Pane,
             actions::{IntoMenuAction, MenuAction},
+            modal::Modal,
             tabs::Tabs,
         },
         component::{
             Component,
+            misc::DeleteRequestModal,
             request_view::RequestView,
             response_view::{ResponseBodyView, ResponseHeadersView},
         },
@@ -334,6 +336,12 @@ impl EventHandler for ExchangePaneContent {
                         response.save_response_body();
                     }
                 }
+                ExchangePaneMenuAction::DeleteRequest => {
+                    if let Some(request) = self.state.request() {
+                        // Show a confirmation modal
+                        DeleteRequestModal::new(request.id()).open();
+                    }
+                }
             }
         })
     }
@@ -496,12 +504,16 @@ enum ExchangePaneMenuAction {
     ViewResponseBody,
     #[display("Save Response Body as File")]
     SaveResponseBody,
+    #[display("Delete Request")]
+    DeleteRequest,
 }
 
 impl IntoMenuAction<ExchangePaneContent> for ExchangePaneMenuAction {
     fn enabled(&self, data: &ExchangePaneContent) -> bool {
         match self {
-            Self::CopyUrl => true,
+            Self::CopyUrl | Self::DeleteRequest => {
+                data.state.request().is_some()
+            }
             Self::CopyRequestBody | Self::ViewRequestBody => {
                 data.state.has_request_body()
             }
@@ -516,7 +528,8 @@ impl IntoMenuAction<ExchangePaneContent> for ExchangePaneMenuAction {
             Self::CopyUrl
             | Self::CopyRequestBody
             | Self::CopyResponseBody
-            | Self::SaveResponseBody => None,
+            | Self::SaveResponseBody
+            | Self::DeleteRequest => None,
             Self::ViewRequestBody => {
                 if matches!(data.tabs.data().selected(), Tab::Request) {
                     Some(Action::View)

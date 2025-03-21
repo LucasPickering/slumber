@@ -76,18 +76,12 @@ impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
 
 impl<T: FixedSelect> Draw for ButtonGroup<T> {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
-        // The button width is based on the longest button
-        let width = self
-            .select
-            .items()
-            .map(|button| button.to_string().len())
-            .max()
-            .unwrap_or(0) as u16;
-        let (areas, _) = Layout::horizontal(
-            self.select.items().map(|_| Constraint::Length(width)),
-        )
-        .flex(Flex::SpaceAround)
-        .split_with_spacers(metadata.area());
+        let (areas, _) =
+            Layout::horizontal(self.select.items().map(|button| {
+                Constraint::Length(button.to_string().len() as u16)
+            }))
+            .flex(Flex::SpaceBetween)
+            .split_with_spacers(metadata.area());
 
         for (button, area) in self.select.items().zip(areas.iter()) {
             frame.render_widget(

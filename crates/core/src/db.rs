@@ -548,6 +548,25 @@ impl CollectionDatabase {
             .traced()
     }
 
+    /// Delete a single request by ID
+    pub fn delete_request(&self, request_id: RequestId) -> anyhow::Result<()> {
+        info!(
+            collection_id = %self.collection_id,
+            collection_path = ?self.collection_path(),
+            %request_id,
+            "Deleting request"
+        );
+        self.database
+            .connection()
+            .execute(
+                "DELETE FROM requests_v2 WHERE id = :request_id",
+                named_params! {":request_id": request_id},
+            )
+            .context(format!("Error deleting request {request_id}"))
+            .traced()?;
+        Ok(())
+    }
+
     /// Get the value of a UI state field. Key type is included as part of the
     /// key, to disambiguate between keys of identical structure
     pub fn get_ui<K, V>(
@@ -664,6 +683,17 @@ pub enum ProfileFilter<'a> {
     /// Show requests for all profiles
     #[default]
     All,
+}
+
+impl ProfileFilter<'_> {
+    /// Does the profile ID match this filter?
+    pub fn matches(&self, profile_id: Option<&ProfileId>) -> bool {
+        match self {
+            Self::None => profile_id.is_none(),
+            Self::Some(expected) => profile_id == Some(expected),
+            Self::All => true,
+        }
+    }
 }
 
 /// Convert from an option that defines either *no* profile or a specific one

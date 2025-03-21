@@ -11,7 +11,7 @@ mod commands;
 mod completions;
 
 use crate::commands::{
-    collections::CollectionsCommand, generate::GenerateCommand,
+    collections::CollectionsCommand, db::DbCommand, generate::GenerateCommand,
     history::HistoryCommand, import::ImportCommand, new::NewCommand,
     request::RequestCommand, show::ShowCommand,
 };
@@ -26,7 +26,7 @@ const COMMAND_NAME: &str = "slumber";
 ///
 /// If subcommand is omitted, start the TUI.
 ///
-/// https://slumber.lucaspickering.me/book/
+/// <https://slumber.lucaspickering.me/book/>
 #[derive(Debug, Parser)]
 #[clap(author, version, about, name = COMMAND_NAME)]
 pub struct Args {
@@ -73,6 +73,7 @@ impl GlobalArgs {
 #[derive(Clone, Debug, clap::Subcommand)]
 pub enum CliCommand {
     Collections(CollectionsCommand),
+    Db(DbCommand),
     Generate(GenerateCommand),
     History(HistoryCommand),
     Import(ImportCommand),
@@ -86,6 +87,7 @@ impl CliCommand {
     pub async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self {
             Self::Collections(command) => command.execute(global).await,
+            Self::Db(command) => command.execute(global).await,
             Self::Generate(command) => command.execute(global).await,
             Self::History(command) => command.execute(global).await,
             Self::Import(command) => command.execute(global).await,

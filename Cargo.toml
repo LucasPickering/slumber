@@ -61,7 +61,7 @@ wiremock = {version = "0.6.1", default-features = false}
 
 [dependencies]
 anyhow = {workspace = true, features = ["backtrace"]}
-slumber_cli = {workspace = true}
+slumber_cli = {workspace = true, optional = true}
 slumber_core = {workspace = true}
 slumber_tui = {workspace = true, optional = true}
 tokio = {workspace = true, features = ["macros", "rt"]}
@@ -69,8 +69,9 @@ tracing = {workspace = true}
 tracing-subscriber = {version = "0.3.17", default-features = false, features = ["ansi", "fmt", "registry"]}
 
 [features]
-default = ["tui"]
-# TUI can be disabled in dev to speed compilation while testing CLI
+default = ["cli", "tui"]
+# TUI and CLI can be disabled in dev to speed compilation while not in use
+cli = ["dep:slumber_cli"]
 tui = ["dep:slumber_tui"]
 
 # The profile that 'cargo dist' will build with

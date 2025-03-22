@@ -2,18 +2,22 @@
 #![deny(clippy::all)]
 
 use anyhow::Context;
-use slumber_cli::Args;
 use slumber_core::util::{ResultTraced, paths};
 use std::{
     fs::{self, File, OpenOptions},
     io,
-    process::ExitCode,
 };
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{filter::Targets, fmt::format::FmtSpan, prelude::*};
 
+/// This covers two cases: CLI enabled/TUI disabled, or both enabled. We need
+/// the CLI for some TUI features such as the -f flag
+#[cfg(feature = "cli")]
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> anyhow::Result<ExitCode> {
+async fn main() -> anyhow::Result<std::process::ExitCode> {
+    use slumber_cli::Args;
+    use std::process::ExitCode;
+
     // Global initialization
     Args::complete(); // If COMPLETE var is enabled, process will stop here
     let args = Args::parse();
@@ -48,6 +52,24 @@ async fn main() -> anyhow::Result<ExitCode> {
                 ExitCode::FAILURE
             })),
     }
+}
+
+/// TUI is enabled, CLI is disabled (for local TUI dev). We can't customize the
+/// collection path here without the -f flag but that's fine
+#[cfg(all(not(feature = "cli"), feature = "tui"))]
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> anyhow::Result<()> {
+    initialize_tracing(false);
+    slumber_tui::Tui::start(None).await
+}
+
+/// Both disabled - problem!!
+#[cfg(all(not(feature = "cli"), not(feature = "tui")))]
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> anyhow::Result<()> {
+    Err(anyhow::anyhow!(
+        "At least one of the `cli` or `tui` features must be enabled"
+    ))
 }
 
 /// Set up tracing to a log file, and optionally the console as well. If there's

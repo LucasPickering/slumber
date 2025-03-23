@@ -6,7 +6,7 @@ use rstest::rstest;
 use slumber_core::http::{
     Exchange, RequestBuildError, RequestError, RequestRecord,
 };
-use slumber_util::{assert_matches, Factory};
+use slumber_util::{Factory, assert_matches};
 use std::{
     sync::{
         Arc,

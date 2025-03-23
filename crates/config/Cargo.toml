@@ -20,7 +20,7 @@ itertools = {workspace = true}
 mime = {workspace = true}
 ratatui = {workspace = true, features = ["serde"]}
 serde = {workspace = true}
-slumber_core = {workspace = true}
+slumber_util = {workspace = true}
 tracing = {workspace = true}
 
 [dev-dependencies]
@@ -28,7 +28,7 @@ dirs = {workspace = true}
 env-lock = {workspace = true}
 rstest = {workspace = true}
 serde_test = {workspace = true}
-slumber_core = {workspace = true, features = ["test"]}
+slumber_util = {workspace = true, features = ["test"]}
 
 [package.metadata.release]
 tag = false

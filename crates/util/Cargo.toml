@@ -1,0 +1,28 @@
+[package]
+authors = {workspace = true}
+description = "Common utilities used across several subcrates of Slumber. Not for external use."
+edition = {workspace = true}
+homepage = {workspace = true}
+keywords = {workspace = true}
+license = {workspace = true}
+name = "slumber_util"
+repository = {workspace = true}
+rust-version = {workspace = true}
+version = {workspace = true}
+
+[package.metadata.release]
+tag = false
+
+[dependencies]
+anyhow = {workspace = true}
+dirs = {workspace = true}
+serde = {workspace = true}
+serde_path_to_error = "0.1.16"
+serde_yaml = {workspace = true}
+tracing = {workspace = true}
+
+[dev-dependencies]
+rstest = {workspace = true}
+
+[features]
+test = []

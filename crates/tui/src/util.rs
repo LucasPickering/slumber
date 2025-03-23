@@ -9,10 +9,8 @@ use crossterm::event;
 use editor_command::EditorBuilder;
 use futures::{FutureExt, future};
 use mime::Mime;
-use slumber_core::{
-    template::Prompt,
-    util::{ResultTraced, doc_link, paths::expand_home},
-};
+use slumber_core::{template::Prompt, util::doc_link};
+use slumber_util::{ResultTraced, paths::expand_home};
 use std::{
     env,
     future::Future,
@@ -390,10 +388,8 @@ mod tests {
     use crate::test_util::{TestHarness, harness};
     use rstest::rstest;
     use slumber_config::CommandsConfig;
-    use slumber_core::{
-        assert_matches,
-        test_util::{TempDir, temp_dir},
-    };
+    use slumber_core::test_util::{TempDir, temp_dir};
+    use slumber_util::assert_matches;
     use tokio::fs;
 
     /// Test various cases of save_file

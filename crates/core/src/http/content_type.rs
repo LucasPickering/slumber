@@ -5,12 +5,12 @@
 //! not a value, use [ContentType]. If you want to parse dynamically based on
 //! the response's metadata, use [ResponseRecord::parse_body].
 
-use crate::util::Mapping;
 use anyhow::{Context, anyhow};
 use derive_more::{Deref, Display, From};
 use mime::{APPLICATION, JSON, Mime};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
+use slumber_util::Mapping;
 use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path};
 
 /// All supported content types. Each variant should have a corresponding
@@ -195,12 +195,13 @@ impl ResponseContent for Json {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert_err, http::ResponseRecord, test_util::Factory};
+    use crate::{http::ResponseRecord, test_util::Factory};
     use reqwest::header::{
         CONTENT_TYPE, HeaderMap, HeaderValue, InvalidHeaderValue,
     };
     use rstest::rstest;
     use serde_json::json;
+    use slumber_util::assert_err;
     use std::ops::Deref;
 
     /// Test all content types and their variants

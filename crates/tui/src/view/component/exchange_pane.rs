@@ -18,7 +18,7 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
-        util::persistence::PersistedLazy,
+        util::{format_byte_size, persistence::PersistedLazy},
     },
 };
 use derive_more::Display;
@@ -32,7 +32,7 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
-use slumber_core::{collection::RecipeNodeType, util::format_byte_size};
+use slumber_core::collection::RecipeNodeType;
 use std::sync::Arc;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 

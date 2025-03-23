@@ -332,7 +332,8 @@ mod tests {
     use persisted::PersistedStore;
     use ratatui::{style::Styled, text::Span};
     use rstest::rstest;
-    use slumber_core::{assert_matches, test_util::Factory};
+    use slumber_core::test_util::Factory;
+    use slumber_util::assert_matches;
 
     /// Test editing the body, which should open a file for the user to edit,
     /// then load the response

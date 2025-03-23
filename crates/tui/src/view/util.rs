@@ -5,16 +5,18 @@ pub mod persistence;
 
 use crate::{message::Message, util::temp_file, view::ViewContext};
 use anyhow::Context;
+use chrono::{
+    DateTime, Duration, Local, Utc,
+    format::{DelayedFormat, StrftimeItems},
+};
 use itertools::Itertools;
 use mime::Mime;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     text::{Line, Text},
 };
-use slumber_core::{
-    template::{Prompt, PromptChannel, Prompter, Select},
-    util::ResultTraced,
-};
+use slumber_core::template::{Prompt, PromptChannel, Prompter, Select};
+use slumber_util::ResultTraced;
 use std::{io::Write, path::Path};
 
 /// A data structure for representation a yes/no confirmation. This is similar
@@ -115,5 +117,60 @@ pub fn view_text(text: &Text, mime: Option<Mime>) {
     match result {
         Ok(()) => ViewContext::send_message(Message::FileView { path, mime }),
         Err(error) => ViewContext::send_message(Message::Error { error }),
+    }
+}
+
+/// Format a datetime for the user
+pub fn format_time(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
+    time.with_timezone(&Local).format("%b %-d %H:%M:%S")
+}
+
+/// Format a duration for the user
+pub fn format_duration(duration: &Duration) -> String {
+    let ms = duration.num_milliseconds();
+    if ms < 1000 {
+        format!("{ms}ms")
+    } else {
+        format!("{:.2}s", ms as f64 / 1000.0)
+    }
+}
+
+/// Format a byte total, e.g. 1_000_000 -> 1 MB
+pub fn format_byte_size(size: usize) -> String {
+    const K: usize = 10usize.pow(3);
+    const M: usize = 10usize.pow(6);
+    const G: usize = 10usize.pow(9);
+    const T: usize = 10usize.pow(12);
+    let (denom, suffix) = match size {
+        ..K => return format!("{size} B"),
+        K..M => (K, "K"),
+        M..G => (M, "M"),
+        G..T => (G, "G"),
+        T.. => (T, "T"),
+    };
+    let size = size as f64 / denom as f64;
+    format!("{size:.1} {suffix}B")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::zero(0, "0 B")]
+    #[case::one(1, "1 B")]
+    #[case::almost_kb(999, "999 B")]
+    #[case::kb(1000, "1.0 KB")]
+    #[case::kb_round_down(1049, "1.0 KB")]
+    #[case::kb_round_up(1050, "1.1 KB")]
+    #[case::almost_mb(999_999, "1000.0 KB")]
+    #[case::mb(1_000_000, "1.0 MB")]
+    #[case::almost_gb(999_999_999, "1000.0 MB")]
+    #[case::gb(1_000_000_000, "1.0 GB")]
+    #[case::almost_tb(999_999_999_999, "1000.0 GB")]
+    #[case::tb(1_000_000_000_000, "1.0 TB")]
+    fn test_format_byte_size(#[case] size: usize, #[case] expected: &str) {
+        assert_eq!(&format_byte_size(size), expected);
     }
 }

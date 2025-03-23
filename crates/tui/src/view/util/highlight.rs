@@ -8,7 +8,8 @@ use ratatui::{
     style::{Color, Style},
     text::{Line, Span, Text},
 };
-use slumber_core::{http::content_type::ContentType, util::ResultTraced};
+use slumber_core::http::content_type::ContentType;
+use slumber_util::ResultTraced;
 use std::{
     borrow::Cow,
     cell::RefCell,

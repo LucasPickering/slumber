@@ -5,7 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MediaKeyCode};
 use derive_more::Display;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use slumber_core::util::Mapping;
+use slumber_util::Mapping;
 use std::{
     borrow::Cow,
     fmt::{self, Debug},
@@ -419,7 +419,7 @@ mod tests {
     use crossterm::event::{KeyEventKind, KeyEventState, MediaKeyCode};
     use rstest::rstest;
     use serde_test::{Token, assert_de_tokens, assert_de_tokens_error};
-    use slumber_core::assert_err;
+    use slumber_util::assert_err;
 
     #[rstest]
     #[case::whitespace_stripped(" w ", KeyCode::Char('w'))]

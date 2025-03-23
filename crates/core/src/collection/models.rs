@@ -7,7 +7,6 @@ use crate::{
     },
     http::{HttpMethod, content_type::ContentType, query::Query},
     template::{Identifier, Template},
-    util::{ResultTraced, parse_yaml},
 };
 use anyhow::Context;
 use derive_more::{Deref, Display, From, FromStr, Into};
@@ -15,6 +14,7 @@ use indexmap::IndexMap;
 use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
+use slumber_util::{ResultTraced, parse_yaml};
 use std::{fs::File, path::PathBuf, time::Duration};
 use tracing::info;
 

@@ -20,12 +20,9 @@ use crate::mime::MimeMap;
 use anyhow::Context;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use slumber_core::{
-    http::HttpEngineConfig,
-    util::{
-        ResultTraced, parse_yaml,
-        paths::{self, create_parent, expand_home},
-    },
+use slumber_util::{
+    ResultTraced, parse_yaml,
+    paths::{self, create_parent, expand_home},
 };
 use std::{env, fs::OpenOptions, path::PathBuf};
 use tracing::info;
@@ -130,6 +127,39 @@ impl Default for Config {
             input_bindings: Default::default(),
             theme: Default::default(),
             debug: false,
+        }
+    }
+}
+
+/// Configuration for the engine that handles HTTP requests
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HttpEngineConfig {
+    /// TLS cert errors on these hostnames are ignored. Be careful!
+    pub ignore_certificate_hosts: Vec<String>,
+    /// Request/response bodies over this size are treated differently, for
+    /// performance reasons
+    pub large_body_size: usize,
+    /// Enable/disable persistence for _all_ requests? The CLI should override
+    /// this based on the absence/presence of the `--persist` flag
+    pub persist: bool,
+}
+
+impl HttpEngineConfig {
+    /// Is the given size (e.g. request or response body size) larger than the
+    /// configured "large" body size? Large bodies are treated differently, for
+    /// performance reasons.
+    pub fn is_large(&self, size: usize) -> bool {
+        size > self.large_body_size
+    }
+}
+
+impl Default for HttpEngineConfig {
+    fn default() -> Self {
+        Self {
+            ignore_certificate_hosts: Default::default(),
+            large_body_size: 1000 * 1000, // 1MB
+            persist: true,
         }
     }
 }

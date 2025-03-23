@@ -14,7 +14,8 @@ use ratatui::{
     text::{Line, Text},
 };
 use slumber_config::{Action, Config, InputBinding};
-use slumber_core::util::{doc_link, paths};
+use slumber_core::util::doc_link;
+use slumber_util::paths;
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 

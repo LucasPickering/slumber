@@ -7,7 +7,6 @@ use crate::{
         Exchange, ExchangeSummary, HttpMethod, HttpVersion, RequestId,
         RequestRecord, ResponseRecord,
     },
-    util::ResultTraced,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -22,6 +21,7 @@ use rusqlite::{
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
 };
 use serde::{Serialize, de::DeserializeOwned};
+use slumber_util::ResultTraced;
 use std::{
     fmt::Debug,
     ops::Deref,

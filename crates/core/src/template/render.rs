@@ -11,12 +11,13 @@ use crate::{
         TemplateError, TemplateKey, error::TriggeredRequestError,
         parse::TemplateInputChunk,
     },
-    util::{FutureCache, FutureCacheOutcome, ResultTraced, paths::expand_home},
+    util::{FutureCache, FutureCacheOutcome},
 };
 use async_trait::async_trait;
 use chrono::Utc;
 use futures::future;
-use std::{env, path::PathBuf, process::Stdio, sync::Arc};
+use slumber_util::paths::expand_home;
+use std::{env, error::Error, path::PathBuf, process::Stdio, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
 use tracing::{debug, debug_span, error, instrument, trace, trace_span};
 
@@ -664,7 +665,7 @@ impl<'a> ChainTemplateSource<'a> {
                 command: command.to_owned(),
                 error: error.into(),
             })
-            .traced()?;
+            .inspect_err(|err| error!(error = err as &dyn Error))?;
 
         // Write the stdin to the process
         if let Some(input) = input {
@@ -678,7 +679,7 @@ impl<'a> ChainTemplateSource<'a> {
                     command: command.to_owned(),
                     error: error.into(),
                 })
-                .traced()?;
+                .inspect_err(|err| error!(error = err as &dyn Error))?;
         }
 
         // Wait for the process to finish
@@ -689,7 +690,7 @@ impl<'a> ChainTemplateSource<'a> {
                 command: command.to_owned(),
                 error: error.into(),
             })
-            .traced()?;
+            .inspect_err(|err| error!(error = err as &dyn Error))?;
 
         debug!(
             stdout = %String::from_utf8_lossy(&output.stdout),

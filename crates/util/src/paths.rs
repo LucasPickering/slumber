@@ -84,8 +84,8 @@ pub fn create_parent(path: &Path) -> anyhow::Result<()> {
 /// fall back to the current working directory instead. Always returns an
 /// absolute path.
 #[cfg(any(debug_assertions, test))]
-pub(crate) fn get_repo_root() -> &'static Path {
-    use crate::util::ResultTraced;
+pub fn get_repo_root() -> &'static Path {
+    use crate::ResultTraced;
     use std::{process::Command, sync::OnceLock};
 
     static CACHE: OnceLock<PathBuf> = OnceLock::new();

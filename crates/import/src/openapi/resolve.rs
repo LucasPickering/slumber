@@ -195,7 +195,7 @@ mod tests {
     use indexmap::{IndexMap, indexmap};
     use openapiv3::{Components, OAuth2Flows};
     use rstest::rstest;
-    use slumber_core::assert_err;
+    use slumber_util::assert_err;
 
     #[rstest]
     #[case::simple("petstore_auth")]

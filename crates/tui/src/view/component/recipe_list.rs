@@ -451,10 +451,10 @@ mod tests {
     use itertools::Itertools;
     use rstest::{fixture, rstest};
     use slumber_core::{
-        assert_matches,
         collection::{Collection, Recipe},
         test_util::{Factory, by_id},
     };
+    use slumber_util::assert_matches;
 
     /// Test the filter box
     #[rstest]

@@ -51,6 +51,7 @@ slumber_config = {path = "./crates/config", version = "3.0.1"}
 slumber_core = {path = "./crates/core", version = "3.0.1"}
 slumber_import = {path = "./crates/import", version = "3.0.1"}
 slumber_tui = {path = "./crates/tui", version = "3.0.1"}
+slumber_util = {path = "./crates/util", version = "3.0.1"}
 strum = {version = "0.26.3", default-features = false}
 thiserror = "1.0.63"
 tokio = {version = "1.39.2", default-features = false}
@@ -62,8 +63,8 @@ wiremock = {version = "0.6.1", default-features = false}
 [dependencies]
 anyhow = {workspace = true, features = ["backtrace"]}
 slumber_cli = {workspace = true, optional = true}
-slumber_core = {workspace = true}
 slumber_tui = {workspace = true, optional = true}
+slumber_util = {workspace = true}
 tokio = {workspace = true, features = ["macros", "rt"]}
 tracing = {workspace = true}
 tracing-subscriber = {version = "0.3.17", default-features = false, features = ["ansi", "fmt", "registry"]}

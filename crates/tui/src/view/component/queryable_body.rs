@@ -487,10 +487,10 @@ mod tests {
     use rstest::{fixture, rstest};
     use serde::Serialize;
     use slumber_core::{
-        assert_matches,
         http::{ResponseBody, ResponseRecord},
         test_util::{Factory, TempDir, temp_dir},
     };
+    use slumber_util::assert_matches;
     use tokio::fs;
 
     const TEXT: &str = "{\"greeting\":\"hello\"}";

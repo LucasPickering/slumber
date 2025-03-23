@@ -264,10 +264,10 @@ fn identifier(input: &mut &str) -> PResult<Identifier> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert_err, assert_matches};
     use proptest::proptest;
     use rstest::rstest;
     use serde_test::{Token, assert_tokens};
+    use slumber_util::{assert_err, assert_matches};
 
     /// Build a template out of string chunks. Useful when you want to avoid
     /// parsing behavior

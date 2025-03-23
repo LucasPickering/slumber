@@ -17,7 +17,6 @@ bytes = {workspace = true, features = ["serde"]}
 chrono = {workspace = true, features = ["clock", "serde", "std"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from", "from_str", "into"]}
 dialoguer = {workspace = true}
-dirs = {workspace = true}
 futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
@@ -30,8 +29,9 @@ rusqlite_migration = "1.2.0"
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 serde_json_path = "0.7.1"
-serde_path_to_error = "0.1.16"
 serde_yaml = {workspace = true}
+slumber_config = {workspace = true}
+slumber_util = {workspace = true}
 strum = {workspace = true, features = ["derive"]}
 thiserror = {workspace = true}
 tokio = {workspace = true, features = ["fs", "process"]}

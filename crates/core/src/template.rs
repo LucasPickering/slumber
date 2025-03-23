@@ -260,7 +260,6 @@ fn join_raw(chunks: Vec<TemplateInputChunk>) -> Vec<TemplateInputChunk> {
 mod tests {
     use super::*;
     use crate::{
-        assert_err,
         collection::{
             Chain, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
             ChainSource, Profile, Recipe, RecipeId, SelectOptions,
@@ -277,6 +276,7 @@ mod tests {
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
+    use slumber_util::assert_err;
     use std::time::Duration;
     use tokio::fs;
     use wiremock::{Mock, MockServer, ResponseTemplate, matchers};

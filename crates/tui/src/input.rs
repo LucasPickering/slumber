@@ -194,7 +194,7 @@ mod tests {
     use super::*;
     use crossterm::event::KeyEventState;
     use rstest::rstest;
-    use slumber_core::assert_matches;
+    use slumber_util::assert_matches;
 
     /// Helper to create a key event
     fn key_event(

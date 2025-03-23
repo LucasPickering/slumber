@@ -277,10 +277,7 @@ impl RecipeNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        assert_err,
-        test_util::{Factory, by_id},
-    };
+    use crate::test_util::{Factory, by_id};
     use indexmap::indexmap;
     use itertools::Itertools;
     use rstest::{fixture, rstest};
@@ -288,6 +285,7 @@ mod tests {
         Value,
         value::{Tag, TaggedValue},
     };
+    use slumber_util::assert_err;
 
     impl<const N: usize> From<[&str; N]> for RecipeLookupKey {
         fn from(value: [&str; N]) -> Self {

@@ -2,7 +2,8 @@
 
 use reqwest::StatusCode;
 use serde_json::json;
-use slumber_core::{assert_matches, db::Database, http::ExchangeSummary};
+use slumber_core::{db::Database, http::ExchangeSummary};
+use slumber_util::assert_matches;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
 mod common;

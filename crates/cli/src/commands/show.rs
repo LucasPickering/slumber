@@ -2,7 +2,8 @@ use crate::{GlobalArgs, Subcommand};
 use clap::Parser;
 use serde::Serialize;
 use slumber_config::Config;
-use slumber_core::{collection::Collection, db::Database, util::paths};
+use slumber_core::{collection::Collection, db::Database};
+use slumber_util::paths;
 use std::{borrow::Cow, path::Path, process::ExitCode};
 
 /// Print meta information about Slumber (config, collections, etc.)

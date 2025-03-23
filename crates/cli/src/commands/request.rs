@@ -16,8 +16,9 @@ use slumber_core::{
         BuildOptions, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
     },
     template::{Prompt, Prompter, Select, TemplateContext},
-    util::{MaybeStr, ResultTraced},
+    util::MaybeStr,
 };
+use slumber_util::ResultTraced;
 use std::{
     error::Error,
     fs::OpenOptions,

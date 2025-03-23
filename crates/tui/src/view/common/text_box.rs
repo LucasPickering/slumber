@@ -470,7 +470,7 @@ mod tests {
     };
     use ratatui::{layout::Margin, text::Span};
     use rstest::rstest;
-    use slumber_core::assert_matches;
+    use slumber_util::assert_matches;
 
     /// Create a span styled as the cursor
     fn cursor(text: &str) -> Span {

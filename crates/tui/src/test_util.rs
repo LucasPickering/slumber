@@ -168,7 +168,7 @@ macro_rules! assert_events {
                         expected = stringify!($pattern),
                     );
                 };
-                slumber_core::assert_matches!(event, $pattern $(if $condition)?);
+                slumber_util::assert_matches!(event, $pattern $(if $condition)?);
                 len += 1;
             )*
             // Make sure there aren't any trailing events

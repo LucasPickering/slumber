@@ -168,7 +168,7 @@ mod tests {
     use super::*;
     use crate::test_util::{TestHarness, assert_events, harness};
     use rstest::rstest;
-    use slumber_core::assert_matches;
+    use slumber_util::assert_matches;
 
     #[rstest]
     fn test_event_queue(_harness: TestHarness) {

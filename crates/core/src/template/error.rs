@@ -7,6 +7,7 @@ use crate::{
 use itertools::Itertools;
 use std::{fmt::Display, io, path::PathBuf, string::FromUtf8Error, sync::Arc};
 use thiserror::Error;
+use tracing::error;
 use winnow::error::{ContextError, ParseError};
 
 /// An error while parsing a template. This is derived from a nom error

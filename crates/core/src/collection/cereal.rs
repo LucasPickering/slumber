@@ -485,7 +485,6 @@ pub mod serde_duration {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::assert_err;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde::Serialize;
@@ -497,6 +496,7 @@ mod tests {
         Mapping,
         value::{Tag, TaggedValue},
     };
+    use slumber_util::assert_err;
     use std::time::Duration;
 
     #[rstest]

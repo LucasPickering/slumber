@@ -186,7 +186,6 @@ async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
 mod tests {
     use super::*;
     use crate::{
-        assert_err,
         http::{HttpMethod, content_type::ContentType},
         test_util::{Factory, TempDir, by_id, temp_dir, test_data_dir},
     };
@@ -195,6 +194,7 @@ mod tests {
     use rstest::rstest;
     use serde::de::IgnoredAny;
     use serde_json::json;
+    use slumber_util::assert_err;
     use std::{fs, fs::File, time::Duration};
 
     /// Test various cases of try_path

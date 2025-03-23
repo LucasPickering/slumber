@@ -11,14 +11,14 @@ use crate::{
         draw::{Draw, DrawMetadata, Generate},
         event::{Child, Event, EventHandler, OptionEvent},
         state::Identified,
-        util::{highlight, view_text},
+        util::{format_byte_size, highlight, view_text},
     },
 };
 use ratatui::{Frame, layout::Layout, prelude::Constraint, text::Text};
 use slumber_config::Action;
 use slumber_core::{
     http::{RequestId, RequestRecord, content_type::ContentType},
-    util::{MaybeStr, format_byte_size},
+    util::MaybeStr,
 };
 use std::sync::Arc;
 

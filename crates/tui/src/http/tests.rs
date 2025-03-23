@@ -4,10 +4,10 @@ use anyhow::anyhow;
 use chrono::Utc;
 use rstest::rstest;
 use slumber_core::{
-    assert_matches,
     http::{Exchange, RequestBuildError, RequestError, RequestRecord},
     test_util::Factory,
 };
+use slumber_util::assert_matches;
 use std::{
     sync::{
         Arc,

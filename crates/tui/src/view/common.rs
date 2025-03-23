@@ -15,7 +15,11 @@ pub mod text_window;
 
 use crate::{
     context::TuiContext,
-    view::{draw::Generate, state::Notification},
+    view::{
+        draw::Generate,
+        state::Notification,
+        util::{format_duration, format_time},
+    },
 };
 use chrono::{DateTime, Duration, Local, Utc};
 use itertools::{Itertools, Position};
@@ -27,7 +31,7 @@ use reqwest::{StatusCode, header::HeaderValue};
 use slumber_core::{
     collection::Profile,
     http::{RequestBuildError, RequestError},
-    util::{MaybeStr, format_duration, format_time},
+    util::MaybeStr,
 };
 
 /// A container with a title and border

@@ -479,7 +479,8 @@ mod tests {
     use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
-    use slumber_core::{assert_matches, http::BuildOptions};
+    use slumber_core::http::BuildOptions;
+    use slumber_util::assert_matches;
 
     /// Create component to be tested
     fn create_component<'term>(

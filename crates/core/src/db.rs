@@ -10,12 +10,12 @@ use crate::{
     collection::{ProfileId, RecipeId},
     db::convert::{CollectionPath, JsonEncoded, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
-    util::{ResultTraced, paths},
 };
 use anyhow::{Context, anyhow};
 use derive_more::Display;
 use rusqlite::{Connection, DatabaseName, OptionalExtension, named_params};
 use serde::{Serialize, de::DeserializeOwned};
+use slumber_util::{ResultTraced, paths};
 use std::{
     borrow::Cow,
     fmt::Debug,
@@ -666,7 +666,7 @@ impl crate::test_util::Factory for Database {
 #[cfg(any(test, feature = "test"))]
 impl crate::test_util::Factory for CollectionDatabase {
     fn factory(_: ()) -> Self {
-        use crate::util::paths::get_repo_root;
+        use slumber_util::paths::get_repo_root;
         Database::factory(())
             .into_collection(&get_repo_root().join("slumber.yml"))
             .expect("Error initializing DB collection")

@@ -27,8 +27,9 @@ use slumber_core::{
     },
     http::HttpMethod,
     template::Template,
-    util::{NEW_ISSUE_LINK, ResultTraced},
+    util::NEW_ISSUE_LINK,
 };
+use slumber_util::ResultTraced;
 use std::{fs::File, iter, path::Path};
 use strum::IntoEnumIterator;
 use tracing::{debug, error, info, warn};

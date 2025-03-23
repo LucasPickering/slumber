@@ -1,8 +1,6 @@
 use assert_cmd::Command;
-use slumber_core::{
-    test_util::{TempDir, temp_dir},
-    util::paths::DATA_DIRECTORY_ENV_VARIABLE,
-};
+use slumber_core::test_util::{TempDir, temp_dir};
+use slumber_util::paths::DATA_DIRECTORY_ENV_VARIABLE;
 use std::{
     env,
     ops::Deref,

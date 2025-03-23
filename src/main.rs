@@ -2,7 +2,7 @@
 #![deny(clippy::all)]
 
 use anyhow::Context;
-use slumber_core::util::{ResultTraced, paths};
+use slumber_util::{ResultTraced, paths};
 use std::{
     fs::{self, File, OpenOptions},
     io,

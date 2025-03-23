@@ -95,9 +95,10 @@ impl From<ExactlyOneError> for QueryError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert_err, http::content_type::Json};
+    use crate::http::content_type::Json;
     use rstest::rstest;
     use serde_json::json;
+    use slumber_util::assert_err;
 
     /// Test how `query_to_string` handles different types of values returned as
     /// *single results* of a query

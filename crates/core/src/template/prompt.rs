@@ -1,6 +1,6 @@
-use crate::util::ResultTraced;
 use anyhow::anyhow;
 use derive_more::From;
+use slumber_util::ResultTraced;
 use std::fmt::Debug;
 use tokio::sync::oneshot;
 

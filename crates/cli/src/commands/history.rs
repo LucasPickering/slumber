@@ -4,6 +4,10 @@ use crate::{
     completions::{complete_profile, complete_recipe, complete_request_id},
 };
 use anyhow::{anyhow, bail};
+use chrono::{
+    DateTime, Local, Utc,
+    format::{DelayedFormat, StrftimeItems},
+};
 use clap::Parser;
 use clap_complete::ArgValueCompleter;
 use itertools::Itertools;
@@ -11,7 +15,7 @@ use slumber_core::{
     collection::{ProfileId, RecipeId},
     db::{Database, ProfileFilter},
     http::RequestId,
-    util::{confirm, format_time_iso},
+    util::confirm,
 };
 use std::{iter, process::ExitCode, str::FromStr};
 
@@ -274,6 +278,11 @@ enum DeleteSelection {
         #[clap(add = ArgValueCompleter::new(complete_request_id))]
         request: RequestId,
     },
+}
+
+/// Format a datetime in ISO 8601 format
+fn format_time_iso(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
+    time.with_timezone(&Local).format("%FT%TZ%Z")
 }
 
 /// Print request history as a table

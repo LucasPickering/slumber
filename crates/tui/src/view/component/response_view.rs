@@ -127,10 +127,10 @@ mod tests {
     use indexmap::indexmap;
     use rstest::rstest;
     use slumber_core::{
-        assert_matches,
         http::Exchange,
         test_util::{Factory, header_map},
     };
+    use slumber_util::assert_matches;
 
     /// Test "Copy Body" menu action
     #[rstest]

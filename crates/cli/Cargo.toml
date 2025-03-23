@@ -16,6 +16,7 @@ path = "src/bin.rs"
 
 [dependencies]
 anyhow = {workspace = true}
+chrono = {workspace = true}
 clap = {version = "4.4.2", features = ["derive"]}
 clap_complete = {version = "4.5.29", features = ["unstable-dynamic"]}
 dialoguer = {workspace = true, features = ["password"]}
@@ -27,6 +28,7 @@ serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}
 slumber_import = {workspace = true}
+slumber_util = {workspace = true}
 tokio = {workspace = true, features = ["rt", "macros"]}
 tracing = {workspace = true}
 
@@ -37,6 +39,7 @@ pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 serde_json = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}
+slumber_util = {workspace = true, features = ["test"]}
 wiremock = {workspace = true}
 
 [package.metadata.release]

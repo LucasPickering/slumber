@@ -2453,8 +2453,8 @@ version = "3.0.1"
 dependencies = [
  "anyhow",
  "slumber_cli",
- "slumber_core",
  "slumber_tui",
+ "slumber_util",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2466,6 +2466,7 @@ version = "3.0.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "chrono",
  "clap",
  "clap_complete",
  "dialoguer",
@@ -2481,6 +2482,7 @@ dependencies = [
  "slumber_config",
  "slumber_core",
  "slumber_import",
+ "slumber_util",
  "tokio",
  "tracing",
  "wiremock",
@@ -2503,7 +2505,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_test",
- "slumber_core",
+ "slumber_util",
  "tracing",
 ]
 
@@ -2517,7 +2519,6 @@ dependencies = [
  "chrono",
  "derive_more",
  "dialoguer",
- "dirs",
  "env-lock",
  "futures",
  "indexmap",
@@ -2534,9 +2535,10 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_json_path",
- "serde_path_to_error",
  "serde_test",
  "serde_yaml",
+ "slumber_config",
+ "slumber_util",
  "strum",
  "thiserror 1.0.69",
  "tokio",
@@ -2565,6 +2567,7 @@ dependencies = [
  "serde_test",
  "serde_yaml",
  "slumber_core",
+ "slumber_util",
  "strum",
  "thiserror 1.0.69",
  "tracing",
@@ -2597,6 +2600,7 @@ dependencies = [
  "shell-words",
  "slumber_config",
  "slumber_core",
+ "slumber_util",
  "strum",
  "tokio",
  "tokio-util",
@@ -2605,6 +2609,19 @@ dependencies = [
  "tree-sitter-json",
  "unicode-width 0.1.14",
  "uuid",
+]
+
+[[package]]
+name = "slumber_util"
+version = "3.0.1"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "rstest",
+ "serde",
+ "serde_path_to_error",
+ "serde_yaml",
+ "tracing",
 ]
 
 [[package]]

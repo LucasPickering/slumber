@@ -1,21 +1,11 @@
 //! Miscellaneous utility constants/types/functions
 
-pub mod paths;
-
-use crate::{http::RequestError, template::ChainError};
-use chrono::{
-    DateTime, Duration, Local, Utc,
-    format::{DelayedFormat, StrftimeItems},
-};
 use derive_more::{DerefMut, Display};
 use dialoguer::Confirm;
-use serde::de::DeserializeOwned;
 use std::{
     collections::{HashMap, hash_map::Entry},
     fmt::{self, Debug},
     hash::Hash,
-    io::Read,
-    ops::Deref,
     sync::Arc,
 };
 use tokio::sync::{Mutex, OwnedRwLockWriteGuard, RwLock};
@@ -44,54 +34,6 @@ pub fn doc_link(path: &str) -> String {
     }
 }
 
-/// Parse bytes from a reader into YAML. This will merge any anchors/aliases.
-pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
-    // Two-step parsing is required for anchor/alias merging
-    let deserializer = serde_yaml::Deserializer::from_reader(reader);
-    let mut yaml_value: serde_yaml::Value =
-        serde_path_to_error::deserialize(deserializer)?;
-    yaml_value.apply_merge()?;
-    let output = serde_path_to_error::deserialize(yaml_value)?;
-    Ok(output)
-}
-
-/// Format a datetime for the user
-pub fn format_time(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
-    time.with_timezone(&Local).format("%b %-d %H:%M:%S")
-}
-
-/// Format a datetime in ISO 8601 format
-pub fn format_time_iso(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
-    time.with_timezone(&Local).format("%FT%TZ%Z")
-}
-
-/// Format a duration for the user
-pub fn format_duration(duration: &Duration) -> String {
-    let ms = duration.num_milliseconds();
-    if ms < 1000 {
-        format!("{ms}ms")
-    } else {
-        format!("{:.2}s", ms as f64 / 1000.0)
-    }
-}
-
-/// Format a byte total, e.g. 1_000_000 -> 1 MB
-pub fn format_byte_size(size: usize) -> String {
-    const K: usize = 10usize.pow(3);
-    const M: usize = 10usize.pow(6);
-    const G: usize = 10usize.pow(9);
-    const T: usize = 10usize.pow(12);
-    let (denom, suffix) = match size {
-        ..K => return format!("{size} B"),
-        K..M => (K, "K"),
-        M..G => (M, "M"),
-        G..T => (G, "G"),
-        T.. => (T, "T"),
-    };
-    let size = size as f64 / denom as f64;
-    format!("{size:.1} {suffix}B")
-}
-
 /// Show the user a confirmation prompt
 pub fn confirm(prompt: impl Into<String>) -> bool {
     Confirm::new()
@@ -100,41 +42,6 @@ pub fn confirm(prompt: impl Into<String>) -> bool {
         .wait_for_newline(true)
         .interact()
         .unwrap_or(false)
-}
-
-/// Extension trait for [Result]
-pub trait ResultTraced<T, E>: Sized {
-    /// If this is an error, trace it. Return the same result.
-    fn traced(self) -> Self;
-}
-
-// This is deliberately *not* implemented for non-anyhow errors, because we only
-// want to trace errors that have full context attached
-impl<T> ResultTraced<T, anyhow::Error> for anyhow::Result<T> {
-    fn traced(self) -> Self {
-        if let Err(err) = &self {
-            error!(error = err.deref());
-        }
-        self
-    }
-}
-
-impl<T> ResultTraced<T, RequestError> for Result<T, RequestError> {
-    fn traced(self) -> Self {
-        if let Err(err) = &self {
-            error!(error = %err);
-        }
-        self
-    }
-}
-
-impl<T> ResultTraced<T, ChainError> for Result<T, ChainError> {
-    fn traced(self) -> Self {
-        if let Err(err) = &self {
-            error!(error = %err);
-        }
-        self
-    }
 }
 
 /// Helper to printing bytes. If the bytes aren't valid UTF-8, they'll be
@@ -163,52 +70,6 @@ impl Display for MaybeStr<'_> {
             }
             Ok(())
         }
-    }
-}
-
-/// A static mapping between values (of type `T`) and labels (strings). Used to
-/// both stringify from and parse to `T`.
-pub struct Mapping<'a, T: Copy>(&'a [(T, &'a [&'a str])]);
-
-impl<'a, T: Copy> Mapping<'a, T> {
-    /// Construct a new mapping
-    pub const fn new(mapping: &'a [(T, &'a [&'a str])]) -> Self {
-        Self(mapping)
-    }
-
-    /// Get a value by one of its labels
-    pub fn get(&self, s: &str) -> Option<T> {
-        for (value, strs) in self.0 {
-            for other_string in *strs {
-                if *other_string == s {
-                    return Some(*value);
-                }
-            }
-        }
-        None
-    }
-
-    /// Get the label mapped to a value. If it has multiple labels, use the
-    /// first. Panic if the value has no mapped labels
-    pub fn get_label(&self, value: T) -> &str
-    where
-        T: Debug + PartialEq,
-    {
-        let (_, strings) = self
-            .0
-            .iter()
-            .find(|(v, _)| v == &value)
-            .unwrap_or_else(|| panic!("Unknown value {value:?}"));
-        strings
-            .first()
-            .unwrap_or_else(|| panic!("No mapped strings for value {value:?}"))
-    }
-
-    /// Get all available mapped strings
-    pub fn all_strings(&self) -> impl Iterator<Item = &str> {
-        self.0
-            .iter()
-            .flat_map(|(_, strings)| strings.iter().copied())
     }
 }
 
@@ -298,28 +159,5 @@ impl<V> Drop for FutureCacheGuard<V> {
             // identifying *which* lock this happened to :(
             error!("Future cache guard dropped without setting a value");
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rstest::rstest;
-
-    #[rstest]
-    #[case::zero(0, "0 B")]
-    #[case::one(1, "1 B")]
-    #[case::almost_kb(999, "999 B")]
-    #[case::kb(1000, "1.0 KB")]
-    #[case::kb_round_down(1049, "1.0 KB")]
-    #[case::kb_round_up(1050, "1.1 KB")]
-    #[case::almost_mb(999_999, "1000.0 KB")]
-    #[case::mb(1_000_000, "1.0 MB")]
-    #[case::almost_gb(999_999_999, "1000.0 MB")]
-    #[case::gb(1_000_000_000, "1.0 GB")]
-    #[case::almost_tb(999_999_999_999, "1000.0 GB")]
-    #[case::tb(1_000_000_000_000, "1.0 TB")]
-    fn test_format_byte_size(#[case] size: usize, #[case] expected: &str) {
-        assert_eq!(&format_byte_size(size), expected);
     }
 }

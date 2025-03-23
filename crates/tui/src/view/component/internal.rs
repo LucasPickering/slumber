@@ -397,7 +397,7 @@ mod tests {
     use ratatui::layout::Layout;
     use rstest::{fixture, rstest};
     use slumber_config::Action;
-    use slumber_core::assert_matches;
+    use slumber_util::assert_matches;
 
     #[derive(Debug, Default)]
     struct Branch {

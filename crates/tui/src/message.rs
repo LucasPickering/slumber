@@ -13,8 +13,8 @@ use slumber_core::{
         RequestRecord,
     },
     template::{Prompt, Prompter, Select, Template, TemplateChunk},
-    util::ResultTraced,
 };
+use slumber_util::ResultTraced;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;

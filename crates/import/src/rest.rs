@@ -14,7 +14,6 @@ use slumber_core::{
     },
     http::{HttpMethod, content_type::ContentType},
     template::{Identifier, Template},
-    util::ResultTraced,
 };
 
 use reqwest::header;
@@ -23,6 +22,7 @@ use rest_parser::{
     headers::Authorization as RestAuthorization,
     template::{Template as RestTemplate, TemplatePart as RestTemplatePart},
 };
+use slumber_util::ResultTraced;
 use std::path::Path;
 use tracing::error;
 

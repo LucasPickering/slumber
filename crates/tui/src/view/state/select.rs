@@ -466,7 +466,8 @@ mod tests {
     use ratatui::widgets::List;
     use rstest::{fixture, rstest};
     use serde::Serialize;
-    use slumber_core::{assert_matches, collection::ProfileId};
+    use slumber_core::collection::ProfileId;
+    use slumber_util::assert_matches;
 
     /// Test going up and down in the list
     #[rstest]

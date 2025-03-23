@@ -5,7 +5,10 @@
 
 pub mod paths;
 #[cfg(feature = "test")]
-pub mod test_util;
+mod test_util;
+
+#[cfg(feature = "test")]
+pub use test_util::*;
 
 use serde::de::DeserializeOwned;
 use std::{fmt::Debug, io::Read, ops::Deref};

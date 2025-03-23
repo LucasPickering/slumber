@@ -619,7 +619,7 @@ mod tests {
     use rstest::rstest;
     use serde::de::DeserializeOwned;
     use serde_test::{Token, assert_de_tokens, assert_de_tokens_error};
-    use slumber_core::test_util::test_data_dir;
+    use slumber_util::test_data_dir;
     use std::{fmt::Debug, path::PathBuf};
 
     const INSOMNIA_FILE: &str = "insomnia.json";

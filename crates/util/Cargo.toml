@@ -16,6 +16,7 @@ tag = false
 [dependencies]
 anyhow = {workspace = true}
 dirs = {workspace = true}
+rstest = {workspace = true, optional = true}
 serde = {workspace = true}
 serde_path_to_error = "0.1.16"
 serde_yaml = {workspace = true}
@@ -25,4 +26,4 @@ tracing = {workspace = true}
 rstest = {workspace = true}
 
 [features]
-test = []
+test = ["dep:rstest"]

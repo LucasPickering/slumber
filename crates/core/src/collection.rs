@@ -118,7 +118,7 @@ impl CollectionFile {
 
 /// Create a new file with a placeholder path for testing
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<Collection> for CollectionFile {
+impl slumber_util::Factory<Collection> for CollectionFile {
     fn factory(collection: Collection) -> Self {
         Self {
             path: PathBuf::default(),
@@ -187,14 +187,14 @@ mod tests {
     use super::*;
     use crate::{
         http::{HttpMethod, content_type::ContentType},
-        test_util::{Factory, TempDir, by_id, temp_dir, test_data_dir},
+        test_util::{TempDir, by_id, temp_dir},
     };
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde::de::IgnoredAny;
     use serde_json::json;
-    use slumber_util::assert_err;
+    use slumber_util::{Factory, assert_err, test_data_dir};
     use std::{fs, fs::File, time::Duration};
 
     /// Test various cases of try_path

@@ -214,7 +214,7 @@ pub enum TemplateKey {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for TemplateContext {
+impl slumber_util::Factory for TemplateContext {
     fn factory(_: ()) -> Self {
         use crate::test_util::TestPrompter;
         Self {
@@ -268,15 +268,15 @@ mod tests {
             Exchange, RequestRecord, ResponseRecord, content_type::ContentType,
         },
         test_util::{
-            Factory, TempDir, TestPrompter, TestSelectPrompter, by_id,
-            header_map, http_engine, invalid_utf8_chain, temp_dir,
+            TempDir, TestPrompter, TestSelectPrompter, by_id, header_map,
+            http_engine, invalid_utf8_chain, temp_dir,
         },
     };
     use chrono::Utc;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
-    use slumber_util::assert_err;
+    use slumber_util::{Factory, assert_err};
     use std::time::Duration;
     use tokio::fs;
     use wiremock::{Mock, MockServer, ResponseTemplate, matchers};

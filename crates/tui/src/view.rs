@@ -205,7 +205,8 @@ mod tests {
         TestHarness, TestTerminal, assert_events, harness, terminal,
     };
     use rstest::rstest;
-    use slumber_core::{collection::Collection, test_util::Factory};
+    use slumber_core::collection::Collection;
+    use slumber_util::Factory;
 
     /// Test view handling and drawing during initial view setup
     #[rstest]

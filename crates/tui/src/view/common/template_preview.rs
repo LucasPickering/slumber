@@ -245,8 +245,9 @@ mod tests {
     use slumber_core::{
         collection::{Chain, ChainSource, Collection, Profile},
         template::TemplateContext,
-        test_util::{Factory, by_id, invalid_utf8_chain},
+        test_util::{by_id, invalid_utf8_chain},
     };
+    use slumber_util::Factory;
 
     /// Test line breaks, multi-byte characters, and binary data
     #[rstest]

@@ -1,9 +1,8 @@
 use super::*;
-use crate::test_util::Factory;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use rstest::{fixture, rstest};
-use slumber_util::paths::get_repo_root;
+use slumber_util::{Factory, paths::get_repo_root};
 use std::collections::HashMap;
 
 impl CollectionDatabase {

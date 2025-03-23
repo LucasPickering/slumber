@@ -3,11 +3,10 @@ use crate::test_util::{TestHarness, harness};
 use anyhow::anyhow;
 use chrono::Utc;
 use rstest::rstest;
-use slumber_core::{
-    http::{Exchange, RequestBuildError, RequestError, RequestRecord},
-    test_util::Factory,
+use slumber_core::http::{
+    Exchange, RequestBuildError, RequestError, RequestRecord,
 };
-use slumber_util::assert_matches;
+use slumber_util::{assert_matches, Factory};
 use std::{
     sync::{
         Arc,

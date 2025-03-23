@@ -329,7 +329,7 @@ fn try_build_collection(rest_format: RestFormat) -> anyhow::Result<Collection> {
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
-    use slumber_core::test_util::test_data_dir;
+    use slumber_util::test_data_dir;
 
     use super::*;
 

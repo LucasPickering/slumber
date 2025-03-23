@@ -279,10 +279,8 @@ impl Generate for &Folder {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    use slumber_core::{
-        collection::Recipe,
-        test_util::{Factory, by_id},
-    };
+    use slumber_core::{collection::Recipe, test_util::by_id};
+    use slumber_util::Factory;
 
     #[test]
     fn test_folder_tree() {

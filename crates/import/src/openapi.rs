@@ -641,7 +641,8 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::{fixture, rstest};
     use serde_json::json;
-    use slumber_core::{collection::Collection, test_util::test_data_dir};
+    use slumber_core::collection::Collection;
+    use slumber_util::test_data_dir;
     use std::{path::PathBuf, sync::OnceLock};
 
     const OPENAPIV3_FILE: &str = "openapiv3_petstore.yml";

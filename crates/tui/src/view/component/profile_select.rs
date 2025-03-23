@@ -362,7 +362,8 @@ mod tests {
     };
     use persisted::PersistedStore;
     use rstest::rstest;
-    use slumber_core::test_util::{Factory, by_id};
+    use slumber_core::test_util::by_id;
+    use slumber_util::Factory;
 
     use super::*;
 

@@ -400,7 +400,8 @@ mod tests {
     use persisted::PersistedStore;
     use rstest::rstest;
     use serde::Serialize;
-    use slumber_core::{collection::RecipeId, test_util::Factory};
+    use slumber_core::collection::RecipeId;
+    use slumber_util::Factory;
 
     #[derive(Debug, Serialize, persisted::PersistedKey)]
     #[persisted(Option<String>)]

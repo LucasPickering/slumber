@@ -488,9 +488,9 @@ mod tests {
     use serde::Serialize;
     use slumber_core::{
         http::{ResponseBody, ResponseRecord},
-        test_util::{Factory, TempDir, temp_dir},
+        test_util::{TempDir, temp_dir},
     };
-    use slumber_util::assert_matches;
+    use slumber_util::{Factory, assert_matches};
     use tokio::fs;
 
     const TEXT: &str = "{\"greeting\":\"hello\"}";

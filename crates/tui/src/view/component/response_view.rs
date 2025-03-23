@@ -126,11 +126,8 @@ mod tests {
     use crossterm::event::KeyCode;
     use indexmap::indexmap;
     use rstest::rstest;
-    use slumber_core::{
-        http::Exchange,
-        test_util::{Factory, header_map},
-    };
-    use slumber_util::assert_matches;
+    use slumber_core::{http::Exchange, test_util::header_map};
+    use slumber_util::{assert_matches, Factory};
 
     /// Test "Copy Body" menu action
     #[rstest]

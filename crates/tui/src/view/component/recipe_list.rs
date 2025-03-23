@@ -452,9 +452,9 @@ mod tests {
     use rstest::{fixture, rstest};
     use slumber_core::{
         collection::{Collection, Recipe},
-        test_util::{Factory, by_id},
+        test_util::by_id,
     };
-    use slumber_util::assert_matches;
+    use slumber_util::{Factory, assert_matches};
 
     /// Test the filter box
     #[rstest]

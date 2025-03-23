@@ -1,3 +1,26 @@
+use crate::paths::get_repo_root;
+use rstest::fixture;
+use std::path::PathBuf;
+
+/// Test-only trait to build a placeholder instance of a struct. This is similar
+/// to `Default`, but allows for useful placeholders that may not make sense in
+/// the context of the broader app. It also makes it possible to implement a
+/// factory for a type that already has `Default`.
+///
+/// Factories can also be parameterized, meaning the implementor can define
+/// convenient knobs to let the caller customize the generated type. Each type
+/// can have any number of `Factory` implementations, so you can support
+/// multiple param types.
+pub trait Factory<Param = ()> {
+    fn factory(param: Param) -> Self;
+}
+
+/// Directory containing static test data
+#[fixture]
+pub fn test_data_dir() -> PathBuf {
+    get_repo_root().join("test_data")
+}
+
 /// Assert a result is the `Err` variant, and the stringified error contains
 /// the given message
 #[macro_export]

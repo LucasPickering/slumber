@@ -89,7 +89,7 @@ impl Profile {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for Profile {
+impl slumber_util::Factory for Profile {
     fn factory(_: ()) -> Self {
         Self {
             id: ProfileId::factory(()),
@@ -126,7 +126,7 @@ impl From<&str> for ProfileId {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for ProfileId {
+impl slumber_util::Factory for ProfileId {
     fn factory(_: ()) -> Self {
         uuid::Uuid::new_v4().to_string().into()
     }
@@ -157,7 +157,7 @@ impl Folder {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for Folder {
+impl slumber_util::Factory for Folder {
     fn factory(_: ()) -> Self {
         Self {
             id: RecipeId::factory(()),
@@ -214,7 +214,7 @@ impl Recipe {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for Recipe {
+impl slumber_util::Factory for Recipe {
     fn factory(_: ()) -> Self {
         Self {
             id: RecipeId::factory(()),
@@ -232,7 +232,7 @@ impl crate::test_util::Factory for Recipe {
 
 /// Create recipe with a fixed ID
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<&str> for Recipe {
+impl slumber_util::Factory<&str> for Recipe {
     fn factory(id: &str) -> Self {
         Self {
             id: id.into(),
@@ -277,14 +277,14 @@ impl FromStr for RecipeId {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for RecipeId {
+impl slumber_util::Factory for RecipeId {
     fn factory(_: ()) -> Self {
         uuid::Uuid::new_v4().to_string().into()
     }
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for Chain {
+impl slumber_util::Factory for Chain {
     fn factory(_: ()) -> Self {
         Self {
             id: "chain1".into(),
@@ -592,7 +592,7 @@ impl Collection {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for Collection {
+impl slumber_util::Factory for Collection {
     fn factory(_: ()) -> Self {
         use crate::test_util::by_id;
         // Include a body in the recipe, so body-related behavior can be tested
@@ -615,9 +615,9 @@ impl crate::test_util::Factory for Collection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::Factory;
     use indexmap::indexmap;
     use rstest::rstest;
+    use slumber_util::Factory;
 
     #[rstest]
     #[case::none(None, None, None)]

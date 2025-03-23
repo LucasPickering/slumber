@@ -653,7 +653,7 @@ impl CollectionId {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for Database {
+impl slumber_util::Factory for Database {
     fn factory(_: ()) -> Self {
         let mut connection = Connection::open_in_memory().unwrap();
         Self::migrate(&mut connection).unwrap();
@@ -664,7 +664,7 @@ impl crate::test_util::Factory for Database {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for CollectionDatabase {
+impl slumber_util::Factory for CollectionDatabase {
     fn factory(_: ()) -> Self {
         use slumber_util::paths::get_repo_root;
         Database::factory(())

@@ -4,8 +4,7 @@ use super::*;
 use crate::{
     collection::{Authentication, Chain, ChainSource, Collection, Profile},
     test_util::{
-        Factory, TestPrompter, by_id, header_map, http_engine,
-        invalid_utf8_chain,
+        TestPrompter, by_id, header_map, http_engine, invalid_utf8_chain,
     },
 };
 use indexmap::{IndexMap, indexmap};
@@ -14,6 +13,7 @@ use regex::Regex;
 use reqwest::{Body, StatusCode};
 use rstest::rstest;
 use serde_json::json;
+use slumber_util::Factory;
 use std::ptr;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 

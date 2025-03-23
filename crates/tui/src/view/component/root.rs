@@ -307,7 +307,8 @@ mod tests {
     use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
-    use slumber_core::{http::Exchange, test_util::Factory};
+    use slumber_core::http::Exchange;
+    use slumber_util::Factory;
 
     /// Test that, on first render, the view loads the most recent historical
     /// request for the first recipe+profile

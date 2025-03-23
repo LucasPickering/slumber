@@ -195,13 +195,13 @@ impl ResponseContent for Json {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{http::ResponseRecord, test_util::Factory};
+    use crate::http::ResponseRecord;
     use reqwest::header::{
         CONTENT_TYPE, HeaderMap, HeaderValue, InvalidHeaderValue,
     };
     use rstest::rstest;
     use serde_json::json;
-    use slumber_util::assert_err;
+    use slumber_util::{Factory, assert_err};
     use std::ops::Deref;
 
     /// Test all content types and their variants

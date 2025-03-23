@@ -358,7 +358,7 @@ mod tests {
     use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
-    use slumber_core::test_util::Factory;
+    use slumber_util::Factory;
 
     #[rstest]
     fn test_edit_basic(harness: TestHarness, terminal: TestTerminal) {

@@ -498,14 +498,14 @@ impl RequestRecord {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for RequestRecord {
+impl slumber_util::Factory for RequestRecord {
     fn factory(_: ()) -> Self {
         Self::factory(RequestId::new())
     }
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<RequestId> for RequestRecord {
+impl slumber_util::Factory<RequestId> for RequestRecord {
     fn factory(id: RequestId) -> Self {
         Self {
             id,
@@ -516,9 +516,7 @@ impl crate::test_util::Factory<RequestId> for RequestRecord {
 
 /// Customize profile and recipe ID
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
-    for RequestRecord
-{
+impl slumber_util::Factory<(Option<ProfileId>, RecipeId)> for RequestRecord {
     fn factory((profile_id, recipe_id): (Option<ProfileId>, RecipeId)) -> Self {
         use crate::test_util::header_map;
         Self {
@@ -539,14 +537,14 @@ impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)>
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for ResponseRecord {
+impl slumber_util::Factory for ResponseRecord {
     fn factory(_: ()) -> Self {
         Self::factory(RequestId::new())
     }
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<RequestId> for ResponseRecord {
+impl slumber_util::Factory<RequestId> for ResponseRecord {
     fn factory(id: RequestId) -> Self {
         Self {
             id,
@@ -558,7 +556,7 @@ impl crate::test_util::Factory<RequestId> for ResponseRecord {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<StatusCode> for ResponseRecord {
+impl slumber_util::Factory<StatusCode> for ResponseRecord {
     fn factory(status: StatusCode) -> Self {
         Self {
             id: RequestId::new(),
@@ -570,7 +568,7 @@ impl crate::test_util::Factory<StatusCode> for ResponseRecord {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory for Exchange {
+impl slumber_util::Factory for Exchange {
     fn factory(_: ()) -> Self {
         Self::factory((None, RecipeId::factory(())))
     }
@@ -578,7 +576,7 @@ impl crate::test_util::Factory for Exchange {
 
 /// Customize recipe ID
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<RecipeId> for Exchange {
+impl slumber_util::Factory<RecipeId> for Exchange {
     fn factory(params: RecipeId) -> Self {
         Self::factory((None, params))
     }
@@ -586,7 +584,7 @@ impl crate::test_util::Factory<RecipeId> for Exchange {
 
 /// Customize profile and recipe ID
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
+impl slumber_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
     fn factory(params: (Option<ProfileId>, RecipeId)) -> Self {
         let id = RequestId::new();
         Self::factory((
@@ -601,7 +599,7 @@ impl crate::test_util::Factory<(Option<ProfileId>, RecipeId)> for Exchange {
 
 /// Custom request and response
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
+impl slumber_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
     fn factory((request, response): (RequestRecord, ResponseRecord)) -> Self {
         // Request and response should've been generated from the same ID,
         // otherwise we're going to see some shitty bugs
@@ -620,7 +618,7 @@ impl crate::test_util::Factory<(RequestRecord, ResponseRecord)> for Exchange {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<RequestId> for Exchange {
+impl slumber_util::Factory<RequestId> for Exchange {
     fn factory(id: RequestId) -> Self {
         Self::factory((RequestRecord::factory(id), ResponseRecord::factory(id)))
     }
@@ -861,9 +859,10 @@ impl PartialEq for RequestError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{Factory, header_map};
+    use crate::test_util::header_map;
     use indexmap::indexmap;
     use rstest::rstest;
+    use slumber_util::Factory;
 
     #[rstest]
     #[case::content_disposition(

@@ -1,31 +1,29 @@
-// TODO make casing consistent
-
 function username() {
   return command(["whoami"], { trim: "both" });
 }
 
 function password() {
-  return prompt({ message: "Password", sensitive: true });
+  return prompt("Password", { sensitive: true });
 }
 
-// TODO use this
 function selectValue() {
-  return select({
-    message: "Select a value",
-    options: [
-      "foo",
-      "bar",
-      "baz",
-      "a really really really really long option",
-      username,
-    ],
-  });
+  return select("Select a value", [
+    "foo",
+    "bar",
+    "baz",
+    "a really really really really long option",
+    username(),
+  ]);
 }
 
+// Example of generating a selection list dynamically
+// TODO use this
 function selectDynamic() {
-  const resp = response("login");
-  const options = JSON.parse(resp).form;
-  return select({ message: "Select a value", options });
+  const response = response("login", {
+    trigger: { type: "expire", duration: "12h" },
+  });
+  const options = JSON.parse(response).form;
+  return select("Select a value", options);
 }
 
 function authToken() {
@@ -48,15 +46,6 @@ const recipeBase = {
     "Content-Type": "application/json",
   },
 };
-
-// TODO these should be provided by slumber
-function request(recipe) {
-  return { request: recipe };
-}
-
-function folder(folder) {
-  return { folder };
-}
 
 const profiles = {
   works: {
@@ -84,7 +73,8 @@ const profiles = {
 };
 
 const requests = {
-  login: request({
+  login: {
+    type: "request",
     method: "POST",
     url: () => `${profile("host")}/anything/login`,
     authentication: {
@@ -92,82 +82,99 @@ const requests = {
       username: () => profile("username"),
       password: () => profile("password"),
     },
-    // query: ["sudo=yes_please", "fast=no_thanks", "fast=actually_maybe"],
+    query: {
+      sudo: "yes_please",
+      fast: ["no_thanks", "actually_maybe"],
+    },
     headers: { Accept: "application/json" },
     body: {
       // This is duplicated from the authentication header, to demonstrate
       // URL forms
-      type: "form_urlencoded",
-      username: () => profile("username"),
-      password: () => profile("password"),
+      type: "formUrlencoded",
+      data: {
+        username: () => profile("username"),
+        password: () => profile("password"),
+      },
     },
-  }),
-  users: folder({
+  },
+  users: {
+    type: "folder",
     name: "Users",
     requests: {
-      get_users: request({
+      getUsers: {
+        type: "request",
         ...recipeBase,
         name: "Get Users",
         method: "GET",
         url: () => `${profile("host")}/get`,
-        // query: {
-        //   foo: "bar",
-        //   select: selectDynamic,
-        // },
-      }),
-      get_user: request({
+        query: {
+          foo: "bar",
+          select: selectValue,
+        },
+      },
+      getUser: {
+        type: "request",
         ...recipeBase,
         name: "Get User",
         method: "GET",
         url: () => `${profile("host")}/anything/${profile("userGuid")}`,
-      }),
-      modify_user: request({
+      },
+      modifyUser: {
+        type: "request",
         ...recipeBase,
         name: "Modify User",
         method: "PUT",
         url: () => `${profile("host")}/anything/${profile("userGuid")}`,
-        // body: {
-        //   type: "json",
-        //   data: () => ({
-        //     new_username: `user formerly known as ${username()}`,
-        //     number: 3,
-        //     bool: true,
-        //     null: null,
-        //     array: [1, 2, false, 3.3, "www.www"],
-        //   }),
-        // },
-      }),
+        body: {
+          type: "json",
+          data: () => ({
+            newUsername: `user formerly known as ${username()}`,
+            number: 3,
+            bool: true,
+            null: null,
+            array: [1, 2, false, 3.3, "www.www"],
+          }),
+        },
+      },
     },
-  }),
-  get_image: request({
+  },
+  getImage: {
+    type: "request",
     headers: { Accept: "image/png" },
     name: "Get Image",
     method: "GET",
     url: () => `${profile("host")}/image`,
-  }),
-  upload_image: request({
+  },
+  uploadImage: {
+    type: "request",
     name: "Upload Image",
     method: "POST",
     url: () => `${profile("host")}/anything/image`,
     body: {
-      type: "form_multipart",
-      filename: "logo.png",
-      image: () => file("./static/slumber.png", { decode: "binary" }),
+      type: "formMultipart",
+      data: {
+        filename: "logo.png",
+        image: () => file("./static/slumber.png", { decode: "binary" }),
+      },
     },
-  }),
-  big_file: request({
+  },
+  bigFile: {
+    type: "request",
     name: "Big File",
     method: "POST",
     url: () => `${profile("host")}/anything`,
-    // TODO accept a plain value
-    body: { type: "raw", body: () => file("Cargo.lock") },
-  }),
-  delay: request({
+    headers: {
+      "Content-Type": "text/plain",
+    },
+    body: () => file("Cargo.lock"), // Raw text body
+  },
+  delay: {
+    type: "request",
     ...recipeBase,
     name: "Delay",
     method: "GET",
     url: () => `${profile("host")}/delay/5`,
-  }),
+  },
 };
 
 export default { profiles, requests };

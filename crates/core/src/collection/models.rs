@@ -5,7 +5,7 @@ use crate::{
         cereal,
         recipe_tree::{RecipeNode, RecipeTree},
     },
-    http::{HttpMethod, content_type::ContentType},
+    http::HttpMethod,
     template::Template,
 };
 use derive_more::{Deref, Display, From, Into};
@@ -15,8 +15,10 @@ use petitscript::{FromPs, error::ValueError};
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use slumber_util::{ResultTraced, parse_yaml};
-use std::{fs::File, path::PathBuf, time::Duration};
+use std::{fs::File, iter, path::PathBuf, time::Duration};
 use tracing::info;
+
+// TODO search for "chain" everywhere and rewrite comments
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
@@ -160,13 +162,14 @@ pub struct Recipe {
     /// wrong which is helpful.
     pub method: HttpMethod,
     pub url: Template,
+    #[serde(default, with = "cereal::serde_recipe_body")]
     pub body: Option<RecipeBody>,
     pub authentication: Option<Authentication>,
-    // #[serde(default, with = "cereal::serde_query_parameters")]
+    /// A map of key-value query parameters. Each value can either be a single
+    /// value (`?foo=bar`) or multiple (`?foo=bar&foo=baz`)
     #[serde(default)]
-    pub query: Vec<(String, Template)>,
-    // #[serde(default, deserialize_with = "cereal::deserialize_headers")]
-    #[serde(default)]
+    pub query: IndexMap<String, QueryParameterValue>,
+    #[serde(default, deserialize_with = "cereal::deserialize_headers")]
     pub headers: IndexMap<String, Template>,
 }
 
@@ -185,8 +188,18 @@ impl Recipe {
     pub fn mime(&self) -> Option<Mime> {
         self.headers
             .get(header::CONTENT_TYPE.as_str())
-            .and_then(|template| template.as_str()?.parse::<Mime>().ok())
+            .and_then(|template| template.to_string().parse::<Mime>().ok())
             .or_else(|| self.body.as_ref()?.mime())
+    }
+
+    /// Get a _flattened_ iterator over this recipe's query parameters. Any
+    /// parameter with multiple values will be flattened so the key appears
+    /// multiple times, once with each value. This will respect all ordering
+    /// from the original map.
+    pub fn query_iter(&self) -> impl Iterator<Item = (&str, &Template)> {
+        self.query
+            .iter()
+            .flat_map(|(k, v)| v.iter().map(move |v| (k.as_str(), v)))
     }
 }
 
@@ -201,7 +214,7 @@ impl slumber_util::Factory for Recipe {
             url: "http://localhost/url".into(),
             body: None,
             authentication: None,
-            query: Vec::new(),
+            query: IndexMap::new(),
             headers: IndexMap::new(),
         }
     }
@@ -275,12 +288,37 @@ impl slumber_util::Factory for RecipeId {
 /// `T=String`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`
     Basic { username: T, password: Option<T> },
     /// `Authorization: Bearer {token}`
     Bearer { token: T },
+}
+
+/// A value for a particular query parameter key
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(untagged, deny_unknown_fields)]
+pub enum QueryParameterValue {
+    /// Multiple values for the same parameter. This will be represented by
+    /// repeating the parameter key: `?foo=bar&foo=baz`
+    /// Note: This variant has to be first for deserialization. Because the
+    /// single case accepts any PS value, it will also accept an array.
+    Many(Vec<Template>),
+    /// The common case: `?foo=bar`
+    Single(Template),
+}
+
+impl QueryParameterValue {
+    /// Get an iterator over the contained values. For a single value this is
+    /// just one element; for many is all the values in the list.
+    pub fn iter(&self) -> Box<dyn Iterator<Item = &Template> + '_> {
+        match self {
+            Self::Many(values) => Box::new(values.iter()),
+            Self::Single(value) => Box::new(iter::once(value)),
+        }
+    }
 }
 
 /// Template for a request body. `Raw` is the "default" variant, which
@@ -290,30 +328,33 @@ pub enum Authentication<T = Template> {
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum RecipeBody {
     /// Plain string/bytes body
     Raw {
-        body: Template,
-        /// For structured body types such as `!json`, we'll stringify during
-        /// deserialization then just store the content type. This makes
-        /// internal logic much simpler because we can just work with templates
-        content_type: Option<ContentType>,
+        data: Template,
+    },
+    Json {
+        data: Template,
     },
     /// `application/x-www-form-urlencoded` fields. Values must be strings
-    FormUrlencoded(IndexMap<String, Template>),
+    FormUrlencoded {
+        data: IndexMap<String, Template>,
+    },
     /// `multipart/form-data` fields. Values can be binary
-    FormMultipart(IndexMap<String, Template>),
+    FormMultipart {
+        data: IndexMap<String, Template>,
+    },
 }
 
 impl RecipeBody {
     /// Build a JSON body *without* parsing the internal strings as templates.
     /// Useful for importing from external formats.
-    pub fn untemplated_json(value: serde_json::Value) -> Self {
-        Self::Raw {
-            body: Template::raw(format!("{value:#}")),
-            content_type: Some(ContentType::Json),
+    pub fn untemplated_json(_value: serde_json::Value) -> Self {
+        // TODO
+        Self::Json {
+            data: Default::default(),
         }
     }
 
@@ -323,13 +364,12 @@ impl RecipeBody {
     /// an explicit header.
     pub fn mime(&self) -> Option<Mime> {
         match self {
-            RecipeBody::Raw { content_type, .. } => {
-                content_type.as_ref().map(ContentType::to_mime)
-            }
-            RecipeBody::FormUrlencoded(_) => {
+            RecipeBody::Raw { .. } => None,
+            RecipeBody::Json { .. } => Some(mime::APPLICATION_JSON),
+            RecipeBody::FormUrlencoded { .. } => {
                 Some(mime::APPLICATION_WWW_FORM_URLENCODED)
             }
-            RecipeBody::FormMultipart(_) => Some(mime::MULTIPART_FORM_DATA),
+            RecipeBody::FormMultipart { .. } => Some(mime::MULTIPART_FORM_DATA),
         }
     }
 }
@@ -338,8 +378,7 @@ impl RecipeBody {
 impl From<&str> for RecipeBody {
     fn from(template: &str) -> Self {
         Self::Raw {
-            body: template.into(),
-            content_type: None,
+            data: template.into(),
         }
     }
 }
@@ -376,11 +415,11 @@ impl Collection {
 impl slumber_util::Factory for Collection {
     fn factory(_: ()) -> Self {
         use crate::test_util::by_id;
+        use petitscript::Object;
         // Include a body in the recipe, so body-related behavior can be tested
         let recipe = Recipe {
-            body: Some(RecipeBody::Raw {
-                body: r#"{"message": "hello"}"#.into(),
-                content_type: Some(ContentType::Json),
+            body: Some(RecipeBody::Json {
+                data: Template::new(Object::new().insert("message", "hello")),
             }),
             ..Recipe::factory(())
         };

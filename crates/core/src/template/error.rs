@@ -4,21 +4,11 @@ use crate::{
 };
 use std::{string::FromUtf8Error, sync::Arc};
 use thiserror::Error;
-use tracing::error;
-use winnow::error::{ContextError, ParseError};
 
-/// An error while parsing a template. This is derived from a nom error
+/// Error for [OverrideKey](crate::template::OverrideKey)'s `FromStr` impl.
 #[derive(Debug, Error)]
-#[error("{0}")]
-pub struct TemplateParseError(String);
-
-/// Convert winnow's error type into ours. This stringifies the error so we can
-/// dump the reference to the input
-impl From<ParseError<&str, ContextError>> for TemplateParseError {
-    fn from(error: ParseError<&str, ContextError>) -> Self {
-        Self(error.to_string())
-    }
-}
+#[error("Invalid override key")]
+pub struct OverrideKeyParseError;
 
 /// Any error that can occur during template rendering. The purpose of having a
 /// structured error here (while the rest of the app just uses `anyhow`) is to

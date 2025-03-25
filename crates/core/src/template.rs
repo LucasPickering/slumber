@@ -10,13 +10,14 @@ use crate::{
     collection::{Collection, Profile, ProfileId},
     db::CollectionDatabase,
     http::HttpEngine,
+    template::error::OverrideKeyParseError,
     util::FutureCache,
 };
 use derive_more::Display;
 use indexmap::IndexMap;
 use petitscript::{Process, Value, function::Function};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{borrow::Cow, str::FromStr, sync::Arc};
 use tokio::task;
 
 /// TODO
@@ -173,7 +174,7 @@ pub struct TemplateContext {
     /// Needed for accessing response bodies for chaining
     pub database: CollectionDatabase,
     /// Additional key=value overrides passed directly from the user
-    pub overrides: IndexMap<String, String>,
+    pub overrides: IndexMap<OverrideKey<'static>, String>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
 }
@@ -184,6 +185,51 @@ impl TemplateContext {
         self.selected_profile
             .as_ref()
             .and_then(|profile_id| self.collection.profiles.get(profile_id))
+    }
+}
+
+/// A key specifying a single value in a request to be overridden. Users can
+/// override a specific part of a recipe OR a profile field. Profile fields
+/// provide more granular and customizable override behavior.
+///
+/// Override keys are used internally by the TUI, and can be passed by the user
+/// in the CLI with the `--override` flag.
+///
+/// TODO explain or remove Cow
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum OverrideKey<'a> {
+    /// Override the value of a profile field
+    Profile(Cow<'a, str>),
+    /// Override the request URL
+    Url,
+    /// Override a single query parameter value
+    Query(Cow<'a, str>),
+    /// Override a single header value
+    Header(Cow<'a, str>),
+    /// Override the request's entire body
+    Body,
+    // TODO form fields
+    // TODO authentication
+}
+
+impl FromStr for OverrideKey<'static> {
+    type Err = OverrideKeyParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match (s, s.split_once('.')) {
+            ("url", _) => Ok(Self::Url),
+            ("body", _) => Ok(Self::Body),
+            (_, Some(("profile", field))) => {
+                Ok(Self::Profile(field.to_owned().into()))
+            }
+            (_, Some(("query", param))) => {
+                Ok(Self::Query(param.to_owned().into()))
+            }
+            (_, Some(("headers", name))) => {
+                Ok(Self::Header(name.to_owned().into()))
+            }
+            _ => Err(OverrideKeyParseError),
+        }
     }
 }
 

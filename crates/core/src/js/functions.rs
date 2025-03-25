@@ -5,7 +5,7 @@ use crate::{
     http::{Exchange, RequestSeed, ResponseRecord},
     js::{cereal, error::FunctionError},
     template::{
-        Prompt, RenderState, Renderer, Select, TemplateContext,
+        OverrideKey, Prompt, RenderState, Renderer, Select, TemplateContext,
         TriggeredRequestError,
     },
     util::FutureCacheOutcome,
@@ -141,7 +141,17 @@ async fn profile(
     process: &Process,
     field: String,
 ) -> Result<Value, FunctionError> {
-    let profile = context(process)?.profile();
+    let context = context(process)?;
+
+    // Check if this field has been manually overridden
+    if let Some(value) = context
+        .overrides
+        .get(&OverrideKey::Profile(field.as_str().into()))
+    {
+        return Ok(value.clone().into());
+    }
+
+    let profile = context.profile();
     let state = state(process)?;
     // Check the cache to see if this value is already being computed somewhere
     // else. If it is, we'll block on that and re-use the result. If not, we

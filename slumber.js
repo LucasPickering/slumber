@@ -35,7 +35,6 @@ function authToken() {
 
   // Pick some arbitrary data from the login response as the token
   const token = JSON.stringify(response.form);
-  console.log(command(["base64"], { stdin: token }));
   return command(["base64"], { stdin: token, trim: "both" });
 }
 

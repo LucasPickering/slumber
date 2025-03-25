@@ -6,7 +6,7 @@
 use crate::{
     collection::{Authentication, ProfileId, RecipeBody, RecipeId},
     http::content_type::ContentType,
-    template::{ChainError, Template, TemplateError, TriggeredRequestError},
+    template::{Template, TemplateError, TriggeredRequestError},
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -800,11 +800,8 @@ impl RequestBuildError {
         self.source.chain().any(|error| {
             matches!(
                 error.downcast_ref(),
-                Some(TemplateError::Chain {
-                    error: ChainError::Trigger {
-                        error: TriggeredRequestError::NotAllowed,
-                        ..
-                    },
+                Some(TemplateError::Trigger {
+                    error: TriggeredRequestError::NotAllowed,
                     ..
                 })
             )

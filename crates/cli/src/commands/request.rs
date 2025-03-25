@@ -11,16 +11,15 @@ use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
     collection::{LoadedCollection, ProfileId, RecipeId},
-    db::{CollectionDatabase, Database, DatabaseMode},
+    db::{CollectionDatabase, Database},
     http::{
         BuildOptions, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
     },
     ps::PetitEngine,
     template::{
         OverrideKey, Prompt, Prompter, Renderer, Select, TemplateContext,
-        TemplateError,
     },
-    util::{MaybeStr, ResultTraced},
+    util::MaybeStr,
 };
 use slumber_util::ResultTraced;
 use std::{
@@ -174,9 +173,15 @@ impl BuildRequestCommand {
         global: GlobalArgs,
         persist: bool,
         trigger_dependencies: bool,
-    ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
+    ) -> anyhow::Result<(CollectionDatabase, HttpEngine, RequestSeed, Renderer)>
+    {
         let collection_file = global.collection_file()?;
-        let config = Config::load()?;
+        let mut config = Config::load()?;
+        // Override the persistence setting based on the --persist flag. By
+        // default the CLI never persists, regardless of the config, because
+        // it's unintuitive and not that useful. The --persist flag overrides
+        // the config as well, forcing persistence.
+        config.http.persist = persist;
         let engine = PetitEngine::new();
         let LoadedCollection {
             collection,
@@ -222,7 +227,7 @@ impl BuildRequestCommand {
         };
         let renderer = Renderer::new(process, template_context);
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
-        Ok((database, http_engine, seed, template_context))
+        Ok((database, http_engine, seed, renderer))
     }
 }
 

@@ -68,23 +68,6 @@ pub enum TemplateError {
     },
 }
 
-impl TemplateError {
-    /// Does the given error have *any* error in its chain that contains
-    /// [TriggeredRequestError::NotAllowed]? This makes it easy to attach
-    /// additional error context.
-    pub fn has_trigger_disabled_error(error: &anyhow::Error) -> bool {
-        error.chain().any(|error| {
-            matches!(
-                error.downcast_ref(),
-                Some(Self::Trigger {
-                    error: TriggeredRequestError::NotAllowed,
-                    ..
-                })
-            )
-        })
-    }
-}
-
 /// Error occurred while trying to build/execute a triggered request.
 ///
 /// This type implements `Clone` so it can be shared between deduplicated chain

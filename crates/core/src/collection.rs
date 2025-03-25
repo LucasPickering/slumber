@@ -91,7 +91,7 @@ impl Display for CollectionFile {
 
 /// Create a new file with a placeholder path for testing
 #[cfg(any(test, feature = "test"))]
-impl crate::test_util::Factory<()> for CollectionFile {
+impl slumber_util::Factory<()> for CollectionFile {
     fn factory(_: ()) -> Self {
         Self(PathBuf::default())
     }

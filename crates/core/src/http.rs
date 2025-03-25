@@ -46,8 +46,8 @@ pub use models::*;
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     db::CollectionDatabase,
+    http::curl::CurlBuilder,
     template::{Renderer, Template},
-    util::ResultTraced,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -291,7 +291,7 @@ impl HttpEngine {
                 }
             }
         };
-        seed.run_future(future, template_context).await
+        seed.run_future(future, renderer).await
     }
 
     /// Render a recipe into a cURL command that will execute the request.
@@ -303,7 +303,7 @@ impl HttpEngine {
     pub async fn build_curl(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> Result<String, RequestBuildError> {
         let RequestSeed {
             id,
@@ -315,18 +315,19 @@ impl HttpEngine {
                 .entered();
 
         let future = async {
-            let recipe = template_context
+            let recipe = renderer
+                .context()
                 .collection
                 .recipes
                 .try_get_recipe(recipe_id)?;
 
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
-                recipe.render_url(template_context),
-                recipe.render_query(options, template_context),
-                recipe.render_headers(options, template_context),
-                recipe.render_authentication(options, template_context),
-                recipe.render_body(options, template_context),
+                recipe.render_url(renderer),
+                recipe.render_query(options, renderer),
+                recipe.render_headers(options, renderer),
+                recipe.render_authentication(options, renderer),
+                recipe.render_body(options, renderer),
             )?;
 
             // Buidl the command

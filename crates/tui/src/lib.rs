@@ -40,7 +40,7 @@ use ratatui::{Terminal, prelude::CrosstermBackend};
 use slumber_config::{Action, Config};
 use slumber_core::{
     collection::{Collection, CollectionFile, LoadedCollection, ProfileId},
-    db::{CollectionDatabase, Database, DatabaseMode},
+    db::{CollectionDatabase, Database},
     http::{RequestId, RequestSeed},
     ps::PetitEngine,
     template::{Prompter, Renderer, Template, TemplateChunk, TemplateContext},

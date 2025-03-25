@@ -68,7 +68,7 @@ impl CurlBuilder {
                 .unwrap();
                 self
             }
-            Authentication::Bearer(token) => self
+            Authentication::Bearer { token } => self
                 .header(
                     &header::AUTHORIZATION,
                     // The token is base64-encoded so we know it's valid
@@ -86,7 +86,9 @@ impl CurlBuilder {
                 let body = as_text(body)?;
                 write!(&mut self.command, " --data '{body}'").unwrap();
             }
-            // Use the first-class form support where possible
+            RenderedBody::Json(body) => {
+                write!(&mut self.command, " --data '{body}'").unwrap();
+            }
             RenderedBody::FormUrlencoded(form) => {
                 for (field, value) in form {
                     write!(

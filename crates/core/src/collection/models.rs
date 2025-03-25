@@ -14,9 +14,7 @@ use mime::Mime;
 use petitscript::{FromPs, error::ValueError};
 use reqwest::header;
 use serde::{Deserialize, Serialize};
-use slumber_util::{ResultTraced, parse_yaml};
-use std::{fs::File, iter, path::PathBuf, time::Duration};
-use tracing::info;
+use std::iter;
 
 // TODO search for "chain" everywhere and rewrite comments
 

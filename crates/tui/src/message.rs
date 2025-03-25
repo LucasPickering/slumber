@@ -7,7 +7,7 @@ use derive_more::From;
 use mime::Mime;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Collection, LoadedCollection, ProfileId, RecipeId},
+    collection::{LoadedCollection, ProfileId, RecipeId},
     http::{
         BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
         RequestRecord,

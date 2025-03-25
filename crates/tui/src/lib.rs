@@ -42,7 +42,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, LoadedCollection, ProfileId},
     db::{CollectionDatabase, Database, DatabaseMode},
     http::{RequestId, RequestSeed},
-    js::JsEngine,
+    ps::PetitEngine,
     template::{Prompter, Renderer, Template, TemplateChunk, TemplateContext},
 };
 use std::{
@@ -80,7 +80,7 @@ pub struct Tui {
     should_run: bool,
     request_store: RequestStore,
     /// TODO
-    js_engine: JsEngine,
+    petit_engine: PetitEngine,
     /// JS process in which the collection file was loaded. We'll use this to
     /// execute render functions from the collection
     js_process: Process,
@@ -115,7 +115,7 @@ impl Tui {
 
         // ===== Initialize collection & view =====
 
-        let js_engine = JsEngine::new();
+        let js_engine = PetitEngine::new();
         // If the collection fails to load, create an empty one just so we can
         // move along. We'll watch the file and hopefully the user can fix it
         let LoadedCollection {
@@ -123,7 +123,6 @@ impl Tui {
             process: js_process,
         } = collection_file
             .load(&js_engine)
-            .await
             .reported(&messages_tx)
             .expect("TODO handle failed collection");
         let collection = Arc::new(collection);
@@ -153,7 +152,7 @@ impl Tui {
 
             view,
             request_store,
-            js_engine,
+            petit_engine: js_engine,
             js_process,
         };
 
@@ -246,12 +245,14 @@ impl Tui {
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
             Message::CollectionStartReload => {
-                let future = self.collection_file.load(&self.js_engine);
+                // These clones are cheap and necessary
+                let file = self.collection_file.clone();
+                let engine = self.petit_engine.clone();
                 let messages_tx = self.messages_tx();
-                spawn_result(async move {
-                    let collection = future.await?;
+                task::spawn_blocking(move || {
+                    let collection = file.load(&engine)?;
                     messages_tx.send(Message::CollectionEndReload(collection));
-                    Ok(())
+                    Ok::<_, anyhow::Error>(())
                 });
             }
             Message::CollectionEndReload(collection) => {

@@ -11,7 +11,7 @@
 pub mod collection;
 pub mod db;
 pub mod http;
-pub mod js;
+pub mod ps;
 pub mod template;
 #[cfg(any(test, feature = "test"))]
 pub mod test_util;

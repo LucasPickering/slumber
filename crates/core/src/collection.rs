@@ -9,7 +9,7 @@ pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 
-use crate::js::JsEngine;
+use crate::ps::PetitEngine;
 use anyhow::{Context as _, anyhow};
 use itertools::Itertools;
 use petitscript::Process;
@@ -17,7 +17,6 @@ use std::{
     env,
     fmt::{self, Debug, Display},
     fs,
-    future::Future,
     path::{Path, PathBuf},
 };
 use tracing::{trace, warn};
@@ -29,7 +28,7 @@ const CONFIG_FILES: &[&str] = &["slumber.js", ".slumber.js"];
 
 /// A handle for a collection file. This makes it easy to load and reload
 /// the collection in the file
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CollectionFile(PathBuf);
 
 impl CollectionFile {
@@ -70,14 +69,12 @@ impl CollectionFile {
     }
 
     /// Load a collection from this file, using the given JS engine to execute
-    /// the file.
-    ///
-    /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
+    /// the file. TODO
     pub fn load(
         &self,
-        engine: &JsEngine,
-    ) -> impl 'static + Future<Output = anyhow::Result<LoadedCollection>> {
-        engine.load_collection(self.0.clone())
+        engine: &PetitEngine,
+    ) -> anyhow::Result<LoadedCollection> {
+        engine.load_collection(&self.0)
     }
 
     /// Get the path of the file that this collection was loaded from

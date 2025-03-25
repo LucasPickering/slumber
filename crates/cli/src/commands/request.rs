@@ -15,7 +15,7 @@ use slumber_core::{
     http::{
         BuildOptions, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
     },
-    js::JsEngine,
+    ps::PetitEngine,
     template::{
         OverrideKey, Prompt, Prompter, Renderer, Select, TemplateContext,
         TemplateError,
@@ -177,7 +177,7 @@ impl BuildRequestCommand {
     ) -> anyhow::Result<(CollectionDatabase, RequestTicket)> {
         let collection_file = global.collection_file()?;
         let config = Config::load()?;
-        let engine = JsEngine::new();
+        let engine = PetitEngine::new();
         let LoadedCollection {
             collection,
             process,

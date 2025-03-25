@@ -3,7 +3,7 @@
 use crate::{
     collection::RecipeId,
     http::{Exchange, RequestSeed, ResponseRecord},
-    js::{cereal, error::FunctionError},
+    ps::{cereal, error::FunctionError},
     template::{
         OverrideKey, Prompt, RenderState, Renderer, Select, TemplateContext,
         TriggeredRequestError,

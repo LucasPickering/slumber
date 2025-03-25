@@ -46,7 +46,7 @@ impl Subcommand for ShowCommand {
             ShowTarget::Collection => {
                 let collection_file = CollectionFile::new(global.file)?;
                 let LoadedCollection { collection, .. } =
-                    collection_file.load(&JsEngine::new()).await?;
+                    collection_file.load(&PetitEngine::new())?;
                 println!("{}", to_yaml(&collection));
             }
         }

@@ -10,6 +10,7 @@ use clap_complete::CompletionCandidate;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     db::Database,
+    ps::PetitEngine,
 };
 use std::{ffi::OsStr, ops::Deref};
 
@@ -61,9 +62,8 @@ fn load_collection() -> anyhow::Result<Collection> {
     // For now we just lean on the default collection paths. In the future we
     // should be able to look for a --file arg in the command and use that path
     let collection_file = CollectionFile::new(None)?;
-    todo!("handle asyncness")
-    // let collection = path.load(&JsEngine::new())?;
-    // Ok(collection.collection)
+    let collection = collection_file.load(&PetitEngine::new())?;
+    Ok(collection.collection)
 }
 
 fn get_candidates<T: Into<String>>(

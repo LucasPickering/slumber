@@ -187,14 +187,14 @@ mod tests {
     use super::*;
     use crate::{
         http::{HttpMethod, content_type::ContentType},
-        test_util::{TempDir, by_id, temp_dir},
+        test_util::by_id,
     };
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde::de::IgnoredAny;
     use serde_json::json;
-    use slumber_util::{Factory, assert_err, test_data_dir};
+    use slumber_util::{Factory, TempDir, assert_err, temp_dir, test_data_dir};
     use std::{fs, fs::File, time::Duration};
 
     /// Test various cases of try_path

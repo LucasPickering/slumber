@@ -2622,6 +2622,7 @@ dependencies = [
  "serde_path_to_error",
  "serde_yaml",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

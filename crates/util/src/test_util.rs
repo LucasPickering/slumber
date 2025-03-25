@@ -1,6 +1,12 @@
-use crate::paths::get_repo_root;
+use crate::{ResultTraced, paths::get_repo_root};
+use anyhow::Context;
 use rstest::fixture;
-use std::path::PathBuf;
+use std::{
+    env, fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
+use uuid::Uuid;
 
 /// Test-only trait to build a placeholder instance of a struct. This is similar
 /// to `Default`, but allows for useful placeholders that may not make sense in
@@ -19,6 +25,45 @@ pub trait Factory<Param = ()> {
 #[fixture]
 pub fn test_data_dir() -> PathBuf {
     get_repo_root().join("test_data")
+}
+
+/// Create a new temporary folder. This will include a random subfolder to
+/// guarantee uniqueness for this test.
+#[fixture]
+pub fn temp_dir() -> TempDir {
+    TempDir::new()
+}
+
+/// Guard for a temporary directory. Create the directory on creation, delete
+/// it on drop.
+#[derive(Debug)]
+pub struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new() -> Self {
+        let path = env::temp_dir().join(Uuid::new_v4().to_string());
+        fs::create_dir(&path).unwrap();
+        Self(path)
+    }
+}
+
+impl Deref for TempDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        // Clean up
+        let _ = fs::remove_dir_all(&self.0)
+            .with_context(|| {
+                format!("Error deleting temporary directory {:?}", self.0)
+            })
+            .traced();
+    }
 }
 
 /// Assert a result is the `Err` variant, and the stringified error contains

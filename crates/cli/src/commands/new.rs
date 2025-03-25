@@ -55,9 +55,9 @@ mod tests {
             RecipeBody, RecipeNode,
         },
         http::{HttpMethod, content_type::ContentType},
-        test_util::{TempDir, by_id, temp_dir},
+        test_util::by_id,
     };
-    use slumber_util::Factory;
+    use slumber_util::{Factory, TempDir, temp_dir};
     use std::{env, fs};
 
     /// Test creating a new collection file, specifying the path in various ways

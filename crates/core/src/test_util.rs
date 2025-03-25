@@ -5,19 +5,15 @@ use crate::{
     http::HttpEngine,
     template::{Prompt, Prompter, Select},
 };
-use anyhow::Context;
-use derive_more::Deref;
 use indexmap::IndexMap;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
 use slumber_config::HttpEngineConfig;
-use slumber_util::{ResultTraced, test_data_dir};
+use slumber_util::test_data_dir;
 use std::{
-    env, fs,
     path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
 };
-use uuid::Uuid;
 
 /// A chain that spits out bytes that are *not* valid UTF-8
 #[fixture]
@@ -31,13 +27,6 @@ pub fn invalid_utf8_chain(test_data_dir: PathBuf) -> ChainSource {
     }
 }
 
-/// Create a new temporary folder. This will include a random subfolder to
-/// guarantee uniqueness for this test.
-#[fixture]
-pub fn temp_dir() -> TempDir {
-    TempDir::new()
-}
-
 /// Create an HTTP engine for building/sending requests. This is a singleton
 /// because creation is expensive (~300ms), and the engine is immutable.
 #[fixture]
@@ -47,30 +36,6 @@ pub fn http_engine() -> HttpEngine {
         ignore_certificate_hosts: vec!["danger".to_owned()],
         ..Default::default()
     })
-}
-
-/// Guard for a temporary directory. Create the directory on creation, delete
-/// it on drop.
-#[derive(Debug, Deref)]
-pub struct TempDir(#[deref(forward)] PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = env::temp_dir().join(Uuid::new_v4().to_string());
-        fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        // Clean up
-        let _ = fs::remove_dir_all(&self.0)
-            .with_context(|| {
-                format!("Error deleting temporary directory {:?}", self.0)
-            })
-            .traced();
-    }
 }
 
 /// Response to prompts with zero or more values in sequence

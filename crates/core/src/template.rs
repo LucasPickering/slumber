@@ -268,15 +268,15 @@ mod tests {
             Exchange, RequestRecord, ResponseRecord, content_type::ContentType,
         },
         test_util::{
-            TempDir, TestPrompter, TestSelectPrompter, by_id, header_map,
-            http_engine, invalid_utf8_chain, temp_dir,
+            TestPrompter, TestSelectPrompter, by_id, header_map, http_engine,
+            invalid_utf8_chain,
         },
     };
     use chrono::Utc;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
-    use slumber_util::{Factory, assert_err};
+    use slumber_util::{Factory, TempDir, assert_err, temp_dir};
     use std::time::Duration;
     use tokio::fs;
     use wiremock::{Mock, MockServer, ResponseTemplate, matchers};

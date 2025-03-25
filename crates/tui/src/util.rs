@@ -388,8 +388,7 @@ mod tests {
     use crate::test_util::{TestHarness, harness};
     use rstest::rstest;
     use slumber_config::CommandsConfig;
-    use slumber_core::test_util::{TempDir, temp_dir};
-    use slumber_util::assert_matches;
+    use slumber_util::{TempDir, assert_matches, temp_dir};
     use tokio::fs;
 
     /// Test various cases of save_file

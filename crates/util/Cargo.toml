@@ -21,9 +21,11 @@ serde = {workspace = true}
 serde_path_to_error = "0.1.16"
 serde_yaml = {workspace = true}
 tracing = {workspace = true}
+uuid = {workspace = true, features = ["v4"], optional = true}
 
 [dev-dependencies]
 rstest = {workspace = true}
+uuid = {workspace = true, features = ["v4"]}
 
 [features]
-test = ["dep:rstest"]
+test = ["dep:rstest", "dep:uuid"]

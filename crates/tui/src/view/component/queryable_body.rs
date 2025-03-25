@@ -486,11 +486,8 @@ mod tests {
     use ratatui::{layout::Margin, text::Span};
     use rstest::{fixture, rstest};
     use serde::Serialize;
-    use slumber_core::{
-        http::{ResponseBody, ResponseRecord},
-        test_util::{TempDir, temp_dir},
-    };
-    use slumber_util::{Factory, assert_matches};
+    use slumber_core::http::{ResponseBody, ResponseRecord};
+    use slumber_util::{Factory, TempDir, assert_matches, temp_dir};
     use tokio::fs;
 
     const TEXT: &str = "{\"greeting\":\"hello\"}";

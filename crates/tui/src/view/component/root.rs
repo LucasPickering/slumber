@@ -113,12 +113,13 @@ impl Root {
             // initialization where the recipe list asks for the latest
             // request *after* the selected ID is loaded from persistence
             let selected_request = self.selected_request(request_store);
-            if selected_request
-                .is_some_and(|request| request.recipe_id() == recipe_id)
-            {
+            let profile_id = primary_view.selected_profile_id();
+            if selected_request.is_some_and(|request| {
+                request.recipe_id() == recipe_id
+                    && request.profile_id() == profile_id
+            }) {
                 selected_request
             } else {
-                let profile_id = primary_view.selected_profile_id();
                 request_store.load_latest(profile_id, recipe_id)?
             }
         } else {
@@ -307,7 +308,11 @@ mod tests {
     use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
-    use slumber_core::http::Exchange;
+    use slumber_core::{
+        collection::{Profile, Recipe},
+        http::Exchange,
+        test_util::by_id,
+    };
     use slumber_util::Factory;
 
     /// Test that, on first render, the view loads the most recent historical
@@ -416,6 +421,82 @@ mod tests {
             component.data().selected_request_id(),
             Some(new_exchange.id)
         );
+    }
+
+    /// Test that when the selected recipe changes, the selected request changes
+    /// as well
+    #[rstest]
+    fn test_recipe_change(terminal: TestTerminal) {
+        let recipe1 = Recipe::factory(());
+        let recipe2 = Recipe::factory(());
+        let recipe1_id = recipe1.id.clone();
+        let recipe2_id = recipe2.id.clone();
+        let collection = Collection {
+            recipes: by_id([recipe1, recipe2]).into(),
+            ..Collection::factory(())
+        };
+        let harness = TestHarness::new(collection);
+        let profile_id = harness.collection.first_profile_id();
+        let exchange1 =
+            Exchange::factory((Some(profile_id.clone()), recipe1_id.clone()));
+        let exchange2 =
+            Exchange::factory((Some(profile_id.clone()), recipe2_id.clone()));
+        harness.database.insert_exchange(&exchange1).unwrap();
+        harness.database.insert_exchange(&exchange2).unwrap();
+
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.collection, &harness.request_store.borrow()),
+        );
+        component.int().drain_draw().assert_empty();
+
+        assert_eq!(component.data().selected_request_id(), Some(exchange1.id));
+
+        // Select the second recipe
+        component
+            .int()
+            .send_keys([KeyCode::Char('l'), KeyCode::Down])
+            .assert_empty();
+        assert_eq!(component.data().selected_request_id(), Some(exchange2.id));
+    }
+
+    /// Test that when the selected profile changes, the selected request
+    /// changes as well
+    #[rstest]
+    fn test_profile_change(terminal: TestTerminal) {
+        let profile1 = Profile::factory(());
+        let profile2 = Profile::factory(());
+        let profile1_id = profile1.id.clone();
+        let profile2_id = profile2.id.clone();
+        let collection = Collection {
+            profiles: by_id([profile1, profile2]),
+            ..Collection::factory(())
+        };
+        let harness = TestHarness::new(collection);
+        let recipe_id = harness.collection.first_recipe_id();
+        let exchange1 =
+            Exchange::factory((Some(profile1_id.clone()), recipe_id.clone()));
+        let exchange2 =
+            Exchange::factory((Some(profile2_id.clone()), recipe_id.clone()));
+        harness.database.insert_exchange(&exchange1).unwrap();
+        harness.database.insert_exchange(&exchange2).unwrap();
+
+        let mut component = TestComponent::new(
+            &harness,
+            &terminal,
+            Root::new(&harness.collection, &harness.request_store.borrow()),
+        );
+        component.int().drain_draw().assert_empty();
+
+        assert_eq!(component.data().selected_request_id(), Some(exchange1.id));
+
+        // Select the second profile
+        component
+            .int()
+            .send_keys([KeyCode::Char('p'), KeyCode::Down, KeyCode::Enter])
+            .assert_empty();
+        assert_eq!(component.data().selected_request_id(), Some(exchange2.id));
     }
 
     /// Test "Delete Recipe" action via both the recipe pane

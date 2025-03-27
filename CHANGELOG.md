@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Fix output format of `slumber request --dry-run ...` to match `slumber request --verbose`
 - Fix `curl` output for URL-encoded and multipart forms
+- Fix selected request not changing when profile changes
 
 ## [3.0.1] - 2025-02-19
 

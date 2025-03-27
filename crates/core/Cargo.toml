@@ -51,7 +51,7 @@ slumber_util = {workspace = true, features = ["test"]}
 wiremock = {workspace = true}
 
 [features]
-test = ["dep:rstest"]
+test = ["dep:rstest", "slumber_util/test"]
 
 [package.metadata.release]
 tag = false

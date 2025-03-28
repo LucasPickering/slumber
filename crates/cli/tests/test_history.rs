@@ -65,34 +65,19 @@ fn test_history_list(
 
 /// Test `slumber history delete`
 #[rstest]
-#[case::request(
-    &["history", "delete", "-y", "request", "00000000-0000-0000-0000-000000000000"],
-    &[RECIPE1_PROFILE1_ID, RECIPE2_ID, OTHER_COLLECTION_ID],
-)]
-#[case::recipe(
-    &["history", "delete", "-y", "recipe", "recipe1"],
-    &[RECIPE2_ID, OTHER_COLLECTION_ID],
-)]
-#[case::recipe_no_profile(
-    &["history", "delete", "-y", "recipe", "recipe1", "-p"],
-    &[RECIPE1_PROFILE1_ID, RECIPE2_ID, OTHER_COLLECTION_ID],
-)]
-#[case::recipe_with_profile(
-    &["history", "delete", "-y", "recipe", "recipe1", "-p", "profile1"],
-    &[RECIPE1_NO_PROFILE_ID, RECIPE2_ID, OTHER_COLLECTION_ID],
-)]
-#[case::collection(
-    &["history", "delete", "-y", "collection"], &[OTHER_COLLECTION_ID],
-)]
-#[case::all(&["history", "delete", "-y", "all"], &[])]
-fn test_history_delete(
-    #[case] arguments: &[&str],
-    #[case] expected_remaining: &[RequestId],
-) {
+fn test_history_delete() {
     let (mut command, data_dir) = common::slumber();
     let database = init_db(&data_dir);
 
-    command.args(arguments).assert().success();
+    command
+        .args([
+            "history",
+            "delete",
+            &RECIPE1_PROFILE1_ID.to_string(),
+            &RECIPE1_NO_PROFILE_ID.to_string(),
+        ])
+        .assert()
+        .success();
     let remaining = database
         .get_all_requests()
         .unwrap()
@@ -100,20 +85,7 @@ fn test_history_delete(
         .map(|exchange| exchange.id)
         .sorted()
         .collect_vec();
-    assert_eq!(&remaining, expected_remaining);
-}
-
-/// Test `slumber history delete` does nothing without confirmation
-#[rstest]
-fn test_history_delete_cancelled() {
-    let (mut command, data_dir) = common::slumber();
-    let database = init_db(&data_dir);
-    command
-        .args(["history", "delete", "all"])
-        .assert()
-        .failure()
-        .stderr("Cancelled\n");
-    assert_eq!(database.get_all_requests().unwrap().len(), 4);
+    assert_eq!(&remaining, &[RECIPE2_ID, OTHER_COLLECTION_ID]);
 }
 
 const fn id(s: &str) -> RequestId {

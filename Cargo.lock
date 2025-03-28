@@ -2473,6 +2473,7 @@ dependencies = [
  "env-lock",
  "indexmap",
  "itertools",
+ "predicates",
  "pretty_assertions",
  "reqwest",
  "rstest",
@@ -2485,6 +2486,7 @@ dependencies = [
  "slumber_util",
  "tokio",
  "tracing",
+ "uuid",
  "wiremock",
 ]
 

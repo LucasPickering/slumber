@@ -35,11 +35,12 @@ use uuid::Uuid;
     Eq,
     FromStr,
     Hash,
+    Ord,
     PartialEq,
+    PartialOrd,
     Serialize,
     Deserialize,
 )]
-#[cfg_attr(test, derive(PartialOrd, Ord))]
 pub struct RequestId(pub Uuid);
 
 impl RequestId {
@@ -579,6 +580,24 @@ impl slumber_util::Factory for Exchange {
 impl slumber_util::Factory<RecipeId> for Exchange {
     fn factory(params: RecipeId) -> Self {
         Self::factory((None, params))
+    }
+}
+
+/// Customize request, profile, and recipe ID
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory<(RequestId, Option<ProfileId>, RecipeId)>
+    for Exchange
+{
+    fn factory(
+        (id, profile_id, recipe_id): (RequestId, Option<ProfileId>, RecipeId),
+    ) -> Self {
+        Self::factory((
+            RequestRecord {
+                id,
+                ..RequestRecord::factory((profile_id, recipe_id))
+            },
+            ResponseRecord::factory(id),
+        ))
     }
 }
 

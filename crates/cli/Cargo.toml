@@ -35,11 +35,13 @@ tracing = {workspace = true}
 [dev-dependencies]
 assert_cmd = "2.0.16"
 env-lock = {workspace = true}
+predicates = {version = "3.1.3", default-features = false}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 serde_json = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}
 slumber_util = {workspace = true, features = ["test"]}
+uuid = {workspace = true}
 wiremock = {workspace = true}
 
 [package.metadata.release]

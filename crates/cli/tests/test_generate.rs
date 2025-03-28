@@ -1,9 +1,9 @@
 //! Test the `slumber generate` subcommand
 
+mod common;
+
 use serde_json::json;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
-
-mod common;
 
 /// Test generating a curl command with:
 /// - URL

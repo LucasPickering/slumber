@@ -1,12 +1,12 @@
 //! Test the `slumber request` subcommand
 
+mod common;
+
 use reqwest::StatusCode;
 use serde_json::json;
 use slumber_core::{db::Database, http::ExchangeSummary};
 use slumber_util::assert_matches;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
-
-mod common;
 
 /// Test the basic request use case, including `--profile` and `--override`
 #[tokio::test]

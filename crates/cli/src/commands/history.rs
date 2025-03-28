@@ -54,6 +54,10 @@ enum HistorySubcommand {
         /// Show requests for all collections, not just the current
         #[clap(short, long)]
         all: bool,
+
+        /// Print only request IDs, with no header
+        #[clap(long)]
+        id_only: bool,
     },
 
     /// Get a single request/response
@@ -95,6 +99,7 @@ impl Subcommand for HistoryCommand {
                 recipe,
                 profile,
                 all,
+                id_only,
             } => {
                 let database = Database::load()?;
                 let exchanges = match (recipe, profile, all) {
@@ -121,25 +126,31 @@ impl Subcommand for HistoryCommand {
                     }
                 };
 
-                print_table(
-                    ["Recipe", "Profile", "Time", "Status", "Request ID"],
-                    &exchanges
-                        .into_iter()
-                        .map(|exchange| {
-                            [
-                                exchange.recipe_id.to_string(),
-                                exchange
-                                    .profile_id
-                                    .map(ProfileId::into)
-                                    .unwrap_or_default(),
-                                format_time_iso(&exchange.start_time)
-                                    .to_string(),
-                                exchange.status.as_u16().to_string(),
-                                exchange.id.to_string(),
-                            ]
-                        })
-                        .collect_vec(),
-                );
+                if id_only {
+                    for exchange in exchanges {
+                        println!("{}", exchange.id);
+                    }
+                } else {
+                    print_table(
+                        ["Recipe", "Profile", "Time", "Status", "Request ID"],
+                        &exchanges
+                            .into_iter()
+                            .map(|exchange| {
+                                [
+                                    exchange.recipe_id.to_string(),
+                                    exchange
+                                        .profile_id
+                                        .map(ProfileId::into)
+                                        .unwrap_or_default(),
+                                    format_time_iso(&exchange.start_time)
+                                        .to_string(),
+                                    exchange.status.as_u16().to_string(),
+                                    exchange.id.to_string(),
+                                ]
+                            })
+                            .collect_vec(),
+                    );
+                }
             }
 
             HistorySubcommand::Get { request, display } => {

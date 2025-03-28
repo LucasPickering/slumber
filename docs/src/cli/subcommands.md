@@ -85,13 +85,12 @@ slumber history get 548ba3e7-3b96-4695-9856-236626ea0495 # Get a particular requ
 
 ### `slumber history delete`
 
-Delete requests from history.
+Delete requests from history by ID.
 
 ```sh
-slumber history delete request 548ba3e7-3b96-4695-9856-236626ea0495 # Delete a single request by ID
-slumber history delete recipe login # Delete all requests for the "login" recipe
-slumber history delete collection # Delete all requests for current collection
-slumber history delete all # Delete all requests
+slumber history delete 548ba3e7-3b96-4695-9856-236626ea0495
+# Delete multiple requests
+slumber history list login --id-only | xargs slumber history delete
 ```
 
 ## `slumber import`

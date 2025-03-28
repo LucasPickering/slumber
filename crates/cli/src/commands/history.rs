@@ -15,7 +15,6 @@ use slumber_core::{
     collection::{ProfileId, RecipeId},
     db::{Database, ProfileFilter},
     http::RequestId,
-    util::confirm,
 };
 use std::{iter, process::ExitCode, str::FromStr};
 
@@ -74,15 +73,12 @@ enum HistorySubcommand {
 
     /// Delete requests from history
     ///
-    /// The subcommand selects which request(s) to delete. This operation is
-    /// irreversible!
+    /// This operation is irreversible! Combine with `slumber history list
+    /// --id-only` to delete requests in bulk
     Delete {
-        #[clap(subcommand)]
-        selection: DeleteSelection,
-
-        /// Skip the confirmation prompt
-        #[clap(long, short)]
-        yes: bool,
+        /// Request ID(s) to delete
+        #[clap(num_args = 1..)]
+        request: Vec<RequestId>,
     },
 }
 
@@ -165,60 +161,13 @@ impl Subcommand for HistoryCommand {
                 display.write_response(&exchange.response)?;
             }
 
-            HistorySubcommand::Delete { selection, yes } => {
-                if !yes {
-                    // Confirmation prompt
-                    let prompt = match &selection {
-                        DeleteSelection::All => {
-                            "Delete ALL requests?".to_owned()
-                        }
-                        DeleteSelection::Collection => {
-                            let collection_path = global.collection_path()?;
-                            format!(
-                                "Delete requests for {}?",
-                                collection_path.display()
-                            )
-                        }
-                        DeleteSelection::Recipe { recipe, profile } => {
-                            let profile_label = match profile {
-                                None => "all profiles",
-                                Some(None) => "no profile",
-                                Some(Some(profile_id)) => profile_id,
-                            };
-                            format!(
-                                "Delete requests for recipe `{recipe}` \
-                                ({profile_label})?"
-                            )
-                        }
-                        DeleteSelection::Request { request } => {
-                            format!("Delete request `{}`?", request)
-                        }
-                    };
-                    if !confirm(prompt) {
-                        bail!("Cancelled");
-                    }
-                }
-
+            HistorySubcommand::Delete { request } => {
                 // Do the deletion
                 let database = Database::load()?;
-                let deleted = match selection {
-                    DeleteSelection::All => database.delete_all_requests()?,
-                    DeleteSelection::Collection => {
-                        let database = database
-                            .into_collection(&global.collection_path()?)?;
-                        database.delete_all_requests()?
-                    }
-                    DeleteSelection::Recipe { recipe, profile } => {
-                        let database = database
-                            .into_collection(&global.collection_path()?)?;
-                        database
-                            .delete_recipe_requests(profile.into(), &recipe)?
-                    }
-                    DeleteSelection::Request { request } => {
-                        database.delete_request(request)?
-                    }
-                };
-                println!("Deleted {deleted} request(s)");
+                for id in &request {
+                    database.delete_request(*id)?;
+                }
+                println!("Deleted {} request(s)", request.len());
             }
         }
         Ok(ExitCode::SUCCESS)

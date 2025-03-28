@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use assert_cmd::Command;
 use slumber_util::{TempDir, paths::DATA_DIRECTORY_ENV_VARIABLE, temp_dir};
 use std::{
@@ -19,4 +21,9 @@ pub fn slumber() -> (Command, TempDir) {
 
 fn tests_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/")
+}
+
+/// Path to the CLI test collection file
+pub fn collection_file() -> PathBuf {
+    tests_dir().join("slumber.yml")
 }

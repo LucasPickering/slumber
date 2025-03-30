@@ -13,7 +13,7 @@ use clap_complete::ArgValueCompleter;
 use itertools::Itertools;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
-    db::{Database, ProfileFilter},
+    database::{Database, ProfileFilter},
     http::RequestId,
 };
 use std::{iter, process::ExitCode, str::FromStr};

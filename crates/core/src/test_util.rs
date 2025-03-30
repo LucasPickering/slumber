@@ -2,7 +2,7 @@
 
 use crate::{
     collection::{ChainSource, HasId, ProfileId, RecipeId},
-    db::CollectionDatabase,
+    database::CollectionDatabase,
     http::{Exchange, HttpEngine, RequestSeed},
     template::{
         HttpProvider, Prompt, Prompter, Select, TemplateContext,

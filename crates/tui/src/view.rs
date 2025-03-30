@@ -32,7 +32,7 @@ use ratatui::Frame;
 use slumber_config::Action;
 use slumber_core::{
     collection::{CollectionFile, ProfileId},
-    db::CollectionDatabase,
+    database::CollectionDatabase,
     http::RequestId,
 };
 use std::{fmt::Debug, sync::Arc};

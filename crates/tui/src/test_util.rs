@@ -13,7 +13,7 @@ use ratatui::{
     text::Line,
 };
 use rstest::fixture;
-use slumber_core::{collection::Collection, db::CollectionDatabase};
+use slumber_core::{collection::Collection, database::CollectionDatabase};
 use slumber_util::Factory;
 use std::{cell::RefCell, future::Future, rc::Rc, sync::Arc};
 use tokio::{

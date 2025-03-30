@@ -205,7 +205,7 @@ pub enum TemplateKey {
 impl slumber_util::Factory for TemplateContext {
     fn factory(_: ()) -> Self {
         use crate::{
-            db::CollectionDatabase,
+            database::CollectionDatabase,
             test_util::{TestHttpProvider, TestPrompter},
         };
         Self {

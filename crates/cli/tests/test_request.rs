@@ -116,7 +116,11 @@ async fn test_request_exit_status() {
     command.assert().failure().stdout(body.to_string());
 }
 
-/// Test the `--persist` flag
+/// Test the `--persist` flag. The main request should be persisted, but the
+/// triggered will **will not**. This is partially a technical decision (makes
+/// the code simpler) and partially a user-friendliness one. It's not entirely
+/// clear which one the user would wait, so prefer the less "destructive"
+/// option.
 #[tokio::test]
 async fn test_request_persist() {
     // Mock HTTP response
@@ -126,9 +130,13 @@ async fn test_request_persist() {
         "username": "username1",
         "name": "Frederick Smidgen"
     });
-    Mock::given(matchers::method("POST"))
-        .and(matchers::path("/json"))
-        .and(matchers::body_json(&body))
+    Mock::given(matchers::method("GET"))
+        .and(matchers::path("/users/username1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+        .mount(&server)
+        .await;
+    Mock::given(matchers::method("GET"))
+        .and(matchers::path("/chained/username1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(&body))
         .mount(&server)
         .await;
@@ -136,14 +144,14 @@ async fn test_request_persist() {
     let (mut command, data_dir) = common::slumber();
     command.args([
         "request",
-        "jsonBody",
+        "chained",
         "--persist",
         "-o",
         &format!("host={host}"),
     ]);
     command.assert().success().stdout(body.to_string());
 
-    // Request was persisted
+    // Main request was persisted, triggered request was _not_
     let database = Database::from_directory(&data_dir).unwrap();
     let requests = database.get_all_requests().unwrap();
     let (recipe_id, profile_id, status) = assert_matches!(
@@ -155,7 +163,7 @@ async fn test_request_persist() {
             ..
         }] => (recipe_id, profile_id, status),
     );
-    assert_eq!(recipe_id, &"jsonBody".into());
+    assert_eq!(recipe_id, &"chained".into());
     assert_eq!(profile_id, &Some("profile1".into()));
     assert_eq!(*status, StatusCode::OK);
 }

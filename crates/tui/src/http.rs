@@ -3,6 +3,12 @@
 #[cfg(test)]
 mod tests;
 
+use crate::{
+    context::TuiContext,
+    message::{Message, MessageSender},
+};
+use anyhow::Context;
+use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
 use itertools::Itertools;
 use reqwest::StatusCode;
@@ -11,15 +17,16 @@ use slumber_core::{
     db::{CollectionDatabase, ProfileFilter},
     http::{
         Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
-        RequestRecord,
+        RequestRecord, RequestSeed,
     },
+    template::{HttpProvider, TemplateContext, TriggeredRequestError},
 };
 use std::{
     collections::{HashMap, hash_map::Entry},
     fmt::Debug,
     sync::Arc,
 };
-use tokio::task::JoinHandle;
+use tokio::{sync::oneshot, task::AbortHandle};
 use tracing::warn;
 
 /// Simple in-memory "database" for request state. This serves a few purposes:
@@ -66,14 +73,14 @@ impl RequestStore {
         id: RequestId,
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
-        join_handle: JoinHandle<()>,
+        abort_handle: Option<AbortHandle>,
     ) {
         let state = RequestState::Building {
             id,
             start_time: Utc::now(),
             profile_id,
             recipe_id,
-            join_handle,
+            abort_handle,
         };
         self.requests.insert(id, state);
     }
@@ -83,12 +90,12 @@ impl RequestStore {
         self.replace(request.id, |state| {
             // Requests should go building->loading, but it's possible it got
             // cancelled right before this was called
-            if let RequestState::Building { join_handle, .. } = state {
+            if let RequestState::Building { abort_handle, .. } = state {
                 RequestState::Loading {
                     request,
                     // Reset timer
                     start_time: Utc::now(),
-                    join_handle,
+                    abort_handle,
                 }
             } else {
                 // Can't create loading state since we don't have a join handle
@@ -103,7 +110,10 @@ impl RequestStore {
 
     /// Mark a request as failed because of a build error. Return the updated
     /// state.
-    pub fn build_error(&mut self, error: RequestBuildError) -> &RequestState {
+    pub fn build_error(
+        &mut self,
+        error: Arc<RequestBuildError>,
+    ) -> &RequestState {
         // Use replace just to help catch bugs
         self.replace(error.id, |state| {
             // This indicates a bug or race condition (e.g. build cancelled as
@@ -120,7 +130,8 @@ impl RequestStore {
     }
 
     /// Mark a request as successful, i.e. we received a response. Return the
-    /// updated state.
+    /// updated state. Caller is responsible for persisting the exchange in the
+    /// DB.
     pub fn response(&mut self, exchange: Exchange) -> &RequestState {
         let response_state = RequestState::response(exchange);
         // Use replace just to help catch bugs
@@ -140,7 +151,7 @@ impl RequestStore {
 
     /// Mark a request as failed because of an HTTP error. Return the updated
     /// state.
-    pub fn request_error(&mut self, error: RequestError) -> &RequestState {
+    pub fn request_error(&mut self, error: Arc<RequestError>) -> &RequestState {
         // Use replace just to help catch bugs
         self.replace(error.request.id, |state| {
             // This indicates a bug or race condition (e.g. request cancelled as
@@ -166,9 +177,9 @@ impl RequestStore {
                 start_time,
                 profile_id,
                 recipe_id,
-                join_handle,
+                abort_handle: Some(abort_handle),
             } => {
-                join_handle.abort();
+                abort_handle.abort();
                 RequestState::Cancelled {
                     id,
                     recipe_id,
@@ -180,9 +191,9 @@ impl RequestStore {
             RequestState::Loading {
                 request,
                 start_time,
-                join_handle,
+                abort_handle: Some(abort_handle),
             } => {
-                join_handle.abort();
+                abort_handle.abort();
                 RequestState::Cancelled {
                     id,
                     recipe_id: request.recipe_id.clone(),
@@ -194,10 +205,7 @@ impl RequestStore {
             state => {
                 // If the request failed/finished while the cancel event was
                 // queued, don't do anything
-                warn!(
-                    request = ?state,
-                    "Cannot cancel request: not in building/loading state",
-                );
+                warn!(request = ?state, "Cannot cancel request");
                 state
             }
         })
@@ -228,18 +236,7 @@ impl RequestStore {
         profile_id: Option<&ProfileId>,
         recipe_id: &RecipeId,
     ) -> anyhow::Result<Option<&RequestState>> {
-        // Get the latest record in the DB
-        let exchange = self
-            .database
-            .get_latest_request(profile_id.into(), recipe_id)?;
-        if let Some(exchange) = exchange {
-            // Cache this record if it isn't already
-            self.requests
-                .entry(exchange.id)
-                // This is expensive because it parses the body, so avoid it if
-                // the record is already cached
-                .or_insert_with(|| RequestState::response(exchange));
-        }
+        self.cache_latest_exchange(profile_id, recipe_id)?;
 
         // Now that the know the most recent completed record is in our local
         // cache, find the most recent record of *any* kind
@@ -248,10 +245,56 @@ impl RequestStore {
             .requests
             .values()
             .filter(|state| {
-                state.profile_id() == profile_id
+                profile_id == state.profile_id()
                     && state.recipe_id() == recipe_id
             })
             .max_by_key(|state| state.request_metadata().start_time))
+    }
+
+    /// Load the latest (by start time) _completed_ request for a specific
+    /// profile+recipe combo
+    pub fn load_latest_exchange(
+        &mut self,
+        profile_id: Option<&ProfileId>,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<Option<&Exchange>> {
+        self.cache_latest_exchange(profile_id, recipe_id)?;
+
+        // Now that the know the most recent _persisted_ exchange is cached,
+        // find the most recent in the store. This will include unpersisted
+        // exchanges as well
+
+        Ok(self
+            .requests
+            .values()
+            .filter_map(|state| match state {
+                RequestState::Response { exchange }
+                    if profile_id == state.profile_id()
+                        && state.recipe_id() == recipe_id =>
+                {
+                    Some(exchange)
+                }
+                _ => None,
+            })
+            .max_by_key(|exchange| exchange.start_time))
+    }
+
+    /// Load the most recent matching exchange from the DB and cache it here
+    fn cache_latest_exchange(
+        &mut self,
+        profile_id: Option<&ProfileId>,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<()> {
+        let exchange = self
+            .database
+            .get_latest_request(profile_id.into(), recipe_id)?;
+        if let Some(exchange) = exchange {
+            // Cache this record if it isn't already
+            self.requests
+                .entry(exchange.id)
+                .or_insert(RequestState::response(exchange));
+        }
+        Ok(())
     }
 
     /// Load all historical requests for a recipe+profile, then return the
@@ -289,11 +332,21 @@ impl RequestStore {
         Ok(iter)
     }
 
-    /// Is the given request either building or loading?
-    pub fn is_in_progress(&self, id: RequestId) -> bool {
+    /// Is the given request either building or loading, and does it have an
+    /// abort handle? Triggered requests (nested within another request's
+    /// render) cannot be cancelled independently.
+    pub fn can_cancel(&self, id: RequestId) -> bool {
         matches!(
             self.get(id),
-            Some(RequestState::Building { .. } | RequestState::Loading { .. },)
+            Some(
+                RequestState::Building {
+                    abort_handle: Some(_),
+                    ..
+                } | RequestState::Loading {
+                    abort_handle: Some(_),
+                    ..
+                }
+            )
         )
     }
 
@@ -343,6 +396,96 @@ impl RequestStore {
     }
 }
 
+/// An [HttpProvider] that uses the request store (and by extension the
+/// database) to access and persist HTTP requests. This defers operations on the
+/// request store through the message pipeline, because we can't have direct
+/// access to the request store from a template rendering task. We could solve
+/// this with `Rc<RefCell>` instead, but that ends up polluting the request
+/// store type signatures a lot. This is self-contained with minimal perf impact
+#[derive(Debug)]
+pub struct TuiHttpProvider {
+    messages_tx: MessageSender,
+    /// Are we rendering request previews, or the real deal? This controls
+    /// whether we'll send triggered requests or not
+    preview: bool,
+}
+
+impl TuiHttpProvider {
+    pub fn new(messages_tx: MessageSender, preview: bool) -> Self {
+        Self {
+            messages_tx,
+            preview,
+        }
+    }
+}
+
+#[async_trait]
+impl HttpProvider for TuiHttpProvider {
+    async fn get_latest_request(
+        &self,
+        profile_id: Option<&ProfileId>,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<Option<Exchange>> {
+        // Defer the fetch into a message because we can't access the request
+        // store from another task
+        let (tx, rx) = oneshot::channel();
+        self.messages_tx.send(Message::HttpGetLatest {
+            profile_id: profile_id.cloned(),
+            recipe_id: recipe_id.clone(),
+            channel: tx.into(),
+        });
+        rx.await.context("Error fetching request")
+    }
+
+    async fn send_request(
+        &self,
+        seed: RequestSeed,
+        template_context: &TemplateContext,
+    ) -> Result<Exchange, TriggeredRequestError> {
+        if self.preview {
+            // Previews shouldn't have side effects
+            Err(TriggeredRequestError::NotAllowed)
+        } else {
+            // We'll report start updates back to the main loop as we go, so the
+            // chained request is visible in the UI. This isn't strictly
+            // necessary, but it's easy and keeps the UI in sync with the
+            // underlying state
+            let request_id = seed.id;
+            let profile_id = template_context.selected_profile.clone();
+            let recipe_id = seed.recipe_id.clone();
+
+            self.messages_tx.send(Message::HttpBuildingTriggered {
+                id: request_id,
+                profile_id,
+                recipe_id,
+            });
+
+            let ticket = TuiContext::get()
+                .http_engine
+                .build(seed, template_context)
+                .await
+                .map_err(Arc::new)
+                .inspect_err(|error| {
+                    // Report error to the TUI
+                    self.messages_tx.send(Message::HttpBuildError {
+                        error: Arc::clone(error),
+                    })
+                })?;
+
+            // Build successful, send it out
+            self.messages_tx.send(Message::HttpLoading {
+                request: Arc::clone(ticket.record()),
+            });
+
+            // Clone the exchange so we can persist it in the DB/store and
+            // still return it
+            let result = ticket.send().await.map_err(Arc::new);
+            self.messages_tx.send(Message::HttpComplete(result.clone()));
+            result.map_err(TriggeredRequestError::Send)
+        }
+    }
+}
+
 /// State of an HTTP response, which can be in various states of
 /// completion/failure. Each request *recipe* should have one request state
 /// stored in the view at a time.
@@ -355,11 +498,14 @@ pub enum RequestState {
         start_time: DateTime<Utc>,
         profile_id: Option<ProfileId>,
         recipe_id: RecipeId,
-        join_handle: JoinHandle<()>,
+        /// A handle to abort the task running the request. Used to cancel the
+        /// request. `None` for triggered requests, because they don't run at
+        /// the root of a task and therefore can't be aborted independently.
+        abort_handle: Option<AbortHandle>,
     },
 
     /// Something went wrong during the build :(
-    BuildError { error: RequestBuildError },
+    BuildError { error: Arc<RequestBuildError> },
 
     /// Request is in flight, or is *about* to be sent. There's no way to
     /// initiate a request that doesn't immediately launch it, so Loading is
@@ -369,7 +515,10 @@ pub enum RequestState {
         /// pointer to the request as well
         request: Arc<RequestRecord>,
         start_time: DateTime<Utc>,
-        join_handle: JoinHandle<()>,
+        /// A handle to abort the task running the request. Used to cancel the
+        /// request. `None` for triggered requests, because they don't run at
+        /// the root of a task and therefore can't be aborted independently.
+        abort_handle: Option<AbortHandle>,
     },
 
     /// User cancelled the request mid-flight. We don't store the request here,
@@ -390,7 +539,11 @@ pub enum RequestState {
     Response { exchange: Exchange },
 
     /// Error occurred sending the request or receiving the response.
-    RequestError { error: RequestError },
+    RequestError {
+        /// This needs an `Arc` so it can be shared with the template engine in
+        /// the case of triggered chained requests
+        error: Arc<RequestError>,
+    },
 }
 
 impl RequestState {
@@ -445,29 +598,21 @@ impl RequestState {
             },
 
             // Error states
-            Self::BuildError {
-                error:
-                    RequestBuildError {
-                        start_time,
-                        end_time,
-                        ..
-                    },
-            }
-            | Self::RequestError {
-                error:
-                    RequestError {
-                        start_time,
-                        end_time,
-                        ..
-                    },
-            }
-            | Self::Cancelled {
+            Self::BuildError { error } => RequestMetadata {
+                start_time: error.start_time,
+                end_time: Some(error.end_time),
+            },
+            Self::Cancelled {
                 start_time,
                 end_time,
                 ..
             } => RequestMetadata {
                 start_time: *start_time,
                 end_time: Some(*end_time),
+            },
+            Self::RequestError { error } => RequestMetadata {
+                start_time: error.start_time,
+                end_time: Some(error.end_time),
             },
 
             // Completed
@@ -507,14 +652,14 @@ impl PartialEq for RequestState {
                     start_time: l_start_time,
                     profile_id: l_profile_id,
                     recipe_id: l_recipe_id,
-                    join_handle: _,
+                    abort_handle: _,
                 },
                 Self::Building {
                     id: r_id,
                     start_time: r_start_time,
                     profile_id: r_profile_id,
                     recipe_id: r_recipe_id,
-                    join_handle: _,
+                    abort_handle: _,
                 },
             ) => {
                 l_id == r_id
@@ -530,12 +675,12 @@ impl PartialEq for RequestState {
                 Self::Loading {
                     request: l_request,
                     start_time: l_start_time,
-                    join_handle: _,
+                    abort_handle: _,
                 },
                 Self::Loading {
                     request: r_request,
                     start_time: r_start_time,
-                    join_handle: _,
+                    abort_handle: _,
                 },
             ) => l_request == r_request && l_start_time == r_start_time,
             (

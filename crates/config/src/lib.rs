@@ -62,6 +62,9 @@ pub struct Config {
     pub theme: Theme,
     /// Enable debug monitor in TUI
     pub debug: bool,
+    /// Enable/disable persistence for all TUI requests? The CLI ignores this
+    /// in favor of the absence/presence of the `--persist` flag
+    pub persist: bool,
 }
 
 impl Config {
@@ -127,6 +130,7 @@ impl Default for Config {
             input_bindings: Default::default(),
             theme: Default::default(),
             debug: false,
+            persist: true,
         }
     }
 }
@@ -140,9 +144,6 @@ pub struct HttpEngineConfig {
     /// Request/response bodies over this size are treated differently, for
     /// performance reasons
     pub large_body_size: usize,
-    /// Enable/disable persistence for _all_ requests? The CLI should override
-    /// this based on the absence/presence of the `--persist` flag
-    pub persist: bool,
 }
 
 impl HttpEngineConfig {
@@ -159,7 +160,6 @@ impl Default for HttpEngineConfig {
         Self {
             ignore_certificate_hosts: Default::default(),
             large_body_size: 1000 * 1000, // 1MB
-            persist: true,
         }
     }
 }

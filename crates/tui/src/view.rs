@@ -13,7 +13,7 @@ mod util;
 pub use common::modal::{IntoModal, ModalPriority};
 pub use context::{UpdateContext, ViewContext};
 pub use styles::Styles;
-pub use util::{Confirm, PreviewPrompter};
+pub use util::{Confirm, PreviewPrompter, TuiPrompter};
 
 use crate::{
     context::TuiContext,

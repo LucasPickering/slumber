@@ -3,6 +3,7 @@
 mod common;
 
 use serde_json::json;
+use slumber_core::db::Database;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
 /// Test generating a curl command with:
@@ -69,7 +70,7 @@ async fn test_generate_curl_execute_trigger() {
         .mount(&server)
         .await;
 
-    let (mut command, _) = common::slumber();
+    let (mut command, data_dir) = common::slumber();
     command.args([
         "generate",
         "curl",
@@ -82,6 +83,10 @@ async fn test_generate_curl_execute_trigger() {
         .assert()
         .success()
         .stdout(format!("curl -XGET --url '{host}/chained/username1'\n"));
+
+    // Executed request should not have been persisted
+    let database = Database::from_directory(&data_dir).unwrap();
+    assert_eq!(&database.get_all_requests().unwrap(), &[]);
 }
 
 // More detailed test cases for curl are defined in unit tests

@@ -204,6 +204,18 @@ pub enum TriggeredRequestError {
     Send(#[from] Arc<RequestError>),
 }
 
+impl From<RequestBuildError> for TriggeredRequestError {
+    fn from(error: RequestBuildError) -> Self {
+        Self::Build(error.into())
+    }
+}
+
+impl From<RequestError> for TriggeredRequestError {
+    fn from(error: RequestError) -> Self {
+        Self::Send(error.into())
+    }
+}
+
 /// Placeholder implementation to allow equality checks for *other*
 /// `TemplateError` variants. This one is hard to do because `anyhow::Error`
 /// doesn't impl `PartialEq`

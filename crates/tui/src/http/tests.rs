@@ -44,7 +44,7 @@ async fn test_life_cycle_success() {
         id,
         exchange.request.profile_id.clone(),
         exchange.request.recipe_id.clone(),
-        tokio::spawn(async {}),
+        Some(tokio::spawn(async {}).abort_handle()),
     );
     assert_matches!(store.get(id), Some(RequestState::Building { .. }));
 
@@ -61,7 +61,7 @@ async fn test_life_cycle_success() {
         id2,
         exchange2.request.profile_id.clone(),
         exchange2.request.recipe_id.clone(),
-        tokio::spawn(async {}),
+        Some(tokio::spawn(async {}).abort_handle()),
     );
     assert_matches!(store.get(id), Some(RequestState::Response { .. }));
     assert_matches!(store.get(id2), Some(RequestState::Building { .. }));
@@ -81,18 +81,21 @@ async fn test_life_cycle_build_error() {
         id,
         profile_id.clone(),
         recipe_id.clone(),
-        tokio::spawn(async {}),
+        Some(tokio::spawn(async {}).abort_handle()),
     );
     assert_matches!(store.get(id), Some(RequestState::Building { .. }));
 
-    store.build_error(RequestBuildError {
-        profile_id: profile_id.clone(),
-        recipe_id: recipe_id.clone(),
-        id,
-        start_time: Utc::now(),
-        end_time: Utc::now(),
-        source: anyhow!("oh no!"),
-    });
+    store.build_error(
+        RequestBuildError {
+            profile_id: profile_id.clone(),
+            recipe_id: recipe_id.clone(),
+            id,
+            start_time: Utc::now(),
+            end_time: Utc::now(),
+            source: anyhow!("oh no!"),
+        }
+        .into(),
+    );
     assert_matches!(store.get(id), Some(RequestState::BuildError { .. }));
 }
 
@@ -110,19 +113,22 @@ async fn test_life_cycle_request_error() {
         id,
         profile_id.clone(),
         recipe_id.clone(),
-        tokio::spawn(async {}),
+        Some(tokio::spawn(async {}).abort_handle()),
     );
     assert_matches!(store.get(id), Some(RequestState::Building { .. }));
 
     store.loading(Arc::clone(&exchange.request));
     assert_matches!(store.get(id), Some(RequestState::Loading { .. }));
 
-    store.request_error(RequestError {
-        error: anyhow!("oh no!"),
-        request: exchange.request,
-        start_time: Utc::now(),
-        end_time: Utc::now(),
-    });
+    store.request_error(
+        RequestError {
+            error: anyhow!("oh no!"),
+            request: exchange.request,
+            start_time: Utc::now(),
+            end_time: Utc::now(),
+        }
+        .into(),
+    );
     assert_matches!(store.get(id), Some(RequestState::RequestError { .. }));
 }
 
@@ -144,10 +150,13 @@ async fn test_life_cycle_cancel() {
         id,
         profile_id.clone(),
         recipe_id.clone(),
-        tokio::spawn(async move {
-            time::sleep(Duration::from_secs(1)).await;
-            ff.store(true, Ordering::Relaxed);
-        }),
+        Some(
+            tokio::spawn(async move {
+                time::sleep(Duration::from_secs(1)).await;
+                ff.store(true, Ordering::Relaxed);
+            })
+            .abort_handle(),
+        ),
     );
     store.cancel(id);
     assert_matches!(store.get(id), Some(RequestState::Cancelled { .. }));
@@ -158,10 +167,13 @@ async fn test_life_cycle_cancel() {
         id,
         profile_id.clone(),
         recipe_id.clone(),
-        tokio::spawn(async move {
-            time::sleep(Duration::from_secs(1)).await;
-            ff.store(true, Ordering::Relaxed);
-        }),
+        Some(
+            tokio::spawn(async move {
+                time::sleep(Duration::from_secs(1)).await;
+                ff.store(true, Ordering::Relaxed);
+            })
+            .abort_handle(),
+        ),
     );
     store.loading(exchange.request);
     assert_matches!(store.get(id), Some(RequestState::Loading { .. }));
@@ -220,13 +232,13 @@ fn test_load_latest(harness: TestHarness) {
         create_exchange(&harness, Some(&profile_id), Some(&recipe_id));
 
     assert_eq!(
-        store.load_latest(Some(&profile_id), &recipe_id).unwrap(),
+        store.load_latest((&profile_id).into(), &recipe_id).unwrap(),
         Some(&RequestState::response(expected_exchange))
     );
 
     // Non-match
     assert_matches!(
-        store.load_latest(Some(&profile_id), &("other".into())),
+        store.load_latest((&profile_id).into(), &("other".into())),
         Ok(None)
     );
 }
@@ -250,7 +262,7 @@ fn test_load_latest_local(harness: TestHarness) {
     store
         .requests
         .insert(exchange.id, RequestState::response(exchange));
-    let loaded = store.load_latest(Some(&profile_id), &recipe_id).unwrap();
+    let loaded = store.load_latest((&profile_id).into(), &recipe_id).unwrap();
     assert_eq!(loaded.map(RequestState::id), Some(request_id));
 }
 
@@ -281,7 +293,7 @@ async fn test_load_summaries(harness: TestHarness) {
         building_id,
         Some(profile_id.clone()),
         recipe_id.clone(),
-        tokio::spawn(async {}),
+        Some(tokio::spawn(async {}).abort_handle()),
     );
 
     let build_error_id = RequestId::new();
@@ -295,7 +307,8 @@ async fn test_load_summaries(harness: TestHarness) {
                 start_time: Utc::now(),
                 end_time: Utc::now(),
                 source: anyhow!("oh no!"),
-            },
+            }
+            .into(),
         },
     );
 
@@ -307,7 +320,7 @@ async fn test_load_summaries(harness: TestHarness) {
         RequestState::Loading {
             request: request.into(),
             start_time: Utc::now(),
-            join_handle: tokio::spawn(async {}),
+            abort_handle: Some(tokio::spawn(async {}).abort_handle()),
         },
     );
 
@@ -322,7 +335,8 @@ async fn test_load_summaries(harness: TestHarness) {
                 request: request.into(),
                 start_time: Utc::now(),
                 end_time: Utc::now(),
-            },
+            }
+            .into(),
         },
     );
 
@@ -331,13 +345,13 @@ async fn test_load_summaries(harness: TestHarness) {
         RequestId::new(),
         Some(ProfileId::factory(())),
         recipe_id.clone(),
-        tokio::spawn(async {}),
+        Some(tokio::spawn(async {}).abort_handle()),
     );
     store.start(
         RequestId::new(),
         Some(profile_id.clone()),
         RecipeId::factory(()),
-        tokio::spawn(async {}),
+        Some(tokio::spawn(async {}).abort_handle()),
     );
 
     // It's really annoying to do a full equality comparison because we'd

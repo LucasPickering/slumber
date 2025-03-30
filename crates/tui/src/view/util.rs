@@ -3,7 +3,11 @@
 pub mod highlight;
 pub mod persistence;
 
-use crate::{message::Message, util::temp_file, view::ViewContext};
+use crate::{
+    message::{Message, MessageSender},
+    util::temp_file,
+    view::ViewContext,
+};
 use anyhow::Context;
 use chrono::{
     DateTime, Duration, Local, Utc,
@@ -15,7 +19,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     text::{Line, Text},
 };
-use slumber_core::template::{Prompt, PromptChannel, Prompter, Select};
+use slumber_core::template::{Prompt, Prompter, ResponseChannel, Select};
 use slumber_util::ResultTraced;
 use std::{io::Write, path::Path};
 
@@ -26,7 +30,31 @@ pub struct Confirm {
     /// Question to ask the user
     pub message: String,
     /// A channel to pass back the user's response
-    pub channel: PromptChannel<bool>,
+    pub channel: ResponseChannel<bool>,
+}
+
+/// Use the message stream to prompt the user for input when needed for a
+/// template. The message will be routed to the view so it can show the prompt,
+/// and the given returner will be used to send the submitted value back.
+#[derive(Debug)]
+pub struct TuiPrompter {
+    messages_tx: MessageSender,
+}
+
+impl TuiPrompter {
+    pub fn new(messages_tx: MessageSender) -> Self {
+        Self { messages_tx }
+    }
+}
+
+impl Prompter for TuiPrompter {
+    fn prompt(&self, prompt: Prompt) {
+        self.messages_tx.send(Message::PromptStart(prompt));
+    }
+
+    fn select(&self, select: Select) {
+        self.messages_tx.send(Message::SelectStart(select));
+    }
 }
 
 /// A prompter that returns a static value; used for template previews, where

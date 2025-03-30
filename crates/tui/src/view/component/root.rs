@@ -187,7 +187,7 @@ impl EventHandler for Root {
                     if let Some(request_id) = self.selected_request_id.0 {
                         // unstable: if-let chain
                         // https://github.com/rust-lang/rust/pull/132833
-                        if context.request_store.is_in_progress(request_id) {
+                        if context.request_store.can_cancel(request_id) {
                             ConfirmModal::new(
                                 "Cancel request?".into(),
                                 move |response| {

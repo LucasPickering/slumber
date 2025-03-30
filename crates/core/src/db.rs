@@ -694,6 +694,25 @@ impl ProfileFilter<'_> {
             Self::All => true,
         }
     }
+
+    /// Get a `'static` copy of this filter. If the filter is a borrowed profile
+    /// ID, it will be cloned
+    pub fn into_owned(self) -> ProfileFilter<'static> {
+        match self {
+            Self::None => ProfileFilter::None,
+            Self::Some(profile_id) => {
+                ProfileFilter::Some(Cow::Owned(profile_id.into_owned()))
+            }
+            Self::All => ProfileFilter::All,
+        }
+    }
+}
+
+/// Convert from an option that defines either *no* profile or a specific one
+impl<'a> From<&'a ProfileId> for ProfileFilter<'a> {
+    fn from(profile_id: &'a ProfileId) -> Self {
+        Self::Some(Cow::Borrowed(profile_id))
+    }
 }
 
 /// Convert from an option that defines either *no* profile or a specific one

@@ -5,15 +5,15 @@ use crate::{
         ChainId, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
         ChainSource, RecipeId, SelectOptions,
     },
-    http::{Exchange, RequestSeed, ResponseRecord, content_type::ContentType},
+    http::{RequestSeed, ResponseRecord, content_type::ContentType},
     template::{
         ChainError, Prompt, Select, Template, TemplateChunk, TemplateContext,
-        TemplateError, TemplateKey, error::TriggeredRequestError,
-        parse::TemplateInputChunk,
+        TemplateError, TemplateKey, parse::TemplateInputChunk,
     },
     util::{FutureCache, FutureCacheOutcome},
 };
 use async_trait::async_trait;
+use bytes::Bytes;
 use chrono::Utc;
 use futures::future;
 use slumber_util::paths::expand_home;
@@ -25,12 +25,7 @@ use tracing::{debug, debug_span, error, instrument, trace, trace_span};
 /// the render.
 #[derive(Clone, Debug)]
 struct RenderedChunk {
-    /// This is wrapped in `Arc` to de-duplicate large values derived from
-    /// chains. When the same chain is used multiple times in a render group it
-    /// gets deduplicated, meaning multiple render results would refer to the
-    /// same data. In the vast majority of cases though we only ever have one
-    /// pointer to this data.
-    value: Arc<Vec<u8>>,
+    value: Bytes,
     sensitive: bool,
 }
 
@@ -94,11 +89,7 @@ impl Template {
         for chunk in chunks {
             match chunk {
                 TemplateChunk::Raw(text) => buf.extend(text.as_bytes()),
-                TemplateChunk::Rendered { value, .. } => {
-                    // Only clone if we have multiple copies of this data, which
-                    // only occurs if a chain is used more than once
-                    buf.extend(Arc::unwrap_or_clone(value))
-                }
+                TemplateChunk::Rendered { value, .. } => buf.extend(value),
                 TemplateChunk::Error(error) => return Err(error),
             }
         }
@@ -369,7 +360,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                         chain.sensitive,
                     )
                     .await?
-                    .into_bytes(),
+                    .into(),
                     // No way to guess content type on this
                     None,
                 ),
@@ -398,7 +389,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                         options,
                     )
                     .await?
-                    .into_bytes(),
+                    .into(),
                     None,
                 ),
             };
@@ -407,7 +398,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
             let content_type = chain.content_type.or(content_type);
 
             // If a selector path is present, filter down the value
-            let value = if let Some(selector) = &chain.selector {
+            let value: Bytes = if let Some(selector) = &chain.selector {
                 let content_type =
                     content_type.ok_or(ChainError::UnknownContentType)?;
                 // Parse according to detected content type
@@ -419,13 +410,13 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
                     })?;
                 selector
                     .query_to_string(chain.selector_mode, &*value)?
-                    .into_bytes()
+                    .into()
             } else {
                 value
             };
 
             Ok(RenderedChunk {
-                value: chain.trim.apply(value).into(),
+                value: chain.trim.apply(value),
                 sensitive: chain.sensitive,
             })
         }
@@ -451,7 +442,7 @@ impl<'a> ChainTemplateSource<'a> {
         context: &'a TemplateContext,
         recipe_id: &RecipeId,
         trigger: ChainRequestTrigger,
-    ) -> Result<ResponseRecord, ChainError> {
+    ) -> Result<Arc<ResponseRecord>, ChainError> {
         // Get the referenced recipe. We actually only need the whole recipe if
         // we're executing the request, but we want this to error out if the
         // recipe doesn't exist regardless. It's possible the recipe isn't in
@@ -465,13 +456,14 @@ impl<'a> ChainTemplateSource<'a> {
             .ok_or_else(|| ChainError::RecipeUnknown(recipe_id.clone()))?;
 
         // Defer loading the most recent exchange until we know we'll need it
-        let get_most_recent = || -> Result<Option<Exchange>, ChainError> {
+        let get_most_recent = || async {
             context
-                .database
+                .http_provider
                 .get_latest_request(
-                    context.selected_profile.as_ref().into(),
+                    context.selected_profile.as_ref(),
                     recipe_id,
                 )
+                .await
                 .map_err(|error| ChainError::Database(error.into()))
         };
         // Helper to execute the request, if triggered
@@ -489,60 +481,46 @@ impl<'a> ChainTemplateSource<'a> {
             // to implement so I'm going with that for now.
             let build_options = Default::default();
 
-            // Shitty try block
-            let result = async {
-                let http_engine = context
-                    .http_engine
-                    .as_ref()
-                    .ok_or(TriggeredRequestError::NotAllowed)?;
-                let ticket = http_engine
-                    .build(
-                        RequestSeed::new(recipe_id.clone(), build_options),
-                        context,
-                    )
-                    .await
-                    .map_err(|error| {
-                        TriggeredRequestError::Build(error.into())
-                    })?;
-                ticket
-                    .send(&context.database)
-                    .await
-                    .map_err(|error| TriggeredRequestError::Send(error.into()))
-            };
-            result.await.map_err(|error| ChainError::Trigger {
-                recipe_id: recipe.id.clone(),
-                error,
-            })
+            context
+                .http_provider
+                .send_request(
+                    RequestSeed::new(recipe_id.clone(), build_options),
+                    context,
+                )
+                .await
+                .map_err(|error| ChainError::Trigger {
+                    recipe_id: recipe.id.clone(),
+                    error,
+                })
         };
 
         // Grab the most recent request in history, or send a new request
         let exchange = match trigger {
             ChainRequestTrigger::Never => {
-                get_most_recent()?.ok_or(ChainError::NoResponse)?
+                get_most_recent().await?.ok_or(ChainError::NoResponse)?
             }
             ChainRequestTrigger::NoHistory => {
                 // If a exchange is present in history, use that. If not, fetch
-                if let Some(exchange) = get_most_recent()? {
+                if let Some(exchange) = get_most_recent().await? {
                     exchange
                 } else {
                     send_request().await?
                 }
             }
-            ChainRequestTrigger::Expire(duration) => match get_most_recent()? {
-                Some(exchange)
-                    if exchange.end_time + duration >= Utc::now() =>
-                {
-                    exchange
+            ChainRequestTrigger::Expire(duration) => {
+                match get_most_recent().await? {
+                    Some(exchange)
+                        if exchange.end_time + duration >= Utc::now() =>
+                    {
+                        exchange
+                    }
+                    _ => send_request().await?,
                 }
-                _ => send_request().await?,
-            },
+            }
             ChainRequestTrigger::Always => send_request().await?,
         };
 
-        // Safe because we just constructed the exchange and haven't shared it
-        let response =
-            Arc::into_inner(exchange.response).expect("Arc never shared");
-        Ok(response)
+        Ok(exchange.response)
     }
 
     /// Extract the specified component bytes from the response. For headers,
@@ -551,13 +529,16 @@ impl<'a> ChainTemplateSource<'a> {
         &self,
         context: &'a TemplateContext,
         stack: &mut RenderKeyStack<'a>,
-        response: ResponseRecord,
+        response: Arc<ResponseRecord>,
         component: &'a ChainRequestSection,
-    ) -> Result<Vec<u8>, ChainError> {
+    ) -> Result<Bytes, ChainError> {
         Ok(match component {
             // This will clone the bytes, which is necessary for the subsequent
             // string conversion anyway
-            ChainRequestSection::Body => response.body.into_bytes().into(),
+            ChainRequestSection::Body => match Arc::try_unwrap(response) {
+                Ok(response) => response.body.into_bytes(),
+                Err(response) => response.body.bytes().clone(),
+            },
             ChainRequestSection::Header(header) => {
                 let header = header
                     .render_chain_config("section", context, stack)
@@ -569,6 +550,7 @@ impl<'a> ChainTemplateSource<'a> {
                     .ok_or_else(|| ChainError::MissingHeader { header })?
                     .as_bytes()
                     .to_vec()
+                    .into()
             }
         })
     }
@@ -579,12 +561,12 @@ impl<'a> ChainTemplateSource<'a> {
         context: &'a TemplateContext,
         stack: &mut RenderKeyStack<'a>,
         variable: &'a Template,
-    ) -> Result<Vec<u8>, ChainError> {
+    ) -> Result<Bytes, ChainError> {
         let variable = variable
             .render_chain_config("variable", context, stack)
             .await?;
         let value = load_environment_variable(&variable);
-        Ok(value.into_bytes())
+        Ok(value.into())
     }
 
     /// Render a chained value from a file. Return the files bytes, as well as
@@ -594,7 +576,7 @@ impl<'a> ChainTemplateSource<'a> {
         context: &'a TemplateContext,
         stack: &mut RenderKeyStack<'a>,
         path: &'a Template,
-    ) -> Result<(Vec<u8>, Option<ContentType>), ChainError> {
+    ) -> Result<(Bytes, Option<ContentType>), ChainError> {
         let path: PathBuf = path
             .render_chain_config("path", context, stack)
             .await?
@@ -608,7 +590,7 @@ impl<'a> ChainTemplateSource<'a> {
                 path,
                 error: error.into(),
             })?;
-        Ok((content, content_type))
+        Ok((content.into(), content_type))
     }
 
     /// Render a chained value from an external command
@@ -618,7 +600,7 @@ impl<'a> ChainTemplateSource<'a> {
         stack: &mut RenderKeyStack<'a>,
         command: &'a [Template],
         stdin: Option<&'a Template>,
-    ) -> Result<Vec<u8>, ChainError> {
+    ) -> Result<Bytes, ChainError> {
         // Render each arg in the command
         let command = future::try_join_all(command.iter().enumerate().map(
             |(i, template)| {
@@ -698,7 +680,7 @@ impl<'a> ChainTemplateSource<'a> {
             "Command success"
         );
 
-        Ok(output.stdout)
+        Ok(output.stdout.into())
     }
 
     /// Render a value by asking the user to provide it
@@ -890,7 +872,7 @@ impl<'a> RenderKeyStack<'a> {
 impl ChainOutputTrim {
     /// Apply whitespace trimming to string values. If the value is not a valid
     /// string, no trimming is applied
-    fn apply(self, value: Vec<u8>) -> Vec<u8> {
+    fn apply(self, value: Bytes) -> Bytes {
         // Theoretically we could strip whitespace-looking characters from
         // binary data, but if the whole thing isn't a valid string it doesn't
         // really make any sense to.
@@ -899,9 +881,9 @@ impl ChainOutputTrim {
         };
         match self {
             Self::None => value,
-            Self::Start => s.trim_start().into(),
-            Self::End => s.trim_end().into(),
-            Self::Both => s.trim().into(),
+            Self::Start => s.trim_start().to_owned().into(),
+            Self::End => s.trim_end().to_owned().into(),
+            Self::Both => s.trim().to_owned().into(),
         }
     }
 }

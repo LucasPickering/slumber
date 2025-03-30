@@ -34,7 +34,7 @@ pub struct Prompt {
     /// Should the value the user is typing be masked? E.g. password input
     pub sensitive: bool,
     /// How the prompter will pass the answer back
-    pub channel: PromptChannel<String>,
+    pub channel: ResponseChannel<String>,
 }
 
 /// A list of options to present to the user
@@ -45,16 +45,15 @@ pub struct Select {
     /// List of choices the user can pick from
     pub options: Vec<String>,
     /// How the prompter will pass the answer back
-    pub channel: PromptChannel<String>,
+    pub channel: ResponseChannel<String>,
 }
 
-/// Channel used to return a prompt response. This is its own type so we can
-/// provide wrapping functionality while letting the user decompose the `Prompt`
-/// type.
+/// Channel used to return a response to a one-time request. This is its own
+/// type so we can provide wrapping functionality
 #[derive(Debug, From)]
-pub struct PromptChannel<T>(oneshot::Sender<T>);
+pub struct ResponseChannel<T>(oneshot::Sender<T>);
 
-impl<T> PromptChannel<T> {
+impl<T> ResponseChannel<T> {
     /// Return the value that the user gave
     pub fn respond(self, response: T) {
         // This error *shouldn't* ever happen, because the templating task
@@ -62,7 +61,7 @@ impl<T> PromptChannel<T> {
         let _ = self
             .0
             .send(response)
-            .map_err(|_| anyhow!("Prompt listener dropped"))
+            .map_err(|_| anyhow!("Response listener dropped"))
             .traced();
     }
 }

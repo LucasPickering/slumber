@@ -1,10 +1,15 @@
 //! General test utilities, that apply to all parts of the program
 
 use crate::{
-    collection::{ChainSource, HasId},
-    http::HttpEngine,
-    template::{Prompt, Prompter, Select},
+    collection::{ChainSource, HasId, ProfileId, RecipeId},
+    db::CollectionDatabase,
+    http::{Exchange, HttpEngine, RequestSeed},
+    template::{
+        HttpProvider, Prompt, Prompter, Select, TemplateContext,
+        TriggeredRequestError,
+    },
 };
+use async_trait::async_trait;
 use indexmap::IndexMap;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
@@ -36,6 +41,53 @@ pub fn http_engine() -> HttpEngine {
         ignore_certificate_hosts: vec!["danger".to_owned()],
         ..Default::default()
     })
+}
+
+/// [HttpProvider] implementation for tests. This pulls persisted requests from
+/// the DB, but does not persist new requests. Triggered requests are sent only
+/// if an HTTP engine is provided.
+#[derive(Debug)]
+pub struct TestHttpProvider {
+    database: CollectionDatabase,
+    http_engine: Option<HttpEngine>,
+}
+
+impl TestHttpProvider {
+    pub fn new(
+        database: CollectionDatabase,
+        http_engine: Option<HttpEngine>,
+    ) -> Self {
+        Self {
+            database,
+            http_engine,
+        }
+    }
+}
+
+#[async_trait]
+impl HttpProvider for TestHttpProvider {
+    async fn get_latest_request(
+        &self,
+        profile_id: Option<&ProfileId>,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<Option<Exchange>> {
+        self.database
+            .get_latest_request(profile_id.into(), recipe_id)
+    }
+
+    async fn send_request(
+        &self,
+        seed: RequestSeed,
+        template_context: &TemplateContext,
+    ) -> Result<Exchange, TriggeredRequestError> {
+        if let Some(http_engine) = &self.http_engine {
+            let ticket = http_engine.build(seed, template_context).await?;
+            let exchange = ticket.send().await?;
+            Ok(exchange)
+        } else {
+            Err(TriggeredRequestError::NotAllowed)
+        }
+    }
 }
 
 /// Response to prompts with zero or more values in sequence

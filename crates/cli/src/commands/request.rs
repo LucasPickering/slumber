@@ -3,6 +3,7 @@ use crate::{
     completions::{complete_profile, complete_recipe},
 };
 use anyhow::{Context, anyhow};
+use async_trait::async_trait;
 use clap::{Parser, ValueHint};
 use clap_complete::ArgValueCompleter;
 use dialoguer::{Input, Password, Select as DialoguerSelect};
@@ -13,9 +14,13 @@ use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
     db::{CollectionDatabase, Database},
     http::{
-        BuildOptions, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
+        BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
+        ResponseRecord,
     },
-    template::{Prompt, Prompter, Select, TemplateContext},
+    template::{
+        HttpProvider, Prompt, Prompter, Select, TemplateContext,
+        TriggeredRequestError,
+    },
     util::MaybeStr,
 };
 use slumber_util::ResultTraced;
@@ -54,8 +59,13 @@ pub struct RequestCommand {
     exit_status: bool,
 
     /// Persist the completed request to Slumber's history database. By
-    /// default, CLI-based requests are not persisted. If `persist` is set to
-    /// `false` in the recipe definition, this will override that.
+    /// default, CLI-based requests are not persisted. The CLI ignores the
+    /// `persist` field in the global configuration and recipe definition; this
+    /// flag is the only thing that controls persistence for the CLI.
+    ///
+    /// If the request triggers any upstream chained requests while building,
+    /// those requests will NOT be persisted, regardless of the presence of
+    /// this flag.
     #[clap(long)]
     persist: bool,
 }
@@ -112,7 +122,7 @@ impl Subcommand for RequestCommand {
         let trigger_dependencies = !self.dry_run;
         let (database, http_engine, seed, template_context) = self
             .build_request
-            .build_seed(global, self.persist, trigger_dependencies)?;
+            .build_seed(global, trigger_dependencies)?;
         let ticket = http_engine.build(seed, &template_context).await.map_err(
             |error| {
                 // If the build failed because triggered requests are disabled,
@@ -138,7 +148,11 @@ impl Subcommand for RequestCommand {
             self.display.write_request(ticket.record());
 
             // Run the request
-            let exchange = ticket.send(&database).await?;
+            let exchange = ticket.send().await?;
+            if self.persist {
+                // Error here shouldn't be propagated, just logged
+                let _ = database.insert_exchange(&exchange).traced();
+            }
             let status = exchange.response.status;
 
             self.display.write_response(&exchange.response)?;
@@ -168,7 +182,6 @@ impl BuildRequestCommand {
     pub fn build_seed(
         self,
         global: GlobalArgs,
-        persist: bool,
         trigger_dependencies: bool,
     ) -> anyhow::Result<(
         CollectionDatabase,
@@ -177,12 +190,7 @@ impl BuildRequestCommand {
         TemplateContext,
     )> {
         let collection_path = global.collection_path()?;
-        let mut config = Config::load()?;
-        // Override the persistence setting based on the --persist flag. By
-        // default the CLI never persists, regardless of the config, because
-        // it's unintuitive and not that useful. The --persist flag overrides
-        // the config as well, forcing persistence.
-        config.http.persist = persist;
+        let config = Config::load()?;
         let collection = Collection::load(&collection_path)?;
         let database = Database::load()?.into_collection(&collection_path)?;
         let http_engine = HttpEngine::new(&config.http);
@@ -208,14 +216,11 @@ impl BuildRequestCommand {
         let template_context = TemplateContext {
             selected_profile,
             collection: collection.into(),
-            // Passing the HTTP engine is how we tell the template renderer that
-            // it's ok to execute subrequests during render
-            http_engine: if trigger_dependencies {
-                Some(http_engine.clone())
-            } else {
-                None
-            },
-            database: database.clone(),
+            http_provider: Box::new(CliHttpProvider {
+                database: database.clone(),
+                http_engine: http_engine.clone(),
+                trigger_dependencies,
+            }),
             overrides,
             prompter: Box::new(CliPrompter),
             state: Default::default(),
@@ -296,6 +301,41 @@ impl DisplayExchangeCommand {
             output.write_all(response.body.bytes())?;
         }
         Ok(())
+    }
+}
+
+/// [HttpProvider] for the CLI. This will _not_ performance any persistence;
+/// that should be handled by the request command implementation as needed.
+#[derive(Debug)]
+struct CliHttpProvider {
+    database: CollectionDatabase,
+    http_engine: HttpEngine,
+    trigger_dependencies: bool,
+}
+
+#[async_trait]
+impl HttpProvider for CliHttpProvider {
+    async fn get_latest_request(
+        &self,
+        profile_id: Option<&ProfileId>,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<Option<Exchange>> {
+        self.database
+            .get_latest_request(profile_id.into(), recipe_id)
+    }
+
+    async fn send_request(
+        &self,
+        seed: RequestSeed,
+        template_context: &TemplateContext,
+    ) -> Result<Exchange, TriggeredRequestError> {
+        if self.trigger_dependencies {
+            let ticket = self.http_engine.build(seed, template_context).await?;
+            let exchange = ticket.send().await?;
+            Ok(exchange)
+        } else {
+            Err(TriggeredRequestError::NotAllowed)
+        }
     }
 }
 

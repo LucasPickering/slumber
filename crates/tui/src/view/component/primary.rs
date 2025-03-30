@@ -115,6 +115,7 @@ impl PrimaryView {
 
     /// Set the state of the currently selected request. Call whenever a new
     /// request is selected, or the selected request changes state
+    /// TODO eliminate this in favor of a reactive approach
     pub fn set_request_state(
         &mut self,
         selected_request: Option<&RequestState>,

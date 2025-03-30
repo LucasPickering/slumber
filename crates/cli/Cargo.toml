@@ -16,6 +16,7 @@ path = "src/bin.rs"
 
 [dependencies]
 anyhow = {workspace = true}
+async-trait = {workspace = true}
 chrono = {workspace = true}
 clap = {version = "4.4.2", features = ["derive"]}
 clap_complete = {version = "4.5.29", features = ["unstable-dynamic"]}

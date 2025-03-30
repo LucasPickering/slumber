@@ -12,7 +12,7 @@ version = {workspace = true}
 
 [dependencies]
 anyhow = {workspace = true}
-async-trait = "0.1.81"
+async-trait = {workspace = true}
 bytes = {workspace = true, features = ["serde"]}
 chrono = {workspace = true, features = ["clock", "serde", "std"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from", "from_str", "into"]}

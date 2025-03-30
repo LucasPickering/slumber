@@ -45,6 +45,7 @@ chains:
   login_form_values:
     source: !request
       recipe: login
+      trigger: !expire 12h
     selector: $.form[*]
     selector_mode: array
   auth_token:
@@ -69,6 +70,7 @@ requests:
   login: !request
     method: POST
     url: "{{host}}/anything/login"
+    persist: false
     authentication: !basic
       username: "{{username}}"
       password: "{{chains.password}}"

@@ -18,14 +18,14 @@ mod view;
 
 use crate::{
     context::TuiContext,
-    http::{RequestState, RequestStore},
+    http::{RequestState, RequestStore, TuiHttpProvider},
     message::{Callback, Message, MessageSender, RequestConfig},
     util::{
         CANCEL_TOKEN, ResultReported, clear_event_buffer, delete_temp_file,
         get_editor_command, get_pager_command, save_file, signals, spawn,
         spawn_result,
     },
-    view::{PreviewPrompter, UpdateContext, View},
+    view::{PreviewPrompter, TuiPrompter, UpdateContext, View},
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
@@ -40,9 +40,10 @@ use slumber_config::{Action, Config};
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     db::{CollectionDatabase, Database},
-    http::{RequestId, RequestSeed},
+    http::{Exchange, RequestError, RequestId, RequestSeed},
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
+use slumber_util::ResultTraced;
 use std::{
     io::{self, Stdout},
     ops::Deref,
@@ -277,6 +278,12 @@ impl Tui {
 
             // Manage HTTP life cycle
             Message::HttpBeginRequest => self.send_request()?,
+            Message::HttpBuildingTriggered {
+                id,
+                profile_id,
+                recipe_id,
+            } => self.request_store.start(id, profile_id, recipe_id, None),
+
             Message::HttpBuildError { error } => {
                 let state = self.request_store.build_error(error);
                 self.view.update_request(state);
@@ -285,16 +292,23 @@ impl Tui {
                 let state = self.request_store.loading(request);
                 self.view.update_request(state);
             }
-            Message::HttpComplete(result) => {
-                let state = match result {
-                    Ok(exchange) => self.request_store.response(exchange),
-                    Err(error) => self.request_store.request_error(error),
-                };
-                self.view.update_request(state);
-            }
+            Message::HttpComplete(result) => self.complete_request(result),
             Message::HttpCancel(request_id) => {
                 let state = self.request_store.cancel(request_id);
                 self.view.update_request(state);
+            }
+            Message::HttpGetLatest {
+                profile_id,
+                recipe_id,
+                channel,
+            } => {
+                let exchange = self
+                    .request_store
+                    .load_latest_exchange(profile_id.as_ref(), &recipe_id)
+                    .reported(&self.messages_tx)
+                    .flatten()
+                    .cloned();
+                channel.respond(exchange);
             }
 
             // Force quit short-circuits the view/message cycle, to make sure
@@ -595,7 +609,6 @@ impl Tui {
         let seed = RequestSeed::new(recipe_id.clone(), options);
         let request_id = seed.id;
 
-        let database = self.database.clone();
         // Don't use spawn_result here, because errors are handled specially for
         // requests
         let join_handle = spawn(async move {
@@ -608,7 +621,9 @@ impl Tui {
                 Ok(ticket) => ticket,
                 Err(error) => {
                     // Report the error, but don't actually return anything
-                    messages_tx.send(Message::HttpBuildError { error });
+                    messages_tx.send(Message::HttpBuildError {
+                        error: error.into(),
+                    });
                     return;
                 }
             };
@@ -619,7 +634,7 @@ impl Tui {
             });
 
             // Send the request and report the result to the main thread
-            let result = ticket.send(&database).await;
+            let result = ticket.send().await.map_err(Arc::new);
             messages_tx.send(Message::HttpComplete(result));
         });
 
@@ -629,7 +644,7 @@ impl Tui {
             request_id,
             profile_id,
             recipe_id,
-            join_handle,
+            Some(join_handle.abort_handle()),
         );
 
         // New requests should get shown in the UI
@@ -637,6 +652,32 @@ impl Tui {
             .select_request(&mut self.request_store, request_id);
 
         Ok(())
+    }
+
+    /// Process the result of an HTTP request
+    fn complete_request(
+        &mut self,
+        result: Result<Exchange, Arc<RequestError>>,
+    ) {
+        let state = match result {
+            Ok(exchange) => {
+                // Persist in the DB if not disabled by global config or recipe
+                let persist = TuiContext::get().config.persist
+                    && self
+                        .collection_file
+                        .collection
+                        .recipes
+                        .try_get_recipe(&exchange.request.recipe_id)
+                        .is_ok_and(|recipe| recipe.persist);
+                if persist {
+                    let _ = self.database.insert_exchange(&exchange).traced();
+                }
+
+                self.request_store.response(exchange)
+            }
+            Err(error) => self.request_store.request_error(error),
+        };
+        self.view.update_request(state);
     }
 
     /// Spawn a task to render a template, storing the result in a pre-defined
@@ -665,24 +706,21 @@ impl Tui {
         profile_id: Option<ProfileId>,
         is_preview: bool,
     ) -> anyhow::Result<TemplateContext> {
-        let context = TuiContext::get();
         let collection = &self.collection_file.collection;
-        let (http_engine, prompter): (_, Box<dyn Prompter>) = if is_preview {
-            (None, Box::new(PreviewPrompter))
+        let http_provider =
+            TuiHttpProvider::new(self.messages_tx(), is_preview);
+        let prompter: Box<dyn Prompter> = if is_preview {
+            Box::new(PreviewPrompter)
         } else {
-            (
-                Some(context.http_engine.clone()),
-                Box::new(self.messages_tx()),
-            )
+            Box::new(TuiPrompter::new(self.messages_tx()))
         };
 
         Ok(TemplateContext {
             selected_profile: profile_id,
             collection: collection.clone(),
-            http_engine,
-            database: self.database.clone(),
-            overrides: Default::default(),
+            http_provider: Box::new(http_provider),
             prompter,
+            overrides: Default::default(),
             state: Default::default(),
         })
     }

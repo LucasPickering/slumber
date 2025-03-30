@@ -12,7 +12,7 @@ use slumber_core::{
         BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
         RequestRecord,
     },
-    template::{Prompt, Prompter, Select, Template, TemplateChunk},
+    template::{Prompt, ResponseChannel, Select, Template, TemplateChunk},
 };
 use slumber_util::ResultTraced;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
@@ -37,19 +37,6 @@ impl MessageSender {
             .send(message)
             .context("Error enqueueing message")
             .traced();
-    }
-}
-
-/// Use the message stream to prompt the user for input when needed for a
-/// template. The message will be routed to the view so it can show the prompt,
-/// and the given returner will be used to send the submitted value back.
-impl Prompter for MessageSender {
-    fn prompt(&self, prompt: Prompt) {
-        self.send(Message::PromptStart(prompt));
-    }
-
-    fn select(&self, select: Select) {
-        self.send(Message::SelectStart(select));
     }
 }
 
@@ -99,16 +86,32 @@ pub enum Message {
 
     /// Launch an HTTP request from the given recipe/profile.
     HttpBeginRequest,
+    /// Announce that we've started building an HTTP request that was triggered
+    /// by another request.
+    HttpBuildingTriggered {
+        id: RequestId,
+        profile_id: Option<ProfileId>,
+        recipe_id: RecipeId,
+    },
     /// Request failed to build
-    HttpBuildError { error: RequestBuildError },
+    HttpBuildError { error: Arc<RequestBuildError> },
     /// We launched the HTTP request
     HttpLoading { request: Arc<RequestRecord> },
     /// The HTTP request either succeeded or failed. We don't need to store the
     /// recipe ID here because it's in the inner container already. Combining
-    /// these two cases saves a bit of boilerplate.
-    HttpComplete(Result<Exchange, RequestError>),
+    /// these two cases saves a bit of boilerplate. The error must be wrapped
+    /// in `Arc` because it may need to be shared. Triggered requests need their
+    /// error returned to the template engine, but also need to be inserted into
+    /// the request store.
+    HttpComplete(Result<Exchange, Arc<RequestError>>),
     /// Cancel an HTTP request
     HttpCancel(RequestId),
+    /// Get the most recent _completed_ request for a recipe+profile combo
+    HttpGetLatest {
+        profile_id: Option<ProfileId>,
+        recipe_id: RecipeId,
+        channel: ResponseChannel<Option<Exchange>>,
+    },
 
     /// User input from the terminal
     Input {

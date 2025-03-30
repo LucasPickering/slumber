@@ -46,7 +46,6 @@ pub use models::*;
 
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
-    db::CollectionDatabase,
     http::{content_type::ContentType, curl::CurlBuilder},
     template::{Template, TemplateContext},
 };
@@ -85,7 +84,6 @@ pub struct HttpEngine {
     /// creating a client because it's expensive.
     danger_client: Option<(Client, HashSet<String>)>,
     large_body_size: usize,
-    persist: bool,
 }
 
 impl HttpEngine {
@@ -111,7 +109,6 @@ impl HttpEngine {
             client,
             danger_client,
             large_body_size: config.large_body_size,
-            persist: config.persist,
         }
     }
 
@@ -131,11 +128,6 @@ impl HttpEngine {
             info_span!("Build request", request_id = %id, ?recipe_id, ?options)
                 .entered();
 
-        struct Output<'a> {
-            client: &'a Client,
-            request: reqwest::Request,
-            persist: bool,
-        }
         let future = async {
             let recipe = template_context
                 .collection
@@ -169,18 +161,10 @@ impl HttpEngine {
             }
 
             let request = builder.build()?;
-            Ok(Output {
-                client,
-                request,
-                // Only persist if the global AND local options are enabled
-                persist: self.persist && recipe.persist,
-            })
+            Ok((client, request))
         };
-        let Output {
-            client,
-            request,
-            persist,
-        } = seed.run_future(future, template_context).await?;
+        let (client, request) =
+            seed.run_future(future, template_context).await?;
 
         Ok(RequestTicket {
             record: RequestRecord::new(
@@ -192,7 +176,6 @@ impl HttpEngine {
             .into(),
             client: client.clone(),
             request,
-            persist,
         })
     }
 
@@ -390,10 +373,7 @@ impl RequestTicket {
     /// launched until the consumer starts awaiting the future. For in-flight
     /// time tracking, track your own start time immediately before/after
     /// sending the request.
-    pub async fn send(
-        self,
-        database: &CollectionDatabase,
-    ) -> Result<Exchange, RequestError> {
+    pub async fn send(self) -> Result<Exchange, RequestError> {
         let id = self.record.id;
 
         // Capture the rest of this method in a span
@@ -421,10 +401,6 @@ impl RequestTicket {
                     end_time,
                 };
 
-                if self.persist {
-                    // Error here should *not* kill the request
-                    let _ = database.insert_exchange(&exchange);
-                }
                 Ok(exchange)
             }
 

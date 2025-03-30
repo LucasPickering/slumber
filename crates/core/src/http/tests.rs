@@ -614,8 +614,7 @@ async fn test_send_request(http_engine: &HttpEngine) {
     // Build+send the request
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
     let ticket = http_engine.build(seed, &template_context).await.unwrap();
-    let database = &template_context.database;
-    let exchange = ticket.send(database).await.unwrap();
+    let exchange = ticket.send().await.unwrap();
 
     // Cheat on this one, because we don't know exactly when the server
     // resolved it
@@ -639,66 +638,6 @@ async fn test_send_request(http_engine: &HttpEngine) {
             body: ResponseBody::new(b"hello!".as_slice().into())
         }
     );
-
-    // Assert it was inserted into the DB
-    assert_eq!(
-        &database.get_all_requests().unwrap(),
-        &[ExchangeSummary {
-            id: exchange.id,
-            recipe_id: exchange.request.recipe_id.clone(),
-            profile_id: exchange.request.profile_id.clone(),
-            start_time: exchange.start_time,
-            end_time: exchange.end_time,
-            status: exchange.response.status,
-        }]
-    );
-}
-
-/// Test that persistence can be disabled globally
-#[tokio::test]
-async fn test_global_persist_disabled() {
-    let http_engine = HttpEngine::new(&HttpEngineConfig {
-        persist: false,
-        ..Default::default()
-    });
-    let host = mock_server().await;
-    let recipe = Recipe {
-        url: format!("{host}/get").as_str().into(),
-        ..Recipe::factory(())
-    };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
-    let database = &template_context.database;
-    let exchange = ticket.send(&template_context.database).await.unwrap();
-
-    assert_eq!(exchange.response.status, StatusCode::OK); // Sanity check
-    assert_eq!(&database.get_all_requests().unwrap(), &[]);
-}
-
-/// Test that a request is not persisted if the recipe has `persist` set to
-/// `false`
-#[rstest]
-#[tokio::test]
-async fn test_recipe_persist_disabled(http_engine: &HttpEngine) {
-    let host = mock_server().await;
-    let recipe = Recipe {
-        url: format!("{host}/get").as_str().into(),
-        persist: false,
-        ..Recipe::factory(())
-    };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
-    let database = &template_context.database;
-    let exchange = ticket.send(&template_context.database).await.unwrap();
-
-    assert_eq!(exchange.response.status, StatusCode::OK); // Sanity check
-    assert_eq!(&database.get_all_requests().unwrap(), &[]);
 }
 
 /// Leading/trailing newlines should be stripped from rendered header

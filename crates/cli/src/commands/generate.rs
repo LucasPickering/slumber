@@ -27,7 +27,7 @@ impl Subcommand for GenerateCommand {
             GenerateFormat::Curl => {
                 let (_, http_engine, seed, template_context) = self
                     .build_request
-                    .build_seed(global, false, self.execute_triggers)?;
+                    .build_seed(global, self.execute_triggers)?;
                 let command = http_engine
                     .build_curl(seed, &template_context)
                     .await

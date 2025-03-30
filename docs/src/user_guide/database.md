@@ -26,7 +26,11 @@ Unlike the TUI, requests made from the CLI are _not_ persisted by default. This 
 
 ### Deleting Request History
 
-TODO
+There are a few ways to delete requests from history:
+
+- In the TUI. Open the actions menu while a request/response is selected to delete that request. From the recipe list/recipe pane, you can delete all requests for that recipe.
+- The `slumber history delete` can delete one or more commands at a time. Combine with `slumber history list` for bulk deletes: `slumber history list login --id-only | xargs slumber history delete`
+- Manually modifying the database. You can access the DB with `slumber db`. While this is not an officially supported technique (as the DB schema may change without warning), it's simple enough to navigate if you want to performance bulk deletes with custom criteria.
 
 ### Migrating Collections
 

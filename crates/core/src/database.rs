@@ -197,16 +197,6 @@ impl Database {
             .context("Error extracting request history")
     }
 
-    /// Delete ALL requests for ALL collections. Be careful with this! Return
-    /// the number of deleted requests
-    pub fn delete_all_requests(&self) -> anyhow::Result<usize> {
-        info!("Deleting all requests for ALL collections");
-        self.connection()
-            .execute("DELETE FROM requests_v2", ())
-            .context("Error deleting request history")
-            .traced()
-    }
-
     /// Delete a single exchange by ID. Return the number of deleted requests
     pub fn delete_request(
         &self,
@@ -492,24 +482,6 @@ impl CollectionDatabase {
             ))
             .traced()?;
         Ok(())
-    }
-
-    /// Delete all exchanges for this collection. Return the number of deleted
-    /// requests
-    pub fn delete_all_requests(&self) -> anyhow::Result<usize> {
-        info!(
-            collection_id = %self.collection_id,
-            collection_path = ?self.collection_path(),
-            "Deleting all requests for collection",
-        );
-        self.database
-            .connection()
-            .execute(
-                "DELETE FROM requests_v2 WHERE collection_id = :collection_id",
-                named_params! {":collection_id": self.collection_id},
-            )
-            .context("Error deleting requests")
-            .traced()
     }
 
     /// Delete all requests for a recipe+profile combo. Return the number of

@@ -3,7 +3,7 @@
 mod common;
 
 use serde_json::json;
-use slumber_core::db::Database;
+use slumber_core::database::Database;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
 /// Test generating a curl command with:

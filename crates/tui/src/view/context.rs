@@ -7,7 +7,7 @@ use crate::{
         state::Notification,
     },
 };
-use slumber_core::{collection::Collection, db::CollectionDatabase};
+use slumber_core::{collection::Collection, database::CollectionDatabase};
 use std::{cell::RefCell, sync::Arc};
 use tracing::debug;
 

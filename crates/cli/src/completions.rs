@@ -9,7 +9,7 @@
 use clap_complete::CompletionCandidate;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
-    db::Database,
+    database::Database,
 };
 use std::{ffi::OsStr, ops::Deref};
 

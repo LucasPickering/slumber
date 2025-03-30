@@ -12,7 +12,7 @@ use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
-    db::{CollectionDatabase, Database},
+    database::{CollectionDatabase, Database},
     http::{
         BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
         ResponseRecord,

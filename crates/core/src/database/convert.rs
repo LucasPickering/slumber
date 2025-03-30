@@ -2,7 +2,7 @@
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    db::{CollectionId, ProfileFilter},
+    database::{CollectionId, ProfileFilter},
     http::{
         Exchange, ExchangeSummary, HttpMethod, HttpVersion, RequestId,
         RequestRecord, ResponseRecord,

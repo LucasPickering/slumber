@@ -14,7 +14,7 @@ use itertools::Itertools;
 use reqwest::StatusCode;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
-    db::{CollectionDatabase, ProfileFilter},
+    database::{CollectionDatabase, ProfileFilter},
     http::{
         Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
         RequestRecord, RequestSeed,

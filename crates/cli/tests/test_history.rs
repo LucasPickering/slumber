@@ -7,7 +7,7 @@ use itertools::Itertools;
 use rstest::rstest;
 use slumber_core::{
     collection::{ProfileId, RecipeId},
-    db::Database,
+    database::Database,
     http::{Exchange, RequestId},
 };
 use slumber_util::{Factory, paths::get_repo_root};

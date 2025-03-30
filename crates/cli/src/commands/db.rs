@@ -1,7 +1,7 @@
 use crate::{GlobalArgs, Subcommand};
 use anyhow::Context;
 use clap::Parser;
-use slumber_core::db::Database;
+use slumber_core::database::Database;
 use std::process::ExitCode;
 use tokio::process::Command;
 

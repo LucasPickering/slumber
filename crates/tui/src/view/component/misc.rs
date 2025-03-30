@@ -30,7 +30,7 @@ use ratatui::{
 };
 use slumber_core::{
     collection::{ProfileId, RecipeId},
-    db::ProfileFilter,
+    database::ProfileFilter,
     http::RequestId,
     template::{Prompt, Select},
 };

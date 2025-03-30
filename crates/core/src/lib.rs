@@ -8,7 +8,7 @@
 //! do so at your own risk of breakage.
 
 pub mod collection;
-pub mod db;
+pub mod database;
 pub mod http;
 pub mod template;
 #[cfg(any(test, feature = "test"))]

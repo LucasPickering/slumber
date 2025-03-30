@@ -3,7 +3,7 @@ use crate::{
         Chain, ChainOutputTrim, ChainRequestSection, ChainRequestTrigger,
         ChainSource, Collection, Profile, Recipe, RecipeId, SelectOptions,
     },
-    db::CollectionDatabase,
+    database::CollectionDatabase,
     http::{
         Exchange, HttpEngine, RequestRecord, ResponseRecord,
         content_type::ContentType,
@@ -149,7 +149,7 @@ async fn test_chain_request(
     #[case] section: ChainRequestSection,
     #[case] expected_value: &str,
 ) {
-    use crate::db::CollectionDatabase;
+    use crate::database::CollectionDatabase;
 
     let profile = Profile {
         data: indexmap! {"header".into() => "Token".into()},

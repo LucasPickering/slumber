@@ -8,7 +8,7 @@ mod tests;
 
 use crate::{
     collection::{ProfileId, RecipeId},
-    db::convert::{CollectionPath, JsonEncoded, SqlWrap},
+    database::convert::{CollectionPath, JsonEncoded, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
 };
 use anyhow::{Context, anyhow};

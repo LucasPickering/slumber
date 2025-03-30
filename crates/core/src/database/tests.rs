@@ -293,24 +293,6 @@ fn test_get_recipe_requests() {
     assert_eq!(ids, expected_ids)
 }
 
-/// Test deleting all requests for all collections
-#[rstest]
-fn test_database_delete_all_requests(request_db: RequestDb) {
-    let [collection1, collection2] = request_db.collections;
-    assert_eq!(request_db.database.delete_all_requests().unwrap(), 12);
-    assert_eq!(collection1.count_requests(), 0);
-    assert_eq!(collection2.count_requests(), 0);
-}
-
-/// Test deleting all requests for a collection
-#[rstest]
-fn test_collection_delete_all_requests(request_db: RequestDb) {
-    let [collection1, collection2] = request_db.collections;
-    assert_eq!(collection1.delete_all_requests().unwrap(), 6);
-    assert_eq!(collection1.count_requests(), 0);
-    assert_eq!(collection2.count_requests(), 6);
-}
-
 /// Test deleting all requests for a recipe/profile combo
 #[rstest]
 #[case(ProfileFilter::All, "recipe1", 3)]

@@ -176,6 +176,7 @@ impl Default for InputEngine {
                 Action::Submit => KeyCode::Enter.into(),
                 Action::Toggle => KeyCode::Char(' ').into(),
                 Action::Cancel => KeyCode::Esc.into(),
+                Action::Delete => KeyCode::Delete.into(),
                 Action::Edit => KeyCode::Char('e').into(),
                 Action::Reset => KeyCode::Char('z').into(),
                 Action::View => KeyCode::Char('v').into(),

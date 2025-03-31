@@ -302,49 +302,61 @@ impl ExchangePaneContent {
 
 impl EventHandler for ExchangePaneContent {
     fn update(&mut self, _: &mut UpdateContext, event: Event) -> Option<Event> {
-        event.opt().emitted(self.actions_emitter, |menu_action| {
-            match menu_action {
-                // Generally if we get an action the corresponding
-                // request/response will be present, but we double check in case
-                // the action got delayed in being handled somehow
-                ExchangePaneMenuAction::CopyUrl => {
-                    if let Some(request) = self.state.request() {
-                        request.copy_url();
-                    }
-                }
-                ExchangePaneMenuAction::ViewRequestBody => {
-                    if let Some(request) = self.state.request() {
-                        request.view_body();
-                    }
-                }
-                ExchangePaneMenuAction::CopyRequestBody => {
-                    if let Some(request) = self.state.request() {
-                        request.copy_body();
-                    }
-                }
-                ExchangePaneMenuAction::CopyResponseBody => {
-                    if let Some(response) = self.state.response() {
-                        response.copy_body();
-                    }
-                }
-                ExchangePaneMenuAction::ViewResponseBody => {
-                    if let Some(response) = self.state.response() {
-                        response.view_body();
-                    }
-                }
-                ExchangePaneMenuAction::SaveResponseBody => {
-                    if let Some(response) = self.state.response() {
-                        response.save_response_body();
-                    }
-                }
-                ExchangePaneMenuAction::DeleteRequest => {
+        event
+            .opt()
+            .action(|action, propagate| match action {
+                Action::Delete => {
                     if let Some(request) = self.state.request() {
                         // Show a confirmation modal
                         DeleteRequestModal::new(request.id()).open();
                     }
                 }
-            }
-        })
+                _ => propagate.set(),
+            })
+            .emitted(self.actions_emitter, |menu_action| {
+                match menu_action {
+                    // Generally if we get an action the corresponding
+                    // request/response will be present, but we double check in
+                    // case the action got delayed in being
+                    // handled somehow
+                    ExchangePaneMenuAction::CopyUrl => {
+                        if let Some(request) = self.state.request() {
+                            request.copy_url();
+                        }
+                    }
+                    ExchangePaneMenuAction::ViewRequestBody => {
+                        if let Some(request) = self.state.request() {
+                            request.view_body();
+                        }
+                    }
+                    ExchangePaneMenuAction::CopyRequestBody => {
+                        if let Some(request) = self.state.request() {
+                            request.copy_body();
+                        }
+                    }
+                    ExchangePaneMenuAction::CopyResponseBody => {
+                        if let Some(response) = self.state.response() {
+                            response.copy_body();
+                        }
+                    }
+                    ExchangePaneMenuAction::ViewResponseBody => {
+                        if let Some(response) = self.state.response() {
+                            response.view_body();
+                        }
+                    }
+                    ExchangePaneMenuAction::SaveResponseBody => {
+                        if let Some(response) = self.state.response() {
+                            response.save_response_body();
+                        }
+                    }
+                    ExchangePaneMenuAction::DeleteRequest => {
+                        if let Some(request) = self.state.request() {
+                            // Show a confirmation modal
+                            DeleteRequestModal::new(request.id()).open();
+                        }
+                    }
+                }
+            })
     }
 
     fn menu_actions(&self) -> Vec<MenuAction> {
@@ -529,8 +541,7 @@ impl IntoMenuAction<ExchangePaneContent> for ExchangePaneMenuAction {
             Self::CopyUrl
             | Self::CopyRequestBody
             | Self::CopyResponseBody
-            | Self::SaveResponseBody
-            | Self::DeleteRequest => None,
+            | Self::SaveResponseBody => None,
             Self::ViewRequestBody => {
                 if matches!(data.tabs.data().selected(), Tab::Request) {
                     Some(Action::View)
@@ -545,6 +556,7 @@ impl IntoMenuAction<ExchangePaneContent> for ExchangePaneMenuAction {
                     None
                 }
             }
+            Self::DeleteRequest => Some(Action::Delete),
         }
     }
 }

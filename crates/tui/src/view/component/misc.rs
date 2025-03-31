@@ -274,6 +274,16 @@ impl IntoModal for Select {
     }
 }
 
+/// Buttons in a yes/no confirmation modal
+#[derive(
+    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
+)]
+pub enum ConfirmButton {
+    No,
+    #[default]
+    Yes,
+}
+
 /// Inner state for the prompt modal
 #[derive(derive_more::Debug)]
 pub struct ConfirmModal {
@@ -286,16 +296,6 @@ pub struct ConfirmModal {
     answer: bool,
     #[debug(skip)]
     on_submit: Box<dyn 'static + FnOnce(bool)>,
-}
-
-/// Buttons in the confirmation modal
-#[derive(
-    Copy, Clone, Debug, Default, Display, EnumCount, EnumIter, PartialEq,
-)]
-enum ConfirmButton {
-    No,
-    #[default]
-    Yes,
 }
 
 impl ConfirmModal {

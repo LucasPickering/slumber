@@ -218,7 +218,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     pub fn select_index(&mut self, index: usize) {
         let state = self.state.get_mut();
         let current = state.selected();
-        state.select(index);
+        state.select(Some(index));
         let new = state.selected();
 
         // If the selection changed, send an event
@@ -235,6 +235,33 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     /// Select the next item in the list
     pub fn next(&mut self) {
         self.select_delta(1);
+    }
+
+    /// Remove the selected item from the list. This will slide everything after
+    /// that item up one slot, so that the item after it is selected. If the
+    /// selected item was at the end of the list, the item before it will be
+    /// selected. If the list is now empty, the selection is cleared.
+    pub fn delete_selected(&mut self) {
+        let state = self.state.get_mut();
+        let selected_index = state.selected();
+        if let Some(index) = selected_index {
+            self.items.remove(index);
+
+            // There are two ways the selection could now be invalid:
+            // - Deleted the only item in the list. Clear the selection
+            // - Deleted the item at the end of the list. Select the item before
+            //   it
+            // Otherwise, we implicitly selected the item after the deleted one,
+            // and can proceed as usual
+            if self.items.is_empty() {
+                state.select(None);
+            } else if index == self.items.len() {
+                state.select(Some(index - 1));
+            }
+
+            // This will do nothing if the selection is now empty
+            self.emit_for_selected(SelectStateEvent::Select);
+        }
     }
 
     /// Move some number of items up or down the list. Selection will wrap if
@@ -396,8 +423,8 @@ pub trait SelectStateData: Default {
     /// Index of the selected element
     fn selected(&self) -> Option<usize>;
 
-    /// Select an element by index
-    fn select(&mut self, index: usize);
+    /// Select an element by index. Clear the selection if `None` is given
+    fn select(&mut self, index: Option<usize>);
 }
 
 impl SelectStateData for ListState {
@@ -405,8 +432,8 @@ impl SelectStateData for ListState {
         self.selected()
     }
 
-    fn select(&mut self, index: usize) {
-        self.select(Some(index))
+    fn select(&mut self, index: Option<usize>) {
+        self.select(index)
     }
 }
 
@@ -415,18 +442,20 @@ impl SelectStateData for TableState {
         self.selected()
     }
 
-    fn select(&mut self, index: usize) {
-        self.select(Some(index))
+    fn select(&mut self, index: Option<usize>) {
+        self.select(index)
     }
 }
 
+/// Selection state is just a number. This is useful for tabs and other
+/// fixed-size elements that can never be empty.
 impl SelectStateData for usize {
     fn selected(&self) -> Option<usize> {
         Some(*self)
     }
 
-    fn select(&mut self, index: usize) {
-        *self = index;
+    fn select(&mut self, index: Option<usize>) {
+        *self = index.expect("Cannot clear selection");
     }
 }
 
@@ -496,6 +525,64 @@ mod tests {
             .send_key(KeyCode::Up)
             .assert_empty();
         assert_eq!(component.data().selected(), Some(&"a"));
+    }
+
+    /// Test deleting the selected item
+    #[rstest]
+    fn test_delete(
+        harness: TestHarness,
+        terminal: TestTerminal,
+        #[from(items)] (items, props): (Vec<&'static str>, List<'static>),
+    ) {
+        let select = SelectState::builder(items)
+            .subscribe([SelectStateEventType::Select])
+            .build();
+        let mut component = TestComponent::builder(&harness, &terminal, select)
+            .with_props(props.clone())
+            .build();
+
+        // Start by selecting the second item, so we can assert that we select
+        // the one after it when possible
+        component
+            .int_props(|| props.clone())
+            .drain_draw() // Handle  initial state
+            .send_key(KeyCode::Down)
+            .assert_emitted([
+                SelectStateEvent::Select(0),
+                SelectStateEvent::Select(1),
+            ]);
+        assert_eq!(component.data().selected(), Some(&"b"));
+
+        // Delete `b`, `c` should get selected because it's below
+        component.data_mut().delete_selected();
+        assert_eq!(component.data().selected(), Some(&"c"));
+        component
+            .int_props(|| props.clone())
+            .drain_draw()
+            .assert_emitted([SelectStateEvent::Select(1)]);
+
+        // Delete `c`; there's nothing left below so select above
+        component.data_mut().delete_selected();
+        assert_eq!(component.data().selected(), Some(&"a"));
+        component
+            .int_props(|| props.clone())
+            .drain_draw()
+            .assert_emitted([SelectStateEvent::Select(0)]);
+
+        // Delete `a`, nothing left to select
+        component.data_mut().delete_selected();
+        assert_eq!(component.data().selected(), None);
+        component
+            .int_props(|| props.clone())
+            .drain_draw()
+            .assert_emitted([]);
+
+        // Delete nothing; nothing should happen
+        component.data_mut().delete_selected();
+        component
+            .int_props(|| props.clone())
+            .drain_draw()
+            .assert_emitted([]);
     }
 
     /// Test select emitted event

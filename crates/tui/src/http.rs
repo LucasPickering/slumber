@@ -756,7 +756,7 @@ pub struct ResponseMetadata {
 /// A simplified version of [RequestState], which only stores metadata. This is
 /// useful when you want to show a list of requests and don't need the entire
 /// request/response data for each one.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum RequestStateSummary {
     Building {
         id: RequestId,

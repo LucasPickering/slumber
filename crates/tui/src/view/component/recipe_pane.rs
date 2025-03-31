@@ -193,7 +193,7 @@ pub enum RecipeMenuAction {
     CopyUrl,
     #[display("Copy as cURL")]
     CopyCurl,
-    #[display("Delete Recipe")]
+    #[display("Delete Requests")]
     DeleteRecipe,
 }
 

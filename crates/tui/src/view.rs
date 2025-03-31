@@ -31,7 +31,7 @@ use anyhow::anyhow;
 use ratatui::Frame;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{CollectionFile, ProfileId},
+    collection::{Collection, ProfileId},
     database::CollectionDatabase,
     http::RequestId,
 };
@@ -59,15 +59,11 @@ pub struct View {
 
 impl View {
     pub fn new(
-        collection_file: &CollectionFile,
+        collection: &Arc<Collection>,
         database: CollectionDatabase,
         messages_tx: MessageSender,
     ) -> Self {
-        ViewContext::init(
-            Arc::clone(&collection_file.collection),
-            database,
-            messages_tx,
-        );
+        ViewContext::init(Arc::clone(collection), database, messages_tx);
 
         let debug_monitor = if TuiContext::get().config.debug {
             Some(DebugMonitor::default())
@@ -76,7 +72,7 @@ impl View {
         };
 
         Self {
-            root: Root::new(&collection_file.collection).into(),
+            root: Root::new(collection).into(),
             debug_monitor,
         }
     }

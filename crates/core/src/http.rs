@@ -38,7 +38,6 @@
 pub mod content_type;
 mod curl;
 mod models;
-pub mod query;
 #[cfg(test)]
 mod tests;
 
@@ -46,8 +45,8 @@ pub use models::*;
 
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
-    http::{content_type::ContentType, curl::CurlBuilder},
-    template::{Template, TemplateContext},
+    http::curl::CurlBuilder,
+    template::{Renderer, Template},
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -57,10 +56,9 @@ use futures::{
     future::{self, OptionFuture, try_join_all},
     try_join,
 };
-use mime::Mime;
 use reqwest::{
     Client, RequestBuilder, Response, Url,
-    header::{self, HeaderMap, HeaderName, HeaderValue},
+    header::{HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
 };
 use slumber_config::HttpEngineConfig;
@@ -117,7 +115,7 @@ impl HttpEngine {
     pub async fn build(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> Result<RequestTicket, RequestBuildError> {
         let RequestSeed {
             id,
@@ -129,18 +127,19 @@ impl HttpEngine {
                 .entered();
 
         let future = async {
-            let recipe = template_context
+            let recipe = renderer
+                .context()
                 .collection
                 .recipes
                 .try_get_recipe(recipe_id)?;
 
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
-                recipe.render_url(template_context),
-                recipe.render_query(options, template_context),
-                recipe.render_headers(options, template_context),
-                recipe.render_authentication(options, template_context),
-                recipe.render_body(options, template_context),
+                recipe.render_url(renderer),
+                recipe.render_query(options, renderer),
+                recipe.render_headers(options, renderer),
+                recipe.render_authentication(options, renderer),
+                recipe.render_body(options, renderer),
             )?;
 
             // Build the reqwest request first, so we can have it do all the
@@ -163,13 +162,12 @@ impl HttpEngine {
             let request = builder.build()?;
             Ok((client, request))
         };
-        let (client, request) =
-            seed.run_future(future, template_context).await?;
+        let (client, request) = seed.run_future(future, renderer).await?;
 
         Ok(RequestTicket {
             record: RequestRecord::new(
                 seed,
-                template_context.selected_profile.clone(),
+                renderer.context().selected_profile.clone(),
                 &request,
                 self.large_body_size,
             )
@@ -183,7 +181,7 @@ impl HttpEngine {
     pub async fn build_url(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> Result<Url, RequestBuildError> {
         let RequestSeed {
             id,
@@ -195,15 +193,16 @@ impl HttpEngine {
                 .entered();
 
         let future = async {
-            let recipe = template_context
+            let recipe = renderer
+                .context()
                 .collection
                 .recipes
                 .try_get_recipe(recipe_id)?;
 
             // Parallelization!
             let (url, query) = try_join!(
-                recipe.render_url(template_context),
-                recipe.render_query(options, template_context),
+                recipe.render_url(renderer),
+                recipe.render_query(options, renderer),
             )?;
 
             // Use RequestBuilder so we can offload the handling of query params
@@ -214,7 +213,7 @@ impl HttpEngine {
                 .build()?;
             Ok(request)
         };
-        let request = seed.run_future(future, template_context).await?;
+        let request = seed.run_future(future, renderer).await?;
 
         Ok(request.url().clone())
     }
@@ -223,7 +222,7 @@ impl HttpEngine {
     pub async fn build_body(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> Result<Option<Bytes>, RequestBuildError> {
         let RequestSeed {
             id,
@@ -235,13 +234,13 @@ impl HttpEngine {
                 .entered();
 
         let future = async {
-            let recipe = template_context
+            let recipe = renderer
+                .context()
                 .collection
                 .recipes
                 .try_get_recipe(recipe_id)?;
 
-            let Some(body) =
-                recipe.render_body(options, template_context).await?
+            let Some(body) = recipe.render_body(options, renderer).await?
             else {
                 return Ok(None);
             };
@@ -251,7 +250,8 @@ impl HttpEngine {
                 // request
                 RenderedBody::Raw(bytes) => Ok(Some(bytes)),
                 // The body is complex - offload the hard work to RequestBuilder
-                RenderedBody::FormUrlencoded(_)
+                RenderedBody::Json(_)
+                | RenderedBody::FormUrlencoded(_)
                 | RenderedBody::FormMultipart(_) => {
                     let url = Url::parse("http://localhost").unwrap();
                     let client = self.get_client(&url);
@@ -273,7 +273,7 @@ impl HttpEngine {
                 }
             }
         };
-        seed.run_future(future, template_context).await
+        seed.run_future(future, renderer).await
     }
 
     /// Render a recipe into a cURL command that will execute the request.
@@ -285,7 +285,7 @@ impl HttpEngine {
     pub async fn build_curl(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> Result<String, RequestBuildError> {
         let RequestSeed {
             id,
@@ -297,18 +297,19 @@ impl HttpEngine {
                 .entered();
 
         let future = async {
-            let recipe = template_context
+            let recipe = renderer
+                .context()
                 .collection
                 .recipes
                 .try_get_recipe(recipe_id)?;
 
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
-                recipe.render_url(template_context),
-                recipe.render_query(options, template_context),
-                recipe.render_headers(options, template_context),
-                recipe.render_authentication(options, template_context),
-                recipe.render_body(options, template_context),
+                recipe.render_url(renderer),
+                recipe.render_query(options, renderer),
+                recipe.render_headers(options, renderer),
+                recipe.render_authentication(options, renderer),
+                recipe.render_body(options, renderer),
             )?;
 
             // Buidl the command
@@ -323,7 +324,7 @@ impl HttpEngine {
             }
             Ok(builder.build())
         };
-        seed.run_future(future, template_context).await
+        seed.run_future(future, renderer).await
     }
 
     /// Get the appropriate client to use for this request. If the request URL's
@@ -349,11 +350,11 @@ impl RequestSeed {
     async fn run_future<T>(
         &self,
         future: impl Future<Output = anyhow::Result<T>>,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> Result<T, RequestBuildError> {
         let start_time = Utc::now();
         future.await.traced().map_err(|error| RequestBuildError {
-            profile_id: template_context.selected_profile.clone(),
+            profile_id: renderer.context().selected_profile.clone(),
             recipe_id: self.recipe_id.clone(),
             id: self.id,
             start_time,
@@ -445,13 +446,9 @@ impl ResponseRecord {
 /// Render steps for individual pieces of a recipe
 impl Recipe {
     /// Render base URL, *excluding* query params
-    async fn render_url(
-        &self,
-        template_context: &TemplateContext,
-    ) -> anyhow::Result<Url> {
-        let url = self
-            .url
-            .render_string(template_context)
+    async fn render_url(&self, renderer: &Renderer) -> anyhow::Result<Url> {
+        let url = renderer
+            .render_string(&self.url)
             .await
             .context("Error rendering URL")?;
         url.parse::<Url>()
@@ -462,22 +459,28 @@ impl Recipe {
     async fn render_query(
         &self,
         options: &BuildOptions,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> anyhow::Result<Vec<(String, String)>> {
-        let iter = self.query.iter().enumerate().filter_map(|(i, (k, v))| {
-            // Look up and apply override. We do this by index because the
-            // keys aren't necessarily unique
-            let template = options.query_parameters.get(i, v)?;
+        let iter = self
+            .query_iter()
+            // Enumerate so we can look up overrides by index. This relies on
+            // the thing that builds the overrides to use the same iteration
+            // order; this is enforced by using Recipe::query_iter()
+            .enumerate()
+            .filter_map(|(i, (k, v))| {
+                // Look up and apply override. We do this by index because the
+                // keys aren't necessarily unique
+                let template = options.query_parameters.get(i, v)?;
 
-            Some(async move {
-                Ok::<_, anyhow::Error>((
-                    k.clone(),
-                    template.render_string(template_context).await.context(
-                        format!("Error rendering query parameter `{k}`"),
-                    )?,
-                ))
-            })
-        });
+                Some(async move {
+                    Ok::<_, anyhow::Error>((
+                        k.to_owned(),
+                        renderer.render_string(template).await.context(
+                            format!("Error rendering query parameter `{k}`"),
+                        )?,
+                    ))
+                })
+            });
         future::try_join_all(iter).await
     }
 
@@ -486,24 +489,9 @@ impl Recipe {
     async fn render_headers(
         &self,
         options: &BuildOptions,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
-
-        // Set Content-Type based on the body type. This can be overwritten
-        // below if the user explicitly passed a Content-Type value
-        if let Some(content_type) =
-            self.body.as_ref().and_then(|body| body.explicit_mime())
-        {
-            headers.insert(
-                header::CONTENT_TYPE,
-                content_type
-                    .as_ref()
-                    // A MIME type should always be a valid header value
-                    .try_into()
-                    .expect("Invalid MIME"),
-            );
-        }
 
         // Render headers in an iterator so we can parallelize
         let iter = self.headers.iter().enumerate().filter_map(
@@ -513,7 +501,7 @@ impl Recipe {
                 let template = options.headers.get(i, value_template)?;
 
                 Some(async move {
-                    self.render_header(template_context, header, template).await
+                    self.render_header(renderer, header, template).await
                 })
             },
         );
@@ -532,12 +520,12 @@ impl Recipe {
     /// Render a single key/value header
     async fn render_header(
         &self,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
         header: &str,
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
-        let mut value = value_template
-            .render(template_context)
+        let mut value = renderer
+            .render_bytes(value_template)
             .await
             .context(format!("Error rendering header `{header}`"))?;
 
@@ -565,7 +553,7 @@ impl Recipe {
     async fn render_authentication(
         &self,
         options: &BuildOptions,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> anyhow::Result<Option<Authentication<String>>> {
         let authentication = options
             .authentication
@@ -573,31 +561,32 @@ impl Recipe {
             .or(self.authentication.as_ref());
         match authentication {
             Some(Authentication::Basic { username, password }) => {
-                let (username, password) = try_join!(
-                    async {
-                        username
-                            .render_string(template_context)
+                let (username, password) =
+                    try_join!(
+                        async {
+                            renderer
+                                .render_string(username)
+                                .await
+                                .context("Error rendering username")
+                        },
+                        async {
+                            OptionFuture::from(password.as_ref().map(
+                                |password| renderer.render_string(password),
+                            ))
                             .await
-                            .context("Error rendering username")
-                    },
-                    async {
-                        OptionFuture::from(password.as_ref().map(|password| {
-                            password.render_string(template_context)
-                        }))
-                        .await
-                        .transpose()
-                        .context("Error rendering password")
-                    },
-                )?;
+                            .transpose()
+                            .context("Error rendering password")
+                        },
+                    )?;
                 Ok(Some(Authentication::Basic { username, password }))
             }
 
-            Some(Authentication::Bearer(token)) => {
-                let token = token
-                    .render_string(template_context)
+            Some(Authentication::Bearer { token }) => {
+                let token = renderer
+                    .render_string(token)
                     .await
                     .context("Error rendering bearer token")?;
-                Ok(Some(Authentication::Bearer(token)))
+                Ok(Some(Authentication::Bearer { token }))
             }
             None => Ok(None),
         }
@@ -607,27 +596,38 @@ impl Recipe {
     async fn render_body(
         &self,
         options: &BuildOptions,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> anyhow::Result<Option<RenderedBody>> {
         let Some(body) = options.body.as_ref().or(self.body.as_ref()) else {
             return Ok(None);
         };
 
         let rendered = match body {
-            RecipeBody::Raw { body, .. } => RenderedBody::Raw(
-                body.render(template_context)
+            RecipeBody::Raw { data, .. } => RenderedBody::Raw(
+                renderer
+                    .render_bytes(data)
                     .await
                     .context("Error rendering body")?
                     .into(),
             ),
-            RecipeBody::FormUrlencoded(fields) => {
-                let iter = fields.iter().enumerate().filter_map(
+            RecipeBody::Json { data } => {
+                let value = renderer
+                    .render_value(data)
+                    .await
+                    .context("Error rendering JSON body")?;
+                // Convert from PetitScript to JSON. _Should_ be infallible
+                let json_value = serde_json::to_value(value)
+                    .context("Error serializing JSON body")?;
+                RenderedBody::Json(json_value)
+            }
+            RecipeBody::FormUrlencoded { data } => {
+                let iter = data.iter().enumerate().filter_map(
                     |(i, (field, value_template))| {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
-                            let value = template
-                                .render_string(template_context)
+                            let value = renderer
+                                .render_string(template)
                                 .await
                                 .context(format!(
                                     "Error rendering form field `{field}`"
@@ -639,18 +639,18 @@ impl Recipe {
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormUrlencoded(rendered)
             }
-            RecipeBody::FormMultipart(fields) => {
-                let iter = fields.iter().enumerate().filter_map(
+            RecipeBody::FormMultipart { data } => {
+                let iter = data.iter().enumerate().filter_map(
                     |(i, (field, value_template))| {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
-                            let value = template
-                                .render(template_context)
+                            let value = renderer
+                                .render_bytes(template)
                                 .await
                                 .context(format!(
-                                    "Error rendering form field `{field}`"
-                                ))?;
+                                "Error rendering form field `{field}`"
+                            ))?;
                             Ok::<_, anyhow::Error>((field.clone(), value))
                         })
                     },
@@ -669,26 +669,7 @@ impl Authentication<String> {
             Authentication::Basic { username, password } => {
                 builder.basic_auth(username, password)
             }
-            Authentication::Bearer(token) => builder.bearer_auth(token),
-        }
-    }
-}
-
-impl RecipeBody {
-    /// Get the value that we should set for the `Content-Type` header,
-    /// according to the body. This will only return `Some` for JSON, as the
-    /// form content types will have this header set automatically by reqwest
-    /// via the builder methods we use.
-    fn explicit_mime(&self) -> Option<Mime> {
-        match self {
-            RecipeBody::Raw { content_type, .. } => {
-                content_type.as_ref().map(ContentType::to_mime)
-            }
-            // Do *not* set anything for these, because reqwest will do that
-            // automatically and we don't want to interfere
-            RecipeBody::FormUrlencoded(_) | RecipeBody::FormMultipart(_) => {
-                None
-            }
+            Authentication::Bearer { token } => builder.bearer_auth(token),
         }
     }
 }
@@ -698,6 +679,7 @@ impl RecipeBody {
 /// [RecipeBody]
 enum RenderedBody {
     Raw(Bytes),
+    Json(serde_json::Value),
     /// Field:value mapping. Value is `String` because only string data can be
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
@@ -710,6 +692,7 @@ impl RenderedBody {
         // Set body. The variant tells us _how_ to set it
         match self {
             RenderedBody::Raw(bytes) => builder.body(bytes),
+            RenderedBody::Json(value) => builder.json(&value),
             RenderedBody::FormUrlencoded(fields) => builder.form(&fields),
             RenderedBody::FormMultipart(fields) => {
                 let mut form = Form::new();

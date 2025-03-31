@@ -19,7 +19,7 @@ use slumber_core::{
         Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
         RequestRecord, RequestSeed,
     },
-    template::{HttpProvider, TemplateContext, TriggeredRequestError},
+    template::{HttpProvider, Renderer, TriggeredRequestError},
 };
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -441,7 +441,7 @@ impl HttpProvider for TuiHttpProvider {
     async fn send_request(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> Result<Exchange, TriggeredRequestError> {
         if self.preview {
             // Previews shouldn't have side effects
@@ -452,7 +452,7 @@ impl HttpProvider for TuiHttpProvider {
             // necessary, but it's easy and keeps the UI in sync with the
             // underlying state
             let request_id = seed.id;
-            let profile_id = template_context.selected_profile.clone();
+            let profile_id = renderer.context().selected_profile.clone();
             let recipe_id = seed.recipe_id.clone();
 
             self.messages_tx.send(Message::HttpBuildingTriggered {
@@ -463,7 +463,7 @@ impl HttpProvider for TuiHttpProvider {
 
             let ticket = TuiContext::get()
                 .http_engine
-                .build(seed, template_context)
+                .build(seed, renderer)
                 .await
                 .map_err(Arc::new)
                 .inspect_err(|error| {

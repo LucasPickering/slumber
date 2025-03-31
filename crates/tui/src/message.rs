@@ -7,12 +7,12 @@ use derive_more::From;
 use mime::Mime;
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::{LoadedCollection, ProfileId, RecipeId},
     http::{
         BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
         RequestRecord,
     },
-    template::{Prompt, ResponseChannel, Select, Template, TemplateChunk},
+    template::{Prompt, ResponseChannel, Select, Template},
 };
 use slumber_util::ResultTraced;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
@@ -49,7 +49,7 @@ pub enum Message {
     /// Trigger collection reload
     CollectionStartReload,
     /// Store a reloaded collection value in state
-    CollectionEndReload(Collection),
+    CollectionEndReload(LoadedCollection),
     /// Open the collection in the user's editor
     CollectionEdit,
 
@@ -148,14 +148,15 @@ pub enum Message {
     /// Render a template string, to be previewed in the UI. Ideally this could
     /// be launched directly by the component that needs it, but only the
     /// controller has the data needed to build the template context. The given
-    /// callback will be called with the outcome (including inline errors).
+    /// callback will be called with the result. The error will be replaced
+    /// by `()` so it doesn't have to be cloned.
     ///
     /// By holding a callback here, we avoid having to plumb the result all the
     /// way back down the component tree.
     TemplatePreview {
         template: Template,
         #[debug(skip)]
-        on_complete: Callback<Vec<TemplateChunk>>,
+        on_complete: Callback<Result<String, ()>>,
     },
 
     /// Trigger a redraw. This should be called whenever we have reason to

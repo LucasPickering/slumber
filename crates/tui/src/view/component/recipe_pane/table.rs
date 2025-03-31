@@ -1,24 +1,20 @@
-use crate::{
-    util::ResultReported,
-    view::{
-        ViewContext,
-        common::{
-            actions::{IntoMenuAction, MenuAction},
-            modal::Modal,
-            table::{Table, ToggleRow},
-            text_box::TextBox,
-        },
-        component::{
-            Component,
-            misc::TextBoxModal,
-            recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
-        },
-        context::UpdateContext,
-        draw::{Draw, DrawMetadata, Generate},
-        event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
-        state::select::{SelectState, SelectStateEvent, SelectStateEventType},
-        util::persistence::{Persisted, PersistedKey, PersistedLazy},
+use crate::view::{
+    common::{
+        actions::{IntoMenuAction, MenuAction},
+        modal::Modal,
+        table::{Table, ToggleRow},
+        text_box::TextBox,
     },
+    component::{
+        Component,
+        misc::TextBoxModal,
+        recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
+    },
+    context::UpdateContext,
+    draw::{Draw, DrawMetadata, Generate},
+    event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
+    state::select::{SelectState, SelectStateEvent, SelectStateEventType},
+    util::persistence::{Persisted, PersistedKey, PersistedLazy},
 };
 use itertools::Itertools;
 use ratatui::{
@@ -154,7 +150,8 @@ where
                     // got the right one.
                     self.select.data_mut().get_mut().items_mut()[row_index]
                         .value
-                        .set_override(&value);
+                        .value
+                        .set_override(value);
                 },
             )
             .emitted(self.actions_emitter, |menu_action| match menu_action {
@@ -321,10 +318,8 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
         let index = self.index;
         TextBoxModal::new(
             format!("Edit value for {}", self.key),
-            TextBox::default()
-                // Edit as a raw template
-                .default_value(self.value.template().display().into_owned())
-                .validator(|value| value.parse::<Template>().is_ok()),
+            // Edit as a raw value
+            TextBox::default().default_value(self.value.value()),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
                 emitter.emit(SaveRecipeTableOverride {
@@ -336,24 +331,12 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
         .open();
     }
 
-    /// Override the value template and re-render the preview
-    fn set_override(&mut self, override_value: &str) {
-        // The validator on the override text box enforces that it's a valid
-        // template, so we expect this parse to succeed
-        if let Some(template) = override_value
-            .parse::<Template>()
-            .reported(&ViewContext::messages_tx())
-        {
-            self.value.set_override(template);
-        }
-    }
-
     /// Get the disabled/override state of this row
     fn to_build_override(&self) -> Option<BuildFieldOverride> {
         if !*self.enabled {
             Some(BuildFieldOverride::Omit)
         } else if self.value.is_overridden() {
-            Some(BuildFieldOverride::Override(self.value.template().clone()))
+            Some(BuildFieldOverride::Override(self.value.value()))
         } else {
             None
         }

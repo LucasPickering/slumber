@@ -1,108 +1,51 @@
 //! Generate strings (and bytes) from user-written templates with dynamic data
 
-mod cereal;
 mod error;
-mod parse;
 mod prompt;
-mod render;
 #[cfg(test)]
 mod tests;
 
-pub use error::{ChainError, TemplateError, TriggeredRequestError};
+pub use error::{TemplateError, TriggeredRequestError};
 pub use prompt::{Prompt, Prompter, ResponseChannel, Select};
 
 use crate::{
-    collection::{ChainId, Collection, ProfileId, RecipeId},
+    collection::{Collection, ProfileId, RecipeId},
     http::{Exchange, RequestSeed},
-    template::{
-        parse::{CHAIN_PREFIX, ENV_PREFIX, TemplateInputChunk},
-        render::RenderGroupState,
-    },
 };
 use async_trait::async_trait;
-use bytes::Bytes;
-use derive_more::{Deref, Display};
+use derive_more::Display;
+
+use crate::{
+    collection::Profile, template::error::OverrideKeyParseError,
+    util::FutureCache,
+};
 use indexmap::IndexMap;
-#[cfg(test)]
-use proptest::{arbitrary::any, strategy::Strategy};
+use petitscript::{Process, Value, function::Function};
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, sync::Arc};
+use std::{borrow::Cow, fmt::Debug, str::FromStr, sync::Arc};
+use tokio::task;
 
-/// A parsed template, which can contain raw and/or templated content. The
-/// string is parsed during creation to identify template keys, hence the
-/// immutability.
-///
-/// The original string is *not* stored. To recover the source string, use the
-/// [Display] implementation.
-///
-/// Invariants:
-/// - Two templates with the same source string will have the same set of
-///   chunks, and vice versa
-/// - No two raw segments will ever be consecutive
-#[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct Template {
-    /// Pre-parsed chunks of the template. For raw chunks we store the
-    /// presentation text (which is not necessarily the source text, as escape
-    /// sequences will be eliminated). For keys, just store the needed
-    /// metadata.
-    #[cfg_attr(
-        test,
-        proptest(
-            strategy = "any::<Vec<TemplateInputChunk>>().prop_map(join_raw)"
-        )
-    )]
-    chunks: Vec<TemplateInputChunk>,
-}
-
-/// A little container struct for all the data that the user can access via
-/// templating. Unfortunately this has to own all data so templating can be
-/// deferred into a task (tokio requires `'static` for spawned tasks). If this
-/// becomes a bottleneck, we can `Arc` some stuff.
-#[derive(Debug)]
-pub struct TemplateContext {
-    /// Entire request collection
-    pub collection: Arc<Collection>,
-    /// ID of the profile whose data should be used for rendering. Generally
-    /// the caller should check the ID is valid before passing it, to
-    /// provide a better error to the user if not.
-    pub selected_profile: Option<ProfileId>,
-    /// An interface to allow accessing and sending HTTP chained requests
-    pub http_provider: Box<dyn HttpProvider>,
-    /// Additional key=value overrides passed directly from the user
-    pub overrides: IndexMap<String, String>,
-    /// A conduit to ask the user questions
-    pub prompter: Box<dyn Prompter>,
-    /// State that should be shared across al renders that use this context.
-    /// This is meant to be opaque; just use [Default::default] to initialize.
-    pub state: RenderGroupState,
-}
+/// TODO
+#[derive(Clone, Debug, Default, Display, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Template(Value);
 
 impl Template {
-    /// Create a new template from a raw string, without parsing it at all.
-    /// Useful when importing from external formats where the string isn't
-    /// expected to be a valid Slumber template
-    pub fn raw(template: String) -> Template {
-        let chunks = if template.is_empty() {
-            vec![]
-        } else {
-            // This may seem too easy, but the hard part comes during
-            // stringification, when we need to add backslashes to get the
-            // string to parse correctly later
-            vec![TemplateInputChunk::Raw(template.into())]
-        };
-        Self { chunks }
+    pub fn new(value: impl Into<Value>) -> Self {
+        Self(value.into())
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.chunks.is_empty()
+    /// TODO
+    pub fn is_dynamic(&self) -> bool {
+        matches!(&self.0, Value::Function(_))
     }
 }
 
+// TODO delete?
 #[cfg(any(test, feature = "test"))]
 impl From<&str> for Template {
-    fn from(value: &str) -> Self {
-        value.parse().unwrap()
+    fn from(_: &str) -> Self {
+        todo!()
     }
 }
 
@@ -120,85 +63,189 @@ impl From<serde_json::Value> for Template {
     }
 }
 
-/// An identifier that can be used in a template key. A valid identifier is
-/// any non-empty string that contains only alphanumeric characters, `-`, or
-/// `_`.
-///
-/// Construct via [FromStr](std::str::FromStr)
-#[derive(
-    Clone,
-    Debug,
-    Deref,
-    Default,
-    Display,
-    Eq,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-#[serde(transparent)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct Identifier(
-    #[cfg_attr(test, proptest(regex = "[a-zA-Z0-9-_]+"))] String,
-);
+/// A container for rendering a group of values. Create one renderer for each
+/// recipe, so that state can be shared between related renders.
+pub struct Renderer {
+    process: Process,
+}
 
-/// A shortcut for creating identifiers from static strings. Since the string
-/// is defined in code we're assuming it's valid.
-impl From<&'static str> for Identifier {
-    fn from(value: &'static str) -> Self {
-        Self(value.parse().unwrap())
+impl Renderer {
+    /// TODO
+    pub fn new(process: Process, context: TemplateContext) -> Self {
+        // Create a new process for this renderer, so we can attach our template
+        // context. All renders for a single recipe will share the context
+        let mut process = process.clone();
+        process.set_app_data(context).expect("TODO");
+        // State that may be shared between renders of this group
+        process.set_app_data(RenderState::default()).expect("TODO");
+        Self { process }
+    }
+
+    /// Create a new renderer from an existing process that already has a
+    /// template context attached. This should only be use for recursive renders
+    /// from inside native functions, where the process has already been
+    /// initialized for template rendering but you don't have access to the
+    /// wrapping `Renderer`.
+    pub fn forked(process: &Process) -> Self {
+        Self {
+            process: process.clone(),
+        }
+    }
+
+    /// Get the [TemplateContext] attached to this renderer
+    pub fn context(&self) -> &TemplateContext {
+        // Context is only stored as app data in the process, so we don't have
+        // to wrap it with an extra Arc. The repeated downcasting could
+        // potentially be slower than the Arc, but it's simpler
+        self.process.app_data().expect("TODO")
+    }
+
+    /// TODO
+    pub async fn render_value(
+        &self,
+        template: &Template,
+    ) -> anyhow::Result<Value> {
+        match &template.0 {
+            // Function represents a rendering procedure - call it now
+            Value::Function(function) => {
+                self.render_function(function.clone()).await
+            }
+            // A plain value can be returned directly
+            other => Ok(other.clone()),
+        }
+    }
+
+    /// TODO
+    /// TODO can we return Bytes from this instead?
+    pub async fn render_bytes(
+        &self,
+        template: &Template,
+    ) -> anyhow::Result<Vec<u8>> {
+        let value = self.render_value(template).await?;
+        let bytes = match value {
+            Value::String(string) => String::from(string).into_bytes(),
+            Value::Buffer(buffer) => buffer.into(),
+            // Anything else should be stringified
+            other => other.to_string().into_bytes(),
+        };
+        Ok(bytes)
+    }
+
+    /// TODO
+    pub async fn render_string(
+        &self,
+        template: &Template,
+    ) -> anyhow::Result<String> {
+        let value = self.render_value(template).await?;
+        let s = match value {
+            Value::String(string) => string.into(),
+            Value::Buffer(buffer) => String::from_utf8(buffer.into())?,
+            // Anything else should be stringified
+            other => other.to_string(),
+        };
+        Ok(s)
+    }
+
+    /// Call a render function and return its value. Async native functions are
+    /// implemented with an async-to-sync bridge that blocks, so rendering
+    /// is pushed to a blocking task in tokio's blocking thread pool. We end up
+    /// with an async-sync-async bridge which sucks, but it allows PetitScript
+    /// to be entirely sync.
+    async fn render_function(
+        &self,
+        function: Function,
+    ) -> anyhow::Result<Value> {
+        // TODO error context here?
+        let process = self.process.clone();
+        let return_value =
+            task::spawn_blocking(move || process.call(&function, &[]))
+                .await??;
+        Ok(return_value)
     }
 }
 
-/// A piece of a rendered template string. A collection of chunks collectively
-/// constitutes a rendered string, and those chunks should be contiguous.
+/// A little container struct for all the data that the user can access via
+/// templating. Unfortunately this has to own all data so templating can be
+/// deferred into a task (tokio requires `'static` for spawned tasks). If this
+/// becomes a bottleneck, we can `Arc` some stuff.
 #[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum TemplateChunk {
-    /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
-    /// stored in an `Arc` so we can reference the text in the parsed input
-    /// without having to clone it.
-    Raw(Arc<String>),
-    /// Outcome of rendering a template key
-    Rendered { value: Bytes, sensitive: bool },
-    /// An error occurred while rendering a template key
-    Error(TemplateError),
+pub struct TemplateContext {
+    /// Entire request collection
+    pub collection: Arc<Collection>,
+    /// ID of the profile whose data should be used for rendering. Generally
+    /// the caller should check the ID is valid before passing it, to
+    /// provide a better error to the user if not.
+    pub selected_profile: Option<ProfileId>,
+    /// An interface to allow accessing and sending HTTP chained requests
+    pub http_provider: Box<dyn HttpProvider>,
+    /// Additional key=value overrides passed directly from the user
+    pub overrides: IndexMap<OverrideKey<'static>, String>,
+    /// A conduit to ask the user questions
+    pub prompter: Box<dyn Prompter>,
 }
 
-#[cfg(test)]
-impl TemplateChunk {
-    /// Shorthand for creating a new raw chunk
-    fn raw(value: &str) -> Self {
-        Self::Raw(value.to_owned().into())
+impl TemplateContext {
+    /// TODO
+    pub fn profile(&self) -> Option<&Profile> {
+        self.selected_profile
+            .as_ref()
+            .and_then(|profile_id| self.collection.profiles.get(profile_id))
     }
 }
 
-/// A parsed template key. The variant of this determines how the key will be
-/// resolved into a value.
+/// A key specifying a single value in a request to be overridden. Users can
+/// override a specific part of a recipe OR a profile field. Profile fields
+/// provide more granular and customizable override behavior.
 ///
-/// This also serves as an enumeration of all possible value types. Once a key
-/// is parsed, we know its value type and can dynamically dispatch for rendering
-/// based on that.
+/// Override keys are used internally by the TUI, and can be passed by the user
+/// in the CLI with the `--override` flag.
 ///
-/// The generic parameter defines *how* the key data is stored. Ideally we could
-/// just store a `&str`, but that isn't possible when this is part of a
-/// `Template`, because it would create a self-referential pointer. In that
-/// case, we can store a `Span` which points back to its source in the template.
-///
-/// The `Display` impl here should return exactly what this was parsed from.
-/// This is important for matching override keys during rendering.
-#[derive(Clone, Debug, Display, PartialEq)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum TemplateKey {
-    /// A plain field, which can come from the profile or an override
-    Field(Identifier),
-    /// A value from a predefined chain of another recipe
-    #[display("{CHAIN_PREFIX}{_0}")]
-    Chain(ChainId),
-    /// A value pulled from the process environment
-    #[display("{ENV_PREFIX}{_0}")]
-    Environment(Identifier),
+/// TODO explain or remove Cow
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum OverrideKey<'a> {
+    /// Override the value of a profile field
+    Profile(Cow<'a, str>),
+    /// Override the request URL
+    Url,
+    /// Override a single query parameter value
+    Query(Cow<'a, str>),
+    /// Override a single header value
+    Header(Cow<'a, str>),
+    /// Override the request's entire body
+    Body,
+    // TODO form fields
+    // TODO authentication
+}
+
+impl FromStr for OverrideKey<'static> {
+    type Err = OverrideKeyParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match (s, s.split_once('.')) {
+            ("url", _) => Ok(Self::Url),
+            ("body", _) => Ok(Self::Body),
+            (_, Some(("profile", field))) => {
+                Ok(Self::Profile(field.to_owned().into()))
+            }
+            (_, Some(("query", param))) => {
+                Ok(Self::Query(param.to_owned().into()))
+            }
+            (_, Some(("headers", name))) => {
+                Ok(Self::Header(name.to_owned().into()))
+            }
+            _ => Err(OverrideKeyParseError),
+        }
+    }
+}
+
+/// TODO
+#[derive(Debug, Default)]
+pub struct RenderState {
+    /// Multiple renders of the same profile field within the same recipe are
+    /// cached, to prevent duplicate work (e.g. running the same prompt twice).
+    /// The error must be in an `Arc` so we can share failures as well.
+    pub(crate) profile_cache:
+        FutureCache<String, Result<Value, Arc<anyhow::Error>>>,
 }
 
 #[cfg(any(test, feature = "test"))]
@@ -217,7 +264,6 @@ impl slumber_util::Factory for TemplateContext {
             )),
             overrides: IndexMap::new(),
             prompter: Box::<TestPrompter>::default(),
-            state: RenderGroupState::default(),
         }
     }
 }
@@ -241,7 +287,7 @@ pub trait HttpProvider: Debug + Send + Sync {
     async fn send_request(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> Result<Exchange, TriggeredRequestError>;
 }
 

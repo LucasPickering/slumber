@@ -21,14 +21,16 @@ futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
+petitscript = {workspace = true}
 regex = {version = "1.10.5", default-features = false}
-reqwest = {workspace = true, features = ["multipart", "rustls-tls", "rustls-tls-native-roots"]}
+reqwest = {workspace = true, features = ["json", "multipart", "rustls-tls", "rustls-tls-native-roots"]}
+rmp-serde = "1.1.2"
 rstest = {workspace = true, optional = true}
 rusqlite = {version = "0.31.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
 rusqlite_migration = "1.2.0"
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
-serde_json_path = "0.7.1"
+serde_path_to_error = "0.1.16"
 serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
 slumber_util = {workspace = true}

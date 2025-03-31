@@ -12,7 +12,7 @@ use crate::{
             help::HelpFooter,
             history::History,
             misc::{ConfirmModal, NotificationText},
-            primary::PrimaryView,
+            primary::{PrimaryView, PrimaryViewProps},
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -44,14 +44,12 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new(collection: &Collection, request_store: &RequestStore) -> Self {
+    pub fn new(collection: &Collection) -> Self {
         // Load the selected request *second*, so it will take precedence over
         // the event that attempts to load the latest request for the recipe
         let selected_request_id: PersistedLazy<_, SelectedRequestId> =
             PersistedLazy::new_default(SelectedRequestKey);
-        let selected_request =
-            selected_request_id.0.and_then(|id| request_store.get(id));
-        let primary_view = PrimaryView::new(collection, selected_request);
+        let primary_view = PrimaryView::new(collection);
         Self {
             // State
             selected_request_id,
@@ -128,20 +126,7 @@ impl Root {
 
         *self.selected_request_id.get_mut() =
             state.map(RequestState::id).into();
-        // Update view with the new request
-        self.primary_view.data_mut().set_request_state(state);
         Ok(())
-    }
-
-    /// Notify the component that a request's state has changed in the store. If
-    /// the request is selected, view state will be updated accordingly
-    pub fn update_request(&mut self, request_state: &RequestState) {
-        let selected_request_id = self.selected_request_id();
-        if selected_request_id == Some(request_state.id()) {
-            self.primary_view
-                .data_mut()
-                .set_request_state(Some(request_state));
-        }
     }
 
     /// Open the history modal for current recipe+profile. Return an error if
@@ -240,17 +225,26 @@ impl EventHandler for Root {
     }
 }
 
-impl Draw for Root {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+impl<'a> Draw<RootProps<'a>> for Root {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: RootProps<'a>,
+        metadata: DrawMetadata,
+    ) {
         // Create layout
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
 
         // Main content
+        let selected_request = self
+            .selected_request_id
+            .0
+            .and_then(|id| props.request_store.get(id));
         self.primary_view.draw(
             frame,
-            (),
+            PrimaryViewProps { selected_request },
             main_area,
             !self.modal_queue.data().is_open(),
         );
@@ -269,6 +263,11 @@ impl Draw for Root {
         // Render modals last so they go on top
         self.modal_queue.draw(frame, (), frame.area(), true);
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct RootProps<'a> {
+    pub request_store: &'a RequestStore,
 }
 
 /// Persistence key for the selected request

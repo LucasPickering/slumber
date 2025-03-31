@@ -22,7 +22,7 @@ use crate::{
     util::ResultReported,
     view::{
         common::modal::Modal,
-        component::{Component, Root},
+        component::{Component, Root, RootProps},
         debug::DebugMonitor,
         event::Event,
     },
@@ -60,7 +60,6 @@ pub struct View {
 impl View {
     pub fn new(
         collection_file: &CollectionFile,
-        request_store: &RequestStore,
         database: CollectionDatabase,
         messages_tx: MessageSender,
     ) -> Self {
@@ -77,17 +76,25 @@ impl View {
         };
 
         Self {
-            root: Root::new(&collection_file.collection, request_store).into(),
+            root: Root::new(&collection_file.collection).into(),
             debug_monitor,
         }
     }
 
     /// Draw the view to screen. This needs access to the input engine in order
     /// to render input bindings as help messages to the user.
-    pub fn draw<'a>(&'a self, frame: &'a mut Frame) {
-        fn draw_impl(root: &Component<Root>, frame: &mut Frame) {
+    pub fn draw<'a>(
+        &'a self,
+        frame: &'a mut Frame,
+        request_store: &RequestStore,
+    ) {
+        fn draw_impl(
+            root: &Component<Root>,
+            frame: &mut Frame,
+            request_store: &RequestStore,
+        ) {
             let chunk = frame.area();
-            root.draw(frame, (), chunk, true);
+            root.draw(frame, RootProps { request_store }, chunk, true);
         }
 
         // If the screen is too small to render anything, don't try. This avoids
@@ -99,9 +106,11 @@ impl View {
 
         // If debug monitor is enabled, use it to capture the view duration
         if let Some(debug_monitor) = &self.debug_monitor {
-            debug_monitor.draw(frame, |frame| draw_impl(&self.root, frame));
+            debug_monitor.draw(frame, |frame| {
+                draw_impl(&self.root, frame, request_store)
+            });
         } else {
-            draw_impl(&self.root, frame);
+            draw_impl(&self.root, frame, request_store);
         }
     }
 
@@ -126,12 +135,6 @@ impl View {
             .data_mut()
             .select_request(request_store, Some(request_id))
             .reported(&ViewContext::messages_tx());
-    }
-
-    /// Notify the view that a request's state has changed in the store. If the
-    /// request is selected, view state will be updated accordingly
-    pub fn update_request(&mut self, request_state: &RequestState) {
-        self.root.data_mut().update_request(request_state);
     }
 
     /// Queue an event to open a new modal. The input can be anything that
@@ -215,7 +218,6 @@ mod tests {
         let collection_file = CollectionFile::factory(collection);
         let mut view = View::new(
             &collection_file,
-            &harness.request_store.borrow(),
             harness.database.clone(),
             harness.messages_tx().clone(),
         );
@@ -234,7 +236,8 @@ mod tests {
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // Nothing new
-        terminal.draw(|frame| view.draw(frame));
+        terminal
+            .draw(|frame| view.draw(frame, &harness.request_store.borrow()));
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // *Now* the queue is drained

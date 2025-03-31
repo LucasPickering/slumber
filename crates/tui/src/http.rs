@@ -26,6 +26,7 @@ use std::{
     fmt::Debug,
     sync::Arc,
 };
+use strum::EnumDiscriminants;
 use tokio::{sync::oneshot, task::AbortHandle};
 use tracing::warn;
 
@@ -489,7 +490,8 @@ impl HttpProvider for TuiHttpProvider {
 /// State of an HTTP response, which can be in various states of
 /// completion/failure. Each request *recipe* should have one request state
 /// stored in the view at a time.
-#[derive(Debug)]
+#[derive(Debug, EnumDiscriminants)]
+#[strum_discriminants(name(RequestStateType))]
 pub enum RequestState {
     /// The request is being built. Typically this is very fast, but can be
     /// slow if a chain source takes a while.

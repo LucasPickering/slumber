@@ -114,12 +114,8 @@ impl Tui {
             .reported(&messages_tx)
             .unwrap_or_else(|| CollectionFile::with_path(collection_path));
         let request_store = RequestStore::new(database.clone());
-        let view = View::new(
-            &collection_file,
-            &request_store,
-            database.clone(),
-            messages_tx.clone(),
-        );
+        let view =
+            View::new(&collection_file, database.clone(), messages_tx.clone());
 
         // The code to revert the terminal takeover is in `Tui::drop`, so we
         // shouldn't take over the terminal until right before creating the
@@ -285,17 +281,14 @@ impl Tui {
             } => self.request_store.start(id, profile_id, recipe_id, None),
 
             Message::HttpBuildError { error } => {
-                let state = self.request_store.build_error(error);
-                self.view.update_request(state);
+                self.request_store.build_error(error);
             }
             Message::HttpLoading { request } => {
-                let state = self.request_store.loading(request);
-                self.view.update_request(state);
+                self.request_store.loading(request);
             }
             Message::HttpComplete(result) => self.complete_request(result),
             Message::HttpCancel(request_id) => {
-                let state = self.request_store.cancel(request_id);
-                self.view.update_request(state);
+                self.request_store.cancel(request_id);
             }
             Message::HttpGetLatest {
                 profile_id,
@@ -420,7 +413,6 @@ impl Tui {
         // Rebuild the whole view, because tons of things can change
         self.view = View::new(
             &self.collection_file,
-            &self.request_store,
             self.database.clone(),
             self.messages_tx(),
         );
@@ -440,7 +432,8 @@ impl Tui {
 
     /// Draw the view onto the screen
     fn draw(&mut self) -> anyhow::Result<()> {
-        self.terminal.draw(|frame| self.view.draw(frame))?;
+        self.terminal
+            .draw(|frame| self.view.draw(frame, &self.request_store))?;
         Ok(())
     }
 
@@ -659,7 +652,7 @@ impl Tui {
         &mut self,
         result: Result<Exchange, Arc<RequestError>>,
     ) {
-        let state = match result {
+        match result {
             Ok(exchange) => {
                 // Persist in the DB if not disabled by global config or recipe
                 let persist = TuiContext::get().config.persist
@@ -673,11 +666,12 @@ impl Tui {
                     let _ = self.database.insert_exchange(&exchange).traced();
                 }
 
-                self.request_store.response(exchange)
+                self.request_store.response(exchange);
             }
-            Err(error) => self.request_store.request_error(error),
-        };
-        self.view.update_request(state);
+            Err(error) => {
+                self.request_store.request_error(error);
+            }
+        }
     }
 
     /// Spawn a task to render a template, storing the result in a pre-defined

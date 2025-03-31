@@ -49,15 +49,16 @@ impl RecipeBodyDisplay {
     /// body is not `None`.
     pub fn new(body: &RecipeBody, recipe: &Recipe) -> Self {
         match body {
-            RecipeBody::Raw { body, .. } => {
-                Self::Raw(RawBody::new(body.clone(), recipe).into())
+            RecipeBody::Raw { data, .. } => {
+                Self::Raw(RawBody::new(data.clone(), recipe).into())
             }
-            RecipeBody::FormUrlencoded(fields)
-            | RecipeBody::FormMultipart(fields) => {
+            RecipeBody::Json { data } => todo!(),
+            RecipeBody::FormUrlencoded { data }
+            | RecipeBody::FormMultipart { data } => {
                 let inner = RecipeFieldTable::new(
                     "Field",
                     FormRowKey(recipe.id.clone()),
-                    fields.iter().enumerate().map(|(i, (field, value))| {
+                    data.iter().enumerate().map(|(i, (field, value))| {
                         (
                             field.clone(),
                             value.clone(),
@@ -83,11 +84,11 @@ impl RecipeBodyDisplay {
             {
                 let inner = inner.data();
                 Some(RecipeBody::Raw {
-                    body: inner.body.template().clone(),
-                    content_type: inner.body.content_type(),
+                    data: inner.body.template().clone(),
                 })
             }
-            _ => None,
+            // Form bodies are overwritten per-field
+            RecipeBodyDisplay::Raw(_) | RecipeBodyDisplay::Form(_) => None,
         }
     }
 }
@@ -159,12 +160,11 @@ impl RawBody {
     fn open_editor(&mut self) {
         let path = temp_file();
         debug!(?path, "Writing body to file for editing");
-        let Some(_) =
-            fs::write(&path, self.body.template().display().as_bytes())
-                .with_context(|| {
-                    format!("Error writing body to file {path:?} for editing")
-                })
-                .reported(&ViewContext::messages_tx())
+        let Some(_) = fs::write(&path, self.body.template().to_string())
+            .with_context(|| {
+                format!("Error writing body to file {path:?} for editing")
+            })
+            .reported(&ViewContext::messages_tx())
         else {
             // Write failed
             return;
@@ -199,10 +199,10 @@ impl RawBody {
         // Clean up after ourselves
         delete_temp_file(path);
 
-        let Some(template) = body
-            .parse::<Template>()
-            .reported(&ViewContext::messages_tx())
-        else {
+        // let Some(template) = body
+        //     .parse::<Template>()
+        //     .reported(&ViewContext::messages_tx())
+        let Some(template) = todo!() else {
             // Whatever the user wrote isn't a valid template
             return;
         };

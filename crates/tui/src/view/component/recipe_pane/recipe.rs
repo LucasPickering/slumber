@@ -42,18 +42,18 @@ impl RecipeDisplay {
         Self {
             tabs: Default::default(),
             method: recipe.method,
-            url: TemplatePreview::new(recipe.url.clone(), None, false),
+            url: TemplatePreview::new(recipe.url.clone(), None),
             query: RecipeFieldTable::new(
                 "Parameter",
                 QueryRowKey(recipe.id.clone()),
-                recipe.query.iter().enumerate().map(|(i, (param, value))| {
+                recipe.query_iter().enumerate().map(|(i, (param, value))| {
                     (
-                        param.clone(),
+                        param.to_owned(),
                         value.clone(),
                         RecipeOverrideKey::query_param(recipe.id.clone(), i),
                         QueryRowToggleKey {
                             recipe_id: recipe.id.clone(),
-                            param: param.clone(),
+                            param: param.to_owned(),
                         },
                     )
                 }),

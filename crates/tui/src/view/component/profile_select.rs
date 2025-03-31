@@ -333,10 +333,7 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
             profile_data
                 .iter()
                 .map(|(key, template)| {
-                    (
-                        key.clone(),
-                        TemplatePreview::new(template.clone(), None, false),
-                    )
+                    (key.clone(), TemplatePreview::new(template.clone(), None))
                 })
                 .collect_vec()
         });

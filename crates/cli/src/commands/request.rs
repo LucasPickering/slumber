@@ -11,15 +11,16 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::{LoadedCollection, ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
     http::{
         BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
         ResponseRecord,
     },
+    ps::PetitEngine,
     template::{
-        HttpProvider, Prompt, Prompter, Select, TemplateContext,
-        TriggeredRequestError,
+        HttpProvider, OverrideKey, Prompt, Prompter, Renderer, Select,
+        TemplateContext, TriggeredRequestError,
     },
     util::MaybeStr,
 };
@@ -92,11 +93,11 @@ pub struct BuildRequestCommand {
     #[clap(
         long = "override",
         short = 'o',
-        value_parser = parse_key_val::<String, String>,
+        value_parser = parse_key_val::<OverrideKey<'static>, String>,
         // There's no reasonable way of doing completions on this, so disable
         value_hint = ValueHint::Other,
     )]
-    overrides: Vec<(String, String)>,
+    overrides: Vec<(OverrideKey<'static>, String)>,
 }
 
 /// Helper for any subcommand that prints exchange (request/response)
@@ -183,16 +184,19 @@ impl BuildRequestCommand {
         self,
         global: GlobalArgs,
         trigger_dependencies: bool,
-    ) -> anyhow::Result<(
-        CollectionDatabase,
-        HttpEngine,
-        RequestSeed,
-        TemplateContext,
-    )> {
-        let collection_path = global.collection_path()?;
+    ) -> anyhow::Result<(CollectionDatabase, HttpEngine, RequestSeed, Renderer)>
+    {
+        let collection_file = global.collection_path()?;
         let config = Config::load()?;
-        let collection = Collection::load(&collection_path)?;
-        let database = Database::load()?.into_collection(&collection_path)?;
+        let engine = PetitEngine::new();
+        let LoadedCollection {
+            collection,
+            process,
+        } = collection_file.load(&engine)?;
+        // Open DB in readonly. Storing requests in history from the CLI isn't
+        // really intuitive, and could have a large perf impact for scripting
+        // and large responses
+        let database = Database::load()?.into_collection(&collection_file)?;
         let http_engine = HttpEngine::new(&config.http);
 
         // Validate profile ID, so we can provide a good error if it's invalid
@@ -223,15 +227,15 @@ impl BuildRequestCommand {
             }),
             overrides,
             prompter: Box::new(CliPrompter),
-            state: Default::default(),
         };
+        let renderer = Renderer::new(process, template_context);
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
-        Ok((database, http_engine, seed, template_context))
+        Ok((database, http_engine, seed, renderer))
     }
 }
 
 impl DisplayExchangeCommand {
-    /// Print request details to stderr
+    /// Print request details to stderrz
     pub fn write_request(&self, request: &RequestRecord) {
         // The request is entirely hidden unless verbose mode is enabled
         if self.verbose {
@@ -327,10 +331,10 @@ impl HttpProvider for CliHttpProvider {
     async fn send_request(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        renderer: &Renderer,
     ) -> Result<Exchange, TriggeredRequestError> {
         if self.trigger_dependencies {
-            let ticket = self.http_engine.build(seed, template_context).await?;
+            let ticket = self.http_engine.build(seed, renderer).await?;
             let exchange = ticket.send().await?;
             Ok(exchange)
         } else {

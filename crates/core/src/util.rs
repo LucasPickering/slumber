@@ -128,6 +128,7 @@ impl<K: Hash + Eq, V: Clone> Default for FutureCache<K, V> {
 }
 
 /// Outcome of check a future cache for a particular key
+#[derive(Debug)]
 pub(crate) enum FutureCacheOutcome<V> {
     /// The value is already in the cache
     Hit(V),
@@ -144,6 +145,7 @@ pub(crate) enum FutureCacheOutcome<V> {
 /// responsible for calling [FutureCacheGuard::set] to insert the value for
 /// everyone else. Subsequent callers to the cache will block until `set` is
 /// called.
+#[derive(Debug)]
 pub(crate) struct FutureCacheGuard<V>(OwnedRwLockWriteGuard<Option<V>>);
 
 impl<V> FutureCacheGuard<V> {

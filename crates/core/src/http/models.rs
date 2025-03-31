@@ -6,7 +6,7 @@
 use crate::{
     collection::{Authentication, ProfileId, RecipeBody, RecipeId},
     http::content_type::ContentType,
-    template::{ChainError, Template, TemplateError, TriggeredRequestError},
+    template::{Template, TemplateError, TriggeredRequestError},
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -306,7 +306,7 @@ impl BuildFieldOverrides {
     ) -> Option<&'a Template> {
         match self.overrides.get(&index) {
             Some(BuildFieldOverride::Omit) => None,
-            Some(BuildFieldOverride::Override(template)) => Some(template),
+            Some(BuildFieldOverride::Override(template)) => todo!(),
             None => Some(default),
         }
     }
@@ -329,8 +329,8 @@ impl FromIterator<(usize, BuildFieldOverride)> for BuildFieldOverrides {
 pub enum BuildFieldOverride {
     /// Do not include this field in the recipe
     Omit,
-    /// Replace the value for this field with a different template
-    Override(Template),
+    /// Replace the value for this field with a different value
+    Override(String),
 }
 
 /// A request ready to be launched into through the stratosphere. This is
@@ -815,11 +815,8 @@ impl RequestBuildError {
         self.source.chain().any(|error| {
             matches!(
                 error.downcast_ref(),
-                Some(TemplateError::Chain {
-                    error: ChainError::Trigger {
-                        error: TriggeredRequestError::NotAllowed,
-                        ..
-                    },
+                Some(TemplateError::Trigger {
+                    error: TriggeredRequestError::NotAllowed,
                     ..
                 })
             )

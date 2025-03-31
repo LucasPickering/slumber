@@ -261,7 +261,7 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct RecipeFieldTableProps<'a> {
     /// Label for the left column in the table
     pub key_header: &'a str,
@@ -438,15 +438,13 @@ mod tests {
                 },
             ),
         ];
+
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
             RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
         )
-        .with_props(RecipeFieldTableProps {
-            key_header: "Key",
-            value_header: "Value",
-        })
+        .with_props(props_factory())
         .build();
 
         // Check initial state
@@ -457,7 +455,7 @@ mod tests {
 
         // Disable the second row
         component
-            .int()
+            .int_props(props_factory)
             .send_keys([KeyCode::Down, KeyCode::Char(' ')])
             .assert_empty();
         let selected_row = component.data().select.data().selected().unwrap();
@@ -469,7 +467,10 @@ mod tests {
         );
 
         // Re-enable the row
-        component.int().send_key(KeyCode::Char(' ')).assert_empty();
+        component
+            .int_props(props_factory)
+            .send_key(KeyCode::Char(' '))
+            .assert_empty();
         let selected_row = component.data().select.data().selected().unwrap();
         assert!(*selected_row.enabled);
         assert_eq!(
@@ -502,15 +503,13 @@ mod tests {
                 },
             ),
         ];
+
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
             RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
         )
-        .with_props(RecipeFieldTableProps {
-            key_header: "Key",
-            value_header: "Value",
-        })
+        .with_props(props_factory())
         .build();
 
         // Check initial state
@@ -521,7 +520,7 @@ mod tests {
 
         // Edit the second row
         component
-            .int()
+            .int_props(props_factory)
             // Open the modal
             .send_keys([KeyCode::Down, KeyCode::Char('e')])
             .send_text("!!!")
@@ -540,7 +539,10 @@ mod tests {
         );
 
         // Reset edited state
-        component.int().send_key(KeyCode::Char('z')).assert_empty();
+        component
+            .int_props(props_factory)
+            .send_key(KeyCode::Char('z'))
+            .assert_empty();
         let selected_row = component.data().select.data().selected().unwrap();
         assert!(!selected_row.value.is_overridden());
     }
@@ -558,19 +560,17 @@ mod tests {
                 key: "row0".into(),
             },
         )];
+
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
             RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
         )
-        .with_props(RecipeFieldTableProps {
-            key_header: "Key",
-            value_header: "Value",
-        })
+        .with_props(props_factory())
         .build();
 
         component
-            .int()
+            .int_props(props_factory)
             .open_actions()
             .send_keys([KeyCode::Enter, KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
@@ -616,10 +616,7 @@ mod tests {
             &terminal,
             RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
         )
-        .with_props(RecipeFieldTableProps {
-            key_header: "Key",
-            value_header: "Value",
-        })
+        .with_props(props_factory())
         .build();
 
         assert_eq!(
@@ -631,5 +628,12 @@ mod tests {
             .into_iter()
             .collect(),
         );
+    }
+
+    fn props_factory() -> RecipeFieldTableProps<'static> {
+        RecipeFieldTableProps {
+            key_header: "Key",
+            value_header: "Value",
+        }
     }
 }

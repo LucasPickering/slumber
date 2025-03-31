@@ -474,18 +474,27 @@ mod tests {
     fn test_navigation(
         harness: TestHarness,
         terminal: TestTerminal,
-        items: (Vec<&'static str>, List<'static>),
+        #[from(items)] (items, props): (Vec<&'static str>, List<'static>),
     ) {
-        let select = SelectState::builder(items.0).build();
+        let select = SelectState::builder(items).build();
         let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(items.1)
+            .with_props(props.clone())
             .build();
-        component.int().drain_draw().assert_empty();
+        component
+            .int_props(|| props.clone())
+            .drain_draw()
+            .assert_empty();
         assert_eq!(component.data().selected(), Some(&"a"));
-        component.int().send_key(KeyCode::Down).assert_empty();
+        component
+            .int_props(|| props.clone())
+            .send_key(KeyCode::Down)
+            .assert_empty();
         assert_eq!(component.data().selected(), Some(&"b"));
 
-        component.int().send_key(KeyCode::Up).assert_empty();
+        component
+            .int_props(|| props.clone())
+            .send_key(KeyCode::Up)
+            .assert_empty();
         assert_eq!(component.data().selected(), Some(&"a"));
     }
 
@@ -494,30 +503,33 @@ mod tests {
     fn test_select(
         harness: TestHarness,
         terminal: TestTerminal,
-        items: (Vec<&'static str>, List<'static>),
+        #[from(items)] (items, props): (Vec<&'static str>, List<'static>),
     ) {
-        let select = SelectState::builder(items.0)
+        let select = SelectState::builder(items)
             .disabled_indexes([2])
             .subscribe([SelectStateEventType::Select])
             .build();
         let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(items.1)
+            .with_props(props.clone())
             .build();
 
         // Initial selection
         assert_eq!(component.data().selected(), Some(&"a"));
         component
-            .int()
+            .int_props(|| props.clone())
             .drain_draw()
             .assert_emitted([SelectStateEvent::Select(0)]);
 
         component
-            .int()
+            .int_props(|| props.clone())
             .send_key(KeyCode::Down)
             .assert_emitted([SelectStateEvent::Select(1)]);
 
         // "c" is disabled, should not trigger events
-        component.int().send_key(KeyCode::Down).assert_empty();
+        component
+            .int_props(|| props.clone())
+            .send_key(KeyCode::Down)
+            .assert_empty();
     }
 
     /// Test submit emitted event
@@ -525,25 +537,28 @@ mod tests {
     fn test_submit(
         harness: TestHarness,
         terminal: TestTerminal,
-        items: (Vec<&'static str>, List<'static>),
+        #[from(items)] (items, props): (Vec<&'static str>, List<'static>),
     ) {
-        let select = SelectState::builder(items.0)
+        let select = SelectState::builder(items)
             .disabled_indexes([2])
             .subscribe([SelectStateEventType::Submit])
             .build();
         let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(items.1)
+            .with_props(props.clone())
             .build();
-        component.int().drain_draw().assert_empty();
+        component
+            .int_props(|| props.clone())
+            .drain_draw()
+            .assert_empty();
 
         component
-            .int()
+            .int_props(|| props.clone())
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_emitted([SelectStateEvent::Submit(1)]);
 
         // "c" is disabled, should not trigger events
         component
-            .int()
+            .int_props(|| props.clone())
             .send_keys([KeyCode::Down, KeyCode::Enter])
             .assert_empty();
     }
@@ -554,22 +569,28 @@ mod tests {
     fn test_propagate(
         harness: TestHarness,
         terminal: TestTerminal,
-        items: (Vec<&'static str>, List<'static>),
+        #[from(items)] (items, props): (Vec<&'static str>, List<'static>),
     ) {
-        let select = SelectState::builder(items.0).build();
+        let select = SelectState::builder(items).build();
         let mut component = TestComponent::builder(&harness, &terminal, select)
-            .with_props(items.1)
+            .with_props(props.clone())
             .build();
 
         assert_matches!(
-            component.int().send_key(KeyCode::Enter).events(),
+            component
+                .int_props(|| props.clone())
+                .send_key(KeyCode::Enter)
+                .events(),
             &[Event::Input {
                 action: Some(Action::Submit),
                 ..
             }]
         );
         assert_matches!(
-            component.int().send_key(KeyCode::Char(' ')).events(),
+            component
+                .int_props(|| props.clone())
+                .send_key(KeyCode::Char(' '))
+                .events(),
             &[Event::Input {
                 action: Some(Action::Toggle),
                 ..
@@ -627,17 +648,21 @@ mod tests {
             &terminal,
             PersistedLazy::new(Key, select),
         )
-        .with_props(list)
+        .with_props(list.clone())
         .build();
         assert_eq!(
             component.data().selected().map(ProfileItem::id),
             Some(&profile_id)
         );
-        component.int().drain_draw().assert_emitted([
-            // First item gets selected by preselection, second by persistence
-            SelectStateEvent::Select(0),
-            SelectStateEvent::Select(1),
-        ])
+        component
+            .int_props(|| list.clone())
+            .drain_draw()
+            .assert_emitted([
+                // First item gets selected by preselection, second by
+                // persistence
+                SelectStateEvent::Select(0),
+                SelectStateEvent::Select(1),
+            ])
     }
 
     #[fixture]

@@ -48,7 +48,7 @@ pub struct RecipePane {
     recipe_state: StateCell<RecipeStateKey, Component<Option<RecipeDisplay>>>,
 }
 
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct RecipePaneProps<'a> {
     /// ID of the recipe *or* folder selected
     pub selected_recipe_node: Option<&'a RecipeNode>,

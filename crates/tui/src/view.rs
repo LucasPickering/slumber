@@ -236,8 +236,7 @@ mod tests {
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // Nothing new
-        terminal
-            .draw(|frame| view.draw(frame, &harness.request_store.borrow()));
+        terminal.draw(|frame| view.draw(frame, &request_store));
         assert_events!(Event::Emitted { .. }, Event::Emitted { .. },);
 
         // *Now* the queue is drained

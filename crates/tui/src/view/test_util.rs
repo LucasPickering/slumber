@@ -36,7 +36,7 @@ use std::{cell::RefCell, rc::Rc};
 /// This takes a a reference to the terminal so it can draw without having
 /// to plumb the terminal around to every draw call.
 #[derive(Debug)]
-pub struct TestComponent<'term, T, Props> {
+pub struct TestComponent<'term, T> {
     /// Terminal to draw to
     terminal: &'term TestTerminal,
     request_store: Rc<RefCell<RequestStore>>,
@@ -45,29 +45,24 @@ pub struct TestComponent<'term, T, Props> {
     /// [Self::set_area]
     area: Rect,
     component: Component<TestWrapper<T>>,
-    /// Whatever props were used for the most recent draw. We store these for
-    /// convenience, because in most test cases we use the same props over and
-    /// over, and just care about changes in response to events. This requires
-    /// that `Props` implements `Clone`, but that's not a problem for most
-    /// components since props typically just contain identifiers, references,
-    /// and primitives. Modify using [Self::set_props].
-    props: Props,
     /// Should the component be given focus on the next draw? Defaults to
     /// `true`
     has_focus: bool,
 }
 
-impl<'term, T, Props> TestComponent<'term, T, Props>
+impl<'term, T> TestComponent<'term, T>
 where
-    Props: Clone,
-    T: Draw<Props> + ToChild,
+    T: ToChild,
 {
     /// Start building a new component
-    pub fn builder(
+    pub fn builder<Props>(
         harness: &TestHarness,
         terminal: &'term TestTerminal,
         data: T,
-    ) -> TestComponentBuilder<'term, T, Props> {
+    ) -> TestComponentBuilder<'term, T, Props>
+    where
+        T: Draw<Props>,
+    {
         let component: Component<TestWrapper<T>> =
             TestWrapper::new(data).into();
         TestComponentBuilder {
@@ -81,12 +76,13 @@ where
 
     /// Shortcut for building and drawing a component with default props and
     /// the full terminal area
-    pub fn new(
+    pub fn new<Props>(
         harness: &TestHarness,
         terminal: &'term TestTerminal,
         data: T,
     ) -> Self
     where
+        T: Draw<Props>,
         Props: Default,
     {
         Self::builder(harness, terminal, data)
@@ -114,20 +110,34 @@ where
         self.area = area;
     }
 
-    /// Set props to be used for future draws
-    pub fn set_props(&mut self, props: Props) {
-        self.props = props;
-    }
-
     /// Disable focus for the next draw
     pub fn unfocus(&mut self) {
         self.has_focus = false;
     }
 
-    /// Get a helper to chain interactions and assertions on this component
-    pub fn int(&mut self) -> Interact<'term, '_, T, Props> {
+    /// Get a helper to chain interactions and assertions on this component.
+    /// Each draw will use `Props::default()` for the props value.
+    pub fn int<'a, Props>(&'a mut self) -> Interact<'term, 'a, T, Props>
+    where
+        T: Draw<Props>,
+        Props: 'a + Default,
+    {
+        self.int_props(Props::default)
+    }
+
+    /// Get a helper to chain interactions and assertions on this component.
+    /// Each draw will call the given props factory function to generate the
+    /// next props value.
+    pub fn int_props<'a, Props>(
+        &'a mut self,
+        props_factory: impl 'a + Fn() -> Props,
+    ) -> Interact<'term, 'a, T, Props>
+    where
+        T: Draw<Props>,
+    {
         Interact {
             component: self,
+            props_factory: Box::new(props_factory),
             propagated: Vec::new(),
         }
     }
@@ -135,14 +145,12 @@ where
     /// Draw this component onto the terminal, using the entire terminal frame
     /// as the draw area. If props are given, use them for the draw. If not,
     /// use the same props from the last draw.
-    fn draw(&mut self) {
+    fn draw<Props>(&mut self, props: Props)
+    where
+        T: Draw<Props>,
+    {
         self.terminal.draw(|frame| {
-            self.component.draw(
-                frame,
-                self.props.clone(),
-                self.area,
-                self.has_focus,
-            )
+            self.component.draw(frame, props, self.area, self.has_focus)
         });
     }
 
@@ -183,7 +191,6 @@ pub struct TestComponentBuilder<'term, T, Props> {
 
 impl<'term, T, Props> TestComponentBuilder<'term, T, Props>
 where
-    Props: Clone,
     T: Draw<Props> + ToChild,
 {
     /// Set initial props for this component
@@ -211,34 +218,39 @@ where
     /// until they've been drawn once, because they won't receive events
     /// until they're marked as visible. For this reason, this constructor
     /// takes care of all the things you would immediately have to do anyway.
-    pub fn build(self) -> TestComponent<'term, T, Props> {
+    pub fn build(self) -> TestComponent<'term, T> {
         let mut component = TestComponent {
             terminal: self.terminal,
             request_store: self.request_store,
             area: self.area,
             component: self.component,
-            props: self.props.expect("Props not set for test component"),
+
             has_focus: true,
         };
         // Do an initial draw to set up state, then handle any triggered events
-        component.draw();
+        component.draw(self.props.expect("Props not set for test component"));
         component
     }
 }
 
 /// Utility class for interacting with a test component. This allows chaining
 /// various interactions. All chains should be terminated with an assertion
-/// on the events propagated by the interactions.
+/// on the events propagated by the interactions. Each interaction will be
+/// succeeded by a single draw, to update the view as needed.
 #[must_use = "Propagated events must be checked"]
 #[derive(derive_more::Debug)]
 pub struct Interact<'term, 'a, Component, Props> {
-    component: &'a mut TestComponent<'term, Component, Props>,
+    component: &'a mut TestComponent<'term, Component>,
+    /// A repeatable function that generates a props object for each draw. In
+    /// most cases this will just be `Props::default` or a function that
+    /// repeatedly returns the same static value. In some cases though, the
+    /// value can't be held across draws and must be recreated each time.
+    props_factory: Box<dyn 'a + Fn() -> Props>,
     propagated: Vec<Event>,
 }
 
 impl<Component, Props> Interact<'_, '_, Component, Props>
 where
-    Props: Clone,
     Component: Draw<Props> + ToChild,
 {
     /// Drain all events in the queue, then draw the component to the terminal.
@@ -249,7 +261,7 @@ where
     /// callback that would normally be called by the main loop.
     pub fn drain_draw(mut self) -> Self {
         let propagated = self.component.drain_events();
-        self.component.draw();
+        self.component.draw((self.props_factory)());
         self.propagated.extend(propagated);
         self
     }

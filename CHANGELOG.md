@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+This releases focuses on history and data management. A suite of new features and improvements make it easy to disable request persistence and delete past requests from history.
+
 ### Added
 
 - Add `--persist` flag to `slumber request`

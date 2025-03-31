@@ -141,6 +141,8 @@ pub enum Action {
     Toggle,
     /// Close the current modal/dialog/etc. OR cancel a request
     Cancel,
+    /// Delete the selected object (e.g. a request)
+    Delete,
     /// Trigger the workflow to provide a temporary override for a recipe value
     /// (body/param/etc.)
     Edit,
@@ -298,6 +300,7 @@ impl Display for KeyCombination {
             KeyCode::Right => write!(f, "→"),
             KeyCode::Esc => write!(f, "<esc>"),
             KeyCode::Enter => write!(f, "<enter>"),
+            KeyCode::Delete => write!(f, "<del>"),
             KeyCode::F(num) => write!(f, "F{}", num),
             KeyCode::Char(' ') => write!(f, "<space>"),
             KeyCode::Char(c) => write!(f, "{c}"),

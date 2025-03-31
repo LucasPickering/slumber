@@ -54,6 +54,7 @@ input_bindings:
 | `submit`              | `enter`                     | Send a request, submit a text box, etc.               |
 | `toggle`              | `space`                     | Toggle a checkbox on/off                              |
 | `cancel`              | `esc`                       | Cancel current dialog or request                      |
+| `delete`              | `delete`                    | Delete the selected object (e.g. a request)           |
 | `edit`                | `e`                         | Apply a temporary override to a recipe value          |
 | `reset`               | `r`                         | Reset temporary recipe override to its default        |
 | `view`                | `v`                         | Open the selected content (e.g. body) in your pager   |

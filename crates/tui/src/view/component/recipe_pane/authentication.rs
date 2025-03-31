@@ -1,8 +1,6 @@
 use crate::{
     context::TuiContext,
-    util::ResultReported,
     view::{
-        ViewContext,
         common::{
             actions::{IntoMenuAction, MenuAction},
             modal::Modal,
@@ -25,10 +23,7 @@ use ratatui::{
     Frame, layout::Layout, prelude::Constraint, text::Span, widgets::TableState,
 };
 use slumber_config::Action;
-use slumber_core::{
-    collection::{Authentication, RecipeId},
-    template::Template,
-};
+use slumber_core::collection::{Authentication, RecipeId};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Display authentication settings for a recipe
@@ -62,7 +57,7 @@ impl AuthenticationDisplay {
                     selected_field: Default::default(),
                 }
             }
-            Authentication::Bearer(token) => State::Bearer {
+            Authentication::Bearer { token } => State::Bearer {
                 token: RecipeTemplate::new(
                     RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
                     token,
@@ -79,19 +74,19 @@ impl AuthenticationDisplay {
 
     /// If the user has applied a temporary edit to the auth settings, get the
     /// override value. Return `None` to use the recipe's stock auth.
-    pub fn override_value(&self) -> Option<Authentication> {
+    pub fn override_value(&self) -> Option<Authentication<String>> {
         if self.state.is_overridden() {
             Some(match &self.state {
                 State::Basic {
                     username, password, ..
                 } => Authentication::Basic {
-                    username: username.template().clone(),
+                    username: username.value(),
                     // See note on field def for why we always use Some
-                    password: Some(password.template().clone()),
+                    password: Some(password.value()),
                 },
-                State::Bearer { token, .. } => {
-                    Authentication::Bearer(token.template().clone())
-                }
+                State::Bearer { token, .. } => Authentication::Bearer {
+                    token: token.value(),
+                },
             })
         } else {
             None
@@ -255,22 +250,14 @@ impl State {
                 selected_field,
                 ..
             } => match selected_field.data().selected() {
-                BasicFields::Username => {
-                    ("username", username.template().display())
-                }
-                BasicFields::Password => {
-                    ("password", password.template().display())
-                }
+                BasicFields::Username => ("username", username.value()),
+                BasicFields::Password => ("password", password.value()),
             },
-            Self::Bearer { token, .. } => {
-                ("bearer token", token.template().display())
-            }
+            Self::Bearer { token, .. } => ("bearer token", token.value()),
         };
         TextBoxModal::new(
             format!("Edit {label}"),
-            TextBox::default()
-                .default_value(value.into_owned())
-                .validator(|value| value.parse::<Template>().is_ok()),
+            TextBox::default().default_value(value.to_string()),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
                 emitter.emit(SaveAuthenticationOverride(value))
@@ -282,7 +269,8 @@ impl State {
     /// Override the value template for whichever field is selected, and
     /// recompute the template preview
     fn set_override(&mut self, value: &str) {
-        let Some(template) = value
+        todo!()
+        /* let Some(template) = value
             .parse::<Template>()
             // The template *should* always parse because the text box has a
             // validator, but this is just a safety check
@@ -306,7 +294,7 @@ impl State {
             Self::Bearer { token } => {
                 token.set_override(template);
             }
-        }
+        } */
     }
 
     /// Reset the value template override to the default from the recipe, and

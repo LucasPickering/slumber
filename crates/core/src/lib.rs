@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
+#![allow(async_fn_in_trait)]
 
 //! Core frontend-agnostic functionality for Slumber, agnostic of the front end.
 //!
@@ -10,6 +11,7 @@
 pub mod collection;
 pub mod database;
 pub mod http;
+pub mod ps;
 pub mod template;
 #[cfg(any(test, feature = "test"))]
 pub mod test_util;

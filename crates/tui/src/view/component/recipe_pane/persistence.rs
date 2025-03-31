@@ -16,16 +16,16 @@ use tracing::debug;
 /// To persist something in this store, you probably want to use
 /// [RecipeTemplate] for your component/state field.
 #[derive(Debug, Default)]
-pub struct RecipeOverrideStore(HashMap<RecipeOverrideKey, Template>);
+pub struct RecipeOverrideStore(HashMap<RecipeOverrideKey, String>);
 
 impl PersistedStore<RecipeOverrideKey> for RecipeOverrideStore {
     fn load_persisted(key: &RecipeOverrideKey) -> Option<RecipeOverrideValue> {
-        if let Some(template) =
+        if let Some(value) =
             ViewContext::with_override_store(|store| store.0.get(key).cloned())
         {
             // Only overridden values are persisted
-            debug!(?key, ?template, "Loaded persisted recipe override");
-            Some(RecipeOverrideValue::Override(template))
+            debug!(?key, ?value, "Loaded persisted recipe override");
+            Some(RecipeOverrideValue::Override(value))
         } else {
             None
         }
@@ -34,10 +34,10 @@ impl PersistedStore<RecipeOverrideKey> for RecipeOverrideStore {
     fn store_persisted(key: &RecipeOverrideKey, value: &RecipeOverrideValue) {
         // The value will be None if the template isn't overridden, in which
         // case we don't want to store it
-        if let RecipeOverrideValue::Override(template) = value {
-            debug!(?key, ?template, "Persisting recipe override");
+        if let RecipeOverrideValue::Override(value) = value {
+            debug!(?key, ?value, "Persisting recipe override");
             ViewContext::with_override_store_mut(|store| {
-                store.0.insert(key.clone(), template.clone());
+                store.0.insert(key.clone(), value.clone());
             })
         }
     }
@@ -49,8 +49,8 @@ pub enum RecipeOverrideValue {
     /// Default recipe value is in use, i.e. no override is present. Nothing
     /// will be persisted
     Default,
-    /// User has provided an override for this field, persist it
-    Override(Template),
+    /// User has provided an override value for this field, persist it
+    Override(String),
 }
 
 /// A template that can be previewed, overridden, and persisted. Parent is
@@ -74,17 +74,17 @@ impl RecipeTemplate {
         Self(PersistedLazy::new(
             persisted_key,
             RecipeTemplateInner {
-                original_template: template.clone(),
-                override_template: None,
-                preview: TemplatePreview::new(template, content_type, false),
+                override_value: None,
+                preview: TemplatePreview::new(template, content_type),
                 content_type,
             },
         ))
     }
 
-    /// Override the recipe with a new template
-    pub fn set_override(&mut self, template: Template) {
-        self.0.get_mut().set_override(template);
+    /// Override the template with a new output value. The value will *not* be
+    /// rendered; it's treated literally.
+    pub fn set_override(&mut self, value: String) {
+        self.0.get_mut().set_override(value);
     }
 
     /// Reset the template override to the default from the recipe, and
@@ -93,8 +93,12 @@ impl RecipeTemplate {
         self.0.get_mut().reset_override();
     }
 
-    pub fn template(&self) -> &Template {
-        self.0.template()
+    /// TODO
+    pub fn value(&self) -> String {
+        self.0
+            .override_value
+            .clone()
+            .unwrap_or_else(|| self.0.preview.text().to_string())
     }
 
     pub fn preview(&self) -> &TemplatePreview {
@@ -106,7 +110,7 @@ impl RecipeTemplate {
     }
 
     pub fn is_overridden(&self) -> bool {
-        self.0.override_template.is_some()
+        self.0.override_value.is_some()
     }
 }
 
@@ -115,36 +119,19 @@ impl RecipeTemplate {
 /// [set_override](Self::set_override) when needed.
 #[derive(Debug)]
 struct RecipeTemplateInner {
-    original_template: Template,
-    override_template: Option<Template>,
+    override_value: Option<String>,
     preview: TemplatePreview,
     /// Retain this so we can rebuild the preview with it
     content_type: Option<ContentType>,
 }
 
 impl RecipeTemplateInner {
-    fn template(&self) -> &Template {
-        self.override_template
-            .as_ref()
-            .unwrap_or(&self.original_template)
-    }
-
-    fn set_override(&mut self, template: Template) {
-        self.override_template = Some(template);
-        self.render_preview();
+    fn set_override(&mut self, value: String) {
+        self.override_value = Some(value);
     }
 
     fn reset_override(&mut self) {
-        self.override_template = None;
-        self.render_preview();
-    }
-
-    fn render_preview(&mut self) {
-        self.preview = TemplatePreview::new(
-            self.template().clone(),
-            self.content_type,
-            self.override_template.is_some(),
-        );
+        self.override_value = None;
     }
 }
 
@@ -152,8 +139,8 @@ impl PersistedContainer for RecipeTemplateInner {
     type Value = RecipeOverrideValue;
 
     fn get_to_persist(&self) -> Self::Value {
-        match &self.override_template {
-            Some(template) => RecipeOverrideValue::Override(template.clone()),
+        match &self.override_value {
+            Some(value) => RecipeOverrideValue::Override(value.clone()),
             None => RecipeOverrideValue::Default,
         }
     }

@@ -64,8 +64,9 @@ pub struct GlobalArgs {
 impl GlobalArgs {
     /// Get the path to the active collection file. Return an error if there is
     /// no collection file present, or if the user specified an invalid file.
-    fn collection_path(&self) -> anyhow::Result<PathBuf> {
-        CollectionFile::try_path(None, self.file.clone())
+    /// TODO rename?
+    fn collection_path(&self) -> anyhow::Result<CollectionFile> {
+        CollectionFile::new(self.file.clone())
     }
 }
 

@@ -17,9 +17,15 @@ use uuid::Uuid;
 /// key is used to determine when to update the state. The key should be
 /// something cheaply comparable. If the value itself is cheaply comparable,
 /// you can just use that as the key.
-#[derive(Debug)]
+///
+/// The only way to initialize a new state cell is via its [Default]
+/// implementation. This requires that both `K` and `V` implement [Default] as
+/// well, so we can provide an initial value. In the past we stored an `Option`
+/// internally so we could avoid this requirement, but this polluted the type
+/// signatures of various functions for little gain.
+#[derive(Debug, Default)]
 pub struct StateCell<K, V> {
-    state: RefCell<Option<(K, V)>>,
+    state: RefCell<(K, V)>,
 }
 
 impl<K, V> StateCell<K, V> {
@@ -32,56 +38,37 @@ impl<K, V> StateCell<K, V> {
         K: Clone + PartialEq,
     {
         let mut state = self.state.borrow_mut();
-        match state.deref() {
-            Some(state) if &state.0 == key => {}
-            _ => {
-                // (Re)create the state
-                *state = Some((key.clone(), init()));
-            }
+        if &state.0 != key {
+            // Recreate the state
+            *state = (key.clone(), init());
         }
         drop(state);
 
-        // Unwrap is safe because we just stored a value
         // It'd be nice to return an `impl Deref` here instead to prevent
         // leaking implementation details, but I was struggling with the
         // lifetimes on that
-        Ref::map(self.state.borrow(), |state| &state.as_ref().unwrap().1)
+        Ref::map(self.state.borrow(), |state| &state.1)
     }
 
     /// Get a reference to the state key. This can panic, if the state is
     /// already borrowed elsewhere. Returns `None` iff the state cell is
     /// uninitialized.
-    pub fn get_key(&self) -> Option<Ref<'_, K>> {
-        Ref::filter_map(self.state.borrow(), |state| {
-            state.as_ref().map(|(k, _)| k)
-        })
-        .ok()
+    pub fn borrow_key(&self) -> Ref<'_, K> {
+        Ref::map(self.state.borrow(), |state| &state.0)
     }
 
     /// Get a reference to the state value. This can panic, if the state  is
     /// already borrowed elsewhere. Returns `None` iff the state cell is
     /// uninitialized.
-    pub fn get(&self) -> Option<Ref<'_, V>> {
-        Ref::filter_map(self.state.borrow(), |state| {
-            state.as_ref().map(|(_, v)| v)
-        })
-        .ok()
+    pub fn borrow(&self) -> Ref<'_, V> {
+        Ref::map(self.state.borrow(), |state| &state.1)
     }
 
     /// Get a mutable reference to the state value. This will never panic
     /// because `&mut self` guarantees exclusive access. Returns `None` iff
     /// the state cell is uninitialized.
-    pub fn get_mut(&mut self) -> Option<&mut V> {
-        self.state.get_mut().as_mut().map(|state| &mut state.1)
-    }
-}
-
-/// Derive impl applies unnecessary bound on the generic parameter
-impl<K, V> Default for StateCell<K, V> {
-    fn default() -> Self {
-        Self {
-            state: RefCell::new(None),
-        }
+    pub fn get_mut(&mut self) -> &mut V {
+        &mut self.state.get_mut().1
     }
 }
 

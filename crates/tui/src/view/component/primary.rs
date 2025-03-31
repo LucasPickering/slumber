@@ -1,7 +1,7 @@
 //! Components for the "primary" view, which is the paned request/response view
 
 use crate::{
-    http::RequestState,
+    http::{RequestState, RequestStateType},
     message::{Message, RequestConfig},
     util::ResultReported,
     view::{
@@ -24,6 +24,7 @@ use crate::{
         draw::{Draw, DrawMetadata},
         event::{Child, Emitter, Event, EventHandler, OptionEvent, ToEmitter},
         state::{
+            StateCell,
             fixed_select::FixedSelectState,
             select::{SelectStateEvent, SelectStateEventType},
         },
@@ -39,8 +40,9 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
-use slumber_core::collection::{
-    Collection, ProfileId, RecipeId, RecipeNodeType,
+use slumber_core::{
+    collection::{Collection, ProfileId, RecipeId, RecipeNodeType},
+    http::RequestId,
 };
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
@@ -56,24 +58,21 @@ pub struct PrimaryView {
     profile_pane: Component<ProfilePane>,
     recipe_list_pane: Component<RecipeListPane>,
     recipe_pane: Component<RecipePane>,
-    exchange_pane: Component<ExchangePane>,
+    /// The exchange pane shows a particular request/response. The entire
+    /// component is rebuilt whenever the selected request changes. The key is
+    /// `None` if the recipe list is empty or a folder is selected
+    exchange_pane: StateCell<
+        Option<(RequestId, RequestStateType)>,
+        Component<ExchangePane>,
+    >,
 
     global_actions_emitter: Emitter<GlobalMenuAction>,
 }
 
 impl PrimaryView {
-    pub fn new(
-        collection: &Collection,
-        selected_request: Option<&RequestState>,
-    ) -> Self {
+    pub fn new(collection: &Collection) -> Self {
         let profile_pane = ProfilePane::new(collection);
         let recipe_list_pane = RecipeListPane::new(&collection.recipes);
-        let exchange_pane = ExchangePane::new(
-            selected_request,
-            recipe_list_pane
-                .selected_node()
-                .map(|(_, node_type)| node_type),
-        );
 
         Self {
             selected_pane: PersistedLazy::new(
@@ -87,7 +86,7 @@ impl PrimaryView {
             recipe_list_pane: recipe_list_pane.into(),
             profile_pane: profile_pane.into(),
             recipe_pane: Default::default(),
-            exchange_pane: exchange_pane.into(),
+            exchange_pane: Default::default(),
 
             global_actions_emitter: Default::default(),
         }
@@ -111,23 +110,6 @@ impl PrimaryView {
     /// ID of the selected profile. `None` iff the list is empty
     pub fn selected_profile_id(&self) -> Option<&ProfileId> {
         self.profile_pane.data().selected_profile_id()
-    }
-
-    /// Set the state of the currently selected request. Call whenever a new
-    /// request is selected, or the selected request changes state
-    /// TODO eliminate this in favor of a reactive approach
-    pub fn set_request_state(
-        &mut self,
-        selected_request: Option<&RequestState>,
-    ) {
-        self.exchange_pane = ExchangePane::new(
-            selected_request,
-            self.recipe_list_pane
-                .data()
-                .selected_node()
-                .map(|(_, node_type)| node_type),
-        )
-        .into();
     }
 
     /// Get a definition of the request that should be sent from the current
@@ -327,9 +309,12 @@ impl EventHandler for PrimaryView {
                     self.handle_recipe_menu_action(action)
                 }
             })
-            .emitted(self.exchange_pane.to_emitter(), |event| match event {
-                ExchangePaneEvent::Click => {
-                    self.selected_pane.get_mut().select(&PrimaryPane::Exchange)
+            .emitted(self.exchange_pane.borrow().to_emitter(), |event| {
+                match event {
+                    ExchangePaneEvent::Click => self
+                        .selected_pane
+                        .get_mut()
+                        .select(&PrimaryPane::Exchange),
                 }
             })
             .emitted(self.global_actions_emitter, |menu_action| {
@@ -353,13 +338,18 @@ impl EventHandler for PrimaryView {
             self.profile_pane.to_child_mut(),
             self.recipe_list_pane.to_child_mut(),
             self.recipe_pane.to_child_mut(),
-            self.exchange_pane.to_child_mut(),
+            self.exchange_pane.get_mut().to_child_mut(),
         ]
     }
 }
 
-impl Draw for PrimaryView {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
+    fn draw(
+        &self,
+        frame: &mut Frame,
+        props: PrimaryViewProps<'a>,
+        metadata: DrawMetadata,
+    ) {
         // We draw all panes regardless of fullscreen state, so they can run
         // their necessary state updates. We just give the hidden panes an empty
         // rect to draw into so they don't appear at all
@@ -399,13 +389,35 @@ impl Draw for PrimaryView {
             panes.recipe.focus,
         );
 
-        self.exchange_pane.draw(
+        // Rebuild the exchange pane whenever we select a new request or the
+        // current request transitions between states
+        let exchange_pane = self.exchange_pane.get_or_update(
+            &props.selected_request.map(|request_state| {
+                (request_state.id(), request_state.into())
+            }),
+            || {
+                ExchangePane::new(
+                    props.selected_request,
+                    self.recipe_list_pane
+                        .data()
+                        .selected_node()
+                        .map(|(_, node_type)| node_type),
+                )
+                .into()
+            },
+        );
+        exchange_pane.draw(
             frame,
             (),
             panes.exchange.area,
             panes.exchange.focus,
         );
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PrimaryViewProps<'a> {
+    pub selected_request: Option<&'a RequestState>,
 }
 
 /// Selectable panes in the primary view mode
@@ -487,8 +499,8 @@ mod tests {
     fn create_component<'term>(
         harness: &mut TestHarness,
         terminal: &'term TestTerminal,
-    ) -> TestComponent<'term, PrimaryView, ()> {
-        let view = PrimaryView::new(&harness.collection, None);
+    ) -> TestComponent<'term, PrimaryView, PrimaryViewProps<'term>> {
+        let view = PrimaryView::new(&harness.collection);
         let mut component = TestComponent::new(harness, terminal, view);
         // Initial events
         assert_matches!(

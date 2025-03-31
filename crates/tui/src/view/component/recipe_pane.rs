@@ -33,7 +33,6 @@ use slumber_core::{
     collection::{Folder, HasId, ProfileId, RecipeId, RecipeNode},
     util::doc_link,
 };
-use std::cell::Ref;
 use strum::{EnumIter, IntoEnumIterator};
 
 /// Display for the current recipe node, which could be a recipe, a folder, or
@@ -60,10 +59,10 @@ impl RecipePane {
     /// Get a definition of the request that should be sent from the current
     /// recipe settings
     pub fn request_config(&self) -> Option<RequestConfig> {
-        let state_key = self.recipe_state.get_key()?;
+        let state_key = self.recipe_state.borrow_key();
         let recipe_id = state_key.recipe_id.clone()?;
         let profile_id = state_key.selected_profile_id.clone();
-        let recipe_state = self.recipe_state.get()?;
+        let recipe_state = self.recipe_state.borrow();
         let options = recipe_state.data().as_ref()?.build_options();
         Some(RequestConfig {
             recipe_id,
@@ -93,11 +92,7 @@ impl EventHandler for RecipePane {
     }
 
     fn children(&mut self) -> Vec<Component<Child<'_>>> {
-        if let Some(state) = self.recipe_state.get_mut() {
-            vec![state.to_child_mut()]
-        } else {
-            vec![]
-        }
+        vec![self.recipe_state.get_mut().to_child_mut()]
     }
 }
 
@@ -183,7 +178,7 @@ pub enum RecipePaneEvent {
 }
 
 /// Template preview state will be recalculated when any of these fields change
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct RecipeStateKey {
     selected_profile_id: Option<ProfileId>,
     recipe_id: Option<RecipeId>,
@@ -204,13 +199,10 @@ pub enum RecipeMenuAction {
 
 impl IntoMenuAction<RecipePane> for RecipeMenuAction {
     fn enabled(&self, data: &RecipePane) -> bool {
-        let recipe = data.recipe_state.get().and_then(|state| {
-            Ref::filter_map(state, |state| state.data().as_ref()).ok()
-        });
         match self {
-            // Enabled if we have any recipe
             Self::CopyUrl | Self::CopyCurl | Self::DeleteRecipe => {
-                recipe.is_some()
+                // Enabled if we have any recipe
+                data.recipe_state.borrow().data().is_some()
             }
         }
     }

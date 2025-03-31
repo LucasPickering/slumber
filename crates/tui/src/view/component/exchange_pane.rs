@@ -40,7 +40,7 @@ use strum::{EnumCount, EnumIter, IntoEnumIterator};
 /// between request and response. This is bound to a particular [RequestState],
 /// and should be recreated whenever the selected request changes state, or a
 /// new request is selected.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ExchangePane {
     emitter: Emitter<ExchangePaneEvent>,
     state: State,
@@ -138,9 +138,10 @@ pub enum ExchangePaneEvent {
 
 /// Inner state for the exchange pane. This contains all the empty states, as
 /// well as one variant for the populated state
-#[derive(Debug)]
+#[derive(Debug, Default)]
 enum State {
     /// Recipe list is empty
+    #[default]
     None,
     /// Folder selected
     Folder,

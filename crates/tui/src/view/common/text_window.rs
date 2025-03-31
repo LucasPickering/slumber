@@ -80,22 +80,14 @@ impl TextWindow {
     /// Get the final line that we can't scroll past. This will be the first
     /// line of the last page of text
     fn max_scroll_line(&self) -> usize {
-        let text_height = self
-            .text_size
-            .get()
-            .map(|state| state.height)
-            .unwrap_or_default();
+        let text_height = self.text_size.borrow().height;
         text_height.saturating_sub(self.window_height.get())
     }
 
     /// Get the final column that we can't scroll (horizontally) past. This will
     /// be the left edge of the rightmost "page" of text
     fn max_scroll_column(&self) -> usize {
-        let text_width = self
-            .text_size
-            .get()
-            .map(|state| state.width)
-            .unwrap_or_default();
+        let text_width = self.text_size.borrow().width;
         text_width.saturating_sub(self.window_width.get())
     }
 

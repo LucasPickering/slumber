@@ -415,7 +415,7 @@ impl<'a> Draw<PrimaryViewProps<'a>> for PrimaryView {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct PrimaryViewProps<'a> {
     pub selected_request: Option<&'a RequestState>,
 }
@@ -499,7 +499,7 @@ mod tests {
     fn create_component<'term>(
         harness: &mut TestHarness,
         terminal: &'term TestTerminal,
-    ) -> TestComponent<'term, PrimaryView, PrimaryViewProps<'term>> {
+    ) -> TestComponent<'term, PrimaryView> {
         let view = PrimaryView::new(&harness.collection);
         let mut component = TestComponent::new(harness, terminal, view);
         // Initial events

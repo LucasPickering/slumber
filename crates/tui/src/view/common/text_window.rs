@@ -41,7 +41,7 @@ pub struct TextWindow {
     window_height: Cell<usize>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TextWindowProps<'a> {
     /// Text to render. We take a reference because this component tends to
     /// contain a lot of text, and we don't want to force a clone on render
@@ -53,7 +53,7 @@ pub struct TextWindowProps<'a> {
 /// 0 uses the outermost row/column of the text area. Positive values
 /// pushes the scrollbar outside the rendered outside, negative moves
 /// it inside.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ScrollbarMargins {
     pub right: i32,
     pub bottom: i32,
@@ -297,16 +297,17 @@ mod tests {
         let text =
             Text::from("line 1\nline 2 is longer\nline 3\nline 4\nline 5")
                 .into();
+        let props = TextWindowProps {
+            text: &text,
+            // Don't overflow the frame
+            margins: ScrollbarMargins {
+                right: 0,
+                bottom: 0,
+            },
+        };
         let mut component =
             TestComponent::builder(&harness, &terminal, TextWindow::default())
-                .with_props(TextWindowProps {
-                    text: &text,
-                    // Don't overflow the frame
-                    margins: ScrollbarMargins {
-                        right: 0,
-                        bottom: 0,
-                    },
-                })
+                .with_props(props.clone())
                 .build();
         terminal.assert_buffer_lines([
             vec![line_num(1), " line 1 ▲".into()],
@@ -316,7 +317,10 @@ mod tests {
         ]);
 
         // Scroll down
-        component.int().send_key(KeyCode::Down).assert_empty();
+        component
+            .int_props(|| props.clone())
+            .send_key(KeyCode::Down)
+            .assert_empty();
         terminal.assert_buffer_lines([
             vec![line_num(2), " line 2 ▲".into()],
             vec![line_num(3), " line 3 █".into()],
@@ -326,7 +330,7 @@ mod tests {
 
         // Scroll back up
         component
-            .int()
+            .int_props(|| props.clone())
             // Second does nothing
             .send_keys([KeyCode::Up, KeyCode::Up])
             .assert_empty();
@@ -339,7 +343,7 @@ mod tests {
 
         // Scroll right
         component
-            .int()
+            .int_props(|| props.clone())
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
             .send_key_modifiers(KeyCode::Right, KeyModifiers::SHIFT)
@@ -353,7 +357,7 @@ mod tests {
 
         // Scroll back left
         component
-            .int()
+            .int_props(|| props.clone())
             .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
             .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
             .send_key_modifiers(KeyCode::Left, KeyModifiers::SHIFT)
@@ -443,14 +447,16 @@ mod tests {
         assert_eq!(component.data().offset_y.get(), 2);
 
         let text = Text::from_iter(["1 less long line", "2", "3", "4"]).into();
-        component.set_props(TextWindowProps {
-            text: &text,
-            margins: ScrollbarMargins {
-                right: 0,
-                bottom: 0,
-            },
-        });
-        component.int().drain_draw().assert_empty();
+        component
+            .int_props(|| TextWindowProps {
+                text: &text,
+                margins: ScrollbarMargins {
+                    right: 0,
+                    bottom: 0,
+                },
+            })
+            .drain_draw()
+            .assert_empty();
 
         assert_eq!(component.data().offset_x.get(), 8);
         assert_eq!(component.data().offset_y.get(), 1);
@@ -463,20 +469,24 @@ mod tests {
         let text =
             Text::from_iter(["1 this is a long line", "2", "3", "4", "5"])
                 .into();
+        let props = TextWindowProps {
+            text: &text,
+            // Don't overflow the frame
+            margins: ScrollbarMargins {
+                right: 0,
+                bottom: 0,
+            },
+        };
         let mut component =
             TestComponent::builder(&harness, &terminal, TextWindow::default())
-                .with_props(TextWindowProps {
-                    text: &text,
-                    // Don't overflow the frame
-                    margins: ScrollbarMargins {
-                        right: 0,
-                        bottom: 0,
-                    },
-                })
+                .with_props(props.clone())
                 .build();
 
         component.set_area(Rect::new(0, 0, 10, 3));
-        component.int().drain_draw().assert_empty();
+        component
+            .int_props(|| props.clone())
+            .drain_draw()
+            .assert_empty();
 
         // Scroll out a bit
         component.data_mut().scroll_down(2);
@@ -485,7 +495,10 @@ mod tests {
         assert_eq!(component.data().offset_y.get(), 2);
 
         component.set_area(Rect::new(0, 0, 15, 4));
-        component.int().drain_draw().assert_empty();
+        component
+            .int_props(|| props.clone())
+            .drain_draw()
+            .assert_empty();
 
         assert_eq!(component.data().offset_x.get(), 8);
         assert_eq!(component.data().offset_y.get(), 1);

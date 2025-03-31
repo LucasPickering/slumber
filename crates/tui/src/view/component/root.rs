@@ -539,7 +539,7 @@ mod tests {
         assert_eq!(component.data().selected_request_id(), Some(exchange2.id));
     }
 
-    /// Test "Delete Recipe" action via both the recipe pane
+    /// Test "Delete Requests" action via both the recipe pane
     #[rstest]
     fn test_delete_recipe_requests(
         harness: TestHarness,
@@ -577,7 +577,7 @@ mod tests {
             Some(new_exchange.id)
         );
 
-        // Select "Delete Recipe" but decline the confirmation
+        // Select "Delete Requests" but decline the confirmation
         component
             .int_props(props_factory)
             .open_actions()
@@ -599,7 +599,7 @@ mod tests {
             Some(new_exchange.id)
         );
 
-        // Select "Delete Recipe" and accept. I don't feel like testing Delete
+        // Select "Delete Requests" and accept. I don't feel like testing Delete
         // for All Profiles
         component
             .int_props(props_factory)

@@ -22,7 +22,7 @@ This releases focuses on history and data management. A suite of new features an
 
 ### Changed
 
-- Upgrade to Rust 1.85 (2024 edition!)
+- Upgrade to Rust 1.86 (2024 edition!)
 - Improve functionality of `slumber history list`
   - `recipe` argument is optional now. Omit it to show requests for all recipes in the current collection
   - Add `--all` argument to show requests for all collections

@@ -1,11 +1,18 @@
 //! Single-session persistence for recipe overrides
 
-use crate::view::{ViewContext, common::template_preview::TemplatePreview};
+use crate::{
+    context::TuiContext,
+    view::{
+        ViewContext, common::template_preview::TemplatePreview,
+        state::Identified,
+    },
+};
 use persisted::{PersistedContainer, PersistedLazy, PersistedStore};
+use ratatui::text::Text;
 use slumber_core::{
     collection::RecipeId, http::content_type::ContentType, template::Template,
 };
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, fmt::Debug, ops::Deref};
 use tracing::debug;
 
 /// Special single-session [PersistedStore] just for edited recipe templates.
@@ -101,8 +108,21 @@ impl RecipeTemplate {
             .unwrap_or_else(|| self.0.preview.text().to_string())
     }
 
-    pub fn preview(&self) -> &TemplatePreview {
-        &self.0.preview
+    /// Get renderable text for this preview. If there is an override value,
+    /// show that. Otherwise, show the template preview.
+    pub fn text(&self) -> impl Deref<Target = Identified<Text<'static>>> {
+        if let Some(value) = &self.0.override_value {
+            let styles = &TuiContext::get().styles;
+            // value.generate().style(styles.text.edited)
+            todo!()
+        } else {
+            self.0.preview.text()
+        }
+    }
+
+    /// TODO
+    pub fn text_cloned(&self) -> Text {
+        (**self.text()).clone()
     }
 
     pub fn content_type(&self) -> Option<ContentType> {
@@ -127,7 +147,8 @@ struct RecipeTemplateInner {
 
 impl RecipeTemplateInner {
     fn set_override(&mut self, value: String) {
-        self.override_value = Some(value);
+        // TODO remove clone
+        self.override_value = Some(value.clone());
     }
 
     fn reset_override(&mut self) {

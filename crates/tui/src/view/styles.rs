@@ -116,7 +116,7 @@ pub struct TextBoxStyle {
     pub text: Style,
     pub cursor: Style,
     pub placeholder: Style,
-    pub invalid: Style,
+    pub error: Style,
 }
 
 /// Styles for TextWindow component
@@ -170,8 +170,7 @@ impl Styles {
                 highlight: Style::default()
                     .bg(theme.primary_color)
                     .fg(theme.primary_text_color)
-                    .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::UNDERLINED),
+                    .add_modifier(Modifier::BOLD),
                 title: Style::default().add_modifier(Modifier::BOLD),
             },
             template_preview: TemplatePreviewStyles {
@@ -195,7 +194,7 @@ impl Styles {
                 text: Style::default().bg(Color::DarkGray),
                 cursor: Style::default().bg(Color::White).fg(Color::Black),
                 placeholder: Style::default().fg(Color::Black),
-                invalid: Style::default().bg(Color::LightRed),
+                error: Style::default().bg(Color::LightRed),
             },
             text_window: TextWindowStyle {
                 gutter: Style::default().fg(Color::DarkGray),

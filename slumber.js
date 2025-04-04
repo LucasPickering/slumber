@@ -1,3 +1,5 @@
+import { command, profile, prompt, response, select } from "slumber";
+
 function username() {
   return command(["whoami"], { trim: "both" });
 }
@@ -19,22 +21,22 @@ function selectValue() {
 // Example of generating a selection list dynamically
 // TODO use this
 function selectDynamic() {
-  const response = response("login", {
+  const resp = response("login", {
     trigger: { type: "expire", duration: "12h" },
   });
-  const options = JSON.parse(response).form;
+  const options = JSON.parse(resp).form;
   return select("Select a value", options);
 }
 
 function authToken() {
-  const response = JSON.parse(
+  const resp = JSON.parse(
     response("login", {
       trigger: { type: "expire", duration: "12h" },
     })
   );
 
   // Pick some arbitrary data from the login response as the token
-  const token = JSON.stringify(response.form);
+  const token = JSON.stringify(resp.form);
   return command(["base64"], { stdin: token, trim: "both" });
 }
 

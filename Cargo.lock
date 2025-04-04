@@ -1783,7 +1783,7 @@ dependencies = [
  "indexmap",
  "rslint_parser",
  "serde",
- "serde_json",
+ "winnow 0.7.4",
 ]
 
 [[package]]
@@ -2724,7 +2724,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "winnow",
+ "winnow 0.6.20",
  "wiremock",
 ]
 
@@ -2750,7 +2750,7 @@ dependencies = [
  "strum",
  "thiserror 1.0.69",
  "tracing",
- "winnow",
+ "winnow 0.6.20",
 ]
 
 [[package]]
@@ -3763,6 +3763,15 @@ name = "winnow"
 version = "0.6.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36c1fec1a2bb5866f07c25f68c26e565c4c200aebb96d7e55710c19d3e8ac49b"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "winnow"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e97b544156e9bebe1a0ffbc03484fc1ffe3100cbce3ffb17eac35f7cdd7ab36"
 dependencies = [
  "memchr",
 ]

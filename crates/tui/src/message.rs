@@ -9,10 +9,9 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{LoadedCollection, ProfileId, RecipeId},
     http::{
-        BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
-        RequestRecord,
+        Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
     },
-    template::{Prompt, ResponseChannel, Select, Template},
+    template::{Overrides, Prompt, ResponseChannel, Select, Template},
 };
 use slumber_util::ResultTraced;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
@@ -173,5 +172,5 @@ pub type Callback<T> = Box<dyn 'static + Send + Sync + FnOnce(T)>;
 pub struct RequestConfig {
     pub profile_id: Option<ProfileId>,
     pub recipe_id: RecipeId,
-    pub options: BuildOptions,
+    pub overrides: Overrides,
 }

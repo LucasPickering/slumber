@@ -14,6 +14,7 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Child, Emitter, Event, EventHandler, OptionEvent},
+        state::Identified,
         util::view_text,
     },
 };
@@ -25,7 +26,7 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Recipe, RecipeBody, RecipeId},
     http::content_type::ContentType,
-    template::Template,
+    template::{OverrideKey, Template},
 };
 use std::{
     fs,
@@ -49,10 +50,9 @@ impl RecipeBodyDisplay {
     /// body is not `None`.
     pub fn new(body: &RecipeBody, recipe: &Recipe) -> Self {
         match body {
-            RecipeBody::Raw { data, .. } => {
+            RecipeBody::Raw { data, .. } | RecipeBody::Json { data } => {
                 Self::Raw(RawBody::new(data.clone(), recipe).into())
             }
-            RecipeBody::Json { data } => todo!(),
             RecipeBody::FormUrlencoded { data }
             | RecipeBody::FormMultipart { data } => {
                 let inner = RecipeFieldTable::new(
@@ -69,26 +69,10 @@ impl RecipeBodyDisplay {
                             },
                         )
                     }),
+                    OverrideKey::Form,
                 );
                 Self::Form(inner.into())
             }
-        }
-    }
-
-    /// If the user has applied a temporary edit to the body, get the override
-    /// value. Return `None` to use the recipe's stock body.
-    pub fn override_value(&self) -> Option<RecipeBody> {
-        match self {
-            RecipeBodyDisplay::Raw(inner)
-                if inner.data().body.is_overridden() =>
-            {
-                let inner = inner.data();
-                Some(RecipeBody::Raw {
-                    data: inner.body.template().clone(),
-                })
-            }
-            // Form bodies are overwritten per-field
-            RecipeBodyDisplay::Raw(_) | RecipeBodyDisplay::Form(_) => None,
         }
     }
 }
@@ -149,9 +133,19 @@ impl RawBody {
         }
     }
 
+    /// If the user has applied a temporary edit to the body, get the override
+    /// value. Return `None` to use the recipe's stock body.
+    pub fn override_value(&self) -> Option<String> {
+        if self.body.is_overridden() {
+            Some(self.body.value())
+        } else {
+            None
+        }
+    }
+
     /// Open rendered body in the pager
     fn view_body(&self) {
-        view_text(&self.body.preview().text(), self.mime.clone());
+        view_text(&self.body.text(), self.mime.clone());
     }
 
     /// Send a message to open the body in an external editor. We have to write
@@ -160,7 +154,7 @@ impl RawBody {
     fn open_editor(&mut self) {
         let path = temp_file();
         debug!(?path, "Writing body to file for editing");
-        let Some(_) = fs::write(&path, self.body.template().to_string())
+        let Some(_) = fs::write(&path, self.body.value())
             .with_context(|| {
                 format!("Error writing body to file {path:?} for editing")
             })
@@ -199,16 +193,8 @@ impl RawBody {
         // Clean up after ourselves
         delete_temp_file(path);
 
-        // let Some(template) = body
-        //     .parse::<Template>()
-        //     .reported(&ViewContext::messages_tx())
-        let Some(template) = todo!() else {
-            // Whatever the user wrote isn't a valid template
-            return;
-        };
-
         // Update state and regenerate the preview
-        self.body.set_override(template);
+        self.body.set_override(body);
     }
 }
 
@@ -254,7 +240,7 @@ impl Draw for RawBody {
             TextWindowProps {
                 // Do *not* call generate, because that clones the text and
                 // we only need a reference
-                text: &self.body.preview().text(),
+                text: &Identified::new(Default::default()), // TODO
                 margins: ScrollbarMargins {
                     right: 1,
                     bottom: 1,

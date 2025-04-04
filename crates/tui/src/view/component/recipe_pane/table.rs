@@ -25,9 +25,9 @@ use ratatui::{
 use slumber_config::Action;
 use slumber_core::{
     collection::HasId,
-    http::{BuildFieldOverride, BuildFieldOverrides},
-    template::Template,
+    template::{OverrideKey, OverrideValue, Overrides, Template},
 };
+use std::borrow::Cow;
 
 /// A table of key-value mappings. This is used in a new places in the recipe
 /// pane, and provides some common functionality:
@@ -49,6 +49,9 @@ where
     override_emitter: Emitter<SaveRecipeTableOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RecipeTableMenuAction>,
+    /// Function to generate an override key from a row key. This qualfies a
+    /// row from the table scope to the full recipe scope.
+    override_key_fn: fn(Cow<'static, str>) -> OverrideKey<'static>,
     select: Component<
         PersistedLazy<
             RowSelectKey,
@@ -68,6 +71,7 @@ where
         rows: impl IntoIterator<
             Item = (String, Template, RecipeOverrideKey, RowToggleKey),
         >,
+        override_key_fn: fn(Cow<'static, str>) -> OverrideKey<'static>,
     ) -> Self {
         let items = rows
             .into_iter()
@@ -90,17 +94,22 @@ where
             noun,
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
+            override_key_fn,
             select: PersistedLazy::new(select_key, select).into(),
         }
     }
 
-    /// Get the set of disabled/overridden rows for this table
-    pub fn to_build_overrides(&self) -> BuildFieldOverrides {
+    /// Get a map of disabled/overridden rows for this table
+    pub fn overrides(&self) -> Overrides {
         self.select
             .data()
             .items()
             .filter_map(|row| {
-                row.to_build_override().map(|ovr| (row.index, ovr))
+                let value = row.to_override()?;
+                Some((
+                    (self.override_key_fn)(Cow::Owned(row.key.clone())),
+                    value,
+                ))
             })
             .collect()
     }
@@ -301,7 +310,7 @@ impl<K: PersistedKey<Value = bool>> Generate for &RowState<K> {
         Self: 'this,
     {
         ToggleRow::new(
-            [self.key.as_str().into(), self.value.preview().generate()],
+            [self.key.as_str().into(), self.value.text_cloned()],
             *self.enabled,
         )
         .generate()
@@ -332,11 +341,11 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
     }
 
     /// Get the disabled/override state of this row
-    fn to_build_override(&self) -> Option<BuildFieldOverride> {
+    fn to_override(&self) -> Option<OverrideValue> {
         if !*self.enabled {
-            Some(BuildFieldOverride::Omit)
+            Some(OverrideValue::Omit)
         } else if self.value.is_overridden() {
-            Some(BuildFieldOverride::Override(self.value.value()))
+            Some(OverrideValue::Override(self.value.value()))
         } else {
             None
         }

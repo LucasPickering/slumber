@@ -31,15 +31,10 @@ pub struct TextBox {
     /// Text to show when text content is empty and text box is in focus. If
     /// `None`, the default placeholder will be shown instead.
     placeholder_focused: Option<String>,
-    /// Predicate function to apply visual validation effect
-    #[debug(skip)]
-    validator: Option<Validator>,
 
     // State
     state: TextState,
 }
-
-type Validator = Box<dyn Fn(&str) -> bool>;
 
 impl TextBox {
     /// Set initialize value for the text box
@@ -72,16 +67,6 @@ impl TextBox {
         self
     }
 
-    /// Set validation function. If input is invalid, events will not be emitted
-    /// for submit or change, meaning the user must fix the error or cancel.
-    pub fn validator(
-        mut self,
-        validator: impl 'static + Fn(&str) -> bool,
-    ) -> Self {
-        self.validator = Some(Box::new(validator));
-        self
-    }
-
     /// Get current text
     pub fn text(&self) -> &str {
         &self.state.text
@@ -105,17 +90,6 @@ impl TextBox {
     /// Clear all text, returning whatever was present
     pub fn clear(&mut self) -> String {
         mem::take(&mut self.state).text
-    }
-
-    /// Check if the current input text is valid. Always returns true if there
-    /// is no validator
-    fn is_valid(&self) -> bool {
-        self.text().is_empty()
-            || self
-                .validator
-                .as_ref()
-                .map(|validator| validator(self.text()))
-                .unwrap_or(true)
     }
 
     /// Handle a key input event, to modify text state. Return `true` if the
@@ -166,16 +140,12 @@ impl TextBox {
 
     /// Emit a change event. Should be called whenever text _content_ is changed
     fn change(&mut self) {
-        if self.is_valid() {
-            self.emitter.emit(TextBoxEvent::Change);
-        }
+        self.emitter.emit(TextBoxEvent::Change);
     }
 
     /// Emit a submit event
     fn submit(&mut self) {
-        if self.is_valid() {
-            self.emitter.emit(TextBoxEvent::Submit);
-        }
+        self.emitter.emit(TextBoxEvent::Submit);
     }
 }
 
@@ -236,11 +206,10 @@ impl Draw<TextBoxProps> for TextBox {
         let area = metadata.area();
         let text_stats = self.state.text_stats();
         let scroll_x = self.state.update_scroll(text_stats, area.width);
-        let style = if self.is_valid() && !props.has_error {
-            styles.text_box.text
+        let style = if props.has_error {
+            styles.text_box.error
         } else {
-            // Invalid and error state look the same
-            styles.text_box.invalid
+            styles.text_box.text
         };
         frame.render_widget(
             Paragraph::new(text).scroll((0, scroll_x)).style(style),

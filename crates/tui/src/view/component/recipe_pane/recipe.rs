@@ -17,7 +17,8 @@ use ratatui::{Frame, layout::Layout, prelude::Constraint, widgets::Paragraph};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     collection::{Recipe, RecipeId},
-    http::{BuildOptions, HttpMethod},
+    http::HttpMethod,
+    template::{OverrideKey, Overrides},
 };
 use strum::{EnumCount, EnumIter};
 
@@ -57,6 +58,7 @@ impl RecipeDisplay {
                         },
                     )
                 }),
+                OverrideKey::Query,
             )
             .into(),
             headers: RecipeFieldTable::new(
@@ -75,6 +77,7 @@ impl RecipeDisplay {
                         )
                     },
                 ),
+                OverrideKey::Header,
             )
             .into(),
             body: recipe
@@ -96,37 +99,28 @@ impl RecipeDisplay {
         }
     }
 
-    /// Generate a [BuildOptions] instance based on current UI state
-    pub fn build_options(&self) -> BuildOptions {
-        let authentication = self
-            .authentication
-            .data()
-            .as_ref()
-            .and_then(|authentication| authentication.override_value());
-        let form_fields = self
-            .body
-            .data()
-            .as_ref()
-            .and_then(|body| match body {
-                RecipeBodyDisplay::Raw(_) => None,
-                RecipeBodyDisplay::Form(form) => {
-                    Some(form.data().to_build_overrides())
-                }
-            })
-            .unwrap_or_default();
-        let body = self
-            .body
-            .data()
-            .as_ref()
-            .and_then(|body| body.override_value());
-
-        BuildOptions {
-            authentication,
-            headers: self.headers.data().to_build_overrides(),
-            query_parameters: self.query.data().to_build_overrides(),
-            form_fields,
-            body,
+    /// Generate a map of recipe fields to be overridden based on current UI
+    /// state. This includes both value overrides and omissions
+    pub fn overrides(&self) -> Overrides {
+        let mut overrides = Overrides::default();
+        if let Some(authentication) = self.authentication.data() {
+            overrides.extend(authentication.overrides());
         }
+        overrides.extend(self.query.data().overrides());
+        overrides.extend(self.headers.data().overrides());
+        match self.body.data() {
+            Some(RecipeBodyDisplay::Raw(body)) => {
+                if let Some(value) = body.data().override_value() {
+                    overrides.insert(OverrideKey::Body, value.into());
+                }
+            }
+            Some(RecipeBodyDisplay::Form(form)) => {
+                overrides.extend(form.data().overrides())
+            }
+            None => {}
+        }
+
+        overrides
     }
 }
 

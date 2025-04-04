@@ -19,11 +19,19 @@ use crate::{
     },
 };
 use derive_more::derive::Display;
+use indexmap::indexmap;
 use ratatui::{
-    Frame, layout::Layout, prelude::Constraint, text::Span, widgets::TableState,
+    Frame,
+    layout::Layout,
+    prelude::Constraint,
+    text::{Span, Text},
+    widgets::TableState,
 };
 use slumber_config::Action;
-use slumber_core::collection::{Authentication, RecipeId};
+use slumber_core::{
+    collection::{Authentication, RecipeId},
+    template::{OverrideKey, Overrides},
+};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Display authentication settings for a recipe
@@ -72,24 +80,22 @@ impl AuthenticationDisplay {
         }
     }
 
-    /// If the user has applied a temporary edit to the auth settings, get the
-    /// override value. Return `None` to use the recipe's stock auth.
-    pub fn override_value(&self) -> Option<Authentication<String>> {
+    /// Get a map of fields that have been overridden by the user
+    pub fn overrides(&self) -> Overrides {
         if self.state.is_overridden() {
-            Some(match &self.state {
+            match &self.state {
                 State::Basic {
                     username, password, ..
-                } => Authentication::Basic {
-                    username: username.value(),
-                    // See note on field def for why we always use Some
-                    password: Some(password.value()),
+                } => indexmap! {
+                    OverrideKey::AuthenticationUsername => username.value().into(),
+                    OverrideKey::AuthenticationPassword => password.value().into(),
                 },
-                State::Bearer { token, .. } => Authentication::Bearer {
-                    token: token.value(),
+                State::Bearer { token, .. } => indexmap! {
+                    OverrideKey::AuthenticationToken => token.value().into(),
                 },
-            })
+            }
         } else {
-            None
+            Overrides::new()
         }
     }
 }
@@ -108,7 +114,7 @@ impl EventHandler for AuthenticationDisplay {
             .emitted(
                 self.override_emitter,
                 |SaveAuthenticationOverride(value)| {
-                    self.state.set_override(&value)
+                    self.state.set_override(value)
                 },
             )
             .emitted(self.actions_emitter, |menu_action| match menu_action {
@@ -162,8 +168,8 @@ impl Draw for AuthenticationDisplay {
             } => {
                 let table = Table {
                     rows: vec![
-                        ["Username:".into(), username.preview().generate()],
-                        ["Password:".into(), password.preview().generate()],
+                        [Text::from("Username:"), username.text_cloned()],
+                        [Text::from("Password:"), password.text_cloned()],
                     ],
                     column_widths: &[Constraint::Length(9), Constraint::Min(0)],
                     ..Default::default()
@@ -176,7 +182,8 @@ impl Draw for AuthenticationDisplay {
                 );
             }
             State::Bearer { token } => {
-                frame.render_widget(token.preview().generate(), content_area);
+                // TODO impl draw on this instead?
+                frame.render_widget(&**token.text(), content_area);
             }
         }
     }
@@ -266,35 +273,19 @@ impl State {
         .open()
     }
 
-    /// Override the value template for whichever field is selected, and
-    /// recompute the template preview
-    fn set_override(&mut self, value: &str) {
-        todo!()
-        /* let Some(template) = value
-            .parse::<Template>()
-            // The template *should* always parse because the text box has a
-            // validator, but this is just a safety check
-            .reported(&ViewContext::messages_tx())
-        else {
-            return;
-        };
+    /// Override the value for whichever field is selected
+    fn set_override(&mut self, value: String) {
         match self {
             Self::Basic {
                 username,
                 password,
                 selected_field,
             } => match selected_field.data().selected() {
-                BasicFields::Username => {
-                    username.set_override(template);
-                }
-                BasicFields::Password => {
-                    password.set_override(template);
-                }
+                BasicFields::Username => username.set_override(value),
+                BasicFields::Password => password.set_override(value),
             },
-            Self::Bearer { token } => {
-                token.set_override(template);
-            }
-        } */
+            Self::Bearer { token } => token.set_override(value),
+        }
     }
 
     /// Reset the value template override to the default from the recipe, and

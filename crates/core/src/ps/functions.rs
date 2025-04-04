@@ -5,14 +5,14 @@ use crate::{
     http::{RequestSeed, ResponseRecord},
     ps::{cereal, error::FunctionError},
     template::{
-        OverrideKey, Prompt, RenderState, Renderer, Select, TemplateContext,
+        OverrideKey, OverrideValue, Prompt, RenderState, Renderer, Select,
+        TemplateContext,
     },
     util::FutureCacheOutcome,
 };
 use bytes::Bytes;
 use chrono::Utc;
 use petitscript::{Engine, FromPs, Process, Value, error::ValueError};
-use reqwest::header::HeaderValue;
 use serde::{Deserialize, de::IntoDeserializer};
 use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
 use tokio::{
@@ -143,11 +143,17 @@ async fn profile(
     let context = context(process)?;
 
     // Check if this field has been manually overridden
-    if let Some(value) = context
+    match context
         .overrides
         .get(&OverrideKey::Profile(field.as_str().into()))
     {
-        return Ok(value.clone().into());
+        // Manually overridden - return the user's value
+        Some(OverrideValue::Override(value)) => {
+            return Ok(value.clone().into());
+        }
+        // Pretend the value isn't here
+        Some(OverrideValue::Omit) => return Ok(Value::Undefined),
+        None => {} // Move along nothing to see here
     }
 
     let profile = context.profile();
@@ -229,7 +235,11 @@ async fn response(
     let response = context(process)?
         .get_latest_response(process, &recipe_id, trigger)
         .await?;
-    decode.decode(response.body.into_bytes())
+    let body = match Arc::try_unwrap(response) {
+        Ok(response) => response.body,
+        Err(response) => response.body.clone(),
+    };
+    decode.decode(body.into_bytes())
 }
 
 #[derive(Default, Deserialize)]
@@ -253,16 +263,18 @@ async fn response_header(
     ),
 ) -> Result<Value, FunctionError> {
     let ResponseHeaderKwargs { decode, trigger } = kwargs;
-    let mut response = context(process)?
+    let response = context(process)?
         .get_latest_response(process, &recipe_id, trigger)
         .await?;
-    let header: HeaderValue = response
-        .headers
-        .remove(&header)
-        .ok_or_else(|| FunctionError::ResponseMissingHeader { header })?;
+    // Only clone the header value if necessary
+    let header_value = match Arc::try_unwrap(response) {
+        Ok(mut response) => response.headers.remove(&header),
+        Err(response) => response.headers.get(&header).cloned(),
+    }
+    .ok_or_else(|| FunctionError::ResponseMissingHeader { header })?;
     // HeaderValue doesn't expose any way to move its bytes out so we must clone
     // https://github.com/hyperium/http/issues/661
-    decode.decode(Bytes::copy_from_slice(header.as_bytes()))
+    decode.decode(Bytes::copy_from_slice(header_value.as_bytes()))
 }
 
 /// Ask the user to select a value from a list
@@ -407,7 +419,7 @@ impl TemplateContext {
         process: &Process,
         recipe_id: &RecipeId,
         trigger: RequestTrigger,
-    ) -> Result<ResponseRecord, FunctionError> {
+    ) -> Result<Arc<ResponseRecord>, FunctionError> {
         // Defer loading the most recent exchange until we know we'll need it
         let get_latest = || async {
             self.http_provider
@@ -429,15 +441,12 @@ impl TemplateContext {
             // 3. TUI and CLI behavior may not match
             // All 3 options are unintuitive in some way, but 1 is the easiest
             // to implement so I'm going with that for now.
-            let build_options = Default::default();
+            // TODO move this comment somewhere more appropriate ^
 
             // Fork the process so we can run a sub-render
             let renderer = Renderer::forked(process);
             self.http_provider
-                .send_request(
-                    RequestSeed::new(recipe_id.clone(), build_options),
-                    &renderer,
-                )
+                .send_request(RequestSeed::new(recipe_id.clone()), &renderer)
                 .await
                 .map_err(|error| FunctionError::Trigger {
                     recipe_id: recipe_id.clone(),
@@ -468,7 +477,7 @@ impl TemplateContext {
             RequestTrigger::Always => send_request().await?,
         };
 
-        Ok(Arc::into_inner(exchange.response).expect("Arc was just created"))
+        Ok(exchange.response)
     }
 }
 

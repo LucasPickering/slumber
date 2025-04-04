@@ -52,7 +52,7 @@ impl TemplatePreview {
         let text = Arc::new(Mutex::new(text));
 
         // Trigger a task to render the preview and write the answer back into
-        // the mutex. SKip this if the template is a static value (i.e. not a
+        // the mutex. Skip this if the template is a static value (i.e. not a
         // function)
         if tui_context.config.preview_templates && template.is_dynamic() {
             let destination = Arc::clone(&text);
@@ -88,7 +88,6 @@ impl TemplatePreview {
     ) {
         let styles = &TuiContext::get().styles;
         let text = match result {
-            // TODO only apply this to function templates
             Ok(preview) => Text::styled(preview, styles.template_preview.text),
             Err(_) => Text::styled("Error", styles.template_preview.error),
         };

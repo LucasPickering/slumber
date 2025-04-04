@@ -4,9 +4,9 @@
 //! exchange is incomplete or failed.
 
 use crate::{
-    collection::{Authentication, ProfileId, RecipeBody, RecipeId},
+    collection::{ProfileId, RecipeId},
     http::content_type::ContentType,
-    template::{Template, TemplateError, TriggeredRequestError},
+    template::{TemplateError, TriggeredRequestError},
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -19,7 +19,7 @@ use reqwest::{
     header::{self, HeaderMap},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 use strum::{EnumIter, IntoEnumIterator};
 use thiserror::Error;
 use tracing::error;
@@ -248,89 +248,15 @@ pub struct RequestSeed {
     pub id: RequestId,
     /// Recipe from which the request should be rendered
     pub recipe_id: RecipeId,
-    /// Configuration for the build
-    pub options: BuildOptions,
 }
 
 impl RequestSeed {
-    pub fn new(recipe_id: RecipeId, options: BuildOptions) -> Self {
+    pub fn new(recipe_id: RecipeId) -> Self {
         Self {
             id: RequestId::new(),
             recipe_id,
-            options,
         }
     }
-}
-
-/// Options for modifying a recipe during a build, corresponding to changes the
-/// user can make in the TUI (as opposed to the collection file). This is
-/// helpful for applying temporary modifications made by the user. By providing
-/// this in a separate struct, we prevent the need to clone, modify, and pass
-/// recipes everywhere. Recipes could be very large so cloning may be expensive,
-/// and this options layer makes the available modifications clear and
-/// restricted.
-///
-/// These store *indexes* rather than keys because keys may not be necessarily
-/// unique (e.g. in the case of query params). Technically some could use keys
-/// and some could use indexes, but I chose consistency.
-#[derive(Debug, Default)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub struct BuildOptions {
-    /// Authentication can be overridden, but not disabled. For simplicity,
-    /// the override is wholesale rather than by field.
-    pub authentication: Option<Authentication>,
-    pub headers: BuildFieldOverrides,
-    pub query_parameters: BuildFieldOverrides,
-    pub form_fields: BuildFieldOverrides,
-    /// Override body. This should *not* be used for form bodies, since those
-    /// can be override on a field-by-field basis.
-    pub body: Option<RecipeBody>,
-}
-
-/// A collection of modifications made to a particular section of a recipe
-/// (query params, headers, etc.). See [BuildFieldOverride]
-#[derive(Debug, Default)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub struct BuildFieldOverrides {
-    overrides: HashMap<usize, BuildFieldOverride>,
-}
-
-impl BuildFieldOverrides {
-    /// Get the value to be used for a particular field, keyed by index. Return
-    /// `None` if the field should be dropped from the request, and use the
-    /// given default if no override is provided.
-    pub fn get<'a>(
-        &'a self,
-        index: usize,
-        default: &'a Template,
-    ) -> Option<&'a Template> {
-        match self.overrides.get(&index) {
-            Some(BuildFieldOverride::Omit) => None,
-            Some(BuildFieldOverride::Override(template)) => todo!(),
-            None => Some(default),
-        }
-    }
-}
-
-impl FromIterator<(usize, BuildFieldOverride)> for BuildFieldOverrides {
-    fn from_iter<T: IntoIterator<Item = (usize, BuildFieldOverride)>>(
-        iter: T,
-    ) -> Self {
-        Self {
-            overrides: HashMap::from_iter(iter),
-        }
-    }
-}
-
-/// Modifications made to a single field (query param, header, etc.) in a
-/// recipe
-#[derive(Debug)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub enum BuildFieldOverride {
-    /// Do not include this field in the recipe
-    Omit,
-    /// Replace the value for this field with a different value
-    Override(String),
 }
 
 /// A request ready to be launched into through the stratosphere. This is
@@ -710,7 +636,7 @@ fn content_type_header(headers: &HeaderMap) -> Option<Mime> {
 ///
 /// The generic type is to make this usable with references to bodies. In most
 /// cases you can just use the default.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ResponseBody<T = Bytes> {
     /// Raw body
     data: T,

@@ -179,7 +179,7 @@ pub struct TemplateContext {
     /// An interface to allow accessing and sending HTTP chained requests
     pub http_provider: Box<dyn HttpProvider>,
     /// Additional key=value overrides passed directly from the user
-    pub overrides: IndexMap<OverrideKey<'static>, String>,
+    pub overrides: Overrides,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
 }
@@ -192,6 +192,9 @@ impl TemplateContext {
             .and_then(|profile_id| self.collection.profiles.get(profile_id))
     }
 }
+
+/// TODO
+pub type Overrides = IndexMap<OverrideKey<'static>, OverrideValue>;
 
 /// A key specifying a single value in a request to be overridden. Users can
 /// override a specific part of a recipe OR a profile field. Profile fields
@@ -211,10 +214,16 @@ pub enum OverrideKey<'a> {
     Query(Cow<'a, str>),
     /// Override a single header value
     Header(Cow<'a, str>),
-    /// Override the request's entire body
+    /// Override the request's entire body. For raw/JSON bodies
     Body,
-    // TODO form fields
-    // TODO authentication
+    /// Override a form body field
+    Form(Cow<'a, str>),
+    /// Override the username in basic authentication
+    AuthenticationUsername,
+    /// Override the password in basic authentication
+    AuthenticationPassword,
+    /// Override the token in bearer token authentication
+    AuthenticationToken,
 }
 
 impl FromStr for OverrideKey<'static> {
@@ -235,6 +244,19 @@ impl FromStr for OverrideKey<'static> {
             }
             _ => Err(OverrideKeyParseError),
         }
+    }
+}
+
+/// TODO
+#[derive(Debug, PartialEq)]
+pub enum OverrideValue {
+    Omit,
+    Override(String),
+}
+
+impl From<String> for OverrideValue {
+    fn from(value: String) -> Self {
+        Self::Override(value)
     }
 }
 
@@ -262,7 +284,7 @@ impl slumber_util::Factory for TemplateContext {
                 CollectionDatabase::factory(()),
                 None,
             )),
-            overrides: IndexMap::new(),
+            overrides: Default::default(),
             prompter: Box::<TestPrompter>::default(),
         }
     }

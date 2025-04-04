@@ -46,13 +46,13 @@ pub use models::*;
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     http::curl::CurlBuilder,
-    template::{Renderer, Template},
+    template::{OverrideKey, OverrideValue, Renderer, Template},
 };
 use anyhow::Context;
 use bytes::Bytes;
 use chrono::Utc;
 use futures::{
-    Future,
+    Future, FutureExt,
     future::{self, OptionFuture, try_join_all},
     try_join,
 };
@@ -117,14 +117,9 @@ impl HttpEngine {
         seed: RequestSeed,
         renderer: &Renderer,
     ) -> Result<RequestTicket, RequestBuildError> {
-        let RequestSeed {
-            id,
-            recipe_id,
-            options,
-        } = &seed;
+        let RequestSeed { id, recipe_id } = &seed;
         let _ =
-            info_span!("Build request", request_id = %id, ?recipe_id, ?options)
-                .entered();
+            info_span!("Build request", request_id = %id, ?recipe_id).entered();
 
         let future = async {
             let recipe = renderer
@@ -136,10 +131,10 @@ impl HttpEngine {
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
                 recipe.render_url(renderer),
-                recipe.render_query(options, renderer),
-                recipe.render_headers(options, renderer),
-                recipe.render_authentication(options, renderer),
-                recipe.render_body(options, renderer),
+                recipe.render_query(renderer),
+                recipe.render_headers(renderer),
+                recipe.render_authentication(renderer),
+                recipe.render_body(renderer),
             )?;
 
             // Build the reqwest request first, so we can have it do all the
@@ -183,14 +178,9 @@ impl HttpEngine {
         seed: RequestSeed,
         renderer: &Renderer,
     ) -> Result<Url, RequestBuildError> {
-        let RequestSeed {
-            id,
-            recipe_id,
-            options,
-        } = &seed;
-        let _ =
-            info_span!("Build request URL", request_id = %id, ?recipe_id, ?options)
-                .entered();
+        let RequestSeed { id, recipe_id } = &seed;
+        let _ = info_span!("Build request URL", request_id = %id, ?recipe_id)
+            .entered();
 
         let future = async {
             let recipe = renderer
@@ -202,7 +192,7 @@ impl HttpEngine {
             // Parallelization!
             let (url, query) = try_join!(
                 recipe.render_url(renderer),
-                recipe.render_query(options, renderer),
+                recipe.render_query(renderer),
             )?;
 
             // Use RequestBuilder so we can offload the handling of query params
@@ -224,14 +214,9 @@ impl HttpEngine {
         seed: RequestSeed,
         renderer: &Renderer,
     ) -> Result<Option<Bytes>, RequestBuildError> {
-        let RequestSeed {
-            id,
-            recipe_id,
-            options,
-        } = &seed;
-        let _ =
-            info_span!("Build request body", request_id = %id, ?recipe_id, ?options)
-                .entered();
+        let RequestSeed { id, recipe_id } = &seed;
+        let _ = info_span!("Build request body", request_id = %id, ?recipe_id)
+            .entered();
 
         let future = async {
             let recipe = renderer
@@ -240,8 +225,7 @@ impl HttpEngine {
                 .recipes
                 .try_get_recipe(recipe_id)?;
 
-            let Some(body) = recipe.render_body(options, renderer).await?
-            else {
+            let Some(body) = recipe.render_body(renderer).await? else {
                 return Ok(None);
             };
 
@@ -287,14 +271,9 @@ impl HttpEngine {
         seed: RequestSeed,
         renderer: &Renderer,
     ) -> Result<String, RequestBuildError> {
-        let RequestSeed {
-            id,
-            recipe_id,
-            options,
-        } = &seed;
-        let _ =
-            info_span!("Build request cURL", request_id = %id, ?recipe_id, ?options)
-                .entered();
+        let RequestSeed { id, recipe_id } = &seed;
+        let _ = info_span!("Build request cURL", request_id = %id, ?recipe_id)
+            .entered();
 
         let future = async {
             let recipe = renderer
@@ -306,10 +285,10 @@ impl HttpEngine {
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
                 recipe.render_url(renderer),
-                recipe.render_query(options, renderer),
-                recipe.render_headers(options, renderer),
-                recipe.render_authentication(options, renderer),
-                recipe.render_body(options, renderer),
+                recipe.render_query(renderer),
+                recipe.render_headers(renderer),
+                recipe.render_authentication(renderer),
+                recipe.render_body(renderer),
             )?;
 
             // Buidl the command
@@ -458,28 +437,39 @@ impl Recipe {
     /// Render query key=value params
     async fn render_query(
         &self,
-        options: &BuildOptions,
         renderer: &Renderer,
     ) -> anyhow::Result<Vec<(String, String)>> {
+        let overrides = &renderer.context().overrides;
         let iter = self
             .query_iter()
             // Enumerate so we can look up overrides by index. This relies on
             // the thing that builds the overrides to use the same iteration
             // order; this is enforced by using Recipe::query_iter()
-            .enumerate()
-            .filter_map(|(i, (k, v))| {
-                // Look up and apply override. We do this by index because the
-                // keys aren't necessarily unique
-                let template = options.query_parameters.get(i, v)?;
-
-                Some(async move {
-                    Ok::<_, anyhow::Error>((
-                        k.to_owned(),
-                        renderer.render_string(template).await.context(
-                            format!("Error rendering query parameter `{k}`"),
-                        )?,
-                    ))
-                })
+            // TODO handle duplicate params correctly
+            .filter_map(|(k, template)| {
+                match overrides.get(&OverrideKey::Query(k.into())) {
+                    // Skip this param
+                    Some(OverrideValue::Omit) => None,
+                    // Use the given value instead of rendering
+                    Some(OverrideValue::Override(value)) => Some(
+                        async { Ok((k.to_owned(), value.clone())) }.boxed(),
+                    ),
+                    // No override - render the template from the recipe
+                    None => Some(
+                        async move {
+                            Ok::<_, anyhow::Error>((
+                                k.to_owned(),
+                                renderer
+                                    .render_string(template)
+                                    .await
+                                    .context(format!(
+                                        "Error rendering query parameter `{k}`"
+                                    ))?,
+                            ))
+                        }
+                        .boxed(),
+                    ),
+                }
             });
         future::try_join_all(iter).await
     }
@@ -488,25 +478,32 @@ impl Recipe {
     /// authentication and other implicit headers
     async fn render_headers(
         &self,
-        options: &BuildOptions,
+
         renderer: &Renderer,
     ) -> anyhow::Result<HeaderMap> {
-        let mut headers = HeaderMap::new();
+        let overrides = &renderer.context().overrides;
 
         // Render headers in an iterator so we can parallelize
-        let iter = self.headers.iter().enumerate().filter_map(
-            move |(i, (header, value_template))| {
-                // Look up and apply override. We do this by index because the
-                // keys aren't necessarily unique
-                let template = options.headers.get(i, value_template)?;
-
-                Some(async move {
-                    self.render_header(renderer, header, template).await
-                })
-            },
-        );
+        let iter = self.headers.iter().filter_map(move |(header, template)| {
+            match overrides.get(&OverrideKey::Header(header.into())) {
+                Some(OverrideValue::Omit) => None,
+                Some(OverrideValue::Override(value)) => Some(
+                    async {
+                        try_into_header(header, value.clone().into_bytes())
+                    }
+                    .boxed(),
+                ),
+                None => Some(
+                    async move {
+                        self.render_header(renderer, header, template).await
+                    }
+                    .boxed(),
+                ),
+            }
+        });
 
         let rendered = future::try_join_all(iter).await?;
+        let mut headers = HeaderMap::new();
         headers.reserve(rendered.len());
         // Do *not* use headers.extend(), because that will append to existing
         // headers, and we want to overwrite instead
@@ -536,30 +533,18 @@ impl Recipe {
         // left in for backward compatibility.
         trim_bytes(&mut value, |c| c == b'\n' || c == b'\r');
 
-        // String -> header conversions are fallible, if headers
-        // are invalid
-        Ok::<(HeaderName, HeaderValue), anyhow::Error>((
-            header
-                .try_into()
-                .context(format!("Error encoding header name `{header}`"))?,
-            value.try_into().context(format!(
-                "Error encoding value for header `{header}`"
-            ))?,
-        ))
+        // String -> header conversions are fallible, if headers are invalid
+        try_into_header(header, value)
     }
 
     /// Render authentication and return the same data structure, with resolved
     /// data. This can be passed to [reqwest::RequestBuilder]
     async fn render_authentication(
         &self,
-        options: &BuildOptions,
         renderer: &Renderer,
     ) -> anyhow::Result<Option<Authentication<String>>> {
-        let authentication = options
-            .authentication
-            .as_ref()
-            .or(self.authentication.as_ref());
-        match authentication {
+        // TODO support overrides
+        match self.authentication.as_ref() {
             Some(Authentication::Basic { username, password }) => {
                 let (username, password) =
                     try_join!(
@@ -595,10 +580,9 @@ impl Recipe {
     /// Render request body
     async fn render_body(
         &self,
-        options: &BuildOptions,
         renderer: &Renderer,
     ) -> anyhow::Result<Option<RenderedBody>> {
-        let Some(body) = options.body.as_ref().or(self.body.as_ref()) else {
+        let Some(body) = self.body.as_ref() else {
             return Ok(None);
         };
 
@@ -621,40 +605,32 @@ impl Recipe {
                 RenderedBody::Json(json_value)
             }
             RecipeBody::FormUrlencoded { data } => {
-                let iter = data.iter().enumerate().filter_map(
-                    |(i, (field, value_template))| {
-                        let template =
-                            options.form_fields.get(i, value_template)?;
-                        Some(async move {
-                            let value = renderer
-                                .render_string(template)
-                                .await
-                                .context(format!(
-                                    "Error rendering form field `{field}`"
-                                ))?;
-                            Ok::<_, anyhow::Error>((field.clone(), value))
-                        })
-                    },
-                );
+                // TODO support overrides
+                let iter =
+                    data.iter().map(|(field, value_template)| async move {
+                        let value = renderer
+                            .render_string(value_template)
+                            .await
+                            .context(format!(
+                                "Error rendering form field `{field}`"
+                            ))?;
+                        Ok::<_, anyhow::Error>((field.clone(), value))
+                    });
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormUrlencoded(rendered)
             }
             RecipeBody::FormMultipart { data } => {
-                let iter = data.iter().enumerate().filter_map(
-                    |(i, (field, value_template))| {
-                        let template =
-                            options.form_fields.get(i, value_template)?;
-                        Some(async move {
-                            let value = renderer
-                                .render_bytes(template)
-                                .await
-                                .context(format!(
+                // TODO support overrides
+                let iter =
+                    data.iter().map(|(field, value_template)| async move {
+                        let value = renderer
+                            .render_bytes(value_template)
+                            .await
+                            .context(format!(
                                 "Error rendering form field `{field}`"
                             ))?;
-                            Ok::<_, anyhow::Error>((field.clone(), value))
-                        })
-                    },
-                );
+                        Ok::<_, anyhow::Error>((field.clone(), value))
+                    });
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormMultipart(rendered)
             }
@@ -741,4 +717,20 @@ fn trim_bytes(bytes: &mut Vec<u8>, f: impl Fn(u8) -> bool) {
             break;
         }
     }
+}
+
+/// Convert a pair of strings into a header name and value. Fails if either is
+/// invalid
+fn try_into_header(
+    header: &str,
+    value: Vec<u8>,
+) -> anyhow::Result<(HeaderName, HeaderValue)> {
+    Ok((
+        header
+            .try_into()
+            .context(format!("Error encoding header name `{header}`"))?,
+        value
+            .try_into()
+            .context(format!("Error encoding value for header `{header}`"))?,
+    ))
 }

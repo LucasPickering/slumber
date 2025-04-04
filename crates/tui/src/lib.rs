@@ -43,7 +43,7 @@ use slumber_core::{
     database::{CollectionDatabase, Database},
     http::{Exchange, RequestError, RequestId, RequestSeed},
     ps::PetitEngine,
-    template::{Prompter, Renderer, Template, TemplateContext},
+    template::{Overrides, Prompter, Renderer, Template, TemplateContext},
 };
 use slumber_util::ResultTraced;
 use std::{
@@ -502,11 +502,11 @@ impl Tui {
         let RequestConfig {
             profile_id,
             recipe_id,
-            options,
+            overrides,
         } = self.request_config()?;
-        let seed = RequestSeed::new(recipe_id, options);
+        let seed = RequestSeed::new(recipe_id);
         let messages_tx = self.messages_tx();
-        let renderer = self.renderer(profile_id, false)?;
+        let renderer = self.renderer(profile_id, overrides, false)?;
         // Spawn a task to do the render+copy
         spawn_result(async move {
             let url = TuiContext::get()
@@ -524,10 +524,10 @@ impl Tui {
         let RequestConfig {
             profile_id,
             recipe_id,
-            options,
+            overrides,
         } = self.request_config()?;
-        let seed = RequestSeed::new(recipe_id, options);
-        let renderer = self.renderer(profile_id, false)?;
+        let seed = RequestSeed::new(recipe_id);
+        let renderer = self.renderer(profile_id, overrides, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         spawn_result(async move {
@@ -550,10 +550,10 @@ impl Tui {
         let RequestConfig {
             profile_id,
             recipe_id,
-            options,
+            overrides,
         } = self.request_config()?;
-        let seed = RequestSeed::new(recipe_id, options);
-        let renderer = self.renderer(profile_id, false)?;
+        let seed = RequestSeed::new(recipe_id);
+        let renderer = self.renderer(profile_id, overrides, false)?;
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         spawn_result(async move {
@@ -611,15 +611,15 @@ impl Tui {
         let RequestConfig {
             profile_id,
             recipe_id,
-            options,
+            overrides,
         } = self.request_config()?;
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
 
-        let renderer = self.renderer(profile_id.clone(), false)?;
+        let renderer = self.renderer(profile_id.clone(), overrides, false)?;
         let messages_tx = self.messages_tx();
 
-        let seed = RequestSeed::new(recipe_id.clone(), options);
+        let seed = RequestSeed::new(recipe_id.clone());
         let request_id = seed.id;
 
         // Don't use spawn_result here, because errors are handled specially for
@@ -700,23 +700,18 @@ impl Tui {
         profile_id: Option<ProfileId>,
         on_complete: Callback<Result<String, ()>>,
     ) -> anyhow::Result<()> {
-        let renderer = self.renderer(profile_id, true)?;
-        spawn_result(async move {
+        let renderer = self.renderer(profile_id, Overrides::default(), true)?;
+        spawn(async move {
+            // Send an empty error to the caller so it can show an
+            // inline error message. The error will be traced, but never
+            // shown in a modal because that would be disruptive.
             // TODO how to handle bytes?
-            match renderer.render_string(&template).await {
-                Ok(preview) => {
-                    on_complete(Ok(preview));
-                    Ok(())
-                }
-                Err(error) => {
-                    // Send an empty error to the caller so it can show an
-                    // inline error message, then return the
-                    // error so its contents can be shown in
-                    // a modal
-                    on_complete(Err(()));
-                    Err(error)
-                }
-            }
+            let result = renderer
+                .render_string(&template)
+                .await
+                .traced()
+                .map_err(|_| ());
+            on_complete(result);
         });
         Ok(())
     }
@@ -728,6 +723,7 @@ impl Tui {
     fn renderer(
         &self,
         profile_id: Option<ProfileId>,
+        overrides: Overrides,
         is_preview: bool,
     ) -> anyhow::Result<Renderer> {
         let collection = &self.collection;
@@ -744,7 +740,7 @@ impl Tui {
             collection: collection.clone(),
             http_provider: Box::new(http_provider),
             prompter,
-            overrides: Default::default(),
+            overrides,
         };
         Ok(Renderer::new(self.js_process.clone(), context))
     }

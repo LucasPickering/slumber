@@ -7,20 +7,16 @@ use async_trait::async_trait;
 use clap::{Parser, ValueHint};
 use clap_complete::ArgValueCompleter;
 use dialoguer::{Input, Password, Select as DialoguerSelect};
-use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
     collection::{LoadedCollection, ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
-    http::{
-        BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
-        ResponseRecord,
-    },
+    http::{Exchange, HttpEngine, RequestRecord, RequestSeed, ResponseRecord},
     ps::PetitEngine,
     template::{
-        HttpProvider, OverrideKey, Prompt, Prompter, Renderer, Select,
-        TemplateContext, TriggeredRequestError,
+        HttpProvider, OverrideKey, OverrideValue, Prompt, Prompter, Renderer,
+        Select, TemplateContext, TriggeredRequestError,
     },
     util::MaybeStr,
 };
@@ -216,7 +212,12 @@ impl BuildRequestCommand {
         });
 
         // Build the request
-        let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
+        let overrides = self
+            .overrides
+            .into_iter()
+            // CLI doesn't support omitting via override for now
+            .map(|(key, value)| (key, OverrideValue::Override(value)))
+            .collect();
         let template_context = TemplateContext {
             selected_profile,
             collection: collection.into(),
@@ -229,7 +230,7 @@ impl BuildRequestCommand {
             prompter: Box::new(CliPrompter),
         };
         let renderer = Renderer::new(process, template_context);
-        let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
+        let seed = RequestSeed::new(self.recipe_id);
         Ok((database, http_engine, seed, renderer))
     }
 }

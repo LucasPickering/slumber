@@ -350,25 +350,9 @@ impl OptionEvent for Option<Event> {
 /// A wrapper trait for [Any] that also gives us access to the type's [Debug]
 /// impl. This makes testing and logging much more effective, because we get the
 /// value's underlying debug representation, rather than just `Any {..}`.
-pub trait LocalEvent: Any + Debug {
-    // Workaround for trait upcasting
-    // unstable: Delete this once we get trait upcasting
-    // https://github.com/rust-lang/rust/issues/65991
-    fn into_any(self: Box<Self>) -> Box<dyn Any>;
-}
+pub trait LocalEvent: Any + Debug {}
 
-impl<T: Any + Debug> LocalEvent for T {
-    fn into_any(self: Box<Self>) -> Box<dyn Any> {
-        self
-    }
-}
-
-impl dyn LocalEvent {
-    /// Alias for `Any::downcast`, to downcast into a concrete type
-    pub fn downcast<T: Any>(self: Box<dyn LocalEvent>) -> Option<T> {
-        self.into_any().downcast().map(|b| *b).ok()
-    }
-}
+impl<T: Any + Debug> LocalEvent for T {}
 
 /// An emitter generates events of a particular type. This is used for
 /// components that need to respond to actions performed on their children, e.g.
@@ -426,14 +410,16 @@ impl<T: Sized + LocalEvent> Emitter<T> {
             } if emitter_id == self.id => {
                 // This cast should be infallible because emitter IDs are unique
                 // and each emitter can only emit one type
-                Ok(event.downcast::<T>().unwrap_or_else(|| {
-                    panic!(
-                        "Incorrect emitted event type for emitter \
+                Ok(*(event as Box<dyn Any>).downcast::<T>().unwrap_or_else(
+                    |_| {
+                        panic!(
+                            "Incorrect emitted event type for emitter \
                         `{emitter_id}`. Expected type {}, received type \
                         {emitter_type}",
-                        any::type_name::<T>()
-                    )
-                }))
+                            any::type_name::<T>()
+                        )
+                    },
+                ))
             }
             _ => Err(event),
         }

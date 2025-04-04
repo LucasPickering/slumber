@@ -21,7 +21,7 @@ impl PetitEngine {
     pub fn new() -> Self {
         let _ = info_span!("Initializing JS engine").entered();
         let mut engine = Engine::new();
-        functions::register_all(&mut engine);
+        functions::register_module(&mut engine);
         Self {
             engine: engine.into(),
         }

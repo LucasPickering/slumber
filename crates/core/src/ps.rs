@@ -3,8 +3,8 @@ mod error;
 mod functions;
 
 use crate::collection::{Collection, LoadedCollection};
-use anyhow::{Context, anyhow};
-use petitscript::Engine;
+use anyhow::Context;
+use petitscript::{Engine, Value};
 use serde::de::IntoDeserializer;
 use std::{path::Path, sync::Arc};
 use tracing::{info, info_span};
@@ -38,12 +38,13 @@ impl PetitEngine {
         let load = || {
             let process = self.engine.compile(path.to_owned())?;
             let exports = process.execute()?;
-            // Default exported value should be the collection
-            let value = exports
-                .default
-                .ok_or_else(|| anyhow!("Collection not exported TODO"))?;
-            let collection: Collection =
-                serde_path_to_error::deserialize(value.into_deserializer())?;
+            // Collection components (profiles, requests, etc.) should be
+            // exported individually. We can treat the whole set of named
+            // exports as our collection, and we'll ignore irrelevant fields
+            let collection_value = Value::from(exports.named);
+            let collection: Collection = serde_path_to_error::deserialize(
+                collection_value.into_deserializer(),
+            )?;
 
             Ok::<_, anyhow::Error>(LoadedCollection {
                 process,

@@ -25,7 +25,6 @@ use std::iter;
 /// be very large. Instead, it's hidden behind an `Arc` by `CollectionFile`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
     pub profiles: IndexMap<ProfileId, Profile>,

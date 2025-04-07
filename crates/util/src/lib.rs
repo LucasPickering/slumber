@@ -2,6 +2,10 @@
 //! to change frequently. The main purpose of this is to pull logic out of the
 //! core crate, because that one changes a lot and requires constant
 //! recompilation.
+//!
+//! **This crate is not semver compliant**. The version is locked to the root
+//! `slumber` crate version. If you choose to depend directly on this crate, you
+//! do so at your own risk of breakage.
 
 pub mod paths;
 #[cfg(feature = "test")]

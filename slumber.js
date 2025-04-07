@@ -48,7 +48,7 @@ const recipeBase = {
   },
 };
 
-const profiles = {
+export const profiles = {
   works: {
     name: "This Works",
     default: true,
@@ -73,7 +73,7 @@ const profiles = {
   },
 };
 
-const requests = {
+export const requests = {
   login: {
     type: "request",
     method: "POST",
@@ -177,5 +177,3 @@ const requests = {
     url: () => `${profile("host")}/delay/5`,
   },
 };
-
-export default { profiles, requests };

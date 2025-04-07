@@ -47,3 +47,6 @@ wiremock = {workspace = true}
 
 [package.metadata.release]
 tag = false
+
+[package.metadata.dist]
+dist = false

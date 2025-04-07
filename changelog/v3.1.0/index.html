@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" id="oranda" class="dark">
+  <head>
+    <title>slumber</title>
+    
+      <meta property="og:url" content="https://slumber.lucaspickering.me" />
+    
+    
+      <link rel="icon" href="/favicon.ico" />
+    
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+      <meta name="description" content="Terminal-based HTTP client" />
+      <meta property="og:description" content="Terminal-based HTTP client" />
+    
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="slumber" />
+    
+    
+    
+    <meta http-equiv="Permissions-Policy" content="interest-cohort=()" />
+    <link rel="stylesheet" href="/oranda-v0.6.1.css" />
+    
+    
+  </head>
+  <body>
+    <div class="container">
+      <div class="page-body">
+        
+          <div class="repo_banner">
+            <a href="https://github.com/LucasPickering/slumber">
+              <div class="github-icon" aria-hidden="true"></div>
+              Check out our GitHub!
+            </a>
+          </div>
+        
+
+        <main>
+          <header>
+            
+              <img src="/slumber.png" alt="slumber" class="logo" />
+            
+            <h1 class="title">slumber</h1>
+            
+  <nav class="nav">
+    <ul>
+      <li><a href="/">Home</a></li>
+
+      
+
+      
+        <li><a href="/artifacts/">Install</a></li>
+      
+
+      
+        <li><a href="/book/">Docs</a></li>
+      
+
+      
+        <li><a href="/funding/">Funding</a></li>
+      
+
+      
+        <li><a href="/changelog/">Changelog</a></li>
+      
+    </ul>
+  </nav>
+
+          </header>
+
+          
+  <div>
+    <h1>3.1.0 - 2025-04-04</h1>
+    <div class="releases-body">
+      
+      
+      <section class="release ">
+  
+  <div class="release-info">
+    <span class="flex items-center gap-2">
+      <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'>
+    <path stroke-linecap='round' stroke-linejoin='round' d='M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z' />
+    <path stroke-linecap='round' stroke-linejoin='round' d='M6 6h.008v.008H6V6z' /></svg>
+      v3.1.0
+    </span>
+    <span class="flex items-center gap-2">
+      
+        <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='currentColor' class='w-6 h-6'><path stroke-linecap='round' stroke-linejoin='round' d='M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5' /></svg>
+        Apr  7 2025 at 12:00 UTC
+      
+    </span>
+  </div>
+  <div class="release-body">
+    <p>This releases focuses on history and data management. A suite of new features and improvements make it easy to disable request persistence and delete past requests from history.</p>
+<h3>Added</h3>
+<ul>
+<li>Add <code>--persist</code> flag to <code>slumber request</code>
+<ul>
+<li>By default, CLI-based requests are not stored in the history database. Use this flag to enable persistence for the sent request.</li>
+</ul>
+</li>
+<li>Add <code>slumber history delete</code> subcommand for deleting request history</li>
+<li>Add <code>slumber db</code> subcommand to open a shell to the local SQLite database</li>
+<li>Add <code>persist</code> field to the global config and individual recipes
+<ul>
+<li>Both default to <code>true</code>, but you can now set them to <code>false</code> to disable data persistence a single recipe, or all instances of the app. <a href="https://slumber.lucaspickering.me/book/user_guide/database.html#controlling-persistence" rel="noopener noreferrer">See here for more</a></li>
+</ul>
+</li>
+<li>Add actions to delete requests from the TUI
+<ul>
+<li>Delete a single request from the history modal or the Request/Response pane</li>
+<li>Delete all requests for a recipe from the Recipe List/Recipe panes</li>
+</ul>
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Upgrade to Rust 1.86 (2024 edition!)</li>
+<li>Improve functionality of <code>slumber history list</code>
+<ul>
+<li><code>recipe</code> argument is optional now. Omit it to show requests for all recipes in the current collection</li>
+<li>Add <code>--all</code> argument to show requests for all collections</li>
+<li>Add <code>--id-only</code> flag to print only IDs with no headers. Combine with <code>slumber history delete</code> for great success!</li>
+</ul>
+</li>
+<li>Improve format of <code>slumber history list</code> table output</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Fix output format of <code>slumber request --dry-run ...</code> to match <code>slumber request --verbose</code></li>
+<li>Fix <code>curl</code> output for URL-encoded and multipart forms</li>
+<li>Fix selected request not changing when profile changes</li>
+</ul>
+
+  </div>
+</section>
+    </div>
+  </div>
+
+        </main>
+      </div>
+
+      <footer>
+        
+          <a href="https://github.com/LucasPickering/slumber"><div class="github-icon" aria-hidden="true"></div></a>
+        
+        <span>
+          slumber, MIT
+        </span>
+      </footer>
+    </div>
+
+    
+    
+
+    
+  </body>
+</html>

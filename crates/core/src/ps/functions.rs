@@ -5,8 +5,8 @@ use crate::{
     http::{RequestSeed, ResponseRecord},
     ps::{cereal, error::FunctionError},
     template::{
-        OverrideKey, OverrideValue, Prompt, RenderState, Renderer, Select,
-        TemplateContext,
+        OverrideKey, OverrideValue, Prompt, RenderContext, RenderState,
+        Renderer, Select,
     },
     util::FutureCacheOutcome,
 };
@@ -405,9 +405,9 @@ impl Decoding {
 }
 
 /// Extract template context from the process's app data
-fn context(process: &Process) -> Result<&TemplateContext, FunctionError> {
+fn context(process: &Process) -> Result<&RenderContext, FunctionError> {
     process
-        .app_data::<TemplateContext>()
+        .app_data::<RenderContext>()
         .map_err(|_| FunctionError::NoContext)
 }
 
@@ -418,7 +418,7 @@ fn state(process: &Process) -> Result<&RenderState, FunctionError> {
         .map_err(|_| FunctionError::NoContext)
 }
 
-impl TemplateContext {
+impl RenderContext {
     /// Get the most recent response for a profile+recipe pair. This will
     /// trigger the request if it is expired, and await the response
     async fn get_latest_response(

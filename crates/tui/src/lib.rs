@@ -43,7 +43,7 @@ use slumber_core::{
     database::{CollectionDatabase, Database},
     http::{Exchange, RequestError, RequestId, RequestSeed},
     ps::PetitEngine,
-    template::{Overrides, Prompter, Renderer, Template, TemplateContext},
+    template::{Overrides, Prompter, RenderContext, Renderer, Template},
 };
 use slumber_util::ResultTraced;
 use std::{
@@ -734,7 +734,7 @@ impl Tui {
             Box::new(TuiPrompter::new(self.messages_tx()))
         };
 
-        let context = TemplateContext {
+        let context = RenderContext {
             selected_profile: profile_id,
             collection: collection.clone(),
             http_provider: Box::new(http_provider),

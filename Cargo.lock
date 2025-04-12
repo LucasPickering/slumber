@@ -2785,7 +2785,6 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
- "serde_yaml",
  "shell-words",
  "slumber_config",
  "slumber_core",

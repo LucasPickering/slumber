@@ -111,7 +111,7 @@ impl RecipeDisplay {
         match self.body.data() {
             Some(RecipeBodyDisplay::Raw(body)) => {
                 if let Some(value) = body.data().override_value() {
-                    overrides.insert(OverrideKey::Body, value.into());
+                    overrides.insert(OverrideKey::Body, value);
                 }
             }
             Some(RecipeBodyDisplay::Form(form)) => {

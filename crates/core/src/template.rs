@@ -9,16 +9,14 @@ pub use error::{TemplateError, TriggeredRequestError};
 pub use prompt::{Prompt, Prompter, ResponseChannel, Select};
 
 use crate::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::{Collection, Profile, ProfileId, RecipeId},
     http::{Exchange, RequestSeed},
-};
-use async_trait::async_trait;
-use derive_more::Display;
-
-use crate::{
-    collection::Profile, template::error::OverrideKeyParseError,
+    template::error::OverrideKeyParseError,
     util::FutureCache,
 };
+use async_trait::async_trait;
+use bytes::Bytes;
+use derive_more::Display;
 use indexmap::IndexMap;
 use petitscript::{Process, Value, function::Function};
 use serde::{Deserialize, Serialize};
@@ -41,18 +39,16 @@ impl Template {
     }
 }
 
-// TODO delete?
 #[cfg(any(test, feature = "test"))]
 impl From<&str> for Template {
     fn from(_: &str) -> Self {
-        todo!()
+        todo!("get rid of this?")
     }
 }
 
-#[cfg(any(test, feature = "test"))]
 impl From<String> for Template {
     fn from(value: String) -> Self {
-        value.as_str().into()
+        Template(value.into())
     }
 }
 
@@ -100,50 +96,21 @@ impl Renderer {
         self.process.app_data().expect("TODO")
     }
 
-    /// TODO
-    pub async fn render_value(
-        &self,
-        template: &Template,
-    ) -> anyhow::Result<Value> {
-        match &template.0 {
+    /// Render a template to a [petitscript::Value], then convert to a specific
+    /// output type according to its [FromRendered] implementation.
+    pub async fn render<T>(&self, template: &Template) -> anyhow::Result<T>
+    where
+        T: FromRendered,
+    {
+        let value = match &template.0 {
             // Function represents a rendering procedure - call it now
             Value::Function(function) => {
-                self.render_function(function.clone()).await
+                self.render_function(function.clone()).await?
             }
             // A plain value can be returned directly
-            other => Ok(other.clone()),
-        }
-    }
-
-    /// TODO
-    /// TODO can we return Bytes from this instead?
-    pub async fn render_bytes(
-        &self,
-        template: &Template,
-    ) -> anyhow::Result<Vec<u8>> {
-        let value = self.render_value(template).await?;
-        let bytes = match value {
-            Value::String(string) => String::from(string).into_bytes(),
-            Value::Buffer(buffer) => buffer.into(),
-            // Anything else should be stringified
-            other => other.to_string().into_bytes(),
+            other => other.clone(),
         };
-        Ok(bytes)
-    }
-
-    /// TODO
-    pub async fn render_string(
-        &self,
-        template: &Template,
-    ) -> anyhow::Result<String> {
-        let value = self.render_value(template).await?;
-        let s = match value {
-            Value::String(string) => string.into(),
-            Value::Buffer(buffer) => String::from_utf8(buffer.into())?,
-            // Anything else should be stringified
-            other => other.to_string(),
-        };
-        Ok(s)
+        FromRendered::from_value(value)
     }
 
     /// Call a render function and return its value. Async native functions are
@@ -161,6 +128,44 @@ impl Renderer {
             task::spawn_blocking(move || process.call(&function, &[]))
                 .await??;
         Ok(return_value)
+    }
+}
+
+/// Convert from a rendered [petitscript::Value] into `Self`. This abstraction
+/// allows for other generic rendering code to handle multiple target types.
+/// Must be convertible from `String` for cases where the rendered value has
+/// been replaced by an override string.
+pub trait FromRendered: Sized + From<String> {
+    fn from_value(value: Value) -> anyhow::Result<Self>;
+}
+
+impl FromRendered for Value {
+    fn from_value(value: Value) -> anyhow::Result<Self> {
+        Ok(value)
+    }
+}
+
+impl FromRendered for String {
+    fn from_value(value: Value) -> anyhow::Result<Self> {
+        match value {
+            Value::String(string) => Ok(string.into()),
+            Value::Buffer(buffer) => {
+                String::from_utf8(buffer.into()).map_err(anyhow::Error::from)
+            }
+            // Anything else should be stringified
+            other => Ok(other.to_string()),
+        }
+    }
+}
+
+impl FromRendered for Bytes {
+    fn from_value(value: Value) -> anyhow::Result<Self> {
+        match value {
+            Value::String(string) => Ok(String::from(string).into()),
+            Value::Buffer(buffer) => Ok(buffer.into()),
+            // Anything else should be stringified
+            other => Ok(other.to_string().into()),
+        }
     }
 }
 
@@ -252,12 +257,6 @@ impl FromStr for OverrideKey<'static> {
 pub enum OverrideValue {
     Omit,
     Override(String),
-}
-
-impl From<String> for OverrideValue {
-    fn from(value: String) -> Self {
-        Self::Override(value)
-    }
 }
 
 /// TODO

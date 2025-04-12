@@ -14,7 +14,6 @@ use crate::{
         context::UpdateContext,
         draw::{Draw, DrawMetadata},
         event::{Child, Emitter, Event, EventHandler, OptionEvent},
-        state::Identified,
         util::view_text,
     },
 };
@@ -26,7 +25,7 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Recipe, RecipeBody, RecipeId},
     http::content_type::ContentType,
-    template::{OverrideKey, Template},
+    template::{OverrideKey, OverrideValue, Template},
 };
 use std::{
     fs,
@@ -135,9 +134,9 @@ impl RawBody {
 
     /// If the user has applied a temporary edit to the body, get the override
     /// value. Return `None` to use the recipe's stock body.
-    pub fn override_value(&self) -> Option<String> {
+    pub fn override_value(&self) -> Option<OverrideValue> {
         if self.body.is_overridden() {
-            Some(self.body.value())
+            Some(OverrideValue::Override(self.body.value()))
         } else {
             None
         }
@@ -145,7 +144,9 @@ impl RawBody {
 
     /// Open rendered body in the pager
     fn view_body(&self) {
-        view_text(&self.body.text(), self.mime.clone());
+        self.body.with_text(|text| {
+            view_text(text, self.mime.clone());
+        });
     }
 
     /// Send a message to open the body in an external editor. We have to write
@@ -235,20 +236,21 @@ impl EventHandler for RawBody {
 impl Draw for RawBody {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let area = metadata.area();
-        self.text_window.draw(
-            frame,
-            TextWindowProps {
-                // Do *not* call generate, because that clones the text and
-                // we only need a reference
-                text: &Identified::new(Default::default()), // TODO
-                margins: ScrollbarMargins {
-                    right: 1,
-                    bottom: 1,
+        // Get a cheap reference, to avoid cloning large bodies
+        self.body.with_text(|text| {
+            self.text_window.draw(
+                frame,
+                TextWindowProps {
+                    text,
+                    margins: ScrollbarMargins {
+                        right: 1,
+                        bottom: 1,
+                    },
                 },
-            },
-            area,
-            true,
-        );
+                area,
+                true,
+            );
+        });
     }
 }
 

@@ -1,4 +1,4 @@
-import { command, profile, prompt, response, select } from "slumber";
+import { command, file, profile, prompt, response, select } from "slumber";
 
 function username() {
   return command(["whoami"], { trim: "both" });
@@ -41,6 +41,7 @@ function authToken() {
 }
 
 const recipeBase = {
+  type: "request",
   authentication: { type: "bearer", token: authToken },
   headers: {
     Accept: "application/json",
@@ -103,7 +104,6 @@ export const requests = {
     name: "Users",
     requests: {
       getUsers: {
-        type: "request",
         ...recipeBase,
         name: "Get Users",
         method: "GET",
@@ -114,14 +114,12 @@ export const requests = {
         },
       },
       getUser: {
-        type: "request",
         ...recipeBase,
         name: "Get User",
         method: "GET",
         url: () => `${profile("host")}/anything/${profile("userGuid")}`,
       },
       modifyUser: {
-        type: "request",
         ...recipeBase,
         name: "Modify User",
         method: "PUT",

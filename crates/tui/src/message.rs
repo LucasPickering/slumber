@@ -5,6 +5,7 @@ use crate::view::Confirm;
 use anyhow::Context;
 use derive_more::From;
 use mime::Mime;
+use petitscript::Value;
 use slumber_config::Action;
 use slumber_core::{
     collection::{LoadedCollection, ProfileId, RecipeId},
@@ -155,7 +156,7 @@ pub enum Message {
     TemplatePreview {
         template: Template,
         #[debug(skip)]
-        on_complete: Callback<Result<String, ()>>,
+        on_complete: Callback<Result<Value, ()>>,
     },
 
     /// Trigger a redraw. This should be called whenever we have reason to

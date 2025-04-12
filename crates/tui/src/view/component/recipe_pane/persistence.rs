@@ -4,7 +4,7 @@ use crate::{
     context::TuiContext,
     view::{
         ViewContext, common::template_preview::TemplatePreview,
-        state::Identified,
+        state::Identified, util::highlight,
     },
 };
 use persisted::{PersistedContainer, PersistedLazy, PersistedStore};
@@ -12,7 +12,7 @@ use ratatui::text::Text;
 use slumber_core::{
     collection::RecipeId, http::content_type::ContentType, template::Template,
 };
-use std::{collections::HashMap, fmt::Debug, ops::Deref};
+use std::{collections::HashMap, fmt::Debug};
 use tracing::debug;
 
 /// Special single-session [PersistedStore] just for edited recipe templates.
@@ -82,6 +82,7 @@ impl RecipeTemplate {
             persisted_key,
             RecipeTemplateInner {
                 override_value: None,
+                override_text: None,
                 preview: TemplatePreview::new(template, content_type),
                 content_type,
             },
@@ -108,25 +109,27 @@ impl RecipeTemplate {
             .unwrap_or_else(|| self.0.preview.text().to_string())
     }
 
-    /// Get renderable text for this preview. If there is an override value,
-    /// show that. Otherwise, show the template preview.
-    pub fn text(&self) -> impl Deref<Target = Identified<Text<'static>>> {
-        if let Some(value) = &self.0.override_value {
-            let styles = &TuiContext::get().styles;
-            // value.generate().style(styles.text.edited)
-            todo!()
+    /// Call a function with access to the visible text of this template. This
+    /// will use the override text if the user has set one, otherwise the
+    /// rendered template preview.
+    /// TODO come up with a better pattern than this
+    pub fn with_text(&self, f: impl FnOnce(&Identified<Text<'static>>)) {
+        let text = if let Some(text) = &self.0.override_text {
+            text
         } else {
-            self.0.preview.text()
-        }
+            &*self.0.preview.text()
+        };
+        f(text)
     }
 
-    /// TODO
+    /// Get a clone of the text of this template. If an override is available,
+    /// get that. Otherwuse get the template preview.
     pub fn text_cloned(&self) -> Text {
-        (**self.text()).clone()
-    }
-
-    pub fn content_type(&self) -> Option<ContentType> {
-        self.0.content_type
+        if let Some(text) = &self.0.override_text {
+            (*text).clone()
+        } else {
+            (**self.0.preview.text()).clone()
+        }
     }
 
     pub fn is_overridden(&self) -> bool {
@@ -139,7 +142,12 @@ impl RecipeTemplate {
 /// [set_override](Self::set_override) when needed.
 #[derive(Debug)]
 struct RecipeTemplateInner {
+    /// Raw string value for overriden text
     override_value: Option<String>,
+    /// Overridden display text. This is the same content as `override_value`,
+    /// but has syntax highlighting applied as appropriate and has been broken
+    /// into a [Text]
+    override_text: Option<Identified<Text<'static>>>,
     preview: TemplatePreview,
     /// Retain this so we can rebuild the preview with it
     content_type: Option<ContentType>,
@@ -147,12 +155,22 @@ struct RecipeTemplateInner {
 
 impl RecipeTemplateInner {
     fn set_override(&mut self, value: String) {
-        // TODO remove clone
+        // Clone is necessary because we can't have the text object
+        // self-reference the string
+        // TODO should we store _just_ text and regenerate the string at request
+        // time?
         self.override_value = Some(value.clone());
+        let styles = &TuiContext::get().styles;
+        let text = highlight::highlight_if(
+            self.content_type,
+            Text::styled(value, styles.text.edited),
+        );
+        self.override_text = Some(text.into());
     }
 
     fn reset_override(&mut self) {
         self.override_value = None;
+        self.override_text = None;
     }
 }
 

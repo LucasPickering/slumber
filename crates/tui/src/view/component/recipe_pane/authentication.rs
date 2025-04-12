@@ -30,7 +30,7 @@ use ratatui::{
 use slumber_config::Action;
 use slumber_core::{
     collection::{Authentication, RecipeId},
-    template::{OverrideKey, Overrides},
+    template::{OverrideKey, OverrideValue, Overrides},
 };
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
@@ -87,11 +87,14 @@ impl AuthenticationDisplay {
                 State::Basic {
                     username, password, ..
                 } => indexmap! {
-                    OverrideKey::AuthenticationUsername => username.value().into(),
-                    OverrideKey::AuthenticationPassword => password.value().into(),
+                    OverrideKey::AuthenticationUsername =>
+                        OverrideValue::Override(username.value()),
+                    OverrideKey::AuthenticationPassword =>
+                        OverrideValue::Override(password.value()),
                 },
                 State::Bearer { token, .. } => indexmap! {
-                    OverrideKey::AuthenticationToken => token.value().into(),
+                    OverrideKey::AuthenticationToken =>
+                        OverrideValue::Override(token.value()),
                 },
             }
         } else {
@@ -182,8 +185,7 @@ impl Draw for AuthenticationDisplay {
                 );
             }
             State::Bearer { token } => {
-                // TODO impl draw on this instead?
-                frame.render_widget(&**token.text(), content_area);
+                token.with_text(|text| frame.render_widget(text, content_area));
             }
         }
     }

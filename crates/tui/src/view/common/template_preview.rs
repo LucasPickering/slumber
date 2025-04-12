@@ -3,6 +3,7 @@ use crate::{
     message::Message,
     view::{ViewContext, draw::Generate, state::Identified, util::highlight},
 };
+use petitscript::Value;
 use ratatui::{buffer::Buffer, prelude::Rect, text::Text, widgets::Widget};
 use slumber_core::{http::content_type::ContentType, template::Template};
 use std::{
@@ -82,13 +83,22 @@ impl TemplatePreview {
     /// Generate text from the rendered template, and replace the text in the
     /// mutex
     fn calculate_rendered_text(
-        result: Result<String, ()>,
+        result: Result<Value, ()>,
         destination: &Mutex<Identified<Text<'static>>>,
         content_type: Option<ContentType>,
     ) {
         let styles = &TuiContext::get().styles;
         let text = match result {
-            Ok(preview) => Text::styled(preview, styles.template_preview.text),
+            Ok(value) => {
+                // Convert the value to a string according to its content type
+                let text = match content_type {
+                    Some(ContentType::Json) => {
+                        serde_json::to_string_pretty(&value).unwrap()
+                    }
+                    None => value.to_string(),
+                };
+                Text::styled(text, styles.template_preview.text)
+            }
             Err(_) => Text::styled("Error", styles.template_preview.error),
         };
         let text = highlight::highlight_if(content_type, text);

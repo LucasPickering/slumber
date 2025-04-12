@@ -35,7 +35,7 @@ use crossterm::{
 };
 use futures::{StreamExt, pin_mut};
 use notify::{RecursiveMode, Watcher, event::ModifyKind};
-use petitscript::Process;
+use petitscript::{Process, Value};
 use ratatui::{Terminal, prelude::CrosstermBackend};
 use slumber_config::{Action, Config};
 use slumber_core::{
@@ -698,16 +698,15 @@ impl Tui {
         &self,
         template: Template,
         profile_id: Option<ProfileId>,
-        on_complete: Callback<Result<String, ()>>,
+        on_complete: Callback<Result<Value, ()>>,
     ) -> anyhow::Result<()> {
         let renderer = self.renderer(profile_id, Overrides::default(), true)?;
         spawn(async move {
             // Send an empty error to the caller so it can show an
             // inline error message. The error will be traced, but never
             // shown in a modal because that would be disruptive.
-            // TODO how to handle bytes?
             let result = renderer
-                .render_string(&template)
+                .render::<Value>(&template)
                 .await
                 .traced()
                 .map_err(|_| ());

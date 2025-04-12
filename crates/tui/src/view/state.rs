@@ -5,6 +5,11 @@ pub mod select;
 
 use chrono::{DateTime, Utc};
 use derive_more::Deref;
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    widgets::{Widget, WidgetRef},
+};
 use std::cell::{Ref, RefCell};
 use uuid::Uuid;
 
@@ -97,6 +102,12 @@ impl<T> Identified<T> {
 impl<T> From<T> for Identified<T> {
     fn from(value: T) -> Self {
         Self::new(value)
+    }
+}
+
+impl<T: WidgetRef> Widget for &Identified<T> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        self.value.render_ref(area, buf);
     }
 }
 

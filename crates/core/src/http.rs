@@ -46,16 +46,17 @@ pub use models::*;
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     http::curl::CurlBuilder,
-    template::{OverrideKey, OverrideValue, Renderer, Template},
+    template::{FromRendered, OverrideKey, OverrideValue, Renderer, Template},
 };
 use anyhow::Context;
 use bytes::Bytes;
 use chrono::Utc;
 use futures::{
     Future, FutureExt,
-    future::{self, OptionFuture, try_join_all},
+    future::{OptionFuture, try_join_all},
     try_join,
 };
+use petitscript::Value;
 use reqwest::{
     Client, RequestBuilder, Response, Url,
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -63,7 +64,7 @@ use reqwest::{
 };
 use slumber_config::HttpEngineConfig;
 use slumber_util::ResultTraced;
-use std::{collections::HashSet, error::Error};
+use std::{borrow::Cow, collections::HashSet, error::Error};
 use tracing::{error, info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
@@ -427,7 +428,7 @@ impl Recipe {
     /// Render base URL, *excluding* query params
     async fn render_url(&self, renderer: &Renderer) -> anyhow::Result<Url> {
         let url = renderer
-            .render_string(&self.url)
+            .render::<String>(&self.url)
             .await
             .context("Error rendering URL")?;
         url.parse::<Url>()
@@ -439,102 +440,51 @@ impl Recipe {
         &self,
         renderer: &Renderer,
     ) -> anyhow::Result<Vec<(String, String)>> {
-        let overrides = &renderer.context().overrides;
-        let iter = self
-            .query_iter()
-            // Enumerate so we can look up overrides by index. This relies on
-            // the thing that builds the overrides to use the same iteration
-            // order; this is enforced by using Recipe::query_iter()
-            // TODO handle duplicate params correctly
-            .filter_map(|(k, template)| {
-                match overrides.get(&OverrideKey::Query(k.into())) {
-                    // Skip this param
-                    Some(OverrideValue::Omit) => None,
-                    // Use the given value instead of rendering
-                    Some(OverrideValue::Override(value)) => Some(
-                        async { Ok((k.to_owned(), value.clone())) }.boxed(),
-                    ),
-                    // No override - render the template from the recipe
-                    None => Some(
-                        async move {
-                            Ok::<_, anyhow::Error>((
-                                k.to_owned(),
-                                renderer
-                                    .render_string(template)
-                                    .await
-                                    .context(format!(
-                                        "Error rendering query parameter `{k}`"
-                                    ))?,
-                            ))
-                        }
-                        .boxed(),
-                    ),
-                }
-            });
-        future::try_join_all(iter).await
+        // Enumerate so we can look up overrides by index. This relies on
+        // the thing that builds the overrides to use the same iteration
+        // order; this is enforced by using Recipe::query_iter()
+        // TODO handle duplicate params correctly
+        render_all(renderer, self.query_iter(), OverrideKey::Query)
+            .await
+            .context("Error rendering query parameters")
     }
 
     /// Render all headers specified by the user. This will *not* include
     /// authentication and other implicit headers
     async fn render_headers(
         &self,
-
         renderer: &Renderer,
     ) -> anyhow::Result<HeaderMap> {
-        let overrides = &renderer.context().overrides;
+        // Render all headers concurrently
+        render_all(
+            renderer,
+            self.headers.iter().map(|(k, v)| (k.as_str(), v)),
+            OverrideKey::Header,
+        )
+        .await
+        .context("Error rendering headers")?
+        .into_iter()
+        .map(|(header, value): (String, Bytes)| {
+            let mut value: Vec<u8> = value.into();
 
-        // Render headers in an iterator so we can parallelize
-        let iter = self.headers.iter().filter_map(move |(header, template)| {
-            match overrides.get(&OverrideKey::Header(header.into())) {
-                Some(OverrideValue::Omit) => None,
-                Some(OverrideValue::Override(value)) => Some(
-                    async {
-                        try_into_header(header, value.clone().into_bytes())
-                    }
-                    .boxed(),
-                ),
-                None => Some(
-                    async move {
-                        self.render_header(renderer, header, template).await
-                    }
-                    .boxed(),
-                ),
-            }
-        });
+            // Strip leading/trailing line breaks because they're going to
+            // trigger a validation error and are probably a
+            // mistake. We're trading explicitness for convenience
+            // here. This is maybe redundant now with
+            // the Chain::trim field, but this behavior predates that field so
+            // it's left in for backward compatibility.
+            trim_bytes(&mut value, |c| c == b'\n' || c == b'\r');
 
-        let rendered = future::try_join_all(iter).await?;
-        let mut headers = HeaderMap::new();
-        headers.reserve(rendered.len());
-        // Do *not* use headers.extend(), because that will append to existing
-        // headers, and we want to overwrite instead
-        for (header, value) in rendered {
-            headers.insert(header, value);
-        }
-
-        Ok(headers)
-    }
-
-    /// Render a single key/value header
-    async fn render_header(
-        &self,
-        renderer: &Renderer,
-        header: &str,
-        value_template: &Template,
-    ) -> anyhow::Result<(HeaderName, HeaderValue)> {
-        let mut value = renderer
-            .render_bytes(value_template)
-            .await
-            .context(format!("Error rendering header `{header}`"))?;
-
-        // Strip leading/trailing line breaks because they're going to trigger a
-        // validation error and are probably a mistake. We're trading
-        // explicitness for convenience here. This is maybe redundant now with
-        // the Chain::trim field, but this behavior predates that field so it's
-        // left in for backward compatibility.
-        trim_bytes(&mut value, |c| c == b'\n' || c == b'\r');
-
-        // String -> header conversions are fallible, if headers are invalid
-        try_into_header(header, value)
+            let header: HeaderName = header
+                .clone()
+                .try_into()
+                .context(format!("Error encoding header name `{header}`"))?;
+            let value: HeaderValue = value.try_into().context(format!(
+                "Error encoding value for header `{header}`"
+            ))?;
+            Ok::<_, anyhow::Error>((header, value))
+        })
+        .collect()
     }
 
     /// Render authentication and return the same data structure, with resolved
@@ -546,29 +496,30 @@ impl Recipe {
         // TODO support overrides
         match self.authentication.as_ref() {
             Some(Authentication::Basic { username, password }) => {
-                let (username, password) =
-                    try_join!(
-                        async {
-                            renderer
-                                .render_string(username)
-                                .await
-                                .context("Error rendering username")
-                        },
-                        async {
-                            OptionFuture::from(password.as_ref().map(
-                                |password| renderer.render_string(password),
-                            ))
+                let (username, password) = try_join!(
+                    async {
+                        renderer
+                            .render(username)
                             .await
-                            .transpose()
-                            .context("Error rendering password")
-                        },
-                    )?;
+                            .context("Error rendering username")
+                    },
+                    async {
+                        OptionFuture::from(
+                            password
+                                .as_ref()
+                                .map(|password| renderer.render(password)),
+                        )
+                        .await
+                        .transpose()
+                        .context("Error rendering password")
+                    },
+                )?;
                 Ok(Some(Authentication::Basic { username, password }))
             }
 
             Some(Authentication::Bearer { token }) => {
                 let token = renderer
-                    .render_string(token)
+                    .render(token)
                     .await
                     .context("Error rendering bearer token")?;
                 Ok(Some(Authentication::Bearer { token }))
@@ -582,56 +533,71 @@ impl Recipe {
         &self,
         renderer: &Renderer,
     ) -> anyhow::Result<Option<RenderedBody>> {
+        let overrides = &renderer.context().overrides;
         let Some(body) = self.body.as_ref() else {
             return Ok(None);
         };
 
+        let body_override = overrides.get(&OverrideKey::Body);
         let rendered = match body {
-            RecipeBody::Raw { data, .. } => RenderedBody::Raw(
-                renderer
-                    .render_bytes(data)
-                    .await
-                    .context("Error rendering body")?
-                    .into(),
-            ),
+            RecipeBody::Raw { data, .. } => {
+                match body_override {
+                    Some(OverrideValue::Omit) => return Ok(None),
+                    Some(OverrideValue::Override(value)) => {
+                        RenderedBody::Raw(value.clone().into())
+                    }
+                    // Render normal body
+                    None => RenderedBody::Raw(
+                        renderer
+                            .render::<Bytes>(data)
+                            .await
+                            .context("Error rendering body")?,
+                    ),
+                }
+            }
             RecipeBody::Json { data } => {
-                let value = renderer
-                    .render_value(data)
-                    .await
-                    .context("Error rendering JSON body")?;
-                // Convert from PetitScript to JSON. _Should_ be infallible
-                let json_value = serde_json::to_value(value)
-                    .context("Error serializing JSON body")?;
-                RenderedBody::Json(json_value)
+                match body_override {
+                    Some(OverrideValue::Omit) => return Ok(None),
+                    // Override value is a string; parse it as JSON. This allows
+                    // us to pass it back to reqwest as a JSON body, so we can
+                    // use the same downstream code path as non-overrides
+                    Some(OverrideValue::Override(value)) => {
+                        let json = serde_json::from_str(value)
+                            .context("Error parsing body as JSON")?;
+                        RenderedBody::Json(json)
+                    }
+                    // Render normal body
+                    None => {
+                        let value = renderer
+                            .render::<Value>(data)
+                            .await
+                            .context("Error rendering JSON body")?;
+                        // Convert from PetitScript to JSON. _Should_ be
+                        // infallible
+                        let json = serde_json::to_value(value)
+                            .context("Error serializing JSON body")?;
+                        RenderedBody::Json(json)
+                    }
+                }
             }
             RecipeBody::FormUrlencoded { data } => {
-                // TODO support overrides
-                let iter =
-                    data.iter().map(|(field, value_template)| async move {
-                        let value = renderer
-                            .render_string(value_template)
-                            .await
-                            .context(format!(
-                                "Error rendering form field `{field}`"
-                            ))?;
-                        Ok::<_, anyhow::Error>((field.clone(), value))
-                    });
-                let rendered = try_join_all(iter).await?;
+                let rendered = render_all(
+                    renderer,
+                    data.iter().map(|(k, v)| (k.as_str(), v)),
+                    OverrideKey::Form,
+                )
+                .await
+                .context("Error rendering form fields")?;
                 RenderedBody::FormUrlencoded(rendered)
             }
             RecipeBody::FormMultipart { data } => {
-                // TODO support overrides
-                let iter =
-                    data.iter().map(|(field, value_template)| async move {
-                        let value = renderer
-                            .render_bytes(value_template)
-                            .await
-                            .context(format!(
-                                "Error rendering form field `{field}`"
-                            ))?;
-                        Ok::<_, anyhow::Error>((field.clone(), value))
-                    });
-                let rendered = try_join_all(iter).await?;
+                let rendered = render_all(
+                    renderer,
+                    data.iter().map(|(k, v)| (k.as_str(), v)),
+                    OverrideKey::Form,
+                )
+                .await
+                .context("Error rendering form fields")?;
                 RenderedBody::FormMultipart(rendered)
             }
         };
@@ -660,7 +626,7 @@ enum RenderedBody {
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
     /// Field:value mapping. Values can be arbitrary bytes
-    FormMultipart(Vec<(String, Vec<u8>)>),
+    FormMultipart(Vec<(String, Bytes)>),
 }
 
 impl RenderedBody {
@@ -673,7 +639,7 @@ impl RenderedBody {
             RenderedBody::FormMultipart(fields) => {
                 let mut form = Form::new();
                 for (field, value) in fields {
-                    let part = Part::bytes(value);
+                    let part = Part::bytes(Vec::from(value));
                     form = form.part(field, part);
                 }
                 builder.multipart(form)
@@ -698,6 +664,41 @@ impl From<HttpMethod> for reqwest::Method {
     }
 }
 
+/// Render a sequence of (key, template) pairs. Each field can be overidden.
+/// The templates can be rendered to either strings or bytes, as needed.
+async fn render_all<'a, V>(
+    renderer: &Renderer,
+    iter: impl Iterator<Item = (&'a str, &'a Template)>,
+    key_fn: impl Fn(Cow<'a, str>) -> OverrideKey<'a>,
+) -> anyhow::Result<Vec<(String, V)>>
+where
+    V: FromRendered,
+{
+    let overrides = &renderer.context().overrides;
+    let futures = iter.filter_map(|(key, template)| {
+        match overrides.get(&key_fn(key.into())) {
+            // Skip this field
+            Some(OverrideValue::Omit) => None,
+            // Use the given value instead of rendering
+            Some(OverrideValue::Override(value)) => Some(
+                async { Ok((key.to_owned(), value.clone().into())) }.boxed(),
+            ),
+            // No override - render the template from the recipe
+            None => Some(
+                async move {
+                    let value = renderer
+                        .render::<V>(template)
+                        .await
+                        .context(format!("Field `{key}`"))?;
+                    Ok::<_, anyhow::Error>((key.to_owned(), value))
+                }
+                .boxed(),
+            ),
+        }
+    });
+    try_join_all(futures).await
+}
+
 /// Trim the bytes from the beginning and end of a vector that match the given
 /// predicate. This will mutate the input vector. If bytes are trimmed off the
 /// start, it will be done with a single shift.
@@ -717,20 +718,4 @@ fn trim_bytes(bytes: &mut Vec<u8>, f: impl Fn(u8) -> bool) {
             break;
         }
     }
-}
-
-/// Convert a pair of strings into a header name and value. Fails if either is
-/// invalid
-fn try_into_header(
-    header: &str,
-    value: Vec<u8>,
-) -> anyhow::Result<(HeaderName, HeaderValue)> {
-    Ok((
-        header
-            .try_into()
-            .context(format!("Error encoding header name `{header}`"))?,
-        value
-            .try_into()
-            .context(format!("Error encoding value for header `{header}`"))?,
-    ))
 }

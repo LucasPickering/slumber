@@ -310,7 +310,9 @@ pub enum QueryParameterValue {
 impl QueryParameterValue {
     /// Get an iterator over the contained values. For a single value this is
     /// just one element; for many is all the values in the list.
-    pub fn iter(&self) -> Box<dyn Iterator<Item = &Template> + '_> {
+    pub fn iter(
+        &self,
+    ) -> Box<dyn Iterator<Item = &Template> + '_ + Send + Sync> {
         match self {
             Self::Many(values) => Box::new(values.iter()),
             Self::Single(value) => Box::new(iter::once(value)),

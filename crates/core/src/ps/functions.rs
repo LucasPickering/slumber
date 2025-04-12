@@ -189,7 +189,7 @@ async fn profile(
     {
         // Recursion!
         let renderer = Renderer::forked(process);
-        renderer.render_value(template).await.map_err(Arc::new)
+        renderer.render::<Value>(template).await.map_err(Arc::new)
     } else {
         Ok(Value::Undefined)
     };
@@ -337,7 +337,7 @@ enum RequestTrigger {
     /// Trigger the request if the last response is older than some
     /// duration (or there is none in history)
     Expire {
-        #[serde(with = "cereal::serde_duration")]
+        #[serde(deserialize_with = "cereal::deserialize_duration")]
         duration: Duration,
     },
     /// Trigger the request every time the dependent request is rendered

@@ -23,7 +23,15 @@ use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, fmt::Debug, str::FromStr, sync::Arc};
 use tokio::task;
 
-/// TODO
+/// A [petitscript::Value] to be used in a recipe. Templates come in two forms:
+/// - Static: a predefined value such as a number, string, or object
+/// - Dynamic: a function that dynamically generates a value at render time,
+///   based on external factors such as files, responses, or user input
+///
+/// The name "template" is fairly meaningless here, but I couldn't think of
+/// something better. In the past these were all strings that used a simple
+/// template language akin to Jinja, but those days are long gone. I kept the
+/// name because I couldn't think of anything better.
 #[derive(Clone, Debug, Default, Display, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Template(Value);
@@ -33,7 +41,8 @@ impl Template {
         Self(value.into())
     }
 
-    /// TODO
+    /// Is the template a function that will be rendered dynamically into
+    /// another value?
     pub fn is_dynamic(&self) -> bool {
         matches!(&self.0, Value::Function(_))
     }
@@ -62,18 +71,23 @@ impl From<serde_json::Value> for Template {
 /// A container for rendering a group of values. Create one renderer for each
 /// recipe, so that state can be shared between related renders.
 pub struct Renderer {
+    /// The PetitScript process that will be used to call any dynamic render
+    /// functions
     process: Process,
 }
 
 impl Renderer {
-    /// TODO
-    pub fn new(process: Process, context: TemplateContext) -> Self {
+    /// Create a new renderer by forking a PS process. The given process should
+    /// be the one that loaded the collection.
+    pub fn new(process: Process, context: RenderContext) -> Self {
         // Create a new process for this renderer, so we can attach our template
-        // context. All renders for a single recipe will share the context
+        // context. All renders for a single recipe will share the same context
+        // and state.
         let mut process = process.clone();
-        process.set_app_data(context).expect("TODO");
-        // State that may be shared between renders of this group
-        process.set_app_data(RenderState::default()).expect("TODO");
+        // Setting app data can only fail if it's already set, which would
+        // indicate a bug in our process handling
+        process.set_app_data(context).unwrap();
+        process.set_app_data(RenderState::default()).unwrap();
         Self { process }
     }
 
@@ -89,11 +103,13 @@ impl Renderer {
     }
 
     /// Get the [TemplateContext] attached to this renderer
-    pub fn context(&self) -> &TemplateContext {
+    pub fn context(&self) -> &RenderContext {
         // Context is only stored as app data in the process, so we don't have
         // to wrap it with an extra Arc. The repeated downcasting could
-        // potentially be slower than the Arc, but it's simpler
-        self.process.app_data().expect("TODO")
+        // potentially be slower than the Arc, but it's simpler. This only
+        // fails if the context isn't attached, which would be a bug in the
+        // renderer setup.
+        self.process.app_data().unwrap()
     }
 
     /// Render a template to a [petitscript::Value], then convert to a specific
@@ -169,12 +185,13 @@ impl FromRendered for Bytes {
     }
 }
 
-/// A little container struct for all the data that the user can access via
-/// templating. Unfortunately this has to own all data so templating can be
-/// deferred into a task (tokio requires `'static` for spawned tasks). If this
-/// becomes a bottleneck, we can `Arc` some stuff.
+/// A little container struct for all the data needed to render dynamic template
+/// functions. Unfortunately this has to own all data so templating can be
+/// deferred into a task (tokio requires `'static` for spawned tasks). This is
+/// exposed to native functions (such as `response`) via
+/// [app_data](Process::app_data) on the PS process.
 #[derive(Debug)]
-pub struct TemplateContext {
+pub struct RenderContext {
     /// Entire request collection
     pub collection: Arc<Collection>,
     /// ID of the profile whose data should be used for rendering. Generally
@@ -189,8 +206,8 @@ pub struct TemplateContext {
     pub prompter: Box<dyn Prompter>,
 }
 
-impl TemplateContext {
-    /// TODO
+impl RenderContext {
+    /// Get the selected profile
     pub fn profile(&self) -> Option<&Profile> {
         self.selected_profile
             .as_ref()
@@ -198,17 +215,22 @@ impl TemplateContext {
     }
 }
 
-/// TODO
+/// A set of fields whose values have been overridden at render time. Typically
+/// the value for a recipe field is statically set in the collection, or
+/// dynamically calculated via a function set in the recipe. Overrides allow
+/// the user to modify values for a single request without modifying the
+/// collection.
+///
+/// Override keys are used internally by the TUI and can be passed by the user
+/// in the CLI with the `--override` flag.
 pub type Overrides = IndexMap<OverrideKey<'static>, OverrideValue>;
 
 /// A key specifying a single value in a request to be overridden. Users can
 /// override a specific part of a recipe OR a profile field. Profile fields
 /// provide more granular and customizable override behavior.
 ///
-/// Override keys are used internally by the TUI, and can be passed by the user
-/// in the CLI with the `--override` flag.
-///
-/// TODO explain or remove Cow
+/// `Cow` is used here to prevent unnecessary cloning when checking for keys in
+/// an override map.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum OverrideKey<'a> {
     /// Override the value of a profile field
@@ -252,14 +274,18 @@ impl FromStr for OverrideKey<'static> {
     }
 }
 
-/// TODO
+/// An overridden recipe value. A value can be overriden either by providing a
+/// new value, or by omitting it. Omitting a value drops it from the recipe.
+/// Useful e.g. for disabling a query parameter.
 #[derive(Debug, PartialEq)]
 pub enum OverrideValue {
     Omit,
     Override(String),
 }
 
-/// TODO
+/// State to be shared between multiple renders within a single render group
+/// (i.e. a single recipe). This is attached as [app_data](Process::app_data)
+/// on the process so it can be exposed to native PS functions.
 #[derive(Debug, Default)]
 pub struct RenderState {
     /// Multiple renders of the same profile field within the same recipe are
@@ -270,7 +296,7 @@ pub struct RenderState {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory for TemplateContext {
+impl slumber_util::Factory for RenderContext {
     fn factory(_: ()) -> Self {
         use crate::{
             database::CollectionDatabase,

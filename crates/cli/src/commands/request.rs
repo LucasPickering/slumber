@@ -15,8 +15,8 @@ use slumber_core::{
     http::{Exchange, HttpEngine, RequestRecord, RequestSeed, ResponseRecord},
     ps::PetitEngine,
     template::{
-        HttpProvider, OverrideKey, OverrideValue, Prompt, Prompter, Renderer,
-        Select, TemplateContext, TriggeredRequestError,
+        HttpProvider, OverrideKey, OverrideValue, Prompt, Prompter,
+        RenderContext, Renderer, Select, TriggeredRequestError,
     },
     util::MaybeStr,
 };
@@ -218,7 +218,7 @@ impl BuildRequestCommand {
             // CLI doesn't support omitting via override for now
             .map(|(key, value)| (key, OverrideValue::Override(value)))
             .collect();
-        let template_context = TemplateContext {
+        let template_context = RenderContext {
             selected_profile,
             collection: collection.into(),
             http_provider: Box::new(CliHttpProvider {

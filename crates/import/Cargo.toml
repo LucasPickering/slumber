@@ -12,6 +12,7 @@ version = {workspace = true}
 
 [dependencies]
 anyhow = {workspace = true}
+derive_more = {workspace = true, features = ["debug"]}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
@@ -20,6 +21,7 @@ reqwest = {workspace = true}
 rest_parser = "0.1.6"
 serde = {workspace = true}
 serde_json = {workspace = true}
+serde_json_path = "0.7.1"
 serde_yaml = {workspace = true}
 slumber_core = {workspace = true}
 slumber_util = {workspace = true}

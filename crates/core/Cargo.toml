@@ -22,7 +22,6 @@ indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
 petitscript = {workspace = true}
-regex = {version = "1.10.5", default-features = false}
 reqwest = {workspace = true, features = ["json", "multipart", "rustls-tls", "rustls-tls-native-roots"]}
 rmp-serde = "1.1.2"
 rstest = {workspace = true, optional = true}

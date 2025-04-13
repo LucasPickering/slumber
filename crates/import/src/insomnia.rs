@@ -1,22 +1,17 @@
 //! Import request collections from Insomnia. Based on the Insomnia v4 export
 //! format
 
+use crate::common::{
+    self, Chain, ChainId, ChainSource, Collection, ContentType, Folder, HasId,
+    HttpMethod, Identifier, NEW_ISSUE_LINK, Profile, ProfileId, Recipe,
+    RecipeBody, RecipeId, RecipeNode, RecipeTree, SelectorMode, Template,
+};
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Deserializer, de::Error as _};
-use slumber_core::{
-    collection::{
-        self, Chain, ChainId, ChainSource, Collection, Folder, HasId, Profile,
-        ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
-        SelectorMode,
-    },
-    http::{HttpMethod, content_type::ContentType},
-    template::{Identifier, Template},
-    util::NEW_ISSUE_LINK,
-};
 use std::{
     collections::HashMap, fmt::Display, fs::File, path::Path, str::FromStr,
 };
@@ -409,19 +404,19 @@ impl From<FormParam> for (String, Template) {
 }
 
 /// Convert authentication type. If the type is unknown, return is as `Err`
-impl TryFrom<Authentication> for collection::Authentication {
+impl TryFrom<Authentication> for common::Authentication {
     type Error = String;
 
     fn try_from(authentication: Authentication) -> Result<Self, Self::Error> {
         match authentication {
             Authentication::Basic { username, password } => {
-                Ok(collection::Authentication::Basic {
+                Ok(common::Authentication::Basic {
                     username: Template::raw(username),
                     password: Some(Template::raw(password)),
                 })
             }
             Authentication::Bearer { token } => {
-                Ok(collection::Authentication::Bearer(Template::raw(token)))
+                Ok(common::Authentication::Bearer(Template::raw(token)))
             }
             // Caller should print a warning for this
             Authentication::Other { kind } => Err(kind),

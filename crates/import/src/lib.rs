@@ -4,11 +4,11 @@
 //! `slumber` crate version. If you choose to depend directly on this crate, you
 //! do so at your own risk of breakage.
 
-// TODO
-// mod insomnia;
+mod insomnia;
 // mod openapi;
 // mod rest;
+pub mod common;
 
-// pub use insomnia::from_insomnia;
+pub use insomnia::from_insomnia;
 // pub use openapi::from_openapi;
 // pub use rest::from_rest;

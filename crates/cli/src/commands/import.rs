@@ -1,7 +1,6 @@
 use crate::{GlobalArgs, Subcommand};
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
-use slumber_core::collection::Collection;
 use std::{
     fs::File,
     io::{self, Write},
@@ -39,19 +38,21 @@ enum Format {
 
 impl Subcommand for ImportCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        // Load the input
-        // TODO
-        let collection: Collection = match self.format {
+        // Load the input into a common import format. This is not the same as
+        // the collection format actually used within Slumber, because that
+        // format contains PS values that can't be turned back into source code.
+        // Instead we use a declarative format similar to the YAML-based format
+        // pre-Slumber v4.
+        let collection: slumber_import::common::Collection = match self.format {
             Format::Insomnia => {
-                Collection::default()
-                // slumber_import::from_insomnia(&self.input_file)?
+                slumber_import::from_insomnia(&self.input_file)?
             }
             Format::Openapi => {
-                Collection::default()
+                todo!()
                 //  slumber_import::from_openapi(&self.input_file)?
             }
             Format::Rest => {
-                Collection::default()
+                todo!()
                 // slumber_import::from_rest(&self.input_file)?
             }
         };
@@ -71,7 +72,10 @@ impl Subcommand for ImportCommand {
             ),
             None => Box::new(io::stdout()),
         };
-        serde_yaml::to_writer(&mut writer, &collection)?;
+
+        // Convert the declarative format into a PS AST, and write that to
+        // source code
+        todo!("Generate PS source code");
 
         Ok(ExitCode::SUCCESS)
     }

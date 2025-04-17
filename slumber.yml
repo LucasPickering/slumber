@@ -59,6 +59,12 @@ chains:
   big_file:
     source: !file
       path: Cargo.lock
+  response_type:
+    source: !select
+      options:
+        - json
+        - html
+        - xml
 
 .ignore:
   base: &base
@@ -154,3 +160,8 @@ requests:
     name: Delay
     method: GET
     url: "{{host}}/delay/5"
+
+  dynamic_repsonse_type: !request
+    name: Dynamic Response Type
+    method: GET
+    url: "{{host}}/{{chains.response_type}}"

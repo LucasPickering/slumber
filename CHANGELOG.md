@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- Persist response query commands separately for each content type
+  - This prevents commands from running on the incorrect content type when the response type changes
+
 ## [3.1.0] - 2025-04-04
 
 This releases focuses on history and data management. A suite of new features and improvements make it easy to disable request persistence and delete past requests from history.

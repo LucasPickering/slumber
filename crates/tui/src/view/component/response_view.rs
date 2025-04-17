@@ -13,9 +13,10 @@ use crate::{
         util::{persistence::PersistedLazy, view_text},
     },
 };
+use mime::Mime;
 use persisted::PersistedKey;
 use ratatui::Frame;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use slumber_config::Action;
 use slumber_core::{collection::RecipeId, http::ResponseRecord};
 use std::sync::Arc;
@@ -34,11 +35,12 @@ impl ResponseBodyView {
     pub fn new(recipe_id: RecipeId, response: Arc<ResponseRecord>) -> Self {
         // Select default query based on content type
         let config = &TuiContext::get().config.commands;
-        let default_query = response
-            .mime()
-            .and_then(|mime| config.default_query.get(&mime).cloned());
+        let mime = response.mime();
+        let default_query = mime
+            .as_ref()
+            .and_then(|mime| config.default_query.get(mime).cloned());
         let body = PersistedLazy::new(
-            ResponseQueryKey(recipe_id),
+            ResponseQueryKey { recipe_id, mime },
             QueryableBody::new(Arc::clone(&response), default_query),
         )
         .into();
@@ -89,7 +91,26 @@ impl Draw for ResponseBodyView {
 /// Persisted key for response body JSONPath query text box
 #[derive(Debug, Serialize, PersistedKey)]
 #[persisted(String)]
-struct ResponseQueryKey(RecipeId);
+struct ResponseQueryKey {
+    recipe_id: RecipeId,
+    /// Response queries are unique per-mime because query tools tend to be
+    /// specific to content type. If the content type changes (e.g. JSON
+    /// replaced by an HTML error page), we shouldn't keep applying JSON
+    /// commands
+    #[serde(serialize_with = "serialize_mime")]
+    mime: Option<Mime>,
+}
+
+/// Serialize a MIME type as its string representation
+fn serialize_mime<S>(
+    mime: &Option<Mime>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    mime.as_ref().map(Mime::as_ref).serialize(serializer)
+}
 
 #[derive(Debug)]
 pub struct ResponseHeadersView {

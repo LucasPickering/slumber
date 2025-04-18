@@ -11,9 +11,8 @@ use itertools::Itertools;
 use petitscript::ast::{
     ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
     FunctionCall, FunctionDeclaration, FunctionDefinition, Identifier,
-    ImportDeclaration, IntoExpression, IntoStatement, Module, ObjectLiteral,
-    Statement, TemplateChunk, TemplateLiteral, Walk,
-    source::{IntoSpanned, Spanned},
+    ImportDeclaration, IntoExpression, IntoNode, IntoStatement, Module, Node,
+    ObjectLiteral, Statement, TemplateChunk, TemplateLiteral, Walk,
 };
 use slumber_core::{collection::RecipeId, http::content_type::ContentType};
 use std::sync::Arc;
@@ -44,7 +43,7 @@ impl IntoPetitAst for Collection {
     type Output = Module;
 
     fn into_ast(self) -> Self::Output {
-        let mut statements: Vec<Spanned<Statement>> = Vec::new();
+        let mut statements: Vec<Node<Statement>> = Vec::new();
 
         // For each chain, define a function
         statements.extend(
@@ -172,14 +171,14 @@ impl IntoPetitAst for Chain {
         }
         .into_expr();
 
-        // Apply trimming to the output
-        match self.trim {
-            ChainOutputTrim::None => {}
-            // TODO apply trim as a prototype function call
-            ChainOutputTrim::Start => todo!(),
-            ChainOutputTrim::End => todo!(),
-            ChainOutputTrim::Both => todo!(),
-        }
+        // To replicate trimming, call the appropriate method from string's
+        // prototype. This requires the expression to resolve to a string.
+        let body_expression = match self.trim {
+            ChainOutputTrim::None => body_expression,
+            ChainOutputTrim::Start => body_expression.call("trimStart", []),
+            ChainOutputTrim::End => body_expression.call("trimEnd", []),
+            ChainOutputTrim::Both => body_expression.call("trim", []),
+        };
 
         // TODO figure out how to do sensitive values
         // TODO implement selector, selector_mode, and content_type
@@ -433,9 +432,7 @@ impl IntoPetitAst for Template {
                     .map(|chunk| {
                         match chunk {
                             TemplateInputChunk::Raw(s) => {
-                                TemplateChunk::Literal(
-                                    Arc::unwrap_or_clone(s).s(),
-                                )
+                                TemplateChunk::Literal(Arc::unwrap_or_clone(s))
                             }
                             TemplateInputChunk::Key(key) => {
                                 TemplateChunk::Expression(
@@ -555,7 +552,7 @@ fn chain_id_to_function(chain_id: &ChainId) -> Identifier {
 /// available in the module; if not, we fucked up somewhere. The returned vec
 /// will be de-duplicated.
 fn find_slumber_functions(
-    statements: &mut [Spanned<Statement>],
+    statements: &mut [Node<Statement>],
 ) -> Vec<Identifier> {
     struct Visitor(Vec<Identifier>);
 
@@ -567,7 +564,7 @@ fn find_slumber_functions(
                 Expression::Identifier(identifier)
                     if !identifier.as_str().starts_with(CHAIN_FN_PREFIX) =>
                 {
-                    self.0.push(identifier.data.clone());
+                    self.0.push(identifier.data().clone());
                 }
                 _ => {}
             }

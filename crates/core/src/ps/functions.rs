@@ -62,9 +62,6 @@ struct CommandKwargs {
     /// Decoding mode - text or binary?
     #[serde(default)]
     decode: Decoding,
-    /// Trim whitespace from beginning/end of output
-    #[serde(default)]
-    trim: TrimMode,
 }
 
 /// Run a command in a subprocess
@@ -75,7 +72,6 @@ async fn command(
         Kwargs(CommandKwargs {
             stdin,
             decode: encoding,
-            trim,
         }),
     ): (Vec<String>, Kwargs<CommandKwargs>),
 ) -> Result<Value, FunctionError> {
@@ -121,8 +117,7 @@ async fn command(
         "Command success"
     );
 
-    let trimmed = trim.apply(output.stdout);
-    encoding.decode(trimmed.into())
+    encoding.decode(output.stdout.into())
 }
 
 /// Load the value of an environment variable
@@ -353,41 +348,6 @@ enum RequestTrigger {
     },
     /// Trigger the request every time the dependent request is rendered
     Always,
-}
-
-/// Trim whitespace from rendered output
-#[derive(Copy, Clone, Debug, Default, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-enum TrimMode {
-    /// Do not trim the output
-    #[default]
-    None,
-    /// Trim the start of the output
-    Start,
-    /// Trim the end of the output
-    End,
-    /// Trim the start and end of the output
-    Both,
-}
-
-impl TrimMode {
-    /// Apply whitespace trimming to string values. If the value is not a valid
-    /// string, no trimming is applied
-    fn apply(self, value: Vec<u8>) -> Vec<u8> {
-        // Theoretically we could strip whitespace-looking characters from
-        // binary data, but if the whole thing isn't a valid string it doesn't
-        // really make any sense to.
-        let Ok(s) = std::str::from_utf8(&value) else {
-            return value;
-        };
-        match self {
-            Self::None => value,
-            Self::Start => s.trim_start().into(),
-            Self::End => s.trim_end().into(),
-            Self::Both => s.trim().into(),
-        }
-    }
 }
 
 /// TODO better name

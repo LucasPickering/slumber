@@ -2,7 +2,9 @@
 
 mod parse;
 
-use crate::common::{ChainId, template::parse::TemplateInputChunk};
+pub use parse::TemplateInputChunk;
+
+use crate::common::ChainId;
 use derive_more::{Deref, Display};
 use serde::{
     Deserialize, Deserializer, Serialize,
@@ -27,7 +29,7 @@ pub struct Template {
     /// presentation text (which is not necessarily the source text, as escape
     /// sequences will be eliminated). For keys, just store the needed
     /// metadata.
-    chunks: Vec<TemplateInputChunk>,
+    pub chunks: Vec<TemplateInputChunk>,
 }
 
 impl Template {
@@ -46,8 +48,9 @@ impl Template {
         Self { chunks }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.chunks.is_empty()
+    /// This is template a single static chunk?
+    pub fn is_static(&self) -> bool {
+        matches!(self.chunks.as_slice(), [TemplateInputChunk::Raw(_)])
     }
 }
 
@@ -104,6 +107,8 @@ impl<'de> Deserialize<'de> for Template {
 /// `_`.
 ///
 /// Construct via [FromStr](std::str::FromStr)
+///
+/// TODO update comment, rename to not conflict with PS
 #[derive(
     Clone,
     Debug,

@@ -199,6 +199,7 @@ async fn profile(
 
 #[derive(Default, Deserialize)]
 struct PromptKwargs {
+    message: Option<String>,
     default: Option<String>,
     #[serde(default)]
     sensitive: bool,
@@ -207,14 +208,15 @@ struct PromptKwargs {
 /// Prompt the user to enter a text value
 async fn prompt(
     process: &Process,
-    (message, Kwargs(PromptKwargs { default, sensitive })): (
-        String,
-        Kwargs<PromptKwargs>,
-    ),
+    Kwargs(PromptKwargs {
+        message,
+        default,
+        sensitive,
+    }): Kwargs<PromptKwargs>,
 ) -> Result<String, FunctionError> {
     let (tx, rx) = oneshot::channel();
     context(process)?.prompter.prompt(Prompt {
-        message,
+        message: message.unwrap_or_default(),
         default,
         sensitive,
         channel: tx.into(),
@@ -236,9 +238,11 @@ struct ResponseKwargs {
 /// Load the most recent response body for a recipe and the current profile
 async fn response(
     process: &Process,
-    (recipe_id, Kwargs(kwargs)): (RecipeId, Kwargs<ResponseKwargs>),
+    (recipe_id, Kwargs(ResponseKwargs { decode, trigger })): (
+        RecipeId,
+        Kwargs<ResponseKwargs>,
+    ),
 ) -> Result<Value, FunctionError> {
-    let ResponseKwargs { decode, trigger } = kwargs;
     let response = context(process)?
         .get_latest_response(process, &recipe_id, trigger)
         .await?;
@@ -263,13 +267,12 @@ struct ResponseHeaderKwargs {
 /// current profile
 async fn response_header(
     process: &Process,
-    (recipe_id, header, Kwargs(kwargs)): (
+    (recipe_id, header, Kwargs(ResponseHeaderKwargs { decode, trigger })): (
         RecipeId,
         String,
         Kwargs<ResponseHeaderKwargs>,
     ),
 ) -> Result<Value, FunctionError> {
-    let ResponseHeaderKwargs { decode, trigger } = kwargs;
     let response = context(process)?
         .get_latest_response(process, &recipe_id, trigger)
         .await?;
@@ -284,14 +287,22 @@ async fn response_header(
     decode.decode(Bytes::copy_from_slice(header_value.as_bytes()))
 }
 
+#[derive(Default, Deserialize)]
+struct SelectKwargs {
+    message: Option<String>,
+}
+
 /// Ask the user to select a value from a list
 async fn select(
     process: &Process,
-    (message, options): (String, Vec<String>),
+    (options, Kwargs(SelectKwargs { message })): (
+        Vec<String>,
+        Kwargs<SelectKwargs>,
+    ),
 ) -> Result<String, FunctionError> {
     let (tx, rx) = oneshot::channel();
     context(process)?.prompter.select(Select {
-        message,
+        message: message.unwrap_or_default(),
         options,
         channel: tx.into(),
     });

@@ -2,19 +2,15 @@
 //! files. VSCode: https://github.com/Huachao/vscode-restclient
 //! Jetbrains: https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html
 
+use crate::common::{
+    Authentication, Chain, ChainId, ChainOutputTrim, ChainSource, Collection,
+    ContentType, HasId, HttpMethod, Identifier, Profile, ProfileId, Recipe,
+    RecipeBody, RecipeId, RecipeNode, RecipeTree, SelectorMode, Template,
+};
 use anyhow::anyhow;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::de::IgnoredAny;
-use slumber_core::{
-    collection::{
-        Authentication, Chain, ChainId, ChainOutputTrim, ChainSource,
-        Collection, HasId, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
-        RecipeNode, RecipeTree, SelectorMode,
-    },
-    http::{HttpMethod, content_type::ContentType},
-    template::{Identifier, Template},
-};
 
 use reqwest::header;
 use rest_parser::{

@@ -17,11 +17,8 @@ use std::{
 };
 use tracing::{debug, error, info, warn};
 
-/// Convert an Insomnia exported collection into the slumber format. This
+/// Convert an Insomnia exported collection into the common import format. This
 /// supports YAML *or* JSON input.
-///
-/// This is not async because it's only called by the CLI, where we don't
-/// care about blocking. It keeps the code simpler.
 pub fn from_insomnia(
     insomnia_file: impl AsRef<Path>,
 ) -> anyhow::Result<Collection> {

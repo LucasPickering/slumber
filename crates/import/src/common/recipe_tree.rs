@@ -10,6 +10,8 @@ use serde::{Deserialize, Deserializer, de::Error};
 use strum::EnumDiscriminants;
 use thiserror::Error;
 
+// TODO can we simplify this?
+
 /// A folder/recipe tree. This is exactly what the user inputs in their
 /// collection file. IDs in this tree are **globally* unique, meaning no two
 /// nodes can have the same ID anywhere in the tree, even between folders and
@@ -19,7 +21,7 @@ use thiserror::Error;
 #[derive(derive_more::Debug, Default)]
 pub struct RecipeTree {
     /// Tree structure storing all the folder/recipe data
-    tree: IndexMap<RecipeId, RecipeNode>,
+    pub tree: IndexMap<RecipeId, RecipeNode>,
     /// A flattened version of the tree, with each ID pointing to its path in
     /// the tree. This is possible because the IDs are globally unique. It is
     /// an invariant that every lookup key in this map is valid, therefore it's

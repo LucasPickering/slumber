@@ -8,5 +8,6 @@
 
 RUST_LOG=${RUST_LOG:-slumber=${LOG:-DEBUG}} RUST_BACKTRACE=1 watchexec --restart --no-process-group \
     --watch Cargo.toml --watch Cargo.lock --watch src/ --watch crates/ \
-    -- cargo run --no-default-features --features tui \
-    -- $@
+    -- cargo run --no-default-features --features tui
+    # Can't pass additional args because there is no arg parser without the cli feature
+

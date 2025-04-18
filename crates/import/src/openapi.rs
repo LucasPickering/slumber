@@ -10,7 +10,14 @@
 
 mod resolve;
 
-use crate::openapi::resolve::ReferenceResolver;
+use crate::{
+    common::{
+        Authentication, Collection, DuplicateRecipeIdError, Folder, HttpMethod,
+        NEW_ISSUE_LINK, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
+        RecipeNode, RecipeTree, Template,
+    },
+    openapi::resolve::ReferenceResolver,
+};
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -19,15 +26,6 @@ use openapiv3::{
     APIKeyLocation, Components, MediaType, OpenAPI, Operation, Parameter,
     PathItem, PathStyle, Paths, ReferenceOr, RequestBody, Schema,
     SecurityScheme, Server,
-};
-use slumber_core::{
-    collection::{
-        Authentication, Collection, DuplicateRecipeIdError, Folder, Profile,
-        ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
-    },
-    http::HttpMethod,
-    template::Template,
-    util::NEW_ISSUE_LINK,
 };
 use slumber_util::ResultTraced;
 use std::{fs::File, iter, path::Path};
@@ -150,12 +148,11 @@ fn build_recipe_tree(
             let folder_id: RecipeId = format!("tag/{tag}").into();
             debug!("Inserting recipe `{recipe_id}` in folder `{folder_id}`");
             let node = recipes.entry(folder_id.clone()).or_insert_with(|| {
-                Folder {
+                RecipeNode::Folder(Folder {
                     id: folder_id,
                     name: Some(tag),
                     children: IndexMap::default(),
-                }
-                .into()
+                })
             });
 
             // If a recipe already exists with the folder ID we generated,

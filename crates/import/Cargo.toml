@@ -17,6 +17,7 @@ indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
 openapiv3 = "2.0.0"
+petitscript = {workspace = true}
 reqwest = {workspace = true}
 rest_parser = "0.1.6"
 serde = {workspace = true}

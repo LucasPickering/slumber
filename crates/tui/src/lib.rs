@@ -83,8 +83,11 @@ pub struct Tui {
     /// TODO
     petit_engine: PetitEngine,
     /// JS process in which the collection file was loaded. We'll use this to
-    /// execute render functions from the collection
-    js_process: Process,
+    /// execute render functions from the collection. This is `None` iff the
+    /// collection failed to load. In that case, it should be impossible to
+    /// trigger any logic that requires a process. That means we can just
+    /// unwrap this when it's needed.
+    ps_process: Option<Process>,
 }
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -117,15 +120,19 @@ impl Tui {
         // ===== Initialize collection & view =====
 
         let js_engine = PetitEngine::new();
-        // If the collection fails to load, create an empty one just so we can
-        // move along. We'll watch the file and hopefully the user can fix it
-        let LoadedCollection {
-            collection,
-            process: js_process,
-        } = collection_file
+        let (collection, js_process) = collection_file
             .load(&js_engine)
             .reported(&messages_tx)
-            .expect("TODO handle failed collection");
+            .map(
+                |LoadedCollection {
+                     collection,
+                     process,
+                 }| (collection, Some(process)),
+            )
+            // If loading fails, use a default collection. We don't have a
+            // process to use for renders, but since the collection is empty
+            // it's impossible to trigger a render
+            .unwrap_or_else(|| (Collection::default(), None));
         let collection = Arc::new(collection);
 
         let request_store = RequestStore::new(database.clone());
@@ -150,7 +157,7 @@ impl Tui {
             view,
             request_store,
             petit_engine: js_engine,
-            js_process,
+            ps_process: js_process,
         };
 
         // Run everything in one local set, so that we can use !Send values
@@ -429,7 +436,7 @@ impl Tui {
     /// Reload state with a new collection
     fn reload_collection(&mut self, collection: LoadedCollection) {
         self.collection = Arc::new(collection.collection);
-        self.js_process = collection.process;
+        self.ps_process = Some(collection.process);
 
         // Rebuild the whole view, because tons of things can change
         self.view = View::new(
@@ -741,7 +748,12 @@ impl Tui {
             prompter,
             overrides,
         };
-        Ok(Renderer::new(self.js_process.clone(), context))
+        Ok(Renderer::new(
+            self.ps_process
+                .clone()
+                .expect("PetitScript process not available"),
+            context,
+        ))
     }
 }
 

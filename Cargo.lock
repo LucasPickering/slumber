@@ -2803,6 +2803,7 @@ dependencies = [
  "itertools",
  "mime",
  "openapiv3",
+ "petitscript",
  "pretty_assertions",
  "reqwest",
  "rest_parser",

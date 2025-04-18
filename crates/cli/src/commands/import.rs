@@ -34,6 +34,8 @@ enum Format {
     // https://github.com/clap-rs/clap/pull/5480
     #[value(alias = "vscode", alias = "jetbrains")]
     Rest,
+    /// Slumber legacy YAML format (from Slumber pre-v4)
+    Yaml,
 }
 
 impl Subcommand for ImportCommand {
@@ -43,21 +45,18 @@ impl Subcommand for ImportCommand {
         // format contains PS values that can't be turned back into source code.
         // Instead we use a declarative format similar to the YAML-based format
         // pre-Slumber v4.
-        let collection: slumber_import::common::Collection = match self.format {
+        let collection: slumber_import::Collection = match self.format {
             Format::Insomnia => {
                 slumber_import::from_insomnia(&self.input_file)?
             }
-            Format::Openapi => {
-                todo!()
-                //  slumber_import::from_openapi(&self.input_file)?
-            }
-            Format::Rest => {
-                todo!()
-                // slumber_import::from_rest(&self.input_file)?
-            }
+            Format::Openapi => slumber_import::from_openapi(&self.input_file)?,
+            Format::Rest => slumber_import::from_rest(&self.input_file)?,
+            Format::Yaml => slumber_import::from_yaml(&self.input_file)?,
         };
+        // Convert the collection into a PS AST
+        let module = collection.into_petitscript();
 
-        // Write the output
+        // Write the output to either stdout or a file
         let mut writer: Box<dyn Write> = match self.output_file {
             Some(output_file) => Box::new(
                 File::options()
@@ -72,10 +71,8 @@ impl Subcommand for ImportCommand {
             ),
             None => Box::new(io::stdout()),
         };
-
-        // Convert the declarative format into a PS AST, and write that to
-        // source code
-        todo!("Generate PS source code");
+        // Use the Display impl to convert the AST to source code
+        write!(&mut writer, "{module:#}")?;
 
         Ok(ExitCode::SUCCESS)
     }

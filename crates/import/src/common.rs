@@ -1,16 +1,18 @@
-//! TODO
+//! TODO explain what this is and why it's all duplicated
 
 mod cereal;
+mod ps;
 mod recipe_tree;
 mod template;
 
 pub use crate::common::{
     cereal::HasId,
-    recipe_tree::{RecipeNode, RecipeTree},
+    recipe_tree::{DuplicateRecipeIdError, RecipeNode, RecipeTree},
     template::{Identifier, Template},
 };
 // Re-export anything we might need from core, so individual importers don't
 // have to mix and match between this module and the core crate
+// TODO break this dependency
 pub use slumber_core::{
     collection::{ProfileId, RecipeId},
     http::{HttpMethod, content_type::ContentType},
@@ -22,9 +24,23 @@ use indexmap::IndexMap;
 use mime::Mime;
 use serde::Deserialize;
 use serde_json_path::JsonPath;
-use slumber_util::{ResultTraced, parse_yaml};
-use std::{fs::File, path::PathBuf, time::Duration};
+use slumber_util::parse_yaml;
+use std::{fs::File, path::Path, time::Duration};
 use tracing::info;
+
+/// Convert a legacy Slumber YAML collection into the common import format
+pub fn from_yaml(yaml_file: impl AsRef<Path>) -> anyhow::Result<Collection> {
+    let yaml_file = yaml_file.as_ref();
+    info!(file = ?yaml_file, "Loading Slumber YAML collection");
+    let file = File::open(yaml_file).context(format!(
+        "Error opening Slumber YAML collection file {yaml_file:?}"
+    ))?;
+    // Since this is our own format, we're very strict about the import. If it
+    // fails, that should be a fatal bug
+    parse_yaml(file).context(format!(
+        "Error deserializing Slumber YAML collection file {yaml_file:?}",
+    ))
+}
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
@@ -48,23 +64,6 @@ pub struct Collection {
     /// requires a custom serde impl for each type, or changes to the macro
     #[serde(default, skip_serializing, rename = ".ignore")]
     pub _ignore: serde::de::IgnoredAny,
-}
-
-impl Collection {
-    /// Load collection from a file
-    pub fn load(path: &PathBuf) -> anyhow::Result<Self> {
-        info!(?path, "Loading collection file");
-
-        let load = || {
-            let file = File::open(path)?;
-            let collection = parse_yaml(&file)?;
-            Ok::<_, anyhow::Error>(collection)
-        };
-
-        load()
-            .context(format!("Error loading collection from {path:?}"))
-            .traced()
-    }
 }
 
 /// Mutually exclusive hot-swappable config group

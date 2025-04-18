@@ -1,9 +1,9 @@
 //! Generate PetitScript code from a collection
 
 use crate::common::{
-    Authentication, Chain, ChainId, ChainRequestSection, ChainRequestTrigger,
-    ChainSource, Collection, Folder, Profile, Recipe, RecipeBody, RecipeNode,
-    RecipeTree, SelectOptions, Template,
+    Authentication, Chain, ChainId, ChainOutputTrim, ChainRequestSection,
+    ChainRequestTrigger, ChainSource, Collection, Folder, Profile, Recipe,
+    RecipeBody, RecipeNode, RecipeTree, SelectOptions, Template,
     template::{TemplateInputChunk, TemplateKey},
 };
 use indexmap::IndexMap;
@@ -172,9 +172,17 @@ impl IntoPetitAst for Chain {
         }
         .into_expr();
 
+        // Apply trimming to the output
+        match self.trim {
+            ChainOutputTrim::None => {}
+            // TODO apply trim as a prototype function call
+            ChainOutputTrim::Start => todo!(),
+            ChainOutputTrim::End => todo!(),
+            ChainOutputTrim::Both => todo!(),
+        }
+
         // TODO figure out how to do sensitive values
         // TODO implement selector, selector_mode, and content_type
-        // TODO apply trim as a prototype function call
 
         FunctionDefinition::new(
             // Chains don't accept params, so the function won't either

@@ -95,7 +95,7 @@ impl TemplatePreview {
                     Some(ContentType::Json) => {
                         serde_json::to_string_pretty(&value).unwrap()
                     }
-                    None => value.to_string(),
+                    None => format!("{value}"),
                 };
                 Text::styled(text, styles.template_preview.text)
             }

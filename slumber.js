@@ -5,27 +5,29 @@ function username() {
 }
 
 function password() {
-  return prompt("Password", { sensitive: true });
+  return prompt({ message: "Password", sensitive: true });
 }
 
 function selectValue() {
-  return select("Select a value", [
-    "foo",
-    "bar",
-    "baz",
-    "a really really really really long option",
-    username(),
-  ]);
+  return select(
+    [
+      "foo",
+      "bar",
+      "baz",
+      "a really really really really long option",
+      username(),
+    ],
+    { message: "Select a value" }
+  );
 }
 
 // Example of generating a selection list dynamically
-// TODO use this
 function selectDynamic() {
   const resp = response("login", {
     trigger: { type: "expire", duration: "12h" },
   });
-  const options = JSON.parse(resp).form;
-  return select("Select a value", options);
+  const options = Object.values(JSON.parse(resp).form);
+  return select(options, { message: "Select a value" });
 }
 
 function authToken() {
@@ -111,6 +113,7 @@ export const requests = {
         query: {
           foo: "bar",
           select: selectValue,
+          selectDynamic: selectDynamic,
         },
       },
       getUser: {

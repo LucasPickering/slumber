@@ -168,8 +168,9 @@ impl FromRendered for String {
             Value::Buffer(buffer) => {
                 String::from_utf8(buffer.into()).map_err(anyhow::Error::from)
             }
-            // Anything else should be stringified
-            other => Ok(other.to_string()),
+            // Anything else should be stringified. We want the display string
+            // here because it's more user-friendly
+            other => Ok(format!("{other}")),
         }
     }
 }
@@ -179,8 +180,9 @@ impl FromRendered for Bytes {
         match value {
             Value::String(string) => Ok(String::from(string).into()),
             Value::Buffer(buffer) => Ok(buffer.into()),
-            // Anything else should be stringified
-            other => Ok(other.to_string().into()),
+            // Anything else should be stringified. We want the display string
+            // here because it's more user-friendly
+            other => Ok(format!("{other}").into()),
         }
     }
 }

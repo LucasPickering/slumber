@@ -1,4 +1,3 @@
-mod cereal;
 mod error;
 mod functions;
 

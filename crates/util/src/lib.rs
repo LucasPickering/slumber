@@ -14,9 +14,21 @@ mod test_util;
 #[cfg(feature = "test")]
 pub use test_util::*;
 
-use serde::de::DeserializeOwned;
-use std::{fmt::Debug, io::Read, ops::Deref};
+use anyhow::anyhow;
+use itertools::Itertools;
+use serde::{
+    Deserialize,
+    de::{DeserializeOwned, Error as _},
+};
+use std::{
+    fmt::{self, Debug, Display},
+    io::Read,
+    ops::Deref,
+    str::FromStr,
+    time,
+};
 use tracing::error;
+use winnow::{PResult, Parser, ascii::digit1, token::take_while};
 
 /// A static mapping between values (of type `T`) and labels (strings). Used to
 /// both stringify from and parse to `T`.
@@ -72,6 +84,113 @@ pub trait ResultTraced<T, E>: Sized {
 impl<T> ResultTraced<T, anyhow::Error> for anyhow::Result<T> {
     fn traced(self) -> Self {
         self.inspect_err(|err| error!(error = err.deref()))
+    }
+}
+
+/// A newtype for [std::time::Duration] that provides formatting, parsing, and
+/// deserialization
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct Duration(time::Duration);
+
+impl Duration {
+    /// Get the inner [std::time::Duration]
+    pub fn inner(self) -> time::Duration {
+        self.0
+    }
+}
+
+impl Display for Duration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Always print as seconds, because it's easiest. Sub-second precision
+        // is lost
+        write!(f, "{}s", self.0.as_secs())
+    }
+}
+
+impl FromStr for Duration {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        /// Supported units for duration parsing/formatting
+        #[derive(Debug)]
+        enum DurationUnit {
+            Second,
+            Minute,
+            Hour,
+            Day,
+        }
+
+        impl DurationUnit {
+            const ALL: &[Self] =
+                &[Self::Second, Self::Minute, Self::Hour, Self::Day];
+        }
+
+        impl Display for DurationUnit {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    Self::Second => write!(f, "s"),
+                    Self::Minute => write!(f, "m"),
+                    Self::Hour => write!(f, "h"),
+                    Self::Day => write!(f, "d"),
+                }
+            }
+        }
+
+        impl FromStr for DurationUnit {
+            type Err = anyhow::Error;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s.to_lowercase().as_str() {
+                    "s" => Ok(Self::Second),
+                    "m" => Ok(Self::Minute),
+                    "h" => Ok(Self::Hour),
+                    "d" => Ok(Self::Day),
+                    _ => Err(anyhow!(
+                        "Unknown duration unit `{s}`; must be one of {:?}",
+                        Self::ALL.iter().format_with(", ", |unit, f| f(
+                            &format_args!("`{unit}`")
+                        ))
+                    )),
+                }
+            }
+        }
+
+        fn quantity(input: &mut &str) -> PResult<u64> {
+            digit1.parse_to().parse_next(input)
+        }
+
+        fn unit<'a>(input: &mut &'a str) -> PResult<&'a str> {
+            take_while(1.., char::is_alphabetic).parse_next(input)
+        }
+
+        let (quantity, unit) = (quantity, unit)
+            .parse(s)
+            // The format is so simple there isn't much value in spitting out a
+            // specific parsing error, just use a canned one
+            .map_err(|_| {
+                anyhow!(
+                    "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)",
+                )
+            })?;
+
+        let unit = unit.parse()?;
+        let seconds = match unit {
+            DurationUnit::Second => quantity,
+            DurationUnit::Minute => quantity * 60,
+            DurationUnit::Hour => quantity * 60 * 60,
+            DurationUnit::Day => quantity * 60 * 60 * 24,
+        };
+        Ok(Self(time::Duration::from_secs(seconds)))
+    }
+}
+
+impl<'de> Deserialize<'de> for Duration {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(D::Error::custom)
     }
 }
 

@@ -398,7 +398,7 @@ impl IntoPetitAst for ChainRequestTrigger {
             Self::Expire(duration) => Some(
                 ObjectLiteral::new([
                     ("type", "expire".into()),
-                    ("duration", "TODO format duration as string".into()),
+                    ("duration", duration.to_string().into()),
                 ])
                 .into(),
             ),
@@ -548,7 +548,15 @@ impl IntoPetitAst for Deferred<serde_json::Value> {
                     Expression::Literal(Literal::Null.s())
                 }
                 serde_json::Value::Bool(b) => b.into(),
-                serde_json::Value::Number(number) => todo!(),
+                serde_json::Value::Number(number) => {
+                    if let Some(f) = number.as_f64() {
+                        f.into()
+                    } else if let Some(i) = number.as_i64() {
+                        i.into()
+                    } else {
+                        todo!()
+                    }
+                }
                 serde_json::Value::String(s) => convert_string(s, is_dynamic),
                 serde_json::Value::Array(array) => ArrayLiteral::new(
                     array

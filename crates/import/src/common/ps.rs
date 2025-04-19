@@ -11,10 +11,11 @@ use itertools::Itertools;
 use petitscript::ast::{
     ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
     FunctionCall, FunctionDeclaration, FunctionDefinition, Identifier,
-    ImportDeclaration, IntoExpression, IntoNode, IntoStatement, Module, Node,
-    ObjectLiteral, Statement, TemplateChunk, TemplateLiteral, Walk,
+    ImportDeclaration, IntoExpression, IntoNode, IntoStatement, Literal,
+    Module, Node, ObjectLiteral, Statement, TemplateChunk, TemplateLiteral,
+    Walk,
 };
-use slumber_core::{collection::RecipeId, http::content_type::ContentType};
+use slumber_core::collection::RecipeId;
 use std::sync::Arc;
 
 const CHAIN_FN_PREFIX: &str = "chain_";
@@ -363,24 +364,20 @@ impl IntoPetitAst for RecipeBody {
     fn into_ast(self) -> Self::Output {
         match self {
             // Raw string body -> create a string or template
-            RecipeBody::Raw {
-                body,
-                content_type: None,
-            } => Deferred(body).into_ast(),
-            RecipeBody::Raw {
-                body,
-                content_type: Some(ContentType::Json),
-            } => ObjectLiteral::new([
+            Self::Raw(body) => Deferred(body).into_ast(),
+            Self::Json(json) => ObjectLiteral::new([
                 ("type", "json".into()),
-                ("data", "TODO".into()),
+                // Convert the JSON into an equivalent expression. This will
+                // parse templates within the JSON as needed
+                ("data", Deferred(json).into_ast()),
             ])
             .into(),
-            RecipeBody::FormUrlencoded(fields) => ObjectLiteral::new([
+            Self::FormUrlencoded(fields) => ObjectLiteral::new([
                 ("type", "formUrlencoded".into()),
                 ("data", Deferred(fields).into_ast().into()),
             ])
             .into(),
-            RecipeBody::FormMultipart(fields) => ObjectLiteral::new([
+            Self::FormMultipart(fields) => ObjectLiteral::new([
                 ("type", "formMultipart".into()),
                 ("data", Deferred(fields).into_ast().into()),
             ])
@@ -413,12 +410,13 @@ impl IntoPetitAst for ChainRequestTrigger {
 impl IntoPetitAst for Template {
     type Output = Expression;
 
-    /// Convert a legacy Slumber template to an expression. Single-chunk
-    /// templates will either become a string literal or a bare expression.
-    /// Multi-chunk templates will be converted to a PS template literal.
+    /// Convert a legacy Slumber template to an expression. Empty and
+    /// single-chunk templates will either become a string literal or a bare
+    /// expression. Multi-chunk templates will be converted to a PS template
+    /// literal.
     fn into_ast(self) -> Self::Output {
         match self.chunks.as_slice() {
-            [] => unreachable!("Empty templates are not possible"),
+            [] => "".into(),
             [TemplateInputChunk::Raw(s)] => s.as_str().into(),
             // Parent is responsible for deferring dynamic templates into a
             // lambda as needed. This is only necessary for top-level dynamic
@@ -520,12 +518,79 @@ impl IntoPetitAst for Deferred<Template> {
     /// literals and don't need to be deferred
     fn into_ast(self) -> Self::Output {
         match self.0.into_ast() {
+            // A literal doesn't need to be deferred
             expression @ Expression::Literal(_) => expression,
             expression => FunctionDefinition::new(
                 [],
                 FunctionBody::expression(expression),
             )
             .into(),
+        }
+    }
+}
+
+impl IntoPetitAst for Deferred<serde_json::Value> {
+    type Output = Expression;
+
+    /// Convert a JSON value to a literal expression, and defer it if it
+    /// contains any nested templates. This will parse every string in the JSON
+    /// as a template and it any of them contain dynamic chunks, the whole
+    /// object will be deferred at the top level.
+    fn into_ast(self) -> Self::Output {
+        /// Recursively convert a value, and enable the given flag the first
+        /// time we hit a dynamic template
+        fn convert(
+            value: serde_json::Value,
+            is_dynamic: &mut bool,
+        ) -> Expression {
+            match value {
+                serde_json::Value::Null => {
+                    Expression::Literal(Literal::Null.s())
+                }
+                serde_json::Value::Bool(b) => b.into(),
+                serde_json::Value::Number(number) => todo!(),
+                serde_json::Value::String(s) => convert_string(s, is_dynamic),
+                serde_json::Value::Array(array) => ArrayLiteral::new(
+                    array
+                        .into_iter()
+                        .map(|element| convert(element, is_dynamic)),
+                )
+                .into(),
+                serde_json::Value::Object(map) => {
+                    ObjectLiteral::new(map.into_iter().map(|(k, v)| {
+                        // We have to support templates in both keys and values
+                        let key = convert_string(k, is_dynamic);
+                        let value = convert(v, is_dynamic);
+                        (key, value)
+                    }))
+                    .into()
+                }
+            }
+        }
+
+        /// Convert a string to an expression. If it's a dynamic template,
+        /// enable the flag
+        fn convert_string(s: String, is_dynamic: &mut bool) -> Expression {
+            // Theoretically the string should be a valid template, but if not
+            // treat it literally
+            match s.parse::<Template>() {
+                Ok(template) => {
+                    *is_dynamic |= template.is_dynamic();
+                    template.into_ast()
+                }
+                Err(_) => s.into(),
+            }
+        }
+
+        let mut is_dynamic = false;
+        let expression = convert(self.0, &mut is_dynamic);
+        // If the JSON contained any templates, it's dynamic so we need to
+        // defer it
+        if is_dynamic {
+            FunctionDefinition::new([], FunctionBody::expression(expression))
+                .into()
+        } else {
+            expression
         }
     }
 }

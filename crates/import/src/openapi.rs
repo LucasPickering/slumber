@@ -500,17 +500,8 @@ impl<'a> RecipeBuilder<'a> {
                     .traced()
                     .ok()
             })
-            // Sort known content types first
-            .sorted_by_key(|body| {
-                // This that *don't* match will sort first, because false < true
-                matches!(
-                    body,
-                    RecipeBody::Raw {
-                        content_type: None,
-                        ..
-                    }
-                )
-            })
+            // Sort known content types first (false < true)
+            .sorted_by_key(|body| matches!(body, RecipeBody::Raw(_)))
             .next();
 
         if let Some(body) = body {
@@ -610,7 +601,7 @@ impl<'a> RecipeBuilder<'a> {
         if mime == &mime::APPLICATION_JSON {
             // Currently we don't match against any JSON extensions. Just a
             // shortcut, could fix later
-            Ok(RecipeBody::untemplated_json(body))
+            Ok(RecipeBody::Json(body))
         } else if mime == &mime::APPLICATION_WWW_FORM_URLENCODED {
             let form = unwrap_object(body)?;
             Ok(RecipeBody::FormUrlencoded(form))
@@ -622,10 +613,7 @@ impl<'a> RecipeBuilder<'a> {
                 "Unknown content type `{mime}` for body of recipe `{}`",
                 self.id
             );
-            Ok(RecipeBody::Raw {
-                body: Template::raw(format!("{body:#}")),
-                content_type: None,
-            })
+            Ok(RecipeBody::Raw(Template::raw(format!("{body:#}"))))
         }
     }
 }

@@ -3,7 +3,7 @@
 use crate::{
     collection::RecipeId,
     http::{RequestSeed, ResponseRecord},
-    ps::{cereal, error::FunctionError},
+    ps::error::FunctionError,
     template::{
         OverrideKey, OverrideValue, Prompt, RenderContext, RenderState,
         Renderer, Select,
@@ -15,7 +15,8 @@ use chrono::Utc;
 use indexmap::indexmap;
 use petitscript::{Engine, Exports, FromPs, Process, Value, error::ValueError};
 use serde::{Deserialize, de::IntoDeserializer};
-use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
+use slumber_util::Duration;
+use std::{path::PathBuf, process::Stdio, sync::Arc};
 use tokio::{
     fs, io::AsyncWriteExt, process::Command, runtime::Handle, sync::oneshot,
 };
@@ -342,10 +343,7 @@ enum RequestTrigger {
     NoHistory,
     /// Trigger the request if the last response is older than some
     /// duration (or there is none in history)
-    Expire {
-        #[serde(deserialize_with = "cereal::deserialize_duration")]
-        duration: Duration,
-    },
+    Expire { duration: Duration },
     /// Trigger the request every time the dependent request is rendered
     Always,
 }
@@ -446,7 +444,7 @@ impl RenderContext {
             }
             RequestTrigger::Expire { duration } => match get_latest().await? {
                 Some(exchange)
-                    if exchange.end_time + duration >= Utc::now() =>
+                    if exchange.end_time + duration.inner() >= Utc::now() =>
                 {
                     exchange
                 }

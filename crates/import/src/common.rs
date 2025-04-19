@@ -24,8 +24,8 @@ use indexmap::IndexMap;
 use mime::Mime;
 use serde::Deserialize;
 use serde_json_path::JsonPath;
-use slumber_util::parse_yaml;
-use std::{fs::File, path::Path, time::Duration};
+use slumber_util::{Duration, parse_yaml};
+use std::{fs::File, path::Path};
 use tracing::info;
 
 /// Convert a legacy Slumber YAML collection into the common import format
@@ -316,9 +316,7 @@ pub enum ChainRequestTrigger {
     NoHistory,
     /// Trigger the request if the last response is older than some
     /// duration (or there is none in history)
-    Expire(
-        #[serde(deserialize_with = "cereal::deserialize_duration")] Duration,
-    ),
+    Expire(Duration),
     /// Trigger the request every time the dependent request is rendered
     Always,
 }

@@ -154,6 +154,7 @@ pub fn format_time(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
 }
 
 /// Format a duration for the user
+/// TODO can we use the duration from slumber_util for this?
 pub fn format_duration(duration: &Duration) -> String {
     let ms = duration.num_milliseconds();
     if ms < 1000 {

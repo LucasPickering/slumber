@@ -14,7 +14,6 @@ use serde::{
         Visitor,
     },
 };
-use slumber_core::http::content_type::ContentType;
 use std::{hash::Hash, time::Duration};
 use strum::{EnumIter, EnumString, IntoEnumIterator};
 use winnow::{PResult, Parser, ascii::digit1, token::take_while};
@@ -258,10 +257,7 @@ impl<'de> Deserialize<'de> for RecipeBody {
                     E: de::Error,
                 {
                     let template = v.to_string().parse().map_err(E::custom)?;
-                    Ok(RecipeBody::Raw {
-                        body: template,
-                        content_type: None,
-                    })
+                    Ok(RecipeBody::Raw(template))
                 }
             };
         }
@@ -295,18 +291,9 @@ impl<'de> Deserialize<'de> for RecipeBody {
                 let (tag, value) = data.variant::<String>()?;
                 match tag.as_str() {
                     RecipeBody::VARIANT_JSON => {
-                        // Pretty print the JSON now and parse it as a template.
-                        // This is inefficient because we stringify the value
-                        // then immediately clone it during the parse :(
                         let json: serde_json::Value =
                             value.newtype_variant()?;
-                        let body = format!("{json:#}")
-                            .parse()
-                            .map_err(A::Error::custom)?;
-                        Ok(RecipeBody::Raw {
-                            body,
-                            content_type: Some(ContentType::Json),
-                        })
+                        Ok(RecipeBody::Json(json))
                     }
                     RecipeBody::VARIANT_FORM_URLENCODED => {
                         Ok(RecipeBody::FormUrlencoded(value.newtype_variant()?))

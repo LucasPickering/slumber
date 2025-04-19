@@ -2,9 +2,9 @@
 //! format
 
 use crate::common::{
-    self, Chain, ChainId, ChainSource, Collection, ContentType, Folder, HasId,
-    HttpMethod, Identifier, NEW_ISSUE_LINK, Profile, ProfileId, Recipe,
-    RecipeBody, RecipeId, RecipeNode, RecipeTree, SelectorMode, Template,
+    self, Chain, ChainId, ChainSource, Collection, Folder, HasId, HttpMethod,
+    Identifier, NEW_ISSUE_LINK, Profile, ProfileId, Recipe, RecipeBody,
+    RecipeId, RecipeNode, RecipeTree, SelectorMode, Template,
 };
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
@@ -358,10 +358,7 @@ impl TryFrom<Body> for RecipeBody {
 
     fn try_from(body: Body) -> anyhow::Result<Self> {
         let body = if body.mime_type == mime::APPLICATION_JSON {
-            RecipeBody::Raw {
-                body: Template::raw(body.try_text()?),
-                content_type: Some(ContentType::Json),
-            }
+            RecipeBody::Json(body.try_text()?.into())
         } else if body.mime_type == mime::APPLICATION_WWW_FORM_URLENCODED {
             RecipeBody::FormUrlencoded(
                 body.params.into_iter().map(FormParam::into).collect(),
@@ -371,10 +368,7 @@ impl TryFrom<Body> for RecipeBody {
                 body.params.into_iter().map(FormParam::into).collect(),
             )
         } else {
-            RecipeBody::Raw {
-                body: Template::raw(body.try_text()?),
-                content_type: None,
-            }
+            RecipeBody::Raw(Template::raw(body.try_text()?))
         };
         Ok(body)
     }

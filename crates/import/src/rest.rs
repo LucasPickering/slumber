@@ -139,14 +139,6 @@ fn guess_is_json(
     })
 }
 
-/// If the request has JSON headers, mark it as such
-fn guess_content_type(
-    headers: &IndexMap<String, RestTemplate>,
-    variables: &RestVariables,
-) -> Option<ContentType> {
-    guess_is_json(headers, variables).then_some(ContentType::Json)
-}
-
 fn try_build_body(
     body: RestBody,
     recipe_id: &str,
@@ -154,30 +146,24 @@ fn try_build_body(
     variables: &RestVariables,
 ) -> anyhow::Result<CompleteBody> {
     // We only want the text for now
-    let (template, chain, content_type) = match body {
-        RestBody::Text(text) => (
-            try_build_slumber_template(text)?,
-            None,
-            guess_content_type(headers, variables),
-        ),
+    let (template, chain) = match body {
+        RestBody::Text(text) => (try_build_slumber_template(text)?, None),
         RestBody::SaveToFile { text, .. } => {
-            (try_build_slumber_template(text)?, None, None)
+            (try_build_slumber_template(text)?, None)
         }
         RestBody::LoadFromFile { filepath, .. } => {
             let chain = try_build_chain_from_load_body(
                 filepath, recipe_id, headers, variables,
             )?;
             let template = Template::from_chain(chain.id().clone());
-            (template, Some(chain), None)
+            (template, Some(chain))
         }
     };
 
-    let recipe_body = RecipeBody::Raw {
-        body: template,
-        content_type,
-    };
-
-    Ok(CompleteBody { recipe_body, chain })
+    Ok(CompleteBody {
+        recipe_body: RecipeBody::Raw(template),
+        chain,
+    })
 }
 
 /// Build the query variables

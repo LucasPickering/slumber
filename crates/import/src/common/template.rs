@@ -48,9 +48,11 @@ impl Template {
         Self { chunks }
     }
 
-    /// This is template a single static chunk?
-    pub fn is_static(&self) -> bool {
-        matches!(self.chunks.as_slice(), [TemplateInputChunk::Raw(_)])
+    /// Does this template contain any dynamic chunks?
+    pub fn is_dynamic(&self) -> bool {
+        // Raw segments can't be consecutive so if there's more than 1 chunk,
+        // at least one of them must be dynamic
+        !matches!(self.chunks.as_slice(), [] | [TemplateInputChunk::Raw(_)])
     }
 }
 

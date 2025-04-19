@@ -176,13 +176,9 @@ pub enum Authentication<T = Template> {
 #[derive(Debug)]
 pub enum RecipeBody {
     /// Plain string/bytes body
-    Raw {
-        body: Template,
-        /// For structured body types such as `!json`, we'll stringify during
-        /// deserialization then just store the content type. This makes
-        /// internal logic much simpler because we can just work with templates
-        content_type: Option<ContentType>,
-    },
+    Raw(Template),
+    /// `application/json` body
+    Json(serde_json::Value),
     /// `application/x-www-form-urlencoded` fields. Values must be strings
     FormUrlencoded(IndexMap<String, Template>),
     /// `multipart/form-data` fields. Values can be binary
@@ -190,28 +186,18 @@ pub enum RecipeBody {
 }
 
 impl RecipeBody {
-    /// Build a JSON body *without* parsing the internal strings as templates.
-    /// Useful for importing from external formats.
-    pub fn untemplated_json(value: serde_json::Value) -> Self {
-        Self::Raw {
-            body: Template::raw(format!("{value:#}")),
-            content_type: Some(ContentType::Json),
-        }
-    }
-
     /// Get the anticipated MIME type that will appear in the `Content-Type`
     /// header of a request containing this body. This is *not* necessarily
     /// the MIME type that will _actually_ be used, as it could be overidden by
     /// an explicit header.
     pub fn mime(&self) -> Option<Mime> {
         match self {
-            RecipeBody::Raw { content_type, .. } => {
-                content_type.as_ref().map(ContentType::to_mime)
-            }
-            RecipeBody::FormUrlencoded(_) => {
+            Self::Raw(_) => None,
+            Self::Json(_) => Some(mime::APPLICATION_JSON),
+            Self::FormUrlencoded(_) => {
                 Some(mime::APPLICATION_WWW_FORM_URLENCODED)
             }
-            RecipeBody::FormMultipart(_) => Some(mime::MULTIPART_FORM_DATA),
+            Self::FormMultipart(_) => Some(mime::MULTIPART_FORM_DATA),
         }
     }
 }

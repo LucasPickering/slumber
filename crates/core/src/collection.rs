@@ -27,7 +27,7 @@ use tracing::{trace, warn};
 const CONFIG_FILES: &[&str] = &["slumber.js", ".slumber.js"];
 
 /// A handle for a collection file. This makes it easy to load and reload
-/// the collection in the file
+/// the collection in the file. This is just a path that we've confirmed exists.
 #[derive(Clone, Debug)]
 pub struct CollectionFile(PathBuf);
 
@@ -158,7 +158,6 @@ mod tests {
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use serde::de::IgnoredAny;
     use serde_json::json;
     use slumber_util::{Factory, TempDir, assert_err, temp_dir, test_data_dir};
     use std::{fs, fs::File, time::Duration};
@@ -239,10 +238,12 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_regression(test_data_dir: PathBuf) {
-        let loaded = CollectionFile::load(test_data_dir.join("regression.yml"))
-            .await
-            .unwrap()
-            .collection;
+        let loaded = CollectionFile::load(
+            test_data_dir.join("regression.yml"),
+            &PetitEngine::new(),
+        )
+        .unwrap()
+        .collection;
         let expected = Collection {
             profiles: by_id([
                 Profile {
@@ -266,216 +267,15 @@ mod tests {
                     },
                 },
             ]),
-            chains: by_id([
-                Chain {
-                    id: "command".into(),
-                    source: ChainSource::command(["whoami"]),
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "command_stdin".into(),
-                    source: ChainSource::Command {
-                        command: vec!["head -c 1".into()],
-                        stdin: Some("abcdef".into()),
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "command_trim_none".into(),
-                    source: ChainSource::command(["whoami"]),
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "command_trim_start".into(),
-                    source: ChainSource::command(["whoami"]),
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::Start,
-                },
-                Chain {
-                    id: "command_trim_end".into(),
-                    source: ChainSource::command(["whoami"]),
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::End,
-                },
-                Chain {
-                    id: "command_trim_both".into(),
-                    source: ChainSource::command(["whoami"]),
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::Both,
-                },
-                Chain {
-                    id: "prompt_sensitive".into(),
-                    source: ChainSource::Prompt {
-                        message: Some("Password".into()),
-                        default: None,
-                    },
-                    sensitive: true,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "prompt_default".into(),
-                    source: ChainSource::Prompt {
-                        message: Some("User GUID".into()),
-                        default: Some("{{user_guid}}".into()),
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "file".into(),
-                    source: ChainSource::File {
-                        path: "./README.md".into(),
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "file_content_type".into(),
-                    source: ChainSource::File {
-                        path: "./data.json".into(),
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: Some(ContentType::Json),
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "request_selector".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: RequestTrigger::Never,
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: Some("$.data".parse().unwrap()),
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "request_trigger_never".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: RequestTrigger::Never,
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "request_trigger_no_history".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: RequestTrigger::Never,
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "request_trigger_expire".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: RequestTrigger::Expire(Duration::from_secs(
-                            12 * 60 * 60,
-                        )),
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "request_trigger_always".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: RequestTrigger::Never,
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "request_section_body".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: RequestTrigger::Never,
-                        section: ChainRequestSection::Body,
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-                Chain {
-                    id: "request_section_header".into(),
-                    source: ChainSource::Request {
-                        recipe: "login".into(),
-                        trigger: RequestTrigger::Never,
-                        section: ChainRequestSection::Header(
-                            "content-type".into(),
-                        ),
-                    },
-                    sensitive: false,
-                    selector: None,
-                    selector_mode: SelectorMode::default(),
-                    content_type: None,
-                    trim: TrimMode::None,
-                },
-            ]),
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
                     id: "text_body".into(),
                     method: HttpMethod::Post,
                     url: "{{host}}/anything/login".into(),
                     body: Some(RecipeBody::Raw {
-                        body: "{\"username\": \"{{username}}\", \
+                        data: "{\"username\": \"{{username}}\", \
                         \"password\": \"{{chains.password}}\"}"
                             .into(),
-                        content_type: None,
                     }),
                     query: vec![
                         ("sudo".into(), "yes_please".into()),
@@ -506,14 +306,13 @@ mod tests {
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-                            body: Some(RecipeBody::Raw {
-                                body: json!({"username": "new username"})
+                            body: Some(RecipeBody::Json {
+                                data: json!({"username": "new username"})
                                     .into(),
-                                content_type: Some(ContentType::Json),
                             }),
-                            authentication: Some(Authentication::Bearer(
-                                "{{chains.auth_token}}".into(),
-                            )),
+                            authentication: Some(Authentication::Bearer {
+                                token: "{{chains.auth_token}}".into(),
+                            }),
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
                             },
@@ -524,10 +323,9 @@ mod tests {
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-                            body: Some(RecipeBody::Raw {
-                                body: json!(r#"{"warning": "NOT an object"}"#)
+                            body: Some(RecipeBody::Json {
+                                data: json!(r#"{"warning": "NOT an object"}"#)
                                     .into(),
-                                content_type: Some(ContentType::Json),
                             }),
                             authentication: Some(Authentication::Basic {
                                 username: "{{username}}".into(),
@@ -543,9 +341,11 @@ mod tests {
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-                            body: Some(RecipeBody::FormUrlencoded(indexmap! {
-                                "username".into() => "new username".into()
-                            })),
+                            body: Some(RecipeBody::FormUrlencoded {
+                                data: indexmap! {
+                                    "username".into() => "new username".into()
+                                },
+                            }),
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
                             },
@@ -555,7 +355,6 @@ mod tests {
                 }),
             ])
             .into(),
-            _ignore: IgnoredAny,
         };
         assert_eq!(*loaded, expected);
     }

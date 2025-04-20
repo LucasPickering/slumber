@@ -204,3 +204,67 @@ pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
     let output = serde_path_to_error::deserialize(yaml_value)?;
     Ok(output)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::seconds_short(time::Duration::from_secs(3), "3s")]
+    #[case::seconds_long(time::Duration::from_secs(3000), "3000s")]
+    // Subsecond precision is lost
+    #[case::seconds_subsecond_lost(time::Duration::from_millis(400), "0s")]
+    #[case::seconds_subsecond_round_down(
+        time::Duration::from_millis(1999),
+        "1s"
+    )]
+    fn test_duration_to_string(
+        #[case] duration: time::Duration,
+        #[case] expected: &'static str,
+    ) {
+        assert_eq!(&Duration(duration).to_string(), expected);
+    }
+
+    #[rstest]
+    #[case::seconds_zero("0s", time::Duration::from_secs(0))]
+    #[case::seconds_short("1s", time::Duration::from_secs(1))]
+    #[case::seconds_longer("100s", time::Duration::from_secs(100))]
+    #[case::minutes("3m", time::Duration::from_secs(180))]
+    #[case::hours("3h", time::Duration::from_secs(10800))]
+    #[case::days("2d", time::Duration::from_secs(172800))]
+    fn test_duration_parse(
+        #[case] s: &'static str,
+        #[case] expected: time::Duration,
+    ) {
+        assert_eq!(s.parse::<Duration>().unwrap(), Duration(expected));
+    }
+
+    #[rstest]
+    #[case::negative(
+        "-1s",
+        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
+    )]
+    #[case::whitespace(
+        " 1s ",
+        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
+    )]
+    #[case::trailing_whitespace(
+        "1s ",
+        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
+    )]
+    #[case::decimal(
+        "3.5s",
+        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
+    )]
+    #[case::invalid_unit(
+        "3hr",
+        "Unknown duration unit `hr`; must be one of `s`, `m`, `h`, `d`"
+    )]
+    fn test_duration_parse_error(
+        #[case] s: &'static str,
+        #[case] expected_error: &str,
+    ) {
+        assert_err!(s.parse::<Duration>(), expected_error);
+    }
+}

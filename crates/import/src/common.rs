@@ -234,7 +234,6 @@ pub struct Chain {
 /// Unique ID for a chain, provided by the user
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Deserialize)]
 #[serde(transparent)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ChainId(Identifier);
 
 impl From<Identifier> for ChainId {

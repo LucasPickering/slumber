@@ -1,27 +1,23 @@
 //! Generate strings (and bytes) from user-written templates with dynamic data
 
-mod error;
-mod prompt;
-#[cfg(test)]
-mod tests;
-
-pub use error::{TemplateError, TriggeredRequestError};
-pub use prompt::{Prompt, Prompter, ResponseChannel, Select};
-
 use crate::{
     collection::{Collection, Profile, ProfileId, RecipeId},
-    http::{Exchange, RequestSeed},
-    template::error::OverrideKeyParseError,
+    http::{Exchange, RequestBuildError, RequestError, RequestSeed},
     util::FutureCache,
 };
+use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::Bytes;
-use derive_more::Display;
+use derive_more::{Display, From};
 use indexmap::IndexMap;
 use petitscript::{Process, Value, function::Function};
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, fmt::Debug, str::FromStr, sync::Arc};
-use tokio::task;
+use slumber_util::ResultTraced;
+use std::{
+    borrow::Cow, fmt::Debug, str::FromStr, string::FromUtf8Error, sync::Arc,
+};
+use thiserror::Error;
+use tokio::{sync::oneshot, task};
 
 /// A [petitscript::Value] to be used in a recipe. Templates come in two forms:
 /// - Static: a predefined value such as a number, string, or object
@@ -340,29 +336,161 @@ pub trait HttpProvider: Debug + Send + Sync {
     ) -> Result<Exchange, TriggeredRequestError>;
 }
 
-/// Join consecutive raw chunks in a generated template, to make it valid
-#[cfg(test)]
-fn join_raw(chunks: Vec<TemplateInputChunk>) -> Vec<TemplateInputChunk> {
-    let len = chunks.len();
-    chunks
-        .into_iter()
-        .fold(Vec::with_capacity(len), |mut chunks, chunk| {
-            match (chunks.last_mut(), chunk) {
-                // If previous and current are both raw, join them together
-                (
-                    Some(TemplateInputChunk::Raw(previous)),
-                    TemplateInputChunk::Raw(current),
-                ) => {
-                    // The current string is inside an Arc so we can't push
-                    // into it, we have to clone it out :(
-                    let mut concat =
-                        String::with_capacity(previous.len() + current.len());
-                    concat.push_str(previous);
-                    concat.push_str(&current);
-                    *previous = Arc::new(concat)
-                }
-                (_, chunk) => chunks.push(chunk),
-            }
-            chunks
-        })
+/// A prompter is a bridge between the user and the template engine. It enables
+/// the template engine to request values from the user *during* the template
+/// process. The implementor is responsible for deciding *how* to ask the user.
+///
+/// **Note:** The prompter has to be able to handle simultaneous prompt
+/// requests, if a template has multiple prompt values, or if multiple templates
+/// with prompts are being rendered simultaneously.  The implementor is
+/// responsible for queueing prompts to show to the user one at a time.
+pub trait Prompter: Debug + Send + Sync {
+    /// Ask the user a question, and use the given channel to return a response.
+    /// To indicate "no response", simply drop the returner.
+    ///
+    /// If an error occurs while prompting the user, just drop the returner.
+    /// The implementor is responsible for logging the error as appropriate.
+    fn prompt(&self, prompt: Prompt);
+
+    /// Ask the user to pick an item for a list of choices
+    fn select(&self, select: Select);
+}
+
+/// Data defining a prompt which should be presented to the user
+#[derive(Debug)]
+pub struct Prompt {
+    /// Tell the user what we're asking for
+    pub message: String,
+    /// Value used to pre-populate the text box
+    pub default: Option<String>,
+    /// Should the value the user is typing be masked? E.g. password input
+    pub sensitive: bool,
+    /// How the prompter will pass the answer back
+    pub channel: ResponseChannel<String>,
+}
+
+/// A list of options to present to the user
+#[derive(Debug)]
+pub struct Select {
+    /// Tell the user what we're asking for
+    pub message: String,
+    /// List of choices the user can pick from
+    pub options: Vec<String>,
+    /// How the prompter will pass the answer back
+    pub channel: ResponseChannel<String>,
+}
+
+/// Channel used to return a response to a one-time request. This is its own
+/// type so we can provide wrapping functionality
+#[derive(Debug, From)]
+pub struct ResponseChannel<T>(oneshot::Sender<T>);
+
+impl<T> ResponseChannel<T> {
+    /// Return the value that the user gave
+    pub fn respond(self, response: T) {
+        // This error *shouldn't* ever happen, because the templating task
+        // stays open until it gets a response
+        let _ = self
+            .0
+            .send(response)
+            .map_err(|_| anyhow!("Response listener dropped"))
+            .traced();
+    }
+}
+
+/// Error for [OverrideKey](crate::template::OverrideKey)'s `FromStr` impl.
+#[derive(Debug, Error)]
+#[error("Invalid override key")]
+pub struct OverrideKeyParseError;
+
+/// Any error that can occur during template rendering. The purpose of having a
+/// structured error here (while the rest of the app just uses `anyhow`) is to
+/// support localized error display in the UI, e.g. showing just one portion of
+/// a string in red if that particular template key failed to render.
+///
+/// The error always holds owned data so it can be detached from the lifetime
+/// of the template context. This requires a mild amount of cloning in error
+/// cases, but those should be infrequent so it's fine.
+///
+/// These error messages are generally shown with additional parent context, so
+/// they should be pretty brief.
+///
+/// This type implements `Clone` so it can be shared between deduplicated chain
+/// renders.
+#[derive(Clone, Debug, Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum TemplateError {
+    /// Tried to load profile data with no profile selected
+    #[error("No profile selected")]
+    NoProfileSelected,
+
+    /// Unknown profile ID
+    #[error("Unknown profile `{profile_id}`")]
+    ProfileUnknown { profile_id: ProfileId },
+
+    /// A profile field key contained an unknown field
+    #[error("Unknown field `{field}`")]
+    FieldUnknown { field: String },
+
+    /// An bubbled-up error from rendering a profile field value
+    #[error("Rendering nested template for field `{field}`")]
+    FieldNested {
+        field: String,
+        #[source]
+        error: Box<Self>,
+    },
+
+    /// In many contexts, the render output needs to be usable as a string.
+    /// This error occurs when we wanted to render to a string, but whatever
+    /// bytes we got were not valid UTF-8. The underlying error message is
+    /// descriptive enough so we don't need to give additional context.
+    #[error(transparent)]
+    InvalidUtf8(FromUtf8Error),
+
+    /// Cycle detected in nested template keys. We store the entire cycle stack
+    /// for presentation
+    #[error("Infinite loop detected in template")]
+    InfiniteLoop,
+
+    /// Something bad happened while triggering a request dependency
+    #[error("Triggering upstream recipe `{recipe_id}`")]
+    Trigger {
+        recipe_id: RecipeId,
+        #[source]
+        error: TriggeredRequestError,
+    },
+}
+
+/// Error occurred while trying to build/execute a triggered request.
+///
+/// This type implements `Clone` so it can be shared between deduplicated chain
+/// renders, hence the `Arc`s on inner errors.
+#[derive(Clone, Debug, Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum TriggeredRequestError {
+    /// This render was invoked in a way that doesn't support automatic request
+    /// execution. In some cases the user needs to explicitly opt in to enable
+    /// it (e.g. with a CLI flag)
+    #[error("Triggered request execution not allowed in this context")]
+    NotAllowed,
+
+    /// Tried to auto-execute a chained request but couldn't build it
+    #[error(transparent)]
+    Build(#[from] Arc<RequestBuildError>),
+
+    /// Chained request was triggered, sent and failed
+    #[error(transparent)]
+    Send(#[from] Arc<RequestError>),
+}
+
+impl From<RequestBuildError> for TriggeredRequestError {
+    fn from(error: RequestBuildError) -> Self {
+        Self::Build(error.into())
+    }
+}
+
+impl From<RequestError> for TriggeredRequestError {
+    fn from(error: RequestError) -> Self {
+        Self::Send(error.into())
+    }
 }

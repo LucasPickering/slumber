@@ -315,17 +315,13 @@ mod tests {
     use super::*;
     use indexmap::indexmap;
     use rstest::rstest;
-    use serde::Serialize;
     use serde_json::json;
-    use serde_test::{
-        Token, assert_de_tokens, assert_de_tokens_error, assert_ser_tokens,
-    };
+    use serde_test::{Token, assert_de_tokens};
     use serde_yaml::{
         Mapping,
         value::{Tag, TaggedValue},
     };
     use slumber_util::assert_err;
-    use std::time::Duration;
 
     #[rstest]
     #[case::multiple_default(
@@ -470,12 +466,6 @@ mod tests {
             Token::SeqEnd,
         ],
         vec![("param", "{{value}}"), ("param", "value")],
-        &[
-            Token::Seq { len: Some(2) },
-            Token::Str("param={{value}}"),
-            Token::Str("param=value"),
-            Token::SeqEnd,
-        ],
     )]
     #[case::map(
         &[
@@ -485,26 +475,17 @@ mod tests {
             Token::MapEnd,
         ],
         vec![("param", "{{value}}")],
-        &[
-            Token::Seq { len: Some(1) },
-            Token::Str("param={{value}}"),
-            Token::SeqEnd,
-        ],
     )]
-    #[case::unit(
-        &[Token::Unit],
-        vec![],
-        &[Token::Seq { len: Some(0) }, Token::SeqEnd],
-    )]
+    #[case::unit(&[Token::Unit], vec![])]
     fn test_deserialize_query_parameters(
         #[case] input_tokens: &[Token],
-        #[case] expected_value: Vec<(&str, &str)>,
-        #[case] expected_tokens: &[Token],
+        #[case] expected_value: Vec<(&'static str, &'static str)>,
     ) {
-        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        #[derive(Debug, PartialEq, Deserialize)]
         #[serde(transparent)]
         struct Wrap(
-            #[serde(with = "serde_query_parameters")] Vec<(String, Template)>,
+            #[serde(deserialize_with = "deserialize_query_parameters")]
+            Vec<(String, Template)>,
         );
 
         let expected_value = Wrap(
@@ -514,68 +495,6 @@ mod tests {
                 .collect(),
         );
         assert_de_tokens::<Wrap>(&expected_value, input_tokens);
-        assert_ser_tokens(&expected_value, expected_tokens);
-    }
-
-    /// A wrapper that forces serde_test to use our custom serialize/deserialize
-    /// functions
-    #[derive(Debug, PartialEq, Serialize, Deserialize)]
-    #[serde(transparent)]
-    struct WrapDuration(#[serde(with = "super::serde_duration")] Duration);
-
-    #[rstest]
-    #[case::seconds_short(Duration::from_secs(3), "3s")]
-    #[case::seconds_long(Duration::from_secs(3000), "3000s")]
-    // Subsecond precision is lost
-    #[case::seconds_subsecond_lost(Duration::from_millis(400), "0s")]
-    #[case::seconds_subsecond_round_down(Duration::from_millis(1999), "1s")]
-    fn test_serialize_duration(
-        #[case] duration: Duration,
-        #[case] expected: &'static str,
-    ) {
-        assert_ser_tokens(&WrapDuration(duration), &[Token::String(expected)]);
-    }
-
-    #[rstest]
-    #[case::seconds_zero("0s", Duration::from_secs(0))]
-    #[case::seconds_short("1s", Duration::from_secs(1))]
-    #[case::seconds_longer("100s", Duration::from_secs(100))]
-    #[case::minutes("3m", Duration::from_secs(180))]
-    #[case::hours("3h", Duration::from_secs(10800))]
-    #[case::days("2d", Duration::from_secs(172800))]
-    fn test_deserialize_duration(
-        #[case] s: &'static str,
-        #[case] expected: Duration,
-    ) {
-        assert_de_tokens(&WrapDuration(expected), &[Token::Str(s)])
-    }
-
-    #[rstest]
-    #[case::negative(
-        "-1s",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::whitespace(
-        " 1s ",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::trailing_whitespace(
-        "1s ",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::decimal(
-        "3.5s",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::invalid_unit(
-        "3hr",
-        "Unknown duration unit `hr`; must be one of `s`, `m`, `h`, `d`"
-    )]
-    fn test_deserialize_duration_error(
-        #[case] s: &'static str,
-        #[case] error: &str,
-    ) {
-        assert_de_tokens_error::<WrapDuration>(&[Token::Str(s)], error)
     }
 
     /// Build a YAML mapping

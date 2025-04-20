@@ -16,12 +16,8 @@ use petitscript::ast::{
     Walk,
 };
 use slumber_core::collection::RecipeId;
-use std::sync::Arc;
 
 const CHAIN_FN_PREFIX: &str = "chain_";
-
-// TODO add note about function namespacing assumptions: slumber fns will never
-// be shadowed
 
 /// Define how a type should be converted into a PetitScript AST
 trait IntoPetitAst {
@@ -415,22 +411,28 @@ impl IntoPetitAst for Template {
     /// expression. Multi-chunk templates will be converted to a PS template
     /// literal.
     fn into_ast(self) -> Self::Output {
-        match self.chunks.as_slice() {
-            [] => "".into(),
-            [TemplateInputChunk::Raw(s)] => s.as_str().into(),
-            // Parent is responsible for deferring dynamic templates into a
-            // lambda as needed. This is only necessary for top-level dynamic
-            // templates so we don't want to do it all the time
-            [TemplateInputChunk::Key(key)] => key.clone().into_ast().into(),
-            _ => TemplateLiteral {
+        let mut chunks = self.chunks;
+        // We can't use pattern matching without keeping the owned values, so
+        // it's an if party instead!!
+        if chunks.is_empty() {
+            "".into()
+        } else if chunks.len() == 1 {
+            match chunks.pop().unwrap() {
+                TemplateInputChunk::Raw(s) => s.into(),
+                // Parent is responsible for deferring dynamic templates into a
+                // lambda as needed. This is only necessary for top-level
+                // dynamic templates so we don't want to do it all the time
+                TemplateInputChunk::Key(key) => key.clone().into_ast().into(),
+            }
+        } else {
+            TemplateLiteral {
                 // Convert each chunk and join them together
-                chunks: self
-                    .chunks
+                chunks: chunks
                     .into_iter()
                     .map(|chunk| {
                         match chunk {
                             TemplateInputChunk::Raw(s) => {
-                                TemplateChunk::Literal(Arc::unwrap_or_clone(s))
+                                TemplateChunk::Literal(s)
                             }
                             TemplateInputChunk::Key(key) => {
                                 TemplateChunk::Expression(
@@ -443,7 +445,7 @@ impl IntoPetitAst for Template {
                     .collect::<Vec<_>>()
                     .into(),
             }
-            .into(),
+            .into()
         }
     }
 }
@@ -656,4 +658,5 @@ fn find_slumber_functions(
     names
 }
 
-// TODO test the shit out of this
+// TODO test some select edge cases. the common cases will be covered by
+// integration tests

@@ -442,45 +442,33 @@ mod tests {
     #[case::header(
         // Header takes precedence over body
         Some("text/plain"),
-        Some(RecipeBody::Raw {
-            body: "hi!".into(),
-            content_type: Some(ContentType::Json),
-        }),
+        Some(RecipeBody::Json { data: "hi!".into() }),
         Some("text/plain")
     )]
     #[case::unknown_mime(
         // Fall back to body type
         Some("bogus"),
-        Some(RecipeBody::Raw {
-            body: "hi!".into(),
-            content_type: Some(ContentType::Json),
-        }),
+        Some(RecipeBody::Json { data: "hi!".into() }),
         Some("application/json")
     )]
     #[case::json_body(
         None,
-        Some(RecipeBody::Raw {
-            body: "hi!".into(),
-            content_type: Some(ContentType::Json),
-        }),
+        Some(RecipeBody::Json { data: "hi!".into() }),
         Some("application/json")
     )]
     #[case::unknown_body(
         None,
-        Some(RecipeBody::Raw {
-            body: "hi!".into(),
-            content_type: None,
-        }),
+        Some(RecipeBody::Raw { data: "hi!".into() }),
         None,
     )]
     #[case::form_urlencoded_body(
         None,
-        Some(RecipeBody::FormUrlencoded(indexmap! {})),
+        Some(RecipeBody::FormUrlencoded { data: indexmap! {} }),
         Some("application/x-www-form-urlencoded")
     )]
     #[case::form_multipart_body(
         None,
-        Some(RecipeBody::FormMultipart(indexmap! {})),
+        Some(RecipeBody::FormMultipart { data: indexmap! {} }),
         Some("multipart/form-data")
     )]
     fn test_recipe_mime(

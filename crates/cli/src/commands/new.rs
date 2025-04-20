@@ -51,8 +51,7 @@ mod tests {
     use rstest::rstest;
     use slumber_core::{
         collection::{
-            Chain, ChainSource, Collection, Folder, Profile, Recipe,
-            RecipeBody, RecipeNode,
+            Collection, Folder, Profile, Recipe, RecipeBody, RecipeNode,
         },
         http::{HttpMethod, content_type::ContentType},
         test_util::by_id,

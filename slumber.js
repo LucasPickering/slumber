@@ -1,7 +1,7 @@
 import { command, file, profile, prompt, response, select } from "slumber";
 
 function username() {
-  return command(["whoami"], { trim: "both" });
+  return command(["whoami"]).trim();
 }
 
 function password() {
@@ -39,7 +39,7 @@ function authToken() {
 
   // Pick some arbitrary data from the login response as the token
   const token = JSON.stringify(resp.form);
-  return command(["base64"], { stdin: token, trim: "both" });
+  return command(["base64"], { stdin: token }).trim();
 }
 
 const recipeBase = {

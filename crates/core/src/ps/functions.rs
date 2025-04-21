@@ -13,7 +13,11 @@ use crate::{
 use bytes::Bytes;
 use chrono::Utc;
 use indexmap::indexmap;
-use petitscript::{Engine, Exports, FromPs, Process, Value, error::ValueError};
+use petitscript::{
+    Engine, Exports, FromPs, Process, Value,
+    error::ValueError,
+    function::{FromPsArgs, IntoPsResult},
+};
 use serde::{Deserialize, de::IntoDeserializer};
 use slumber_util::Duration;
 use std::{path::PathBuf, process::Stdio, sync::Arc};
@@ -24,38 +28,38 @@ use tracing::{debug, debug_span};
 
 // TODO eliminate need for clones across lang barrier
 
-/// Wrap an async function to make it sync by spawning it on the runtime and
-/// blocking on that task
-/// TODO turn this into a func instead?
-macro_rules! sync {
-    ($f:expr) => {
-        |process, args| {
-            let future = $f(process, args);
-            let rt = Handle::current();
-            rt.block_on(future)
-        }
-    };
-}
-
 /// Create the `slumber` module and register it in with the engine
 pub fn register_module(engine: &mut Engine) {
     let functions = indexmap! {
-        "command" => engine.create_fn(sync!(command)),
+        "command" => engine.create_fn(sync(command)),
         "env" => engine.create_fn(env),
-        "file" => engine.create_fn(sync!(file)),
-        "profile" => engine.create_fn(sync!(profile)),
-        "prompt" => engine.create_fn(sync!(prompt)),
-        "response" => engine.create_fn(sync!(response)),
-        "responseHeader" => engine.create_fn(sync!(response_header)),
-        "select" => engine.create_fn(sync!(select)),
+        "file" => engine.create_fn(sync(file)),
+        "profile" => engine.create_fn(sync(profile)),
+        "prompt" => engine.create_fn(sync(prompt)),
+        "response" => engine.create_fn(sync(response)),
+        "responseHeader" => engine.create_fn(sync(response_header)),
+        "select" => engine.create_fn(sync(select)),
     };
-    // This only fails if the name is invalid
     engine
-        .register_module("slumber", Exports::named_and_default(functions))
+        .register_module("slumber", Exports::named(functions))
+        // This only fails if the name is invalid
         .unwrap();
 }
 
+/// Wrap an async function to make it sync by spawning it on the runtime and
+/// blocking on that task
+fn sync<Args: FromPsArgs, Out: IntoPsResult>(
+    f: impl 'static + AsyncFn(&Process, Args) -> Out,
+) -> impl 'static + Fn(&Process, Args) -> Out {
+    move |process, args| {
+        let future = f(process, args);
+        let rt = Handle::current();
+        rt.block_on(future)
+    }
+}
+
 #[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CommandKwargs {
     /// Optional data to pipe to the command via stdin
     #[serde(default)]
@@ -194,6 +198,7 @@ async fn profile(
 }
 
 #[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PromptKwargs {
     message: Option<String>,
     default: Option<String>,
@@ -222,6 +227,7 @@ async fn prompt(
 }
 
 #[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ResponseKwargs {
     /// Decoding mode - text or binary?
     #[serde(default)]
@@ -250,6 +256,7 @@ async fn response(
 }
 
 #[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ResponseHeaderKwargs {
     /// Decoding mode - text or binary?
     #[serde(default)]
@@ -284,6 +291,7 @@ async fn response_header(
 }
 
 #[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SelectKwargs {
     message: Option<String>,
 }

@@ -57,9 +57,6 @@ pub struct Config {
     pub pager: MimeMap<String>,
     #[serde(flatten)]
     pub http: HttpEngineConfig,
-    /// Should procedures be rendered inline in the UI, or should we show the
-    /// raw text? TODO remove this field
-    pub preview_templates: bool,
     /// Overrides for default key bindings
     pub input_bindings: IndexMap<Action, InputBinding>,
     /// Visual configuration for the TUI (e.g. colors)
@@ -130,7 +127,6 @@ impl Default for Config {
             editor: Default::default(),
             pager: Default::default(),
             http: Default::default(),
-            preview_templates: true,
             input_bindings: Default::default(),
             theme: Default::default(),
             debug: false,

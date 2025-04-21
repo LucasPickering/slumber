@@ -40,8 +40,6 @@ impl Preview {
         procedure: Procedure,
         content_type: Option<ContentType>,
     ) -> Self {
-        let tui_context = TuiContext::get();
-
         // Calculate raw text
         let text: Identified<Text> = highlight::highlight_if(
             content_type,
@@ -58,7 +56,7 @@ impl Preview {
         // Trigger a task to render the preview and write the answer back into
         // the mutex. Skip this if the template is a static value (i.e. not a
         // function)
-        if tui_context.config.preview_templates && procedure.is_dynamic() {
+        if procedure.is_dynamic() {
             let destination = Arc::clone(&text);
             let on_complete = move |result| {
                 Self::calculate_rendered_text(

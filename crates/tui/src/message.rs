@@ -12,7 +12,7 @@ use slumber_core::{
     http::{
         Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
     },
-    template::{Overrides, Prompt, ResponseChannel, Select, Template},
+    render::{Overrides, Procedure, Prompt, ResponseChannel, Select},
 };
 use slumber_util::ResultTraced;
 use std::{fmt::Debug, path::PathBuf, sync::Arc};
@@ -101,7 +101,7 @@ pub enum Message {
     /// recipe ID here because it's in the inner container already. Combining
     /// these two cases saves a bit of boilerplate. The error must be wrapped
     /// in `Arc` because it may need to be shared. Triggered requests need their
-    /// error returned to the template engine, but also need to be inserted into
+    /// error returned to the render engine, but also need to be inserted into
     /// the request store.
     HttpComplete(Result<Exchange, Arc<RequestError>>),
     /// Cancel an HTTP request
@@ -145,16 +145,16 @@ pub enum Message {
     /// Use the included channel to return the selection.
     SelectStart(Select),
 
-    /// Render a template string, to be previewed in the UI. Ideally this could
-    /// be launched directly by the component that needs it, but only the
-    /// controller has the data needed to build the template context. The given
+    /// Render a procedure to be previewed in the UI. Ideally this could be
+    /// launched directly by the component that needs it, but only the
+    /// controller has the data needed to build the render context. The given
     /// callback will be called with the result. The error will be replaced
     /// by `()` so it doesn't have to be cloned.
     ///
     /// By holding a callback here, we avoid having to plumb the result all the
     /// way back down the component tree.
-    TemplatePreview {
-        template: Template,
+    Preview {
+        procedure: Procedure,
         #[debug(skip)]
         on_complete: Callback<Result<Value, ()>>,
     },

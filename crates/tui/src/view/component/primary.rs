@@ -507,7 +507,7 @@ mod tests {
             component.int().drain_draw().events(),
             &[Event::HttpSelectRequest(None)]
         );
-        // Clear template preview messages so we can test what we want
+        // Clear preview messages so we can test what we want
         harness.clear_messages();
         component
     }

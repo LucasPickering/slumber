@@ -8,7 +8,7 @@ use crate::view::{
     component::{
         Component,
         misc::TextBoxModal,
-        recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
+        recipe_pane::persistence::{RecipeOverrideKey, RecipeProcedure},
     },
     context::UpdateContext,
     draw::{Draw, DrawMetadata, Generate},
@@ -25,7 +25,7 @@ use ratatui::{
 use slumber_config::Action;
 use slumber_core::{
     collection::HasId,
-    template::{OverrideKey, OverrideValue, Overrides, Template},
+    render::{OverrideKey, OverrideValue, Overrides, Procedure},
 };
 use std::borrow::Cow;
 
@@ -33,7 +33,7 @@ use std::borrow::Cow;
 /// pane, and provides some common functionality:
 /// - Persist selected toggle
 /// - Allow toggling rows, and persist toggled state
-/// - Render values as template previwws
+/// - Render values as previwws
 /// - Allow editing values for temporary overrides
 ///
 /// Generic params define the keys to use for persisting state
@@ -69,19 +69,19 @@ where
         noun: &'static str,
         select_key: RowSelectKey,
         rows: impl IntoIterator<
-            Item = (String, Template, RecipeOverrideKey, RowToggleKey),
+            Item = (String, Procedure, RecipeOverrideKey, RowToggleKey),
         >,
         override_key_fn: fn(Cow<'static, str>) -> OverrideKey<'static>,
     ) -> Self {
         let items = rows
             .into_iter()
             .enumerate()
-            .map(|(i, (key, template, override_key, toggle_key))| RowState {
+            .map(|(i, (key, procedure, override_key, toggle_key))| RowState {
                 index: i, // This will be the unique ID for the row
                 key,
-                value: RecipeTemplate::new(
+                value: RecipeProcedure::new(
                     override_key,
-                    template.clone(),
+                    procedure.clone(),
                     None,
                 ),
                 enabled: Persisted::new(toggle_key, true),
@@ -220,8 +220,7 @@ where
     }
 }
 
-/// Local event to modify a row's override template. Triggered from the edit
-/// modal
+/// Local event to modify a row's override value. Triggered from the edit modal
 #[derive(Debug)]
 struct SaveRecipeTableOverride {
     row_index: usize,
@@ -287,9 +286,9 @@ struct RowState<K: PersistedKey<Value = bool>> {
     /// duplicated within one table (e.g. query params), but this is how we
     /// link instances of a row across collection reloads.
     key: String,
-    /// Value template. This includes functionality to make it editable, and
+    /// Value procedure. This includes functionality to make it editable, and
     /// persist the edited value within the current session
-    value: RecipeTemplate,
+    value: RecipeProcedure,
     /// Is the row enabled/included? This is persisted by row *key* rather than
     /// index, which **may not be unique**. E.g. a query param could be
     /// duplicated. This means duplicated keys will all get the same persisted
@@ -571,7 +570,7 @@ mod tests {
         assert_eq!(selected_row.value.template().display(), "value0!");
     }
 
-    /// Override templates should be loaded from the store on init
+    /// Overrides should be loaded from the store on init
     #[rstest]
     fn test_persisted_override(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());

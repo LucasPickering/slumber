@@ -25,11 +25,11 @@ impl Subcommand for GenerateCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.format {
             GenerateFormat::Curl => {
-                let (_, http_engine, seed, template_context) = self
+                let (_, http_engine, seed, render_context) = self
                     .build_request
                     .build_seed(global, self.execute_triggers)?;
                 let command = http_engine
-                    .build_curl(seed, &template_context)
+                    .build_curl(seed, &render_context)
                     .await
                     .map_err(|error| {
                         // If the build failed because triggered requests are

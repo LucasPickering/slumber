@@ -10,7 +10,7 @@ use crate::{
         component::{
             Component,
             misc::TextBoxModal,
-            recipe_pane::persistence::{RecipeOverrideKey, RecipeTemplate},
+            recipe_pane::persistence::{RecipeOverrideKey, RecipeProcedure},
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -30,7 +30,7 @@ use ratatui::{
 use slumber_config::Action;
 use slumber_core::{
     collection::{Authentication, RecipeId},
-    template::{OverrideKey, OverrideValue, Overrides},
+    render::{OverrideKey, OverrideValue, Overrides},
 };
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
@@ -48,12 +48,12 @@ impl AuthenticationDisplay {
     pub fn new(recipe_id: RecipeId, authentication: Authentication) -> Self {
         let state = match authentication {
             Authentication::Basic { username, password } => {
-                let username = RecipeTemplate::new(
+                let username = RecipeProcedure::new(
                     RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
                     username,
                     None,
                 );
-                let password = RecipeTemplate::new(
+                let password = RecipeProcedure::new(
                     RecipeOverrideKey::auth_basic_password(recipe_id.clone()),
                     // See note on this field def for why we unwrap
                     password.unwrap_or_default(),
@@ -66,7 +66,7 @@ impl AuthenticationDisplay {
                 }
             }
             Authentication::Bearer { token } => State::Bearer {
-                token: RecipeTemplate::new(
+                token: RecipeProcedure::new(
                     RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
                     token,
                     None,
@@ -192,8 +192,7 @@ impl Draw for AuthenticationDisplay {
 }
 
 /// Local event to save a user's override value(s). Triggered from the edit
-/// modal. These will be raw string values, consumer has to parse them to
-/// templates.
+/// modal.
 #[derive(Debug)]
 struct SaveAuthenticationOverride(String);
 
@@ -225,17 +224,17 @@ impl IntoMenuAction<AuthenticationDisplay> for AuthenticationMenuAction {
 #[derive(Debug)]
 enum State {
     Basic {
-        username: RecipeTemplate,
+        username: RecipeProcedure,
         /// This field is optional in the actual recipe, but it's a lot easier
-        /// if we just replace `None` with an empty template. This allows the
+        /// if we just replace `None` with an empty string. This allows the
         /// user to edit it and makes rendering easier. It's functionally
         /// equivalent when building the request.
-        password: RecipeTemplate,
+        password: RecipeProcedure,
         /// Track which field is selected, for editability
         selected_field: Component<FixedSelectState<BasicFields, TableState>>,
     },
     Bearer {
-        token: RecipeTemplate,
+        token: RecipeProcedure,
     },
 }
 
@@ -290,8 +289,8 @@ impl State {
         }
     }
 
-    /// Reset the value template override to the default from the recipe, and
-    /// recompute the template preview
+    /// Reset the value override to the default from the recipe, and recompute
+    /// the preview
     fn reset_override(&mut self) {
         match self {
             Self::Basic {

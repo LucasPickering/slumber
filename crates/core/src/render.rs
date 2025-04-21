@@ -1,4 +1,5 @@
-//! Generate strings (and bytes) from user-written templates with dynamic data
+//! Render PetitScript recipe values into static strings and bytes for HTTP
+//! requests.
 
 use crate::{
     collection::{Collection, Profile, ProfileId, RecipeId},
@@ -13,31 +14,29 @@ use indexmap::IndexMap;
 use petitscript::{Process, Value, function::Function};
 use serde::{Deserialize, Serialize};
 use slumber_util::ResultTraced;
-use std::{
-    borrow::Cow, fmt::Debug, str::FromStr, string::FromUtf8Error, sync::Arc,
-};
+use std::{borrow::Cow, fmt::Debug, str::FromStr, sync::Arc};
 use thiserror::Error;
 use tokio::{sync::oneshot, task};
 
-/// A [petitscript::Value] to be used in a recipe. Templates come in two forms:
+/// A definition of a how a recipe value should be rendered.
+/// [petitscript::Value] to be used in a recipe. Procedures come in two forms:
 /// - Static: a predefined value such as a number, string, or object
 /// - Dynamic: a function that dynamically generates a value at render time,
 ///   based on external factors such as files, responses, or user input
 ///
-/// The name "template" is fairly meaningless here, but I couldn't think of
-/// something better. In the past these were all strings that used a simple
-/// template language akin to Jinja, but those days are long gone. I kept the
-/// name because I couldn't think of anything better.
+/// The name "procedure" is fairly arbitrary, but it's specific and unique so
+/// it works. This is the successor to Slumber's previous "template" system,
+/// which were declarative strings.
 #[derive(Clone, Debug, Default, Display, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Template(Value);
+pub struct Procedure(Value);
 
-impl Template {
+impl Procedure {
     pub fn new(value: impl Into<Value>) -> Self {
         Self(value.into())
     }
 
-    /// Is the template a function that will be rendered dynamically into
+    /// Is the procedure a function that will be rendered dynamically into
     /// another value?
     pub fn is_dynamic(&self) -> bool {
         matches!(&self.0, Value::Function(_))
@@ -45,20 +44,20 @@ impl Template {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl From<&str> for Template {
+impl From<&str> for Procedure {
     fn from(_: &str) -> Self {
         todo!("get rid of this?")
     }
 }
 
-impl From<String> for Template {
+impl From<String> for Procedure {
     fn from(value: String) -> Self {
-        Template(value.into())
+        Procedure(value.into())
     }
 }
 
 #[cfg(any(test, feature = "test"))]
-impl From<serde_json::Value> for Template {
+impl From<serde_json::Value> for Procedure {
     fn from(value: serde_json::Value) -> Self {
         format!("{value:#}").into()
     }
@@ -76,9 +75,9 @@ impl Renderer {
     /// Create a new renderer by forking a PS process. The given process should
     /// be the one that loaded the collection.
     pub fn new(process: Process, context: RenderContext) -> Self {
-        // Create a new process for this renderer, so we can attach our template
-        // context. All renders for a single recipe will share the same context
-        // and state.
+        // Create a new process for this renderer, so we can attach our
+        // procedure context. All renders for a single recipe will share
+        // the same context and state.
         let mut process = process.clone();
         // Setting app data can only fail if it's already set, which would
         // indicate a bug in our process handling
@@ -88,9 +87,9 @@ impl Renderer {
     }
 
     /// Create a new renderer from an existing process that already has a
-    /// template context attached. This should only be use for recursive renders
+    /// render context attached. This should only be use for recursive renders
     /// from inside native functions, where the process has already been
-    /// initialized for template rendering but you don't have access to the
+    /// initialized for procedure rendering but you don't have access to the
     /// wrapping `Renderer`.
     pub fn forked(process: &Process) -> Self {
         Self {
@@ -98,7 +97,7 @@ impl Renderer {
         }
     }
 
-    /// Get the [TemplateContext] attached to this renderer
+    /// Get the [RenderContext] attached to this renderer
     pub fn context(&self) -> &RenderContext {
         // Context is only stored as app data in the process, so we don't have
         // to wrap it with an extra Arc. The repeated downcasting could
@@ -108,13 +107,13 @@ impl Renderer {
         self.process.app_data().unwrap()
     }
 
-    /// Render a template to a [petitscript::Value], then convert to a specific
+    /// Render a procedure to a [petitscript::Value], then convert to a specific
     /// output type according to its [FromRendered] implementation.
-    pub async fn render<T>(&self, template: &Template) -> anyhow::Result<T>
+    pub async fn render<T>(&self, procedure: &Procedure) -> anyhow::Result<T>
     where
         T: FromRendered,
     {
-        let value = match &template.0 {
+        let value = match &procedure.0 {
             // Function represents a rendering procedure - call it now
             Value::Function(function) => {
                 self.render_function(function.clone()).await?
@@ -144,9 +143,10 @@ impl Renderer {
 }
 
 /// Convert from a rendered [petitscript::Value] into `Self`. This abstraction
-/// allows for other generic rendering code to handle multiple target types.
-/// Must be convertible from `String` for cases where the rendered value has
-/// been replaced by an override string.
+/// allows for other generic rendering code to handle multiple target types,
+/// such as rendering to a string _or_ to bytes. Must be implement
+/// `From<String>` for cases where the rendered value has been replaced by an
+/// override string.
 pub trait FromRendered: Sized + From<String> {
     fn from_value(value: Value) -> anyhow::Result<Self>;
 }
@@ -183,10 +183,10 @@ impl FromRendered for Bytes {
     }
 }
 
-/// A little container struct for all the data needed to render dynamic template
-/// functions. Unfortunately this has to own all data so templating can be
-/// deferred into a task (tokio requires `'static` for spawned tasks). This is
-/// exposed to native functions (such as `response`) via
+/// A little container struct for all the data needed to render dynamic
+/// procedure functions. Unfortunately this has to own all data so templating
+/// can be deferred into a task (tokio requires `'static` for spawned tasks).
+/// This is exposed to native functions (such as `response`) via
 /// [app_data](Process::app_data) on the PS process.
 #[derive(Debug)]
 pub struct RenderContext {
@@ -336,14 +336,14 @@ pub trait HttpProvider: Debug + Send + Sync {
     ) -> Result<Exchange, TriggeredRequestError>;
 }
 
-/// A prompter is a bridge between the user and the template engine. It enables
-/// the template engine to request values from the user *during* the template
+/// A prompter is a bridge between the user and the render engine. It enables
+/// the render engine to request values from the user *during* the render
 /// process. The implementor is responsible for deciding *how* to ask the user.
 ///
 /// **Note:** The prompter has to be able to handle simultaneous prompt
-/// requests, if a template has multiple prompt values, or if multiple templates
-/// with prompts are being rendered simultaneously.  The implementor is
-/// responsible for queueing prompts to show to the user one at a time.
+/// requests, such as if a procedure has multiple prompt values, or if multiple
+/// procedures with prompts are being rendered simultaneously.  The implementor
+/// is responsible for queueing prompts to show to the user one at a time.
 pub trait Prompter: Debug + Send + Sync {
     /// Ask the user a question, and use the given channel to return a response.
     /// To indicate "no response", simply drop the returner.
@@ -398,73 +398,17 @@ impl<T> ResponseChannel<T> {
     }
 }
 
-/// Error for [OverrideKey](crate::template::OverrideKey)'s `FromStr` impl.
+/// Error for [OverrideKey]'s `FromStr` impl.
 #[derive(Debug, Error)]
 #[error("Invalid override key")]
 pub struct OverrideKeyParseError;
-
-/// Any error that can occur during template rendering. The purpose of having a
-/// structured error here (while the rest of the app just uses `anyhow`) is to
-/// support localized error display in the UI, e.g. showing just one portion of
-/// a string in red if that particular template key failed to render.
-///
-/// The error always holds owned data so it can be detached from the lifetime
-/// of the template context. This requires a mild amount of cloning in error
-/// cases, but those should be infrequent so it's fine.
-///
-/// These error messages are generally shown with additional parent context, so
-/// they should be pretty brief.
-///
-/// This type implements `Clone` so it can be shared between deduplicated chain
-/// renders.
-#[derive(Clone, Debug, Error)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum TemplateError {
-    /// Tried to load profile data with no profile selected
-    #[error("No profile selected")]
-    NoProfileSelected,
-
-    /// Unknown profile ID
-    #[error("Unknown profile `{profile_id}`")]
-    ProfileUnknown { profile_id: ProfileId },
-
-    /// A profile field key contained an unknown field
-    #[error("Unknown field `{field}`")]
-    FieldUnknown { field: String },
-
-    /// An bubbled-up error from rendering a profile field value
-    #[error("Rendering nested template for field `{field}`")]
-    FieldNested {
-        field: String,
-        #[source]
-        error: Box<Self>,
-    },
-
-    /// In many contexts, the render output needs to be usable as a string.
-    /// This error occurs when we wanted to render to a string, but whatever
-    /// bytes we got were not valid UTF-8. The underlying error message is
-    /// descriptive enough so we don't need to give additional context.
-    #[error(transparent)]
-    InvalidUtf8(FromUtf8Error),
-
-    /// Cycle detected in nested template keys. We store the entire cycle stack
-    /// for presentation
-    #[error("Infinite loop detected in template")]
-    InfiniteLoop,
-
-    /// Something bad happened while triggering a request dependency
-    #[error("Triggering upstream recipe `{recipe_id}`")]
-    Trigger {
-        recipe_id: RecipeId,
-        #[source]
-        error: TriggeredRequestError,
-    },
-}
 
 /// Error occurred while trying to build/execute a triggered request.
 ///
 /// This type implements `Clone` so it can be shared between deduplicated chain
 /// renders, hence the `Arc`s on inner errors.
+///
+/// TODO move this to http or ps::error
 #[derive(Clone, Debug, Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum TriggeredRequestError {

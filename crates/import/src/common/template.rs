@@ -184,6 +184,13 @@ impl Identifier {
     }
 }
 
+impl From<&'static str> for Identifier {
+    /// BUild an identifier from a string literal. Panic if invalid
+    fn from(value: &'static str) -> Self {
+        Self(value.parse().unwrap())
+    }
+}
+
 impl FromStr for Identifier {
     type Err = TemplateParseError;
 
@@ -407,12 +414,6 @@ mod tests {
     impl From<&'static str> for Template {
         fn from(value: &'static str) -> Self {
             value.parse().unwrap()
-        }
-    }
-
-    impl From<&'static str> for Identifier {
-        fn from(value: &'static str) -> Self {
-            Self(value.parse().unwrap())
         }
     }
 

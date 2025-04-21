@@ -1,6 +1,6 @@
 use crate::view::{
     Component,
-    common::{tabs::Tabs, template_preview::TemplatePreview},
+    common::{preview::Preview, tabs::Tabs},
     component::recipe_pane::{
         authentication::AuthenticationDisplay,
         body::RecipeBodyDisplay,
@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use slumber_core::{
     collection::{Recipe, RecipeId},
     http::HttpMethod,
-    template::{OverrideKey, Overrides},
+    render::{OverrideKey, Overrides},
 };
 use strum::{EnumCount, EnumIter};
 
@@ -28,7 +28,7 @@ use strum::{EnumCount, EnumIter};
 #[derive(Debug)]
 pub struct RecipeDisplay {
     tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
-    url: TemplatePreview,
+    url: Preview,
     method: HttpMethod,
     query: Component<RecipeFieldTable<QueryRowKey, QueryRowToggleKey>>,
     headers: Component<RecipeFieldTable<HeaderRowKey, HeaderRowToggleKey>>,
@@ -43,7 +43,7 @@ impl RecipeDisplay {
         Self {
             tabs: Default::default(),
             method: recipe.method,
-            url: TemplatePreview::new(recipe.url.clone(), None),
+            url: Preview::new(recipe.url.clone(), None),
             query: RecipeFieldTable::new(
                 "Parameter",
                 QueryRowKey(recipe.id.clone()),

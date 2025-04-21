@@ -194,8 +194,9 @@ fn join_line<'a>(line: &Line<'a>) -> Cow<'a, str> {
 /// line is built up. After highlighting, call [Self::build] to get the new
 /// line. The old styles will take precedence over the syntax highlighting.
 ///
-/// This whole thing is required to retain template preview styling on top of
-/// syntax highlighting.
+/// This whole thing is required to retain preview styling on top of  syntax
+/// highlighting. TODO is this still needed? There's no more inline styling
+/// since templates are gone
 struct LineBuilder<'a> {
     /// A set of **disjoint** style patches that we'll apply to the new line as
     /// it's being built. We need a deque because we'll pop off the front as

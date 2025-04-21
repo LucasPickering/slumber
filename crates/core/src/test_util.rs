@@ -4,7 +4,7 @@ use crate::{
     collection::{HasId, ProfileId, RecipeId},
     database::CollectionDatabase,
     http::{Exchange, HttpEngine, RequestSeed},
-    template::{
+    render::{
         HttpProvider, Prompt, Prompter, Renderer, Select, TriggeredRequestError,
     },
 };

@@ -6,7 +6,7 @@ use crate::{
         recipe_tree::{RecipeNode, RecipeTree},
     },
     http::HttpMethod,
-    template::Template,
+    render::Procedure,
 };
 use derive_more::{Deref, Display, From, Into};
 use indexmap::IndexMap;
@@ -48,7 +48,7 @@ pub struct Profile {
     /// custom deserializer function.
     #[serde(default)]
     pub default: bool,
-    pub data: IndexMap<String, Template>,
+    pub data: IndexMap<String, Procedure>,
 }
 
 impl Profile {
@@ -143,8 +143,10 @@ impl slumber_util::Factory for Folder {
 
 /// A definition of how to make a request. This is *not* called `Request` in
 /// order to distinguish it from a single instance of an HTTP request. And it's
-/// not called `RequestTemplate` because the word "template" has a specific
-/// meaning related to string interpolation.
+/// not called `RequestTemplate` because historically the word "template" had a
+/// specific meaning related to string interpolation. Now that templates have
+/// been turned into procedures this could be `RequestTemplate`, but now we're
+/// stuck with this name.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
@@ -154,11 +156,11 @@ pub struct Recipe {
     #[serde(default = "cereal::persist_default")]
     pub persist: bool,
     pub name: Option<String>,
-    /// *Not* a template string because the usefulness doesn't justify the
+    /// *Not* a procedure because the usefulness doesn't justify the
     /// complexity. This gives the user an immediate error if the method is
     /// wrong which is helpful.
     pub method: HttpMethod,
-    pub url: Template,
+    pub url: Procedure,
     #[serde(default, with = "cereal::serde_recipe_body")]
     pub body: Option<RecipeBody>,
     pub authentication: Option<Authentication>,
@@ -167,7 +169,7 @@ pub struct Recipe {
     #[serde(default)]
     pub query: IndexMap<String, QueryParameterValue>,
     #[serde(default, deserialize_with = "cereal::deserialize_headers")]
-    pub headers: IndexMap<String, Template>,
+    pub headers: IndexMap<String, Procedure>,
 }
 
 impl Recipe {
@@ -180,12 +182,12 @@ impl Recipe {
     /// request. This will use the raw header if it's present and a valid MIME
     /// type, otherwise it will fall back to the content type of the body, if
     /// known (e.g. JSON). Otherwise, return `None`. If the header is a
-    /// dynamic template, we will *not* attempt to render it, so MIME parsing
-    /// will fail.
+    /// procedure, we will *not* attempt to render it, so MIME parsing will
+    /// fail.
     pub fn mime(&self) -> Option<Mime> {
         self.headers
             .get(header::CONTENT_TYPE.as_str())
-            .and_then(|template| template.to_string().parse::<Mime>().ok())
+            .and_then(|procedure| procedure.to_string().parse::<Mime>().ok())
             .or_else(|| self.body.as_ref()?.mime())
     }
 
@@ -193,7 +195,7 @@ impl Recipe {
     /// parameter with multiple values will be flattened so the key appears
     /// multiple times, once with each value. This will respect all ordering
     /// from the original map.
-    pub fn query_iter(&self) -> impl Iterator<Item = (&str, &Template)> {
+    pub fn query_iter(&self) -> impl Iterator<Item = (&str, &Procedure)> {
         self.query
             .iter()
             .flat_map(|(k, v)| v.iter().map(move |v| (k.as_str(), v)))
@@ -286,7 +288,7 @@ impl slumber_util::Factory for RecipeId {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
-pub enum Authentication<T = Template> {
+pub enum Authentication<T = Procedure> {
     /// `Authorization: Basic {username:password | base64}`
     Basic { username: T, password: Option<T> },
     /// `Authorization: Bearer {token}`
@@ -302,9 +304,9 @@ pub enum QueryParameterValue {
     /// repeating the parameter key: `?foo=bar&foo=baz`
     /// Note: This variant has to be first for deserialization. Because the
     /// single case accepts any PS value, it will also accept an array.
-    Many(Vec<Template>),
+    Many(Vec<Procedure>),
     /// The common case: `?foo=bar`
-    Single(Template),
+    Single(Procedure),
 }
 
 impl QueryParameterValue {
@@ -312,7 +314,7 @@ impl QueryParameterValue {
     /// just one element; for many is all the values in the list.
     pub fn iter(
         &self,
-    ) -> Box<dyn Iterator<Item = &Template> + '_ + Send + Sync> {
+    ) -> Box<dyn Iterator<Item = &Procedure> + '_ + Send + Sync> {
         match self {
             Self::Many(values) => Box::new(values.iter()),
             Self::Single(value) => Box::new(iter::once(value)),
@@ -321,7 +323,7 @@ impl QueryParameterValue {
 }
 
 /// Template for a request body. `Raw` is the "default" variant, which
-/// represents a single string (parsed as a template). Other variants can be
+/// represents a single string (as a procedure). Other variants can be
 /// used for convenience, to construct complex bodies in common formats. The
 /// HTTP engine uses the variant to determine not only how to serialize the
 /// body, but also other parameters of the request (e.g. the `Content-Type`
@@ -332,31 +334,22 @@ impl QueryParameterValue {
 pub enum RecipeBody {
     /// Plain string/bytes body
     Raw {
-        data: Template,
+        data: Procedure,
     },
     Json {
-        data: Template,
+        data: Procedure,
     },
     /// `application/x-www-form-urlencoded` fields. Values must be strings
     FormUrlencoded {
-        data: IndexMap<String, Template>,
+        data: IndexMap<String, Procedure>,
     },
     /// `multipart/form-data` fields. Values can be binary
     FormMultipart {
-        data: IndexMap<String, Template>,
+        data: IndexMap<String, Procedure>,
     },
 }
 
 impl RecipeBody {
-    /// Build a JSON body *without* parsing the internal strings as templates.
-    /// Useful for importing from external formats.
-    pub fn untemplated_json(_value: serde_json::Value) -> Self {
-        // TODO
-        Self::Json {
-            data: Default::default(),
-        }
-    }
-
     /// Get the anticipated MIME type that will appear in the `Content-Type`
     /// header of a request containing this body. This is *not* necessarily
     /// the MIME type that will _actually_ be used, as it could be overidden by
@@ -375,10 +368,8 @@ impl RecipeBody {
 
 #[cfg(any(test, feature = "test"))]
 impl From<&str> for RecipeBody {
-    fn from(template: &str) -> Self {
-        Self::Raw {
-            data: template.into(),
-        }
+    fn from(body: &str) -> Self {
+        Self::Raw { data: body.into() }
     }
 }
 
@@ -418,7 +409,7 @@ impl slumber_util::Factory for Collection {
         // Include a body in the recipe, so body-related behavior can be tested
         let recipe = Recipe {
             body: Some(RecipeBody::Json {
-                data: Template::new(Object::new().insert("message", "hello")),
+                data: Procedure::new(Object::new().insert("message", "hello")),
             }),
             ..Recipe::factory(())
         };

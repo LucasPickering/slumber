@@ -57,8 +57,8 @@ pub struct Config {
     pub pager: MimeMap<String>,
     #[serde(flatten)]
     pub http: HttpEngineConfig,
-    /// Should templates be rendered inline in the UI, or should we show the
-    /// raw text?
+    /// Should procedures be rendered inline in the UI, or should we show the
+    /// raw text? TODO remove this field
     pub preview_templates: bool,
     /// Overrides for default key bindings
     pub input_bindings: IndexMap<Action, InputBinding>,

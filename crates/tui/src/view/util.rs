@@ -19,7 +19,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     text::{Line, Text},
 };
-use slumber_core::template::{Prompt, Prompter, ResponseChannel, Select};
+use slumber_core::render::{Prompt, Prompter, ResponseChannel, Select};
 use slumber_util::ResultTraced;
 use std::{io::Write, path::Path};
 
@@ -34,7 +34,7 @@ pub struct Confirm {
 }
 
 /// Use the message stream to prompt the user for input when needed for a
-/// template. The message will be routed to the view so it can show the prompt,
+/// procedure. The message will be routed to the view so it can show the prompt,
 /// and the given returner will be used to send the submitted value back.
 #[derive(Debug)]
 pub struct TuiPrompter {
@@ -57,7 +57,7 @@ impl Prompter for TuiPrompter {
     }
 }
 
-/// A prompter that returns a static value; used for template previews, where
+/// A prompter that returns a static value; used for procedure previews, where
 /// user interaction isn't possible
 #[derive(Debug)]
 pub struct PreviewPrompter;

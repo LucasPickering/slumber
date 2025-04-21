@@ -5,18 +5,19 @@ use crate::{
 };
 use petitscript::Value;
 use ratatui::{buffer::Buffer, prelude::Rect, text::Text, widgets::Widget};
-use slumber_core::{http::content_type::ContentType, template::Template};
+use slumber_core::{http::content_type::ContentType, render::Procedure};
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
 };
 
-/// A preview of a template string, which can show either the raw text or the
-/// rendered version. The global config is used to enable/disable previews.
+/// A preview of a procedure. Initially this will show the stringified value
+/// of the procedusre. On creation it will kick off a task to render the
+/// procedure in preview mode, then show the result when it's ready.
 #[derive(Debug)]
-pub struct TemplatePreview {
-    /// Text to display, which could be either the raw template, or the
-    /// rendered template. Either way, it may or may not be syntax
+pub struct Preview {
+    /// Text to display, which could be either the raw procedure or the
+    /// rendered value. Either way, it may or may not be syntax
     /// highlighted. On init we send a message which will trigger a task to
     /// start the render. When the task is done, it'll call a callback to set
     /// generate the text and cache it here. This means we don't have to
@@ -30,13 +31,15 @@ pub struct TemplatePreview {
     text: Arc<Mutex<Identified<Text<'static>>>>,
 }
 
-impl TemplatePreview {
-    /// Create a new template preview. This will spawn a background task to
-    /// render the template, *if* template preview is enabled. Profile ID
-    /// defines which profile to use for the render. Optionally provide content
-    /// type to enable syntax highlighting, which will be applied to both
-    /// unrendered and rendered content.
-    pub fn new(template: Template, content_type: Option<ContentType>) -> Self {
+impl Preview {
+    /// Create a new procedure preview. This will spawn a background task to
+    /// render the procedure. Profile ID defines which profile to use for the
+    /// render. Optionally provide content type to enable syntax highlighting,
+    /// which will be applied to both unrendered and rendered content.
+    pub fn new(
+        procedure: Procedure,
+        content_type: Option<ContentType>,
+    ) -> Self {
         let tui_context = TuiContext::get();
 
         // Calculate raw text
@@ -47,7 +50,7 @@ impl TemplatePreview {
             // recompute the text on each render. Ideally we could hold onto
             // the template and have this text reference it, but that would be
             // self-referential
-            template.to_string().into(),
+            procedure.to_string().into(),
         )
         .into();
         let text = Arc::new(Mutex::new(text));
@@ -55,7 +58,7 @@ impl TemplatePreview {
         // Trigger a task to render the preview and write the answer back into
         // the mutex. Skip this if the template is a static value (i.e. not a
         // function)
-        if tui_context.config.preview_templates && template.is_dynamic() {
+        if tui_context.config.preview_templates && procedure.is_dynamic() {
             let destination = Arc::clone(&text);
             let on_complete = move |result| {
                 Self::calculate_rendered_text(
@@ -65,8 +68,8 @@ impl TemplatePreview {
                 )
             };
 
-            ViewContext::send_message(Message::TemplatePreview {
-                template,
+            ViewContext::send_message(Message::Preview {
+                procedure,
                 on_complete: Box::new(on_complete),
             });
         }
@@ -97,9 +100,9 @@ impl TemplatePreview {
                     }
                     None => format!("{value}"),
                 };
-                Text::styled(text, styles.template_preview.text)
+                Text::styled(text, styles.preview.text)
             }
-            Err(_) => Text::styled("Error", styles.template_preview.error),
+            Err(_) => Text::styled("Error", styles.preview.error),
         };
         let text = highlight::highlight_if(content_type, text);
         *destination
@@ -108,14 +111,14 @@ impl TemplatePreview {
     }
 }
 
-impl From<Template> for TemplatePreview {
-    fn from(template: Template) -> Self {
+impl From<Procedure> for Preview {
+    fn from(template: Procedure) -> Self {
         Self::new(template, None)
     }
 }
 
 /// Clone internal text. Only call this for small pieces of text
-impl Generate for &TemplatePreview {
+impl Generate for &Preview {
     type Output<'this>
         = Text<'this>
     where
@@ -129,7 +132,7 @@ impl Generate for &TemplatePreview {
     }
 }
 
-impl Widget for &TemplatePreview {
+impl Widget for &Preview {
     fn render(self, area: Rect, buf: &mut Buffer) {
         (&**self.text()).render(area, buf)
     }

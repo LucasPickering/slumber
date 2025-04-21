@@ -43,7 +43,7 @@ use slumber_core::{
     database::{CollectionDatabase, Database},
     http::{Exchange, RequestError, RequestId, RequestSeed},
     ps::PetitEngine,
-    template::{Overrides, Prompter, RenderContext, Renderer, Template},
+    render::{Overrides, Procedure, Prompter, RenderContext, Renderer},
 };
 use slumber_util::ResultTraced;
 use std::{
@@ -362,12 +362,12 @@ impl Tui {
                 self.view.open_modal(confirm);
             }
 
-            Message::TemplatePreview {
-                template,
+            Message::Preview {
+                procedure,
                 on_complete,
             } => {
-                self.render_template_preview(
-                    template,
+                self.render_preview(
+                    procedure,
                     // Note: there's a potential bug here, if the selected
                     // profile changed since this message was queued. In
                     // practice is extremely unlikely (potentially impossible),
@@ -698,12 +698,12 @@ impl Tui {
         }
     }
 
-    /// Spawn a task to render a template, storing the result in a pre-defined
+    /// Spawn a task to render a procedure, storing the result in a pre-defined
     /// lock. As this is a preview, the user will *not* be prompted for any
     /// input. A placeholder value will be used for any prompts.
-    fn render_template_preview(
+    fn render_preview(
         &self,
-        template: Template,
+        procedure: Procedure,
         profile_id: Option<ProfileId>,
         on_complete: Callback<Result<Value, ()>>,
     ) -> anyhow::Result<()> {
@@ -713,7 +713,7 @@ impl Tui {
             // inline error message. The error will be traced, but never
             // shown in a modal because that would be disruptive.
             let result = renderer
-                .render::<Value>(&template)
+                .render::<Value>(&procedure)
                 .await
                 .traced()
                 .map_err(|_| ());
@@ -722,10 +722,9 @@ impl Tui {
         Ok(())
     }
 
-    /// Expose app state to the templater. Most of the data has to be cloned out
-    /// to be passed across async boundaries. This is annoying but in reality
-    /// it should be small data.
-    /// TODO update comment
+    /// Build a renderer. Most of the data has to be cloned out to be passed
+    /// across async boundaries. This is annoying but in reality it should be
+    /// small data.
     fn renderer(
         &self,
         profile_id: Option<ProfileId>,

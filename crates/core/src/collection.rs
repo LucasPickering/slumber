@@ -151,16 +151,13 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        http::{HttpMethod, content_type::ContentType},
-        test_util::by_id,
-    };
+    use crate::{http::HttpMethod, test_util::by_id};
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde_json::json;
     use slumber_util::{Factory, TempDir, assert_err, temp_dir, test_data_dir};
-    use std::{fs, fs::File, time::Duration};
+    use std::{fs, fs::File};
 
     /// Test various cases of try_path
     #[rstest]
@@ -196,12 +193,12 @@ mod tests {
         File::create(child_dir.join("override.yml")).unwrap();
         let expected: PathBuf = temp_dir.join(expected);
 
-        let actual = CollectionFile::try_path(
-            Some(child_dir),
+        let actual = CollectionFile::with_dir(
+            child_dir,
             override_path.map(PathBuf::from),
         )
         .unwrap();
-        assert_eq!(actual, expected);
+        assert_eq!(actual.path(), expected);
     }
 
     /// Test that try_path fails when no collection file is found and no
@@ -225,8 +222,8 @@ mod tests {
         #[case] expected_err: &str,
     ) {
         assert_err!(
-            CollectionFile::try_path(
-                Some(temp_dir.to_path_buf()),
+            CollectionFile::with_dir(
+                temp_dir.to_path_buf(),
                 override_path.map(PathBuf::from)
             ),
             expected_err
@@ -238,12 +235,12 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_regression(test_data_dir: PathBuf) {
-        let loaded = CollectionFile::load(
-            test_data_dir.join("regression.yml"),
-            &PetitEngine::new(),
-        )
-        .unwrap()
-        .collection;
+        let loaded =
+            CollectionFile::new(Some(test_data_dir.join("regression.yml")))
+                .unwrap()
+                .load(&PetitEngine::new())
+                .unwrap()
+                .collection;
         let expected = Collection {
             profiles: by_id([
                 Profile {
@@ -356,6 +353,6 @@ mod tests {
             ])
             .into(),
         };
-        assert_eq!(*loaded, expected);
+        assert_eq!(loaded, expected);
     }
 }

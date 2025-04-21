@@ -8,7 +8,7 @@ use crate::{
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
         component::recipe_pane::{
-            persistence::{RecipeOverrideKey, RecipeTemplate},
+            persistence::{RecipeOverrideKey, RecipeProcedure},
             table::{RecipeFieldTable, RecipeFieldTableProps},
         },
         context::UpdateContext,
@@ -25,7 +25,7 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Recipe, RecipeBody, RecipeId},
     http::content_type::ContentType,
-    template::{OverrideKey, OverrideValue, Template},
+    render::{OverrideKey, OverrideValue, Procedure},
 };
 use std::{
     fs,
@@ -110,21 +110,21 @@ pub struct RawBody {
     override_emitter: Emitter<SaveBodyOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RawBodyMenuAction>,
-    body: RecipeTemplate,
+    body: RecipeProcedure,
     mime: Option<Mime>,
     text_window: Component<TextWindow>,
 }
 
 impl RawBody {
-    fn new(template: Template, recipe: &Recipe) -> Self {
+    fn new(procedure: Procedure, recipe: &Recipe) -> Self {
         let mime = recipe.mime();
         let content_type = mime.as_ref().and_then(ContentType::from_mime);
         Self {
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
-            body: RecipeTemplate::new(
+            body: RecipeProcedure::new(
                 RecipeOverrideKey::body(recipe.id.clone()),
-                template,
+                procedure,
                 content_type,
             ),
             mime,
@@ -390,7 +390,7 @@ mod tests {
         assert_eq!(component.data().override_value(), None);
     }
 
-    /// Override template should be loaded from the persistence store on init
+    /// Override should be loaded from the persistence store on init
     #[rstest]
     fn test_persisted_override(
         harness: TestHarness,

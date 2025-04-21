@@ -9,8 +9,8 @@ use crate::{
             Pane,
             list::List,
             modal::{Modal, ModalHandle},
+            preview::Preview,
             table::Table,
-            template_preview::TemplatePreview,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -110,7 +110,7 @@ impl EventHandler for ProfilePane {
                     // Handle message from the modal
                     *self.selected_profile_id.get_mut() =
                         Some(profile_id.clone());
-                    // Refresh template previews
+                    // Refresh previews
                     ViewContext::push_event(Event::HttpSelectRequest(None));
                 },
             )
@@ -301,7 +301,7 @@ impl Generate for &ProfileListItem {
 /// Display the contents of a profile
 #[derive(Debug, Default)]
 struct ProfileDetail {
-    fields: StateCell<ProfileId, Vec<(String, TemplatePreview)>>,
+    fields: StateCell<ProfileId, Vec<(String, Preview)>>,
 }
 
 struct ProfileDetailProps<'a> {
@@ -316,7 +316,7 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
         metadata: DrawMetadata,
     ) {
         // Whenever the selected profile changes, rebuild the internal state.
-        // This is needed because the template preview rendering is async.
+        // This is needed because the preview rendering is async.
         let profile_id = props.profile_id;
         let fields = self.fields.get_or_update(profile_id, || {
             let collection = ViewContext::collection();
@@ -332,8 +332,8 @@ impl<'a> Draw<ProfileDetailProps<'a>> for ProfileDetail {
             };
             profile_data
                 .iter()
-                .map(|(key, template)| {
-                    (key.clone(), TemplatePreview::new(template.clone(), None))
+                .map(|(key, procedure)| {
+                    (key.clone(), Preview::new(procedure.clone(), None))
                 })
                 .collect_vec()
         });

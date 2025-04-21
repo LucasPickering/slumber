@@ -14,7 +14,7 @@ use slumber_core::{
     database::{CollectionDatabase, Database},
     http::{Exchange, HttpEngine, RequestRecord, RequestSeed, ResponseRecord},
     ps::PetitEngine,
-    template::{
+    render::{
         HttpProvider, OverrideKey, OverrideValue, Prompt, Prompter,
         RenderContext, Renderer, Select, TriggeredRequestError,
     },
@@ -75,9 +75,9 @@ pub struct BuildRequestCommand {
     #[clap(add = ArgValueCompleter::new(complete_recipe))]
     recipe_id: RecipeId,
 
-    /// ID of the profile to pull template values from. If omitted and the
-    /// collection has default profile defined, use that profile. Otherwise,
-    /// profile data will not be available.
+    /// ID of the profile to pull values from via the `profile()` function. If
+    /// omitted and the collection has a default profile defined, use that
+    /// profile. Otherwise, profile data will not be available.
     #[clap(
         long = "profile",
         short,
@@ -85,7 +85,7 @@ pub struct BuildRequestCommand {
     )]
     profile: Option<ProfileId>,
 
-    /// List of key=value template field overrides
+    /// List of key=value field overrides. TODO more detail
     #[clap(
         long = "override",
         short = 'o',
@@ -117,10 +117,10 @@ impl Subcommand for RequestCommand {
     async fn execute(mut self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         // Don't execute sub-requests in a dry run
         let trigger_dependencies = !self.dry_run;
-        let (database, http_engine, seed, template_context) = self
+        let (database, http_engine, seed, render_context) = self
             .build_request
             .build_seed(global, trigger_dependencies)?;
-        let ticket = http_engine.build(seed, &template_context).await.map_err(
+        let ticket = http_engine.build(seed, &render_context).await.map_err(
             |error| {
                 // If the build failed because triggered requests are disabled,
                 // replace it with a custom error message
@@ -218,7 +218,7 @@ impl BuildRequestCommand {
             // CLI doesn't support omitting via override for now
             .map(|(key, value)| (key, OverrideValue::Override(value)))
             .collect();
-        let template_context = RenderContext {
+        let render_context = RenderContext {
             selected_profile,
             collection: collection.into(),
             http_provider: Box::new(CliHttpProvider {
@@ -229,7 +229,7 @@ impl BuildRequestCommand {
             overrides,
             prompter: Box::new(CliPrompter),
         };
-        let renderer = Renderer::new(process, template_context);
+        let renderer = Renderer::new(process, render_context);
         let seed = RequestSeed::new(self.recipe_id);
         Ok((database, http_engine, seed, renderer))
     }

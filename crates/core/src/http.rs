@@ -46,7 +46,7 @@ pub use models::*;
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     http::curl::CurlBuilder,
-    template::{FromRendered, OverrideKey, OverrideValue, Renderer, Template},
+    render::{FromRendered, OverrideKey, OverrideValue, Procedure, Renderer},
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -664,18 +664,18 @@ impl From<HttpMethod> for reqwest::Method {
     }
 }
 
-/// Render a sequence of (key, template) pairs. Each field can be overidden.
-/// The templates can be rendered to either strings or bytes, as needed.
+/// Render a sequence of (key, procedure) pairs. Each field can be overidden.
+/// The procedures can be rendered to either strings or bytes, as needed.
 async fn render_all<'a, V>(
     renderer: &Renderer,
-    iter: impl Iterator<Item = (&'a str, &'a Template)>,
+    iter: impl Iterator<Item = (&'a str, &'a Procedure)>,
     key_fn: impl Fn(Cow<'a, str>) -> OverrideKey<'a>,
 ) -> anyhow::Result<Vec<(String, V)>>
 where
     V: FromRendered,
 {
     let overrides = &renderer.context().overrides;
-    let futures = iter.filter_map(|(key, template)| {
+    let futures = iter.filter_map(|(key, procedure)| {
         match overrides.get(&key_fn(key.into())) {
             // Skip this field
             Some(OverrideValue::Omit) => None,
@@ -683,11 +683,11 @@ where
             Some(OverrideValue::Override(value)) => Some(
                 async { Ok((key.to_owned(), value.clone().into())) }.boxed(),
             ),
-            // No override - render the template from the recipe
+            // No override - render the procedure from the recipe
             None => Some(
                 async move {
                     let value = renderer
-                        .render::<V>(template)
+                        .render::<V>(procedure)
                         .await
                         .context(format!("Field `{key}`"))?;
                     Ok::<_, anyhow::Error>((key.to_owned(), value))

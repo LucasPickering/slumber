@@ -3,25 +3,25 @@
 use crate::{
     context::TuiContext,
     view::{
-        ViewContext, common::template_preview::TemplatePreview,
-        state::Identified, util::highlight,
+        ViewContext, common::preview::Preview, state::Identified,
+        util::highlight,
     },
 };
 use persisted::{PersistedContainer, PersistedLazy, PersistedStore};
 use ratatui::text::Text;
 use slumber_core::{
-    collection::RecipeId, http::content_type::ContentType, template::Template,
+    collection::RecipeId, http::content_type::ContentType, render::Procedure,
 };
 use std::{collections::HashMap, fmt::Debug};
 use tracing::debug;
 
-/// Special single-session [PersistedStore] just for edited recipe templates.
+/// Special single-session [PersistedStore] just for edited recipe procedures.
 /// We don't want to store recipe overrides across sessions, because they could
 /// be very large and conflict with changes in the recipe. Using a dedicated
 /// type for this makes the generic bounds stricter which is nice.
 ///
 /// To persist something in this store, you probably want to use
-/// [RecipeTemplate] for your component/state field.
+/// [RecipeProcedure] for your component/state field.
 #[derive(Debug, Default)]
 pub struct RecipeOverrideStore(HashMap<RecipeOverrideKey, String>);
 
@@ -39,7 +39,7 @@ impl PersistedStore<RecipeOverrideKey> for RecipeOverrideStore {
     }
 
     fn store_persisted(key: &RecipeOverrideKey, value: &RecipeOverrideValue) {
-        // The value will be None if the template isn't overridden, in which
+        // The value will be None if the procedure isn't overridden, in which
         // case we don't want to store it
         if let RecipeOverrideValue::Override(value) = value {
             debug!(?key, ?value, "Persisting recipe override");
@@ -60,43 +60,43 @@ pub enum RecipeOverrideValue {
     Override(String),
 }
 
-/// A template that can be previewed, overridden, and persisted. Parent is
-/// responsible for implementing the override behavior, and calling
+/// A procedure that can be previewed, overridden, and persisted. Parent is
+/// responsible for implementing the override behavior and calling
 /// [set_override](Self::set_override) when needed.
 #[derive(Debug)]
-pub struct RecipeTemplate(
+pub struct RecipeProcedure(
     persisted::PersistedLazy<
         RecipeOverrideStore,
         RecipeOverrideKey,
-        RecipeTemplateInner,
+        RecipeProcedureInner,
     >,
 );
 
-impl RecipeTemplate {
+impl RecipeProcedure {
     pub fn new(
         persisted_key: RecipeOverrideKey,
-        template: Template,
+        procedure: Procedure,
         content_type: Option<ContentType>,
     ) -> Self {
         Self(PersistedLazy::new(
             persisted_key,
-            RecipeTemplateInner {
+            RecipeProcedureInner {
                 override_value: None,
                 override_text: None,
-                preview: TemplatePreview::new(template, content_type),
+                preview: Preview::new(procedure, content_type),
                 content_type,
             },
         ))
     }
 
-    /// Override the template with a new output value. The value will *not* be
+    /// Override the procedure with a new output value. The value will *not* be
     /// rendered; it's treated literally.
     pub fn set_override(&mut self, value: String) {
         self.0.get_mut().set_override(value);
     }
 
-    /// Reset the template override to the default from the recipe, and
-    /// recompute the template preview
+    /// Reset the procedure override to the default from the recipe, and
+    /// recompute the procedure preview
     pub fn reset_override(&mut self) {
         self.0.get_mut().reset_override();
     }
@@ -109,9 +109,9 @@ impl RecipeTemplate {
             .unwrap_or_else(|| self.0.preview.text().to_string())
     }
 
-    /// Call a function with access to the visible text of this template. This
+    /// Call a function with access to the visible text of this procedure. This
     /// will use the override text if the user has set one, otherwise the
-    /// rendered template preview.
+    /// rendered preview.
     /// TODO come up with a better pattern than this
     pub fn with_text(&self, f: impl FnOnce(&Identified<Text<'static>>)) {
         let text = if let Some(text) = &self.0.override_text {
@@ -122,8 +122,8 @@ impl RecipeTemplate {
         f(text)
     }
 
-    /// Get a clone of the text of this template. If an override is available,
-    /// get that. Otherwuse get the template preview.
+    /// Get a clone of the text of this procedure. If an override is available,
+    /// get that. Otherwise get the preview.
     pub fn text_cloned(&self) -> Text {
         if let Some(text) = &self.0.override_text {
             (*text).clone()
@@ -137,23 +137,20 @@ impl RecipeTemplate {
     }
 }
 
-/// A template that can be previewed and overridden. Parent is responsible for
-/// implementing the override behavior, and calling
-/// [set_override](Self::set_override) when needed.
 #[derive(Debug)]
-struct RecipeTemplateInner {
+struct RecipeProcedureInner {
     /// Raw string value for overriden text
     override_value: Option<String>,
     /// Overridden display text. This is the same content as `override_value`,
     /// but has syntax highlighting applied as appropriate and has been broken
     /// into a [Text]
     override_text: Option<Identified<Text<'static>>>,
-    preview: TemplatePreview,
+    preview: Preview,
     /// Retain this so we can rebuild the preview with it
     content_type: Option<ContentType>,
 }
 
-impl RecipeTemplateInner {
+impl RecipeProcedureInner {
     fn set_override(&mut self, value: String) {
         // Clone is necessary because we can't have the text object
         // self-reference the string
@@ -174,7 +171,7 @@ impl RecipeTemplateInner {
     }
 }
 
-impl PersistedContainer for RecipeTemplateInner {
+impl PersistedContainer for RecipeProcedureInner {
     type Value = RecipeOverrideValue;
 
     fn get_to_persist(&self) -> Self::Value {
@@ -185,8 +182,8 @@ impl PersistedContainer for RecipeTemplateInner {
     }
 
     fn restore_persisted(&mut self, value: Self::Value) {
-        if let RecipeOverrideValue::Override(template) = value {
-            self.set_override(template);
+        if let RecipeOverrideValue::Override(value) = value {
+            self.set_override(value);
         }
     }
 }

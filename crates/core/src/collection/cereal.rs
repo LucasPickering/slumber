@@ -4,7 +4,7 @@ use crate::{
     collection::{
         Profile, ProfileId, Recipe, RecipeId, recipe_tree::RecipeNode,
     },
-    template::Template,
+    render::Procedure,
 };
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -123,13 +123,13 @@ where
 /// makes lookups on the map easier.
 pub fn deserialize_headers<'de, D>(
     deserializer: D,
-) -> Result<IndexMap<String, Template>, D::Error>
+) -> Result<IndexMap<String, Procedure>, D::Error>
 where
     D: Deserializer<'de>,
 {
     // This involves an extra allocation, but it makes the logic a lot easier.
     // These maps should be small anyway
-    let headers: IndexMap<String, Template> =
+    let headers: IndexMap<String, Procedure> =
         IndexMap::deserialize(deserializer)?;
     Ok(headers
         .into_iter()
@@ -142,7 +142,7 @@ where
 /// bare value as a raw body. RecipeBody is only used in one place so adding
 /// this wrapper isn't a big deal.
 pub mod serde_recipe_body {
-    use crate::{collection::RecipeBody, template::Template};
+    use crate::{collection::RecipeBody, render::Procedure};
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S>(
@@ -171,7 +171,7 @@ pub mod serde_recipe_body {
         #[serde(untagged, rename_all = "camelCase")]
         enum RecipeBodyWrapper {
             RecipeBody(RecipeBody),
-            Raw(Template),
+            Raw(Procedure),
         }
 
         // TODO explain

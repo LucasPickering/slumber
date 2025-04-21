@@ -19,7 +19,7 @@ use slumber_core::{
         Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
         RequestRecord, RequestSeed,
     },
-    template::{HttpProvider, Renderer, TriggeredRequestError},
+    render::{HttpProvider, Renderer, TriggeredRequestError},
 };
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -400,9 +400,9 @@ impl RequestStore {
 /// An [HttpProvider] that uses the request store (and by extension the
 /// database) to access and persist HTTP requests. This defers operations on the
 /// request store through the message pipeline, because we can't have direct
-/// access to the request store from a template rendering task. We could solve
-/// this with `Rc<RefCell>` instead, but that ends up polluting the request
-/// store type signatures a lot. This is self-contained with minimal perf impact
+/// access to the request store from a rendering task. We could solve this with
+/// `Rc<RefCell>` instead, but that ends up polluting the request store type
+/// signatures a lot. This is self-contained with minimal perf impact
 #[derive(Debug)]
 pub struct TuiHttpProvider {
     messages_tx: MessageSender,
@@ -542,8 +542,8 @@ pub enum RequestState {
 
     /// Error occurred sending the request or receiving the response.
     RequestError {
-        /// This needs an `Arc` so it can be shared with the template engine in
-        /// the case of triggered chained requests
+        /// This needs an `Arc` so it can be shared with the render engine in
+        /// the case of triggered requests
         error: Arc<RequestError>,
     },
 }

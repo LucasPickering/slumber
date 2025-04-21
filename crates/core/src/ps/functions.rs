@@ -4,7 +4,7 @@ use crate::{
     collection::RecipeId,
     http::{RequestSeed, ResponseRecord},
     ps::error::FunctionError,
-    template::{
+    render::{
         OverrideKey, OverrideValue, Prompt, RenderContext, RenderState,
         Renderer, Select,
     },
@@ -180,12 +180,12 @@ async fn profile(
             panic!("Cached future did not set a value. This is a bug!")
         }
     };
-    let result = if let Some(template) =
+    let result = if let Some(value) =
         profile.and_then(|profile| profile.data.get(&field))
     {
         // Recursion!
         let renderer = Renderer::forked(process);
-        renderer.render::<Value>(template).await.map_err(Arc::new)
+        renderer.render::<Value>(value).await.map_err(Arc::new)
     } else {
         Ok(Value::Undefined)
     };
@@ -373,7 +373,7 @@ impl Decoding {
     }
 }
 
-/// Extract template context from the process's app data
+/// Extract render context from the process's app data
 fn context(process: &Process) -> Result<&RenderContext, FunctionError> {
     process
         .app_data::<RenderContext>()

@@ -16,7 +16,7 @@ pub struct Styles {
     pub status_code: StatusCodeStyles,
     pub tab: TabStyles,
     pub table: TableStyles,
-    pub template_preview: TemplatePreviewStyles,
+    pub preview: PreviewStyles,
     pub text: TextStyle,
     pub text_box: TextBoxStyle,
     pub text_window: TextWindowStyle,
@@ -88,9 +88,9 @@ pub struct TableStyles {
     pub title: Style,
 }
 
-/// Styles for TemplatePreview component
+/// Styles for Preview component
 #[derive(Debug)]
-pub struct TemplatePreviewStyles {
+pub struct PreviewStyles {
     pub text: Style,
     pub error: Style,
 }
@@ -102,7 +102,7 @@ pub struct TextStyle {
     pub highlight: Style,
     /// Text in the primary color
     pub primary: Style,
-    /// Templates that have been overridden in this session
+    /// Procedures that have been overridden in this session
     pub edited: Style,
     /// Text that means BAD BUSINESS
     pub error: Style,
@@ -173,7 +173,7 @@ impl Styles {
                     .add_modifier(Modifier::BOLD),
                 title: Style::default().add_modifier(Modifier::BOLD),
             },
-            template_preview: TemplatePreviewStyles {
+            preview: PreviewStyles {
                 text: Style::default()
                     .fg(theme.secondary_color)
                     .add_modifier(Modifier::UNDERLINED),

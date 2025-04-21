@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     collection::{Authentication, Collection, Profile},
-    template::RenderContext,
+    render::RenderContext,
     test_util::{
         TestPrompter, by_id, header_map, http_engine, invalid_utf8_chain,
     },
@@ -45,7 +45,7 @@ fn render_context(recipes: impl IntoIterator<Item = Recipe>) -> RenderContext {
     }]
     .into_iter()
     .chain(chains);
-    TemplateContext {
+    RenderContext {
         collection: Collection {
             recipes: by_id(recipes).into(),
             profiles: by_id([profile]),
@@ -55,7 +55,7 @@ fn render_context(recipes: impl IntoIterator<Item = Recipe>) -> RenderContext {
         .into(),
         selected_profile: Some(profile_id.clone()),
         prompter: Box::new(TestPrompter::new(["first", "second"])),
-        ..TemplateContext::factory(())
+        ..RenderContext::factory(())
     }
 }
 
@@ -173,13 +173,10 @@ async fn test_build_url(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = render_context([recipe], []);
+    let render_context = render_context([recipe], []);
 
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let url = http_engine
-        .build_url(seed, &template_context)
-        .await
-        .unwrap();
+    let url = http_engine.build_url(seed, &render_context).await.unwrap();
 
     assert_eq!(
         url.as_str(),
@@ -217,7 +214,7 @@ async fn test_build_body(
     #[case] body: RecipeBody,
     #[case] expected_body: &[u8],
 ) {
-    let template_context = render_context(
+    let render_context = render_context(
         [Recipe {
             body: Some(body),
             ..Recipe::factory(())
@@ -230,13 +227,10 @@ async fn test_build_body(
         }],
     );
     let seed = RequestSeed::new(
-        template_context.collection.first_recipe_id().clone(),
+        render_context.collection.first_recipe_id().clone(),
         BuildOptions::default(),
     );
-    let body = http_engine
-        .build_body(seed, &template_context)
-        .await
-        .unwrap();
+    let body = http_engine.build_body(seed, &render_context).await.unwrap();
 
     assert_eq!(body.as_deref(), Some(expected_body));
 }
@@ -273,17 +267,17 @@ async fn test_authentication(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = render_context([recipe], []);
+    let render_context = render_context([recipe], []);
 
     let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &render_context).await.unwrap();
 
     assert_eq!(
         *ticket.record,
         RequestRecord {
             id: ticket.record.id,
             profile_id: Some(
-                template_context.collection.first_profile_id().clone()
+                render_context.collection.first_profile_id().clone()
             ),
             recipe_id,
             method: HttpMethod::Get,
@@ -379,7 +373,7 @@ async fn test_structured_body(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = render_context(
+    let render_context = render_context(
         [recipe],
         [Chain {
             // Invalid UTF-8
@@ -390,7 +384,7 @@ async fn test_structured_body(
     );
 
     let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &render_context).await.unwrap();
 
     // Assert on the actual built request *and* the record, to make sure
     // they're consistent with each other
@@ -425,7 +419,7 @@ async fn test_structured_body(
                     .chain(extra_headers.iter().copied())
             ),
             ..RequestRecord::factory((
-                Some(template_context.collection.first_profile_id().clone()),
+                Some(render_context.collection.first_profile_id().clone()),
                 recipe_id
             ))
         }
@@ -465,7 +459,7 @@ async fn test_build_options(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = render_context([recipe], []);
+    let render_context = render_context([recipe], []);
 
     let seed = RequestSeed::new(
         recipe_id.clone(),
@@ -481,7 +475,7 @@ async fn test_build_options(http_engine: &HttpEngine) {
             .into_iter()
             .collect(),
             query_parameters: [
-                // Overridding template should get rendered
+                // Overridding procedure should get rendered
                 (0, BuildFieldOverride::Override("{{mode}}".into())),
                 (1, BuildFieldOverride::Omit),
             ]
@@ -493,13 +487,13 @@ async fn test_build_options(http_engine: &HttpEngine) {
             form_fields: Default::default(),
         },
     );
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &render_context).await.unwrap();
 
     assert_eq!(
         *ticket.record,
         RequestRecord {
             id: ticket.record.id,
-            profile_id: template_context.selected_profile.clone(),
+            profile_id: render_context.selected_profile.clone(),
             recipe_id,
             method: HttpMethod::Get,
             http_version: HttpVersion::Http11,
@@ -535,7 +529,7 @@ async fn test_build_options_form(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = render_context([recipe], []);
+    let render_context = render_context([recipe], []);
 
     let seed = RequestSeed::new(
         recipe_id.clone(),
@@ -549,13 +543,13 @@ async fn test_build_options_form(http_engine: &HttpEngine) {
             ..Default::default()
         },
     );
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &render_context).await.unwrap();
 
     assert_eq!(
         *ticket.record,
         RequestRecord {
             id: ticket.record.id,
-            profile_id: template_context.selected_profile.clone(),
+            profile_id: render_context.selected_profile.clone(),
             recipe_id,
             method: HttpMethod::Get,
             http_version: HttpVersion::Http11,
@@ -581,10 +575,10 @@ async fn test_chain_duplicate(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = render_context([recipe], []);
+    let render_context = render_context([recipe], []);
 
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &render_context).await.unwrap();
 
     let expected_url: Url = "http://localhost/first".parse().unwrap();
     let expected_body = b"first";
@@ -607,11 +601,11 @@ async fn test_send_request(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = render_context([recipe], []);
+    let render_context = render_context([recipe], []);
 
     // Build+send the request
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &render_context).await.unwrap();
     let exchange = ticket.send().await.unwrap();
 
     // Cheat on this one, because we don't know exactly when the server
@@ -652,9 +646,9 @@ async fn test_render_headers_strip() {
         },
         ..Recipe::factory(())
     };
-    let template_context = render_context([], []);
+    let render_context = render_context([], []);
     let rendered = recipe
-        .render_headers(&BuildOptions::default(), &template_context)
+        .render_headers(&BuildOptions::default(), &render_context)
         .await
         .unwrap();
 
@@ -697,13 +691,10 @@ async fn test_build_curl(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = render_context([recipe], []);
+    let render_context = render_context([recipe], []);
 
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let command = http_engine
-        .build_curl(seed, &template_context)
-        .await
-        .unwrap();
+    let command = http_engine.build_curl(seed, &render_context).await.unwrap();
     let expected_command = "curl -XGET \
     --url 'http://localhost/url?mode=sudo&fast=true&fast=false' \
     --header 'accept: application/json' \
@@ -742,13 +733,10 @@ async fn test_build_curl_authentication(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = render_context([recipe], []);
+    let render_context = render_context([recipe], []);
 
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let command = http_engine
-        .build_curl(seed, &template_context)
-        .await
-        .unwrap();
+    let command = http_engine.build_curl(seed, &render_context).await.unwrap();
     let expected_command = format!(
         "curl -XGET --url 'http://localhost/url' {expected_arguments}",
     );
@@ -790,13 +778,10 @@ async fn test_build_curl_body(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = render_context([recipe], []);
+    let render_context = render_context([recipe], []);
 
     let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
-    let command = http_engine
-        .build_curl(seed, &template_context)
-        .await
-        .unwrap();
+    let command = http_engine.build_curl(seed, &render_context).await.unwrap();
     let expected_command = format!(
         "curl -XGET --url 'http://localhost/url' {}",
         expected_arguments

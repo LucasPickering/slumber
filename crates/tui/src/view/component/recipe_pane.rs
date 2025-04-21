@@ -120,10 +120,9 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
         frame.render_widget(block, metadata.area());
 
         // Whenever the recipe or profile changes, generate a preview for
-        // each templated value. Almost anything that could change the
-        // preview will either involve changing one of those two things, or
-        // would require reloading the whole collection which will reset
-        // UI state.
+        // each procedure. Almost anything that could change the preview will
+        // either involve changing one of those two things, or would require
+        // reloading the whole collection which will reset UI state.
         let recipe_state = self.recipe_state.get_or_update(
             &RecipeStateKey {
                 selected_profile_id: props.selected_profile_id.cloned(),
@@ -177,7 +176,7 @@ pub enum RecipePaneEvent {
     Action(RecipeMenuAction),
 }
 
-/// Template preview state will be recalculated when any of these fields change
+/// Procedure preview state will be recalculated when any of these fields change
 #[derive(Clone, Debug, Default, PartialEq)]
 struct RecipeStateKey {
     selected_profile_id: Option<ProfileId>,

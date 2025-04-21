@@ -1,12 +1,14 @@
 use crate::{
-    collection::RecipeId, template::TriggeredRequestError, util::doc_link,
+    collection::RecipeId, render::TriggeredRequestError, util::doc_link,
 };
 use itertools::Itertools;
 use petitscript::error::RuntimeError;
 use std::{io, iter, path::PathBuf, sync::Arc};
 use thiserror::Error;
 
-/// Any error that can occur in one of the provided JS functions
+/// Any error that can occur in a function of the `slumber` PS module
+///
+/// TODO fix dupe error message in chain display
 #[derive(Debug, Error)]
 pub enum FunctionError {
     /// Malformed argument
@@ -30,7 +32,7 @@ pub enum FunctionError {
     Database(anyhow::Error),
 
     /// An bubbled-up error from rendering a profile field value
-    #[error("Rendering nested template for field `{field}`")]
+    #[error("Nested render for field `{field}`")]
     FieldNested {
         field: String,
         /// The bubbled error. This needs an `Arc` because profile render
@@ -51,8 +53,8 @@ pub enum FunctionError {
     #[error(transparent)]
     InvalidUtf8(#[from] std::string::FromUtf8Error),
 
-    /// Template context not available. Could be a bug, but it probably
-    /// indicates a render function was called outside a render
+    /// Render context not available. Could be a bug, but it probably indicates
+    /// a render function was called outside a render
     #[error(
         "Render context not available. Slumber render functions can only \
         be called during a recipe render"

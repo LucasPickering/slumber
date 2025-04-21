@@ -1,6 +1,8 @@
 mod error;
 mod functions;
 
+pub use error::FunctionError;
+
 use crate::collection::{Collection, LoadedCollection};
 use anyhow::Context;
 use petitscript::{Engine, Value};

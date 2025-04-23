@@ -202,6 +202,9 @@ pub struct RenderContext {
     pub overrides: Overrides,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
+    /// Should sensitive values be shown normally or masked? Enabled for
+    /// request renders, disabled for previews
+    pub show_sensitive: bool,
 }
 
 impl RenderContext {
@@ -309,6 +312,7 @@ impl slumber_util::Factory for RenderContext {
             )),
             overrides: Default::default(),
             prompter: Box::<TestPrompter>::default(),
+            show_sensitive: true,
         }
     }
 }

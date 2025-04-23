@@ -112,6 +112,7 @@ impl IntoPetitAst for Chain {
 
         // Populate the function body according to the source. Start with a
         // single function call
+        let is_prompt = matches!(&self.source, ChainSource::Prompt { .. });
         let body_expression = match self.source {
             ChainSource::Command { command, stdin } => {
                 let arguments = with_kwargs(
@@ -132,6 +133,8 @@ impl IntoPetitAst for Chain {
                     [
                         ("message", message.map(Template::into_ast)),
                         ("default", default.map(Template::into_ast)),
+                        // Only include this flag if it's enabled
+                        ("sensitive", self.sensitive.then_some(true.into())),
                     ],
                 );
                 FunctionCall::named("prompt", arguments)
@@ -177,7 +180,14 @@ impl IntoPetitAst for Chain {
             ChainOutputTrim::Both => body_expression.call("trim", []),
         };
 
-        // TODO figure out how to do sensitive values
+        let body_expression = if self.sensitive && !is_prompt {
+            // Wrap the body in sensitive(). Skip this for prompts because they
+            // have an equivalent kwarg
+            FunctionCall::named("sensitive", [body_expression]).into()
+        } else {
+            body_expression
+        };
+
         // TODO implement selector, selector_mode, and content_type
 
         FunctionDefinition::new(

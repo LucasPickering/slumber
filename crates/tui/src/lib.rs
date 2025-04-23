@@ -746,6 +746,7 @@ impl Tui {
             http_provider: Box::new(http_provider),
             prompter,
             overrides,
+            show_sensitive: !is_preview,
         };
         Ok(Renderer::new(
             self.ps_process

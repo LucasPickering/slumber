@@ -39,6 +39,7 @@ pub fn register_module(engine: &mut Engine) {
         "response" => engine.create_fn(sync(response)),
         "responseHeader" => engine.create_fn(sync(response_header)),
         "select" => engine.create_fn(sync(select)),
+        "sensitive" => engine.create_fn(sensitive),
     };
     engine
         .register_module("slumber", Exports::named(functions))
@@ -72,13 +73,10 @@ struct CommandKwargs {
 /// Run a command in a subprocess
 async fn command(
     _: &Process,
-    (
-        command,
-        Kwargs(CommandKwargs {
-            stdin,
-            decode: encoding,
-        }),
-    ): (Vec<String>, Kwargs<CommandKwargs>),
+    (command, Kwargs(CommandKwargs { stdin, decode })): (
+        Vec<String>,
+        Kwargs<CommandKwargs>,
+    ),
 ) -> Result<Value, FunctionError> {
     let [program, args @ ..] = command.as_slice() else {
         return Err(FunctionError::Argument(
@@ -122,7 +120,7 @@ async fn command(
         "Command success"
     );
 
-    encoding.decode(output.stdout.into())
+    decode.decode(output.stdout.into())
 }
 
 /// Load the value of an environment variable
@@ -202,6 +200,7 @@ async fn profile(
 struct PromptKwargs {
     message: Option<String>,
     default: Option<String>,
+    /// Mask the prompt value while typing
     #[serde(default)]
     sensitive: bool,
 }
@@ -216,7 +215,8 @@ async fn prompt(
     }): Kwargs<PromptKwargs>,
 ) -> Result<String, FunctionError> {
     let (tx, rx) = oneshot::channel();
-    context(process)?.prompter.prompt(Prompt {
+    let context = context(process)?;
+    context.prompter.prompt(Prompt {
         message: message.unwrap_or_default(),
         default,
         sensitive,
@@ -312,6 +312,19 @@ async fn select(
     });
     let output = rx.await.map_err(|_| FunctionError::PromptNoReply)?;
     Ok(output)
+}
+
+/// Mark a string as sensitive. Sensitive strings will be masked in previews.
+fn sensitive(
+    process: &Process,
+    value: String,
+) -> Result<String, FunctionError> {
+    let context = context(process)?;
+    if context.show_sensitive {
+        Ok(value)
+    } else {
+        Ok("•".repeat(value.chars().count()))
+    }
 }
 
 /// Wrapper for a keyword argument struct, which will be deserialized from a
@@ -470,11 +483,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_choose() {
-        todo!()
-    }
-
-    #[test]
     fn test_command() {
         todo!()
     }
@@ -506,6 +514,16 @@ mod tests {
 
     #[test]
     fn test_response_header() {
+        todo!()
+    }
+
+    #[test]
+    fn test_select() {
+        todo!()
+    }
+
+    #[test]
+    fn test_sensitive() {
         todo!()
     }
 }

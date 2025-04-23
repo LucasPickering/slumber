@@ -1,7 +1,15 @@
-import { command, file, profile, prompt, response, select } from "slumber";
+import {
+  command,
+  file,
+  profile,
+  prompt,
+  response,
+  select,
+  sensitive,
+} from "slumber";
 
 function username() {
-  return command(["whoami"]).trim();
+  return sensitive(command(["whoami"]).trim());
 }
 
 function password() {
@@ -15,7 +23,7 @@ function selectValue() {
       "bar",
       "baz",
       "a really really really really long option",
-      username(),
+      profile("username"),
     ],
     { message: "Select a value" }
   );
@@ -32,9 +40,7 @@ function selectDynamic() {
 
 function authToken() {
   const resp = JSON.parse(
-    response("login", {
-      trigger: { type: "expire", duration: "12h" },
-    })
+    response("login", { trigger: { type: "expire", duration: "12h" } })
   );
 
   // Pick some arbitrary data from the login response as the token
@@ -79,6 +85,7 @@ export const profiles = {
 export const requests = {
   login: {
     type: "request",
+    persist: false,
     method: "POST",
     url: () => `${profile("host")}/anything/login`,
     authentication: {

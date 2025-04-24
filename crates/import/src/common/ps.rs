@@ -3,7 +3,7 @@
 use crate::common::{
     Authentication, Chain, ChainId, ChainOutputTrim, ChainRequestSection,
     ChainRequestTrigger, ChainSource, Collection, Folder, Profile, Recipe,
-    RecipeBody, RecipeNode, RecipeTree, SelectOptions, Template,
+    RecipeBody, RecipeNode, RecipeTree, SelectOptions, SelectorMode, Template,
     template::{TemplateInputChunk, TemplateKey},
 };
 use indexmap::IndexMap;
@@ -113,7 +113,7 @@ impl IntoPetitAst for Chain {
         // Populate the function body according to the source. Start with a
         // single function call
         let is_prompt = matches!(&self.source, ChainSource::Prompt { .. });
-        let body_expression = match self.source {
+        let mut body_expression = match self.source {
             ChainSource::Command { command, stdin } => {
                 let arguments = with_kwargs(
                     [command.into_ast().into()],
@@ -173,22 +173,41 @@ impl IntoPetitAst for Chain {
 
         // To replicate trimming, call the appropriate method from string's
         // prototype. This requires the expression to resolve to a string.
-        let body_expression = match self.trim {
-            ChainOutputTrim::None => body_expression,
-            ChainOutputTrim::Start => body_expression.call("trimStart", []),
-            ChainOutputTrim::End => body_expression.call("trimEnd", []),
-            ChainOutputTrim::Both => body_expression.call("trim", []),
+        match self.trim {
+            ChainOutputTrim::None => {}
+            ChainOutputTrim::Start => {
+                body_expression = body_expression.call("trimStart", [])
+            }
+            ChainOutputTrim::End => {
+                body_expression = body_expression.call("trimEnd", [])
+            }
+            ChainOutputTrim::Both => {
+                body_expression = body_expression.call("trim", [])
+            }
         };
 
-        let body_expression = if self.sensitive && !is_prompt {
-            // Wrap the body in sensitive(). Skip this for prompts because they
-            // have an equivalent kwarg
-            FunctionCall::named("sensitive", [body_expression]).into()
-        } else {
-            body_expression
-        };
+        // Wrap the body in sensitive(). Skip this for prompts because they
+        // have an equivalent kwarg so it's redundant
+        if self.sensitive && !is_prompt {
+            body_expression =
+                FunctionCall::named("sensitive", [body_expression]).into();
+        }
 
-        // TODO implement selector, selector_mode, and content_type
+        // Import selectors with a call to jsonpath()
+        if let Some(selector) = self.selector {
+            let mode = match self.selector_mode {
+                SelectorMode::Auto => None, // This is default, so we can omit
+                SelectorMode::Single => Some("single".into()),
+                SelectorMode::Array => Some("array".into()),
+            };
+            let arguments = with_kwargs(
+                [selector.to_string().into(), body_expression],
+                [("mode", mode)],
+            );
+            body_expression = FunctionCall::named("jsonPath", arguments).into();
+        }
+
+        // TODO implement content_type
 
         FunctionDefinition::new(
             // Chains don't accept params, so the function won't either

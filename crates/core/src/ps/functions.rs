@@ -1,4 +1,4 @@
-//! JS functions provided to users, to be used in collections
+//! PetitScript functions that make up the slumber native module
 
 use crate::{
     collection::RecipeId,
@@ -19,6 +19,7 @@ use petitscript::{
     function::{FromPsArgs, IntoPsResult},
 };
 use serde::{Deserialize, de::IntoDeserializer};
+use serde_json_path::JsonPath;
 use slumber_util::Duration;
 use std::{path::PathBuf, process::Stdio, sync::Arc};
 use tokio::{
@@ -34,6 +35,7 @@ pub fn register_module(engine: &mut Engine) {
         "command" => engine.create_fn(sync(command)),
         "env" => engine.create_fn(env),
         "file" => engine.create_fn(sync(file)),
+        "jsonPath" => engine.create_fn(json_path),
         "profile" => engine.create_fn(sync(profile)),
         "prompt" => engine.create_fn(sync(prompt)),
         "response" => engine.create_fn(sync(response)),
@@ -79,9 +81,7 @@ async fn command(
     ),
 ) -> Result<Value, FunctionError> {
     let [program, args @ ..] = command.as_slice() else {
-        return Err(FunctionError::Argument(
-            "command must have at least one element".into(),
-        ));
+        return Err(FunctionError::CommandEmpty);
     };
     let _ = debug_span!("Executing command", ?program, ?args).entered();
 
@@ -136,6 +136,47 @@ async fn file(_: &Process, path: PathBuf) -> Result<Vec<u8>, FunctionError> {
     Ok(output)
 }
 
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JsonPathKwargs {
+    /// Modify how the query handles 0, 1, or 2+ results
+    #[serde(default)]
+    mode: JsonPathMode,
+}
+
+/// TODO
+fn json_path(
+    _: &Process,
+    (Todo(query), Todo(value), Kwargs(JsonPathKwargs { mode })): (
+        Todo<JsonPath>,
+        Todo<serde_json::Value>,
+        Kwargs<JsonPathKwargs>,
+    ),
+) -> Result<Value, FunctionError> {
+    let node_list = query.query(&value);
+
+    // Use the mode to determine how to handle 0, 1, or 2+ results
+    let json: serde_json::Value = match mode {
+        JsonPathMode::Auto => match node_list.len() {
+            0 => return Err(FunctionError::JsonPathNoResults { query }),
+            1 => node_list.first().unwrap().clone(),
+            2.. => node_list.into_iter().cloned().collect(),
+        },
+        JsonPathMode::Single => node_list
+            .exactly_one()
+            .map_err(|_| FunctionError::JsonPathExactlyOne {
+                query,
+                actual_count: node_list.len(),
+            })?
+            .clone(),
+        JsonPathMode::Array => node_list.into_iter().cloned().collect(),
+    };
+
+    // Convert from JSON back to PS. PS is a superset of JSON so this conversion
+    // is infallible
+    Ok(serde_json::from_value(json).unwrap())
+}
+
 /// Access a field in the current profile. If the field is a function, call the
 /// function to render it recursively, then return its return value. Multiple
 /// calls to this function within the same recipe render will be cached, meaning
@@ -170,8 +211,10 @@ async fn profile(
     // homework.
     let guard = match state.profile_cache.get_or_init(field.clone()).await {
         FutureCacheOutcome::Hit(result) => {
-            return result
-                .map_err(|error| FunctionError::FieldNested { field, error });
+            return result.map_err(|error| FunctionError::ProfileNested {
+                field,
+                error,
+            });
         }
         FutureCacheOutcome::Miss(guard) => guard,
         FutureCacheOutcome::NoResponse => {
@@ -192,7 +235,7 @@ async fn profile(
         Ok(Value::Undefined)
     };
     guard.set(result.clone());
-    result.map_err(|error| FunctionError::FieldNested { field, error })
+    result.map_err(|error| FunctionError::ProfileNested { field, error })
 }
 
 #[derive(Default, Deserialize)]
@@ -327,6 +370,18 @@ fn sensitive(
     }
 }
 
+/// TODO
+struct Todo<T>(T);
+
+impl<'de, T: Deserialize<'de>> FromPs for Todo<T> {
+    fn from_ps(value: Value) -> Result<Self, ValueError> {
+        let deserializer = value.into_deserializer();
+        serde_path_to_error::deserialize(deserializer)
+            .map(Self)
+            .map_err(ValueError::other)
+    }
+}
+
 /// Wrapper for a keyword argument struct, which will be deserialized from a
 /// a PS object. Kwargs should only be used for additional options to a function
 /// that are not required. As such `T` must implement `Default` to define a
@@ -352,7 +407,6 @@ impl<'de, T: Default + Deserialize<'de>> FromPs for Kwargs<T> {
 /// Define when a recipe with a chained request should auto-execute the
 /// dependency request.
 #[derive(Copy, Clone, Debug, Default, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 enum RequestTrigger {
     /// Never trigger the request. This is the default because upstream
@@ -370,8 +424,7 @@ enum RequestTrigger {
 }
 
 /// TODO better name
-#[derive(Copy, Clone, Debug, Default, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 enum Decoding {
     /// Load data as a UTF-8 string
@@ -392,6 +445,25 @@ impl Decoding {
             Self::Binary => Ok(bytes.into()),
         }
     }
+}
+
+/// Control how a JSONPath selector returns 0 vs 1 vs 2+ results
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum JsonPathMode {
+    /// 0 - Error
+    /// 1 - Single result, without wrapping quotes
+    /// 2 - JSON array
+    #[default]
+    Auto,
+    /// 0 - Error
+    /// 1 - Single result, without wrapping quotes
+    /// 2 - Error
+    Single,
+    /// 0 - JSON array
+    /// 1 - JSON array
+    /// 2 - JSON array
+    Array,
 }
 
 /// Extract render context from the process's app data
@@ -494,6 +566,11 @@ mod tests {
 
     #[test]
     fn test_file() {
+        todo!()
+    }
+
+    #[test]
+    fn test_json_path() {
         todo!()
     }
 

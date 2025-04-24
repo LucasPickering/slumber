@@ -228,7 +228,7 @@ impl BuildRequestCommand {
             }),
             overrides,
             prompter: Box::new(CliPrompter),
-            show_sensitive: todo!(),
+            show_sensitive: true,
         };
         let renderer = Renderer::new(process, render_context);
         let seed = RequestSeed::new(self.recipe_id);

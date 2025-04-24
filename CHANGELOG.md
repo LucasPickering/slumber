@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Fixed
+
+- Fix TUI crash when using an empty select list
+
 ## [3.1.1] - 2025-04-23
 
 ### Fixed

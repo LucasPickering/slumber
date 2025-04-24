@@ -69,11 +69,10 @@ impl Modal for ActionsModal {
 
     fn on_close(self: Box<Self>, submitted: bool) {
         if submitted {
-            let action = self
-                .actions
-                .into_data()
-                .into_selected()
-                .expect("User submitted something");
+            let Some(action) = self.actions.into_data().into_selected() else {
+                // Possible if the action list is empty
+                return;
+            };
             // Emit an event on behalf of the component that supplied this
             // action. The component will use its own supplied emitter ID to
             // consume the event

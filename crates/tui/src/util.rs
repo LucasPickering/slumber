@@ -9,8 +9,8 @@ use crossterm::event;
 use editor_command::EditorBuilder;
 use futures::{FutureExt, future};
 use mime::Mime;
-use slumber_core::{render::Prompt, util::doc_link};
-use slumber_util::{ResultTraced, paths::expand_home};
+use slumber_core::render::Prompt;
+use slumber_util::{ResultTraced, doc_link, paths::expand_home};
 use std::{
     env,
     future::Future,

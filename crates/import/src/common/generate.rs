@@ -3,7 +3,8 @@
 use crate::common::{
     Authentication, Chain, ChainId, ChainOutputTrim, ChainRequestSection,
     ChainRequestTrigger, ChainSource, Collection, Folder, Profile, Recipe,
-    RecipeBody, RecipeNode, RecipeTree, SelectOptions, SelectorMode, Template,
+    RecipeBody, RecipeId, RecipeNode, RecipeTree, SelectOptions, SelectorMode,
+    Template,
     template::{TemplateInputChunk, TemplateKey},
 };
 use indexmap::IndexMap;
@@ -14,7 +15,6 @@ use petitscript::ast::{
     IntoExpression, IntoNode, IntoStatement, Literal, Module, Node,
     ObjectLiteral, Statement, TemplateChunk, TemplateLiteral, Walk,
 };
-use slumber_core::collection::RecipeId;
 
 const CHAIN_FN_PREFIX: &str = "chain_";
 
@@ -305,7 +305,7 @@ impl IntoPetitAst for Recipe {
             ("type", Some("request".into())),
             ("name", self.name.map(Expression::from)),
             ("persist", Some(self.persist.into())),
-            ("method", Some(self.method.to_str().into())),
+            ("method", Some(self.method.to_string().into())),
             ("url", Some(Deferred(self.url).into_ast())),
             (
                 "query",

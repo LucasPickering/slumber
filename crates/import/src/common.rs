@@ -1,6 +1,13 @@
 //! Components and logic common to all import formats. Each format converts to a
 //! common [Collection] struct, then we use that to generate a PetitScript AST.
-//! TODO explain what this is and why it's all duplicated
+//! This format is mostly a copy-paste of the original YAML-based collection
+//! format. It's a simple declarative format that we can import all formats to,
+//! and it makes it easy to import old YAML collections.
+//!
+//! This is copied from the core crate instead of referencing any of those
+//! types to ensure updates to the collection format don't break the importers.
+//! Eliminating the dependency on slumber_core entirely also speeds up
+//! compilation.
 
 mod cereal;
 mod generate;
@@ -12,26 +19,17 @@ pub(crate) use crate::common::{
     recipe_tree::{DuplicateRecipeIdError, RecipeNode, RecipeTree},
     template::{Identifier, Template},
 };
-// Re-export anything we might need from core, so individual importers don't
-// have to mix and match between this module and the core crate
-// TODO break this dependency
-pub use slumber_core::{
-    collection::{ProfileId, RecipeId},
-    http::HttpMethod,
-    util::NEW_ISSUE_LINK,
-};
 
+use derive_more::{Deref, Display, From, FromStr, Into};
 use indexmap::IndexMap;
 use serde::Deserialize;
 use serde_json_path::JsonPath;
 use slumber_util::Duration;
+use strum::EnumIter;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
-///
-/// This deliberately does not implement `Clone`, because it could potentially
-/// be very large. Instead, it's hidden behind an `Arc` by `CollectionFile`.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
@@ -50,6 +48,23 @@ pub struct Collection {
     pub(crate) _ignore: serde::de::IgnoredAny,
 }
 
+/// Unique ID for a profile, provided by the user
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    Deref,
+    Display,
+    Eq,
+    From,
+    Hash,
+    Into,
+    PartialEq,
+    Deserialize,
+)]
+#[serde(transparent)]
+pub(crate) struct ProfileId(String);
+
 /// Mutually exclusive hot-swappable config group
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -65,6 +80,23 @@ pub(crate) struct Profile {
     pub(crate) default: bool,
     pub(crate) data: IndexMap<String, Template>,
 }
+
+/// Unique ID for a recipe, provided by the user
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    Deref,
+    Display,
+    Eq,
+    From,
+    Hash,
+    Into,
+    PartialEq,
+    Deserialize,
+)]
+#[serde(transparent)]
+pub(crate) struct RecipeId(String);
 
 /// A gathering of like-minded recipes and/or folders
 #[derive(Debug, Deserialize)]
@@ -108,6 +140,43 @@ pub(crate) struct Recipe {
     pub(crate) query: Vec<(String, Template)>,
     #[serde(default, deserialize_with = "cereal::deserialize_headers")]
     pub(crate) headers: IndexMap<String, Template>,
+}
+
+/// HTTP method. This is duplicated from [reqwest::Method] so we can enforce
+/// the method is valid during deserialization. This is also generally more
+/// ergonomic at the cost of some flexibility.
+///
+/// The FromStr implementation will be case-insensitive
+#[derive(Copy, Clone, Debug, Display, FromStr, Deserialize, EnumIter)]
+#[serde(try_from = "String")]
+pub enum HttpMethod {
+    #[display("CONNECT")]
+    Connect,
+    #[display("DELETE")]
+    Delete,
+    #[display("GET")]
+    Get,
+    #[display("HEAD")]
+    Head,
+    #[display("OPTIONS")]
+    Options,
+    #[display("PATCH")]
+    Patch,
+    #[display("POST")]
+    Post,
+    #[display("PUT")]
+    Put,
+    #[display("TRACE")]
+    Trace,
+}
+
+/// For deserialization
+impl TryFrom<String> for HttpMethod {
+    type Error = <Self as FromStr>::Err;
+
+    fn try_from(method: String) -> Result<Self, Self::Error> {
+        method.parse()
+    }
 }
 
 /// Shortcut for defining authentication method. If this is defined in addition
@@ -178,6 +247,7 @@ pub(crate) struct Chain {
 #[serde(transparent)]
 pub(crate) struct ChainId(Identifier);
 
+// TODO is this used?
 impl From<Identifier> for ChainId {
     fn from(identifier: Identifier) -> Self {
         Self(identifier)

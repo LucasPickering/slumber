@@ -3,8 +3,8 @@
 
 use crate::common::{
     self, Chain, ChainId, ChainSource, Collection, Folder, HasId, HttpMethod,
-    Identifier, NEW_ISSUE_LINK, Profile, ProfileId, Recipe, RecipeBody,
-    RecipeId, RecipeNode, RecipeTree, SelectorMode, Template,
+    Identifier, Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
+    RecipeTree, SelectorMode, Template,
 };
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
@@ -12,6 +12,7 @@ use itertools::Itertools;
 use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Deserializer, de::Error as _};
+use slumber_util::NEW_ISSUE_LINK;
 use std::{
     collections::HashMap, fmt::Display, fs::File, path::Path, str::FromStr,
 };

@@ -11,29 +11,6 @@ use std::{
 use tokio::sync::{Mutex, OwnedRwLockWriteGuard, RwLock};
 use tracing::error;
 
-/// Link to the GitHub New Issue form
-pub const NEW_ISSUE_LINK: &str =
-    "https://github.com/LucasPickering/slumber/issues/new/choose";
-
-/// Get a link to a page on the doc website. This will append the doc prefix,
-/// as well as the suffix.
-///
-/// ```
-/// use slumber_core::util::doc_link;
-/// assert_eq!(
-///     doc_link("api/chain"),
-///     "https://slumber.lucaspickering.me/book/api/chain.html",
-/// );
-/// ```
-pub fn doc_link(path: &str) -> String {
-    const ROOT: &str = "https://slumber.lucaspickering.me/book/";
-    if path.is_empty() {
-        ROOT.into()
-    } else {
-        format!("{ROOT}{path}.html")
-    }
-}
-
 /// Show the user a confirmation prompt
 pub fn confirm(prompt: impl Into<String>) -> bool {
     Confirm::new()

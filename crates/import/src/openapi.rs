@@ -13,8 +13,8 @@ mod resolve;
 use crate::{
     common::{
         Authentication, Collection, DuplicateRecipeIdError, Folder, HttpMethod,
-        NEW_ISSUE_LINK, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
-        RecipeNode, RecipeTree, Template,
+        Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
+        RecipeTree, Template,
     },
     openapi::resolve::ReferenceResolver,
 };
@@ -27,7 +27,7 @@ use openapiv3::{
     PathItem, PathStyle, Paths, ReferenceOr, RequestBody, Schema,
     SecurityScheme, Server,
 };
-use slumber_util::ResultTraced;
+use slumber_util::{NEW_ISSUE_LINK, ResultTraced};
 use std::{fs::File, iter, path::Path};
 use strum::IntoEnumIterator;
 use tracing::{debug, error, info, warn};
@@ -626,7 +626,6 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::{fixture, rstest};
     use serde_json::json;
-    use slumber_core::collection::Collection;
     use slumber_util::test_data_dir;
     use std::{path::PathBuf, sync::OnceLock};
 

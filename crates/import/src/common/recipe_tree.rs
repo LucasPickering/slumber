@@ -17,7 +17,7 @@ use thiserror::Error;
 /// recipes. This is a mild restriction on the user that makes implementing a
 /// lot simpler. In reality it's unlikely they would want to give two things
 /// the same ID anyway.
-#[derive(derive_more::Debug, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct RecipeTree {
     /// Tree structure storing all the folder/recipe data
     pub tree: IndexMap<RecipeId, RecipeNode>,
@@ -25,7 +25,6 @@ pub(crate) struct RecipeTree {
     /// the tree. This is possible because the IDs are globally unique. It is
     /// an invariant that every lookup key in this map is valid, therefore it's
     /// safe to panic if one is found to be invalid.
-    #[debug(skip)] // It's big and useless
     nodes_by_id: IndexMap<RecipeId, RecipeLookupKey>,
 }
 

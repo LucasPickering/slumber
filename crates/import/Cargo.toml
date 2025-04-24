@@ -12,7 +12,7 @@ version = {workspace = true}
 
 [dependencies]
 anyhow = {workspace = true}
-derive_more = {workspace = true, features = ["debug"]}
+derive_more = {workspace = true, features = ["deref", "display", "from", "from_str", "into"]}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
@@ -24,7 +24,6 @@ serde = {workspace = true}
 serde_json = {workspace = true}
 serde_json_path = {workspace = true}
 serde_yaml = {workspace = true}
-slumber_core = {workspace = true}
 slumber_util = {workspace = true}
 strum = {workspace = true}
 thiserror = {workspace = true}
@@ -35,7 +34,6 @@ winnow = {workspace = true}
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
 serde_test = {workspace = true}
-slumber_core = {workspace = true, features = ["test"]}
 
 [features]
 

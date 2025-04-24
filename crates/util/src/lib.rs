@@ -30,6 +30,29 @@ use std::{
 use tracing::error;
 use winnow::{PResult, Parser, ascii::digit1, token::take_while};
 
+/// Link to the GitHub New Issue form
+pub const NEW_ISSUE_LINK: &str =
+    "https://github.com/LucasPickering/slumber/issues/new/choose";
+
+/// Get a link to a page on the doc website. This will append the doc prefix,
+/// as well as the suffix.
+///
+/// ```
+/// use slumber_core::util::doc_link;
+/// assert_eq!(
+///     doc_link("api/chain"),
+///     "https://slumber.lucaspickering.me/book/api/chain.html",
+/// );
+/// ```
+pub fn doc_link(path: &str) -> String {
+    const ROOT: &str = "https://slumber.lucaspickering.me/book/";
+    if path.is_empty() {
+        ROOT.into()
+    } else {
+        format!("{ROOT}{path}.html")
+    }
+}
+
 /// A static mapping between values (of type `T`) and labels (strings). Used to
 /// both stringify from and parse to `T`.
 pub struct Mapping<'a, T: Copy>(&'a [(T, &'a [&'a str])]);

@@ -33,6 +33,7 @@ use slumber_core::{
     http::{RequestBuildError, RequestError},
     util::MaybeStr,
 };
+use std::fmt::Write;
 
 /// A container with a title and border
 pub struct Pane<'a> {
@@ -236,25 +237,58 @@ impl Generate for &anyhow::Error {
     {
         let chain = self.chain();
         let mut lines: Vec<Line> = Vec::new();
-        for (i, (position, error)) in chain.with_position().enumerate() {
-            let icon = match position {
+
+        for (i, (error_position, error)) in chain.with_position().enumerate() {
+            let indent_width = i.saturating_sub(1);
+            // Icon to include on the first line of the error
+            let icon = match error_position {
                 Position::First | Position::Only => "",
                 Position::Middle => "└┬",
                 Position::Last => "└─",
             };
-            for (position, line) in error.to_string().lines().with_position() {
-                let line = if let Position::First | Position::Only = position {
-                    format!(
-                        "{indent:width$}{icon}{line}",
-                        indent = "",
-                        width = i.saturating_sub(1)
-                    )
+            // Padding for subsequent lines of the error
+            let padding = match error_position {
+                Position::First | Position::Middle => " │",
+                Position::Last | Position::Only => "  ",
+            };
+
+            // If this is a PS runtime error, use some custom logic to print the
+            // stack trace
+            let message =
+                if let Some(petitscript::Error::Runtime { error, trace }) =
+                    error.downcast_ref()
+                {
+                    let mut message = format!("{error}\n");
+                    // The first frame is always native code so it provides no
+                    // value
+                    for frame in trace.iter().skip(1) {
+                        writeln!(&mut message, " {frame}").unwrap();
+                    }
+                    message
                 } else {
-                    line.to_owned()
+                    error.to_string()
                 };
-                lines.push(line.into());
-            }
+            lines.extend(message.lines().with_position().map(
+                |(line_position, line)| {
+                    match line_position {
+                        Position::First | Position::Only => format!(
+                            "{indent:width$}{icon}{line}",
+                            indent = "",
+                            width = indent_width,
+                        ),
+                        Position::Middle | Position::Last => {
+                            format!(
+                                "{indent:width$}{padding}{line}",
+                                indent = "",
+                                width = indent_width,
+                            )
+                        }
+                    }
+                    .into()
+                },
+            ));
         }
+
         Paragraph::new(lines).wrap(Wrap::default())
     }
 }

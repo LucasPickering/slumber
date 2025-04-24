@@ -14,9 +14,9 @@ use bytes::Bytes;
 use chrono::Utc;
 use indexmap::indexmap;
 use petitscript::{
-    Engine, Exports, FromPs, Process, Value,
+    Engine, Exports, Process, Value,
     error::ValueError,
-    function::{FromPsArgs, IntoPsResult},
+    value::{FromPs, FromPsArgs, IntoPsResult},
 };
 use serde::{Deserialize, de::IntoDeserializer};
 use serde_json_path::JsonPath;

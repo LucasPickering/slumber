@@ -11,7 +11,7 @@ use crate::{
 use derive_more::{Deref, Display, From, Into};
 use indexmap::IndexMap;
 use mime::Mime;
-use petitscript::{FromPs, error::ValueError};
+use petitscript::{error::ValueError, value::FromPs};
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use std::iter;
@@ -405,7 +405,7 @@ impl Collection {
 impl slumber_util::Factory for Collection {
     fn factory(_: ()) -> Self {
         use crate::test_util::by_id;
-        use petitscript::Object;
+        use petitscript::value::Object;
         // Include a body in the recipe, so body-related behavior can be tested
         let recipe = Recipe {
             body: Some(RecipeBody::Json {

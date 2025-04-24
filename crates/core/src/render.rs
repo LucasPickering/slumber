@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use derive_more::{Display, From};
 use indexmap::IndexMap;
-use petitscript::{Process, Value, function::Function};
+use petitscript::{Process, Value, value::Function};
 use serde::{Deserialize, Serialize};
 use slumber_util::ResultTraced;
 use std::{borrow::Cow, fmt::Debug, str::FromStr, sync::Arc};

@@ -41,6 +41,11 @@ impl Procedure {
     pub fn is_dynamic(&self) -> bool {
         matches!(&self.0, Value::Function(_))
     }
+
+    /// Get the inner PS value
+    pub fn into_value(self) -> Value {
+        self.0
+    }
 }
 
 #[cfg(any(test, feature = "test"))]

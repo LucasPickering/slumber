@@ -174,11 +174,9 @@ impl Styles {
                 title: Style::default().add_modifier(Modifier::BOLD),
             },
             preview: PreviewStyles {
-                text: Style::default()
-                    .fg(theme.secondary_color)
-                    .add_modifier(Modifier::UNDERLINED),
+                text: Style::default().add_modifier(Modifier::ITALIC),
                 error: Style::default()
-                    .fg(Color::default()) // Override syntax highlighting
+                    .fg(Color::default())
                     .bg(theme.error_color),
             },
             text: TextStyle {
@@ -186,7 +184,8 @@ impl Styles {
                     .fg(theme.primary_text_color)
                     .bg(theme.primary_color),
                 primary: Style::default().fg(theme.primary_color),
-                edited: Style::default().add_modifier(Modifier::ITALIC),
+                edited: Style::default()
+                    .add_modifier(Modifier::ITALIC | Modifier::BOLD),
                 error: Style::default().bg(theme.error_color),
                 title: Style::default().add_modifier(Modifier::BOLD),
             },

@@ -117,7 +117,7 @@ impl RecipeProcedure {
         let text = if let Some(text) = &self.0.override_text {
             text
         } else {
-            &*self.0.preview.text()
+            self.0.preview.text()
         };
         f(text)
     }

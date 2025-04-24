@@ -6,14 +6,14 @@ use std::{fs::OpenOptions, io::Write, path::PathBuf, process::ExitCode};
 /// We use a static source file, to get control of whitespace/comments.
 /// Generating a collection and serializing it would be like driving from the
 /// back seat with a broom stick.
-const SOURCE: &[u8] = include_bytes!("new.yml");
-const DEFAULT_PATH: &str = "slumber.yml";
+const SOURCE: &[u8] = include_bytes!("new.js");
+const DEFAULT_PATH: &str = "slumber.js";
 
 /// Generate a new Slumber collection file
 #[derive(Clone, Debug, Parser)]
 pub struct NewCommand {
     /// Path to write the new file to. If omitted, fall back to the global
-    /// `--file` argument, or default to `slumber.yml`
+    /// `--file` argument, or default to `slumber.js`
     file: Option<PathBuf>,
     /// If a file already exists at the path, overwrite it instead of failing
     #[clap(long)]
@@ -61,9 +61,9 @@ mod tests {
 
     /// Test creating a new collection file, specifying the path in various ways
     #[rstest]
-    #[case::default_path(None, None, "slumber.yml")]
-    #[case::global_path_arg(None, Some("global.yml"), "global.yml")]
-    #[case::local_path_arg(Some("local.yml"), Some("global.yml"), "local.yml")]
+    #[case::default_path(None, None, "slumber.js")]
+    #[case::global_path_arg(None, Some("global.js"), "global.js")]
+    #[case::local_path_arg(Some("local.js"), Some("global.js"), "local.js")]
     #[tokio::test]
     async fn test_new(
         temp_dir: TempDir,

@@ -238,6 +238,7 @@ pub(crate) struct Chain {
     /// Legacy field for the YAML format. We only ever supported JSON in the
     /// past, so the importer can just assume the content type is JSON.
     #[serde(rename = "content_type")]
+    #[serde(default)]
     pub(crate) _content_type: serde::de::IgnoredAny,
 }
 

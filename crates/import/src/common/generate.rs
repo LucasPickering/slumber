@@ -200,20 +200,22 @@ impl IntoPetitAst for Chain {
                 SelectorMode::Single => Some("single".into()),
                 SelectorMode::Array => Some("array".into()),
             };
+            // The only supported content type in external formats is JSON. We
+            // need to manually parse to JSON here so we can query it. This
+            // ends up looking like:
+            // jsonPath('query', JSON.parse(body_expression))
+            let json_parse_call = FunctionCall::new(
+                Expression::reference("JSON").property("parse"),
+                [body_expression],
+            );
             let json_path_call = FunctionCall::named(
                 "jsonPath",
                 with_kwargs(
-                    [selector.to_string().into(), body_expression],
+                    [selector.to_string().into(), json_parse_call.into()],
                     [("mode", mode)],
                 ),
             );
-            // The only supported content type in external formats is JSON. We
-            // need to manually parse to JSON here so we can query it
-            body_expression = FunctionCall::new(
-                Expression::reference("JSON").property("parse"),
-                [json_path_call.into()],
-            )
-            .into();
+            body_expression = json_path_call.into();
         }
 
         FunctionDefinition::new(

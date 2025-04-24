@@ -50,8 +50,8 @@ impl RecipeTree {
             map: &IndexMap<RecipeId, RecipeNode>,
         ) -> Result<(), DuplicateRecipeIdError> {
             for (id, node) in map.iter() {
-                let evicted = ids.insert(id.clone());
-                if evicted {
+                let is_new = ids.insert(id.clone());
+                if !is_new {
                     return Err(DuplicateRecipeIdError(id.clone()));
                 }
 

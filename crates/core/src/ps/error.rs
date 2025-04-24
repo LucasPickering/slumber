@@ -6,8 +6,6 @@ use std::{io, iter, path::PathBuf, sync::Arc};
 use thiserror::Error;
 
 /// Any error that can occur in a function of the `slumber` PS module
-///
-/// TODO fix dupe error message in chain display
 #[derive(Debug, Error)]
 pub enum FunctionError {
     /// Error executing an external command

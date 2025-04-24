@@ -185,7 +185,7 @@ impl Draw for AuthenticationDisplay {
                 );
             }
             State::Bearer { token } => {
-                token.with_text(|text| frame.render_widget(text, content_area));
+                frame.render_widget(token.text(), content_area);
             }
         }
     }

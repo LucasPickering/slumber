@@ -101,7 +101,7 @@ impl RecipeProcedure {
         self.0.get_mut().reset_override();
     }
 
-    /// TODO
+    /// Get the current visible value
     pub fn value(&self) -> String {
         self.0
             .override_value
@@ -112,14 +112,12 @@ impl RecipeProcedure {
     /// Call a function with access to the visible text of this procedure. This
     /// will use the override text if the user has set one, otherwise the
     /// rendered preview.
-    /// TODO come up with a better pattern than this
-    pub fn with_text(&self, f: impl FnOnce(&Identified<Text<'static>>)) {
-        let text = if let Some(text) = &self.0.override_text {
+    pub fn text(&self) -> &Identified<Text<'static>> {
+        if let Some(text) = &self.0.override_text {
             text
         } else {
             self.0.preview.text()
-        };
-        f(text)
+        }
     }
 
     /// Get a clone of the text of this procedure. If an override is available,

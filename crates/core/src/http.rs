@@ -493,9 +493,10 @@ impl Recipe {
         &self,
         renderer: &Renderer,
     ) -> anyhow::Result<Option<Authentication<String>>> {
-        // TODO support overrides
+        let overrides = &renderer.context().overrides;
         match self.authentication.as_ref() {
             Some(Authentication::Basic { username, password }) => {
+                // TODO support overrides
                 let (username, password) = try_join!(
                     async {
                         renderer
@@ -518,11 +519,21 @@ impl Recipe {
             }
 
             Some(Authentication::Bearer { token }) => {
-                let token = renderer
-                    .render(token)
-                    .await
-                    .context("Error rendering bearer token")?;
-                Ok(Some(Authentication::Bearer { token }))
+                match overrides.get(&OverrideKey::AuthenticationToken) {
+                    Some(OverrideValue::Omit) => Ok(None),
+                    Some(OverrideValue::Override(token)) => {
+                        Ok(Some(Authentication::Bearer {
+                            token: token.clone(),
+                        }))
+                    }
+                    None => {
+                        let token = renderer
+                            .render(token)
+                            .await
+                            .context("Error rendering bearer token")?;
+                        Ok(Some(Authentication::Bearer { token }))
+                    }
+                }
             }
             None => Ok(None),
         }
@@ -669,14 +680,14 @@ impl From<HttpMethod> for reqwest::Method {
 async fn render_all<'a, V>(
     renderer: &Renderer,
     iter: impl Iterator<Item = (&'a str, &'a Procedure)>,
-    key_fn: impl Fn(Cow<'a, str>) -> OverrideKey<'a>,
+    override_key_fn: impl Fn(Cow<'a, str>) -> OverrideKey<'a>,
 ) -> anyhow::Result<Vec<(String, V)>>
 where
     V: FromRendered,
 {
     let overrides = &renderer.context().overrides;
     let futures = iter.filter_map(|(key, procedure)| {
-        match overrides.get(&key_fn(key.into())) {
+        match overrides.get(&override_key_fn(key.into())) {
             // Skip this field
             Some(OverrideValue::Omit) => None,
             // Use the given value instead of rendering

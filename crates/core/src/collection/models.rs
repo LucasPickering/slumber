@@ -11,7 +11,7 @@ use crate::{
 use derive_more::{Deref, Display, From, Into};
 use indexmap::IndexMap;
 use mime::Mime;
-use petitscript::{error::ValueError, value::FromPs};
+use petitscript::{error::ValueError, value::FromPetit};
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use std::iter;
@@ -248,9 +248,9 @@ impl slumber_util::Factory<&str> for Recipe {
 #[serde(transparent)]
 pub struct RecipeId(String);
 
-impl FromPs for RecipeId {
-    fn from_ps(value: petitscript::Value) -> Result<Self, ValueError> {
-        let string = value.into_todo::<String>()?;
+impl FromPetit for RecipeId {
+    fn from_petit(value: petitscript::Value) -> Result<Self, ValueError> {
+        let string = String::from_petit(value)?;
         Ok(Self(string))
     }
 }

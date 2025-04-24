@@ -67,8 +67,10 @@ impl CollectionFile {
             .map(Self)
     }
 
-    /// Load a collection from this file, using the given JS engine to execute
-    /// the file. TODO
+    /// Load a collection from this file, using the given PS engine to execute
+    /// the file. The returned value will contain the loaded collection as well
+    /// as the PS process that loaded it. The process can be used to invoke
+    /// render functions.
     pub fn load(
         &self,
         engine: &PetitEngine,

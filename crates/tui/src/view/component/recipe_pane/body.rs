@@ -144,9 +144,7 @@ impl RawBody {
 
     /// Open rendered body in the pager
     fn view_body(&self) {
-        self.body.with_text(|text| {
-            view_text(text, self.mime.clone());
-        });
+        view_text(self.body.text(), self.mime.clone());
     }
 
     /// Send a message to open the body in an external editor. We have to write
@@ -236,21 +234,19 @@ impl EventHandler for RawBody {
 impl Draw for RawBody {
     fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
         let area = metadata.area();
-        // Get a cheap reference, to avoid cloning large bodies
-        self.body.with_text(|text| {
-            self.text_window.draw(
-                frame,
-                TextWindowProps {
-                    text,
-                    margins: ScrollbarMargins {
-                        right: 1,
-                        bottom: 1,
-                    },
+        self.text_window.draw(
+            frame,
+            TextWindowProps {
+                // Get a cheap reference, to avoid cloning large bodies
+                text: self.body.text(),
+                margins: ScrollbarMargins {
+                    right: 1,
+                    bottom: 1,
                 },
-                area,
-                true,
-            );
-        });
+            },
+            area,
+            true,
+        );
     }
 }
 

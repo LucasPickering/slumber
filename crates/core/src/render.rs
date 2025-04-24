@@ -141,7 +141,7 @@ impl Renderer {
         // TODO error context here?
         let process = self.process.clone();
         let return_value =
-            task::spawn_blocking(move || process.call(&function, &[]))
+            task::spawn_blocking(move || process.call(&function, vec![]))
                 .await??;
         Ok(return_value)
     }

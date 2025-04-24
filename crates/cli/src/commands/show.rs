@@ -31,7 +31,7 @@ impl Subcommand for ShowCommand {
     async fn execute(self, global: GlobalArgs) -> anyhow::Result<ExitCode> {
         match self.target {
             ShowTarget::Paths => {
-                let collection_file = global.collection_path();
+                let collection_file = global.collection_file();
                 println!("Config: {}", Config::path().display());
                 println!("Database: {}", Database::path().display());
                 println!("Log file: {}", paths::log_file().display());

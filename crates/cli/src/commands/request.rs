@@ -182,7 +182,7 @@ impl BuildRequestCommand {
         trigger_dependencies: bool,
     ) -> anyhow::Result<(CollectionDatabase, HttpEngine, RequestSeed, Renderer)>
     {
-        let collection_file = global.collection_path()?;
+        let collection_file = global.collection_file()?;
         let config = Config::load()?;
         let engine = PetitEngine::new();
         let LoadedCollection {

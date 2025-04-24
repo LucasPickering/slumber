@@ -16,7 +16,7 @@ use indexmap::indexmap;
 use petitscript::{
     Engine, Exports, Process, Value,
     error::ValueError,
-    value::{FromPs, FromPsArgs, IntoPsResult},
+    value::{FromPetit, FromPetitArgs, IntoPetitResult},
 };
 use serde::{Deserialize, de::IntoDeserializer};
 use serde_json_path::JsonPath;
@@ -26,8 +26,6 @@ use tokio::{
     fs, io::AsyncWriteExt, process::Command, runtime::Handle, sync::oneshot,
 };
 use tracing::{debug, debug_span};
-
-// TODO eliminate need for clones across lang barrier
 
 /// Create the `slumber` module and register it in with the engine
 pub fn register_module(engine: &mut Engine) {
@@ -51,7 +49,7 @@ pub fn register_module(engine: &mut Engine) {
 
 /// Wrap an async function to make it sync by spawning it on the runtime and
 /// blocking on that task
-fn sync<Args: FromPsArgs, Out: IntoPsResult>(
+fn sync<Args: FromPetitArgs, Out: IntoPetitResult>(
     f: impl 'static + AsyncFn(&Process, Args) -> Out,
 ) -> impl 'static + Fn(&Process, Args) -> Out {
     move |process, args| {
@@ -109,7 +107,7 @@ async fn command(
     }
     .await
     .map_err(|error| FunctionError::Command {
-        program: program.into(),
+        program: program.clone(),
         args: args.into(),
         error,
     })?;
@@ -373,8 +371,8 @@ fn sensitive(
 /// TODO
 struct Todo<T>(T);
 
-impl<'de, T: Deserialize<'de>> FromPs for Todo<T> {
-    fn from_ps(value: Value) -> Result<Self, ValueError> {
+impl<'de, T: Deserialize<'de>> FromPetit for Todo<T> {
+    fn from_petit(value: Value) -> Result<Self, ValueError> {
         let deserializer = value.into_deserializer();
         serde_path_to_error::deserialize(deserializer)
             .map(Self)
@@ -388,8 +386,8 @@ impl<'de, T: Deserialize<'de>> FromPs for Todo<T> {
 /// fallback for all fields when the argument isn't passed.
 struct Kwargs<T>(T);
 
-impl<'de, T: Default + Deserialize<'de>> FromPs for Kwargs<T> {
-    fn from_ps(value: Value) -> Result<Self, ValueError> {
+impl<'de, T: Default + Deserialize<'de>> FromPetit for Kwargs<T> {
+    fn from_petit(value: Value) -> Result<Self, ValueError> {
         match value {
             // If the arg wasn't passed, fall back to the default
             Value::Undefined => Ok(Self(T::default())),
@@ -499,19 +497,6 @@ impl RenderContext {
 
         // Helper to execute the request, if triggered
         let send_request = || async {
-            // There are 3 different ways we can generate the request config:
-            // 1. Default (enable all query params/headers)
-            // 2. Load from UI app_data for both TUI and CLI
-            // 3. Load from UI app_data for TUI, enable all for CLI
-            // These all have their own issues:
-            // 1. Triggered request doesn't necessarily match behavior if user
-            //  were to execute the request themself
-            // 2. CLI behavior is silently controlled by UI app_data
-            // 3. TUI and CLI behavior may not match
-            // All 3 options are unintuitive in some way, but 1 is the easiest
-            // to implement so I'm going with that for now.
-            // TODO move this comment somewhere more appropriate ^
-
             // Fork the process so we can run a sub-render
             let renderer = Renderer::forked(process);
             self.http_provider

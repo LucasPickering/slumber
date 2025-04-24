@@ -10,10 +10,9 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use petitscript::ast::{
     ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
-    FunctionCall, FunctionDeclaration, FunctionDefinition, Identifier,
-    ImportDeclaration, IntoExpression, IntoNode, IntoStatement, Literal,
-    Module, Node, ObjectLiteral, Statement, TemplateChunk, TemplateLiteral,
-    Walk,
+    FunctionCall, FunctionDefinition, Identifier, ImportDeclaration,
+    IntoExpression, IntoNode, IntoStatement, Literal, Module, Node,
+    ObjectLiteral, Statement, TemplateChunk, TemplateLiteral, Walk,
 };
 use slumber_core::collection::RecipeId;
 
@@ -52,12 +51,12 @@ impl IntoPetitAst for Collection {
 
         // Generate an exported object literal for both profiles and recipes
         statements.push(
-            Declaration::lexical("profiles", self.profiles.into_ast().into())
+            Declaration::new("profiles", self.profiles.into_ast().into())
                 .export()
                 .s(),
         );
         statements.push(
-            Declaration::lexical("requests", self.recipes.into_ast().into())
+            Declaration::new("requests", self.recipes.into_ast().into())
                 .export()
                 .s(),
         );
@@ -88,7 +87,7 @@ impl IntoPetitAst for Collection {
 }
 
 impl IntoPetitAst for Chain {
-    type Output = FunctionDeclaration;
+    type Output = Declaration;
 
     /// Generate a statement that declares a function. The function's execution
     /// will be equivalent to evaluating this chain.

@@ -8,15 +8,15 @@ import {
   sensitive,
 } from "slumber";
 
-function username() {
+const username = () => {
   return sensitive(command(["whoami"]).trim());
-}
+};
 
-function password() {
+const password = () => {
   return prompt({ message: "Password", sensitive: true });
-}
+};
 
-function selectValue() {
+const selectValue = () => {
   return select(
     [
       "foo",
@@ -27,18 +27,18 @@ function selectValue() {
     ],
     { message: "Select a value" }
   );
-}
+};
 
 // Example of generating a selection list dynamically
-function selectDynamic() {
+const selectDynamic = () => {
   const resp = response("login", {
     trigger: { type: "expire", duration: "12h" },
   });
   const options = Object.values(JSON.parse(resp).form);
   return select(options, { message: "Select a value" });
-}
+};
 
-function authToken() {
+const authToken = () => {
   const resp = JSON.parse(
     response("login", { trigger: { type: "expire", duration: "12h" } })
   );
@@ -46,7 +46,7 @@ function authToken() {
   // Pick some arbitrary data from the login response as the token
   const token = JSON.stringify(resp.form);
   return command(["base64"], { stdin: token }).trim();
-}
+};
 
 const recipeBase = {
   type: "request",

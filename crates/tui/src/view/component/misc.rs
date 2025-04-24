@@ -221,13 +221,11 @@ impl Modal for SelectListModal {
         // The modal is closed, but only submit the value if it was closed
         // because the user selected a value (submitted).
         if submitted {
-            // Return the user's value and close the prompt
-            (self.on_submit)(
-                self.options
-                    .into_data()
-                    .into_selected()
-                    .expect("User submitted something"),
-            );
+            // Return the user's value and close the prompt. Value can be empty
+            // if the select list is empty
+            let selected =
+                self.options.into_data().into_selected().unwrap_or_default();
+            (self.on_submit)(selected);
         }
     }
 }

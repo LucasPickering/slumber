@@ -20,9 +20,9 @@ on:
   # Deploy website when release is published. This is a manual edit. Eventually
   # hopefully we can configure oranda to do generate it like this
   # https://github.com/axodotdev/oranda/issues/646
-  release:
-    # This only triggers for stable releases
-    types: [released]
+  push:
+    tags:
+      - "**[0-9]+.[0-9]+.[0-9]+*"
 
   # Run manually
   workflow_dispatch:

@@ -2449,7 +2449,7 @@ dependencies = [
 
 [[package]]
 name = "slumber"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "slumber_cli",
@@ -2462,7 +2462,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_cli"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2493,7 +2493,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_config"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -2514,7 +2514,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_core"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2554,7 +2554,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_import"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "indexmap",
@@ -2579,7 +2579,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_tui"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2619,7 +2619,7 @@ dependencies = [
 
 [[package]]
 name = "slumber_util"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "dirs",

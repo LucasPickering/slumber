@@ -9,17 +9,7 @@ use crate::{
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Deserializer, de};
-use std::hash::Hash;
-
-/// A type that has an `id` field. This is ripe for a derive macro, maybe a fun
-/// project some day?
-pub trait HasId {
-    type Id: Clone + Eq + Hash;
-
-    fn id(&self) -> &Self::Id;
-
-    fn set_id(&mut self, id: Self::Id);
-}
+use slumber_util::{HasId, deserialize_id_map};
 
 impl HasId for Profile {
     type Id = ProfileId;
@@ -67,27 +57,6 @@ impl HasId for Recipe {
 /// default
 pub fn persist_default() -> bool {
     true
-}
-
-/// Deserialize a map, and update each key so its `id` field matches its key in
-/// the map. Useful if you need to access the ID when you only have a value
-/// available, not the full entry.
-pub fn deserialize_id_map<'de, Map, V, D>(
-    deserializer: D,
-) -> Result<Map, D::Error>
-where
-    Map: Deserialize<'de>,
-    for<'m> &'m mut Map: IntoIterator<Item = (&'m V::Id, &'m mut V)>,
-    D: Deserializer<'de>,
-    V: Deserialize<'de> + HasId,
-    V::Id: Deserialize<'de>,
-{
-    let mut map: Map = Map::deserialize(deserializer)?;
-    // Update the ID on each value to match the key
-    for (k, v) in &mut map {
-        v.set_id(k.clone());
-    }
-    Ok(map)
 }
 
 /// Deserialize a profile mapping. This also enforces that only one profile is

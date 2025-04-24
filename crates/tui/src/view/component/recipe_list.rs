@@ -26,8 +26,9 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use slumber_config::Action;
 use slumber_core::collection::{
-    HasId, RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType, RecipeTree,
+    RecipeId, RecipeLookupKey, RecipeNode, RecipeNodeType, RecipeTree,
 };
+use slumber_util::HasId;
 use std::collections::HashSet;
 use strum::IntoEnumIterator;
 

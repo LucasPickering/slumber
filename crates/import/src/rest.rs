@@ -4,8 +4,8 @@
 
 use crate::common::{
     Authentication, Chain, ChainId, ChainOutputTrim, ChainSource, Collection,
-    HasId, HttpMethod, Identifier, Profile, ProfileId, Recipe, RecipeBody,
-    RecipeId, RecipeNode, RecipeTree, SelectorMode, Template,
+    HttpMethod, Identifier, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
+    RecipeNode, RecipeTree, SelectorMode, Template,
 };
 use anyhow::anyhow;
 use indexmap::IndexMap;
@@ -16,7 +16,7 @@ use rest_parser::{
     template::{Template as RestTemplate, TemplatePart as RestTemplatePart},
 };
 use serde::de::IgnoredAny;
-use slumber_util::ResultTraced;
+use slumber_util::{HasId, ResultTraced};
 use std::path::Path;
 use tracing::error;
 

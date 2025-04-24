@@ -5,7 +5,6 @@ mod cereal;
 mod models;
 mod recipe_tree;
 
-pub use cereal::HasId;
 pub use models::*;
 pub use recipe_tree::*;
 

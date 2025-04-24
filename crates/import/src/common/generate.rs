@@ -260,7 +260,7 @@ impl IntoPetitAst for RecipeTree {
     /// Recursively generate an object literal representing an entire recipe
     /// tree
     fn into_ast(self) -> Self::Output {
-        self.tree.into_ast()
+        self.into_map().into_ast()
     }
 }
 

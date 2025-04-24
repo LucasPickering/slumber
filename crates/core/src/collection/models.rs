@@ -117,7 +117,7 @@ pub struct Folder {
     /// RECURSION. Use `requests` in serde to match the root field.
     #[serde(
         default,
-        deserialize_with = "cereal::deserialize_id_map",
+        deserialize_with = "slumber_util::deserialize_id_map",
         rename = "requests"
     )]
     pub children: IndexMap<RecipeId, RecipeNode>,

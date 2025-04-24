@@ -2,7 +2,7 @@
 //! format
 
 use crate::common::{
-    self, Chain, ChainId, ChainSource, Collection, Folder, HasId, HttpMethod,
+    self, Chain, ChainId, ChainSource, Collection, Folder, HttpMethod,
     Identifier, Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
     RecipeTree, SelectorMode, Template,
 };
@@ -12,7 +12,7 @@ use itertools::Itertools;
 use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Deserializer, de::Error as _};
-use slumber_util::NEW_ISSUE_LINK;
+use slumber_util::{HasId, NEW_ISSUE_LINK};
 use std::{
     collections::HashMap, fmt::Display, fs::File, path::Path, str::FromStr,
 };

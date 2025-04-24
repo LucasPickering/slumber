@@ -15,7 +15,6 @@ mod recipe_tree;
 mod template;
 
 pub(crate) use crate::common::{
-    cereal::HasId,
     recipe_tree::{DuplicateRecipeIdError, RecipeNode, RecipeTree},
     template::{Identifier, Template},
 };

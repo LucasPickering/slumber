@@ -1,12 +1,11 @@
 //! Recipe/folder tree structure
 
-use crate::collection::{
-    Folder, HasId, Recipe, RecipeId, cereal::deserialize_id_map,
-};
+use crate::collection::{Folder, Recipe, RecipeId};
 use anyhow::anyhow;
 use derive_more::From;
 use indexmap::{IndexMap, map::Values};
 use serde::{Deserialize, Deserializer, Serialize, de::Error};
+use slumber_util::{HasId, deserialize_id_map};
 use strum::EnumDiscriminants;
 use thiserror::Error;
 

@@ -23,10 +23,8 @@ use ratatui::{
     widgets::{Row, TableState},
 };
 use slumber_config::Action;
-use slumber_core::{
-    collection::HasId,
-    render::{OverrideKey, OverrideValue, Overrides, Procedure},
-};
+use slumber_core::render::{OverrideKey, OverrideValue, Overrides, Procedure};
+use slumber_util::HasId;
 use std::borrow::Cow;
 
 /// A table of key-value mappings. This is used in a new places in the recipe

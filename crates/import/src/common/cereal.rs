@@ -13,16 +13,7 @@ use serde::{
         Visitor,
     },
 };
-use std::hash::Hash;
-
-/// TODO dedupe this
-pub trait HasId {
-    type Id: Clone + Eq + Hash;
-
-    fn id(&self) -> &Self::Id;
-
-    fn set_id(&mut self, id: Self::Id);
-}
+use slumber_util::HasId;
 
 impl HasId for Profile {
     type Id = ProfileId;

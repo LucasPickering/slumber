@@ -1,7 +1,7 @@
 //! General test utilities, that apply to all parts of the program
 
 use crate::{
-    collection::{HasId, ProfileId, RecipeId},
+    collection::{ProfileId, RecipeId},
     database::CollectionDatabase,
     http::{Exchange, HttpEngine, RequestSeed},
     render::{
@@ -13,6 +13,7 @@ use indexmap::IndexMap;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
 use slumber_config::HttpEngineConfig;
+use slumber_util::HasId;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Create an HTTP engine for building/sending requests. This is a singleton

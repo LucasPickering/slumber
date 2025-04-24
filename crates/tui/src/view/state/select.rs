@@ -9,7 +9,7 @@ use ratatui::{
     widgets::{ListState, StatefulWidget, TableState},
 };
 use slumber_config::Action;
-use slumber_core::collection::HasId;
+use slumber_util::HasId;
 use std::{
     cell::RefCell,
     fmt::Debug,

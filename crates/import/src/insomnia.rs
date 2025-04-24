@@ -500,8 +500,8 @@ fn build_chains(requests: &[Request]) -> IndexMap<ChainId, Chain> {
                         sensitive: false,
                         selector: None,
                         selector_mode: SelectorMode::default(),
-                        content_type: None,
                         trim: Default::default(),
+                        _content_type: serde::de::IgnoredAny,
                     },
                 );
             }

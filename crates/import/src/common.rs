@@ -17,7 +17,7 @@ pub(crate) use crate::common::{
 // TODO break this dependency
 pub use slumber_core::{
     collection::{ProfileId, RecipeId},
-    http::{HttpMethod, content_type::ContentType},
+    http::HttpMethod,
     util::NEW_ISSUE_LINK,
 };
 
@@ -165,14 +165,12 @@ pub(crate) struct Chain {
     /// Control selector behavior relative to number of query results
     #[serde(default)]
     pub(crate) selector_mode: SelectorMode,
-    /// Hard-code the content type of the response. Only needed if a selector
-    /// is given and the content type can't be dynamically determined
-    /// correctly. This is needed if the chain source is not an HTTP
-    /// response (e.g. a file) **or** if the response's `Content-Type` header
-    /// is incorrect.
-    pub(crate) content_type: Option<ContentType>,
     #[serde(default)]
     pub(crate) trim: ChainOutputTrim,
+    /// Legacy field for the YAML format. We only ever supported JSON in the
+    /// past, so the importer can just assume the content type is JSON.
+    #[serde(rename = "content_type")]
+    pub(crate) _content_type: serde::de::IgnoredAny,
 }
 
 /// Unique ID for a chain, provided by the user

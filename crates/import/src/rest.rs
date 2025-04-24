@@ -4,20 +4,18 @@
 
 use crate::common::{
     Authentication, Chain, ChainId, ChainOutputTrim, ChainSource, Collection,
-    ContentType, HasId, HttpMethod, Identifier, Profile, ProfileId, Recipe,
-    RecipeBody, RecipeId, RecipeNode, RecipeTree, SelectorMode, Template,
+    HasId, HttpMethod, Identifier, Profile, ProfileId, Recipe, RecipeBody,
+    RecipeId, RecipeNode, RecipeTree, SelectorMode, Template,
 };
 use anyhow::anyhow;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use serde::de::IgnoredAny;
-
-use reqwest::header;
 use rest_parser::{
     Body as RestBody, RestFlavor, RestFormat, RestRequest, RestVariables,
     headers::Authorization as RestAuthorization,
     template::{Template as RestTemplate, TemplatePart as RestTemplatePart},
 };
+use serde::de::IgnoredAny;
 use slumber_util::ResultTraced;
 use std::path::Path;
 use tracing::error;
@@ -106,44 +104,26 @@ fn build_authentication(r_auth: RestAuthorization) -> Authentication {
 fn try_build_chain_from_load_body(
     filepath: RestTemplate,
     recipe_id: &str,
-    headers: &IndexMap<String, RestTemplate>,
-    variables: &RestVariables,
 ) -> anyhow::Result<Chain> {
     let full_id = format!("{recipe_id}_body");
     let id: Identifier = Identifier::escape(&full_id);
 
     let path = try_build_slumber_template(filepath)?;
 
-    let content_type =
-        guess_is_json(headers, variables).then_some(ContentType::Json);
-
     Ok(Chain {
         id: id.into(),
-        content_type,
         trim: ChainOutputTrim::None,
         source: ChainSource::File { path },
         sensitive: false,
         selector: None,
         selector_mode: SelectorMode::Single,
-    })
-}
-
-/// Attempt to use headers to determine if the request is JSON
-fn guess_is_json(
-    r_headers: &IndexMap<String, RestTemplate>,
-    variables: &RestVariables,
-) -> bool {
-    r_headers.iter().any(|(name, value)| {
-        name.to_lowercase() == header::CONTENT_TYPE.as_str()
-            && value.render(variables) == mime::APPLICATION_JSON.to_string()
+        _content_type: serde::de::IgnoredAny,
     })
 }
 
 fn try_build_body(
     body: RestBody,
     recipe_id: &str,
-    headers: &IndexMap<String, RestTemplate>,
-    variables: &RestVariables,
 ) -> anyhow::Result<CompleteBody> {
     // We only want the text for now
     let (template, chain) = match body {
@@ -152,9 +132,7 @@ fn try_build_body(
             (try_build_slumber_template(text)?, None)
         }
         RestBody::LoadFromFile { filepath, .. } => {
-            let chain = try_build_chain_from_load_body(
-                filepath, recipe_id, headers, variables,
-            )?;
+            let chain = try_build_chain_from_load_body(filepath, recipe_id)?;
             let template = Template::from_chain(chain.id().clone());
             (template, Some(chain))
         }
@@ -202,9 +180,7 @@ fn try_build_recipe(
     let authentication = request.authorization.map(build_authentication);
     let query = build_query(request.query);
 
-    let complete_body = request
-        .body
-        .map(|b| try_build_body(b, &id, &request.headers, variables));
+    let complete_body = request.body.map(|b| try_build_body(b, &id));
 
     let (body, chain) = match complete_body {
         Some(Ok(complete)) => (Some(complete.recipe_body), complete.chain),

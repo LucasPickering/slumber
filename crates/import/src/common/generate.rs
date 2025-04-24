@@ -216,8 +216,6 @@ impl IntoPetitAst for Chain {
             .into();
         }
 
-        // TODO implement content_type
-
         FunctionDefinition::new(
             // Chains don't accept params, so the function won't either
             [],

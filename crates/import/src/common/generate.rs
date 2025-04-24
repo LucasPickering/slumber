@@ -19,6 +19,13 @@ use slumber_core::collection::RecipeId;
 
 const CHAIN_FN_PREFIX: &str = "chain_";
 
+impl Collection {
+    /// Convert this collection into a PetitScript program
+    pub fn into_petitscript(self) -> Module {
+        self.into_ast()
+    }
+}
+
 /// Define how a type should be converted into a PetitScript AST
 trait IntoPetitAst {
     /// The AST type generated from this value. This should be as narrow as
@@ -29,13 +36,6 @@ trait IntoPetitAst {
     fn into_ast(self) -> Self::Output;
 }
 
-impl Collection {
-    /// Convert this collection into a PetitScript program
-    pub fn into_petitscript(self) -> Module {
-        self.into_ast()
-    }
-}
-
 impl IntoPetitAst for Collection {
     type Output = Module;
 
@@ -43,6 +43,7 @@ impl IntoPetitAst for Collection {
         let mut statements: Vec<Node<Statement>> = Vec::new();
 
         // For each chain, define a function
+        // TODO order chains by dependency
         statements.extend(
             self.chains
                 .into_values()
@@ -200,11 +201,20 @@ impl IntoPetitAst for Chain {
                 SelectorMode::Single => Some("single".into()),
                 SelectorMode::Array => Some("array".into()),
             };
-            let arguments = with_kwargs(
-                [selector.to_string().into(), body_expression],
-                [("mode", mode)],
+            let json_path_call = FunctionCall::named(
+                "jsonPath",
+                with_kwargs(
+                    [selector.to_string().into(), body_expression],
+                    [("mode", mode)],
+                ),
             );
-            body_expression = FunctionCall::named("jsonPath", arguments).into();
+            // The only supported content type in external formats is JSON. We
+            // need to manually parse to JSON here so we can query it
+            body_expression = FunctionCall::new(
+                Expression::reference("JSON").property("parse"),
+                [json_path_call.into()],
+            )
+            .into();
         }
 
         // TODO implement content_type

@@ -1,11 +1,13 @@
+//! Components and logic common to all import formats. Each format converts to a
+//! common [Collection] struct, then we use that to generate a PetitScript AST.
 //! TODO explain what this is and why it's all duplicated
 
 mod cereal;
-mod ps;
+mod generate;
 mod recipe_tree;
 mod template;
 
-pub use crate::common::{
+pub(crate) use crate::common::{
     cereal::HasId,
     recipe_tree::{DuplicateRecipeIdError, RecipeNode, RecipeTree},
     template::{Identifier, Template},
@@ -19,28 +21,10 @@ pub use slumber_core::{
     util::NEW_ISSUE_LINK,
 };
 
-use anyhow::Context;
 use indexmap::IndexMap;
-use mime::Mime;
 use serde::Deserialize;
 use serde_json_path::JsonPath;
-use slumber_util::{Duration, parse_yaml};
-use std::{fs::File, path::Path};
-use tracing::info;
-
-/// Convert a legacy Slumber YAML collection into the common import format
-pub fn from_yaml(yaml_file: impl AsRef<Path>) -> anyhow::Result<Collection> {
-    let yaml_file = yaml_file.as_ref();
-    info!(file = ?yaml_file, "Loading Slumber YAML collection");
-    let file = File::open(yaml_file).context(format!(
-        "Error opening Slumber YAML collection file {yaml_file:?}"
-    ))?;
-    // Since this is our own format, we're very strict about the import. If it
-    // fails, that should be a fatal bug
-    parse_yaml(file).context(format!(
-        "Error deserializing Slumber YAML collection file {yaml_file:?}",
-    ))
-}
+use slumber_util::Duration;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
@@ -51,69 +35,51 @@ pub fn from_yaml(yaml_file: impl AsRef<Path>) -> anyhow::Result<Collection> {
 #[serde(deny_unknown_fields)]
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
-    pub profiles: IndexMap<ProfileId, Profile>,
+    pub(crate) profiles: IndexMap<ProfileId, Profile>,
     #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
-    pub chains: IndexMap<ChainId, Chain>,
+    pub(crate) chains: IndexMap<ChainId, Chain>,
     /// Internally we call these recipes, but to a user `requests` is more
     /// intuitive
     #[serde(default, rename = "requests")]
-    pub recipes: RecipeTree,
+    pub(crate) recipes: RecipeTree,
     /// A hack-ish to allow users to add arbitrary data to their collection
     /// file without triggering a unknown field error. Ideally we could
     /// ignore anything that starts with `.` (recursively) but that
     /// requires a custom serde impl for each type, or changes to the macro
-    #[serde(default, skip_serializing, rename = ".ignore")]
-    pub _ignore: serde::de::IgnoredAny,
+    #[serde(default, rename = ".ignore")]
+    pub(crate) _ignore: serde::de::IgnoredAny,
 }
 
 /// Mutually exclusive hot-swappable config group
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Profile {
+pub(crate) struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
-    pub id: ProfileId,
-    pub name: Option<String>,
+    pub(crate) id: ProfileId,
+    pub(crate) name: Option<String>,
     /// For the CLI, use this profile when no `--profile` flag is passed. For
     /// the TUI, select this profile by default from the list. Only one profile
     /// in the collection can be marked as default. This is enforced by a
     /// custom deserializer function.
     #[serde(default)]
-    pub default: bool,
-    pub data: IndexMap<String, Template>,
-}
-
-impl Profile {
-    /// Get a presentable name for this profile
-    pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or(&self.id)
-    }
-
-    pub fn default(&self) -> bool {
-        self.default
-    }
+    pub(crate) default: bool,
+    pub(crate) data: IndexMap<String, Template>,
 }
 
 /// A gathering of like-minded recipes and/or folders
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Folder {
+pub(crate) struct Folder {
     #[serde(skip)] // This will be auto-populated from the map key
-    pub id: RecipeId,
-    pub name: Option<String>,
+    pub(crate) id: RecipeId,
+    pub(crate) name: Option<String>,
     /// RECURSION. Use `requests` in serde to match the root field.
     #[serde(
         default,
         deserialize_with = "cereal::deserialize_id_map",
         rename = "requests"
     )]
-    pub children: IndexMap<RecipeId, RecipeNode>,
-}
-
-impl Folder {
-    /// Get a presentable name for this folder
-    pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or(&self.id)
-    }
+    pub(crate) children: IndexMap<RecipeId, RecipeNode>,
 }
 
 /// A definition of how to make a request. This is *not* called `Request` in
@@ -122,34 +88,26 @@ impl Folder {
 /// meaning related to string interpolation.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Recipe {
+pub(crate) struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
-    pub id: RecipeId,
+    pub(crate) id: RecipeId,
     #[serde(default = "cereal::persist_default")]
-    pub persist: bool,
-    pub name: Option<String>,
+    pub(crate) persist: bool,
+    pub(crate) name: Option<String>,
     /// *Not* a template string because the usefulness doesn't justify the
     /// complexity. This gives the user an immediate error if the method is
     /// wrong which is helpful.
-    pub method: HttpMethod,
-    pub url: Template,
-    pub body: Option<RecipeBody>,
-    pub authentication: Option<Authentication>,
+    pub(crate) method: HttpMethod,
+    pub(crate) url: Template,
+    pub(crate) body: Option<RecipeBody>,
+    pub(crate) authentication: Option<Authentication>,
     #[serde(
         default,
         deserialize_with = "cereal::deserialize_query_parameters"
     )]
-    pub query: Vec<(String, Template)>,
+    pub(crate) query: Vec<(String, Template)>,
     #[serde(default, deserialize_with = "cereal::deserialize_headers")]
-    pub headers: IndexMap<String, Template>,
-}
-
-impl Recipe {
-    /// Get a presentable name for this recipe
-    /// TODO delete?
-    pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or(&self.id)
-    }
+    pub(crate) headers: IndexMap<String, Template>,
 }
 
 /// Shortcut for defining authentication method. If this is defined in addition
@@ -160,11 +118,14 @@ impl Recipe {
 /// `T=String`).
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum Authentication<T = Template> {
+pub(crate) enum Authentication {
     /// `Authorization: Basic {username:password | base64}`
-    Basic { username: T, password: Option<T> },
+    Basic {
+        username: Template,
+        password: Option<Template>,
+    },
     /// `Authorization: Bearer {token}`
-    Bearer(T),
+    Bearer(Template),
 }
 
 /// Template for a request body. `Raw` is the "default" variant, which
@@ -174,7 +135,7 @@ pub enum Authentication<T = Template> {
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
 #[derive(Debug)]
-pub enum RecipeBody {
+pub(crate) enum RecipeBody {
     /// Plain string/bytes body
     Raw(Template),
     /// `application/json` body
@@ -185,56 +146,39 @@ pub enum RecipeBody {
     FormMultipart(IndexMap<String, Template>),
 }
 
-impl RecipeBody {
-    /// Get the anticipated MIME type that will appear in the `Content-Type`
-    /// header of a request containing this body. This is *not* necessarily
-    /// the MIME type that will _actually_ be used, as it could be overidden by
-    /// an explicit header.
-    pub fn mime(&self) -> Option<Mime> {
-        match self {
-            Self::Raw(_) => None,
-            Self::Json(_) => Some(mime::APPLICATION_JSON),
-            Self::FormUrlencoded(_) => {
-                Some(mime::APPLICATION_WWW_FORM_URLENCODED)
-            }
-            Self::FormMultipart(_) => Some(mime::MULTIPART_FORM_DATA),
-        }
-    }
-}
-
 /// A chain is a means to data from one response in another request. The chain
 /// is the middleman: it defines where and how to pull the value, then recipes
 /// can use it in a template via `{{chains.<chain_id>}}`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Chain {
+pub(crate) struct Chain {
     #[serde(skip)] // This will be auto-populated from the map key
-    pub id: ChainId,
-    pub source: ChainSource,
+    pub(crate) id: ChainId,
+    pub(crate) source: ChainSource,
     /// Mask chained value in the UI
     #[serde(default)]
-    pub sensitive: bool,
+    pub(crate) sensitive: bool,
     /// Selector to extract a value from the response. This uses JSONPath
     /// regardless of the content type. Non-JSON values will be converted to
     /// JSON, then converted back.
-    pub selector: Option<JsonPath>,
+    pub(crate) selector: Option<JsonPath>,
     /// Control selector behavior relative to number of query results
     #[serde(default)]
-    pub selector_mode: SelectorMode,
+    pub(crate) selector_mode: SelectorMode,
     /// Hard-code the content type of the response. Only needed if a selector
     /// is given and the content type can't be dynamically determined
     /// correctly. This is needed if the chain source is not an HTTP
     /// response (e.g. a file) **or** if the response's `Content-Type` header
     /// is incorrect.
-    pub content_type: Option<ContentType>,
+    pub(crate) content_type: Option<ContentType>,
     #[serde(default)]
-    pub trim: ChainOutputTrim,
+    pub(crate) trim: ChainOutputTrim,
 }
 
 /// Unique ID for a chain, provided by the user
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Deserialize)]
 #[serde(transparent)]
-pub struct ChainId(Identifier);
+pub(crate) struct ChainId(Identifier);
 
 impl From<Identifier> for ChainId {
     fn from(identifier: Identifier) -> Self {
@@ -245,7 +189,7 @@ impl From<Identifier> for ChainId {
 /// The source of data for a chain
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum ChainSource {
+pub(crate) enum ChainSource {
     /// Run an external command to get a result
     Command {
         command: Vec<Template>,
@@ -284,7 +228,7 @@ pub enum ChainSource {
 /// Static or dynamic list of options for a select chain
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-pub enum SelectOptions {
+pub(crate) enum SelectOptions {
     Fixed(Vec<Template>),
     /// Render a template, then parse its output as a JSON array to get options
     Dynamic(Template),
@@ -293,7 +237,7 @@ pub enum SelectOptions {
 /// The component of the response to use as the chain source
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum ChainRequestSection {
+pub(crate) enum ChainRequestSection {
     #[default]
     Body,
     /// Pull a value from a response's headers. If the given header appears
@@ -305,7 +249,7 @@ pub enum ChainRequestSection {
 /// dependency request.
 #[derive(Copy, Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum ChainRequestTrigger {
+pub(crate) enum ChainRequestTrigger {
     /// Never trigger the request. This is the default because upstream
     /// requests could be mutating, so we want the user to explicitly opt into
     /// automatic execution.
@@ -323,7 +267,7 @@ pub enum ChainRequestTrigger {
 /// Control how a JSONPath selector returns 0 vs 1 vs 2+ results
 #[derive(Copy, Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum SelectorMode {
+pub(crate) enum SelectorMode {
     /// 0 - Error
     /// 1 - Single result, without wrapping quotes
     /// 2 - JSON array
@@ -342,7 +286,7 @@ pub enum SelectorMode {
 /// Trim whitespace from rendered output
 #[derive(Copy, Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub enum ChainOutputTrim {
+pub(crate) enum ChainOutputTrim {
     /// Do not trim the output
     #[default]
     None,
@@ -352,12 +296,4 @@ pub enum ChainOutputTrim {
     End,
     /// Trim the start and end of the output
     Both,
-}
-
-impl Collection {
-    /// Get the profile marked as `default: true`, if any. At most one profile
-    /// can be marked as default.
-    pub fn default_profile(&self) -> Option<&Profile> {
-        self.profiles.values().find(|profile| profile.default)
-    }
 }

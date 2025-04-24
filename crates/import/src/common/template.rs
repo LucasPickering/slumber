@@ -38,7 +38,7 @@ const ENV_PREFIX: &str = "env.";
 ///   chunks, and vice versa
 /// - No two raw segments will ever be consecutive
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Template {
+pub(crate) struct Template {
     /// Pre-parsed chunks of the template. For raw chunks we store the
     /// presentation text (which is not necessarily the source text, as escape
     /// sequences will be eliminated). For keys, just store the needed

@@ -519,21 +519,22 @@ impl Recipe {
             }
 
             Some(Authentication::Bearer { token }) => {
-                match overrides.get(&OverrideKey::AuthenticationToken) {
-                    Some(OverrideValue::Omit) => Ok(None),
-                    Some(OverrideValue::Override(token)) => {
-                        Ok(Some(Authentication::Bearer {
-                            token: token.clone(),
-                        }))
-                    }
-                    None => {
+                with_override(
+                    overrides.get(&OverrideKey::AuthenticationToken),
+                    async || {
                         let token = renderer
                             .render(token)
                             .await
                             .context("Error rendering bearer token")?;
-                        Ok(Some(Authentication::Bearer { token }))
-                    }
-                }
+                        Ok(Authentication::Bearer { token })
+                    },
+                    |token| {
+                        Ok(Authentication::Bearer {
+                            token: token.to_owned(),
+                        })
+                    },
+                )
+                .await
             }
             None => Ok(None),
         }
@@ -549,36 +550,25 @@ impl Recipe {
             return Ok(None);
         };
 
-        let body_override = overrides.get(&OverrideKey::Body);
-        let rendered = match body {
+        match body {
             RecipeBody::Raw { data, .. } => {
-                match body_override {
-                    Some(OverrideValue::Omit) => return Ok(None),
-                    Some(OverrideValue::Override(value)) => {
-                        RenderedBody::Raw(value.clone().into())
-                    }
-                    // Render normal body
-                    None => RenderedBody::Raw(
-                        renderer
+                with_override(
+                    overrides.get(&OverrideKey::Body),
+                    async || {
+                        let body = renderer
                             .render::<Bytes>(data)
                             .await
-                            .context("Error rendering body")?,
-                    ),
-                }
+                            .context("Error rendering body")?;
+                        Ok(RenderedBody::Raw(body))
+                    },
+                    |body| Ok(RenderedBody::Raw(body.to_owned().into())),
+                )
+                .await
             }
             RecipeBody::Json { data } => {
-                match body_override {
-                    Some(OverrideValue::Omit) => return Ok(None),
-                    // Override value is a string; parse it as JSON. This allows
-                    // us to pass it back to reqwest as a JSON body, so we can
-                    // use the same downstream code path as non-overrides
-                    Some(OverrideValue::Override(value)) => {
-                        let json = serde_json::from_str(value)
-                            .context("Error parsing body as JSON")?;
-                        RenderedBody::Json(json)
-                    }
-                    // Render normal body
-                    None => {
+                with_override(
+                    overrides.get(&OverrideKey::Body),
+                    async || {
                         let value = renderer
                             .render::<Value>(data)
                             .await
@@ -587,9 +577,18 @@ impl Recipe {
                         // infallible
                         let json = serde_json::to_value(value)
                             .context("Error serializing JSON body")?;
-                        RenderedBody::Json(json)
-                    }
-                }
+                        Ok(RenderedBody::Json(json))
+                    },
+                    // Override value is a string; parse it as JSON. This
+                    // allows us to pass it back to reqwest as a JSON body, so
+                    // we can use the same downstream code path
+                    |value| {
+                        let json = serde_json::from_str(value)
+                            .context("Error parsing body as JSON")?;
+                        Ok(RenderedBody::Json(json))
+                    },
+                )
+                .await
             }
             RecipeBody::FormUrlencoded { data } => {
                 let rendered = render_all(
@@ -599,7 +598,7 @@ impl Recipe {
                 )
                 .await
                 .context("Error rendering form fields")?;
-                RenderedBody::FormUrlencoded(rendered)
+                Ok(Some(RenderedBody::FormUrlencoded(rendered)))
             }
             RecipeBody::FormMultipart { data } => {
                 let rendered = render_all(
@@ -609,10 +608,9 @@ impl Recipe {
                 )
                 .await
                 .context("Error rendering form fields")?;
-                RenderedBody::FormMultipart(rendered)
+                Ok(Some(RenderedBody::FormMultipart(rendered)))
             }
-        };
-        Ok(Some(rendered))
+        }
     }
 }
 
@@ -708,6 +706,25 @@ where
         }
     });
     try_join_all(futures).await
+}
+
+/// If an override value is present, use it. If the override says to omit the
+/// field, return `Ok(None)`. Otherwise, call the render function and return
+/// that value. The given `map` function is applied to the output string,
+/// whether it was rendered or from the override.
+async fn with_override<T>(
+    override_value: Option<&OverrideValue>,
+    render: impl AsyncFnOnce() -> anyhow::Result<T>,
+    map_override: impl FnOnce(&str) -> anyhow::Result<T>,
+) -> anyhow::Result<Option<T>> {
+    match override_value {
+        Some(OverrideValue::Omit) => Ok(None),
+        Some(OverrideValue::Override(value)) => Ok(Some(map_override(value)?)),
+        None => {
+            let value = render().await?;
+            Ok(Some(value))
+        }
+    }
 }
 
 /// Trim the bytes from the beginning and end of a vector that match the given

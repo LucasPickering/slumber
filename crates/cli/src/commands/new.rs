@@ -6,7 +6,7 @@ use std::{fs::OpenOptions, io::Write, path::PathBuf, process::ExitCode};
 /// We use a static source file, to get control of whitespace/comments.
 /// Generating a collection and serializing it would be like driving from the
 /// back seat with a broom stick.
-const SOURCE: &[u8] = include_bytes!("new.js");
+const SOURCE: &str = include_str!("new.js");
 const DEFAULT_PATH: &str = "slumber.js";
 
 /// Generate a new Slumber collection file
@@ -34,7 +34,7 @@ impl Subcommand for NewCommand {
             .truncate(self.overwrite)
             .open(&path)
             .with_context(|| format!("Error opening file {path:?}"))?;
-        file.write_all(SOURCE)
+        file.write_all(SOURCE.as_bytes())
             .with_context(|| format!("Error writing to file {path:?}"))?;
 
         eprintln!("New collection created at `{}`", path.display());
@@ -53,7 +53,8 @@ mod tests {
         collection::{
             Collection, Folder, Profile, Recipe, RecipeBody, RecipeNode,
         },
-        http::{HttpMethod, content_type::ContentType},
+        http::HttpMethod,
+        ps::PetitEngine,
         test_util::by_id,
     };
     use slumber_util::{Factory, TempDir, temp_dir};
@@ -85,7 +86,7 @@ mod tests {
         };
 
         command.execute(global_args).await.unwrap();
-        let contents = fs::read(&expected_created_path)
+        let contents = fs::read_to_string(&expected_created_path)
             .with_context(|| {
                 format!(
                     "Error reading results from expected output path \
@@ -100,7 +101,10 @@ mod tests {
     /// specific contents
     #[test]
     fn test_deserialize() {
-        let collection: Collection = serde_yaml::from_slice(SOURCE).unwrap();
+        let collection = PetitEngine::new()
+            .load_collection(SOURCE)
+            .unwrap()
+            .collection;
         let expected = Collection {
             profiles: by_id([Profile {
                 id: "example".into(),
@@ -109,16 +113,6 @@ mod tests {
                 data: indexmap! {
                     "host".into() => "https://httpbin.org".into()
                 },
-            }]),
-            chains: by_id([Chain {
-                id: "example".into(),
-                source: ChainSource::Request {
-                    recipe: "example1".into(),
-                    trigger: Default::default(),
-                    section: Default::default(),
-                },
-                selector: Some("$.data".parse().unwrap()),
-                ..Chain::factory(())
             }]),
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
@@ -136,17 +130,14 @@ mod tests {
                         name: Some("Example Request 2".into()),
                         method: HttpMethod::Post,
                         url: "{{host}}/anything".into(),
-                        body: Some(RecipeBody::Raw {
-                            body: "{\n  \"data\": \"{{chains.example}}\"\n}"
-                                .into(),
-                            content_type: Some(ContentType::Json),
+                        body: Some(RecipeBody::Json {
+                            data: "TODO".into(),
                         }),
                         ..Recipe::factory(())
                     })]),
                 }),
             ])
             .into(),
-            _ignore: serde::de::IgnoredAny,
         };
         assert_eq!(collection, expected);
     }

@@ -322,6 +322,22 @@ impl QueryParameterValue {
     }
 }
 
+#[cfg(any(test, feature = "test"))]
+impl From<&str> for QueryParameterValue {
+    fn from(value: &str) -> Self {
+        QueryParameterValue::Single(value.into())
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl<const N: usize> From<[&str; N]> for QueryParameterValue {
+    fn from(value: [&str; N]) -> Self {
+        QueryParameterValue::Many(
+            value.into_iter().map(Procedure::from).collect(),
+        )
+    }
+}
+
 /// Template for a request body. `Raw` is the "default" variant, which
 /// represents a single string (as a procedure). Other variants can be
 /// used for convenience, to construct complex bodies in common formats. The

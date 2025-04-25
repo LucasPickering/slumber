@@ -350,28 +350,18 @@ mod tests {
     /// of enums is a bit different, and we specifically only care about YAML.
     #[rstest]
     #[case::raw(
-        RecipeBody::Raw { body: "{{user_id}}".into(), content_type: None },
+        RecipeBody::Raw("{{user_id}}".into()),
         "{{user_id}}"
     )]
     #[case::json(
-        RecipeBody::Raw {
-            body: serde_json::to_string_pretty(&json!({"user": "{{user_id}}"}))
-                .unwrap()
-                .into(),
-            content_type: Some(ContentType::Json),
-        },
+        RecipeBody::Json(json!({"user": "{{user_id}}"}).into()),
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
             value: mapping([("user", "{{user_id}}")])
         })),
     )]
     #[case::json_nested(
-        RecipeBody::Raw {
-            body: serde_json::to_string_pretty(
-                &json!(r#"{"warning": "NOT an object"}"#)
-            ).unwrap().into(),
-            content_type: Some(ContentType::Json),
-        },
+        RecipeBody::Json(json!(r#"{"warning": "NOT an object"}"#).into()),
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
             value: r#"{"warning": "NOT an object"}"#.into()
@@ -390,16 +380,11 @@ mod tests {
             ])
         }))
     )]
-    fn test_serde_recipe_body(
+    fn test_deserialize_recipe_body(
         #[case] body: RecipeBody,
         #[case] yaml: impl Into<serde_yaml::Value>,
     ) {
         let yaml = yaml.into();
-        assert_eq!(
-            serde_yaml::to_value(&body).unwrap(),
-            yaml,
-            "Serialization mismatch"
-        );
         assert_eq!(
             serde_yaml::from_value::<RecipeBody>(yaml).unwrap(),
             body,

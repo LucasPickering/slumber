@@ -51,6 +51,7 @@ impl Subcommand for ShowCommand {
                 let collection_file = CollectionFile::new(global.file)?;
                 let LoadedCollection { collection, .. } =
                     collection_file.load(&PetitEngine::new())?;
+                // TODO yaml bad
                 println!("{}", to_yaml(&collection));
             }
         }

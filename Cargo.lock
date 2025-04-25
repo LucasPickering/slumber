@@ -2696,6 +2696,7 @@ dependencies = [
  "mime",
  "petitscript",
  "pretty_assertions",
+ "regex",
  "reqwest",
  "rmp-serde",
  "rstest",
@@ -2715,7 +2716,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "winnow 0.6.20",
+ "winnow 0.6.26",
  "wiremock",
 ]
 
@@ -2743,7 +2744,7 @@ dependencies = [
  "strum",
  "thiserror 1.0.69",
  "tracing",
- "winnow 0.6.20",
+ "winnow 0.6.26",
 ]
 
 [[package]]
@@ -2799,7 +2800,7 @@ dependencies = [
  "serde_yaml",
  "tracing",
  "uuid",
- "winnow 0.6.20",
+ "winnow 0.6.26",
 ]
 
 [[package]]
@@ -3748,9 +3749,9 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "winnow"
-version = "0.6.20"
+version = "0.6.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36c1fec1a2bb5866f07c25f68c26e565c4c200aebb96d7e55710c19d3e8ac49b"
+checksum = "1e90edd2ac1aa278a5c4599b1d89cf03074b610800f866d4026dc199d7929a28"
 dependencies = [
  "memchr",
 ]

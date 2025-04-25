@@ -75,7 +75,7 @@ impl CollectionFile {
         &self,
         engine: &PetitEngine,
     ) -> anyhow::Result<LoadedCollection> {
-        engine.load_collection(&self.0)
+        engine.load_collection(self.0.clone())
     }
 
     /// Get the path of the file that this collection was loaded from
@@ -152,8 +152,9 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{http::HttpMethod, test_util::by_id};
+    use crate::{http::HttpMethod, render::Procedure, test_util::by_id};
     use indexmap::indexmap;
+    use petitscript::ast::{FunctionCall, IntoExpression, TemplateLiteral};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde_json::json;
@@ -236,12 +237,13 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_regression(test_data_dir: PathBuf) {
-        let loaded =
-            CollectionFile::new(Some(test_data_dir.join("regression.yml")))
-                .unwrap()
-                .load(&PetitEngine::new())
-                .unwrap()
-                .collection;
+        let LoadedCollection {
+            process,
+            collection: loaded,
+        } = PetitEngine::new()
+            .load_collection(test_data_dir.join("regression.js"))
+            .unwrap();
+
         let expected = Collection {
             profiles: by_id([
                 Profile {
@@ -249,10 +251,9 @@ mod tests {
                     name: Some("Profile 1".into()),
                     default: false,
                     data: indexmap! {
-                        "user_guid".into() => "abc123".into(),
+                        "userGuid".into() => "abc123".into(),
                         "username".into() => "xX{{chains.username}}Xx".into(),
                         "host".into() => "https://httpbin.org".into(),
-
                     },
                 },
                 Profile {
@@ -261,24 +262,34 @@ mod tests {
                     default: true,
                     data: indexmap! {
                         "host".into() => "https://httpbin.org".into(),
-
                     },
                 },
             ]),
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
-                    id: "text_body".into(),
+                    id: "testBody".into(),
                     method: HttpMethod::Post,
-                    url: "{{host}}/anything/login".into(),
+                    url: Procedure::test(
+                        process.clone(),
+                        TemplateLiteral::new([
+                            FunctionCall::named("profile", ["host".into()])
+                                .into_expr()
+                                .into(),
+                            "/anything/".into(),
+                            FunctionCall::named("profile", ["userGuid".into()])
+                                .into_expr()
+                                .into(),
+                        ]),
+                    ),
                     body: Some(RecipeBody::Raw {
                         data: "{\"username\": \"{{username}}\", \
                         \"password\": \"{{chains.password}}\"}"
                             .into(),
                     }),
-                    query: vec![
-                        ("sudo".into(), "yes_please".into()),
-                        ("fast".into(), "no_thanks".into()),
-                    ],
+                    query: indexmap! {
+                        "sudo".into() => "yes_please".into(),
+                        "fast".into() => "no_thanks".into(),
+                    },
                     headers: indexmap! {
                         "accept".into() => "application/json".into(),
                     },
@@ -291,19 +302,22 @@ mod tests {
                         RecipeNode::Recipe(Recipe {
                             id: "simple".into(),
                             name: Some("Get User".into()),
+                            persist: false,
                             method: HttpMethod::Get,
-                            url: "{{host}}/anything/{{user_guid}}".into(),
-                            query: vec![
-                                ("value".into(), "{{field1}}".into()),
-                                ("value".into(), "{{field2}}".into()),
-                            ],
+                            url: "{{host}}/anything/{{userGuid}}".into(),
+                            query: indexmap! {
+                                "value".into() => [
+                                    "{{field1}}",
+                                    "{{field2}}",
+                                ].into(),
+                            },
                             ..Recipe::factory(())
                         }),
                         RecipeNode::Recipe(Recipe {
-                            id: "json_body".into(),
+                            id: "jsonBody".into(),
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
-                            url: "{{host}}/anything/{{user_guid}}".into(),
+                            url: "{{host}}/anything/{{userGuid}}".into(),
                             body: Some(RecipeBody::Json {
                                 data: json!({"username": "new username"})
                                     .into(),
@@ -317,10 +331,10 @@ mod tests {
                             ..Recipe::factory(())
                         }),
                         RecipeNode::Recipe(Recipe {
-                            id: "json_body_but_not".into(),
+                            id: "jsonBodyButNot".into(),
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
-                            url: "{{host}}/anything/{{user_guid}}".into(),
+                            url: "{{host}}/anything/{{userGuid}}".into(),
                             body: Some(RecipeBody::Json {
                                 data: json!(r#"{"warning": "NOT an object"}"#)
                                     .into(),
@@ -335,13 +349,30 @@ mod tests {
                             ..Recipe::factory(())
                         }),
                         RecipeNode::Recipe(Recipe {
-                            id: "form_urlencoded_body".into(),
+                            id: "formUrlencodedBody".into(),
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
-                            url: "{{host}}/anything/{{user_guid}}".into(),
+                            url: "{{host}}/anything/{{userGuid}}".into(),
                             body: Some(RecipeBody::FormUrlencoded {
                                 data: indexmap! {
                                     "username".into() => "new username".into()
+                                },
+                            }),
+                            headers: indexmap! {
+                                "accept".into() => "application/json".into(),
+                                "password".into() => "TODO".into(),
+                            },
+                            ..Recipe::factory(())
+                        }),
+                        RecipeNode::Recipe(Recipe {
+                            id: "formMultipartBody".into(),
+                            name: Some("Modify User".into()),
+                            method: HttpMethod::Put,
+                            url: "{{host}}/anything/{{userGuid}}".into(),
+                            body: Some(RecipeBody::FormMultipart {
+                                data: indexmap! {
+                                    "username".into() => "new username".into(),
+                                    "password".into() => "TODO".into(),
                                 },
                             }),
                             headers: indexmap! {

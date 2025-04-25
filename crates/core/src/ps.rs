@@ -5,9 +5,9 @@ pub use error::FunctionError;
 
 use crate::collection::{Collection, LoadedCollection};
 use anyhow::Context;
-use petitscript::{Engine, Value};
+use petitscript::{Engine, Process, Source, Value, ast::Module};
 use serde::de::IntoDeserializer;
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 use tracing::{info, info_span};
 
 /// An interface for invoking PetitScript. This is cheaply cloneable so it can
@@ -28,32 +28,43 @@ impl PetitEngine {
         }
     }
 
-    /// Load a recipe collection from a JS file. Also return the process that
-    /// it was loaded from, so we can execute further functions
+    /// Load a recipe collection from a PS source. Typically the source is a
+    /// path to a file, but other source types are supported for testing. Also
+    /// return the process that it was loaded from, so we can execute further
+    /// functions
     pub fn load_collection(
         &self,
-        path: &Path,
+        source: impl Source,
     ) -> anyhow::Result<LoadedCollection> {
-        info!(?path, "Loading collection file");
+        info!(?source, "Loading collection file");
 
+        let error_context = format!("Error loading collection from {source:?}");
         let load = || {
-            let process = self.engine.compile(path.to_owned())?;
-            let exports = process.execute()?;
-            // Collection components (profiles, requests, etc.) should be
-            // exported individually. We can treat the whole set of named
-            // exports as our collection, and we'll ignore irrelevant fields
-            let collection_value = Value::from(exports.named);
-            let collection: Collection = serde_path_to_error::deserialize(
-                collection_value.into_deserializer(),
-            )?;
-
-            Ok::<_, anyhow::Error>(LoadedCollection {
-                process,
-                collection,
-            })
+            let process = self.engine.compile(source)?;
+            Self::todo2(process)
         };
-        load()
-            .with_context(|| format!("Error loading collection from {path:?}"))
+        load().context(error_context)
+    }
+
+    /// TODO test only
+    pub fn todo(&self, module: Module) -> anyhow::Result<LoadedCollection> {
+        let process = self.engine.compile_ast(module)?;
+        Self::todo2(process)
+    }
+
+    fn todo2(process: Process) -> anyhow::Result<LoadedCollection> {
+        let exports = process.execute()?;
+        // Collection components (profiles, requests, etc.) should be
+        // exported individually. We can treat the whole set of named
+        // exports as our collection, and we'll ignore irrelevant fields
+        let collection_value = Value::from(exports.named);
+        let collection: Collection = serde_path_to_error::deserialize(
+            collection_value.into_deserializer(),
+        )?;
+        Ok::<_, anyhow::Error>(LoadedCollection {
+            process,
+            collection,
+        })
     }
 }
 

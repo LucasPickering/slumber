@@ -87,7 +87,7 @@ impl CurlBuilder {
                 write!(&mut self.command, " --data '{body}'").unwrap();
             }
             RenderedBody::Json(body) => {
-                write!(&mut self.command, " --data '{body}'").unwrap();
+                write!(&mut self.command, " --json '{body}'").unwrap();
             }
             RenderedBody::FormUrlencoded(form) => {
                 for (field, value) in form {

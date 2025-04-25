@@ -146,7 +146,9 @@ pub(crate) struct Recipe {
 /// ergonomic at the cost of some flexibility.
 ///
 /// The FromStr implementation will be case-insensitive
-#[derive(Copy, Clone, Debug, Display, FromStr, Deserialize, EnumIter)]
+#[derive(
+    Copy, Clone, Debug, Display, FromStr, PartialEq, Deserialize, EnumIter,
+)]
 #[serde(try_from = "String")]
 pub enum HttpMethod {
     #[display("CONNECT")]
@@ -203,6 +205,7 @@ pub(crate) enum Authentication {
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub(crate) enum RecipeBody {
     /// Plain string/bytes body
     Raw(Template),

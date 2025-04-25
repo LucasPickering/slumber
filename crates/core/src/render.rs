@@ -9,12 +9,17 @@ use crate::{
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::Bytes;
-use derive_more::{Display, From};
+use derive_more::From;
 use indexmap::IndexMap;
 use petitscript::{Process, Value, value::Function};
 use serde::{Deserialize, Serialize};
 use slumber_util::ResultTraced;
-use std::{borrow::Cow, fmt::Debug, str::FromStr, sync::Arc};
+use std::{
+    borrow::Cow,
+    fmt::{self, Debug, Display},
+    str::FromStr,
+    sync::Arc,
+};
 use thiserror::Error;
 use tokio::{sync::oneshot, task};
 
@@ -27,44 +32,167 @@ use tokio::{sync::oneshot, task};
 /// The name "procedure" is fairly arbitrary, but it's specific and unique so
 /// it works. This is the successor to Slumber's previous "template" system,
 /// which were declarative strings.
-#[derive(Clone, Debug, Default, Display, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct Procedure(Value);
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(into = "Value", from = "Value")]
+pub struct Procedure(ProcedureInner);
 
 impl Procedure {
     pub fn new(value: impl Into<Value>) -> Self {
-        Self(value.into())
+        Self(ProcedureInner::Value(value.into()))
+    }
+
+    /// TODO
+    #[cfg(test)]
+    pub fn test(
+        process: petitscript::Process,
+        template: petitscript::ast::TemplateLiteral,
+    ) -> Self {
+        use petitscript::ast::{FunctionBody, FunctionDefinition};
+
+        Self(ProcedureInner::Test {
+            process,
+            // All procedures take no args, and the body is typically a single
+            // template literal expression
+            definition: FunctionDefinition::new(
+                [],
+                FunctionBody::expression(template.into()),
+            ),
+        })
     }
 
     /// Is the procedure a function that will be rendered dynamically into
     /// another value?
     pub fn is_dynamic(&self) -> bool {
-        matches!(&self.0, Value::Function(_))
+        matches!(&self.0, ProcedureInner::Value(Value::Function(_)))
     }
 
     /// Get the inner PS value
     pub fn into_value(self) -> Value {
-        self.0
+        match self.0 {
+            ProcedureInner::Value(value) => value,
+            #[cfg(test)]
+            ProcedureInner::Test { .. } => todo!(),
+        }
     }
 }
 
-#[cfg(any(test, feature = "test"))]
-impl From<&str> for Procedure {
-    fn from(_: &str) -> Self {
-        todo!("get rid of this?")
+impl Default for Procedure {
+    fn default() -> Self {
+        Self::new(Value::Undefined)
+    }
+}
+
+impl Display for Procedure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.value())
     }
 }
 
 impl From<String> for Procedure {
     fn from(value: String) -> Self {
-        Procedure(value.into())
+        Self::new(value)
+    }
+}
+
+impl From<Value> for Procedure {
+    fn from(value: Value) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<Procedure> for Value {
+    fn from(procedure: Procedure) -> Self {
+        procedure.into_value()
+    }
+}
+#[cfg(any(test, feature = "test"))]
+impl From<i64> for Procedure {
+    fn from(value: i64) -> Self {
+        Self::new(value)
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<&str> for Procedure {
+    fn from(s: &str) -> Self {
+        Self::new(s)
     }
 }
 
 #[cfg(any(test, feature = "test"))]
 impl From<serde_json::Value> for Procedure {
     fn from(value: serde_json::Value) -> Self {
-        format!("{value:#}").into()
+        // Convert JSON -> PS
+        Self::new(serde_json::from_value::<Value>(value).unwrap())
+    }
+}
+
+/// TODO
+#[derive(Clone, Debug)]
+enum ProcedureInner {
+    Value(Value),
+    /// TODO
+    #[cfg(test)]
+    Test {
+        process: Process,
+        definition: petitscript::ast::FunctionDefinition,
+    },
+}
+
+impl ProcedureInner {
+    /// TODO
+    fn value(&self) -> &Value {
+        match self {
+            ProcedureInner::Value(value) => value,
+            #[cfg(test)]
+            ProcedureInner::Test { .. } => todo!(),
+        }
+    }
+}
+
+impl PartialEq for ProcedureInner {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Value(l0), Self::Value(r0)) => l0 == r0,
+
+            // If we have one function and one function definition, we can
+            // compare the two. This is how we compare dynamic procedures in
+            // tests
+            #[cfg(test)]
+            (
+                Self::Value(Value::Function(function)),
+                Self::Test {
+                    process,
+                    definition: expected,
+                },
+            )
+            | (
+                Self::Test {
+                    process,
+                    definition: expected,
+                },
+                Self::Value(Value::Function(function)),
+            ) => {
+                // Grab the definition for the function and compare it
+                let Ok(actual) = process.get_fn_definition(function) else {
+                    return false;
+                };
+                // Skip comparing name + captures because it's not helpful and
+                // annoying to define in tests
+                actual.parameters == expected.parameters
+                    && actual.body == expected.body
+            }
+
+            #[cfg(test)]
+            (Self::Value(_), Self::Test { .. })
+            | (Self::Test { .. }, Self::Value(_)) => false,
+            #[cfg(test)]
+            (Self::Test { .. }, Self::Test { .. }) => {
+                // Test procedures are meant specifically for assertions against
+                // real procedures, so it doesn't make sense to compare them
+                unimplemented!("Cannot compare two test procedures")
+            }
+        }
     }
 }
 
@@ -118,7 +246,7 @@ impl Renderer {
     where
         T: FromRendered,
     {
-        let value = match &procedure.0 {
+        let value = match procedure.0.value() {
             // Function represents a rendering procedure - call it now
             Value::Function(function) => {
                 self.render_function(function.clone()).await?
@@ -289,6 +417,20 @@ pub enum OverrideValue {
     Override(String),
 }
 
+#[cfg(test)]
+impl From<&str> for OverrideValue {
+    fn from(value: &str) -> Self {
+        Self::Override(value.into())
+    }
+}
+
+#[cfg(test)]
+impl From<String> for OverrideValue {
+    fn from(value: String) -> Self {
+        Self::Override(value)
+    }
+}
+
 /// State to be shared between multiple renders within a single render group
 /// (i.e. a single recipe). This is attached as [app_data](Process::app_data)
 /// on the process so it can be exposed to native PS functions.
@@ -445,5 +587,18 @@ impl From<RequestBuildError> for TriggeredRequestError {
 impl From<RequestError> for TriggeredRequestError {
     fn from(error: RequestError) -> Self {
         Self::Send(error.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    // TODO morte tests
+
+    /// When the same profile field is accessed twice in the same recipe render,
+    /// we should only compute it once
+    #[test]
+    fn test_duplicate_profile_field() {
+        todo!()
     }
 }

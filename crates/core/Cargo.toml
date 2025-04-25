@@ -45,6 +45,7 @@ winnow = {workspace = true}
 [dev-dependencies]
 env-lock = {workspace = true}
 pretty_assertions = {workspace = true}
+regex = { version = "1.11.1", default-features = false }
 rstest = {workspace = true}
 serde_test = {workspace = true}
 slumber_util = {workspace = true, features = ["test"]}

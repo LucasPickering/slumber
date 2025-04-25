@@ -12,8 +12,8 @@ use itertools::Itertools;
 use petitscript::ast::{
     ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
     FunctionCall, FunctionDefinition, Identifier, ImportDeclaration,
-    IntoExpression, IntoNode, IntoStatement, Literal, Module, Node,
-    ObjectLiteral, Statement, TemplateChunk, TemplateLiteral, Walk,
+    IntoExpression, IntoNode, IntoStatement, Literal, Module, ObjectLiteral,
+    Statement, TemplateChunk, TemplateLiteral, Walk,
 };
 
 const CHAIN_FN_PREFIX: &str = "chain_";
@@ -39,26 +39,24 @@ impl IntoPetitAst for Collection {
     type Output = Module;
 
     fn into_ast(self) -> Self::Output {
-        let mut statements: Vec<Node<Statement>> = Vec::new();
+        let mut statements: Vec<Statement> = Vec::new();
 
         // For each chain, define a function
         // TODO order chains by dependency
         statements.extend(
             self.chains
                 .into_values()
-                .map(|chain| chain.into_ast().into_stmt().s()),
+                .map(|chain| chain.into_ast().into()),
         );
 
         // Generate an exported object literal for both profiles and recipes
         statements.push(
             Declaration::new("profiles", self.profiles.into_ast().into())
-                .export()
-                .s(),
+                .export(),
         );
         statements.push(
             Declaration::new("requests", self.recipes.into_ast().into())
-                .export()
-                .s(),
+                .export(),
         );
 
         // Walk through the generated AST and track any functions that were
@@ -75,14 +73,11 @@ impl IntoPetitAst for Collection {
                     used_functions,
                     "slumber",
                 )
-                .into_stmt()
-                .s(),
+                .into_stmt(),
             );
         }
 
-        Module {
-            statements: statements.into(),
-        }
+        Module::new(statements)
     }
 }
 
@@ -306,7 +301,8 @@ impl IntoPetitAst for Recipe {
         ObjectLiteral::filtered([
             ("type", Some("request".into())),
             ("name", self.name.map(Expression::from)),
-            ("persist", Some(self.persist.into())),
+            // Only include this field if it's not the default
+            ("persist", (!self.persist).then_some(false.into())),
             ("method", Some(self.method.to_string().into())),
             ("url", Some(Deferred(self.url).into_ast())),
             (
@@ -664,9 +660,7 @@ fn chain_id_to_function(chain_id: &ChainId) -> Identifier {
 /// to be imported from the `slumber` module. All included functions should be
 /// available in the module; if not, we fucked up somewhere. The returned vec
 /// will be de-duplicated.
-fn find_slumber_functions(
-    statements: &mut [Node<Statement>],
-) -> Vec<Identifier> {
+fn find_slumber_functions(statements: &mut [Statement]) -> Vec<Identifier> {
     struct Visitor(Vec<Identifier>);
 
     impl AstVisitor for Visitor {

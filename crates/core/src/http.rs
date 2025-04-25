@@ -51,11 +51,7 @@ use crate::{
 use anyhow::{Context, bail};
 use bytes::Bytes;
 use chrono::Utc;
-use futures::{
-    Future,
-    future::{OptionFuture, try_join_all},
-    try_join,
-};
+use futures::{Future, future::try_join_all, try_join};
 use petitscript::Value;
 use reqwest::{
     Client, RequestBuilder, Response, Url,
@@ -530,31 +526,25 @@ impl Recipe {
                     with_override(
                         overrides.get(&OverrideKey::AuthenticationPassword),
                         async {
-                            OptionFuture::from(
-                                password
-                                    .as_ref()
-                                    .map(|password| renderer.render(password)),
-                            )
-                            .await
-                            .transpose()
+                            renderer
+                                .render(password)
+                                .await
+                                .context("Error rendering password")
                         },
-                        |value| Ok(Some(value.to_owned()))
+                        |value| Ok(value.to_owned())
                     )
                 )?;
-                let password = password.flatten();
                 let authentication = match (username, password) {
-                    (Some(username), password) => {
-                        Some(Authentication::Basic { username, password })
-                    }
-                    // If username is omitted but password is not, use an empty
-                    // username. This doesn't really make sense to do but might
-                    // as well support it?
-                    (None, Some(password)) => Some(Authentication::Basic {
-                        username: "".into(),
-                        password: Some(password),
-                    }),
                     // If both fields have been omitted, exclude the header
                     (None, None) => None,
+                    // If either field is omitted, replace it with an empty
+                    // string which is effectively the same thing. This doesn't
+                    // really make sense to do with a username, but might as
+                    // well support it
+                    (username, password) => Some(Authentication::Basic {
+                        username: username.unwrap_or_default(),
+                        password: password.unwrap_or_default(),
+                    }),
                 };
                 Ok(authentication)
             }
@@ -659,7 +649,7 @@ impl Authentication<String> {
     fn apply(self, builder: RequestBuilder) -> RequestBuilder {
         match self {
             Authentication::Basic { username, password } => {
-                builder.basic_auth(username, password)
+                builder.basic_auth(username, Some(password))
             }
             Authentication::Bearer { token } => builder.bearer_auth(token),
         }

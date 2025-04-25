@@ -56,8 +56,7 @@ impl AuthenticationDisplay {
                 let password = RecipeProcedure::new(
                     recipe_id,
                     OverrideKey::AuthenticationPassword,
-                    // See note on this field def for why we unwrap
-                    password.unwrap_or_default(),
+                    password,
                     None,
                 );
                 State::Basic {
@@ -84,23 +83,30 @@ impl AuthenticationDisplay {
 
     /// Get a map of fields that have been overridden by the user
     pub fn overrides(&self) -> Overrides {
-        if self.state.is_overridden() {
-            match &self.state {
-                State::Basic {
-                    username, password, ..
-                } => indexmap! {
-                    OverrideKey::AuthenticationUsername =>
+        match &self.state {
+            State::Basic {
+                username, password, ..
+            } => {
+                let mut overrides = Overrides::new();
+                if username.is_overridden() {
+                    overrides.insert(
+                        OverrideKey::AuthenticationUsername,
                         OverrideValue::Override(username.value()),
-                    OverrideKey::AuthenticationPassword =>
+                    );
+                }
+                if password.is_overridden() {
+                    overrides.insert(
+                        OverrideKey::AuthenticationPassword,
                         OverrideValue::Override(password.value()),
-                },
-                State::Bearer { token, .. } => indexmap! {
-                    OverrideKey::AuthenticationToken =>
-                        OverrideValue::Override(token.value()),
-                },
+                    );
+                }
+                overrides
             }
-        } else {
-            Overrides::new()
+            State::Bearer { token, .. } if token.is_overridden() => indexmap! {
+                OverrideKey::AuthenticationToken =>
+                    OverrideValue::Override(token.value()),
+            },
+            _ => Overrides::new(),
         }
     }
 }
@@ -339,7 +345,7 @@ mod tests {
     fn test_edit_basic(harness: TestHarness, terminal: TestTerminal) {
         let authentication = Authentication::Basic {
             username: "user1".into(),
-            password: Some("hunter2".into()),
+            password: "hunter2".into(),
         };
         let mut component = TestComponent::new(
             &harness,
@@ -385,36 +391,6 @@ mod tests {
         // Reset password
         component.int().send_key(KeyCode::Char('z')).assert_empty();
         assert_eq!(component.data().overrides(), indexmap! {});
-    }
-
-    #[rstest]
-    fn test_edit_basic_empty_password(
-        harness: TestHarness,
-        terminal: TestTerminal,
-    ) {
-        let authentication = Authentication::Basic {
-            username: "user1".into(),
-            password: None,
-        };
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            AuthenticationDisplay::new(RecipeId::factory(()), authentication),
-        );
-
-        // Edit password
-        component
-            .int()
-            .send_keys([KeyCode::Down, KeyCode::Char('e'), KeyCode::Enter])
-            .assert_empty();
-        assert_eq!(
-            component.data().overrides(),
-            // None gets replaced by empty string. They're functionally
-            // equivalent because the encoding maps to {username}:{password}
-            indexmap! {
-                OverrideKey::AuthenticationPassword => "".into(),
-            }
-        );
     }
 
     #[rstest]
@@ -491,7 +467,7 @@ mod tests {
         );
         let authentication = Authentication::Basic {
             username: "".into(),
-            password: None,
+            password: "".into(),
         };
         let component = TestComponent::new(
             &harness,

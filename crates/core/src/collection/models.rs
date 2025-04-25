@@ -293,7 +293,13 @@ impl slumber_util::Factory for RecipeId {
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Authentication<T = Procedure> {
     /// `Authorization: Basic {username:password | base64}`
-    Basic { username: T, password: Option<T> },
+    Basic {
+        username: T,
+        /// The password in basic auth is optional. It's replaced with an empty
+        /// string if omitted
+        #[serde(default)]
+        password: T,
+    },
     /// `Authorization: Bearer {token}`
     Bearer { token: T },
 }

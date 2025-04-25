@@ -60,12 +60,8 @@ impl CurlBuilder {
     ) -> Self {
         match authentication {
             Authentication::Basic { username, password } => {
-                write!(
-                    &mut self.command,
-                    " --user '{username}:{password}'",
-                    password = password.as_deref().unwrap_or_default()
-                )
-                .unwrap();
+                write!(&mut self.command, " --user '{username}:{password}'")
+                    .unwrap();
                 self
             }
             Authentication::Bearer { token } => self

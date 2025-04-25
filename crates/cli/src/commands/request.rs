@@ -89,11 +89,11 @@ pub struct BuildRequestCommand {
     #[clap(
         long = "override",
         short = 'o',
-        value_parser = parse_key_val::<OverrideKey<'static>, String>,
+        value_parser = parse_key_val::<OverrideKey, String>,
         // There's no reasonable way of doing completions on this, so disable
         value_hint = ValueHint::Other,
     )]
-    overrides: Vec<(OverrideKey<'static>, String)>,
+    overrides: Vec<(OverrideKey, String)>,
 }
 
 /// Helper for any subcommand that prints exchange (request/response)

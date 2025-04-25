@@ -205,14 +205,14 @@ async fn test_build_body(
 #[case::basic(
     Authentication::Basic {
         username: "user".into(),
-        password: Some("hunter2".into()),
+        password: "hunter2".into(),
     },
     "Basic dXNlcjpodW50ZXIy"
 )]
 #[case::basic_no_password(
     Authentication::Basic {
         username: "user".into(),
-        password: None,
+        password: "".into(),
     },
     "Basic dXNlcjo="
 )]
@@ -512,7 +512,7 @@ async fn test_override_authentication_basic(
     let recipe = Recipe {
         authentication: Some(Authentication::Basic {
             username: "username".into(),
-            password: Some("password".into()),
+            password: "password".into(),
         }),
         ..Recipe::factory(())
     };
@@ -762,14 +762,14 @@ async fn test_build_curl(http_engine: &HttpEngine) {
 #[case::basic(
     Authentication::Basic {
         username: "user".into(),
-        password: Some("hunter2".into()),
+        password: "hunter2".into(),
     },
     "--user 'user:hunter2'",
 )]
 #[case::basic_no_password(
     Authentication::Basic {
         username: "user".into(),
-        password: None,
+        password: "".into(),
     },
     "--user 'user:'",
 )]

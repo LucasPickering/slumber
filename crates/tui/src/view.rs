@@ -211,9 +211,8 @@ mod tests {
     #[rstest]
     fn test_initial_draw(harness: TestHarness, terminal: TestTerminal) {
         let collection = Collection::factory(());
-        let collection_file = CollectionFile::factory(collection);
         let mut view = View::new(
-            &collection_file,
+            &collection.into(),
             harness.database.clone(),
             harness.messages_tx().clone(),
         );

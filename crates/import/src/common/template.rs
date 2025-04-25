@@ -9,7 +9,7 @@ use serde::{
 use std::{fmt::Debug, str::FromStr};
 use thiserror::Error;
 use winnow::{
-    PResult, Parser,
+    ModalResult, Parser,
     combinator::{
         alt, cut_err, eof, not, peek, preceded, repeat, repeat_till, terminated,
     },
@@ -240,7 +240,7 @@ impl From<ParseError<&str, ContextError>> for TemplateParseError {
 /// Potential optimizations if parsing is slow:
 /// - Use take_till or similar in raw string parsing
 /// - https://docs.rs/winnow/latest/winnow/_topic/performance/index.html
-fn all_chunks(input: &mut &str) -> PResult<Vec<TemplateInputChunk>> {
+fn all_chunks(input: &mut &str) -> ModalResult<Vec<TemplateInputChunk>> {
     repeat_till(
         0..,
         alt((
@@ -256,7 +256,7 @@ fn all_chunks(input: &mut &str) -> PResult<Vec<TemplateInputChunk>> {
 }
 
 /// Parse raw text, until we hit a key or end of input
-fn raw(input: &mut &str) -> PResult<String> {
+fn raw(input: &mut &str) -> ModalResult<String> {
     repeat(
         0..,
         alt((
@@ -275,7 +275,7 @@ fn raw(input: &mut &str) -> PResult<String> {
 
 /// Match an escape sequence `{_{`, `{__}`, etc. The trailing curly brace will
 /// **not** be consumed.
-fn escape_sequence<'a>(input: &mut &'a str) -> PResult<&'a str> {
+fn escape_sequence<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
     terminated(
         // Parse {_+
         ("{", repeat::<_, _, (), _, _>(1.., ESCAPE))
@@ -289,7 +289,7 @@ fn escape_sequence<'a>(input: &mut &'a str) -> PResult<&'a str> {
 }
 
 /// Parse a template key
-fn key(input: &mut &str) -> PResult<TemplateKey> {
+fn key(input: &mut &str) -> ModalResult<TemplateKey> {
     preceded(
         KEY_OPEN,
         // Any error inside a template key is fatal, including an unclosed key
@@ -300,7 +300,7 @@ fn key(input: &mut &str) -> PResult<TemplateKey> {
 }
 
 /// Parse the contents of a key (inside the `{{ }}`)
-fn key_contents(input: &mut &str) -> PResult<TemplateKey> {
+fn key_contents(input: &mut &str) -> ModalResult<TemplateKey> {
     alt((
         preceded(
             CHAIN_PREFIX,
@@ -318,7 +318,7 @@ fn key_contents(input: &mut &str) -> PResult<TemplateKey> {
 
 /// Parse a field name/chain ID/env variable etc, inside a key. See [Identifier]
 /// for the definition of allowed syntax.
-fn identifier(input: &mut &str) -> PResult<Identifier> {
+fn identifier(input: &mut &str) -> ModalResult<Identifier> {
     take_while(1.., Identifier::is_char_allowed)
         .map(|id: &str| Identifier(id.to_owned()))
         .context(StrContext::Label("identifier"))

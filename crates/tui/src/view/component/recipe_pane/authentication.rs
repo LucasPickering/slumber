@@ -8,9 +8,8 @@ use crate::{
             text_box::TextBox,
         },
         component::{
-            Component,
-            misc::TextBoxModal,
-            recipe_pane::persistence::{RecipeOverrideKey, RecipeProcedure},
+            Component, misc::TextBoxModal,
+            recipe_pane::persistence::RecipeProcedure,
         },
         context::UpdateContext,
         draw::{Draw, DrawMetadata, Generate},
@@ -49,12 +48,14 @@ impl AuthenticationDisplay {
         let state = match authentication {
             Authentication::Basic { username, password } => {
                 let username = RecipeProcedure::new(
-                    RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
+                    recipe_id.clone(),
+                    OverrideKey::AuthenticationUsername,
                     username,
                     None,
                 );
                 let password = RecipeProcedure::new(
-                    RecipeOverrideKey::auth_basic_password(recipe_id.clone()),
+                    recipe_id,
+                    OverrideKey::AuthenticationPassword,
                     // See note on this field def for why we unwrap
                     password.unwrap_or_default(),
                     None,
@@ -67,7 +68,8 @@ impl AuthenticationDisplay {
             }
             Authentication::Bearer { token } => State::Bearer {
                 token: RecipeProcedure::new(
-                    RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
+                    recipe_id,
+                    OverrideKey::AuthenticationToken,
                     token,
                     None,
                 ),
@@ -327,16 +329,9 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            component::{
-                RecipeOverrideStore,
-                recipe_pane::persistence::RecipeOverrideValue,
-            },
-            test_util::TestComponent,
-        },
+        view::{component::RecipeOverrideStore, test_util::TestComponent},
     };
     use crossterm::event::KeyCode;
-    use persisted::PersistedStore;
     use rstest::rstest;
     use slumber_util::Factory;
 
@@ -353,7 +348,7 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.data().overrides(), indexmap! {});
 
         // Edit username
         component
@@ -363,16 +358,15 @@ mod tests {
             .send_key(KeyCode::Enter)
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
-            Some(Authentication::Basic {
-                username: "user1!!!".into(),
-                password: Some("hunter2".into())
-            })
+            component.data().overrides(),
+            indexmap! {
+                OverrideKey::AuthenticationUsername => "user1!!!".into(),
+            }
         );
 
         // Reset username
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.data().overrides(), indexmap! {});
 
         // Edit password
         component
@@ -382,16 +376,15 @@ mod tests {
             .send_key(KeyCode::Enter)
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
-            Some(Authentication::Basic {
-                username: "user1".into(),
-                password: Some("hunter2???".into())
-            })
+            component.data().overrides(),
+            indexmap! {
+                OverrideKey::AuthenticationPassword => "hunter2???".into(),
+            }
         );
 
         // Reset password
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.data().overrides(), indexmap! {});
     }
 
     #[rstest]
@@ -415,19 +408,20 @@ mod tests {
             .send_keys([KeyCode::Down, KeyCode::Char('e'), KeyCode::Enter])
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
-            Some(Authentication::Basic {
-                username: "user1".into(),
-                // None gets replaced by empty string. They're functionally
-                // equivalent because the encoding maps to {username}:{password}
-                password: Some("".into())
-            })
+            component.data().overrides(),
+            // None gets replaced by empty string. They're functionally
+            // equivalent because the encoding maps to {username}:{password}
+            indexmap! {
+                OverrideKey::AuthenticationPassword => "".into(),
+            }
         );
     }
 
     #[rstest]
     fn test_edit_bearer(harness: TestHarness, terminal: TestTerminal) {
-        let authentication = Authentication::Bearer("i am a token".into());
+        let authentication = Authentication::Bearer {
+            token: "i am a token".into(),
+        };
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -435,7 +429,7 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.data().overrides(), indexmap! {});
 
         // Edit token
         component
@@ -445,19 +439,23 @@ mod tests {
             .send_key(KeyCode::Enter)
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
-            Some(Authentication::Bearer("i am a token!!!".into()))
+            component.data().overrides(),
+            indexmap! {
+                OverrideKey::AuthenticationToken => "i am a token!!!".into(),
+            }
         );
 
         // Reset token
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.data().overrides(), indexmap! {});
     }
 
     /// Test edit menu action
     #[rstest]
     fn test_edit_action(harness: TestHarness, terminal: TestTerminal) {
-        let authentication = Authentication::Bearer("i am a token".into());
+        let authentication = Authentication::Bearer {
+            token: "i am a token".into(),
+        };
         let mut component = TestComponent::new(
             &harness,
             &terminal,
@@ -470,8 +468,10 @@ mod tests {
             .send_keys([KeyCode::Enter, KeyCode::Char('!'), KeyCode::Enter])
             .assert_empty();
         assert_eq!(
-            component.data().override_value(),
-            Some(Authentication::Bearer("i am a token!".into()))
+            component.data().overrides(),
+            indexmap! {
+                OverrideKey::AuthenticationToken => "i am a token!".into(),
+            }
         );
     }
 
@@ -479,13 +479,15 @@ mod tests {
     #[rstest]
     fn test_persisted_load_basic(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        RecipeOverrideStore::store_persisted(
-            &RecipeOverrideKey::auth_basic_username(recipe_id.clone()),
-            &RecipeOverrideValue::Override("user".into()),
+        RecipeOverrideStore::set(
+            recipe_id.clone(),
+            OverrideKey::AuthenticationUsername,
+            "user".into(),
         );
-        RecipeOverrideStore::store_persisted(
-            &RecipeOverrideKey::auth_basic_password(recipe_id.clone()),
-            &RecipeOverrideValue::Override("hunter2".into()),
+        RecipeOverrideStore::set(
+            recipe_id.clone(),
+            OverrideKey::AuthenticationPassword,
+            "hunter2".into(),
         );
         let authentication = Authentication::Basic {
             username: "".into(),
@@ -498,11 +500,11 @@ mod tests {
         );
 
         assert_eq!(
-            component.data().override_value(),
-            Some(Authentication::Basic {
-                username: "user".into(),
-                password: Some("hunter2".into()),
-            })
+            component.data().overrides(),
+            indexmap! {
+                OverrideKey::AuthenticationUsername => "user".into(),
+                OverrideKey::AuthenticationPassword => "hunter2".into(),
+            }
         );
     }
 
@@ -513,11 +515,12 @@ mod tests {
         terminal: TestTerminal,
     ) {
         let recipe_id = RecipeId::factory(());
-        RecipeOverrideStore::store_persisted(
-            &RecipeOverrideKey::auth_bearer_token(recipe_id.clone()),
-            &RecipeOverrideValue::Override("token".into()),
+        RecipeOverrideStore::set(
+            recipe_id.clone(),
+            OverrideKey::AuthenticationToken,
+            "token".into(),
         );
-        let authentication = Authentication::Bearer("".into());
+        let authentication = Authentication::Bearer { token: "".into() };
         let component = TestComponent::new(
             &harness,
             &terminal,
@@ -525,8 +528,10 @@ mod tests {
         );
 
         assert_eq!(
-            component.data().override_value(),
-            Some(Authentication::Bearer("token".into()))
+            component.data().overrides(),
+            indexmap! {
+                OverrideKey::AuthenticationToken => "token".into(),
+            }
         );
     }
 }

@@ -14,26 +14,27 @@ use regex::Regex;
 use reqwest::{Body, StatusCode, header};
 use rstest::rstest;
 use serde_json::json;
-use slumber_util::Factory;
+use slumber_util::{Factory, assert_err};
 use std::ptr;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
 // These tests all use static values because testing dynamic procedures is a
 // pain and isn't the goal here. We can save that for the renderer tests
 
-/// Create a render context. Take a set of extra recipes to add to the created
-/// collection
+/// Create a renderer with a collection that contains a single recipe. Also
+/// return a seed to render that recipe.
 fn renderer(
-    recipes: impl IntoIterator<Item = Recipe>,
-    overrides: impl IntoIterator<Item = (OverrideKey<'static>, OverrideValue)>,
-) -> Renderer {
+    recipe: Recipe,
+    overrides: impl IntoIterator<Item = (OverrideKey, OverrideValue)>,
+) -> (Renderer, RequestSeed) {
+    let recipe_id = recipe.id.clone();
     let profile = Profile::factory(());
     let profile_id = profile.id.clone();
 
     let LoadedCollection { process, .. } =
         PetitEngine::new().load_collection("").unwrap();
     let collection = Collection {
-        recipes: by_id(recipes).into(),
+        recipes: by_id([recipe]).into(),
         profiles: by_id([profile]),
     };
 
@@ -44,7 +45,9 @@ fn renderer(
         overrides: overrides.into_iter().collect(),
         ..RenderContext::factory(())
     };
-    Renderer::new(process, context)
+    let renderer = Renderer::new(process, context);
+    let seed = RequestSeed::new(recipe_id);
+    (renderer, seed)
 }
 
 /// Create a mock HTTP server and return its URL
@@ -103,9 +106,7 @@ async fn test_build_request(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let renderer = renderer([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id.clone());
+    let (renderer, seed) = renderer(recipe, []);
     let ticket = http_engine.build(seed, &renderer).await.unwrap();
 
     let expected_url: Url = "http://localhost/users/1?mode=sudo&fast=true"
@@ -158,10 +159,7 @@ async fn test_build_url(http_engine: &HttpEngine) {
         },
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let renderer = renderer([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id);
+    let (renderer, seed) = renderer(recipe, []);
     let url = http_engine.build_url(seed, &renderer).await.unwrap();
 
     assert_eq!(
@@ -190,15 +188,12 @@ async fn test_build_body(
     #[case] body: RecipeBody,
     #[case] expected_body: &[u8],
 ) {
-    let renderer = renderer(
-        [Recipe {
+    let (renderer, seed) = renderer(
+        Recipe {
             body: Some(body),
             ..Recipe::factory(())
-        }],
+        },
         [],
-    );
-    let seed = RequestSeed::new(
-        renderer.context().collection.first_recipe_id().clone(),
     );
     let body = http_engine.build_body(seed, &renderer).await.unwrap();
 
@@ -239,29 +234,15 @@ async fn test_authentication(
         authentication: Some(authentication),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let renderer = renderer([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id.clone());
+    let (renderer, seed) = renderer(recipe, []);
     let ticket = http_engine.build(seed, &renderer).await.unwrap();
 
     assert_eq!(
-        *ticket.record,
-        RequestRecord {
-            id: ticket.record.id,
-            profile_id: Some(
-                renderer.context().collection.first_profile_id().clone()
-            ),
-            recipe_id,
-            method: HttpMethod::Get,
-            http_version: HttpVersion::Http11,
-            url: "http://localhost/url".parse().unwrap(),
-            headers: header_map([
-                ("authorization", "bogus"),
-                ("authorization", expected_header)
-            ]),
-            body: None,
-        }
+        ticket.record.headers,
+        header_map([
+            ("authorization", "bogus"),
+            ("authorization", expected_header)
+        ])
     );
 }
 
@@ -344,9 +325,7 @@ async fn test_structured_body(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let renderer = renderer([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id.clone());
+    let (renderer, seed) = renderer(recipe, []);
     let ticket = http_engine.build(seed, &renderer).await.unwrap();
 
     // Assert on the actual built request *and* the record, to make sure
@@ -393,82 +372,270 @@ async fn test_structured_body(
     );
 }
 
-/// Test disabling and overriding authentication, query params, headers, and
-/// text bodies
+/// Test overriding URL
 #[rstest]
 #[tokio::test]
-async fn test_override(http_engine: &HttpEngine) {
+async fn test_override_url(http_engine: &HttpEngine) {
     let recipe = Recipe {
-        authentication: Some(Authentication::Basic {
-            username: "username".into(),
-            password: None,
-        }),
+        // Additional query params should still be included. This is maybe
+        // surprising, but we're overriding just the `url` field of the recipe
+        query: indexmap! {
+            "mode".into() => "regular".into(),
+        },
+        ..Recipe::factory(())
+    };
+    let (renderer, seed) =
+        renderer(recipe, [(OverrideKey::Url, "http://localhost/new".into())]);
+    let ticket = http_engine.build(seed, &renderer).await.unwrap();
+
+    assert_eq!(
+        ticket.record.url.as_str(),
+        "http://localhost/new?mode=regular"
+    );
+}
+
+/// Omitting URL should trigger an error. Can't send a request without a URL!
+#[rstest]
+#[tokio::test]
+async fn test_override_omit_url(http_engine: &HttpEngine) {
+    let (renderer, seed) = renderer(
+        Recipe::factory(()),
+        [(OverrideKey::Url, OverrideValue::Omit)],
+    );
+    assert_err!(
+        http_engine.build(seed, &renderer).await,
+        "URL cannot be omitted"
+    );
+}
+
+/// Test disabling and overriding query params
+#[rstest]
+#[tokio::test]
+async fn test_override_query_params(http_engine: &HttpEngine) {
+    let recipe = Recipe {
+        query: indexmap! {
+            "mode".into() => "regular".into(), // Overridden
+            "fast".into() => [
+                "false", // Excluded
+                "true", // Included
+                "empty", // Overridden
+            ].into(),
+        },
+        ..Recipe::factory(())
+    };
+    let overrides = [
+        (OverrideKey::Query("mode".into(), 0), "turbo_time".into()),
+        (OverrideKey::Query("fast".into(), 0), OverrideValue::Omit),
+        (OverrideKey::Query("fast".into(), 2), "overridden".into()),
+        // Should do nothing because it doesn't match a param in the recipe
+        (OverrideKey::Query("fast".into(), 3), "does nothing".into()),
+    ];
+    let (renderer, seed) = renderer(recipe, overrides);
+    let ticket = http_engine.build(seed, &renderer).await.unwrap();
+
+    assert_eq!(
+        ticket.record.url.as_str(),
+        "http://localhost/url?mode=turbo_time&fast=true&fast=overridden"
+    );
+}
+
+/// Test disabling and overriding headers
+#[rstest]
+#[tokio::test]
+async fn test_override_headers(http_engine: &HttpEngine) {
+    let recipe = Recipe {
         headers: indexmap! {
             // Included
             "Accept".into() => "application/json".into(),
             // Overidden
             "Big-Guy".into() => "style1".into(),
-            // Excluded
+            // Omitted
             "content-type".into() => "text/plain".into(),
-        },
-        query: indexmap! {
-            // Overridden
-            "mode".into() => "regular".into(),
-            "fast".into() => [
-                "false", // Excluded
-                "true", // Included
-            ].into(),
         },
         body: Some(RecipeBody::Json {
             data: "user".into(),
         }),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
     let overrides = [
-        (OverrideKey::AuthenticationUsername, "other_username".into()),
-        (OverrideKey::AuthenticationPassword, "other_password".into()),
         (OverrideKey::Header("Big-Guy".into()), "style2".into()),
         (
             OverrideKey::Header("content-type".into()),
             OverrideValue::Omit,
         ),
-        (OverrideKey::Query("mode".into()), "turbo_time".into()),
-        (OverrideKey::Query("fast".into()), OverrideValue::Omit),
-        (OverrideKey::Body, json!("password").to_string().into()),
     ];
-    let renderer = renderer([recipe], overrides);
-
-    let seed = RequestSeed::new(recipe_id.clone());
+    let (renderer, seed) = renderer(recipe, overrides);
     let ticket = http_engine.build(seed, &renderer).await.unwrap();
 
     assert_eq!(
-        *ticket.record,
-        RequestRecord {
-            id: ticket.record.id,
-            profile_id: renderer.context().selected_profile.clone(),
-            recipe_id,
-            method: HttpMethod::Get,
-            http_version: HttpVersion::Http11,
-            url: "http://localhost/url?mode=sudo&fast=true".parse().unwrap(),
-            headers: header_map([
-                ("Authorization", "Basic dXNlcjpodW50ZXIy"),
-                ("accept", "application/json"),
-                ("Big-Guy", "style2"),
-                // It picked up the default content-type from the body,
-                // because ours was excluded
-                ("content-type", "application/json"),
-            ]),
-            body: Some(b"hunter2".as_slice().into()),
-        }
+        ticket.record.headers,
+        header_map([
+            ("accept", "application/json"),
+            ("Big-Guy", "style2"),
+            // It picked up the default content-type from the body because ours
+            // was omitted
+            ("content-type", "application/json"),
+        ])
     );
 }
 
-/// Test overriding form body fields. This has to be a separate test
-/// because it's incompatible with testing raw body overrides
+/// Test disabling and overriding basic authentication fields
+#[rstest]
+#[case::omit_username(
+    Some(OverrideValue::Omit),
+    None,
+    Some("Basic OnBhc3N3b3Jk"), // `:password`
+)]
+#[case::omit_password(
+    None,
+    Some(OverrideValue::Omit),
+    Some("Basic dXNlcm5hbWU6"), // `username:`
+)]
+#[case::omit_both(Some(OverrideValue::Omit), Some(OverrideValue::Omit), None)]
+#[case::override_username(
+    Some("new username".into()),
+    None,
+    Some("Basic bmV3IHVzZXJuYW1lOnBhc3N3b3Jk"), // `new username:password`
+)]
+#[case::override_password(
+    None,
+    Some("new password".into()),
+    Some("Basic dXNlcm5hbWU6bmV3IHBhc3N3b3Jk"), // `username:new password`
+)]
+#[tokio::test]
+async fn test_override_authentication_basic(
+    http_engine: &HttpEngine,
+    #[case] username_override: Option<OverrideValue>,
+    #[case] password_override: Option<OverrideValue>,
+    #[case] expected_header: Option<&str>,
+) {
+    let recipe = Recipe {
+        authentication: Some(Authentication::Basic {
+            username: "username".into(),
+            password: Some("password".into()),
+        }),
+        ..Recipe::factory(())
+    };
+    let overrides = [
+        (OverrideKey::AuthenticationUsername, username_override),
+        (OverrideKey::AuthenticationPassword, password_override),
+    ]
+    .into_iter()
+    .filter_map(|(key, value)| Some((key, value?)));
+    let (renderer, seed) = renderer(recipe, overrides);
+    let ticket = http_engine.build(seed, &renderer).await.unwrap();
+
+    assert_eq!(
+        ticket
+            .record
+            .headers
+            .get(header::AUTHORIZATION)
+            .and_then(|header| header.to_str().ok()),
+        expected_header
+    );
+}
+
+/// Test disabling and overriding bearer token
+#[rstest]
+#[case::omit(OverrideValue::Omit, None)]
+#[case::override_token("new_token".into(), Some("Bearer new_token"))]
+#[tokio::test]
+async fn test_override_authentication_bearer(
+    http_engine: &HttpEngine,
+    #[case] token_override: OverrideValue,
+    #[case] expected_header: Option<&str>,
+) {
+    let recipe = Recipe {
+        authentication: Some(Authentication::Bearer {
+            token: "token".into(),
+        }),
+        ..Recipe::factory(())
+    };
+    let (renderer, seed) =
+        renderer(recipe, [(OverrideKey::AuthenticationToken, token_override)]);
+    let ticket = http_engine.build(seed, &renderer).await.unwrap();
+
+    assert_eq!(
+        ticket
+            .record
+            .headers
+            .get(header::AUTHORIZATION)
+            .and_then(|header| header.to_str().ok()),
+        expected_header
+    );
+}
+
+/// Test disabling and overriding raw text bodies
+#[rstest]
+#[case::omit(OverrideValue::Omit, None)]
+#[case::override_body("new data".into(), Some("new data"))]
+#[tokio::test]
+async fn test_override_body_raw(
+    http_engine: &HttpEngine,
+    #[case] body_override: OverrideValue,
+    #[case] expected_body: Option<&str>,
+) {
+    let recipe = Recipe {
+        body: Some(RecipeBody::Raw {
+            data: "data".into(),
+        }),
+        ..Recipe::factory(())
+    };
+    let (renderer, seed) =
+        renderer(recipe, [(OverrideKey::Body, body_override)]);
+    let ticket = http_engine.build(seed, &renderer).await.unwrap();
+
+    assert_eq!(ticket.record.body_str().ok().flatten(), expected_body);
+}
+
+/// Test disabling and overriding JSON bodies
+#[rstest]
+#[case::omit(OverrideValue::Omit, None)]
+#[case::override_body("\"password\"".into(), Some("\"password\""))]
+#[tokio::test]
+async fn test_override_body_json(
+    http_engine: &HttpEngine,
+    #[case] body_override: OverrideValue,
+    #[case] expected_body: Option<&str>,
+) {
+    let recipe = Recipe {
+        body: Some(RecipeBody::Json {
+            data: "user".into(),
+        }),
+        ..Recipe::factory(())
+    };
+    let (renderer, seed) =
+        renderer(recipe, [(OverrideKey::Body, body_override)]);
+    let ticket = http_engine.build(seed, &renderer).await.unwrap();
+
+    assert_eq!(ticket.record.body_str().ok().flatten(), expected_body);
+}
+
+/// Test that the request fails to build if we override a JSON body with a
+/// string that isn't valid JSON
 #[rstest]
 #[tokio::test]
-async fn test_override_form(http_engine: &HttpEngine) {
+async fn test_override_body_json_invalid(http_engine: &HttpEngine) {
+    let recipe = Recipe {
+        body: Some(RecipeBody::Json {
+            data: "user".into(),
+        }),
+        ..Recipe::factory(())
+    };
+    let (renderer, seed) =
+        renderer(recipe, [(OverrideKey::Body, "{invalid json".into())]);
+
+    assert_err!(
+        http_engine.build(seed, &renderer).await,
+        "Error parsing body as JSON"
+    );
+}
+
+/// Test overriding form body fields
+/// TODO test url and multipart forms separately
+#[rstest]
+#[tokio::test]
+async fn test_override_body_form(http_engine: &HttpEngine) {
     let recipe = Recipe {
         // This should implicitly set the content-type header
         body: Some(RecipeBody::FormUrlencoded {
@@ -483,33 +650,18 @@ async fn test_override_form(http_engine: &HttpEngine) {
         }),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let renderer = renderer(
-        [recipe],
+    let (renderer, seed) = renderer(
+        recipe,
         [
             (OverrideKey::Form("token".into()), OverrideValue::Omit),
             (OverrideKey::Form("preference".into()), "small".into()),
         ],
     );
-
-    let seed = RequestSeed::new(recipe_id.clone());
     let ticket = http_engine.build(seed, &renderer).await.unwrap();
 
     assert_eq!(
-        *ticket.record,
-        RequestRecord {
-            id: ticket.record.id,
-            profile_id: renderer.context().selected_profile.clone(),
-            recipe_id,
-            method: HttpMethod::Get,
-            http_version: HttpVersion::Http11,
-            url: "http://localhost/url".parse().unwrap(),
-            headers: header_map([(
-                "content-type",
-                "application/x-www-form-urlencoded"
-            ),]),
-            body: Some(b"user_id=1&preference=small".as_slice().into()),
-        }
+        ticket.record.body_str().ok().flatten(),
+        Some("user_id=1&preference=small")
     );
 }
 
@@ -522,11 +674,7 @@ async fn test_send_request(http_engine: &HttpEngine) {
         url: format!("{host}/get").as_str().into(),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let renderer = renderer([recipe], []);
-
-    // Build+send the request
-    let seed = RequestSeed::new(recipe_id);
+    let (renderer, seed) = renderer(recipe, []);
     let ticket = http_engine.build(seed, &renderer).await.unwrap();
     let exchange = ticket.send().await.unwrap();
 
@@ -563,22 +711,14 @@ async fn test_render_headers_strip() {
     let recipe = Recipe {
         // Leading/trailing newlines should be stripped
         headers: indexmap! {
-            "Accept".into() => "application/json".into(),
-            "Host".into() => "\nhttp://localhost\n".into(),
+            "Host".into() => "\nlocalhost\n".into(),
         },
         ..Recipe::factory(())
     };
-    let renderer = renderer([], []);
+    let (renderer, _) = renderer(Recipe::factory(()), []);
     let rendered = recipe.render_headers(&renderer).await.unwrap();
 
-    assert_eq!(
-        rendered,
-        header_map([
-            ("Accept", "application/json"),
-            // This is a non-sensical value, but it's good enough
-            ("Host", "http://localhost"),
-        ])
-    );
+    assert_eq!(rendered, header_map([("Host", "localhost"),]));
 }
 
 #[rstest]
@@ -608,10 +748,7 @@ async fn test_build_curl(http_engine: &HttpEngine) {
         },
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let renderer = renderer([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id);
+    let (renderer, seed) = renderer(recipe, []);
     let command = http_engine.build_curl(seed, &renderer).await.unwrap();
     let expected_command = "curl -XGET \
     --url 'http://localhost/url?mode=sudo&fast=true&fast=false' \
@@ -650,10 +787,7 @@ async fn test_build_curl_authentication(
         authentication: Some(authentication),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let renderer = renderer([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id);
+    let (renderer, seed) = renderer(recipe, []);
     let command = http_engine.build_curl(seed, &renderer).await.unwrap();
     let expected_command = format!(
         "curl -XGET --url 'http://localhost/url' {expected_arguments}",
@@ -697,10 +831,7 @@ async fn test_build_curl_body(
         body: Some(body),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let renderer = renderer([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id.clone());
+    let (renderer, seed) = renderer(recipe, []);
     let command = http_engine.build_curl(seed, &renderer).await.unwrap();
     let expected_command = format!(
         "curl -XGET --url 'http://localhost/url' {}",

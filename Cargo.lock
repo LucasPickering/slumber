@@ -1746,9 +1746,9 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "persisted"
-version = "0.3.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82e5edc4d6dc44801ef97a92f9ffb9c41109283dd2417863cdacba396aaeea82"
+checksum = "23976a7a00a0e124857231028b1f9c933d84547b9976e4f1d991cca31b154e76"
 dependencies = [
  "derive_more",
  "persisted_derive",
@@ -1757,9 +1757,9 @@ dependencies = [
 
 [[package]]
 name = "persisted_derive"
-version = "0.3.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7471b53f84a721aeb9a70b422262543332c3433350b8dd76c0fe0b3df5767ca"
+checksum = "8a086c782df0cb5b1e0e4e7fe7f0f168f2699ff655f5a2eb07d6663fd8790df2"
 dependencies = [
  "quote",
  "syn 2.0.92",

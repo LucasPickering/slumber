@@ -10,7 +10,9 @@ use crate::{
 use persisted::{PersistedContainer, PersistedLazy, PersistedStore};
 use ratatui::text::Text;
 use slumber_core::{
-    collection::RecipeId, http::content_type::ContentType, render::Procedure,
+    collection::RecipeId,
+    http::content_type::ContentType,
+    render::{OverrideKey, Procedure},
 };
 use std::{collections::HashMap, fmt::Debug};
 use tracing::debug;
@@ -24,6 +26,36 @@ use tracing::debug;
 /// [RecipeProcedure] for your component/state field.
 #[derive(Debug, Default)]
 pub struct RecipeOverrideStore(HashMap<RecipeOverrideKey, String>);
+
+impl RecipeOverrideStore {
+    /// Get the persisted value for a particular recipe/field
+    #[cfg(test)]
+    pub fn get(recipe_id: RecipeId, key: OverrideKey) -> Option<String> {
+        ViewContext::with_override_store(|store| {
+            store
+                .0
+                .get(&RecipeOverrideKey {
+                    recipe_id,
+                    override_key: key,
+                })
+                .cloned()
+        })
+    }
+
+    /// Set the persisted value for a particular recipe/field
+    #[cfg(test)]
+    pub fn set(recipe_id: RecipeId, key: OverrideKey, value: String) {
+        ViewContext::with_override_store_mut(|store| {
+            store.0.insert(
+                RecipeOverrideKey {
+                    recipe_id,
+                    override_key: key,
+                },
+                value,
+            );
+        })
+    }
+}
 
 impl PersistedStore<RecipeOverrideKey> for RecipeOverrideStore {
     fn load_persisted(key: &RecipeOverrideKey) -> Option<RecipeOverrideValue> {
@@ -50,9 +82,23 @@ impl PersistedStore<RecipeOverrideKey> for RecipeOverrideStore {
     }
 }
 
-/// An override value that may be persisted in the store
+/// Persisted key for anything that goes in [RecipeOverrideStore]. This uniquely
+/// identifies any piece of a recipe that can be overridden.
+#[derive(Clone, Debug, Eq, Hash, PartialEq, persisted::PersistedKey)]
+#[persisted(RecipeOverrideValue)]
+struct RecipeOverrideKey {
+    /// Recipe being modified
+    recipe_id: RecipeId,
+    /// Identifier for the overridden field, within the context of this recipe
+    override_key: OverrideKey,
+}
+
+/// An override value that may be persisted in the store. This is *not* the
+/// same as an `OverrideValue`. That enum tracks omit vs override state. Here
+/// we track override vs default state. Omission is tracked separately in TUI
+/// state, via row toggle state.
 #[derive(Debug, PartialEq)]
-pub enum RecipeOverrideValue {
+enum RecipeOverrideValue {
     /// Default recipe value is in use, i.e. no override is present. Nothing
     /// will be persisted
     Default,
@@ -74,12 +120,16 @@ pub struct RecipeProcedure(
 
 impl RecipeProcedure {
     pub fn new(
-        persisted_key: RecipeOverrideKey,
+        recipe_id: RecipeId,
+        override_key: OverrideKey,
         procedure: Procedure,
         content_type: Option<ContentType>,
     ) -> Self {
         Self(PersistedLazy::new(
-            persisted_key,
+            RecipeOverrideKey {
+                recipe_id,
+                override_key,
+            },
             RecipeProcedureInner {
                 override_value: None,
                 override_text: None,
@@ -87,6 +137,12 @@ impl RecipeProcedure {
                 content_type,
             },
         ))
+    }
+
+    /// Get the override key that identifies this procedure within the scope of
+    /// its recipe
+    pub fn override_key(&self) -> &OverrideKey {
+        &self.0.key().override_key
     }
 
     /// Override the procedure with a new output value. The value will *not* be
@@ -184,86 +240,4 @@ impl PersistedContainer for RecipeProcedureInner {
             self.set_override(value);
         }
     }
-}
-
-/// Persisted key for anything that goes in [RecipeOverrideStore]. This uniquely
-/// identifies any piece of a recipe that can be overridden.
-#[derive(Clone, Debug, Eq, Hash, PartialEq, persisted::PersistedKey)]
-#[persisted(RecipeOverrideValue)]
-pub struct RecipeOverrideKey {
-    kind: RecipeOverrideKeyKind,
-    recipe_id: RecipeId,
-}
-
-impl RecipeOverrideKey {
-    pub fn body(recipe_id: RecipeId) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::Body,
-            recipe_id,
-        }
-    }
-
-    pub fn auth_basic_username(recipe_id: RecipeId) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::AuthenticationBasicUsername,
-            recipe_id,
-        }
-    }
-
-    pub fn auth_basic_password(recipe_id: RecipeId) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::AuthenticationBasicPassword,
-            recipe_id,
-        }
-    }
-
-    pub fn auth_bearer_token(recipe_id: RecipeId) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::AuthenticationBearerToken,
-            recipe_id,
-        }
-    }
-
-    /// Get a unique key for a query parameter. This can use index instead of
-    /// param name because it's only used within one session, and params can't
-    /// be added/reordered/removed without reloading the collection.
-    pub fn query_param(recipe_id: RecipeId, index: usize) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::QueryParam(index),
-            recipe_id,
-        }
-    }
-
-    /// Get a unique key for a header. This can use index instead of
-    /// param name because it's only used within one session, and params can't
-    /// be added/reordered/removed without reloading the collection.
-    pub fn header(recipe_id: RecipeId, index: usize) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::Header(index),
-            recipe_id,
-        }
-    }
-
-    /// Get a unique key for a form field. This can use index instead of
-    /// param name because it's only used within one session, and params can't
-    /// be added/reordered/removed without reloading the collection.
-    pub fn form_field(recipe_id: RecipeId, index: usize) -> Self {
-        Self {
-            kind: RecipeOverrideKeyKind::FormField(index),
-            recipe_id,
-        }
-    }
-}
-
-/// Different kinds of recipe fields that can be persisted. This is exposed only
-/// through methods on [RecipeOverrideKey] to make usage a bit terser.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-enum RecipeOverrideKeyKind {
-    Body,
-    AuthenticationBasicUsername,
-    AuthenticationBasicPassword,
-    AuthenticationBearerToken,
-    QueryParam(usize),
-    Header(usize),
-    FormField(usize),
 }

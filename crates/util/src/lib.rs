@@ -29,7 +29,7 @@ use std::{
     time,
 };
 use tracing::error;
-use winnow::{PResult, Parser, ascii::digit1, token::take_while};
+use winnow::{ModalResult, Parser, ascii::digit1, token::take_while};
 
 /// Link to the GitHub New Issue form
 pub const NEW_ISSUE_LINK: &str =
@@ -210,11 +210,11 @@ impl FromStr for Duration {
             }
         }
 
-        fn quantity(input: &mut &str) -> PResult<u64> {
+        fn quantity(input: &mut &str) -> ModalResult<u64> {
             digit1.parse_to().parse_next(input)
         }
 
-        fn unit<'a>(input: &mut &'a str) -> PResult<&'a str> {
+        fn unit<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
             take_while(1.., char::is_alphabetic).parse_next(input)
         }
 

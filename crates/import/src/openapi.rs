@@ -623,6 +623,7 @@ mod tests {
     use super::*;
     use indexmap::indexmap;
     use openapiv3::{Example, Schema, SchemaData, SchemaKind, Type};
+    use petitscript::Engine;
     use pretty_assertions::assert_eq;
     use rstest::{fixture, rstest};
     use serde_json::json;
@@ -634,17 +635,20 @@ mod tests {
     /// reasons:
     /// - It's huge so it makes code hard to navigate
     /// - Changes don't require a re-compile
-    const OPENAPIV3_IMPORTED_FILE: &str = "openapiv3_petstore_imported.yml";
+    const OPENAPIV3_IMPORTED_FILE: &str = "openapiv3_petstore_imported.js";
 
     /// Catch-all test for openapiv3 import
     #[rstest]
     fn test_openapiv3_import(test_data_dir: PathBuf) {
-        let imported =
-            from_openapi(test_data_dir.join(OPENAPIV3_FILE)).unwrap();
-        let expected =
-            Collection::load(&test_data_dir.join(OPENAPIV3_IMPORTED_FILE))
-                .unwrap();
-        assert_eq!(imported, expected);
+        // Convert the external collection into a PS AST, then parse the
+        // expected file into an AST and compare the two
+        let imported = from_openapi(test_data_dir.join(OPENAPIV3_FILE))
+            .unwrap()
+            .into_petitscript();
+        let expected = Engine::new()
+            .parse(test_data_dir.join(OPENAPIV3_IMPORTED_FILE))
+            .unwrap();
+        assert_eq!(&imported, expected.data());
     }
 
     /// Test various cases of [RequestBuilder::process_body]

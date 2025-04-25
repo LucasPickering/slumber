@@ -31,3 +31,5 @@ pub fn from_yaml(yaml_file: impl AsRef<Path>) -> anyhow::Result<Collection> {
         "Error deserializing Slumber YAML collection file {yaml_file:?}",
     ))
 }
+
+// TODO write a test for YAML->PS

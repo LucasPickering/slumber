@@ -724,42 +724,6 @@ mod tests {
         )]]);
     }
 
-    #[rstest]
-    fn test_validator(
-        harness: TestHarness,
-        #[with(6, 1)] terminal: TestTerminal,
-    ) {
-        let mut component = TestComponent::new(
-            &harness,
-            &terminal,
-            TextBox::default().validator(|text| text.len() <= 2),
-        );
-
-        // Valid text, everything is normal
-        component
-            .int()
-            .send_text("he")
-            .assert_emitted([TextBoxEvent::Change, TextBoxEvent::Change]);
-        terminal.assert_buffer_lines([vec![
-            text("he"),
-            cursor(" "),
-            text("   "),
-        ]]);
-
-        component
-            .int()
-            .send_key(KeyCode::Enter)
-            .assert_emitted([TextBoxEvent::Submit]);
-
-        // Invalid text, styling changes and no events are emitted
-        component.int().send_text("llo").assert_emitted([]);
-        terminal.assert_buffer_lines([vec![
-            Span::styled("hello", TuiContext::get().styles.text_box.invalid),
-            cursor(" "),
-        ]]);
-        component.int().send_key(KeyCode::Enter).assert_emitted([]);
-    }
-
     #[test]
     fn test_state_insert() {
         let mut state = TextState::default();

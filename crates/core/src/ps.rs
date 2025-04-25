@@ -5,7 +5,10 @@ pub use error::FunctionError;
 
 use crate::collection::{Collection, LoadedCollection};
 use anyhow::Context;
-use petitscript::{Engine, Process, Source, Value, ast::Module};
+use petitscript::{
+    Engine, Process, Source, Value,
+    ast::{IntoNode, Module},
+};
 use serde::de::IntoDeserializer;
 use std::sync::Arc;
 use tracing::{info, info_span};
@@ -48,7 +51,7 @@ impl PetitEngine {
 
     /// TODO test only
     pub fn todo(&self, module: Module) -> anyhow::Result<LoadedCollection> {
-        let process = self.engine.compile_ast(module)?;
+        let process = self.engine.compile_ast(module.s())?;
         Self::todo2(process)
     }
 

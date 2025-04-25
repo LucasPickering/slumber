@@ -15,13 +15,18 @@ use petitscript::{Process, Value, value::Function};
 use serde::{Deserialize, Serialize};
 use slumber_util::ResultTraced;
 use std::{
-    borrow::Cow,
     fmt::{self, Debug, Display},
     str::FromStr,
     sync::Arc,
 };
 use thiserror::Error;
 use tokio::{sync::oneshot, task};
+use winnow::{
+    ModalResult, Parser,
+    ascii::dec_uint,
+    combinator::{alt, opt, preceded},
+    token::take_while,
+};
 
 /// A definition of a how a recipe value should be rendered.
 /// [petitscript::Value] to be used in a recipe. Procedures come in two forms:
@@ -266,7 +271,6 @@ impl Renderer {
         &self,
         function: Function,
     ) -> anyhow::Result<Value> {
-        // TODO error context here?
         let process = self.process.clone();
         let return_value =
             task::spawn_blocking(move || process.call(&function, vec![]))
@@ -357,28 +361,28 @@ impl RenderContext {
 ///
 /// Override keys are used internally by the TUI and can be passed by the user
 /// in the CLI with the `--override` flag.
-pub type Overrides = IndexMap<OverrideKey<'static>, OverrideValue>;
+pub type Overrides = IndexMap<OverrideKey, OverrideValue>;
 
 /// A key specifying a single value in a request to be overridden. Users can
 /// override a specific part of a recipe OR a profile field. Profile fields
 /// provide more granular and customizable override behavior.
-///
-/// `Cow` is used here to prevent unnecessary cloning when checking for keys in
-/// an override map.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum OverrideKey<'a> {
+pub enum OverrideKey {
     /// Override the value of a profile field
-    Profile(Cow<'a, str>),
+    Profile(String),
     /// Override the request URL
     Url,
-    /// Override a single query parameter value
-    Query(Cow<'a, str>),
+    /// Override a single query parameter value. Query parameters can appear
+    /// multiple times, so an additional index is used to disambiguate between
+    /// multiple occurrences of the same param. The index will be `0` for the
+    /// first appearance of *that parameter*, `1` for the second, etc.
+    Query(String, usize),
     /// Override a single header value
-    Header(Cow<'a, str>),
+    Header(String),
     /// Override the request's entire body. For raw/JSON bodies
     Body,
     /// Override a form body field
-    Form(Cow<'a, str>),
+    Form(String),
     /// Override the username in basic authentication
     AuthenticationUsername,
     /// Override the password in basic authentication
@@ -387,24 +391,34 @@ pub enum OverrideKey<'a> {
     AuthenticationToken,
 }
 
-impl FromStr for OverrideKey<'static> {
+/// Parse an override key from a string source such as a CLI flag
+impl FromStr for OverrideKey {
     type Err = OverrideKeyParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match (s, s.split_once('.')) {
-            ("url", _) => Ok(Self::Url),
-            ("body", _) => Ok(Self::Body),
-            (_, Some(("profile", field))) => {
-                Ok(Self::Profile(field.to_owned().into()))
-            }
-            (_, Some(("query", param))) => {
-                Ok(Self::Query(param.to_owned().into()))
-            }
-            (_, Some(("headers", name))) => {
-                Ok(Self::Header(name.to_owned().into()))
-            }
-            _ => Err(OverrideKeyParseError),
+        /// Parse 1 or more characters
+        fn any1(input: &mut &str) -> ModalResult<String> {
+            take_while(1.., |c| c != '.')
+                .map(String::from)
+                .parse_next(input)
         }
+
+        alt((
+            "url".map(|_| Self::Url),
+            "body".map(|_| Self::Body),
+            // profile.<field>
+            preceded("profile.", any1).map(Self::Profile),
+            // query.<param> or query.<param>.<index>
+            preceded("query.", (any1, opt(preceded(".", dec_uint))))
+                .map(|(param, i)| Self::Query(param, i.unwrap_or(0))),
+            preceded("headers.", any1).map(Self::Header),
+            preceded("form.", any1).map(Self::Form),
+            "auth.username".map(|_| Self::AuthenticationUsername),
+            "auth.password".map(|_| Self::AuthenticationPassword),
+            "auth.token".map(|_| Self::AuthenticationToken),
+        ))
+        .parse(s)
+        .map_err(|error| OverrideKeyParseError(error.to_string()))
     }
 }
 
@@ -417,14 +431,12 @@ pub enum OverrideValue {
     Override(String),
 }
 
-#[cfg(test)]
 impl From<&str> for OverrideValue {
     fn from(value: &str) -> Self {
         Self::Override(value.into())
     }
 }
 
-#[cfg(test)]
 impl From<String> for OverrideValue {
     fn from(value: String) -> Self {
         Self::Override(value)
@@ -551,8 +563,8 @@ impl<T> ResponseChannel<T> {
 
 /// Error for [OverrideKey]'s `FromStr` impl.
 #[derive(Debug, Error)]
-#[error("Invalid override key")]
-pub struct OverrideKeyParseError;
+#[error("Invalid override key: {0}")]
+pub struct OverrideKeyParseError(String);
 
 /// Error occurred while trying to build/execute a triggered request.
 ///
@@ -592,13 +604,54 @@ impl From<RequestError> for TriggeredRequestError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use rstest::rstest;
+    use slumber_util::assert_err;
 
-    // TODO morte tests
+    // TODO more tests
 
     /// When the same profile field is accessed twice in the same recipe render,
     /// we should only compute it once
     #[test]
     fn test_duplicate_profile_field() {
         todo!()
+    }
+
+    #[rstest]
+    #[case::url("url", OverrideKey::Url)]
+    #[case::profile("profile.field", OverrideKey::Profile("field".into()))]
+    #[case::query("query.param", OverrideKey::Query("param".into(), 0))]
+    #[case::query_index("query.param.1", OverrideKey::Query("param".into(), 1))]
+    #[case::header("headers.field", OverrideKey::Header("field".into()))]
+    #[case::form("form.field", OverrideKey::Form("field".into()))]
+    #[case::body("body", OverrideKey::Body)]
+    #[case::authentication_username(
+        "auth.username",
+        OverrideKey::AuthenticationUsername
+    )]
+    #[case::authentication_password(
+        "auth.password",
+        OverrideKey::AuthenticationPassword
+    )]
+    #[case::authentication_token(
+        "auth.token",
+        OverrideKey::AuthenticationToken
+    )]
+    fn test_parse_override_key(
+        #[case] input: &str,
+        #[case] expected_key: OverrideKey,
+    ) {
+        let parsed: OverrideKey = input.parse().unwrap();
+        assert_eq!(parsed, expected_key);
+    }
+
+    /// Test parsing invalid override keys
+    #[rstest]
+    #[case::empty("")]
+    #[case::empty_field("profile.")]
+    #[case::trailing_dot("profile.field.")]
+    #[case::empty_invalid_query_index("query.p1.w")]
+    fn test_parse_override_key_error(#[case] input: &str) {
+        assert_err!(input.parse::<OverrideKey>(), "Invalid override key");
     }
 }

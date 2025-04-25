@@ -26,5 +26,5 @@ fn tests_dir() -> PathBuf {
 
 /// Path to the CLI test collection file
 pub fn collection_file() -> CollectionFile {
-    tests_dir().join("slumber.yml")
+    CollectionFile::new(Some(tests_dir().join("slumber.yml"))).unwrap()
 }

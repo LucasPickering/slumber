@@ -48,11 +48,11 @@ use crate::{
     http::curl::CurlBuilder,
     render::{FromRendered, OverrideKey, OverrideValue, Procedure, Renderer},
 };
-use anyhow::Context;
+use anyhow::{Context, bail};
 use bytes::Bytes;
 use chrono::Utc;
 use futures::{
-    Future, FutureExt,
+    Future,
     future::{OptionFuture, try_join_all},
     try_join,
 };
@@ -64,7 +64,7 @@ use reqwest::{
 };
 use slumber_config::HttpEngineConfig;
 use slumber_util::ResultTraced;
-use std::{borrow::Cow, collections::HashSet, error::Error};
+use std::{collections::HashSet, error::Error};
 use tracing::{error, info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
@@ -427,10 +427,17 @@ impl ResponseRecord {
 impl Recipe {
     /// Render base URL, *excluding* query params
     async fn render_url(&self, renderer: &Renderer) -> anyhow::Result<Url> {
-        let url = renderer
-            .render::<String>(&self.url)
-            .await
-            .context("Error rendering URL")?;
+        let url = match renderer.context().overrides.get(&OverrideKey::Url) {
+            // Use the normal value
+            None => renderer
+                .render::<String>(&self.url)
+                .await
+                .context("Error rendering URL")?,
+            // We need a URL! Omission triggers an error. Frontends should
+            // probably prevent this
+            Some(OverrideValue::Omit) => bail!("URL cannot be omitted"),
+            Some(OverrideValue::Override(value)) => value.to_owned(),
+        };
         url.parse::<Url>()
             .with_context(|| format!("Invalid URL: `{url}`"))
     }
@@ -440,13 +447,26 @@ impl Recipe {
         &self,
         renderer: &Renderer,
     ) -> anyhow::Result<Vec<(String, String)>> {
-        // Enumerate so we can look up overrides by index. This relies on
-        // the thing that builds the overrides to use the same iteration
-        // order; this is enforced by using Recipe::query_iter()
-        // TODO handle duplicate params correctly
-        render_all(renderer, self.query_iter(), OverrideKey::Query)
+        let overrides = &renderer.context().overrides;
+        // A param may have multiple values, so query_iter() disambiguates by
+        // including an index param
+        let futures = self.query_iter().map(|(param, i, procedure)| {
+            with_override(
+                overrides.get(&OverrideKey::Query(param.into(), i)),
+                async move {
+                    let value = renderer.render(procedure).await.context(
+                        format!("Query parameter `{param}` (value `{i}`"),
+                    )?;
+                    Ok::<_, anyhow::Error>((param.to_owned(), value))
+                },
+                |value| Ok((param.to_owned(), value.to_owned())),
+            )
+        });
+        // We have to filter out the omitted fields now
+        let options = try_join_all(futures)
             .await
-            .context("Error rendering query parameters")
+            .context("Error rendering query parameters")?;
+        Ok(options.into_iter().flatten().collect())
     }
 
     /// Render all headers specified by the user. This will *not* include
@@ -496,32 +516,53 @@ impl Recipe {
         let overrides = &renderer.context().overrides;
         match self.authentication.as_ref() {
             Some(Authentication::Basic { username, password }) => {
-                // TODO support overrides
                 let (username, password) = try_join!(
-                    async {
-                        renderer
-                            .render(username)
+                    with_override(
+                        overrides.get(&OverrideKey::AuthenticationUsername),
+                        async {
+                            renderer
+                                .render(username)
+                                .await
+                                .context("Error rendering username")
+                        },
+                        |value| Ok(value.to_owned())
+                    ),
+                    with_override(
+                        overrides.get(&OverrideKey::AuthenticationPassword),
+                        async {
+                            OptionFuture::from(
+                                password
+                                    .as_ref()
+                                    .map(|password| renderer.render(password)),
+                            )
                             .await
-                            .context("Error rendering username")
-                    },
-                    async {
-                        OptionFuture::from(
-                            password
-                                .as_ref()
-                                .map(|password| renderer.render(password)),
-                        )
-                        .await
-                        .transpose()
-                        .context("Error rendering password")
-                    },
+                            .transpose()
+                        },
+                        |value| Ok(Some(value.to_owned()))
+                    )
                 )?;
-                Ok(Some(Authentication::Basic { username, password }))
+                let password = password.flatten();
+                let authentication = match (username, password) {
+                    (Some(username), password) => {
+                        Some(Authentication::Basic { username, password })
+                    }
+                    // If username is omitted but password is not, use an empty
+                    // username. This doesn't really make sense to do but might
+                    // as well support it?
+                    (None, Some(password)) => Some(Authentication::Basic {
+                        username: "".into(),
+                        password: Some(password),
+                    }),
+                    // If both fields have been omitted, exclude the header
+                    (None, None) => None,
+                };
+                Ok(authentication)
             }
 
             Some(Authentication::Bearer { token }) => {
                 with_override(
                     overrides.get(&OverrideKey::AuthenticationToken),
-                    async || {
+                    async {
                         let token = renderer
                             .render(token)
                             .await
@@ -554,7 +595,7 @@ impl Recipe {
             RecipeBody::Raw { data, .. } => {
                 with_override(
                     overrides.get(&OverrideKey::Body),
-                    async || {
+                    async {
                         let body = renderer
                             .render::<Bytes>(data)
                             .await
@@ -568,7 +609,7 @@ impl Recipe {
             RecipeBody::Json { data } => {
                 with_override(
                     overrides.get(&OverrideKey::Body),
-                    async || {
+                    async {
                         let value = renderer
                             .render::<Value>(data)
                             .await
@@ -673,39 +714,33 @@ impl From<HttpMethod> for reqwest::Method {
     }
 }
 
-/// Render a sequence of (key, procedure) pairs. Each field can be overidden.
+/// Render a sequence of (key, procedure) pairs. Each field can be overridden.
 /// The procedures can be rendered to either strings or bytes, as needed.
 async fn render_all<'a, V>(
     renderer: &Renderer,
     iter: impl Iterator<Item = (&'a str, &'a Procedure)>,
-    override_key_fn: impl Fn(Cow<'a, str>) -> OverrideKey<'a>,
+    override_key_fn: impl Fn(String) -> OverrideKey,
 ) -> anyhow::Result<Vec<(String, V)>>
 where
     V: FromRendered,
 {
     let overrides = &renderer.context().overrides;
-    let futures = iter.filter_map(|(key, procedure)| {
-        match overrides.get(&override_key_fn(key.into())) {
-            // Skip this field
-            Some(OverrideValue::Omit) => None,
-            // Use the given value instead of rendering
-            Some(OverrideValue::Override(value)) => Some(
-                async { Ok((key.to_owned(), value.clone().into())) }.boxed(),
-            ),
-            // No override - render the procedure from the recipe
-            None => Some(
-                async move {
-                    let value = renderer
-                        .render::<V>(procedure)
-                        .await
-                        .context(format!("Field `{key}`"))?;
-                    Ok::<_, anyhow::Error>((key.to_owned(), value))
-                }
-                .boxed(),
-            ),
-        }
+    let futures = iter.map(|(key, procedure)| {
+        with_override::<(String, V)>(
+            overrides.get(&override_key_fn(key.into())),
+            async move {
+                let value = renderer
+                    .render::<V>(procedure)
+                    .await
+                    .context(format!("Field `{key}`"))?;
+                Ok::<_, anyhow::Error>((key.to_owned(), value))
+            },
+            |value| Ok((key.to_owned(), value.to_owned().into())),
+        )
     });
-    try_join_all(futures).await
+    // We have to filter out the omitted fields now
+    let options = try_join_all(futures).await?;
+    Ok(options.into_iter().flatten().collect())
 }
 
 /// If an override value is present, use it. If the override says to omit the
@@ -714,16 +749,16 @@ where
 /// whether it was rendered or from the override.
 async fn with_override<T>(
     override_value: Option<&OverrideValue>,
-    render: impl AsyncFnOnce() -> anyhow::Result<T>,
+    render_future: impl Future<Output = anyhow::Result<T>>,
     map_override: impl FnOnce(&str) -> anyhow::Result<T>,
 ) -> anyhow::Result<Option<T>> {
     match override_value {
-        Some(OverrideValue::Omit) => Ok(None),
-        Some(OverrideValue::Override(value)) => Ok(Some(map_override(value)?)),
         None => {
-            let value = render().await?;
+            let value = render_future.await?;
             Ok(Some(value))
         }
+        Some(OverrideValue::Omit) => Ok(None),
+        Some(OverrideValue::Override(value)) => Ok(Some(map_override(value)?)),
     }
 }
 

@@ -602,6 +602,7 @@ where
 mod tests {
     use super::*;
     use indexmap::indexmap;
+    use petitscript::Engine;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde::de::DeserializeOwned;
@@ -614,17 +615,20 @@ mod tests {
     /// reasons:
     /// - It's huge so it makes code hard to navigate
     /// - Changes don't require a re-compile
-    const INSOMNIA_IMPORTED_FILE: &str = "insomnia_imported.yml";
+    const INSOMNIA_IMPORTED_FILE: &str = "insomnia_imported.js";
 
     /// Catch-all test for insomnia import
     #[rstest]
     fn test_insomnia_import(test_data_dir: PathBuf) {
-        let imported =
-            from_insomnia(test_data_dir.join(INSOMNIA_FILE)).unwrap();
-        let expected =
-            Collection::load(&test_data_dir.join(INSOMNIA_IMPORTED_FILE))
-                .unwrap();
-        assert_eq!(imported, expected);
+        // Convert the external collection into a PS AST, then parse the
+        // expected file into an AST and compare the two
+        let imported = from_insomnia(test_data_dir.join(INSOMNIA_FILE))
+            .unwrap()
+            .into_petitscript();
+        let expected = Engine::new()
+            .parse(test_data_dir.join(INSOMNIA_IMPORTED_FILE))
+            .unwrap();
+        assert_eq!(&imported, expected.data());
     }
 
     #[test]

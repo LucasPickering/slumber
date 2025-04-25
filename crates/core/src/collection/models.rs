@@ -192,13 +192,16 @@ impl Recipe {
     }
 
     /// Get a _flattened_ iterator over this recipe's query parameters. Any
-    /// parameter with multiple values will be flattened so the key appears
-    /// multiple times, once with each value. This will respect all ordering
-    /// from the original map.
-    pub fn query_iter(&self) -> impl Iterator<Item = (&str, &Procedure)> {
-        self.query
-            .iter()
-            .flat_map(|(k, v)| v.iter().map(move |v| (k.as_str(), v)))
+    /// parameter with multiple values will be flattened so the parameter name
+    /// appears multiple times, once with each value. Each tuple will include
+    /// the index of each value to distinguish repeated parameters. This
+    /// will respect all ordering from the original map.
+    pub fn query_iter(
+        &self,
+    ) -> impl Iterator<Item = (&str, usize, &Procedure)> {
+        self.query.iter().flat_map(|(k, v)| {
+            v.iter().enumerate().map(move |(i, v)| (k.as_str(), i, v))
+        })
     }
 }
 
@@ -441,6 +444,7 @@ impl slumber_util::Factory for Collection {
 mod tests {
     use super::*;
     use indexmap::indexmap;
+    use itertools::Itertools;
     use rstest::rstest;
     use slumber_util::Factory;
 
@@ -494,5 +498,24 @@ mod tests {
         };
         let expected = expected.and_then(|value| value.parse::<Mime>().ok());
         assert_eq!(recipe.mime(), expected);
+    }
+
+    #[test]
+    fn test_query_iter() {
+        let recipe = Recipe {
+            query: indexmap! {
+                "param1".into() => ["value1.1", "value1.2"].into(),
+                "param2".into() => "value2.1".into(),
+            },
+            ..Recipe::factory(())
+        };
+        assert_eq!(
+            recipe.query_iter().collect_vec().as_slice(),
+            &[
+                ("param1", 0, &"value1.1".into()),
+                ("param1", 1, &"value1.2".into()),
+                ("param2", 0, &"value2.1".into()),
+            ]
+        );
     }
 }

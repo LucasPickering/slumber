@@ -91,6 +91,7 @@ impl Display for CollectionFile {
 }
 
 /// Create a new file with a placeholder path for testing
+/// TODO delete this?
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory<()> for CollectionFile {
     fn factory(_: ()) -> Self {

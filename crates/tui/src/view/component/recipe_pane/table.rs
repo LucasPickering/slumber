@@ -6,9 +6,8 @@ use crate::view::{
         text_box::TextBox,
     },
     component::{
-        Component,
-        misc::TextBoxModal,
-        recipe_pane::persistence::{RecipeOverrideKey, RecipeProcedure},
+        Component, misc::TextBoxModal,
+        recipe_pane::persistence::RecipeProcedure,
     },
     context::UpdateContext,
     draw::{Draw, DrawMetadata, Generate},
@@ -23,9 +22,11 @@ use ratatui::{
     widgets::{Row, TableState},
 };
 use slumber_config::Action;
-use slumber_core::render::{OverrideKey, OverrideValue, Overrides, Procedure};
+use slumber_core::{
+    collection::RecipeId,
+    render::{OverrideKey, OverrideValue, Overrides, Procedure},
+};
 use slumber_util::HasId;
-use std::borrow::Cow;
 
 /// A table of key-value mappings. This is used in a new places in the recipe
 /// pane, and provides some common functionality:
@@ -47,9 +48,6 @@ where
     override_emitter: Emitter<SaveRecipeTableOverride>,
     /// Emitter for menu actions
     actions_emitter: Emitter<RecipeTableMenuAction>,
-    /// Function to generate an override key from a row key. This qualfies a
-    /// row from the table scope to the full recipe scope.
-    override_key_fn: fn(Cow<'static, str>) -> OverrideKey<'static>,
     select: Component<
         PersistedLazy<
             RowSelectKey,
@@ -63,21 +61,34 @@ where
     RowSelectKey: PersistedKey<Value = Option<String>>,
     RowToggleKey: 'static + PersistedKey<Value = bool>,
 {
+    /// Create a new table of overriddable recipe values.
+    ///
+    /// ## Parameters
+    ///
+    /// - `noun` - Label for the kind of data that a single row contains
+    /// - `recipe_id` - ID of the recipe; used to persist override keys
+    /// - `select_key` - Persisted key that stores which row in the table is
+    ///   currently selected
+    /// - `rows` - Iterator of rows in the table. Each row stores;
+    ///     - Row key/label
+    ///     - Row value (as a renderable procedure)
+    ///     - Override key, which will be used to override/omit this row from a
+    ///       recipe render
+    ///     - Persisted toggle key, to persist the on/off state for this row
     pub fn new(
         noun: &'static str,
+        recipe_id: RecipeId,
         select_key: RowSelectKey,
         rows: impl IntoIterator<
-            Item = (String, Procedure, RecipeOverrideKey, RowToggleKey),
+            Item = (String, Procedure, OverrideKey, RowToggleKey),
         >,
-        override_key_fn: fn(Cow<'static, str>) -> OverrideKey<'static>,
     ) -> Self {
         let items = rows
             .into_iter()
-            .enumerate()
-            .map(|(i, (key, procedure, override_key, toggle_key))| RowState {
-                index: i, // This will be the unique ID for the row
+            .map(|(key, procedure, override_key, toggle_key)| RowState {
                 key,
                 value: RecipeProcedure::new(
+                    recipe_id.clone(),
                     override_key,
                     procedure.clone(),
                     None,
@@ -92,7 +103,6 @@ where
             noun,
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
-            override_key_fn,
             select: PersistedLazy::new(select_key, select).into(),
         }
     }
@@ -103,18 +113,20 @@ where
             .data()
             .items()
             .filter_map(|row| {
+                // Emit any row with an override value
                 let value = row.to_override()?;
-                Some((
-                    (self.override_key_fn)(Cow::Owned(row.key.clone())),
-                    value,
-                ))
+                Some((row.value.override_key().clone(), value))
             })
             .collect()
     }
 
     fn edit_selected_row(&self) {
-        if let Some(selected_row) = self.select.data().selected() {
-            selected_row.open_edit_modal(self.override_emitter);
+        let select = self.select.data();
+        if let Some(selected_row) = select.selected() {
+            selected_row.open_edit_modal(
+                select.selected_index().unwrap(),
+                self.override_emitter,
+            );
         }
     }
 
@@ -276,10 +288,6 @@ pub struct RecipeFieldTableProps<'a> {
 /// use for toggle state
 #[derive(Debug)]
 struct RowState<K: PersistedKey<Value = bool>> {
-    /// Index of this row in the table. This is the unique ID for this row
-    /// **in the context of a single session**. Rows can be added/removed
-    /// during a collection reload, so we can't persist this.
-    index: usize,
     /// Persistent (but not unique) identifier for this row. Keys can be
     /// duplicated within one table (e.g. query params), but this is how we
     /// link instances of a row across collection reloads.
@@ -320,18 +328,18 @@ impl<K: PersistedKey<Value = bool>> RowState<K> {
     }
 
     /// Open a modal to create or edit the value's temporary override
-    fn open_edit_modal(&self, emitter: Emitter<SaveRecipeTableOverride>) {
-        let index = self.index;
+    fn open_edit_modal(
+        &self,
+        row_index: usize,
+        emitter: Emitter<SaveRecipeTableOverride>,
+    ) {
         TextBoxModal::new(
             format!("Edit value for {}", self.key),
             // Edit as a raw value
             TextBox::default().default_value(self.value.value()),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
-                emitter.emit(SaveRecipeTableOverride {
-                    row_index: index,
-                    value,
-                });
+                emitter.emit(SaveRecipeTableOverride { row_index, value });
             },
         )
         .open();
@@ -377,16 +385,10 @@ mod tests {
     use super::*;
     use crate::{
         test_util::{TestHarness, TestTerminal, harness, terminal},
-        view::{
-            component::{
-                RecipeOverrideStore,
-                recipe_pane::persistence::RecipeOverrideValue,
-            },
-            test_util::TestComponent,
-        },
+        view::{component::RecipeOverrideStore, test_util::TestComponent},
     };
     use crossterm::event::KeyCode;
-    use persisted::PersistedStore;
+    use indexmap::indexmap;
     use rstest::rstest;
     use serde::Serialize;
     use slumber_core::collection::RecipeId;
@@ -407,40 +409,24 @@ mod tests {
     #[rstest]
     fn test_disabled_row(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        let rows = [
-            (
-                "row0".into(),
-                "value0".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 0),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row0".into(),
-                },
-            ),
-            (
-                "row1".into(),
-                "value1".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 1),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row1".into(),
-                },
-            ),
-        ];
+        let rows =
+            build_rows(&recipe_id, [("row0", "value0"), ("row1", "value1")]);
 
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
+            RecipeFieldTable::new(
+                "Row",
+                recipe_id.clone(),
+                TestRowKey(recipe_id.clone()),
+                rows,
+            ),
         )
         .with_props(props_factory())
         .build();
 
         // Check initial state
-        assert_eq!(
-            component.data().to_build_overrides(),
-            BuildFieldOverrides::default()
-        );
+        assert_eq!(component.data().overrides(), indexmap! {});
 
         // Disable the second row
         component
@@ -451,8 +437,10 @@ mod tests {
         assert_eq!(&selected_row.key, "row1");
         assert!(!*selected_row.enabled);
         assert_eq!(
-            component.data().to_build_overrides(),
-            [(1, BuildFieldOverride::Omit)].into_iter().collect(),
+            component.data().overrides(),
+            indexmap! {
+                OverrideKey::Header("row1".into()) => OverrideValue::Omit,
+            },
         );
 
         // Re-enable the row
@@ -462,50 +450,31 @@ mod tests {
             .assert_empty();
         let selected_row = component.data().select.data().selected().unwrap();
         assert!(*selected_row.enabled);
-        assert_eq!(
-            component.data().to_build_overrides(),
-            BuildFieldOverrides::default(),
-        );
+        assert_eq!(component.data().overrides(), indexmap! {},);
     }
 
     /// User can edit the value for a row
     #[rstest]
     fn test_override_row(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        let rows = [
-            (
-                "row0".into(),
-                "value0".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 0),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row0".into(),
-                },
-            ),
-            (
-                "row1".into(),
-                "value1".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 1),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row1".into(),
-                },
-            ),
-        ];
+        let rows =
+            build_rows(&recipe_id, [("row0", "value0"), ("row1", "value1")]);
 
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
+            RecipeFieldTable::new(
+                "Row",
+                recipe_id.clone(),
+                TestRowKey(recipe_id.clone()),
+                rows,
+            ),
         )
         .with_props(props_factory())
         .build();
 
         // Check initial state
-        assert_eq!(
-            component.data().to_build_overrides(),
-            BuildFieldOverrides::default()
-        );
+        assert_eq!(component.data().overrides(), indexmap! {});
 
         // Edit the second row
         component
@@ -519,12 +488,12 @@ mod tests {
         let selected_row = component.data().select.data().selected().unwrap();
         assert_eq!(&selected_row.key, "row1");
         assert!(selected_row.value.is_overridden());
-        assert_eq!(selected_row.value.template().display(), "value1!!!");
+        assert_eq!(selected_row.value.value(), "value1!!!");
         assert_eq!(
-            component.data().to_build_overrides(),
-            [(1, BuildFieldOverride::Override("value1!!!".into()))]
-                .into_iter()
-                .collect(),
+            component.data().overrides(),
+            indexmap! {
+                OverrideKey::Header("row1".into()) => "value1!!!".into(),
+            },
         );
 
         // Reset edited state
@@ -540,20 +509,17 @@ mod tests {
     #[rstest]
     fn test_edit_action(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        let rows = [(
-            "row0".into(),
-            "value0".into(),
-            RecipeOverrideKey::query_param(recipe_id.clone(), 0),
-            TestRowToggleKey {
-                recipe_id: recipe_id.clone(),
-                key: "row0".into(),
-            },
-        )];
+        let rows = build_rows(&recipe_id, [("row0", "value0")]);
 
         let mut component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
+            RecipeFieldTable::new(
+                "Row",
+                recipe_id.clone(),
+                TestRowKey(recipe_id.clone()),
+                rows,
+            ),
         )
         .with_props(props_factory())
         .build();
@@ -565,57 +531,43 @@ mod tests {
             .assert_empty();
 
         let selected_row = component.data().select.data().selected().unwrap();
-        assert_eq!(selected_row.value.template().display(), "value0!");
+        assert_eq!(selected_row.value.value(), "value0!");
     }
 
     /// Overrides should be loaded from the store on init
     #[rstest]
     fn test_persisted_override(harness: TestHarness, terminal: TestTerminal) {
         let recipe_id = RecipeId::factory(());
-        RecipeOverrideStore::store_persisted(
-            &RecipeOverrideKey::query_param(recipe_id.clone(), 0),
-            &RecipeOverrideValue::Override("p0".into()),
+        RecipeOverrideStore::set(
+            recipe_id.clone(),
+            OverrideKey::Header("row0".into()),
+            "p0".into(),
         );
-        RecipeOverrideStore::store_persisted(
-            &RecipeOverrideKey::query_param(recipe_id.clone(), 1),
-            &RecipeOverrideValue::Override("p1".into()),
+        RecipeOverrideStore::set(
+            recipe_id.clone(),
+            OverrideKey::Header("row1".into()),
+            "p1".into(),
         );
-        let rows = [
-            (
-                "row0".into(),
-                "".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 0),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row0".into(),
-                },
-            ),
-            (
-                "row1".into(),
-                "".into(),
-                RecipeOverrideKey::query_param(recipe_id.clone(), 1),
-                TestRowToggleKey {
-                    recipe_id: recipe_id.clone(),
-                    key: "row1".into(),
-                },
-            ),
-        ];
+        let rows = build_rows(&recipe_id, [("row0", ""), ("row1", "")]);
         let component = TestComponent::builder(
             &harness,
             &terminal,
-            RecipeFieldTable::new("Row", TestRowKey(recipe_id.clone()), rows),
+            RecipeFieldTable::new(
+                "Row",
+                recipe_id.clone(),
+                TestRowKey(recipe_id.clone()),
+                rows,
+            ),
         )
         .with_props(props_factory())
         .build();
 
         assert_eq!(
-            component.data().to_build_overrides(),
-            [
-                (0, BuildFieldOverride::Override("p0".into())),
-                (1, BuildFieldOverride::Override("p1".into()))
-            ]
-            .into_iter()
-            .collect(),
+            component.data().overrides(),
+            indexmap! {
+                OverrideKey::Header("row0".into()) => "p0".into(),
+                OverrideKey::Header("row1".into()) => "p1".into(),
+            },
         );
     }
 
@@ -624,5 +576,23 @@ mod tests {
             key_header: "Key",
             value_header: "Value",
         }
+    }
+
+    fn build_rows<const N: usize>(
+        recipe_id: &RecipeId,
+        rows: [(&str, &str); N],
+    ) -> impl IntoIterator<Item = (String, Procedure, OverrideKey, TestRowToggleKey)>
+    {
+        rows.into_iter().map(|(key, value)| {
+            (
+                key.into(),
+                value.into(),
+                OverrideKey::Header(key.into()),
+                TestRowToggleKey {
+                    recipe_id: recipe_id.clone(),
+                    key: key.into(),
+                },
+            )
+        })
     }
 }

@@ -4,7 +4,6 @@ use crate::view::{
     component::recipe_pane::{
         authentication::AuthenticationDisplay,
         body::RecipeBodyDisplay,
-        persistence::RecipeOverrideKey,
         table::{RecipeFieldTable, RecipeFieldTableProps},
     },
     draw::{Draw, DrawMetadata},
@@ -46,38 +45,38 @@ impl RecipeDisplay {
             url: Preview::new(recipe.url.clone(), None),
             query: RecipeFieldTable::new(
                 "Parameter",
+                recipe.id.clone(),
                 QueryRowKey(recipe.id.clone()),
-                recipe.query_iter().enumerate().map(|(i, (param, value))| {
+                recipe.query_iter().map(|(param, i, value)| {
                     (
                         param.to_owned(),
                         value.clone(),
-                        RecipeOverrideKey::query_param(recipe.id.clone(), i),
+                        // Query param names can be duplicated, so we need the
+                        // index as well to disambiguate
+                        OverrideKey::Query(param.to_owned(), i),
                         QueryRowToggleKey {
                             recipe_id: recipe.id.clone(),
                             param: param.to_owned(),
                         },
                     )
                 }),
-                OverrideKey::Query,
             )
             .into(),
             headers: RecipeFieldTable::new(
                 "Header",
+                recipe.id.clone(),
                 HeaderRowKey(recipe.id.clone()),
-                recipe.headers.iter().enumerate().map(
-                    |(i, (header, value))| {
-                        (
-                            header.clone(),
-                            value.clone(),
-                            RecipeOverrideKey::header(recipe.id.clone(), i),
-                            HeaderRowToggleKey {
-                                recipe_id: recipe.id.clone(),
-                                header: header.clone(),
-                            },
-                        )
-                    },
-                ),
-                OverrideKey::Header,
+                recipe.headers.iter().map(|(header, value)| {
+                    (
+                        header.clone(),
+                        value.clone(),
+                        OverrideKey::Header(header.to_owned()),
+                        HeaderRowToggleKey {
+                            recipe_id: recipe.id.clone(),
+                            header: header.clone(),
+                        },
+                    )
+                }),
             )
             .into(),
             body: recipe
@@ -108,16 +107,8 @@ impl RecipeDisplay {
         }
         overrides.extend(self.query.data().overrides());
         overrides.extend(self.headers.data().overrides());
-        match self.body.data() {
-            Some(RecipeBodyDisplay::Raw(body)) => {
-                if let Some(value) = body.data().override_value() {
-                    overrides.insert(OverrideKey::Body, value);
-                }
-            }
-            Some(RecipeBodyDisplay::Form(form)) => {
-                overrides.extend(form.data().overrides())
-            }
-            None => {}
+        if let Some(body) = self.body.data() {
+            overrides.extend(body.overrides());
         }
 
         overrides

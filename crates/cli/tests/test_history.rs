@@ -40,7 +40,7 @@ const OTHER_COLLECTION_ID: RequestId =
     &[RECIPE1_NO_PROFILE_ID, RECIPE1_PROFILE1_ID, RECIPE2_ID],
 )]
 #[case::different_collection(
-    &["-f", "../../../slumber.yml", "history", "list"],
+    &["-f", "../../../slumber.js", "history", "list"],
     &[OTHER_COLLECTION_ID],
 )]
 #[case::all(
@@ -127,7 +127,7 @@ fn init_db(data_dir: &Path) -> Database {
     let db = database
         .clone()
         .into_collection(
-            &CollectionFile::new(Some(get_repo_root().join("slumber.yml")))
+            &CollectionFile::new(Some(get_repo_root().join("slumber.js")))
                 .unwrap(),
         )
         .unwrap();

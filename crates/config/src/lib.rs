@@ -200,14 +200,12 @@ mod tests {
 
     #[test]
     fn test_custom_config_path() {
-        let _guard = env_lock::lock_env([(
-            PATH_ENV_VAR,
-            Some("~/dotfiles/slumber.yml"),
-        )]);
+        let _guard =
+            env_lock::lock_env([(PATH_ENV_VAR, Some("~/dotfiles/slumber.js"))]);
         // Note: tilde is NOT expanded here; we expect the shell to do that
         assert_eq!(
             Config::path(),
-            dirs::home_dir().unwrap().join("dotfiles/slumber.yml")
+            dirs::home_dir().unwrap().join("dotfiles/slumber.js")
         );
     }
 }

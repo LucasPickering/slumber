@@ -32,7 +32,7 @@ async fn test_request() {
         "--profile",
         "profile2",
         "-o",
-        &format!("host={host}"),
+        &format!("profile.host={host}"),
     ]);
     command.assert().success().stdout(body.to_string());
 
@@ -68,7 +68,7 @@ async fn test_request_verbose() {
         "jsonBody",
         "--verbose",
         "-o",
-        &format!("host={host}"),
+        &format!("profile.host={host}"),
     ]);
     command.assert().success().stdout(body.to_string());
 }
@@ -81,10 +81,7 @@ async fn test_request_dry_run() {
     command.assert().success().stderr(
         "> POST http://server/json HTTP/1.1
 > content-type: application/json
-> {
-  \"username\": \"username1\",
-  \"name\": \"Frederick Smidgen\"
-}
+> {\"username\":\"username1\",\"name\":\"Frederick Smidgen\"}
 ",
     );
 }
@@ -111,7 +108,7 @@ async fn test_request_exit_status() {
         "jsonBody",
         "--exit-status",
         "-o",
-        &format!("host={host}"),
+        &format!("profile.host={host}"),
     ]);
     command.assert().failure().stdout(body.to_string());
 }
@@ -147,7 +144,7 @@ async fn test_request_persist() {
         "chained",
         "--persist",
         "-o",
-        &format!("host={host}"),
+        &format!("profile.host={host}"),
     ]);
     command.assert().success().stdout(body.to_string());
 

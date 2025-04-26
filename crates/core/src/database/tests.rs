@@ -23,7 +23,7 @@ impl CollectionDatabase {
 
 #[fixture]
 fn collection_file() -> CollectionFile {
-    CollectionFile::new(Some(get_repo_root().join("slumber.yml"))).unwrap()
+    CollectionFile::new(Some(get_repo_root().join("slumber.js"))).unwrap()
 }
 
 #[fixture]

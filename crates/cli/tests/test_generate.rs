@@ -35,7 +35,13 @@ fn test_generate_curl_profile() {
 #[test]
 fn test_generate_curl_override() {
     let (mut command, _) = common::slumber();
-    command.args(["generate", "curl", "getUser", "-o", "username=username3"]);
+    command.args([
+        "generate",
+        "curl",
+        "getUser",
+        "-o",
+        "profile.username=username3",
+    ]);
     command
         .assert()
         .success()
@@ -48,10 +54,13 @@ fn test_generate_curl_trigger_error() {
     let (mut command, _) = common::slumber();
     command.args(["generate", "curl", "chained"]);
     command.assert().failure().stderr(
-        "Triggered requests are disabled by default; pass `--execute-triggers` to enable
-  Error rendering URL
-  Resolving chain `trigger`
-  Triggering upstream recipe `getUser`
+        "\
+Error rendering URL
+  Error (most recent call last)
+  in <root> at <native code>
+  in url at /Users/lucas/git/slumber/crates/cli/tests/slumber.js:47:46
+  in trigger at /Users/lucas/git/slumber/crates/cli/tests/slumber.js:4:27
+Triggering upstream recipe `getUser`
   Triggered request execution not allowed in this context
 ",
     );
@@ -77,7 +86,7 @@ async fn test_generate_curl_execute_trigger() {
         "chained",
         "--execute-triggers",
         "-o",
-        &format!("host={host}"),
+        &format!("profile.host={host}"),
     ]);
     command
         .assert()

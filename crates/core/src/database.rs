@@ -641,7 +641,7 @@ impl slumber_util::Factory for CollectionDatabase {
         use slumber_util::paths::get_repo_root;
         Database::factory(())
             .into_collection(
-                &CollectionFile::new(Some(get_repo_root().join("slumber.yml")))
+                &CollectionFile::new(Some(get_repo_root().join("slumber.js")))
                     .unwrap(),
             )
             .expect("Error initializing DB collection")

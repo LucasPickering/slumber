@@ -2707,7 +2707,6 @@ dependencies = [
  "serde_json_path",
  "serde_path_to_error",
  "serde_test",
- "serde_yaml",
  "slumber_config",
  "slumber_util",
  "strum",

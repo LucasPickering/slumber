@@ -299,9 +299,9 @@ fn test_get_recipe_requests() {
 
 /// Test deleting all requests for a recipe/profile combo
 #[rstest]
-#[case(ProfileFilter::All, "recipe1", 3)]
-#[case(ProfileFilter::Some(Cow::Owned("profile1".into())), "recipe1", 1)]
-#[case(ProfileFilter::None, "recipe1", 1)]
+#[case::all(ProfileFilter::All, "recipe1", 3)]
+#[case::some(ProfileFilter::Some(Cow::Owned("profile1".into())), "recipe1", 1)]
+#[case::none(ProfileFilter::None, "recipe1", 1)]
 fn test_delete_recipe_requests(
     request_db: RequestDb,
     #[case] profile_filter: ProfileFilter<'static>,

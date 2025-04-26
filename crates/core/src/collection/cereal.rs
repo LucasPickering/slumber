@@ -155,31 +155,27 @@ pub mod serde_recipe_body {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collection::RecipeBody;
+    use petitscript::Value;
     use rstest::rstest;
-    use serde_yaml::{
-        Mapping,
-        value::{Tag, TaggedValue},
-    };
     use slumber_util::assert_err;
 
     #[rstest]
     #[case::multiple_default(
-        mapping([
-            ("profile1", mapping([
-                ("default", serde_yaml::Value::Bool(true)),
-                ("data", mapping([("a", "1")]))
+        [
+            ("profile1", Value::from([
+                ("default", Value::Boolean(true)),
+                ("data", [("a", "1")].into())
             ])),
-            ("profile2", mapping([
-                ("default", serde_yaml::Value::Bool(true)),
-                ("data", mapping([("a", "2")]))
+            ("profile2", Value::from([
+                ("default", Value::Boolean(true)),
+                ("data", [("a", "2")].into())
             ])),
-        ]),
+        ],
         "Only one profile can be the default, but multiple were: \
         profile1, profile2",
     )]
     fn test_deserialize_profiles_error(
-        #[case] yaml: impl Into<serde_yaml::Value>,
+        #[case] value: impl Into<Value>,
         #[case] expected_error: &str,
     ) {
         #[derive(Debug, Deserialize)]
@@ -190,58 +186,10 @@ mod tests {
             IndexMap<ProfileId, Profile>,
         );
 
-        let yaml = yaml.into();
-        assert_err!(serde_yaml::from_value::<Wrap>(yaml), expected_error);
-    }
-
-    /// Test various errors when deserializing a recipe body. We use serde_yaml
-    /// instead of serde_test because the handling of enums is a bit different,
-    /// and we specifically only care about YAML.
-    #[rstest]
-    #[case::array(
-        Vec::<i32>::new(),
-        "invalid type: sequence, expected string, boolean, number, or tag !<type>"
-    )]
-    #[case::map(
-        Mapping::default(),
-        "invalid type: map, expected string, boolean, number, or tag !<type>"
-    )]
-    // `Raw` variant is *not* accessible by tag
-    #[case::raw_tag(
-        serde_yaml::Value::Tagged(Box::new(TaggedValue{
-            tag: Tag::new("raw"),
-            value: "{{user_id}}".into()
-        })),
-        "unknown variant `raw`, expected one of \
-        `json`, `form_urlencoded`, `form_multipart`",
-    )]
-    #[case::form_urlencoded_wrong_type(
-        serde_yaml::Value::Tagged(Box::new(TaggedValue{
-            tag: Tag::new("form_urlencoded"),
-            value: "{{user_id}}".into()
-        })),
-        "invalid type: string \"{{user_id}}\", expected a map"
-    )]
-    fn test_deserialize_recipe_error(
-        #[case] yaml: impl Into<serde_yaml::Value>,
-        #[case] expected_error: &str,
-    ) {
+        let value = value.into();
         assert_err!(
-            serde_yaml::from_value::<RecipeBody>(yaml.into()),
+            petitscript::serde::from_value::<Wrap>(value),
             expected_error
         );
-    }
-
-    /// Build a YAML mapping
-    fn mapping(
-        fields: impl IntoIterator<
-            Item = (&'static str, impl Into<serde_yaml::Value>),
-        >,
-    ) -> serde_yaml::Value {
-        fields
-            .into_iter()
-            .map(|(k, v)| (serde_yaml::Value::from(k), v.into()))
-            .collect::<Mapping>()
-            .into()
     }
 }

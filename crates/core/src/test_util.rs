@@ -151,15 +151,15 @@ pub fn by_id<T: HasId>(
 }
 
 /// Helper for creating a header map
-pub fn header_map<'a>(
-    headers: impl IntoIterator<Item = (&'a str, &'a str)>,
+pub fn header_map<'a, V: 'a + AsRef<[u8]> + ?Sized>(
+    headers: impl IntoIterator<Item = (&'a str, &'a V)>,
 ) -> HeaderMap {
     headers
         .into_iter()
         .map(|(header, value)| {
             (
                 HeaderName::try_from(header).unwrap(),
-                HeaderValue::try_from(value).unwrap(),
+                HeaderValue::try_from(value.as_ref()).unwrap(),
             )
         })
         .collect()

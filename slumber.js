@@ -31,17 +31,13 @@ const selectValue = () => {
 
 // Example of generating a selection list dynamically
 const selectDynamic = () => {
-  const resp = response("login", {
-    trigger: { type: "expire", duration: "12h" },
-  });
+  const resp = response("login", { trigger: "12h" });
   const options = Object.values(JSON.parse(resp).form);
   return select(options, { message: "Select a value" });
 };
 
 const authToken = () => {
-  const resp = JSON.parse(
-    response("login", { trigger: { type: "expire", duration: "12h" } })
-  );
+  const resp = JSON.parse(response("login", { trigger: "12h" }));
 
   // Pick some arbitrary data from the login response as the token
   const token = JSON.stringify(resp.form);

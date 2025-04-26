@@ -610,13 +610,6 @@ mod tests {
 
     // TODO more tests
 
-    /// When the same profile field is accessed twice in the same recipe render,
-    /// we should only compute it once
-    #[test]
-    fn test_duplicate_profile_field() {
-        todo!()
-    }
-
     #[rstest]
     #[case::url("url", OverrideKey::Url)]
     #[case::profile("profile.field", OverrideKey::Profile("field".into()))]

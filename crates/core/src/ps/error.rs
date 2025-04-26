@@ -42,7 +42,8 @@ pub enum FunctionError {
 
     /// JSONPath query returned 0 or 2+ results when we expected 1
     #[error(
-        "Expected exactly one result from query `{query}`, but got {actual_count}"
+        "Expected exactly one result from JSONPath query `{query}`, \
+        but got {actual_count}"
     )]
     JsonPathExactlyOne {
         query: JsonPath,

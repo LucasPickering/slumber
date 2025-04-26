@@ -79,7 +79,7 @@ macro_rules! assert_err {
         let actual = error.chain().map(ToString::to_string).join(": ");
         assert!(
             actual.contains(msg),
-            "Expected error message to contain {msg:?}, but was: {actual:?}"
+            "Expected error message to contain {msg:?}, but was:\n{actual}"
         )
     }};
 }

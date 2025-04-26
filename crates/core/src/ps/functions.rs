@@ -18,7 +18,10 @@ use petitscript::{
     error::ValueError,
     value::{FromPetit, FromPetitArgs, IntoPetitResult},
 };
-use serde::{Deserialize, de::IntoDeserializer};
+use serde::{
+    Deserialize,
+    de::{self, IntoDeserializer, Visitor},
+};
 use serde_json_path::JsonPath;
 use slumber_util::Duration;
 use std::{path::PathBuf, process::Stdio, sync::Arc};
@@ -27,7 +30,7 @@ use tokio::{
 };
 use tracing::{debug, debug_span};
 
-/// Create the `slumber` module and register it in with the engine
+/// Create the `slumber` module and register it in the engine
 pub fn register_module(engine: &mut Engine) {
     let functions = indexmap! {
         "command" => engine.create_fn(sync(command)),
@@ -126,12 +129,24 @@ fn env(_: &Process, variable: String) -> String {
     std::env::var(variable).unwrap_or_default()
 }
 
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FileKwargs {
+    /// Decoding mode - text or binary?
+    #[serde(default)]
+    decode: Decoding,
+}
+
 /// Load the contents of a file
-async fn file(_: &Process, path: PathBuf) -> Result<Vec<u8>, FunctionError> {
+async fn file(
+    _: &Process,
+    (path, Kwargs(FileKwargs { decode })): (PathBuf, Kwargs<FileKwargs>),
+) -> Result<Value, FunctionError> {
     let output = fs::read(&path)
         .await
         .map_err(|error| FunctionError::File { path, error })?;
-    Ok(output)
+
+    decode.decode(output.into())
 }
 
 #[derive(Default, Deserialize)]
@@ -264,7 +279,16 @@ async fn prompt(
         channel: tx.into(),
     });
     let output = rx.await.map_err(|_| FunctionError::PromptNoReply)?;
-    Ok(output)
+
+    // If the input was sensitive, we should mask it for previews as well.
+    // This is a little wonky because the preview prompter just spits out a
+    // static string anyway, but it's "technically" right and plays well in
+    // tests. Also it reminds users that a prompt is sensitive in the TUI :)
+    if sensitive {
+        Ok(mask_sensitive(context, output))
+    } else {
+        Ok(output)
+    }
 }
 
 #[derive(Default, Deserialize)]
@@ -361,10 +385,15 @@ fn sensitive(
     value: String,
 ) -> Result<String, FunctionError> {
     let context = context(process)?;
+    Ok(mask_sensitive(context, value))
+}
+
+/// Hide a sensitive value if the context has show_sensitive disabled
+fn mask_sensitive(context: &RenderContext, value: String) -> String {
     if context.show_sensitive {
-        Ok(value)
+        value
     } else {
-        Ok("•".repeat(value.chars().count()))
+        "•".repeat(value.chars().count())
     }
 }
 
@@ -404,8 +433,7 @@ impl<'de, T: Default + Deserialize<'de>> FromPetit for Kwargs<T> {
 
 /// Define when a recipe with a chained request should auto-execute the
 /// dependency request.
-#[derive(Copy, Clone, Debug, Default, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Copy, Clone, Debug, Default)]
 enum RequestTrigger {
     /// Never trigger the request. This is the default because upstream
     /// requests could be mutating, so we want the user to explicitly opt into
@@ -419,6 +447,48 @@ enum RequestTrigger {
     Expire { duration: Duration },
     /// Trigger the request every time the dependent request is rendered
     Always,
+}
+
+/// Deserialize a request trigger from a single string. Unit variants are
+/// assigned a static string, and anything else is treated as an expire
+/// duration.
+impl<'de> Deserialize<'de> for RequestTrigger {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct RequestTriggerVisitor;
+
+        impl Visitor<'_> for RequestTriggerVisitor {
+            type Value = RequestTrigger;
+
+            fn expecting(
+                &self,
+                formatter: &mut std::fmt::Formatter,
+            ) -> std::fmt::Result {
+                formatter.write_str("TODO")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match v {
+                    "never" => Ok(RequestTrigger::Never),
+                    "noHistory" => Ok(RequestTrigger::NoHistory),
+                    "always" => Ok(RequestTrigger::Always),
+                    // Anything else is parsed as a duration
+                    _ => {
+                        let duration =
+                            v.parse::<Duration>().map_err(de::Error::custom)?;
+                        Ok(RequestTrigger::Expire { duration })
+                    }
+                }
+            }
+        }
+
+        deserializer.deserialize_any(RequestTriggerVisitor)
+    }
 }
 
 /// TODO better name
@@ -537,53 +607,567 @@ impl RenderContext {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn test_command() {
-        todo!()
+    use super::*;
+    use crate::{
+        collection::{Collection, Profile},
+        database::CollectionDatabase,
+        http::{Exchange, RequestRecord, ResponseBody},
+        render::Overrides,
+        test_util::{
+            TestHttpProvider, TestPrompter, TestSelectPrompter, by_id,
+            header_map,
+        },
+    };
+    use petitscript::{Engine, Value, value::Function};
+    use rstest::rstest;
+    use slumber_util::{Factory, TempDir, assert_err, temp_dir};
+    use std::{iter, sync::LazyLock};
+    use tokio::task;
+
+    // These test functions via PS rather than calling them directly so we can
+    // test them from a user perspective. This covers extra logic like the
+    // function name, arg deserialization, output conversion, etc.
+
+    #[rstest]
+    #[case::base([["echo", "hi"].into()], "hi\n")]
+    #[case::stdin(
+        [["tail"].into(), [("stdin", "test")].into()],
+        "test",
+    )]
+    #[case::binary(
+        [["echo", "-e", "\\xc3\\x28"].into(), [("decode", "binary")].into()],
+        Value::buffer(b"\xc3\x28\n"),
+    )]
+    #[case::binary_from_text(
+        // Strings can be decoded as binary
+        [["echo", "hi"].into(), [("decode", "binary")].into()],
+        Value::buffer(b"hi\n"),
+    )]
+    #[tokio::test]
+    async fn test_command(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_output: impl Into<Value>,
+    ) {
+        let output = call_fn("command", arguments, context()).await.unwrap();
+        assert_eq!(output, expected_output.into());
     }
 
-    #[test]
-    fn test_env() {
-        todo!()
+    #[rstest]
+    #[case::empty([[""; 0].into()], "Command must have at least one element")]
+    #[case::unknown(
+        [["fake_command"].into()],
+        "Executing command `fake_command`",
+    )]
+    #[case::binary(
+        // Binary output with default text decoding is an error
+        [["echo", "-e", "\\xc3\\x28"].into(), [("decode", "text")].into()],
+        "invalid utf-8 sequence",
+    )]
+    #[tokio::test]
+    async fn test_command_error(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_error: &str,
+    ) {
+        let result = call_fn("command", arguments, context()).await;
+        assert_err!(result, expected_error);
     }
 
-    #[test]
-    fn test_file() {
-        todo!()
+    #[rstest]
+    #[case::env(["TEST".into()], "test")]
+    #[case::unknown(["TEST_UNKNOWN".into()], "")]
+    #[tokio::test]
+    async fn test_env(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_output: impl Into<Value>,
+    ) {
+        let _guard = env_lock::lock_env([("TEST", Some("test"))]);
+        let output = call_fn("env", arguments, context()).await.unwrap();
+        assert_eq!(output, expected_output.into());
     }
 
-    #[test]
-    fn test_json_path() {
-        todo!()
+    #[rstest]
+    #[case::text("test.txt", [], "hello!")]
+    #[case::bytes(
+        "binary.bin",
+        [[("decode", "binary")].into()],
+        Value::buffer(b"\xc3\x28\n"),
+    )]
+    #[tokio::test]
+    async fn test_file(
+        temp_dir: TempDir,
+        #[case] file_name: &str,
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_output: impl Into<Value>,
+    ) {
+        fs::write(&temp_dir.join("test.txt"), "hello!")
+            .await
+            .unwrap();
+        fs::write(&temp_dir.join("binary.bin"), b"\xc3\x28\n")
+            .await
+            .unwrap();
+        let path: Value = temp_dir.join(file_name).to_string_lossy().into();
+        let arguments = iter::once(path).chain(arguments);
+        let output = call_fn("file", arguments, context()).await.unwrap();
+        assert_eq!(output, expected_output.into());
     }
 
-    #[test]
-    fn test_profile() {
-        todo!()
+    #[rstest]
+    #[case::missing("unknown.txt", [], "No such file or directory")]
+    #[case::binary(
+        // Binary output with default text decoding is an error
+        "binary.bin",
+        [[("decode", "text")].into()],
+        "invalid utf-8 sequence",
+    )]
+    #[tokio::test]
+    async fn test_file_error(
+        temp_dir: TempDir,
+        #[case] file_name: &str,
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_error: &str,
+    ) {
+        fs::write(&temp_dir.join("binary.bin"), b"\xc3\x28\n")
+            .await
+            .unwrap();
+        let path: Value = temp_dir.join(file_name).to_string_lossy().into();
+        let arguments = iter::once(path).chain(arguments);
+        let result = call_fn("file", arguments, context()).await;
+        assert_err!(result, expected_error);
     }
 
-    #[test]
-    fn test_prompt() {
-        todo!()
+    #[rstest]
+    #[case::base(["$.data".into(), [("data", "hi")].into()], "hi")]
+    #[case::mode_auto_one(
+        ["$[*]".into(), ["a"].into(), [("mode", "auto")].into()],
+        "a",
+    )]
+    #[case::mode_auto_many(
+        ["$[*]".into(), ["a", "b"].into(), [("mode", "auto")].into()],
+        ["a", "b"],
+    )]
+    #[case::mode_single_one(
+        ["$[*]".into(), ["a"].into(), [("mode", "single")].into()],
+        "a",
+    )]
+    #[case::mode_array_zero(
+        ["$[*]".into(), [""; 0].into(), [("mode", "array")].into()],
+        [""; 0],
+    )]
+    #[case::mode_array_one(
+        ["$[*]".into(), ["a"].into(), [("mode", "array")].into()],
+        ["a"],
+    )]
+    #[case::mode_array_many(
+        ["$[*]".into(), ["a", "b"].into(), [("mode", "array")].into()],
+        ["a", "b"],
+    )]
+    #[tokio::test]
+    async fn test_json_path(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_output: impl Into<Value>,
+    ) {
+        let output = call_fn("jsonPath", arguments, context()).await.unwrap();
+        assert_eq!(output, expected_output.into());
     }
 
-    #[test]
-    fn test_response() {
-        todo!()
+    #[rstest]
+    #[case::invalid_query(
+        ["w".into(), [("data", "hi")].into()],
+        "Error converting argument 0",
+    )]
+    #[case::invalid_mode(
+        ["$.data".into(), [("data", "hi")].into(), [("mode", "bad")].into()],
+        "unknown variant `bad`",
+    )]
+    #[case::mode_auto_zero(
+        ["$[*]".into(), [""; 0].into(), [("mode", "auto")].into()],
+        "No results from JSONPath query `$[*]`",
+    )]
+    #[case::mode_single_zero(
+        ["$[*]".into(), [""; 0].into(), [("mode", "single")].into()],
+        "Expected exactly one result from JSONPath query `$[*]`",
+    )]
+    #[case::mode_single_many(
+        ["$[*]".into(), ["a", "b"].into(), [("mode", "single")].into()],
+        "Expected exactly one result from JSONPath query `$[*]`",
+    )]
+    #[tokio::test]
+    async fn test_json_path_error(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_error: &str,
+    ) {
+        let result = call_fn("jsonPath", arguments, context()).await;
+        assert_err!(result, expected_error);
     }
 
-    #[test]
-    fn test_response_header() {
-        todo!()
+    #[rstest]
+    #[case::base(["field1".into()], "value1")]
+    #[case::unknown(["fieldUnknown".into()], Value::Undefined)]
+    // TODO test nested render
+    #[tokio::test]
+    async fn test_profile(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_output: impl Into<Value>,
+    ) {
+        let profile = Profile {
+            data: indexmap! { "field1".into() => "value1".into() },
+            ..Profile::factory(())
+        };
+        let profile_id = profile.id.clone();
+        let collection = Collection {
+            profiles: by_id([profile]),
+            recipes: Default::default(),
+        };
+        let context = RenderContext {
+            collection: collection.into(),
+            selected_profile: Some(profile_id),
+            ..context()
+        };
+        let output = call_fn("profile", arguments, context).await.unwrap();
+        assert_eq!(output, expected_output.into());
     }
 
-    #[test]
-    fn test_select() {
-        todo!()
+    /// When the same profile field is accessed twice in the same process, we
+    /// should only compute it once
+    #[tokio::test]
+    async fn test_profile_dedupe() {
+        let profile = Profile {
+            data: indexmap! {
+                // TODO make this a prompt
+                "field1".into() => "value1".into(),
+            },
+            ..Profile::factory(())
+        };
+        let profile_id = profile.id.clone();
+        let collection = Collection {
+            profiles: by_id([profile]),
+            recipes: Default::default(),
+        };
+        let context = RenderContext {
+            collection: collection.into(),
+            selected_profile: Some(profile_id),
+            prompter: Box::new(TestPrompter::new(["hello!"])),
+            ..context()
+        };
+        let (process, f) = get_fn("profile", context);
+        let output = task::spawn_blocking(move || {
+            [
+                // This will trigger the prompt
+                process.call(&f, vec!["field1".into()]).unwrap(),
+                // This one won't re-prompt. If it did, it would fail
+                process.call(&f, vec!["field1".into()]).unwrap(),
+            ]
+        })
+        .await
+        .unwrap();
+        assert_eq!(output, ["hello!".into(), "hello!".into()]);
     }
 
-    #[test]
-    fn test_sensitive() {
-        todo!()
+    #[rstest]
+    #[case::nested_error([], "TODO")]
+    #[tokio::test]
+    async fn test_profile_error(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_error: &str,
+    ) {
+        let result = call_fn("profile", arguments, context()).await;
+        assert_err!(result, expected_error);
+    }
+
+    #[rstest]
+    #[case::base(["test"], [], "test")]
+    // We have no way to actually test that the message appears, but we can
+    // at least test that it doesn't trigger an error
+    #[case::message(["test"], [[("message", "Gimme that!")].into()], "test")]
+    #[case::default([], [[("default", "default")].into()], "default")]
+    #[case::sensitive(["test"], [[("sensitive", true)].into()], "••••")]
+    #[tokio::test]
+    async fn test_prompt(
+        #[case] responses: impl IntoIterator<Item = &str>,
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_output: impl Into<Value>,
+    ) {
+        let context = RenderContext {
+            prompter: Box::new(TestPrompter::new(responses)),
+            show_sensitive: false,
+            ..context()
+        };
+        let output = call_fn("prompt", arguments, context).await.unwrap();
+        assert_eq!(output, expected_output.into());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_prompt_error() {
+        let context = RenderContext {
+            prompter: Box::new(TestPrompter::new([""; 0])),
+            ..context()
+        };
+        let result = call_fn("prompt", [], context).await;
+        assert_err!(result, "No reply from prompt/select");
+    }
+
+    #[rstest]
+    #[case::base(["text".into()], "hello")]
+    #[case::binary(
+        ["binary".into(), [("decode", "binary")].into()],
+        Value::buffer(b"\xc3\x28"),
+    )]
+    // TODO test triggering
+    #[tokio::test]
+    async fn test_response(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_output: impl Into<Value>,
+    ) {
+        let database = CollectionDatabase::factory(());
+        let request_text = RequestRecord::factory((None, "text".into()));
+        let response_text = ResponseRecord {
+            id: request_text.id,
+            body: ResponseBody::new("hello".as_bytes().into()),
+            ..ResponseRecord::factory(())
+        };
+        database
+            .insert_exchange(&Exchange::factory((request_text, response_text)))
+            .unwrap();
+        let request_binary = RequestRecord::factory((None, "binary".into()));
+        let response_binary = ResponseRecord {
+            id: request_binary.id,
+            body: ResponseBody::new(b"\xc3\x28".as_slice().into()),
+            ..ResponseRecord::factory(())
+        };
+        database
+            .insert_exchange(&Exchange::factory((
+                request_binary,
+                response_binary,
+            )))
+            .unwrap();
+        let context = RenderContext {
+            http_provider: Box::new(TestHttpProvider::new(database, None)),
+            ..context()
+        };
+
+        let output = call_fn("response", arguments, context).await.unwrap();
+        assert_eq!(output, expected_output.into());
+    }
+
+    #[rstest]
+    // Binary output with default text decoding is an error
+    #[case::binary(
+        ["binary".into(), [("decode", "text")].into()],
+        "invalid utf-8 sequence",
+    )]
+    #[case::trigger_never(
+        ["missing".into(), [("trigger", "never")].into()],
+        "No response available",
+    )]
+    #[case::trigger_not_allowed(
+        ["binary".into(), [("trigger", "always")].into()],
+        "Triggered request execution not allowed in this context",
+    )]
+    #[tokio::test]
+    async fn test_response_error(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_error: &str,
+    ) {
+        let database = CollectionDatabase::factory(());
+        let request_binary = RequestRecord::factory((None, "binary".into()));
+        let response_binary = ResponseRecord {
+            id: request_binary.id,
+            body: ResponseBody::new(b"\xc3\x28".as_slice().into()),
+            ..ResponseRecord::factory(())
+        };
+        database
+            .insert_exchange(&Exchange::factory((
+                request_binary,
+                response_binary,
+            )))
+            .unwrap();
+        let context = RenderContext {
+            http_provider: Box::new(TestHttpProvider::new(database, None)),
+            ..context()
+        };
+
+        let result = call_fn("response", arguments, context).await;
+        assert_err!(result, expected_error);
+    }
+
+    #[rstest]
+    #[case::text(["r1".into(), "Text".into()], "test")]
+    #[case::binary(
+        ["r1".into(), "Binary".into(), [("decode", "binary")].into()],
+        Value::buffer(b"\xc3\x28"),
+    )]
+    #[tokio::test]
+    async fn test_response_header(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_output: impl Into<Value>,
+    ) {
+        let database = CollectionDatabase::factory(());
+        let request = RequestRecord::factory((None, "r1".into()));
+        let response = ResponseRecord {
+            id: request.id,
+            headers: header_map([
+                ("text", b"test".as_slice()),
+                ("binary", b"\xc3\x28".as_slice()),
+            ]),
+            ..ResponseRecord::factory(())
+        };
+        database
+            .insert_exchange(&Exchange::factory((request, response)))
+            .unwrap();
+        let context = RenderContext {
+            http_provider: Box::new(TestHttpProvider::new(database, None)),
+            ..context()
+        };
+
+        let output =
+            call_fn("responseHeader", arguments, context).await.unwrap();
+        assert_eq!(output, expected_output.into());
+    }
+
+    #[rstest]
+    // Binary output with default text decoding is an error
+    #[case::binary(
+        ["r1".into(), "Binary".into(), [("decode", "text")].into()],
+        "invalid utf-8 sequence",
+    )]
+    #[case::trigger_never(
+        ["missing".into(), "Text".into(), [("trigger", "never")].into()],
+        "No response available",
+    )]
+    #[case::trigger_not_allowed(
+        ["r1".into(), "Text".into(), [("trigger", "always")].into()],
+        "Triggered request execution not allowed in this context",
+    )]
+    #[tokio::test]
+    async fn test_response_header_error(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_error: &str,
+    ) {
+        let database = CollectionDatabase::factory(());
+        let request = RequestRecord::factory((None, "r1".into()));
+        let response = ResponseRecord {
+            id: request.id,
+            headers: header_map([
+                ("text", b"test".as_slice()),
+                ("binary", b"\xc3\x28".as_slice()),
+            ]),
+            ..ResponseRecord::factory(())
+        };
+        database
+            .insert_exchange(&Exchange::factory((request, response)))
+            .unwrap();
+        let context = RenderContext {
+            http_provider: Box::new(TestHttpProvider::new(database, None)),
+            ..context()
+        };
+
+        let result = call_fn("responseHeader", arguments, context).await;
+        assert_err!(result, expected_error);
+    }
+
+    #[rstest]
+    #[case::base([["a", "b"].into()], "b")]
+    // We have no way to actually test that the message appears, but we can
+    // at least test that it doesn't trigger an error
+    #[case::message(
+        [["a", "b"].into(), [("message", "Gimme that!")].into()],
+        "b",
+    )]
+    #[tokio::test]
+    async fn test_select(
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_output: impl Into<Value>,
+    ) {
+        let context = RenderContext {
+            prompter: Box::new(TestSelectPrompter::new([1])),
+            ..context()
+        };
+        let output = call_fn("select", arguments, context).await.unwrap();
+        assert_eq!(output, expected_output.into());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_select_error() {
+        let context = RenderContext {
+            prompter: Box::new(TestSelectPrompter::new([])),
+            ..context()
+        };
+        let result = call_fn("select", [["a", "b"].into()], context).await;
+        assert_err!(result, "No reply from prompt/select");
+    }
+
+    #[rstest]
+    #[case::show(true, ["hello".into()], "hello")]
+    #[case::hide(false, ["hello".into()], "•••••")]
+    #[tokio::test]
+    async fn test_sensitive(
+        #[case] show_sensitive: bool,
+        #[case] arguments: impl IntoIterator<Item = Value>,
+        #[case] expected_output: impl Into<Value>,
+    ) {
+        let context = RenderContext {
+            show_sensitive,
+            ..context()
+        };
+        let output = call_fn("sensitive", arguments, context).await.unwrap();
+        assert_eq!(output, expected_output.into());
+    }
+
+    /// Compile and run a process that exports the requested function. Return
+    /// the compiled process and the generated function, to be called later.
+    fn get_fn(name: &str, context: RenderContext) -> (Process, Function) {
+        // Re-use the same engine for every test
+        static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
+            let mut engine = Engine::new();
+            register_module(&mut engine);
+            engine
+        });
+        let mut process = ENGINE
+            .compile(format!(
+                "import {{ {name} }} from 'slumber'; export default {name};"
+            ))
+            .unwrap();
+        process.set_app_data(context).unwrap();
+        process.set_app_data(RenderState::default()).unwrap();
+        let f = process
+            .execute()
+            .unwrap()
+            .default
+            .unwrap()
+            .try_into_function()
+            .unwrap();
+        (process, f)
+    }
+
+    /// Call a function by name with some arguments
+    async fn call_fn(
+        name: &str,
+        arguments: impl IntoIterator<Item = Value>,
+        context: RenderContext,
+    ) -> Result<Value, petitscript::Error> {
+        let (process, f) = get_fn(name, context);
+        let arguments = arguments.into_iter().collect();
+
+        // Needs to be run in a background thread because it does blocking work
+        task::spawn_blocking(move || process.call(&f, arguments))
+            .await
+            .unwrap()
+    }
+
+    /// Build a render context with some reasonable defaults
+    fn context() -> RenderContext {
+        RenderContext {
+            collection: Collection::factory(()).into(),
+            selected_profile: None,
+            http_provider: Box::new(TestHttpProvider::new(
+                CollectionDatabase::factory(()),
+                None,
+            )),
+            overrides: Overrides::new(),
+            prompter: Box::new(TestPrompter::new([""; 0])),
+            show_sensitive: true,
+        }
     }
 }

@@ -164,16 +164,16 @@ mod tests {
 
     /// Test various cases of try_path
     #[rstest]
-    #[case::parent_only(None, true, false, "slumber.yml")]
-    #[case::child_only(None, false, true, "child/slumber.yml")]
-    #[case::parent_and_child(None, true, true, "child/slumber.yml")]
+    #[case::parent_only(None, true, false, "slumber.js")]
+    #[case::child_only(None, false, true, "child/slumber.js")]
+    #[case::parent_and_child(None, true, true, "child/slumber.js")]
     #[case::directory(
         Some("grandchild"),
         true,
         true,
-        "child/grandchild/slumber.yml"
+        "child/grandchild/slumber.js"
     )]
-    #[case::overriden(Some("override.yml"), true, true, "child/override.yml")]
+    #[case::overriden(Some("override.js"), true, true, "child/override.js")]
     fn test_try_path(
         temp_dir: TempDir,
         #[case] override_path: Option<&str>,
@@ -183,7 +183,7 @@ mod tests {
     ) {
         let child_dir = temp_dir.join("child");
         fs::create_dir(&child_dir).unwrap();
-        let file = "slumber.yml";
+        let file = "slumber.js";
         if has_parent {
             File::create(temp_dir.join(file)).unwrap();
         }
@@ -193,7 +193,7 @@ mod tests {
             fs::create_dir(&grandchild_dir).unwrap();
             File::create(grandchild_dir.join(file)).unwrap();
         }
-        File::create(child_dir.join("override.yml")).unwrap();
+        File::create(child_dir.join("override.js")).unwrap();
         let expected: PathBuf = temp_dir.join(expected);
 
         let actual = CollectionFile::with_dir(

@@ -278,12 +278,147 @@ mod tests {
     use crate::test_util::by_id;
     use indexmap::indexmap;
     use itertools::Itertools;
+    use petitscript::{Value, value::Object};
     use rstest::{fixture, rstest};
-    use serde_yaml::{
-        Value,
-        value::{Tag, TaggedValue},
-    };
     use slumber_util::{Factory, assert_err};
+
+    /// Test flat iteration over the tree
+    #[rstest]
+    fn test_iter(tree: IndexMap<RecipeId, RecipeNode>) {
+        let tree = RecipeTree::new(tree).unwrap();
+        let expected: Vec<(RecipeLookupKey, RecipeId)> = vec![
+            (["r1"].into(), id("r1")),
+            (["f1"].into(), id("f1")),
+            (["f1", "f2"].into(), id("f2")),
+            (["f1", "f2", "r2"].into(), id("r2")),
+            (["f1", "r3"].into(), id("r3")),
+            (["r4"].into(), id("r4")),
+        ];
+
+        // Just compare lookup keys and IDs, to keep it simple
+        assert_eq!(
+            tree.iter()
+                .map(|(key, node)| (key, node.id().clone()))
+                .collect_vec(),
+            expected
+        );
+    }
+
+    /// Test successful serialization/deserialization
+    #[rstest]
+    fn test_deserialization(tree: IndexMap<RecipeId, RecipeNode>) {
+        // Manually create the ID map to make sure it's correct
+        let tree = RecipeTree {
+            tree,
+            nodes_by_id: indexmap! {
+                id("r1") => ["r1"].into(),
+                id("f1") => ["f1"].into(),
+                id("f2") => ["f1", "f2"].into(),
+                id("r2") => ["f1", "f2", "r2"].into(),
+                id("r3") => ["f1", "r3"].into(),
+                id("r4") => ["r4"].into(),
+            },
+        };
+
+        // Create equivalent PS
+        let recipe_value: Value = recipe([
+            ("method", "GET".into()),
+            ("url", "http://localhost/url".into()),
+        ]);
+        let value = mapping([
+            ("r1", recipe_value.clone()),
+            (
+                "f1",
+                folder([(
+                    "requests",
+                    mapping([
+                        (
+                            "f2",
+                            folder([(
+                                "requests",
+                                mapping([("r2", recipe_value.clone())]),
+                            )]),
+                        ),
+                        ("r3", recipe_value.clone()),
+                    ]),
+                )]),
+            ),
+            ("r4", recipe_value.clone()),
+        ]);
+
+        assert_eq!(
+            petitscript::serde::from_value::<RecipeTree>(value).unwrap(),
+            tree,
+            "Deserialization failed"
+        );
+    }
+
+    /// Deserializing with a duplicate ID anywhere in the tree should fail
+    #[rstest]
+    #[case::recipe(
+        // Two requests share an ID
+        mapping([
+            ("dupe", recipe([("method", "GET".into()), ("url", "url".into())])),
+            (
+                "f1",
+                folder(
+                    [(
+                        "requests",
+                        mapping([(
+                            "dupe",
+                            recipe(
+                                [
+                                    ("method", "GET".into()),
+                                    ("url", "url".into()),
+                                ],
+                            ),
+                        )]),
+                    )],
+                ),
+            ),
+        ])
+    )]
+    // Two folders share an ID
+    #[case::folder(
+        mapping([
+            (
+                "f1",
+                folder(
+                    [(
+                        "requests",
+                        mapping([("dupe", folder([]))]),
+                    )],
+                ),
+            ),
+            ("dupe", folder([])),
+        ])
+    )]
+    // Recipe + folder share an ID
+    #[case::recipe_folder(
+        mapping([
+            (
+                "f1",
+                folder(
+                    [(
+                        "requests",
+                        mapping([("dupe", folder([]))]),
+                    )],
+                ),
+            ),
+            (
+                "dupe",
+                recipe(
+                    [("method", "GET".into()), ("url", "url".into())],
+                ),
+            ),
+        ])
+    )]
+    fn test_duplicate_id(#[case] petit_value: Value) {
+        assert_err!(
+            petitscript::serde::from_value::<RecipeTree>(petit_value),
+            "Duplicate recipe/folder ID `dupe`"
+        );
+    }
 
     impl<const N: usize> From<[&str; N]> for RecipeLookupKey {
         fn from(value: [&str; N]) -> Self {
@@ -296,25 +431,25 @@ mod tests {
         s.into()
     }
 
-    /// Build a YAML mapping
+    /// Build a PS mapping
     fn mapping<const N: usize>(items: [(&str, Value); N]) -> Value {
-        Value::Mapping(
-            items
-                .into_iter()
-                .map(|(key, value)| (Value::from(key), value))
-                .collect(),
-        )
+        items.into()
     }
 
-    /// Build a YAML mapping with a variant tag
-    fn tagged_mapping<const N: usize>(
-        tag: &str,
-        items: [(&str, Value); N],
-    ) -> Value {
-        Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new(tag),
-            value: mapping(items),
-        }))
+    /// Build a folder node
+    fn folder<const N: usize>(fields: [(&str, Value); N]) -> Value {
+        Object::new()
+            .insert("type", "folder")
+            .insert_all(fields.into())
+            .into()
+    }
+
+    /// Build a recipe node
+    fn recipe<const N: usize>(fields: [(&str, Value); N]) -> Value {
+        Object::new()
+            .insert("type", "request")
+            .insert_all(fields.into())
+            .into()
     }
 
     #[fixture]
@@ -353,166 +488,5 @@ mod tests {
             }
             .into(),
         ])
-    }
-
-    /// Test flat iteration over the tree
-    #[rstest]
-    fn test_iter(tree: IndexMap<RecipeId, RecipeNode>) {
-        let tree = RecipeTree::new(tree).unwrap();
-        let expected: Vec<(RecipeLookupKey, RecipeId)> = vec![
-            (["r1"].into(), id("r1")),
-            (["f1"].into(), id("f1")),
-            (["f1", "f2"].into(), id("f2")),
-            (["f1", "f2", "r2"].into(), id("r2")),
-            (["f1", "r3"].into(), id("r3")),
-            (["r4"].into(), id("r4")),
-        ];
-
-        // Just compare lookup keys and IDs, to keep it simple
-        assert_eq!(
-            tree.iter()
-                .map(|(key, node)| (key, node.id().clone()))
-                .collect_vec(),
-            expected
-        );
-    }
-
-    /// Deserializing with a duplicate ID anywhere in the tree should fail
-    #[rstest]
-    #[case::anywhere(
-        // Two requests share an ID
-        mapping([
-            (
-                "dupe",
-                tagged_mapping(
-                    "!request",
-                    [("method", "GET".into()), ("url", "url".into())],
-                ),
-            ),
-            (
-                "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        mapping([(
-                            "dupe",
-                            tagged_mapping(
-                                "!request",
-                                [
-                                    ("method", "GET".into()),
-                                    ("url", "url".into()),
-                                ],
-                            ),
-                        )]),
-                    )],
-                ),
-            ),
-        ])
-    )]
-    // Two folders share an ID
-    #[case::folder(
-        mapping([
-            (
-                "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        mapping([("dupe", tagged_mapping("!folder", []))]),
-                    )],
-                ),
-            ),
-            ("dupe", tagged_mapping("!folder", [])),
-        ])
-    )]
-    // Request + folder share an ID
-    #[case::request_folder(
-        mapping([
-            (
-                "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        tagged_mapping(
-                            "!request",
-                            [("dupe", tagged_mapping("!folder", []))],
-                        ),
-                    )],
-                ),
-            ),
-            (
-                "dupe",
-                tagged_mapping(
-                    "!request",
-                    [("method", "GET".into()), ("url", "url".into())],
-                ),
-            ),
-        ])
-    )]
-    fn test_duplicate_id(#[case] yaml_value: Value) {
-        assert_err!(
-            serde_yaml::from_value::<RecipeTree>(yaml_value),
-            "Duplicate recipe/folder ID `dupe`"
-        );
-    }
-
-    /// Test successful serialization/deserialization
-    #[rstest]
-    fn test_deserialization(tree: IndexMap<RecipeId, RecipeNode>) {
-        // Manually create the ID map to make sure it's correct
-        let tree = RecipeTree {
-            tree,
-            nodes_by_id: indexmap! {
-                id("r1") => ["r1"].into(),
-                id("f1") => ["f1"].into(),
-                id("f2") => ["f1", "f2"].into(),
-                id("r2") => ["f1", "f2", "r2"].into(),
-                id("r3") => ["f1", "r3"].into(),
-                id("r4") => ["r4"].into(),
-            },
-        };
-
-        // Create equivalent YAML
-        let recipe_value: Value = tagged_mapping(
-            "!request",
-            [
-                ("method", "GET".into()),
-                ("url", "http://localhost/url".into()),
-            ],
-        );
-        let yaml = mapping([
-            ("r1", recipe_value.clone()),
-            (
-                "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        mapping([
-                            (
-                                "f2",
-                                tagged_mapping(
-                                    "!folder",
-                                    [(
-                                        "requests",
-                                        mapping([("r2", recipe_value.clone())]),
-                                    )],
-                                ),
-                            ),
-                            ("r3", recipe_value.clone()),
-                        ]),
-                    )],
-                ),
-            ),
-            ("r4", recipe_value.clone()),
-        ]);
-
-        assert_eq!(
-            serde_yaml::from_value::<RecipeTree>(yaml).unwrap(),
-            tree,
-            "Deserialization failed"
-        );
     }
 }

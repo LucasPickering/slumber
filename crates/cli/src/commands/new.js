@@ -12,6 +12,7 @@ export const profiles = {
     name: "Example Profile",
     data: {
       host: "https://httpbin.org",
+      // TODO show off dynamic profile values
     },
   },
 };

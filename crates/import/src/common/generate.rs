@@ -141,7 +141,7 @@ impl IntoPetitAst for Chain {
             } => {
                 let arguments = with_kwargs(
                     [recipe.into_ast()],
-                    [("trigger", trigger.into_ast())],
+                    [("trigger", trigger.into_ast().map(Expression::from))],
                 );
                 FunctionCall::named("response", arguments)
             }
@@ -152,7 +152,7 @@ impl IntoPetitAst for Chain {
             } => {
                 let arguments = with_kwargs(
                     [recipe.into_ast(), header.into_ast()],
-                    [("trigger", trigger.into_ast())],
+                    [("trigger", trigger.into_ast().map(Expression::from))],
                 );
                 FunctionCall::named("responseHeader", arguments)
             }
@@ -417,21 +417,16 @@ impl IntoPetitAst for RecipeBody {
 }
 
 impl IntoPetitAst for ChainRequestTrigger {
-    type Output = Option<Expression>;
+    type Output = Option<String>;
 
-    /// Generate
+    /// Generate a string representing a trigger condition. Static conditions
+    /// use static strings. The "expire" condition uses a duration string
     fn into_ast(self) -> Self::Output {
         match self {
             // The kwargs should be excluded if it's the default
             Self::Never => None,
             Self::NoHistory => Some("noHistory".into()),
-            Self::Expire(duration) => Some(
-                ObjectLiteral::new([
-                    ("type", "expire".into()),
-                    ("duration", duration.to_string().into()),
-                ])
-                .into(),
-            ),
+            Self::Expire(duration) => Some(duration.to_string().into()),
             Self::Always => Some("always".into()),
         }
     }

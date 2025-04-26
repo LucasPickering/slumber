@@ -155,7 +155,6 @@ mod tests {
     use super::*;
     use crate::{http::HttpMethod, render::Procedure, test_util::by_id};
     use indexmap::indexmap;
-    use petitscript::ast::{FunctionCall, IntoExpression, TemplateLiteral};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde_json::json;
@@ -240,10 +239,20 @@ mod tests {
     async fn test_regression(test_data_dir: PathBuf) {
         let LoadedCollection {
             process,
-            collection: loaded,
+            collection: actual,
         } = PetitEngine::new()
             .load_collection(test_data_dir.join("regression.js"))
             .unwrap();
+
+        // Define some common procedures that are used several times
+        let url = Procedure::parse(
+            &process,
+            r#"`${profile("host")}/anything/${profile("userGuid")}`"#,
+        );
+        let password = Procedure::parse(
+            &process,
+            r#"prompt({ message: "Password", sensitive: true })"#,
+        );
 
         let expected = Collection {
             profiles: by_id([
@@ -253,7 +262,10 @@ mod tests {
                     default: false,
                     data: indexmap! {
                         "userGuid".into() => "abc123".into(),
-                        "username".into() => "xX{{chains.username}}Xx".into(),
+                        "username".into() => Procedure::parse(
+                            &process,
+                            r#"`xX${username()}Xx`"#,
+                        ),
                         "host".into() => "https://httpbin.org".into(),
                     },
                 },
@@ -268,24 +280,17 @@ mod tests {
             ]),
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
-                    id: "testBody".into(),
+                    id: "textBody".into(),
                     method: HttpMethod::Post,
-                    url: Procedure::test(
-                        process.clone(),
-                        TemplateLiteral::new([
-                            FunctionCall::named("profile", ["host".into()])
-                                .into_expr()
-                                .into(),
-                            "/anything/".into(),
-                            FunctionCall::named("profile", ["userGuid".into()])
-                                .into_expr()
-                                .into(),
-                        ]),
+                    url: Procedure::parse(
+                        &process,
+                        r#"`${profile("host")}/anything/login`"#,
                     ),
                     body: Some(RecipeBody::Raw {
-                        data: "{\"username\": \"{{username}}\", \
-                        \"password\": \"{{chains.password}}\"}"
-                            .into(),
+                        data: Procedure::parse(
+                            &process,
+                            r#"`{"username": "${profile("username")}", "password": "${password()}"}`"#,
+                        ),
                     }),
                     query: indexmap! {
                         "sudo".into() => "yes_please".into(),
@@ -305,11 +310,17 @@ mod tests {
                             name: Some("Get User".into()),
                             persist: false,
                             method: HttpMethod::Get,
-                            url: "{{host}}/anything/{{userGuid}}".into(),
+                            url: url.clone(),
                             query: indexmap! {
                                 "value".into() => [
-                                    "{{field1}}",
-                                    "{{field2}}",
+                                    Procedure::parse(
+                                        &process,
+                                        r#"profile("field1")"#,
+                                    ),
+                                    Procedure::parse(
+                                        &process,
+                                        r#"profile("field2")"#,
+                                    ),
                                 ].into(),
                             },
                             ..Recipe::factory(())
@@ -318,13 +329,16 @@ mod tests {
                             id: "jsonBody".into(),
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
-                            url: "{{host}}/anything/{{userGuid}}".into(),
+                            url: url.clone(),
                             body: Some(RecipeBody::Json {
                                 data: json!({"username": "new username"})
                                     .into(),
                             }),
                             authentication: Some(Authentication::Bearer {
-                                token: "{{chains.auth_token}}".into(),
+                                token: Procedure::parse(
+                                    &process,
+                                    "authToken()",
+                                ),
                             }),
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
@@ -335,14 +349,17 @@ mod tests {
                             id: "jsonBodyButNot".into(),
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
-                            url: "{{host}}/anything/{{userGuid}}".into(),
+                            url: url.clone(),
                             body: Some(RecipeBody::Json {
                                 data: json!(r#"{"warning": "NOT an object"}"#)
                                     .into(),
                             }),
                             authentication: Some(Authentication::Basic {
-                                username: "{{username}}".into(),
-                                password: "{{password}}".into(),
+                                username: Procedure::parse(
+                                    &process,
+                                    r#"profile("username")"#,
+                                ),
+                                password: password.clone(),
                             }),
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
@@ -353,15 +370,15 @@ mod tests {
                             id: "formUrlencodedBody".into(),
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
-                            url: "{{host}}/anything/{{userGuid}}".into(),
+                            url: url.clone(),
                             body: Some(RecipeBody::FormUrlencoded {
                                 data: indexmap! {
-                                    "username".into() => "new username".into()
+                                    "username".into() => "new username".into(),
+                                    "password".into() => password.clone(),
                                 },
                             }),
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
-                                "password".into() => "TODO".into(),
                             },
                             ..Recipe::factory(())
                         }),
@@ -369,11 +386,11 @@ mod tests {
                             id: "formMultipartBody".into(),
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
-                            url: "{{host}}/anything/{{userGuid}}".into(),
+                            url: url.clone(),
                             body: Some(RecipeBody::FormMultipart {
                                 data: indexmap! {
                                     "username".into() => "new username".into(),
-                                    "password".into() => "TODO".into(),
+                                    "password".into() => password,
                                 },
                             }),
                             headers: indexmap! {
@@ -386,6 +403,6 @@ mod tests {
             ])
             .into(),
         };
-        assert_eq!(loaded, expected);
+        assert_eq!(actual, expected);
     }
 }

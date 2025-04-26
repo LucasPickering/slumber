@@ -51,10 +51,12 @@ mod tests {
     use rstest::rstest;
     use slumber_core::{
         collection::{
-            Collection, Folder, Profile, Recipe, RecipeBody, RecipeNode,
+            Collection, Folder, LoadedCollection, Profile, Recipe, RecipeBody,
+            RecipeNode,
         },
         http::HttpMethod,
         ps::PetitEngine,
+        render::Procedure,
         test_util::by_id,
     };
     use slumber_util::{Factory, TempDir, temp_dir};
@@ -101,10 +103,10 @@ mod tests {
     /// specific contents
     #[test]
     fn test_deserialize() {
-        let collection = PetitEngine::new()
-            .load_collection(SOURCE)
-            .unwrap()
-            .collection;
+        let LoadedCollection {
+            collection: actual,
+            process,
+        } = PetitEngine::new().load_collection(SOURCE).unwrap();
         let expected = Collection {
             profiles: by_id([Profile {
                 id: "example".into(),
@@ -119,7 +121,10 @@ mod tests {
                     id: "example1".into(),
                     name: Some("Example Request 1".into()),
                     method: HttpMethod::Get,
-                    url: "{{host}}/anything".into(),
+                    url: Procedure::parse(
+                        &process,
+                        r#"`${profile("host")}/anything`"#,
+                    ),
                     ..Recipe::factory(())
                 }),
                 RecipeNode::Folder(Folder {
@@ -129,9 +134,15 @@ mod tests {
                         id: "example2".into(),
                         name: Some("Example Request 2".into()),
                         method: HttpMethod::Post,
-                        url: "{{host}}/anything".into(),
+                        url: Procedure::parse(
+                            &process,
+                            r#"`${profile("host")}/anything`"#,
+                        ),
                         body: Some(RecipeBody::Json {
-                            data: "TODO".into(),
+                            data: Procedure::parse(
+                                &process,
+                                r#"JSON.parse(response("example1")).data"#,
+                            ),
                         }),
                         ..Recipe::factory(())
                     })]),
@@ -139,6 +150,6 @@ mod tests {
             ])
             .into(),
         };
-        assert_eq!(collection, expected);
+        assert_eq!(actual, expected);
     }
 }

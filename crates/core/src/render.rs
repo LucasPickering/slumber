@@ -37,7 +37,8 @@ use winnow::{
 /// The name "procedure" is fairly arbitrary, but it's specific and unique so
 /// it works. This is the successor to Slumber's previous "template" system,
 /// which were declarative strings.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(into = "Value", from = "Value")]
 pub struct Procedure(ProcedureInner);
 
@@ -47,20 +48,24 @@ impl Procedure {
     }
 
     /// TODO
-    #[cfg(test)]
-    pub fn test(
-        process: petitscript::Process,
-        template: petitscript::ast::TemplateLiteral,
-    ) -> Self {
-        use petitscript::ast::{FunctionBody, FunctionDefinition};
+    #[cfg(any(test, feature = "test"))]
+    pub fn parse(process: &Process, source: &'static str) -> Self {
+        use petitscript::{
+            Engine,
+            ast::{FunctionBody, FunctionDefinition, Statement},
+        };
+        let module = Engine::new().parse(source).unwrap();
+        let Statement::Expression(expression) = &*module.statements[0] else {
+            todo!()
+        };
 
         Self(ProcedureInner::Test {
-            process,
+            process: process.clone(),
             // All procedures take no args, and the body is typically a single
-            // template literal expression
+            // expression
             definition: FunctionDefinition::new(
                 [],
-                FunctionBody::expression(template.into()),
+                FunctionBody::expression(expression.data().clone()),
             ),
         })
     }
@@ -75,7 +80,7 @@ impl Procedure {
     pub fn into_value(self) -> Value {
         match self.0 {
             ProcedureInner::Value(value) => value,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test"))]
             ProcedureInner::Test { .. } => todo!(),
         }
     }
@@ -133,12 +138,13 @@ impl From<serde_json::Value> for Procedure {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
+#[derive(Clone, derive_more::Debug)]
 enum ProcedureInner {
     Value(Value),
     /// TODO
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test"))]
     Test {
+        #[debug(skip)]
         process: Process,
         definition: petitscript::ast::FunctionDefinition,
     },
@@ -149,12 +155,13 @@ impl ProcedureInner {
     fn value(&self) -> &Value {
         match self {
             ProcedureInner::Value(value) => value,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test"))]
             ProcedureInner::Test { .. } => todo!(),
         }
     }
 }
 
+#[cfg(any(test, feature = "test"))]
 impl PartialEq for ProcedureInner {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -163,7 +170,6 @@ impl PartialEq for ProcedureInner {
             // If we have one function and one function definition, we can
             // compare the two. This is how we compare dynamic procedures in
             // tests
-            #[cfg(test)]
             (
                 Self::Value(Value::Function(function)),
                 Self::Test {
@@ -184,14 +190,25 @@ impl PartialEq for ProcedureInner {
                 };
                 // Skip comparing name + captures because it's not helpful and
                 // annoying to define in tests
-                actual.parameters == expected.parameters
-                    && actual.body == expected.body
+                let eq = actual.parameters == expected.parameters
+                    && actual.body == expected.body;
+                if !eq {
+                    // Test procedures are used exclusively for assertions, but
+                    // the default assertion messages based on the debug impls
+                    // is entirely unhelpful, so print the actual definitions
+                    // here
+                    eprintln!(
+                        "Procedure definition mismatch:\n\
+                        {actual:#?}\n\
+                        vs\n\
+                        {expected:#?}"
+                    );
+                }
+                eq
             }
 
-            #[cfg(test)]
             (Self::Value(_), Self::Test { .. })
             | (Self::Test { .. }, Self::Value(_)) => false,
-            #[cfg(test)]
             (Self::Test { .. }, Self::Test { .. }) => {
                 // Test procedures are meant specifically for assertions against
                 // real procedures, so it doesn't make sense to compare them

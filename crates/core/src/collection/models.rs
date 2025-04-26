@@ -339,8 +339,11 @@ impl From<&str> for QueryParameterValue {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl<const N: usize> From<[&str; N]> for QueryParameterValue {
-    fn from(value: [&str; N]) -> Self {
+impl<const N: usize, T> From<[T; N]> for QueryParameterValue
+where
+    Procedure: From<T>,
+{
+    fn from(value: [T; N]) -> Self {
         QueryParameterValue::Many(
             value.into_iter().map(Procedure::from).collect(),
         )

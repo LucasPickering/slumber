@@ -426,7 +426,7 @@ impl IntoPetitAst for ChainRequestTrigger {
             // The kwargs should be excluded if it's the default
             Self::Never => None,
             Self::NoHistory => Some("noHistory".into()),
-            Self::Expire(duration) => Some(duration.to_string().into()),
+            Self::Expire(duration) => Some(duration.to_string()),
             Self::Always => Some("always".into()),
         }
     }

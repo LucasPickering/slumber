@@ -3,7 +3,7 @@
 
 use crate::{
     collection::{Collection, Profile, ProfileId, RecipeId},
-    http::{Exchange, RequestBuildError, RequestError, RequestSeed},
+    http::{Exchange, RequestSeed, TriggeredRequestError},
     util::FutureCache,
 };
 use anyhow::anyhow;
@@ -40,49 +40,43 @@ use winnow::{
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(into = "Value", from = "Value")]
-pub struct Procedure(ProcedureInner);
+pub struct Procedure(Value);
 
 impl Procedure {
     pub fn new(value: impl Into<Value>) -> Self {
-        Self(ProcedureInner::Value(value.into()))
+        Self(value.into())
     }
 
     /// TODO
     #[cfg(any(test, feature = "test"))]
-    pub fn parse(process: &Process, source: &'static str) -> Self {
-        use petitscript::{
-            Engine,
-            ast::{FunctionBody, FunctionDefinition, Statement},
-        };
-        let module = Engine::new().parse(source).unwrap();
+    pub fn parse(name: Option<&'static str>, source: &'static str) -> Self {
+        use crate::ps::ENGINE;
+        use petitscript::ast::{FunctionBody, FunctionDefinition, Statement};
+        let module = ENGINE.parse(source).unwrap();
         let Statement::Expression(expression) = &*module.statements[0] else {
             todo!()
         };
 
-        Self(ProcedureInner::Test {
-            process: process.clone(),
-            // All procedures take no args, and the body is typically a single
-            // expression
-            definition: FunctionDefinition::new(
+        Self(Value::Function(Function::user(
+            name.map(String::from),
+            FunctionDefinition::new(
                 [],
                 FunctionBody::expression(expression.data().clone()),
-            ),
-        })
+            )
+            .into(),
+            IndexMap::default(),
+        )))
     }
 
     /// Is the procedure a function that will be rendered dynamically into
     /// another value?
     pub fn is_dynamic(&self) -> bool {
-        matches!(&self.0, ProcedureInner::Value(Value::Function(_)))
+        matches!(&self.0, Value::Function(_))
     }
 
     /// Get the inner PS value
     pub fn into_value(self) -> Value {
-        match self.0 {
-            ProcedureInner::Value(value) => value,
-            #[cfg(any(test, feature = "test"))]
-            ProcedureInner::Test { .. } => todo!(),
-        }
+        self.0
     }
 }
 
@@ -94,7 +88,7 @@ impl Default for Procedure {
 
 impl Display for Procedure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.value())
+        write!(f, "{}", self.0)
     }
 }
 
@@ -134,87 +128,6 @@ impl From<serde_json::Value> for Procedure {
     fn from(value: serde_json::Value) -> Self {
         // Convert JSON -> PS
         Self::new(serde_json::from_value::<Value>(value).unwrap())
-    }
-}
-
-/// TODO
-#[derive(Clone, derive_more::Debug)]
-enum ProcedureInner {
-    Value(Value),
-    /// TODO
-    #[cfg(any(test, feature = "test"))]
-    Test {
-        #[debug(skip)]
-        process: Process,
-        definition: petitscript::ast::FunctionDefinition,
-    },
-}
-
-impl ProcedureInner {
-    /// TODO
-    fn value(&self) -> &Value {
-        match self {
-            ProcedureInner::Value(value) => value,
-            #[cfg(any(test, feature = "test"))]
-            ProcedureInner::Test { .. } => todo!(),
-        }
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl PartialEq for ProcedureInner {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Value(l0), Self::Value(r0)) => l0 == r0,
-
-            // If we have one function and one function definition, we can
-            // compare the two. This is how we compare dynamic procedures in
-            // tests
-            (
-                Self::Value(Value::Function(function)),
-                Self::Test {
-                    process,
-                    definition: expected,
-                },
-            )
-            | (
-                Self::Test {
-                    process,
-                    definition: expected,
-                },
-                Self::Value(Value::Function(function)),
-            ) => {
-                // Grab the definition for the function and compare it
-                let Ok(actual) = process.get_fn_definition(function) else {
-                    return false;
-                };
-                // Skip comparing name + captures because it's not helpful and
-                // annoying to define in tests
-                let eq = actual.parameters == expected.parameters
-                    && actual.body == expected.body;
-                if !eq {
-                    // Test procedures are used exclusively for assertions, but
-                    // the default assertion messages based on the debug impls
-                    // is entirely unhelpful, so print the actual definitions
-                    // here
-                    eprintln!(
-                        "Procedure definition mismatch:\n\
-                        {actual:#?}\n\
-                        vs\n\
-                        {expected:#?}"
-                    );
-                }
-                eq
-            }
-
-            (Self::Value(_), Self::Test { .. })
-            | (Self::Test { .. }, Self::Value(_)) => false,
-            (Self::Test { .. }, Self::Test { .. }) => {
-                // Test procedures are meant specifically for assertions against
-                // real procedures, so it doesn't make sense to compare them
-                unimplemented!("Cannot compare two test procedures")
-            }
-        }
     }
 }
 
@@ -268,7 +181,7 @@ impl Renderer {
     where
         T: FromRendered,
     {
-        let value = match procedure.0.value() {
+        let value = match &procedure.0 {
             // Function represents a rendering procedure - call it now
             Value::Function(function) => {
                 self.render_function(function.clone()).await?
@@ -582,42 +495,6 @@ impl<T> ResponseChannel<T> {
 #[derive(Debug, Error)]
 #[error("Invalid override key: {0}")]
 pub struct OverrideKeyParseError(String);
-
-/// Error occurred while trying to build/execute a triggered request.
-///
-/// This type implements `Clone` so it can be shared between deduplicated chain
-/// renders, hence the `Arc`s on inner errors.
-///
-/// TODO move this to http or ps::error
-#[derive(Clone, Debug, Error)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum TriggeredRequestError {
-    /// This render was invoked in a way that doesn't support automatic request
-    /// execution. In some cases the user needs to explicitly opt in to enable
-    /// it (e.g. with a CLI flag)
-    #[error("Triggered request execution not allowed in this context")]
-    NotAllowed,
-
-    /// Tried to auto-execute a chained request but couldn't build it
-    #[error(transparent)]
-    Build(#[from] Arc<RequestBuildError>),
-
-    /// Chained request was triggered, sent and failed
-    #[error(transparent)]
-    Send(#[from] Arc<RequestError>),
-}
-
-impl From<RequestBuildError> for TriggeredRequestError {
-    fn from(error: RequestBuildError) -> Self {
-        Self::Build(error.into())
-    }
-}
-
-impl From<RequestError> for TriggeredRequestError {
-    fn from(error: RequestError) -> Self {
-        Self::Send(error.into())
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -90,15 +90,6 @@ impl Display for CollectionFile {
     }
 }
 
-/// Create a new file with a placeholder path for testing
-/// TODO delete this?
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory<()> for CollectionFile {
-    fn factory(_: ()) -> Self {
-        Self(PathBuf::default())
-    }
-}
-
 /// TODO better name
 #[derive(Debug)]
 pub struct LoadedCollection {
@@ -246,11 +237,11 @@ mod tests {
 
         // Define some common procedures that are used several times
         let url = Procedure::parse(
-            &process,
+            Some("url"),
             r#"`${profile("host")}/anything/${profile("userGuid")}`"#,
         );
         let password = Procedure::parse(
-            &process,
+            Some("password"),
             r#"prompt({ message: "Password", sensitive: true })"#,
         );
 
@@ -263,8 +254,8 @@ mod tests {
                     data: indexmap! {
                         "userGuid".into() => "abc123".into(),
                         "username".into() => Procedure::parse(
-                            &process,
-                            r#"`xX${username()}Xx`"#,
+                            Some("username"),
+                            r#"`xX${prompt()}Xx`"#,
                         ),
                         "host".into() => "https://httpbin.org".into(),
                     },
@@ -283,12 +274,12 @@ mod tests {
                     id: "textBody".into(),
                     method: HttpMethod::Post,
                     url: Procedure::parse(
-                        &process,
+                        Some("url"),
                         r#"`${profile("host")}/anything/login`"#,
                     ),
                     body: Some(RecipeBody::Raw {
                         data: Procedure::parse(
-                            &process,
+                            Some("data"),
                             r#"`{"username": "${profile("username")}", "password": "${password()}"}`"#,
                         ),
                     }),
@@ -314,11 +305,11 @@ mod tests {
                             query: indexmap! {
                                 "value".into() => [
                                     Procedure::parse(
-                                        &process,
+                                        None,
                                         r#"profile("field1")"#,
                                     ),
                                     Procedure::parse(
-                                        &process,
+                                        None,
                                         r#"profile("field2")"#,
                                     ),
                                 ].into(),
@@ -336,7 +327,7 @@ mod tests {
                             }),
                             authentication: Some(Authentication::Bearer {
                                 token: Procedure::parse(
-                                    &process,
+                                    Some("token"),
                                     "authToken()",
                                 ),
                             }),
@@ -356,7 +347,7 @@ mod tests {
                             }),
                             authentication: Some(Authentication::Basic {
                                 username: Procedure::parse(
-                                    &process,
+                                    Some("username"),
                                     r#"profile("username")"#,
                                 ),
                                 password: password.clone(),

@@ -1,4 +1,4 @@
-use crate::{collection::RecipeId, render::TriggeredRequestError};
+use crate::{collection::RecipeId, http::TriggeredRequestError};
 use itertools::Itertools;
 use petitscript::error::RuntimeError;
 use serde_json_path::JsonPath;

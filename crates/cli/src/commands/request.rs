@@ -12,11 +12,14 @@ use slumber_config::Config;
 use slumber_core::{
     collection::{LoadedCollection, ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
-    http::{Exchange, HttpEngine, RequestRecord, RequestSeed, ResponseRecord},
+    http::{
+        Exchange, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
+        TriggeredRequestError,
+    },
     ps::PetitEngine,
     render::{
         HttpProvider, OverrideKey, OverrideValue, Prompt, Prompter,
-        RenderContext, Renderer, Select, TriggeredRequestError,
+        RenderContext, Renderer, Select,
     },
     util::MaybeStr,
 };

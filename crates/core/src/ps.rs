@@ -10,25 +10,31 @@ use petitscript::{
     ast::{IntoNode, Module},
 };
 use serde::de::IntoDeserializer;
-use std::sync::Arc;
+use std::sync::LazyLock;
 use tracing::{info, info_span};
+
+/// The PetitScript engine that serves all our Petit needs. We can share one
+/// engine across the entire program, and across all tests. This bad boy will
+/// be configured to run any Slumber action you can throw at it.
+pub static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
+    let _span = info_span!("Initializing PetitScript engine").entered();
+    Engine::builder()
+        .with_stdlib()
+        .with_module("slumber".parse().unwrap(), functions::module())
+        .build()
+});
 
 /// An interface for invoking PetitScript. This is cheaply cloneable so it can
 /// be shared between threads.
+///
+/// TODO get rid of this?
 #[derive(Clone, derive_more::Debug)]
-pub struct PetitEngine {
-    engine: Arc<petitscript::Engine>,
-}
+pub struct PetitEngine {}
 
 impl PetitEngine {
     /// TODO
     pub fn new() -> Self {
-        let _ = info_span!("Initializing JS engine").entered();
-        let mut engine = Engine::new();
-        functions::register_module(&mut engine);
-        Self {
-            engine: engine.into(),
-        }
+        Self {}
     }
 
     /// Load a recipe collection from a PS source. Typically the source is a
@@ -43,7 +49,7 @@ impl PetitEngine {
 
         let error_context = format!("Error loading collection from {source:?}");
         let load = || {
-            let process = self.engine.compile(source)?;
+            let process = ENGINE.compile(source)?;
             Self::todo2(process)
         };
         load().context(error_context)
@@ -51,7 +57,7 @@ impl PetitEngine {
 
     /// TODO test only
     pub fn todo(&self, module: Module) -> anyhow::Result<LoadedCollection> {
-        let process = self.engine.compile_ast(module.s())?;
+        let process = ENGINE.compile_ast(module.s())?;
         Self::todo2(process)
     }
 

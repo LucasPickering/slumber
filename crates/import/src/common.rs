@@ -250,7 +250,6 @@ pub(crate) struct Chain {
 #[serde(transparent)]
 pub(crate) struct ChainId(Identifier);
 
-// TODO is this used?
 impl From<Identifier> for ChainId {
     fn from(identifier: Identifier) -> Self {
         Self(identifier)

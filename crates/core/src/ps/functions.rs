@@ -12,9 +12,8 @@ use crate::{
 };
 use bytes::Bytes;
 use chrono::Utc;
-use indexmap::indexmap;
 use petitscript::{
-    Engine, Exports, Process, Value,
+    Exports, Process, Value,
     error::ValueError,
     value::{FromPetit, FromPetitArgs, IntoPetitResult},
 };
@@ -30,24 +29,20 @@ use tokio::{
 };
 use tracing::{debug, debug_span};
 
-/// Create the `slumber` module and register it in the engine
-pub fn register_module(engine: &mut Engine) {
-    let functions = indexmap! {
-        "command" => engine.create_fn(sync(command)),
-        "env" => engine.create_fn(env),
-        "file" => engine.create_fn(sync(file)),
-        "jsonPath" => engine.create_fn(json_path),
-        "profile" => engine.create_fn(sync(profile)),
-        "prompt" => engine.create_fn(sync(prompt)),
-        "response" => engine.create_fn(sync(response)),
-        "responseHeader" => engine.create_fn(sync(response_header)),
-        "select" => engine.create_fn(sync(select)),
-        "sensitive" => engine.create_fn(sensitive),
-    };
-    engine
-        .register_module("slumber", Exports::named(functions))
-        // This only fails if the name is invalid
-        .unwrap();
+/// Create the `slumber` module
+pub fn module() -> Exports {
+    let mut exports = Exports::default();
+    exports.export_fn("command", sync(command));
+    exports.export_fn("env", env);
+    exports.export_fn("file", sync(file));
+    exports.export_fn("jsonPath", json_path);
+    exports.export_fn("profile", sync(profile));
+    exports.export_fn("prompt", sync(prompt));
+    exports.export_fn("response", sync(response));
+    exports.export_fn("responseHeader", sync(response_header));
+    exports.export_fn("select", sync(select));
+    exports.export_fn("sensitive", sensitive);
+    exports
 }
 
 /// Wrap an async function to make it sync by spawning it on the runtime and
@@ -612,16 +607,18 @@ mod tests {
         collection::{Collection, Profile},
         database::CollectionDatabase,
         http::{Exchange, RequestRecord, ResponseBody},
+        ps::ENGINE,
         render::Overrides,
         test_util::{
             TestHttpProvider, TestPrompter, TestSelectPrompter, by_id,
             header_map,
         },
     };
-    use petitscript::{Engine, Value, value::Function};
+    use indexmap::indexmap;
+    use petitscript::{Value, value::Function};
     use rstest::rstest;
     use slumber_util::{Factory, TempDir, assert_err, temp_dir};
-    use std::{iter, sync::LazyLock};
+    use std::iter;
     use tokio::task;
 
     // These test functions via PS rather than calling them directly so we can
@@ -863,15 +860,11 @@ mod tests {
         assert_eq!(output, ["hello!".into(), "hello!".into()]);
     }
 
-    #[rstest]
-    #[case::nested_error([], "TODO")]
+    /// An error in a nested procedure gets propagated
     #[tokio::test]
-    async fn test_profile_error(
-        #[case] arguments: impl IntoIterator<Item = Value>,
-        #[case] expected_error: &str,
-    ) {
-        let result = call_fn("profile", arguments, context()).await;
-        assert_err!(result, expected_error);
+    async fn test_profile_nested_error() {
+        let result = call_fn("profile", ["field1".into()], context()).await;
+        assert_err!(result, "Nested render for field `field1`");
     }
 
     #[rstest]
@@ -1118,12 +1111,6 @@ mod tests {
     /// Compile and run a process that exports the requested function. Return
     /// the compiled process and the generated function, to be called later.
     fn get_fn(name: &str, context: RenderContext) -> (Process, Function) {
-        // Re-use the same engine for every test
-        static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
-            let mut engine = Engine::new();
-            register_module(&mut engine);
-            engine
-        });
         let mut process = ENGINE
             .compile(format!(
                 "import {{ {name} }} from 'slumber'; export default {name};"

@@ -3,10 +3,8 @@
 use crate::{
     collection::{ProfileId, RecipeId},
     database::CollectionDatabase,
-    http::{Exchange, HttpEngine, RequestSeed},
-    render::{
-        HttpProvider, Prompt, Prompter, Renderer, Select, TriggeredRequestError,
-    },
+    http::{Exchange, HttpEngine, RequestSeed, TriggeredRequestError},
+    render::{HttpProvider, Prompt, Prompter, Renderer, Select},
 };
 use async_trait::async_trait;
 use indexmap::IndexMap;

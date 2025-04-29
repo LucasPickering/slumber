@@ -208,8 +208,6 @@ impl RecipeProcedureInner {
     fn set_override(&mut self, value: String) {
         // Clone is necessary because we can't have the text object
         // self-reference the string
-        // TODO should we store _just_ text and regenerate the string at request
-        // time?
         self.override_value = Some(value.clone());
         let styles = &TuiContext::get().styles;
         let text = highlight::highlight_if(

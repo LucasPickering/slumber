@@ -13,6 +13,9 @@ use serde::de::IntoDeserializer;
 use std::sync::LazyLock;
 use tracing::{info, info_span};
 
+/// Name of the PetitScript module that exposes Slumber capabilities
+pub const MODULE_NAME: &str = "slumber";
+
 /// The PetitScript engine that serves all our Petit needs. We can share one
 /// engine across the entire program, and across all tests. This bad boy will
 /// be configured to run any Slumber action you can throw at it.
@@ -20,7 +23,7 @@ pub static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
     let _span = info_span!("Initializing PetitScript engine").entered();
     Engine::builder()
         .with_stdlib()
-        .with_module("slumber".parse().unwrap(), functions::module())
+        .with_module(MODULE_NAME.parse().unwrap(), functions::module())
         .build()
 });
 
@@ -81,4 +84,26 @@ impl Default for PetitEngine {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// TODO
+#[cfg(test)]
+pub fn native_fn(name: &str) -> Value {
+    let module = ENGINE.module(MODULE_NAME).unwrap();
+    module.named.get(name).unwrap().clone()
+}
+
+/// TODO
+#[cfg(test)]
+pub fn native_captures(names: &[&str]) -> indexmap::IndexMap<String, Value> {
+    let module = ENGINE.module(MODULE_NAME).unwrap();
+    names
+        .iter()
+        .map(|&name| {
+            let Some(f) = module.named.get(name) else {
+                panic!("Unknown native fn {name}")
+            };
+            (name.to_owned(), f.clone())
+        })
+        .collect()
 }

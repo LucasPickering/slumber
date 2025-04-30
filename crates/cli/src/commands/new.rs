@@ -104,8 +104,7 @@ mod tests {
     #[test]
     fn test_deserialize() {
         let LoadedCollection {
-            collection: actual,
-            process,
+            collection: actual, ..
         } = PetitEngine::new().load_collection(SOURCE).unwrap();
         let expected = Collection {
             profiles: by_id([Profile {
@@ -121,10 +120,7 @@ mod tests {
                     id: "example1".into(),
                     name: Some("Example Request 1".into()),
                     method: HttpMethod::Get,
-                    url: Procedure::parse(
-                        &process,
-                        r#"`${profile("host")}/anything`"#,
-                    ),
+                    url: Procedure::parse(r#"`${profile("host")}/anything`"#),
                     ..Recipe::factory(())
                 }),
                 RecipeNode::Folder(Folder {
@@ -135,12 +131,10 @@ mod tests {
                         name: Some("Example Request 2".into()),
                         method: HttpMethod::Post,
                         url: Procedure::parse(
-                            &process,
                             r#"`${profile("host")}/anything`"#,
                         ),
                         body: Some(RecipeBody::Json {
                             data: Procedure::parse(
-                                &process,
                                 r#"JSON.parse(response("example1")).data"#,
                             ),
                         }),

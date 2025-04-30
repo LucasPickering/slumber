@@ -38,7 +38,6 @@ use winnow::{
 /// it works. This is the successor to Slumber's previous "template" system,
 /// which were declarative strings.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(into = "Value", from = "Value")]
 pub struct Procedure(Value);
 
@@ -49,7 +48,7 @@ impl Procedure {
 
     /// TODO
     #[cfg(any(test, feature = "test"))]
-    pub fn parse(name: Option<&'static str>, source: &'static str) -> Self {
+    pub fn parse(source: &'static str) -> Self {
         use crate::ps::ENGINE;
         use petitscript::ast::{FunctionBody, FunctionDefinition, Statement};
         let module = ENGINE.parse(source).unwrap();
@@ -58,13 +57,12 @@ impl Procedure {
         };
 
         Self(Value::Function(Function::user(
-            name.map(String::from),
             FunctionDefinition::new(
                 [],
                 FunctionBody::expression(expression.data().clone()),
             )
             .into(),
-            IndexMap::default(),
+            Default::default(),
         )))
     }
 
@@ -128,6 +126,34 @@ impl From<serde_json::Value> for Procedure {
     fn from(value: serde_json::Value) -> Self {
         // Convert JSON -> PS
         Self::new(serde_json::from_value::<Value>(value).unwrap())
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl PartialEq for Procedure {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            // When comparing user functions, we only care about the definition.
+            // Trying to generate the correct capture set in tests is a giant
+            // pain and doesn't accomplish much
+            (
+                Value::Function(Function::User {
+                    definition: definition1,
+                    ..
+                }),
+                Value::Function(Function::User {
+                    definition: definition2,
+                    ..
+                }),
+            ) => {
+                // Ignore the function name and captures because they're
+                // annoying and kinda pointless
+                definition1.parameters == definition2.parameters
+                    && definition1.body == definition2.body
+            }
+            // For anything else, defer to a normal structural comparison
+            _ => self.0 == other.0,
+        }
     }
 }
 

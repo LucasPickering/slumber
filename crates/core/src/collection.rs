@@ -229,19 +229,16 @@ mod tests {
     #[tokio::test]
     async fn test_regression(test_data_dir: PathBuf) {
         let LoadedCollection {
-            process,
-            collection: actual,
+            collection: actual, ..
         } = PetitEngine::new()
             .load_collection(test_data_dir.join("regression.js"))
             .unwrap();
 
         // Define some common procedures that are used several times
         let url = Procedure::parse(
-            Some("url"),
             r#"`${profile("host")}/anything/${profile("userGuid")}`"#,
         );
         let password = Procedure::parse(
-            Some("password"),
             r#"prompt({ message: "Password", sensitive: true })"#,
         );
 
@@ -254,8 +251,7 @@ mod tests {
                     data: indexmap! {
                         "userGuid".into() => "abc123".into(),
                         "username".into() => Procedure::parse(
-                            Some("username"),
-                            r#"`xX${prompt()}Xx`"#,
+                            r#"`xX${username()}Xx`"#,
                         ),
                         "host".into() => "https://httpbin.org".into(),
                     },
@@ -274,13 +270,12 @@ mod tests {
                     id: "textBody".into(),
                     method: HttpMethod::Post,
                     url: Procedure::parse(
-                        Some("url"),
                         r#"`${profile("host")}/anything/login`"#,
                     ),
                     body: Some(RecipeBody::Raw {
                         data: Procedure::parse(
-                            Some("data"),
-                            r#"`{"username": "${profile("username")}", "password": "${password()}"}`"#,
+                            "`{\"username\": \"${profile(\"username\")}\", \
+                            \"password\": \"${password()}\"}`",
                         ),
                     }),
                     query: indexmap! {
@@ -305,11 +300,9 @@ mod tests {
                             query: indexmap! {
                                 "value".into() => [
                                     Procedure::parse(
-                                        None,
                                         r#"profile("field1")"#,
                                     ),
                                     Procedure::parse(
-                                        None,
                                         r#"profile("field2")"#,
                                     ),
                                 ].into(),
@@ -326,10 +319,7 @@ mod tests {
                                     .into(),
                             }),
                             authentication: Some(Authentication::Bearer {
-                                token: Procedure::parse(
-                                    Some("token"),
-                                    "authToken()",
-                                ),
+                                token: Procedure::parse("authToken()"),
                             }),
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
@@ -347,7 +337,6 @@ mod tests {
                             }),
                             authentication: Some(Authentication::Basic {
                                 username: Procedure::parse(
-                                    Some("username"),
                                     r#"profile("username")"#,
                                 ),
                                 password: password.clone(),

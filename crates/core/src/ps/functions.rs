@@ -608,7 +608,7 @@ mod tests {
         database::CollectionDatabase,
         http::{Exchange, RequestRecord, ResponseBody},
         ps::ENGINE,
-        render::Overrides,
+        render::{Overrides, Procedure},
         test_util::{
             TestHttpProvider, TestPrompter, TestSelectPrompter, by_id,
             header_map,
@@ -800,7 +800,6 @@ mod tests {
     #[rstest]
     #[case::base(["field1".into()], "value1")]
     #[case::unknown(["fieldUnknown".into()], Value::Undefined)]
-    // TODO test nested render
     #[tokio::test]
     async fn test_profile(
         #[case] arguments: impl IntoIterator<Item = Value>,
@@ -828,10 +827,10 @@ mod tests {
     /// should only compute it once
     #[tokio::test]
     async fn test_profile_dedupe() {
+        let f = Function::native("prompt".into(), sync(prompt));
         let profile = Profile {
             data: indexmap! {
-                // TODO make this a prompt
-                "field1".into() => "value1".into(),
+                "field1".into() => Procedure::new(f),
             },
             ..Profile::factory(())
         };
@@ -863,7 +862,25 @@ mod tests {
     /// An error in a nested procedure gets propagated
     #[tokio::test]
     async fn test_profile_nested_error() {
-        let result = call_fn("profile", ["field1".into()], context()).await;
+        // This prompt always fails because we won't register any responses
+        let f = Function::native("prompt".into(), sync(prompt));
+        let profile = Profile {
+            data: indexmap! {
+                "field1".into() => Procedure::new(f),
+            },
+            ..Profile::factory(())
+        };
+        let profile_id = profile.id.clone();
+        let collection = Collection {
+            profiles: by_id([profile]),
+            recipes: Default::default(),
+        };
+        let context = RenderContext {
+            collection: collection.into(),
+            selected_profile: Some(profile_id),
+            ..context()
+        };
+        let result = call_fn("profile", ["field1".into()], context).await;
         assert_err!(result, "Nested render for field `field1`");
     }
 

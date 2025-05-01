@@ -8,10 +8,10 @@
 //! do so at your own risk of breakage.
 
 pub mod paths;
-#[cfg(feature = "test")]
+#[cfg(any(feature = "test", test))]
 mod test_util;
 
-#[cfg(feature = "test")]
+#[cfg(any(feature = "test", test))]
 pub use test_util::*;
 
 use anyhow::anyhow;
@@ -29,7 +29,9 @@ use std::{
     time,
 };
 use tracing::error;
-use winnow::{ModalResult, Parser, ascii::digit1, token::take_while};
+use winnow::{
+    ModalResult, Parser, ascii::digit1, combinator::repeat, token::take_while,
+};
 
 /// Link to the GitHub New Issue form
 pub const NEW_ISSUE_LINK: &str =
@@ -39,7 +41,7 @@ pub const NEW_ISSUE_LINK: &str =
 /// as well as the suffix.
 ///
 /// ```
-/// use slumber_core::util::doc_link;
+/// # use slumber_util::doc_link;
 /// assert_eq!(
 ///     doc_link("api/chain"),
 ///     "https://slumber.lucaspickering.me/book/api/chain.html",
@@ -156,9 +158,27 @@ impl Duration {
 
 impl Display for Duration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Always print as seconds, because it's easiest. Sub-second precision
-        // is lost
-        write!(f, "{}s", self.0.as_secs())
+        // Use the largest units possible
+        let mut remaining = self.0.as_secs();
+
+        // Make sure 0 doesn't give us an empty string
+        if remaining == 0 {
+            return write!(f, "0s");
+        }
+
+        // Start with the biggest units
+        let units = DurationUnit::ALL
+            .iter()
+            .sorted_by_key(|unit| unit.seconds())
+            .rev();
+        for unit in units {
+            let quantity = remaining / unit.seconds();
+            if quantity > 0 {
+                remaining %= unit.seconds();
+                write!(f, "{}{}", quantity, unit)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -166,75 +186,35 @@ impl FromStr for Duration {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        /// Supported units for duration parsing/formatting
-        #[derive(Debug)]
-        enum DurationUnit {
-            Second,
-            Minute,
-            Hour,
-            Day,
-        }
-
-        impl DurationUnit {
-            const ALL: &[Self] =
-                &[Self::Second, Self::Minute, Self::Hour, Self::Day];
-        }
-
-        impl Display for DurationUnit {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                match self {
-                    Self::Second => write!(f, "s"),
-                    Self::Minute => write!(f, "m"),
-                    Self::Hour => write!(f, "h"),
-                    Self::Day => write!(f, "d"),
-                }
-            }
-        }
-
-        impl FromStr for DurationUnit {
-            type Err = anyhow::Error;
-
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                match s.to_lowercase().as_str() {
-                    "s" => Ok(Self::Second),
-                    "m" => Ok(Self::Minute),
-                    "h" => Ok(Self::Hour),
-                    "d" => Ok(Self::Day),
-                    _ => Err(anyhow!(
-                        "Unknown duration unit `{s}`; must be one of {:?}",
-                        Self::ALL.iter().format_with(", ", |unit, f| f(
-                            &format_args!("`{unit}`")
-                        ))
-                    )),
-                }
-            }
-        }
-
         fn quantity(input: &mut &str) -> ModalResult<u64> {
             digit1.parse_to().parse_next(input)
         }
 
-        fn unit<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
-            take_while(1.., char::is_alphabetic).parse_next(input)
+        fn unit(input: &mut &str) -> ModalResult<DurationUnit> {
+            take_while(1.., char::is_alphabetic)
+                .parse_to()
+                .parse_next(input)
         }
 
-        let (quantity, unit) = (quantity, unit)
+        // Parse one or more quantity-unit pairs and sum them all up
+        let seconds = repeat(1.., (quantity, unit))
+            .fold(
+                || 0,
+                |acc, (quantity, unit)| acc + (quantity * unit.seconds()),
+            )
             .parse(s)
             // The format is so simple there isn't much value in spitting out a
             // specific parsing error, just use a canned one
             .map_err(|_| {
                 anyhow!(
-                    "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)",
+                    "Invalid duration, must be `(<quantity><unit>)+` \
+                    (e.g. `12d` or `1h30m`). Units are {}",
+                    DurationUnit::ALL.iter().format_with(", ", |unit, f| f(
+                        &format_args!("`{unit}`")
+                    ))
                 )
             })?;
 
-        let unit = unit.parse()?;
-        let seconds = match unit {
-            DurationUnit::Second => quantity,
-            DurationUnit::Minute => quantity * 60,
-            DurationUnit::Hour => quantity * 60 * 60,
-            DurationUnit::Day => quantity * 60 * 60 * 24,
-        };
         Ok(Self(time::Duration::from_secs(seconds)))
     }
 }
@@ -249,9 +229,57 @@ impl<'de> Deserialize<'de> for Duration {
     }
 }
 
+/// Supported units for duration parsing/formatting
+#[derive(Debug)]
+enum DurationUnit {
+    Second,
+    Minute,
+    Hour,
+    Day,
+}
+
+impl DurationUnit {
+    const ALL: &[Self] = &[Self::Second, Self::Minute, Self::Hour, Self::Day];
+
+    fn seconds(&self) -> u64 {
+        match self {
+            DurationUnit::Second => 1,
+            DurationUnit::Minute => 60,
+            DurationUnit::Hour => 60 * 60,
+            DurationUnit::Day => 60 * 60 * 24,
+        }
+    }
+}
+
+impl Display for DurationUnit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Second => write!(f, "s"),
+            Self::Minute => write!(f, "m"),
+            Self::Hour => write!(f, "h"),
+            Self::Day => write!(f, "d"),
+        }
+    }
+}
+
+impl FromStr for DurationUnit {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "s" => Ok(Self::Second),
+            "m" => Ok(Self::Minute),
+            "h" => Ok(Self::Hour),
+            "d" => Ok(Self::Day),
+            _ => Err(anyhow!("Invalid duration unit `{s}`")),
+        }
+    }
+}
+
 /// Parse bytes from a reader into YAML. This will merge any anchors/aliases.
 pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
     // Two-step parsing is required for anchor/alias merging
+    // TODO move into config crate once this is unused in the import crate
     let deserializer = serde_yaml::Deserializer::from_reader(reader);
     let mut yaml_value: serde_yaml::Value =
         serde_path_to_error::deserialize(deserializer)?;
@@ -263,11 +291,14 @@ pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::assert_err;
     use rstest::rstest;
 
     #[rstest]
+    #[case::zero(time::Duration::from_secs(0), "0s")]
     #[case::seconds_short(time::Duration::from_secs(3), "3s")]
-    #[case::seconds_long(time::Duration::from_secs(3000), "3000s")]
+    #[case::seconds_hour(time::Duration::from_secs(3600), "1h")]
+    #[case::seconds_composite(time::Duration::from_secs(3690), "1h1m30s")]
     // Subsecond precision is lost
     #[case::seconds_subsecond_lost(time::Duration::from_millis(400), "0s")]
     #[case::seconds_subsecond_round_down(
@@ -288,6 +319,9 @@ mod tests {
     #[case::minutes("3m", time::Duration::from_secs(180))]
     #[case::hours("3h", time::Duration::from_secs(10800))]
     #[case::days("2d", time::Duration::from_secs(172800))]
+    #[case::composite("2d3h10m17s", time::Duration::from_secs(
+        2 * 86400 + 3 * 3600 + 10 * 60 + 17
+    ))]
     fn test_duration_parse(
         #[case] s: &'static str,
         #[case] expected: time::Duration,
@@ -296,26 +330,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case::negative(
-        "-1s",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::whitespace(
-        " 1s ",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::trailing_whitespace(
-        "1s ",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::decimal(
-        "3.5s",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::invalid_unit(
-        "3hr",
-        "Unknown duration unit `hr`; must be one of `s`, `m`, `h`, `d`"
-    )]
+    #[case::negative("-1s", "Invalid duration")]
+    #[case::whitespace(" 1s ", "Invalid duration")]
+    #[case::trailing_whitespace("1s ", "Invalid duration")]
+    #[case::decimal("3.5s", "Invalid duration")]
+    #[case::invalid_unit("3hr", "Units are `s`, `m`, `h`, `d`")]
     fn test_duration_parse_error(
         #[case] s: &'static str,
         #[case] expected_error: &str,

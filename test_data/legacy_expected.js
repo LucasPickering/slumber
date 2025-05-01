@@ -9,11 +9,8 @@ import {
 } from "slumber";
 
 const chain_username = () => command(["whoami"]).trim();
-const chain_password = () =>
-  prompt({
-    message: "Password",
-    sensitive: true,
-  });
+
+const chain_password = () => prompt({ message: "Password", sensitive: true });
 
 const chain_select_value = () =>
   select(
@@ -27,20 +24,21 @@ const chain_select_value = () =>
     { message: "Select a value" }
   );
 
-const chain_select_dynamic = () =>
-  select(chain_login_form_values(), { message: "Select a value" });
-
 const chain_login_form_values = () =>
   jsonPath("$.form[*]", JSON.parse(response("login", { trigger: "12h" })), {
     mode: "array",
   });
+
+// These two must be ordered by dependency because PS uses lexical declaration order
+const chain_select_dynamic = () =>
+  select(chain_login_form_values(), { message: "Select a value" });
 const chain_auth_token = () =>
   jsonPath("$.form", JSON.parse(response("login", { trigger: "12h" })));
 
 const chain_image = () => file("./static/slumber.png");
 
 const chain_big_file = () => file("Cargo.lock");
-``;
+
 const chain_response_type = () => select(["json", "html", "xml"]);
 
 export const profiles = {
@@ -193,11 +191,11 @@ export const requests = {
     headers: {
       ["content-type"]: "application/json",
     },
-    body: `{
-  "location": "boston",
-  "size": "HUGE"
-}
-`,
+    body: '{\
+  "location": "boston",\
+  "size": "HUGE"\
+}\
+',
   },
   delay: {
     type: "request",

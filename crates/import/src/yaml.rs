@@ -330,10 +330,10 @@ impl IntoPetitAst for serde_json::Value {
                 }
                 serde_json::Value::Bool(b) => b.into(),
                 serde_json::Value::Number(number) => {
-                    if let Some(f) = number.as_f64() {
-                        f.into()
-                    } else if let Some(i) = number.as_i64() {
+                    if let Some(i) = number.as_i64() {
                         i.into()
+                    } else if let Some(f) = number.as_f64() {
+                        f.into()
                     } else {
                         todo!()
                     }
@@ -551,7 +551,7 @@ mod tests {
     /// reasons:
     /// - It's huge so it makes code hard to navigate
     /// - Changes don't require a re-compile
-    const YAML_IMPORTED_FILE: &str = "legacy_imported.js";
+    const YAML_EXPECTED_FILE: &str = "legacy_expected.js";
 
     #[rstest]
     fn test_yaml_import(test_data_dir: PathBuf) {
@@ -561,7 +561,7 @@ mod tests {
             .unwrap()
             .into_petitscript();
         let expected = ENGINE
-            .parse(test_data_dir.join(YAML_IMPORTED_FILE))
+            .parse(test_data_dir.join(YAML_EXPECTED_FILE))
             .unwrap();
         assert_eq!(&imported, expected.data());
     }

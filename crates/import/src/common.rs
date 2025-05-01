@@ -1,369 +1,403 @@
-//! Components and logic common to all import formats. Each format converts to a
-//! common [Collection] struct, then we use that to generate a PetitScript AST.
-//! This format is mostly a copy-paste of the original YAML-based collection
-//! format. It's a simple declarative format that we can import all formats to,
-//! and it makes it easy to import old YAML collections.
-//!
-//! This is copied from the core crate instead of referencing any of those
-//! types to ensure updates to the collection format don't break the importers.
-//! Eliminating the dependency on slumber_core entirely also speeds up
-//! compilation.
+//! Generate PetitScript code from a collection
 
-mod cereal;
-mod generate;
-mod recipe_tree;
-mod template;
-
-pub(crate) use crate::common::{
-    recipe_tree::{DuplicateRecipeIdError, RecipeNode, RecipeTree},
-    template::{Identifier, Template},
-};
-
-use derive_more::{Deref, Display, From, FromStr, Into};
+use crate::ImportCollection;
 use indexmap::IndexMap;
-use serde::Deserialize;
-use serde_json_path::JsonPath;
-use slumber_util::Duration;
-use strum::EnumIter;
+use itertools::Itertools;
+use petitscript::{
+    Value,
+    ast::{
+        ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
+        FunctionCall, FunctionDefinition, Identifier, ImportDeclaration,
+        IntoNode, IntoStatement, Module, ObjectLiteral, Statement, Walk,
+    },
+};
+use slumber_core::{
+    collection::{
+        Authentication, Folder, Profile, QueryParameterValue, Recipe,
+        RecipeBody, RecipeId, RecipeNode, RecipeTree,
+    },
+    ps,
+};
+use std::collections::HashSet;
 
-/// A collection of profiles, requests, etc. This is the primary Slumber unit
-/// of configuration.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Collection {
-    #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
-    pub(crate) profiles: IndexMap<ProfileId, Profile>,
-    #[serde(default, deserialize_with = "cereal::deserialize_id_map")]
-    pub(crate) chains: IndexMap<ChainId, Chain>,
-    /// Internally we call these recipes, but to a user `requests` is more
-    /// intuitive
-    #[serde(default, rename = "requests")]
-    pub(crate) recipes: RecipeTree,
-    /// A hack-ish to allow users to add arbitrary data to their collection
-    /// file without triggering a unknown field error. Ideally we could
-    /// ignore anything that starts with `.` (recursively) but that
-    /// requires a custom serde impl for each type, or changes to the macro
-    #[serde(default, rename = ".ignore")]
-    pub(crate) _ignore: serde::de::IgnoredAny,
-}
+// TODO remove words "template" and "procedure" everywhere
 
-/// Unique ID for a profile, provided by the user
-#[derive(
-    Clone,
-    Debug,
-    Default,
-    Deref,
-    Display,
-    Eq,
-    From,
-    Hash,
-    Into,
-    PartialEq,
-    Deserialize,
-)]
-#[serde(transparent)]
-pub(crate) struct ProfileId(String);
-
-/// Mutually exclusive hot-swappable config group
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Profile {
-    #[serde(skip)] // This will be auto-populated from the map key
-    pub(crate) id: ProfileId,
-    pub(crate) name: Option<String>,
-    /// For the CLI, use this profile when no `--profile` flag is passed. For
-    /// the TUI, select this profile by default from the list. Only one profile
-    /// in the collection can be marked as default. This is enforced by a
-    /// custom deserializer function.
-    #[serde(default)]
-    pub(crate) default: bool,
-    pub(crate) data: IndexMap<String, Template>,
-}
-
-/// Unique ID for a recipe, provided by the user
-#[derive(
-    Clone,
-    Debug,
-    Default,
-    Deref,
-    Display,
-    Eq,
-    From,
-    Hash,
-    Into,
-    PartialEq,
-    Deserialize,
-)]
-#[serde(transparent)]
-pub(crate) struct RecipeId(String);
-
-/// A gathering of like-minded recipes and/or folders
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Folder {
-    #[serde(skip)] // This will be auto-populated from the map key
-    pub(crate) id: RecipeId,
-    pub(crate) name: Option<String>,
-    /// RECURSION. Use `requests` in serde to match the root field.
-    #[serde(
-        default,
-        deserialize_with = "cereal::deserialize_id_map",
-        rename = "requests"
-    )]
-    pub(crate) children: IndexMap<RecipeId, RecipeNode>,
-}
-
-/// A definition of how to make a request. This is *not* called `Request` in
-/// order to distinguish it from a single instance of an HTTP request. And it's
-/// not called `RequestTemplate` because the word "template" has a specific
-/// meaning related to string interpolation.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Recipe {
-    #[serde(skip)] // This will be auto-populated from the map key
-    pub(crate) id: RecipeId,
-    #[serde(default = "cereal::persist_default")]
-    pub(crate) persist: bool,
-    pub(crate) name: Option<String>,
-    /// *Not* a template string because the usefulness doesn't justify the
-    /// complexity. This gives the user an immediate error if the method is
-    /// wrong which is helpful.
-    pub(crate) method: HttpMethod,
-    pub(crate) url: Template,
-    pub(crate) body: Option<RecipeBody>,
-    pub(crate) authentication: Option<Authentication>,
-    #[serde(
-        default,
-        deserialize_with = "cereal::deserialize_query_parameters"
-    )]
-    pub(crate) query: Vec<(String, Template)>,
-    #[serde(default, deserialize_with = "cereal::deserialize_headers")]
-    pub(crate) headers: IndexMap<String, Template>,
-}
-
-/// HTTP method. This is duplicated from [reqwest::Method] so we can enforce
-/// the method is valid during deserialization. This is also generally more
-/// ergonomic at the cost of some flexibility.
-///
-/// The FromStr implementation will be case-insensitive
-#[derive(
-    Copy, Clone, Debug, Display, FromStr, PartialEq, Deserialize, EnumIter,
-)]
-#[serde(try_from = "String")]
-pub enum HttpMethod {
-    #[display("CONNECT")]
-    Connect,
-    #[display("DELETE")]
-    Delete,
-    #[display("GET")]
-    Get,
-    #[display("HEAD")]
-    Head,
-    #[display("OPTIONS")]
-    Options,
-    #[display("PATCH")]
-    Patch,
-    #[display("POST")]
-    Post,
-    #[display("PUT")]
-    Put,
-    #[display("TRACE")]
-    Trace,
-}
-
-/// For deserialization
-impl TryFrom<String> for HttpMethod {
-    type Error = <Self as FromStr>::Err;
-
-    fn try_from(method: String) -> Result<Self, Self::Error> {
-        method.parse()
+impl ImportCollection {
+    /// Generate a PetitScript AST for this collection. The AST can then be
+    /// converted into source code
+    pub fn into_petitscript(self) -> Module {
+        self.into_ast()
     }
 }
 
-/// Shortcut for defining authentication method. If this is defined in addition
-/// to the `Authorization` header, that header will end up being included in the
-/// request twice.
+/// Generate a function call expression for a native function by name. Pass `R`
+/// required arguments plus one keyword argument of `KW` entries. Any empty
+/// kwargs will be omitted. If all kwargs are empty, omit the entire kwargs
+/// object.
 ///
-/// Type parameter allows this to be re-used for post-render purposes (with
-/// `T=String`).
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Authentication {
-    /// `Authorization: Basic {username:password | base64}`
-    Basic {
-        username: Template,
-        password: Option<Template>,
-    },
-    /// `Authorization: Bearer {token}`
-    Bearer(Template),
+/// TODO it would be sick to leverage the typing of the actual functions
+/// somehow. Maybe a macro?
+pub fn call_fn<const R: usize, const KW: usize>(
+    name: &'static str,
+    required: [Expression; R],
+    kwargs: [(&str, Option<Expression>); KW],
+) -> FunctionCall {
+    let mut arguments: Vec<Expression> = required.into();
+    let kwargs = kwargs
+        .into_iter()
+        .filter_map(|(k, v)| Some((k, v?)))
+        .collect_vec();
+    if !kwargs.is_empty() {
+        arguments.push(ObjectLiteral::new(kwargs).into());
+    }
+    FunctionCall::named(name, arguments)
 }
 
-/// Template for a request body. `Raw` is the "default" variant, which
-/// represents a single string (parsed as a template). Other variants can be
-/// used for convenience, to construct complex bodies in common formats. The
-/// HTTP engine uses the variant to determine not only how to serialize the
-/// body, but also other parameters of the request (e.g. the `Content-Type`
-/// header).
-#[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub(crate) enum RecipeBody {
-    /// Plain string/bytes body
-    Raw(Template),
-    /// `application/json` body
-    Json(serde_json::Value),
-    /// `application/x-www-form-urlencoded` fields. Values must be strings
-    FormUrlencoded(IndexMap<String, Template>),
-    /// `multipart/form-data` fields. Values can be binary
-    FormMultipart(IndexMap<String, Template>),
+/// Convert this type into a PetitScript AST element
+pub trait IntoPetitAst {
+    /// The AST type generated from this value. This should be as narrow as
+    /// possible to make the returned node as flexible as possible. Also having
+    /// a simple rule prevents decision making.
+    type Output;
+
+    fn into_ast(self) -> Self::Output;
 }
 
-/// A chain is a means to data from one response in another request. The chain
-/// is the middleman: it defines where and how to pull the value, then recipes
-/// can use it in a template via `{{chains.<chain_id>}}`.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Chain {
-    #[serde(skip)] // This will be auto-populated from the map key
-    pub(crate) id: ChainId,
-    pub(crate) source: ChainSource,
-    /// Mask chained value in the UI
-    #[serde(default)]
-    pub(crate) sensitive: bool,
-    /// Selector to extract a value from the response. This uses JSONPath
-    /// regardless of the content type. Non-JSON values will be converted to
-    /// JSON, then converted back.
-    pub(crate) selector: Option<JsonPath>,
-    /// Control selector behavior relative to number of query results
-    #[serde(default)]
-    pub(crate) selector_mode: SelectorMode,
-    #[serde(default)]
-    pub(crate) trim: ChainOutputTrim,
-    /// Legacy field for the YAML format. We only ever supported JSON in the
-    /// past, so the importer can just assume the content type is JSON.
-    #[serde(rename = "content_type")]
-    #[serde(default)]
-    pub(crate) _content_type: serde::de::IgnoredAny,
-}
+impl IntoPetitAst for ImportCollection {
+    type Output = Module;
 
-/// Unique ID for a chain, provided by the user
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq, Deserialize)]
-#[serde(transparent)]
-pub(crate) struct ChainId(Identifier);
+    fn into_ast(self) -> Self::Output {
+        let mut statements: Vec<Statement> = Vec::new();
 
-impl From<Identifier> for ChainId {
-    fn from(identifier: Identifier) -> Self {
-        Self(identifier)
+        statements.extend(
+            self.declarations
+                .into_iter()
+                .map(|declaration| Statement::Declaration(declaration.s())),
+        );
+
+        // Generate an exported object literal for both profiles and recipes
+        statements.push(
+            Declaration::new("profiles", self.profiles.into_ast().into())
+                .export(),
+        );
+        statements.push(
+            Declaration::new("requests", self.recipes.into_ast().into())
+                .export(),
+        );
+
+        // Walk through the generated AST and track any functions that were
+        // called. Anything that doesn't start with "chain_" is a slumber fn
+        let used_functions = find_slumber_functions(&mut statements);
+        if !used_functions.is_empty() {
+            // Yes inserting to the beginning of a vec is "slow" but it's only
+            // once, this thing is never going to be *that* big, and this is in
+            // human time
+            statements.insert(
+                0,
+                ImportDeclaration::native(
+                    None::<Identifier>,
+                    used_functions,
+                    "slumber",
+                )
+                .into_stmt(),
+            );
+        }
+
+        Module::new(statements)
     }
 }
 
-/// The source of data for a chain
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum ChainSource {
-    /// Run an external command to get a result
-    Command {
-        command: Vec<Template>,
-        stdin: Option<Template>,
-    },
-    /// Load from an environment variable
-    #[serde(rename = "env")]
-    Environment { variable: Template },
-    /// Load data from a file
-    File { path: Template },
-    /// Prompt the user for a value
-    Prompt {
-        /// Descriptor to show to the user
-        message: Option<Template>,
-        /// Default value for the shown textbox
-        default: Option<Template>,
-    },
-    /// Load data from the most recent response of a particular request recipe
-    Request {
-        recipe: RecipeId,
-        /// When should this request be automatically re-executed?
-        #[serde(default)]
-        trigger: ChainRequestTrigger,
-        #[serde(default)]
-        section: ChainRequestSection,
-    },
-    /// Prompt the user to select a value from a list
-    Select {
-        /// Descriptor to show to the user
-        message: Option<Template>,
-        /// List of options to choose from
-        options: SelectOptions,
-    },
+impl IntoPetitAst for Profile<Expression> {
+    type Output = ObjectLiteral;
+
+    /// Generate an object literal representing a profile
+    fn into_ast(self) -> Self::Output {
+        ObjectLiteral::new([
+            ("name", self.name.into()),
+            ("default", self.default.into()),
+            ("data", Deferred(self.data).into_ast().into()),
+        ])
+    }
 }
 
-/// Static or dynamic list of options for a select chain
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum SelectOptions {
-    Fixed(Vec<Template>),
-    /// Render a template, then parse its output as a JSON array to get options
-    Dynamic(Template),
+impl IntoPetitAst for RecipeTree<Expression> {
+    type Output = ObjectLiteral;
+
+    /// Recursively generate an object literal representing an entire recipe
+    /// tree
+    fn into_ast(self) -> Self::Output {
+        self.into_map().into_ast()
+    }
 }
 
-/// The component of the response to use as the chain source
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum ChainRequestSection {
-    #[default]
-    Body,
-    /// Pull a value from a response's headers. If the given header appears
-    /// multiple times, the first value will be used
-    Header(Template),
+impl IntoPetitAst for RecipeNode<Expression> {
+    type Output = ObjectLiteral;
+
+    /// Generate an object literal representing a recipe/folder
+    fn into_ast(self) -> Self::Output {
+        match self {
+            Self::Folder(folder) => folder.into_ast(),
+            Self::Recipe(recipe) => recipe.into_ast(),
+        }
+    }
 }
 
-/// Define when a recipe with a chained request should auto-execute the
-/// dependency request.
-#[derive(Copy, Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum ChainRequestTrigger {
-    /// Never trigger the request. This is the default because upstream
-    /// requests could be mutating, so we want the user to explicitly opt into
-    /// automatic execution.
-    #[default]
-    Never,
-    /// Trigger the request if there is none in history
-    NoHistory,
-    /// Trigger the request if the last response is older than some
-    /// duration (or there is none in history)
-    Expire(Duration),
-    /// Trigger the request every time the dependent request is rendered
-    Always,
+impl IntoPetitAst for Folder<Expression> {
+    type Output = ObjectLiteral;
+
+    fn into_ast(self) -> Self::Output {
+        ObjectLiteral::filtered([
+            ("type", Some("folder".into())),
+            ("name", self.name.map(Expression::from)),
+            ("requests", Some(self.children.into_ast().into())),
+        ])
+    }
 }
 
-/// Control how a JSONPath selector returns 0 vs 1 vs 2+ results
-#[derive(Copy, Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum SelectorMode {
-    /// 0 - Error
-    /// 1 - Single result, without wrapping quotes
-    /// 2 - JSON array
-    #[default]
-    Auto,
-    /// 0 - Error
-    /// 1 - Single result, without wrapping quotes
-    /// 2 - Error
-    Single,
-    /// 0 - JSON array
-    /// 1 - JSON array
-    /// 2 - JSON array
-    Array,
+impl IntoPetitAst for RecipeId {
+    type Output = Expression;
+
+    fn into_ast(self) -> Self::Output {
+        self.to_string().into()
+    }
 }
 
-/// Trim whitespace from rendered output
-#[derive(Copy, Clone, Debug, Default, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum ChainOutputTrim {
-    /// Do not trim the output
-    #[default]
-    None,
-    /// Trim the start of the output
-    Start,
-    /// Trim the end of the output
-    End,
-    /// Trim the start and end of the output
-    Both,
+impl IntoPetitAst for Recipe<Expression> {
+    type Output = ObjectLiteral;
+
+    /// Generate an object literal representing a recipe
+    fn into_ast(self) -> Self::Output {
+        ObjectLiteral::filtered([
+            ("type", Some("request".into())),
+            ("name", self.name.map(Expression::from)),
+            // Only include this field if it's not the default
+            ("persist", (!self.persist).then_some(false.into())),
+            ("method", Some(self.method.to_string().into())),
+            ("url", Some(Deferred(self.url).into_ast())),
+            (
+                "query",
+                if self.query.is_empty() {
+                    None
+                } else {
+                    Some(Deferred(self.query).into_ast().into())
+                },
+            ),
+            (
+                "headers",
+                if self.headers.is_empty() {
+                    None
+                } else {
+                    Some(Deferred(self.headers).into_ast().into())
+                },
+            ),
+            (
+                "authentication",
+                self.authentication
+                    .map(|authentication| authentication.into_ast().into()),
+            ),
+            ("body", self.body.map(RecipeBody::into_ast)),
+        ])
+    }
 }
+
+impl IntoPetitAst for Authentication<Expression> {
+    type Output = ObjectLiteral;
+
+    fn into_ast(self) -> Self::Output {
+        match self {
+            Self::Basic { username, password } => ObjectLiteral::new([
+                ("type", "basic".into()),
+                ("username", Deferred(username).into_ast()),
+                ("password", Deferred(password).into_ast()),
+            ]),
+            Self::Bearer { token } => ObjectLiteral::new([
+                ("type", "bearer".into()),
+                ("token", Deferred(token).into_ast()),
+            ]),
+        }
+    }
+}
+
+impl IntoPetitAst for RecipeBody<Expression> {
+    type Output = Expression;
+
+    /// Convert a raw body to a string/template literal. Any other body will
+    /// become an object literal
+    fn into_ast(self) -> Self::Output {
+        match self {
+            // Raw string body -> create a string or template
+            Self::Raw { data } => Deferred(data).into_ast(),
+            Self::Json { data } => ObjectLiteral::new([
+                ("type", "json".into()),
+                ("data", Deferred(data).into_ast()),
+            ])
+            .into(),
+            Self::FormUrlencoded { data } => ObjectLiteral::new([
+                ("type", "formUrlencoded".into()),
+                ("data", Deferred(data).into_ast().into()),
+            ])
+            .into(),
+            Self::FormMultipart { data } => ObjectLiteral::new([
+                ("type", "formMultipart".into()),
+                ("data", Deferred(data).into_ast().into()),
+            ])
+            .into(),
+        }
+    }
+}
+
+impl<E, T> IntoPetitAst for Vec<T>
+where
+    T: IntoPetitAst<Output = E>,
+    Expression: From<E>,
+{
+    type Output = ArrayLiteral;
+
+    fn into_ast(self) -> Self::Output {
+        ArrayLiteral::new(self.into_iter().map(|value| value.into_ast().into()))
+    }
+}
+
+impl<K, V, E> IntoPetitAst for IndexMap<K, V>
+where
+    K: Into<String>,
+    V: IntoPetitAst<Output = E>,
+    Expression: From<E>,
+{
+    type Output = ObjectLiteral;
+
+    /// Convert a map into an object literal, mapping each value as we go
+    fn into_ast(self) -> Self::Output {
+        ObjectLiteral::new(
+            self.into_iter()
+                .map(|(k, v)| (k.into(), v.into_ast().into())),
+        )
+    }
+}
+
+/// Enable blanket impls for Vec<Expression>
+impl IntoPetitAst for Expression {
+    type Output = Expression;
+
+    fn into_ast(self) -> Self::Output {
+        self
+    }
+}
+
+/// A newtype to indicate a template's resolution should be deferred via a
+/// nullary lambda. I.e. convert `template` to `() => template`. This should be
+/// used on any top-level template (in recipes and profiles), but not on
+/// templates nested within chain bodies. This is necessary because YAML
+/// templates are deferred by default, and the render engine would implicitly
+/// render nested templates.
+///
+/// TODO would this be better as a trait? call <stuff>.deferred()
+struct Deferred<T>(T);
+
+impl IntoPetitAst for Deferred<Expression> {
+    type Output = Expression;
+
+    /// Defer dynamic expressions into a function. Literal expressions don't
+    /// need to be deferred
+    fn into_ast(self) -> Self::Output {
+        match self.0 {
+            // A literal doesn't need to be deferred
+            expression @ Expression::Literal(_) => expression,
+            expression => FunctionDefinition::new(
+                [],
+                FunctionBody::expression(expression),
+            )
+            .into(),
+        }
+    }
+}
+
+/// Query parameters are only used at the top level, so their conversions will
+/// always be deferred
+impl IntoPetitAst for Deferred<QueryParameterValue<Expression>> {
+    type Output = Expression;
+
+    fn into_ast(self) -> Self::Output {
+        match self.0 {
+            QueryParameterValue::Single(procedure) => {
+                // Defer to Deferred!
+                Deferred(procedure).into_ast()
+            }
+            QueryParameterValue::Many(expressions) => {
+                // If _any_ expression is dynamic, we need to defer the whole
+                // array
+                if expressions.iter().any(|expression| {
+                    matches!(expression, Expression::Literal(_))
+                }) {
+                    FunctionDefinition::new(
+                        [],
+                        FunctionBody::expression(expressions.into_ast().into()),
+                    )
+                    .into()
+                } else {
+                    // Use a plain array literal
+                    expressions.into_ast().into()
+                }
+            }
+        }
+    }
+}
+
+impl<K, V, E> IntoPetitAst for Deferred<IndexMap<K, V>>
+where
+    K: Into<String>,
+    Deferred<V>: IntoPetitAst<Output = E>,
+    Expression: From<E>,
+{
+    type Output = ObjectLiteral;
+
+    /// Defer the evaluation of each template in the map
+    fn into_ast(self) -> Self::Output {
+        ObjectLiteral::new(
+            self.0
+                .into_iter()
+                .map(|(k, v)| (k.into(), Deferred(v).into_ast().into())),
+        )
+    }
+}
+
+/// Find all called functions from the `slumber` module. The returned vec will
+/// be de-duplicated.
+fn find_slumber_functions(statements: &mut [Statement]) -> Vec<Identifier> {
+    struct Visitor<'a> {
+        /// All functions in the slumber module
+        slumber_fns: &'a IndexMap<String, Value>,
+        to_import: HashSet<Identifier>,
+    }
+
+    impl AstVisitor for Visitor<'_> {
+        fn enter_function_call(&mut self, function_call: &mut FunctionCall) {
+            // unstable: if-let chain
+            // https://github.com/rust-lang/rust/pull/132833
+            match &**function_call.function {
+                Expression::Identifier(identifier)
+                    if self.slumber_fns.contains_key(identifier.as_str()) =>
+                {
+                    self.to_import.insert(identifier.data().clone());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut visitor = Visitor {
+        // Building the whole module just to get a list of fn names is a bit
+        // clumsy, but the cost is negligible
+        slumber_fns: &ps::module().named,
+        to_import: HashSet::new(),
+    };
+    for statement in statements {
+        statement.walk(&mut visitor);
+    }
+
+    // Sort alphabetically to get a determinisitic ordering
+    visitor.to_import.into_iter().sorted().collect()
+}
+
+// TODO test some select edge cases. the common cases will be covered by
+// integration tests

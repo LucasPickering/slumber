@@ -2,6 +2,7 @@ mod error;
 mod functions;
 
 pub use error::FunctionError;
+pub use functions::*;
 
 use crate::collection::{Collection, LoadedCollection};
 use anyhow::Context;

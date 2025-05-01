@@ -1,0 +1,568 @@
+//! Import from the legacy Slumber YAML format
+//!
+//! TODO rename module to "legacy"
+
+mod cereal;
+mod collection;
+mod template;
+
+use crate::{
+    ImportCollection,
+    common::{IntoPetitAst, call_fn},
+    yaml::{
+        collection::{
+            self as yaml, Chain, ChainId, ChainOutputTrim, ChainRequestSection,
+            ChainRequestTrigger, ChainSource, SelectOptions, SelectorMode,
+        },
+        template::{Template, TemplateInputChunk, TemplateKey},
+    },
+};
+use anyhow::Context;
+use indexmap::IndexMap;
+use itertools::Itertools;
+use petitscript::ast::{
+    ArrayLiteral, Declaration, Expression, FunctionBody, FunctionCall,
+    FunctionDefinition, Identifier, IntoExpression, IntoNode, Literal,
+    ObjectLiteral, TemplateChunk, TemplateLiteral,
+};
+use slumber_core::collection::{self as core, QueryParameterValue, RecipeTree};
+use slumber_util::parse_yaml;
+use std::{fs::File, hash::Hash, path::Path};
+use tracing::info;
+
+const CHAIN_FN_PREFIX: &str = "chain_";
+
+/// Convert a legacy Slumber YAML collection into the common import format
+pub fn from_yaml(
+    yaml_file: impl AsRef<Path>,
+) -> anyhow::Result<ImportCollection> {
+    let yaml_file = yaml_file.as_ref();
+    info!(file = ?yaml_file, "Loading Slumber YAML collection");
+    let file = File::open(yaml_file).context(format!(
+        "Error opening Slumber YAML collection file {yaml_file:?}"
+    ))?;
+    // Since this is our own format, we're very strict about the import. If it
+    // fails, that should be a fatal bug
+    let collection: yaml::Collection = parse_yaml(file).context(format!(
+        "Error deserializing Slumber YAML collection file {yaml_file:?}",
+    ))?;
+
+    // TODO is it possible to reproduce anchors+aliases instead of resolving
+    // them?
+
+    let declarations = convert_chains(collection.chains);
+
+    let profiles = collection
+        .profiles
+        .into_iter()
+        .map(|(id, profile)| (id, profile.into()))
+        .collect();
+
+    // This will enforce ID uniqueness
+    let recipes = RecipeTree::new(
+        collection
+            .recipes
+            .into_iter()
+            .map(|(id, node)| (id, node.into()))
+            .collect(),
+    )?;
+
+    Ok(ImportCollection {
+        declarations,
+        profiles,
+        recipes,
+    })
+}
+
+/// Convert chains to functions. We have to map the whole collection together so
+/// that the functions can be ordered by dependency.
+fn convert_chains(chains: IndexMap<ChainId, Chain>) -> Vec<Declaration> {
+    // TODO sort by dependency
+    chains.into_values().map(Chain::into_ast).collect()
+}
+
+/// Generate a statement that declares a function. The function's execution
+/// will be equivalent to evaluating this chain.
+impl IntoPetitAst for Chain {
+    type Output = Declaration;
+
+    fn into_ast(self) -> Self::Output {
+        /// Build an arg list of `R` required arguments plus one keyword
+        /// argument of `O` entries. Any empty kwargs will be omitted.
+        /// If all kwargs are empty, omit the entire kwargs object
+        fn with_kwargs<const R: usize, const KW: usize>(
+            required: [Expression; R],
+            kwargs: [(&str, Option<Expression>); KW],
+        ) -> Vec<Expression> {
+            let mut arguments: Vec<Expression> = required.into();
+            let kwargs = kwargs
+                .into_iter()
+                .filter_map(|(k, v)| Some((k, v?)))
+                .collect_vec();
+            if !kwargs.is_empty() {
+                arguments.push(ObjectLiteral::new(kwargs).into());
+            }
+            arguments
+        }
+
+        // Populate the function body according to the source. Start with a
+        // single function call
+        let is_prompt = matches!(&self.source, ChainSource::Prompt { .. });
+        let mut body_expression = match self.source {
+            ChainSource::Command { command, stdin } => call_fn(
+                "command",
+                [command.into_ast().into()],
+                [("stdin", stdin.map(Template::into_ast))],
+            ),
+            ChainSource::Environment { variable } => {
+                call_fn("env", [variable.into_ast()], [])
+            }
+            ChainSource::File { path } => {
+                call_fn("file", [path.into_ast()], [])
+            }
+            ChainSource::Prompt { message, default } => {
+                call_fn(
+                    "prompt",
+                    [],
+                    [
+                        ("message", message.map(Template::into_ast)),
+                        ("default", default.map(Template::into_ast)),
+                        // Only include this flag if it's enabled
+                        ("sensitive", self.sensitive.then_some(true.into())),
+                    ],
+                )
+            }
+            ChainSource::Request {
+                recipe,
+                trigger,
+                section: ChainRequestSection::Body,
+            } => call_fn(
+                "response",
+                [recipe.into_ast()],
+                [("trigger", trigger.into_ast().map(Expression::from))],
+            ),
+            ChainSource::Request {
+                recipe,
+                trigger,
+                section: ChainRequestSection::Header(header),
+            } => call_fn(
+                "responseHeader",
+                [recipe.into_ast(), header.into_ast()],
+                [("trigger", trigger.into_ast().map(Expression::from))],
+            ),
+            ChainSource::Select { message, options } => call_fn(
+                "select",
+                [options.into_ast()],
+                [("message", message.map(Template::into_ast))],
+            ),
+        }
+        .into_expr();
+
+        // To replicate trimming, call the appropriate method from string's
+        // prototype. This requires the expression to resolve to a string.
+        match self.trim {
+            ChainOutputTrim::None => {}
+            ChainOutputTrim::Start => {
+                body_expression = body_expression.call("trimStart", [])
+            }
+            ChainOutputTrim::End => {
+                body_expression = body_expression.call("trimEnd", [])
+            }
+            ChainOutputTrim::Both => {
+                body_expression = body_expression.call("trim", [])
+            }
+        };
+
+        // Wrap the body in sensitive(). Skip this for prompts because they
+        // have an equivalent kwarg so it's redundant
+        if self.sensitive && !is_prompt {
+            body_expression =
+                FunctionCall::named("sensitive", [body_expression]).into();
+        }
+
+        // Import selectors with a call to jsonpath()
+        if let Some(selector) = self.selector {
+            let mode = match self.selector_mode {
+                SelectorMode::Auto => None, // This is default, so we can omit
+                SelectorMode::Single => Some("single".into()),
+                SelectorMode::Array => Some("array".into()),
+            };
+            // The only supported content type in external formats is JSON. We
+            // need to manually parse to JSON here so we can query it. This
+            // ends up looking like:
+            // jsonPath('query', JSON.parse(body_expression))
+            let json_parse_call = FunctionCall::new(
+                Expression::reference("JSON").property("parse"),
+                [body_expression],
+            );
+            let json_path_call = FunctionCall::named(
+                "jsonPath",
+                with_kwargs(
+                    [selector.to_string().into(), json_parse_call.into()],
+                    [("mode", mode)],
+                ),
+            );
+            body_expression = json_path_call.into();
+        }
+
+        FunctionDefinition::new(
+            // Chains don't accept params, so the function won't either
+            [],
+            FunctionBody::expression(body_expression),
+        )
+        .declare(chain_id_to_function(&self.id))
+    }
+}
+
+impl From<yaml::Profile> for core::Profile<Expression> {
+    fn from(profile: yaml::Profile) -> Self {
+        core::Profile {
+            id: profile.id,
+            name: profile.name,
+            default: profile.default,
+            data: map_values(profile.data, Template::into_ast),
+        }
+    }
+}
+
+impl From<yaml::RecipeNode> for core::RecipeNode<Expression> {
+    fn from(node: yaml::RecipeNode) -> Self {
+        match node {
+            yaml::RecipeNode::Folder(folder) => {
+                core::RecipeNode::Folder(folder.into())
+            }
+            yaml::RecipeNode::Recipe(recipe) => {
+                core::RecipeNode::Recipe(recipe.into())
+            }
+        }
+    }
+}
+
+impl From<yaml::Folder> for core::Folder<Expression> {
+    fn from(folder: yaml::Folder) -> Self {
+        core::Folder {
+            id: folder.id,
+            name: folder.name,
+            children: map_values(folder.children, core::RecipeNode::from),
+        }
+    }
+}
+
+impl From<yaml::Recipe> for core::Recipe<Expression> {
+    fn from(recipe: yaml::Recipe) -> Self {
+        core::Recipe {
+            id: recipe.id,
+            persist: recipe.persist,
+            name: recipe.name,
+            method: recipe.method,
+            url: recipe.url.into_ast(),
+            body: recipe.body.map(core::RecipeBody::from),
+            authentication: recipe
+                .authentication
+                .map(core::Authentication::from),
+            query: convert_query_parameters(recipe.query),
+            headers: map_values(recipe.headers, Template::into_ast),
+        }
+    }
+}
+
+impl From<yaml::Authentication> for core::Authentication<Expression> {
+    fn from(authentication: yaml::Authentication) -> Self {
+        match authentication {
+            yaml::Authentication::Basic { username, password } => {
+                core::Authentication::Basic {
+                    username: username.into_ast(),
+                    password: password
+                        .map(Template::into_ast)
+                        .unwrap_or_else(|| "".into()),
+                }
+            }
+            yaml::Authentication::Bearer(token) => {
+                core::Authentication::Bearer {
+                    token: token.into_ast(),
+                }
+            }
+        }
+    }
+}
+
+impl From<yaml::RecipeBody> for core::RecipeBody<Expression> {
+    fn from(body: yaml::RecipeBody) -> Self {
+        match body {
+            // Raw string body -> create a string or template
+            yaml::RecipeBody::Raw(body) => core::RecipeBody::Raw {
+                data: body.into_ast(),
+            },
+            yaml::RecipeBody::Json(json) => core::RecipeBody::Json {
+                data: json.into_ast(),
+            },
+            yaml::RecipeBody::FormUrlencoded(fields) => {
+                core::RecipeBody::FormUrlencoded {
+                    data: map_values(fields, Template::into_ast),
+                }
+            }
+            yaml::RecipeBody::FormMultipart(fields) => {
+                core::RecipeBody::FormMultipart {
+                    data: map_values(fields, Template::into_ast),
+                }
+            }
+        }
+    }
+}
+
+impl IntoPetitAst for serde_json::Value {
+    type Output = Expression;
+
+    /// Convert a JSON value to a literal expression, and defer it if it
+    /// contains any nested templates. This will parse every string in the JSON
+    /// as a template and it any of them contain dynamic chunks, the whole
+    /// object will be deferred at the top level.
+    fn into_ast(self) -> Self::Output {
+        /// Recursively convert a value, and enable the given flag the first
+        /// time we hit a dynamic template
+        fn convert(
+            value: serde_json::Value,
+            is_dynamic: &mut bool,
+        ) -> Expression {
+            match value {
+                serde_json::Value::Null => {
+                    Expression::Literal(Literal::Null.s())
+                }
+                serde_json::Value::Bool(b) => b.into(),
+                serde_json::Value::Number(number) => {
+                    if let Some(f) = number.as_f64() {
+                        f.into()
+                    } else if let Some(i) = number.as_i64() {
+                        i.into()
+                    } else {
+                        todo!()
+                    }
+                }
+                serde_json::Value::String(s) => convert_string(s, is_dynamic),
+                serde_json::Value::Array(array) => ArrayLiteral::new(
+                    array
+                        .into_iter()
+                        .map(|element| convert(element, is_dynamic)),
+                )
+                .into(),
+                serde_json::Value::Object(map) => {
+                    ObjectLiteral::new(map.into_iter().map(|(k, v)| {
+                        // We have to support templates in both keys and values
+                        let key = convert_string(k, is_dynamic);
+                        let value = convert(v, is_dynamic);
+                        (key, value)
+                    }))
+                    .into()
+                }
+            }
+        }
+
+        /// Convert a string to an expression. If it's a dynamic template,
+        /// enable the flag
+        fn convert_string(s: String, is_dynamic: &mut bool) -> Expression {
+            // Theoretically the string should be a valid template, but if not
+            // treat it literally
+            match s.parse::<Template>() {
+                Ok(template) => {
+                    *is_dynamic |= template.is_dynamic();
+                    template.into_ast()
+                }
+                Err(_) => s.into(),
+            }
+        }
+
+        let mut is_dynamic = false;
+        let expression = convert(self, &mut is_dynamic);
+        // If the JSON contained any templates, it's dynamic so we need to
+        // defer it
+        if is_dynamic {
+            FunctionDefinition::new([], FunctionBody::expression(expression))
+                .into()
+        } else {
+            expression
+        }
+    }
+}
+
+// TODO can we eliminate the usage of IntoAst?
+
+impl IntoPetitAst for SelectOptions {
+    type Output = Expression;
+
+    /// Convert a static list of options into an array literal, or a dynamic
+    /// template into an expression that will evaluate to an array
+    fn into_ast(self) -> Self::Output {
+        match self {
+            // Array literal
+            SelectOptions::Fixed(templates) => templates.into_ast().into(),
+            // Single expression
+            SelectOptions::Dynamic(template) => template.into_ast(),
+        }
+    }
+}
+
+impl IntoPetitAst for ChainRequestTrigger {
+    type Output = Option<String>;
+
+    /// Generate a string representing a trigger condition. Static conditions
+    /// use static strings. The "expire" condition uses a duration string
+    fn into_ast(self) -> Self::Output {
+        match self {
+            // The kwargs should be excluded if it's the default
+            Self::Never => None,
+            Self::NoHistory => Some("noHistory".into()),
+            Self::Expire(duration) => Some(duration.to_string()),
+            Self::Always => Some("always".into()),
+        }
+    }
+}
+
+impl IntoPetitAst for Template {
+    type Output = Expression;
+
+    /// Convert a legacy Slumber template to an expression. Empty and
+    /// single-chunk templates will either become a string literal or a bare
+    /// expression. Multi-chunk templates will be converted to a PS template
+    /// literal.
+    fn into_ast(self) -> Self::Output {
+        let mut chunks = self.chunks;
+        // We can't use pattern matching without keeping the owned values, so
+        // it's an if party instead!!
+        if chunks.is_empty() {
+            "".into()
+        } else if chunks.len() == 1 {
+            match chunks.pop().unwrap() {
+                TemplateInputChunk::Raw(s) => s.into(),
+                // Parent is responsible for deferring dynamic templates into a
+                // lambda as needed. This is only necessary for top-level
+                // dynamic templates so we don't want to do it all the time
+                TemplateInputChunk::Key(key) => key.clone().into_ast().into(),
+            }
+        } else {
+            TemplateLiteral {
+                // Convert each chunk and join them together
+                chunks: chunks
+                    .into_iter()
+                    .map(|chunk| chunk.into_ast().s())
+                    .collect::<Vec<_>>()
+                    .into(),
+            }
+            .into()
+        }
+    }
+}
+
+impl IntoPetitAst for TemplateInputChunk {
+    type Output = TemplateChunk;
+
+    fn into_ast(self) -> Self::Output {
+        match self {
+            TemplateInputChunk::Raw(s) => TemplateChunk::Literal(s),
+            TemplateInputChunk::Key(key) => {
+                TemplateChunk::Expression(key.into_ast().into_expr().s())
+            }
+        }
+    }
+}
+
+impl IntoPetitAst for TemplateKey {
+    type Output = FunctionCall;
+
+    /// Generate an expression corresponding to a dynamic template key
+    fn into_ast(self) -> Self::Output {
+        match self {
+            // `{{field1}}` -> `profile('field1')`
+            TemplateKey::Field(identifier) => FunctionCall::named(
+                "profile",
+                [identifier.to_string().into_expr()],
+            ),
+            // `{{chains.chain1}}` -> `chain_chain1()`
+            // Chain functions are always nullary because old chain references
+            // had no way of passing arguments
+            TemplateKey::Chain(chain_id) => {
+                FunctionCall::named(chain_id_to_function(&chain_id), [])
+            }
+            // `{{env.VAR1}}` -> `env('VAR1')`
+            TemplateKey::Environment(identifier) => {
+                FunctionCall::named("env", [identifier.to_string().into_expr()])
+            }
+        }
+    }
+}
+
+/// Convert query parameters from the YAML format to the PS format. The format
+/// changed from a list of tuples to a map of values, so we need to group the
+/// tuples by key.
+fn convert_query_parameters(
+    query_parameters: Vec<(String, Template)>,
+) -> IndexMap<String, QueryParameterValue<Expression>> {
+    let grouped: IndexMap<String, Vec<Template>> = query_parameters
+        .into_iter()
+        .fold(IndexMap::default(), |mut acc, (param, value)| {
+            acc.entry(param).or_default().push(value);
+            acc
+        });
+    grouped
+        .into_iter()
+        .map(|(param, mut values)| {
+            // If a param only has one value, flatten the vec
+            let value = if values.len() == 1 {
+                QueryParameterValue::Single(values.remove(0).into_ast())
+            } else {
+                QueryParameterValue::Many(
+                    values.into_iter().map(Template::into_ast).collect(),
+                )
+            };
+            (param, value)
+        })
+        .collect()
+}
+
+/// Get a function name from a chain ID
+fn chain_id_to_function(chain_id: &ChainId) -> Identifier {
+    // TODO normalize ID to make sure it's a valid fn name
+    Identifier::new(format!("{CHAIN_FN_PREFIX}{}", chain_id.0))
+}
+
+/// Apply a transformation function to each element in a map
+fn map_values<K, V1, V2>(
+    map: IndexMap<K, V1>,
+    f: impl Fn(V1) -> V2,
+) -> IndexMap<K, V2>
+where
+    K: Eq + Hash + PartialEq,
+{
+    map.into_iter()
+        .map(|(key, value)| (key, f(value)))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::from_yaml;
+    use pretty_assertions::assert_eq;
+    use rstest::rstest;
+    use slumber_core::ps::ENGINE;
+    use slumber_util::test_data_dir;
+    use std::path::PathBuf;
+
+    const YAML_FILE: &str = "legacy.yml";
+    /// Assertion expectation is stored in a separate file. This is for a couple
+    /// reasons:
+    /// - It's huge so it makes code hard to navigate
+    /// - Changes don't require a re-compile
+    const YAML_IMPORTED_FILE: &str = "legacy_imported.js";
+
+    #[rstest]
+    fn test_yaml_import(test_data_dir: PathBuf) {
+        // Convert the external collection into a PS AST, then parse the
+        // expected file into an AST and compare the two
+        let imported = from_yaml(test_data_dir.join(YAML_FILE))
+            .unwrap()
+            .into_petitscript();
+        let expected = ENGINE
+            .parse(test_data_dir.join(YAML_IMPORTED_FILE))
+            .unwrap();
+        assert_eq!(&imported, expected.data());
+    }
+}

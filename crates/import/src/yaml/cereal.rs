@@ -1,8 +1,8 @@
 //! Serialization/deserialization helpers for various types
 
-use crate::common::{
-    Chain, ChainId, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
-    recipe_tree::RecipeNode, template::Template,
+use crate::yaml::{
+    collection::{Chain, ChainId, Profile, Recipe, RecipeBody, RecipeNode},
+    template::Template,
 };
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -13,7 +13,8 @@ use serde::{
         Visitor,
     },
 };
-use slumber_util::HasId;
+use slumber_core::collection::{ProfileId, RecipeId};
+use slumber_util::{HasId, deserialize_id_map};
 
 impl HasId for Profile {
     type Id = ProfileId;
@@ -73,27 +74,6 @@ impl HasId for Chain {
 /// default
 pub fn persist_default() -> bool {
     true
-}
-
-/// Deserialize a map, and update each key so its `id` field matches its key in
-/// the map. Useful if you need to access the ID when you only have a value
-/// available, not the full entry.
-pub fn deserialize_id_map<'de, Map, V, D>(
-    deserializer: D,
-) -> Result<Map, D::Error>
-where
-    Map: Deserialize<'de>,
-    for<'m> &'m mut Map: IntoIterator<Item = (&'m V::Id, &'m mut V)>,
-    D: Deserializer<'de>,
-    V: Deserialize<'de> + HasId,
-    V::Id: Deserialize<'de>,
-{
-    let mut map: Map = Map::deserialize(deserializer)?;
-    // Update the ID on each value to match the key
-    for (k, v) in &mut map {
-        v.set_id(k.clone());
-    }
-    Ok(map)
 }
 
 /// Deserialize a profile mapping. This also enforces that only one profile is
@@ -354,14 +334,14 @@ mod tests {
         "{{user_id}}"
     )]
     #[case::json(
-        RecipeBody::Json(json!({"user": "{{user_id}}"}).into()),
+        RecipeBody::Json(json!({"user": "{{user_id}}"})),
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
             value: mapping([("user", "{{user_id}}")])
         })),
     )]
     #[case::json_nested(
-        RecipeBody::Json(json!(r#"{"warning": "NOT an object"}"#).into()),
+        RecipeBody::Json(json!(r#"{"warning": "NOT an object"}"#)),
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
             value: r#"{"warning": "NOT an object"}"#.into()

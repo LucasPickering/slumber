@@ -2,11 +2,7 @@
 //! files. VSCode: https://github.com/Huachao/vscode-restclient
 //! Jetbrains: https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html
 
-use crate::common::{
-    Authentication, Chain, ChainId, ChainOutputTrim, ChainSource, Collection,
-    HttpMethod, Identifier, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
-    RecipeNode, RecipeTree, SelectorMode, Template,
-};
+use crate::ImportCollection;
 use anyhow::anyhow;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -15,14 +11,19 @@ use rest_parser::{
     headers::Authorization as RestAuthorization,
     template::{Template as RestTemplate, TemplatePart as RestTemplatePart},
 };
-use serde::de::IgnoredAny;
+use slumber_core::collection::{
+    Authentication, Collection, Identifier, Profile, ProfileId, Recipe,
+    RecipeBody, RecipeId, RecipeNode, RecipeTree, SelectorMode, Template,
+};
 use slumber_util::{HasId, ResultTraced};
 use std::path::Path;
 use tracing::error;
 
 /// Convert a VSCode `.rest` file or a Jetbrains `.http` file into a slumber
 /// collection
-pub fn from_rest(rest_file: impl AsRef<Path>) -> anyhow::Result<Collection> {
+pub fn from_rest(
+    rest_file: impl AsRef<Path>,
+) -> anyhow::Result<ImportCollection> {
     let rest_file = rest_file.as_ref();
     // Parse the file and determine the flavor using the extension
     let rest_format = RestFormat::parse_file(rest_file)?;
@@ -276,12 +277,7 @@ fn try_build_collection(rest_format: RestFormat) -> anyhow::Result<Collection> {
 
     let profiles = build_profile_map(flavor, variables);
 
-    Ok(Collection {
-        profiles,
-        chains,
-        recipes,
-        _ignore: IgnoredAny,
-    })
+    Ok(Collection { profiles, recipes })
 }
 
 #[cfg(test)]
@@ -315,7 +311,7 @@ mod tests {
         let imported = from_rest(test_data_dir.join(REST_FILE))
             .unwrap()
             .into_petitscript();
-        let expected = Engine::new()
+        let expected = Engine::default()
             .parse(test_data_dir.join(REST_IMPORTED_FILE))
             .unwrap();
         assert_eq!(&imported, expected.data());

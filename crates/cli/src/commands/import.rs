@@ -40,12 +40,7 @@ enum Format {
 
 impl Subcommand for ImportCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        // Load the input into a common import format. This is not the same as
-        // the collection format actually used within Slumber, because that
-        // format contains PS values that can't be turned back into source code.
-        // Instead we use a declarative format similar to the YAML-based format
-        // pre-Slumber v4.
-        let collection: slumber_import::Collection = match self.format {
+        let collection = match self.format {
             Format::Insomnia => {
                 slumber_import::from_insomnia(&self.input_file)?
             }
@@ -53,8 +48,7 @@ impl Subcommand for ImportCommand {
             Format::Rest => slumber_import::from_rest(&self.input_file)?,
             Format::Yaml => slumber_import::from_yaml(&self.input_file)?,
         };
-        // Convert the collection into a PS AST
-        let module = collection.into_petitscript();
+        let ast = collection.into_petitscript();
 
         // Write the output to either stdout or a file
         let mut writer: Box<dyn Write> = match self.output_file {
@@ -71,8 +65,8 @@ impl Subcommand for ImportCommand {
             ),
             None => Box::new(io::stdout()),
         };
-        // Use the Display impl to convert the AST to source code
-        write!(&mut writer, "{module:#}")?;
+        // Use the Display impl to generate source code
+        write!(writer, "{ast:#}")?;
 
         Ok(ExitCode::SUCCESS)
     }

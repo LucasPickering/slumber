@@ -1,28 +1,32 @@
 //! Import request collections from Insomnia. Based on the Insomnia v4 export
 //! format
 
-use crate::common::{
-    self, Chain, ChainId, ChainSource, Collection, Folder, HttpMethod,
-    Identifier, Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
-    RecipeTree, SelectorMode, Template,
-};
+use crate::ImportCollection;
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Deserializer, de::Error as _};
+use slumber_core::{
+    collection::{
+        Authentication, Collection, Folder, Profile, ProfileId, Recipe,
+        RecipeBody, RecipeId, RecipeNode, RecipeTree,
+    },
+    http::HttpMethod,
+    render::Procedure,
+};
 use slumber_util::{HasId, NEW_ISSUE_LINK};
 use std::{
     collections::HashMap, fmt::Display, fs::File, path::Path, str::FromStr,
 };
 use tracing::{debug, error, info, warn};
 
-/// Convert an Insomnia exported collection into the common import format. This
+/// Convert an Insomnia exported collection into a Slumber collection. This
 /// supports YAML *or* JSON input.
 pub fn from_insomnia(
     insomnia_file: impl AsRef<Path>,
-) -> anyhow::Result<Collection> {
+) -> anyhow::Result<ImportCollection> {
     let insomnia_file = insomnia_file.as_ref();
     // First, deserialize into the insomnia format
     info!(file = ?insomnia_file, "Loading Insomnia collection");
@@ -58,12 +62,7 @@ pub fn from_insomnia(
     let chains = build_chains(&requests);
     let recipes = build_recipe_tree(&workspace_id, request_groups, requests)?;
 
-    Ok(Collection {
-        profiles,
-        recipes,
-        chains,
-        _ignore: serde::de::IgnoredAny,
-    })
+    Ok(Collection { profiles, recipes })
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,7 +140,7 @@ struct Request {
     url: String,
     method: HttpMethod,
     #[serde(deserialize_with = "deserialize_shitty_option")]
-    authentication: Option<Authentication>,
+    authentication: Option<InsomniaAuthentication>,
     headers: Vec<Header>,
     parameters: Vec<Parameter>,
     #[serde(deserialize_with = "deserialize_shitty_option")]
@@ -150,7 +149,7 @@ struct Request {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum Authentication {
+enum InsomniaAuthentication {
     Basic {
         username: String,
         password: String,
@@ -289,21 +288,18 @@ impl From<RequestGroup> for RecipeNode {
 
 impl From<Request> for RecipeNode {
     fn from(request: Request) -> Self {
-        let mut headers: IndexMap<String, Template> = IndexMap::new();
+        let mut headers: IndexMap<String, Procedure> = IndexMap::new();
 
         // Preload headers from implicit sources
         if let Some(Body { mime_type, .. }) = &request.body {
             headers.insert(
                 header::CONTENT_TYPE.as_str().into(),
-                Template::raw(mime_type.to_string()),
+                mime_type.to_string().into(),
             );
         }
         // Load explicit headers *after* so we can override the implicit stuff
         for header in request.headers {
-            headers.insert(
-                header.name.to_lowercase(),
-                Template::raw(header.value),
-            );
+            headers.insert(header.name.to_lowercase(), header.value.into());
         }
         headers.shift_remove(header::USER_AGENT.as_str());
 
@@ -339,14 +335,12 @@ impl From<Request> for RecipeNode {
             persist: true,
             name: Some(request.name),
             method: request.method,
-            url: Template::raw(request.url),
+            url: request.url.into(),
             body,
             query: request
                 .parameters
                 .into_iter()
-                .map(|parameter| {
-                    (parameter.name, Template::raw(parameter.value))
-                })
+                .map(|parameter| (parameter.name, parameter.value.into()))
                 .collect(),
             headers,
             authentication,
@@ -359,17 +353,21 @@ impl TryFrom<Body> for RecipeBody {
 
     fn try_from(body: Body) -> anyhow::Result<Self> {
         let body = if body.mime_type == mime::APPLICATION_JSON {
-            RecipeBody::Json(body.try_text()?.into())
+            RecipeBody::Json {
+                data: body.try_text()?.into(),
+            }
         } else if body.mime_type == mime::APPLICATION_WWW_FORM_URLENCODED {
-            RecipeBody::FormUrlencoded(
-                body.params.into_iter().map(FormParam::into).collect(),
-            )
+            RecipeBody::FormUrlencoded {
+                data: body.params.into_iter().map(FormParam::into).collect(),
+            }
         } else if body.mime_type == mime::MULTIPART_FORM_DATA {
-            RecipeBody::FormMultipart(
-                body.params.into_iter().map(FormParam::into).collect(),
-            )
+            RecipeBody::FormMultipart {
+                data: body.params.into_iter().map(FormParam::into).collect(),
+            }
         } else {
-            RecipeBody::Raw(Template::raw(body.try_text()?))
+            RecipeBody::Raw {
+                data: body.try_text()?,
+            }
         };
         Ok(body)
     }
@@ -396,22 +394,26 @@ impl From<FormParam> for (String, Template) {
 }
 
 /// Convert authentication type. If the type is unknown, return is as `Err`
-impl TryFrom<Authentication> for common::Authentication {
+impl TryFrom<InsomniaAuthentication> for Authentication {
     type Error = String;
 
-    fn try_from(authentication: Authentication) -> Result<Self, Self::Error> {
+    fn try_from(
+        authentication: InsomniaAuthentication,
+    ) -> Result<Self, Self::Error> {
         match authentication {
-            Authentication::Basic { username, password } => {
-                Ok(common::Authentication::Basic {
-                    username: Template::raw(username),
-                    password: Some(Template::raw(password)),
+            InsomniaAuthentication::Basic { username, password } => {
+                Ok(Authentication::Basic {
+                    username: username.into(),
+                    password: password.into(),
                 })
             }
-            Authentication::Bearer { token } => {
-                Ok(common::Authentication::Bearer(Template::raw(token)))
+            InsomniaAuthentication::Bearer { token } => {
+                Ok(Authentication::Bearer {
+                    token: token.into(),
+                })
             }
             // Caller should print a warning for this
-            Authentication::Other { kind } => Err(kind),
+            InsomniaAuthentication::Other { kind } => Err(kind),
         }
     }
 }
@@ -496,7 +498,7 @@ fn build_chains(requests: &[Request]) -> IndexMap<ChainId, Chain> {
                     Chain {
                         id,
                         source: ChainSource::File {
-                            path: Template::raw(path.to_owned()),
+                            path: path.to_owned().into(),
                         },
                         sensitive: false,
                         selector: None,
@@ -625,7 +627,7 @@ mod tests {
         let imported = from_insomnia(test_data_dir.join(INSOMNIA_FILE))
             .unwrap()
             .into_petitscript();
-        let expected = Engine::new()
+        let expected = Engine::default()
             .parse(test_data_dir.join(INSOMNIA_IMPORTED_FILE))
             .unwrap();
         assert_eq!(&imported, expected.data());

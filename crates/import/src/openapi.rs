@@ -11,7 +11,8 @@
 mod resolve;
 
 use crate::{
-    common::{
+    ImportCollection,
+    generate::{
         Authentication, Collection, DuplicateRecipeIdError, Folder, HttpMethod,
         Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
         RecipeTree, Template,
@@ -32,10 +33,10 @@ use std::{fs::File, iter, path::Path};
 use strum::IntoEnumIterator;
 use tracing::{debug, error, info, warn};
 
-/// Loads a collection from an OpenAPI v3 specification file
+/// Load a collection from an OpenAPI v3 specification file
 pub fn from_openapi(
     openapi_file: impl AsRef<Path>,
-) -> anyhow::Result<Collection> {
+) -> anyhow::Result<ImportCollection> {
     let path = openapi_file.as_ref();
     info!(file = ?path, "Loading OpenAPI collection");
     warn!(

@@ -1,6 +1,6 @@
 //! TODO
 
-use crate::common::ChainId;
+use crate::yaml::collection::ChainId;
 use derive_more::{Deref, Display};
 use serde::{
     Deserialize, Deserializer, Serialize,
@@ -47,39 +47,11 @@ pub(crate) struct Template {
 }
 
 impl Template {
-    /// Create a new template from a raw string, without parsing it at all.
-    /// Useful when importing from external formats where the string isn't
-    /// expected to be a valid Slumber template
-    pub fn raw(template: String) -> Template {
-        let chunks = if template.is_empty() {
-            vec![]
-        } else {
-            vec![TemplateInputChunk::Raw(template)]
-        };
-        Self { chunks }
-    }
-
     /// Does this template contain any dynamic chunks?
     pub fn is_dynamic(&self) -> bool {
         // Raw segments can't be consecutive so if there's more than 1 chunk,
         // at least one of them must be dynamic
         !matches!(self.chunks.as_slice(), [] | [TemplateInputChunk::Raw(_)])
-    }
-
-    /// Create a template that renders a single field, equivalent to
-    /// `{{<field>}}`
-    pub fn from_field(field: Identifier) -> Self {
-        Self {
-            chunks: vec![TemplateInputChunk::Key(TemplateKey::Field(field))],
-        }
-    }
-
-    /// Create a template that renders a single chain, equivalent to
-    /// `{{chains.<id>}}`
-    pub fn from_chain(id: ChainId) -> Self {
-        Self {
-            chunks: vec![TemplateInputChunk::Key(TemplateKey::Chain(id))],
-        }
     }
 }
 
@@ -167,20 +139,6 @@ impl Identifier {
     /// Which characters are allowed in identifiers?
     fn is_char_allowed(c: char) -> bool {
         c.is_alphanumeric() || "-_".contains(c)
-    }
-
-    /// Generate an identifier from a string, replacing all invalid chars with
-    /// a placeholder. Panic if the string is empty.
-    pub fn escape(value: &str) -> Self {
-        if value.is_empty() {
-            panic!("Cannot create identifier from empty string");
-        }
-        Self(
-            value
-                .chars()
-                .map(|c| if Self::is_char_allowed(c) { c } else { '_' })
-                .collect(),
-        )
     }
 }
 
@@ -369,45 +327,6 @@ mod tests {
         assert_err!(template.parse::<Template>(), expected_error);
     }
 
-    /// Test that [Template::from_field] generates the correct template
-    #[test]
-    fn test_from_field() {
-        let template = Template::from_field("field1".into());
-        assert_eq!(&template.chunks, &[key_field("field1")]);
-    }
-
-    /// Test that [Template::from_chain] generates the correct template
-    #[test]
-    fn test_from_chain() {
-        let template = Template::from_chain("chain1".into());
-        assert_eq!(&template.chunks, &[key_chain("chain1")]);
-    }
-
-    /// Test [Template::raw]. This should parse+stringify back to the same thing
-    #[rstest]
-    #[case::empty("", tmpl([]))]
-    #[case::key("{{hello}}", tmpl([raw("{{hello}}")]))]
-    #[case::backslash(r#"\{{hello}}"#, tmpl([raw(r#"\{{hello}}"#)]))]
-    fn test_raw(#[case] template: &str, #[case] expected: Template) {
-        let escaped = Template::raw(template.into());
-        assert_eq!(escaped, expected);
-    }
-
-    #[rstest]
-    #[case::valid("valid-identifier_yeah", "valid-identifier_yeah")]
-    #[case::invalid("not valid!", "not_valid_")]
-    fn test_escape_identifier(#[case] input: &str, #[case] expected: &str) {
-        let parsed = Identifier::escape(input);
-        assert_eq!(parsed.as_str(), expected);
-    }
-
-    /// Escaping an empty identifier panics
-    #[test]
-    #[should_panic]
-    fn test_escape_identifier_empty() {
-        Identifier::escape("");
-    }
-
     // Shortcuts for creating values from static strings. Since the string is
     // defined in code we're assuming it's valid.
 
@@ -415,39 +334,5 @@ mod tests {
         fn from(value: &'static str) -> Self {
             value.parse().unwrap()
         }
-    }
-
-    impl From<&'static str> for ChainId {
-        fn from(value: &'static str) -> Self {
-            ChainId(value.into())
-        }
-    }
-
-    /// Build a template out of string chunks. Useful when you want to avoid
-    /// parsing behavior
-    fn tmpl(chunks: impl IntoIterator<Item = TemplateInputChunk>) -> Template {
-        Template {
-            chunks: chunks.into_iter().collect(),
-        }
-    }
-
-    /// Shorthand for creating a new raw chunk
-    fn raw(value: &str) -> TemplateInputChunk {
-        TemplateInputChunk::Raw(value.to_owned().into())
-    }
-
-    /// Shorthand for creating a field key chunk
-    fn key_field(field: &'static str) -> TemplateInputChunk {
-        TemplateInputChunk::Key(TemplateKey::Field(field.into()))
-    }
-
-    /// Shorthand for creating an env key chunk
-    fn key_env(variable: &'static str) -> TemplateInputChunk {
-        TemplateInputChunk::Key(TemplateKey::Environment(variable.into()))
-    }
-
-    /// Shorthand for creating a chain key chunk
-    fn key_chain(chain_id: &'static str) -> TemplateInputChunk {
-        TemplateInputChunk::Key(TemplateKey::Chain(chain_id.into()))
     }
 }

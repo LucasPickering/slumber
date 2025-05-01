@@ -1,17 +1,14 @@
 //! Serialization/deserialization helpers for various types
 
-use crate::{
-    collection::{
-        Profile, ProfileId, Recipe, RecipeId, recipe_tree::RecipeNode,
-    },
-    render::Procedure,
+use crate::collection::{
+    Profile, ProfileId, Recipe, RecipeBody, RecipeId, recipe_tree::RecipeNode,
 };
 use indexmap::IndexMap;
 use itertools::Itertools;
-use serde::{Deserialize, Deserializer, de};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use slumber_util::{HasId, deserialize_id_map};
 
-impl HasId for Profile {
+impl<P> HasId for Profile<P> {
     type Id = ProfileId;
 
     fn id(&self) -> &Self::Id {
@@ -23,7 +20,7 @@ impl HasId for Profile {
     }
 }
 
-impl HasId for RecipeNode {
+impl<P> HasId for RecipeNode<P> {
     type Id = RecipeId;
 
     fn id(&self) -> &Self::Id {
@@ -41,7 +38,7 @@ impl HasId for RecipeNode {
     }
 }
 
-impl HasId for Recipe {
+impl<P> HasId for Recipe<P> {
     type Id = RecipeId;
 
     fn id(&self) -> &Self::Id {
@@ -61,17 +58,18 @@ pub fn persist_default() -> bool {
 
 /// Deserialize a profile mapping. This also enforces that only one profile is
 /// marked as default
-pub fn deserialize_profiles<'de, D>(
+pub fn deserialize_profiles<'de, D, P>(
     deserializer: D,
-) -> Result<IndexMap<ProfileId, Profile>, D::Error>
+) -> Result<IndexMap<ProfileId, Profile<P>>, D::Error>
 where
     D: Deserializer<'de>,
+    P: Deserialize<'de>,
 {
-    let profiles: IndexMap<ProfileId, Profile> =
+    let profiles: IndexMap<ProfileId, Profile<P>> =
         deserialize_id_map(deserializer)?;
 
     // Make sure at most one profile is the default
-    let is_default = |profile: &&Profile| profile.default;
+    let is_default = |profile: &&Profile<P>| profile.default;
 
     if profiles.values().filter(is_default).count() > 1 {
         return Err(de::Error::custom(format!(
@@ -90,16 +88,16 @@ where
 /// Deserialize a header map, lowercasing all header names. Headers are
 /// case-insensitive (and must be lowercase in HTTP/2+), so forcing the case
 /// makes lookups on the map easier.
-pub fn deserialize_headers<'de, D>(
+pub fn deserialize_headers<'de, D, P>(
     deserializer: D,
-) -> Result<IndexMap<String, Procedure>, D::Error>
+) -> Result<IndexMap<String, P>, D::Error>
 where
     D: Deserializer<'de>,
+    P: Deserialize<'de>,
 {
     // This involves an extra allocation, but it makes the logic a lot easier.
     // These maps should be small anyway
-    let headers: IndexMap<String, Procedure> =
-        IndexMap::deserialize(deserializer)?;
+    let headers: IndexMap<String, P> = IndexMap::deserialize(deserializer)?;
     Ok(headers
         .into_iter()
         .map(|(k, v)| (k.to_ascii_lowercase(), v))
@@ -111,15 +109,15 @@ where
 /// bare value as a raw body. RecipeBody is only used in one place so adding
 /// this wrapper isn't a big deal.
 pub mod serde_recipe_body {
-    use crate::{collection::RecipeBody, render::Procedure};
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use super::*;
 
-    pub fn serialize<S>(
-        body: &Option<RecipeBody>,
+    pub fn serialize<S, P>(
+        body: &Option<RecipeBody<P>>,
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
+        P: Serialize,
     {
         match body {
             // Serialize a raw body as just the contained value
@@ -130,17 +128,18 @@ pub mod serde_recipe_body {
         }
     }
 
-    pub fn deserialize<'de, D>(
+    pub fn deserialize<'de, D, P>(
         deserializer: D,
-    ) -> Result<Option<RecipeBody>, D::Error>
+    ) -> Result<Option<RecipeBody<P>>, D::Error>
     where
         D: Deserializer<'de>,
+        P: Deserialize<'de>,
     {
         #[derive(Deserialize)]
         #[serde(untagged, rename_all = "camelCase")]
-        enum RecipeBodyWrapper {
-            RecipeBody(RecipeBody),
-            Raw(Procedure),
+        enum RecipeBodyWrapper<P> {
+            RecipeBody(RecipeBody<P>),
+            Raw(P),
         }
 
         // TODO explain

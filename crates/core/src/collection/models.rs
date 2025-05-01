@@ -1,4 +1,6 @@
 //! The plain data types that make up a request collection
+//!
+//! TODO explain generic param on all types
 
 use crate::{
     collection::{
@@ -23,22 +25,77 @@ use std::iter;
 ///
 /// This deliberately does not implement `Clone`, because it could potentially
 /// be very large. Instead, it's hidden behind an `Arc` by `CollectionFile`.
+///
+/// The `Seriailize` impl is needed for the `slumber show` command, and
+/// `Deserialize` is for loading from PetitScript. Unlike all the other types
+/// in this module, this root type does *not* use
+/// `#[serde(deny_unknown_fields)]`. This allows users to export additional
+/// values from their modules, enabling code sharing.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub struct Collection {
+#[serde(bound(deserialize = "P: Deserialize<'de>"))]
+pub struct Collection<P = Procedure> {
     #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
-    pub profiles: IndexMap<ProfileId, Profile>,
+    pub profiles: IndexMap<ProfileId, Profile<P>>,
     /// Internally we call these recipes, but to a user `requests` is more
     /// intuitive
     #[serde(default, rename = "requests")]
     pub recipes: RecipeTree,
 }
 
+impl<P> Collection<P> {
+    /// Get the profile marked as `default: true`, if any. At most one profile
+    /// can be marked as default.
+    pub fn default_profile(&self) -> Option<&Profile<P>> {
+        self.profiles.values().find(|profile| profile.default)
+    }
+}
+
+/// Test-only helpers
+#[cfg(any(test, feature = "test"))]
+impl<P> Collection<P> {
+    /// Get the ID of the first **recipe** (not recipe node) in the list. Panic
+    /// if empty. This is useful because the default collection factory includes
+    /// one recipe.
+    pub fn first_recipe_id(&self) -> &RecipeId {
+        self.recipes
+            .recipe_ids()
+            .next()
+            .expect("Collection has no recipes")
+    }
+
+    /// Get the ID of the first profile in the list. Panic if empty. This is
+    /// useful because the default collection factory includes one profile.
+    pub fn first_profile_id(&self) -> &ProfileId {
+        self.profiles.first().expect("Collection has no profiles").0
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl<P> slumber_util::Factory for Collection<P> {
+    fn factory(_: ()) -> Self {
+        use crate::test_util::by_id;
+        use petitscript::value::Object;
+        // Include a body in the recipe, so body-related behavior can be tested
+        let recipe = Recipe {
+            body: Some(RecipeBody::Json {
+                data: Procedure::new(Object::new().insert("message", "hello")),
+            }),
+            ..Recipe::factory(())
+        };
+        let profile = Profile::factory(());
+        Collection {
+            recipes: by_id([recipe]).into(),
+            profiles: by_id([profile]),
+        }
+    }
+}
+
 /// Mutually exclusive hot-swappable config group
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
-pub struct Profile {
+pub struct Profile<P = Procedure> {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
     pub name: Option<String>,
@@ -48,10 +105,10 @@ pub struct Profile {
     /// custom deserializer function.
     #[serde(default)]
     pub default: bool,
-    pub data: IndexMap<String, Procedure>,
+    pub data: IndexMap<String, P>,
 }
 
-impl Profile {
+impl<P> Profile<P> {
     /// Get a presentable name for this profile
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
@@ -63,7 +120,7 @@ impl Profile {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory for Profile {
+impl<P> slumber_util::Factory for Profile<P> {
     fn factory(_: ()) -> Self {
         Self {
             id: ProfileId::factory(()),
@@ -109,8 +166,11 @@ impl slumber_util::Factory for ProfileId {
 /// A gathering of like-minded recipes and/or folders
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
-pub struct Folder {
+#[serde(
+    deny_unknown_fields,
+    bound(deserialize = "P: Default + Deserialize<'de>")
+)]
+pub struct Folder<P = Procedure> {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
     pub name: Option<String>,
@@ -120,10 +180,10 @@ pub struct Folder {
         deserialize_with = "slumber_util::deserialize_id_map",
         rename = "requests"
     )]
-    pub children: IndexMap<RecipeId, RecipeNode>,
+    pub children: IndexMap<RecipeId, RecipeNode<P>>,
 }
 
-impl Folder {
+impl<P> Folder<P> {
     /// Get a presentable name for this folder
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
@@ -131,7 +191,7 @@ impl Folder {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory for Folder {
+impl<P> slumber_util::Factory for Folder<P> {
     fn factory(_: ()) -> Self {
         Self {
             id: RecipeId::factory(()),
@@ -149,8 +209,11 @@ impl slumber_util::Factory for Folder {
 /// stuck with this name.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
-pub struct Recipe {
+#[serde(
+    deny_unknown_fields,
+    bound(deserialize = "P: Default + Deserialize<'de>")
+)]
+pub struct Recipe<P = Procedure> {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
     #[serde(default = "cereal::persist_default")]
@@ -160,19 +223,19 @@ pub struct Recipe {
     /// complexity. This gives the user an immediate error if the method is
     /// wrong which is helpful.
     pub method: HttpMethod,
-    pub url: Procedure,
+    pub url: P,
     #[serde(default, with = "cereal::serde_recipe_body")]
-    pub body: Option<RecipeBody>,
-    pub authentication: Option<Authentication>,
+    pub body: Option<RecipeBody<P>>,
+    pub authentication: Option<Authentication<P>>,
     /// A map of key-value query parameters. Each value can either be a single
     /// value (`?foo=bar`) or multiple (`?foo=bar&foo=baz`)
     #[serde(default)]
-    pub query: IndexMap<String, QueryParameterValue>,
+    pub query: IndexMap<String, QueryParameterValue<P>>,
     #[serde(default, deserialize_with = "cereal::deserialize_headers")]
-    pub headers: IndexMap<String, Procedure>,
+    pub headers: IndexMap<String, P>,
 }
 
-impl Recipe {
+impl<P> Recipe<P> {
     /// Get a presentable name for this recipe
     pub fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
@@ -184,7 +247,10 @@ impl Recipe {
     /// known (e.g. JSON). Otherwise, return `None`. If the header is a
     /// procedure, we will *not* attempt to render it, so MIME parsing will
     /// fail.
-    pub fn mime(&self) -> Option<Mime> {
+    pub fn mime(&self) -> Option<Mime>
+    where
+        P: Display,
+    {
         self.headers
             .get(header::CONTENT_TYPE.as_str())
             .and_then(|procedure| procedure.to_string().parse::<Mime>().ok())
@@ -196,9 +262,10 @@ impl Recipe {
     /// appears multiple times, once with each value. Each tuple will include
     /// the index of each value to distinguish repeated parameters. This
     /// will respect all ordering from the original map.
-    pub fn query_iter(
-        &self,
-    ) -> impl Iterator<Item = (&str, usize, &Procedure)> {
+    pub fn query_iter(&self) -> impl Iterator<Item = (&str, usize, &P)>
+    where
+        P: Send + Sync,
+    {
         self.query.iter().flat_map(|(k, v)| {
             v.iter().enumerate().map(move |(i, v)| (k.as_str(), i, v))
         })
@@ -285,45 +352,48 @@ impl slumber_util::Factory for RecipeId {
 /// Shortcut for defining authentication method. If this is defined in addition
 /// to the `Authorization` header, that header will end up being included in the
 /// request twice.
-///
-/// Type parameter allows this to be re-used for post-render purposes (with
-/// `T=String`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
-pub enum Authentication<T = Procedure> {
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    deny_unknown_fields,
+    bound(deserialize = "P: Default + Deserialize<'de>")
+)]
+pub enum Authentication<P = Procedure> {
     /// `Authorization: Basic {username:password | base64}`
     Basic {
-        username: T,
+        username: P,
         /// The password in basic auth is optional. It's replaced with an empty
         /// string if omitted
         #[serde(default)]
-        password: T,
+        password: P,
     },
     /// `Authorization: Bearer {token}`
-    Bearer { token: T },
+    Bearer { token: P },
 }
 
 /// A value for a particular query parameter key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(untagged, deny_unknown_fields)]
-pub enum QueryParameterValue {
+pub enum QueryParameterValue<P = Procedure> {
     /// Multiple values for the same parameter. This will be represented by
     /// repeating the parameter key: `?foo=bar&foo=baz`
     /// Note: This variant has to be first for deserialization. Because the
     /// single case accepts any PS value, it will also accept an array.
-    Many(Vec<Procedure>),
+    Many(Vec<P>),
     /// The common case: `?foo=bar`
-    Single(Procedure),
+    Single(P),
 }
 
-impl QueryParameterValue {
+impl<P> QueryParameterValue<P> {
     /// Get an iterator over the contained values. For a single value this is
     /// just one element; for many is all the values in the list.
-    pub fn iter(
-        &self,
-    ) -> Box<dyn Iterator<Item = &Procedure> + '_ + Send + Sync> {
+    pub fn iter(&self) -> Box<dyn Iterator<Item = &P> + '_ + Send + Sync>
+    where
+        P: Send + Sync,
+    {
         match self {
             Self::Many(values) => Box::new(values.iter()),
             Self::Single(value) => Box::new(iter::once(value)),
@@ -332,14 +402,14 @@ impl QueryParameterValue {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl From<&str> for QueryParameterValue {
+impl From<&str> for QueryParameterValue<Procedure> {
     fn from(value: &str) -> Self {
         QueryParameterValue::Single(value.into())
     }
 }
 
 #[cfg(any(test, feature = "test"))]
-impl<const N: usize, T> From<[T; N]> for QueryParameterValue
+impl<const N: usize, T> From<[T; N]> for QueryParameterValue<Procedure>
 where
     Procedure: From<T>,
 {
@@ -359,25 +429,25 @@ where
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
-pub enum RecipeBody {
+pub enum RecipeBody<P = Procedure> {
     /// Plain string/bytes body
     Raw {
-        data: Procedure,
+        data: P,
     },
     Json {
-        data: Procedure,
+        data: P,
     },
     /// `application/x-www-form-urlencoded` fields. Values must be strings
     FormUrlencoded {
-        data: IndexMap<String, Procedure>,
+        data: IndexMap<String, P>,
     },
     /// `multipart/form-data` fields. Values can be binary
     FormMultipart {
-        data: IndexMap<String, Procedure>,
+        data: IndexMap<String, P>,
     },
 }
 
-impl RecipeBody {
+impl<P> RecipeBody<P> {
     /// Get the anticipated MIME type that will appear in the `Content-Type`
     /// header of a request containing this body. This is *not* necessarily
     /// the MIME type that will _actually_ be used, as it could be overidden by
@@ -395,57 +465,9 @@ impl RecipeBody {
 }
 
 #[cfg(any(test, feature = "test"))]
-impl From<&str> for RecipeBody {
+impl From<&str> for RecipeBody<Procedure> {
     fn from(body: &str) -> Self {
         Self::Raw { data: body.into() }
-    }
-}
-
-impl Collection {
-    /// Get the profile marked as `default: true`, if any. At most one profile
-    /// can be marked as default.
-    pub fn default_profile(&self) -> Option<&Profile> {
-        self.profiles.values().find(|profile| profile.default)
-    }
-}
-
-/// Test-only helpers
-#[cfg(any(test, feature = "test"))]
-impl Collection {
-    /// Get the ID of the first **recipe** (not recipe node) in the list. Panic
-    /// if empty. This is useful because the default collection factory includes
-    /// one recipe.
-    pub fn first_recipe_id(&self) -> &RecipeId {
-        self.recipes
-            .recipe_ids()
-            .next()
-            .expect("Collection has no recipes")
-    }
-
-    /// Get the ID of the first profile in the list. Panic if empty. This is
-    /// useful because the default collection factory includes one profile.
-    pub fn first_profile_id(&self) -> &ProfileId {
-        self.profiles.first().expect("Collection has no profiles").0
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory for Collection {
-    fn factory(_: ()) -> Self {
-        use crate::test_util::by_id;
-        use petitscript::value::Object;
-        // Include a body in the recipe, so body-related behavior can be tested
-        let recipe = Recipe {
-            body: Some(RecipeBody::Json {
-                data: Procedure::new(Object::new().insert("message", "hello")),
-            }),
-            ..Recipe::factory(())
-        };
-        let profile = Profile::factory(());
-        Collection {
-            recipes: by_id([recipe]).into(),
-            profiles: by_id([profile]),
-        }
     }
 }
 

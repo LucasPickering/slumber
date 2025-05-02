@@ -2,7 +2,7 @@
 //! crate, but there are many differences that make it easier to just duplicate
 //! code instead of trying to share as much as possible.
 
-use crate::yaml::{
+use crate::legacy::{
     cereal,
     template::{Identifier, Template},
 };

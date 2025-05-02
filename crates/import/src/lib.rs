@@ -10,12 +10,12 @@ mod common;
 // mod insomnia;
 // mod openapi;
 // mod rest;
-mod yaml;
+mod legacy;
 
 // pub use insomnia::from_insomnia;
 // pub use openapi::from_openapi;
 // pub use rest::from_rest;
-pub use yaml::from_yaml;
+pub use legacy::from_legacy;
 
 use indexmap::IndexMap;
 use petitscript::ast::{Declaration, Expression};

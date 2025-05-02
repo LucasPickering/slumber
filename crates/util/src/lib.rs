@@ -279,7 +279,6 @@ impl FromStr for DurationUnit {
 /// Parse bytes from a reader into YAML. This will merge any anchors/aliases.
 pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
     // Two-step parsing is required for anchor/alias merging
-    // TODO move into config crate once this is unused in the import crate
     let deserializer = serde_yaml::Deserializer::from_reader(reader);
     let mut yaml_value: serde_yaml::Value =
         serde_path_to_error::deserialize(deserializer)?;

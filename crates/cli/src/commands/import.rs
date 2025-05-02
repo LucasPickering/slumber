@@ -27,6 +27,8 @@ pub struct ImportCommand {
 enum Format {
     /// Insomnia export format (JSON or YAML)
     Insomnia,
+    /// Slumber legacy YAML format (from Slumber pre-v4)
+    Legacy,
     /// OpenAPI v3.0 (JSON or YAML) v3.1 not supported but may work
     Openapi,
     /// VSCode `.rest` or JetBrains `.http` format [aliases: vscode, jetbrains]
@@ -34,8 +36,6 @@ enum Format {
     // https://github.com/clap-rs/clap/pull/5480
     #[value(alias = "vscode", alias = "jetbrains")]
     Rest,
-    /// Slumber legacy YAML format (from Slumber pre-v4)
-    Yaml,
 }
 
 impl Subcommand for ImportCommand {

@@ -1,6 +1,6 @@
 //! Serialization/deserialization helpers for various types
 
-use crate::yaml::{
+use crate::legacy::{
     collection::{Chain, ChainId, Profile, Recipe, RecipeBody, RecipeNode},
     template::Template,
 };

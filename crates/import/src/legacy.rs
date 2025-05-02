@@ -1,6 +1,4 @@
 //! Import from the legacy Slumber YAML format
-//!
-//! TODO rename module to "legacy"
 
 mod cereal;
 mod collection;
@@ -9,10 +7,11 @@ mod template;
 use crate::{
     ImportCollection,
     common::{IntoPetitAst, call_fn},
-    yaml::{
+    legacy::{
         collection::{
-            self as yaml, Chain, ChainId, ChainOutputTrim, ChainRequestSection,
-            ChainRequestTrigger, ChainSource, SelectOptions, SelectorMode,
+            self as legacy, Chain, ChainId, ChainOutputTrim,
+            ChainRequestSection, ChainRequestTrigger, ChainSource,
+            SelectOptions, SelectorMode,
         },
         template::{Template, TemplateInputChunk, TemplateKey},
     },
@@ -21,34 +20,36 @@ use anyhow::Context;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use petitscript::ast::{
-    ArrayLiteral, Declaration, Expression, FunctionBody, FunctionCall,
-    FunctionDefinition, Identifier, IntoExpression, IntoNode, Literal,
-    ObjectLiteral, TemplateChunk, TemplateLiteral,
+    ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
+    FunctionCall, FunctionDefinition, Identifier, IntoExpression, IntoNode,
+    Literal, ObjectLiteral, TemplateChunk, TemplateLiteral, Walk,
 };
 use slumber_core::collection::{self as core, QueryParameterValue, RecipeTree};
 use slumber_util::parse_yaml;
-use std::{fs::File, hash::Hash, path::Path};
+use std::{
+    collections::{HashSet, VecDeque},
+    fs::File,
+    hash::Hash,
+    path::Path,
+};
 use tracing::info;
 
 const CHAIN_FN_PREFIX: &str = "chain_";
 
 /// Convert a legacy Slumber YAML collection into the common import format
-pub fn from_yaml(
-    yaml_file: impl AsRef<Path>,
+pub fn from_legacy(
+    legacy_file: impl AsRef<Path>,
 ) -> anyhow::Result<ImportCollection> {
-    let yaml_file = yaml_file.as_ref();
-    info!(file = ?yaml_file, "Loading Slumber YAML collection");
-    let file = File::open(yaml_file).context(format!(
-        "Error opening Slumber YAML collection file {yaml_file:?}"
+    let legacy_file = legacy_file.as_ref();
+    info!(file = ?legacy_file, "Loading Slumber YAML collection");
+    let file = File::open(legacy_file).context(format!(
+        "Error opening Slumber YAML collection file {legacy_file:?}"
     ))?;
     // Since this is our own format, we're very strict about the import. If it
     // fails, that should be a fatal bug
-    let collection: yaml::Collection = parse_yaml(file).context(format!(
-        "Error deserializing Slumber YAML collection file {yaml_file:?}",
+    let collection: legacy::Collection = parse_yaml(file).context(format!(
+        "Error deserializing Slumber YAML collection file {legacy_file:?}",
     ))?;
-
-    // TODO is it possible to reproduce anchors+aliases instead of resolving
-    // them?
 
     let declarations = convert_chains(collection.chains);
 
@@ -77,14 +78,112 @@ pub fn from_yaml(
 /// Convert chains to functions. We have to map the whole collection together so
 /// that the functions can be ordered by dependency.
 fn convert_chains(chains: IndexMap<ChainId, Chain>) -> Vec<Declaration> {
-    // TODO sort by dependency
-    chains.into_values().map(Chain::into_ast).collect()
+    let chains = chains.into_values().map(Chain::into_ast).collect();
+    let chains = sort_chains(chains);
+    chains
+        .into_iter()
+        .map(|(name, definition)| definition.declare(Identifier::new(name)))
+        .collect()
 }
 
-/// Generate a statement that declares a function. The function's execution
-/// will be equivalent to evaluating this chain.
+/// Sort a list of chain functions topologically, so that dependent functions
+/// come after their dependencies. For example, if `b` calls `a()`, then `a()`
+/// must come before `b()`.
+fn sort_chains(
+    chains: Vec<(String, FunctionDefinition)>,
+) -> Vec<(String, FunctionDefinition)> {
+    struct ChainFunction {
+        name: String,
+        definition: FunctionDefinition,
+        dependencies: Dependencies,
+    }
+    struct Dependencies(HashSet<String>);
+
+    /// Find all called chain functions in a single function body
+    impl AstVisitor for Dependencies {
+        fn enter_function_call(&mut self, call: &mut FunctionCall) {
+            // unstable: if-let chain
+            if let Expression::Identifier(identifier) = call.function.data() {
+                if identifier.as_str().starts_with(CHAIN_FN_PREFIX) {
+                    self.0.insert(identifier.to_string());
+                }
+            }
+        }
+    }
+
+    // Split the set of functions into ones that have no dependencies and are
+    // ready to be declared, and ones that needs other dependencies declared
+    // first.
+    let (mut no_deps, mut has_deps): (VecDeque<_>, VecDeque<_>) = chains
+        .into_iter()
+        .map(|(name, mut definition)| {
+            let mut dependencies = Dependencies(Default::default());
+            definition.walk(&mut dependencies);
+            ChainFunction {
+                name,
+                definition,
+                dependencies,
+            }
+        })
+        // Split it into (has no dependencies, has dependencies)
+        .partition(|function| function.dependencies.0.is_empty());
+    let mut output = Vec::with_capacity(no_deps.len() + has_deps.len());
+
+    // https://en.wikipedia.org/wiki/Topological_sorting#Kahn's_algorithm
+    // We use VecDeque so we can iterate over in order of chain definition,
+    // keeping the ordering stable where possible
+    while let Some(function) = no_deps.pop_front() {
+        let ChainFunction {
+            name,
+            definition,
+            dependencies,
+        } = function;
+        debug_assert!(
+            dependencies.0.is_empty(),
+            "dependencies not empty for {name}"
+        );
+
+        // This function has no remaining dependencies, so we can add it to the
+        // output. First though, remove its name from all dependents because
+        // it's about to be declared
+        for function in &mut has_deps {
+            // shift_remove is "slow", but dependency lists will be extremely
+            // small and this allows us to preserve order
+            function.dependencies.0.remove(&name);
+        }
+
+        // Any function that no longer has undeclared dependencies gets moved
+        // to the active queue. This is a scuffed alternative to extract_if,
+        // because that doesn't exist on VecDeque
+        has_deps = has_deps
+            .into_iter()
+            .filter_map(|function| {
+                if function.dependencies.0.is_empty() {
+                    // Move to the other queue
+                    no_deps.push_back(function);
+                    None
+                } else {
+                    // Keep it in this queue
+                    Some(function)
+                }
+            })
+            .collect();
+
+        output.push((name, definition));
+    }
+
+    if !has_deps.is_empty() {
+        todo!("error for cycle")
+    }
+
+    output
+}
+
+/// Generate a function name and definition. The function's execution will be
+/// equivalent to evaluating this chain. We don't want to compose the parts into
+/// a declaration yet, because it makes sorting by dependency harder.
 impl IntoPetitAst for Chain {
-    type Output = Declaration;
+    type Output = (String, FunctionDefinition);
 
     fn into_ast(self) -> Self::Output {
         /// Build an arg list of `R` required arguments plus one keyword
@@ -205,17 +304,18 @@ impl IntoPetitAst for Chain {
             body_expression = json_path_call.into();
         }
 
-        FunctionDefinition::new(
+        let name = chain_id_to_function(&self.id);
+        let definition = FunctionDefinition::new(
             // Chains don't accept params, so the function won't either
             [],
             FunctionBody::expression(body_expression),
-        )
-        .declare(chain_id_to_function(&self.id))
+        );
+        (name, definition)
     }
 }
 
-impl From<yaml::Profile> for core::Profile<Expression> {
-    fn from(profile: yaml::Profile) -> Self {
+impl From<legacy::Profile> for core::Profile<Expression> {
+    fn from(profile: legacy::Profile) -> Self {
         core::Profile {
             id: profile.id,
             name: profile.name,
@@ -225,21 +325,21 @@ impl From<yaml::Profile> for core::Profile<Expression> {
     }
 }
 
-impl From<yaml::RecipeNode> for core::RecipeNode<Expression> {
-    fn from(node: yaml::RecipeNode) -> Self {
+impl From<legacy::RecipeNode> for core::RecipeNode<Expression> {
+    fn from(node: legacy::RecipeNode) -> Self {
         match node {
-            yaml::RecipeNode::Folder(folder) => {
+            legacy::RecipeNode::Folder(folder) => {
                 core::RecipeNode::Folder(folder.into())
             }
-            yaml::RecipeNode::Recipe(recipe) => {
+            legacy::RecipeNode::Recipe(recipe) => {
                 core::RecipeNode::Recipe(recipe.into())
             }
         }
     }
 }
 
-impl From<yaml::Folder> for core::Folder<Expression> {
-    fn from(folder: yaml::Folder) -> Self {
+impl From<legacy::Folder> for core::Folder<Expression> {
+    fn from(folder: legacy::Folder) -> Self {
         core::Folder {
             id: folder.id,
             name: folder.name,
@@ -248,8 +348,8 @@ impl From<yaml::Folder> for core::Folder<Expression> {
     }
 }
 
-impl From<yaml::Recipe> for core::Recipe<Expression> {
-    fn from(recipe: yaml::Recipe) -> Self {
+impl From<legacy::Recipe> for core::Recipe<Expression> {
+    fn from(recipe: legacy::Recipe) -> Self {
         core::Recipe {
             id: recipe.id,
             persist: recipe.persist,
@@ -266,10 +366,10 @@ impl From<yaml::Recipe> for core::Recipe<Expression> {
     }
 }
 
-impl From<yaml::Authentication> for core::Authentication<Expression> {
-    fn from(authentication: yaml::Authentication) -> Self {
+impl From<legacy::Authentication> for core::Authentication<Expression> {
+    fn from(authentication: legacy::Authentication) -> Self {
         match authentication {
-            yaml::Authentication::Basic { username, password } => {
+            legacy::Authentication::Basic { username, password } => {
                 core::Authentication::Basic {
                     username: username.into_ast(),
                     password: password
@@ -277,7 +377,7 @@ impl From<yaml::Authentication> for core::Authentication<Expression> {
                         .unwrap_or_else(|| "".into()),
                 }
             }
-            yaml::Authentication::Bearer(token) => {
+            legacy::Authentication::Bearer(token) => {
                 core::Authentication::Bearer {
                     token: token.into_ast(),
                 }
@@ -286,22 +386,22 @@ impl From<yaml::Authentication> for core::Authentication<Expression> {
     }
 }
 
-impl From<yaml::RecipeBody> for core::RecipeBody<Expression> {
-    fn from(body: yaml::RecipeBody) -> Self {
+impl From<legacy::RecipeBody> for core::RecipeBody<Expression> {
+    fn from(body: legacy::RecipeBody) -> Self {
         match body {
             // Raw string body -> create a string or template
-            yaml::RecipeBody::Raw(body) => core::RecipeBody::Raw {
+            legacy::RecipeBody::Raw(body) => core::RecipeBody::Raw {
                 data: body.into_ast(),
             },
-            yaml::RecipeBody::Json(json) => core::RecipeBody::Json {
+            legacy::RecipeBody::Json(json) => core::RecipeBody::Json {
                 data: json.into_ast(),
             },
-            yaml::RecipeBody::FormUrlencoded(fields) => {
+            legacy::RecipeBody::FormUrlencoded(fields) => {
                 core::RecipeBody::FormUrlencoded {
                     data: map_values(fields, Template::into_ast),
                 }
             }
-            yaml::RecipeBody::FormMultipart(fields) => {
+            legacy::RecipeBody::FormMultipart(fields) => {
                 core::RecipeBody::FormMultipart {
                     data: map_values(fields, Template::into_ast),
                 }
@@ -318,12 +418,8 @@ impl IntoPetitAst for serde_json::Value {
     /// as a template and it any of them contain dynamic chunks, the whole
     /// object will be deferred at the top level.
     fn into_ast(self) -> Self::Output {
-        /// Recursively convert a value, and enable the given flag the first
-        /// time we hit a dynamic template
-        fn convert(
-            value: serde_json::Value,
-            is_dynamic: &mut bool,
-        ) -> Expression {
+        /// Recursively convert a value
+        fn convert(value: serde_json::Value) -> Expression {
             match value {
                 serde_json::Value::Null => {
                     Expression::Literal(Literal::Null.s())
@@ -338,18 +434,15 @@ impl IntoPetitAst for serde_json::Value {
                         todo!()
                     }
                 }
-                serde_json::Value::String(s) => convert_string(s, is_dynamic),
-                serde_json::Value::Array(array) => ArrayLiteral::new(
-                    array
-                        .into_iter()
-                        .map(|element| convert(element, is_dynamic)),
-                )
-                .into(),
+                serde_json::Value::String(s) => convert_string(s),
+                serde_json::Value::Array(array) => {
+                    ArrayLiteral::new(array.into_iter().map(convert)).into()
+                }
                 serde_json::Value::Object(map) => {
                     ObjectLiteral::new(map.into_iter().map(|(k, v)| {
                         // We have to support templates in both keys and values
-                        let key = convert_string(k, is_dynamic);
-                        let value = convert(v, is_dynamic);
+                        let key = convert_string(k);
+                        let value = convert(v);
                         (key, value)
                     }))
                     .into()
@@ -359,28 +452,16 @@ impl IntoPetitAst for serde_json::Value {
 
         /// Convert a string to an expression. If it's a dynamic template,
         /// enable the flag
-        fn convert_string(s: String, is_dynamic: &mut bool) -> Expression {
+        fn convert_string(s: String) -> Expression {
             // Theoretically the string should be a valid template, but if not
             // treat it literally
             match s.parse::<Template>() {
-                Ok(template) => {
-                    *is_dynamic |= template.is_dynamic();
-                    template.into_ast()
-                }
+                Ok(template) => template.into_ast(),
                 Err(_) => s.into(),
             }
         }
 
-        let mut is_dynamic = false;
-        let expression = convert(self, &mut is_dynamic);
-        // If the JSON contained any templates, it's dynamic so we need to
-        // defer it
-        if is_dynamic {
-            FunctionDefinition::new([], FunctionBody::expression(expression))
-                .into()
-        } else {
-            expression
-        }
+        convert(self)
     }
 }
 
@@ -479,9 +560,10 @@ impl IntoPetitAst for TemplateKey {
             // `{{chains.chain1}}` -> `chain_chain1()`
             // Chain functions are always nullary because old chain references
             // had no way of passing arguments
-            TemplateKey::Chain(chain_id) => {
-                FunctionCall::named(chain_id_to_function(&chain_id), [])
-            }
+            TemplateKey::Chain(chain_id) => FunctionCall::named(
+                Identifier::new(chain_id_to_function(&chain_id)),
+                [],
+            ),
             // `{{env.VAR1}}` -> `env('VAR1')`
             TemplateKey::Environment(identifier) => {
                 FunctionCall::named("env", [identifier.to_string().into_expr()])
@@ -519,9 +601,9 @@ fn convert_query_parameters(
 }
 
 /// Get a function name from a chain ID
-fn chain_id_to_function(chain_id: &ChainId) -> Identifier {
+fn chain_id_to_function(chain_id: &ChainId) -> String {
     // TODO normalize ID to make sure it's a valid fn name
-    Identifier::new(format!("{CHAIN_FN_PREFIX}{}", chain_id.0))
+    format!("{CHAIN_FN_PREFIX}{}", chain_id.0)
 }
 
 /// Apply a transformation function to each element in a map
@@ -539,7 +621,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::from_yaml;
+    use crate::from_legacy;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use slumber_core::ps::ENGINE;
@@ -554,10 +636,10 @@ mod tests {
     const YAML_EXPECTED_FILE: &str = "legacy_expected.js";
 
     #[rstest]
-    fn test_yaml_import(test_data_dir: PathBuf) {
+    fn test_legacy_import(test_data_dir: PathBuf) {
         // Convert the external collection into a PS AST, then parse the
         // expected file into an AST and compare the two
-        let imported = from_yaml(test_data_dir.join(YAML_FILE))
+        let imported = from_legacy(test_data_dir.join(YAML_FILE))
             .unwrap()
             .into_petitscript();
         let expected = ENGINE

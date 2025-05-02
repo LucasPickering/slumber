@@ -1,6 +1,6 @@
 //! TODO
 
-use crate::yaml::collection::ChainId;
+use crate::legacy::collection::ChainId;
 use derive_more::{Deref, Display};
 use serde::{
     Deserialize, Deserializer, Serialize,
@@ -44,15 +44,6 @@ pub(crate) struct Template {
     /// sequences will be eliminated). For keys, just store the needed
     /// metadata.
     pub chunks: Vec<TemplateInputChunk>,
-}
-
-impl Template {
-    /// Does this template contain any dynamic chunks?
-    pub fn is_dynamic(&self) -> bool {
-        // Raw segments can't be consecutive so if there's more than 1 chunk,
-        // at least one of them must be dynamic
-        !matches!(self.chunks.as_slice(), [] | [TemplateInputChunk::Raw(_)])
-    }
 }
 
 /// Parse a template, extracting all template keys

@@ -299,15 +299,13 @@ impl IntoPetitAst for Deferred<Expression> {
 
     /// Defer dynamic expressions into a function. Literal expressions don't
     /// need to be deferred
-    fn into_ast(self) -> Self::Output {
-        match self.0 {
-            // A literal doesn't need to be deferred
-            expression @ Expression::Literal(_) => expression,
-            expression => FunctionDefinition::new(
-                [],
-                FunctionBody::expression(expression),
-            )
-            .into(),
+    fn into_ast(mut self) -> Self::Output {
+        // This will recursively scan the expression for anything that's not a
+        // literal
+        if is_dynamic(&mut self.0) {
+            FunctionDefinition::new([], FunctionBody::expression(self.0)).into()
+        } else {
+            self.0
         }
     }
 }
@@ -323,12 +321,10 @@ impl IntoPetitAst for Deferred<QueryParameterValue<Expression>> {
                 // Defer to Deferred!
                 Deferred(procedure).into_ast()
             }
-            QueryParameterValue::Many(expressions) => {
+            QueryParameterValue::Many(mut expressions) => {
                 // If _any_ expression is dynamic, we need to defer the whole
                 // array
-                if expressions.iter().any(|expression| {
-                    matches!(expression, Expression::Literal(_))
-                }) {
+                if expressions.iter_mut().any(is_dynamic) {
                     FunctionDefinition::new(
                         [],
                         FunctionBody::expression(expressions.into_ast().into()),
@@ -397,6 +393,29 @@ fn find_slumber_functions(statements: &mut [Statement]) -> Vec<Identifier> {
 
     // Sort alphabetically to get a determinisitic ordering
     visitor.to_import.into_iter().sorted().collect()
+}
+
+/// Check if the expression is a static literal or contains any dynamic aspects.
+/// This will recursively check array/object literals to ensure all values are
+/// static as well.
+///
+/// The expression won't be mutated; `&mut` is just needed for the AST walker
+fn is_dynamic(expression: &mut Expression) -> bool {
+    struct Visitor {
+        is_dynamic: bool,
+    }
+
+    impl AstVisitor for Visitor {
+        fn enter_expression(&mut self, expression: &mut Expression) {
+            if !matches!(expression, Expression::Literal(_)) {
+                self.is_dynamic = true;
+            }
+        }
+    }
+
+    let mut visitor = Visitor { is_dynamic: false };
+    expression.walk(&mut visitor);
+    visitor.is_dynamic
 }
 
 // TODO test some select edge cases. the common cases will be covered by

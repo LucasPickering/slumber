@@ -9,9 +9,18 @@ import {
 } from "slumber";
 
 const chain_username = () => command(["whoami"]).trim();
-
 const chain_password = () => prompt({ message: "Password", sensitive: true });
+const chain_login_form_values = () =>
+  jsonPath("$.form[*]", JSON.parse(response("login", { trigger: "12h" })), {
+    mode: "array",
+  });
+const chain_auth_token = () =>
+  jsonPath("$.form", JSON.parse(response("login", { trigger: "12h" })));
+const chain_image = () => file("./static/slumber.png");
+const chain_big_file = () => file("Cargo.lock");
 
+// These get bumped to the bottom of the list because of their dependencies on
+// other chains
 const chain_select_value = () =>
   select(
     [
@@ -23,23 +32,8 @@ const chain_select_value = () =>
     ],
     { message: "Select a value" }
   );
-
-const chain_login_form_values = () =>
-  jsonPath("$.form[*]", JSON.parse(response("login", { trigger: "12h" })), {
-    mode: "array",
-  });
-
-// These two must be ordered by dependency because PS uses lexical declaration order
 const chain_select_dynamic = () =>
   select(chain_login_form_values(), { message: "Select a value" });
-const chain_auth_token = () =>
-  jsonPath("$.form", JSON.parse(response("login", { trigger: "12h" })));
-
-const chain_image = () => file("./static/slumber.png");
-
-const chain_big_file = () => file("Cargo.lock");
-
-const chain_response_type = () => select(["json", "html", "xml"]);
 
 export const profiles = {
   works: {
@@ -129,9 +123,8 @@ export const requests = {
           token: () => chain_auth_token(),
         },
       },
-      modify_user: {
+      static_json: {
         type: "request",
-        name: "Modify User",
         method: "PUT",
         url: () => `${profile("host")}/anything/${profile("user_guid")}`,
         headers: {
@@ -143,7 +136,29 @@ export const requests = {
         },
         body: {
           type: "json",
-          data: () => () => ({
+          data: {
+            new_username: "user formerly known as ken",
+            number: 3,
+            bool: true,
+            null: null,
+            array: [1, 2, false, 3.3, "www.www"],
+          },
+        },
+      },
+      dynamic_json: {
+        type: "request",
+        method: "PUT",
+        url: () => `${profile("host")}/anything/${profile("user_guid")}`,
+        headers: {
+          accept: "application/json",
+        },
+        authentication: {
+          type: "bearer",
+          token: () => chain_auth_token(),
+        },
+        body: {
+          type: "json",
+          data: () => ({
             new_username: `user formerly known as ${chain_username()}`,
             number: 3,
             bool: true,
@@ -183,6 +198,26 @@ export const requests = {
     url: () => `${profile("host")}/anything`,
     body: () => chain_big_file(),
   },
+  dynamic_text: {
+    type: "request",
+    name: "Dynamic Text",
+    method: "POST",
+    url: () => `${profile("host")}/anything`,
+    body: () => chain_username(),
+  },
+  form_multipart: {
+    type: "request",
+    name: "Form Multipart",
+    method: "POST",
+    url: () => `${profile("host")}/anything`,
+    body: {
+      type: "formMultipart",
+      data: {
+        username: () => profile("username"),
+        image: () => chain_image(),
+      },
+    },
+  },
   raw_json: {
     type: "request",
     name: "Raw JSON",
@@ -191,11 +226,7 @@ export const requests = {
     headers: {
       ["content-type"]: "application/json",
     },
-    body: '{\
-  "location": "boston",\
-  "size": "HUGE"\
-}\
-',
+    body: '{"location": "boston", "size": "HUGE"}',
   },
   delay: {
     type: "request",
@@ -209,11 +240,5 @@ export const requests = {
       type: "bearer",
       token: () => chain_auth_token(),
     },
-  },
-  dynamic_repsonse_type: {
-    type: "request",
-    name: "Dynamic Response Type",
-    method: "GET",
-    url: () => `${profile("host")}/${chain_response_type()}`,
   },
 };

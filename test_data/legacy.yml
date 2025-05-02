@@ -42,6 +42,7 @@ chains:
     source: !select
       message: Select a value
       options: "{{chains.login_form_values}}"
+  # This has to come *after* the one above to test topological sorting
   login_form_values:
     source: !request
       recipe: login
@@ -59,12 +60,6 @@ chains:
   big_file:
     source: !file
       path: Cargo.lock
-  response_type:
-    source: !select
-      options:
-        - json
-        - html
-        - xml
 
 .ignore:
   base: &base
@@ -113,12 +108,26 @@ requests:
         method: GET
         url: "{{host}}/anything/{{user_guid}}"
 
-      modify_user: !request
+      static_json: !request
         <<: *base
-        name: Modify User
         method: PUT
         url: "{{host}}/anything/{{user_guid}}"
         body:
+          # This should not get deferred because it has no templates
+          !json {
+            "new_username": "user formerly known as ken",
+            "number": 3,
+            "bool": true,
+            "null": null,
+            "array": [1, 2, false, 3.3, "www.www"],
+          }
+
+      dynamic_json: !request
+        <<: *base
+        method: PUT
+        url: "{{host}}/anything/{{user_guid}}"
+        body:
+          # This should get deferred because of the template usage
           !json {
             "new_username": "user formerly known as {{chains.username}}",
             "number": 3,
@@ -148,25 +157,32 @@ requests:
     url: "{{host}}/anything"
     body: "{{chains.big_file}}"
 
+  dynamic_text: !request
+    name: Dynamic Text
+    method: POST
+    url: "{{host}}/anything"
+    body: "{{chains.username}}"
+
+  form_multipart: !request
+    name: Form Multipart
+    method: POST
+    url: "{{host}}/anything"
+    body: !form_multipart
+      username: "{{username}}"
+      image: "{{chains.image}}"
+
   raw_json: !request
     name: Raw JSON
     method: POST
     url: "{{host}}/anything"
     headers:
       Content-Type: application/json
-    body: >
-      {
-        "location": "boston",
-        "size": "HUGE"
-      }
+    # TODO add newlines back to this text once PS parsing it fixed
+    body: >-
+      {"location": "boston", "size": "HUGE"}
 
   delay: !request
     <<: *base
     name: Delay
     method: GET
     url: "{{host}}/delay/5"
-
-  dynamic_repsonse_type: !request
-    name: Dynamic Response Type
-    method: GET
-    url: "{{host}}/{{chains.response_type}}"

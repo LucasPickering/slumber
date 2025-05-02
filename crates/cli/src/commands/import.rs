@@ -27,7 +27,8 @@ pub struct ImportCommand {
 enum Format {
     /// Insomnia export format (JSON or YAML)
     Insomnia,
-    /// Slumber legacy YAML format (from Slumber pre-v4)
+    /// Slumber legacy YAML format (from Slumber v3 and earlier)
+    #[value(alias = "v3")]
     Legacy,
     /// OpenAPI v3.0 (JSON or YAML) v3.1 not supported but may work
     Openapi,
@@ -44,9 +45,9 @@ impl Subcommand for ImportCommand {
             Format::Insomnia => {
                 slumber_import::from_insomnia(&self.input_file)?
             }
+            Format::Legacy => slumber_import::from_legacy(&self.input_file)?,
             Format::Openapi => slumber_import::from_openapi(&self.input_file)?,
             Format::Rest => slumber_import::from_rest(&self.input_file)?,
-            Format::Yaml => slumber_import::from_yaml(&self.input_file)?,
         };
         let ast = collection.into_petitscript();
 

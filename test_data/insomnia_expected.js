@@ -1,0 +1,128 @@
+import { file } from "slumber";
+
+export const profiles = {
+  env_3b607180e18c41228387930058c9ca43: {
+    name: "Local",
+    default: false,
+    data: {
+      base_field: "base",
+      host: "http://localhost:3000",
+      greeting: "hello!",
+    },
+  },
+  env_4fb19173966e42898a0a77f45af591c9: {
+    name: "Remote",
+    default: false,
+    data: {
+      base_field: "base",
+      host: "https://httpbin.org",
+      greeting: "howdy",
+    },
+  },
+};
+
+export const requests = {
+  fld_9a7332db608943b093c929a82c81df50: {
+    type: "folder",
+    name: "My Folder",
+    requests: {
+      fld_8077c48f5a89436bbe4b3a53c06471f5: {
+        type: "folder",
+        name: "Inner Folder",
+        requests: {
+          req_2ec3dc9ff6774ac78248777e75984831: {
+            type: "request",
+            name: "Bearer Auth",
+            method: "GET",
+            url: "https://httpbin.org/get",
+            authentication: {
+              type: "bearer",
+              token:
+                " {% response 'body', 'req_3bc2de939f1a4d1ebc00835cbefd6b5d', 'b64::JC5oZWFkZXJzLkhvc3Q=::46b', 'when-expired', 60 %}",
+            },
+          },
+          req_b08ee35904784b5f9af598f9b7fd7ca0: {
+            type: "request",
+            name: "Digest Auth (Unsupported)",
+            method: "GET",
+            url: "https://httpbin.org/get",
+          },
+          req_284e0d90f0d647b483f863af5ee79c23: {
+            type: "request",
+            name: "Basic Auth",
+            method: "GET",
+            url: "https://httpbin.org/get",
+            authentication: {
+              type: "basic",
+              username: "user",
+              password: "pass",
+            },
+          },
+          req_814a5e9b63a7482da1d8261311bc6c84: {
+            type: "request",
+            name: "No Auth",
+            method: "GET",
+            url: "https://httpbin.org/get",
+          },
+        },
+      },
+      req_583c296a600247d6b0c28a0afcefdb89: {
+        type: "request",
+        name: "With Text Body",
+        method: "POST",
+        url: "https://httpbin.org/post",
+        headers: {
+          ["content-type"]: "text/plain",
+        },
+        body: "hello!",
+      },
+      req_1419670d20eb4964956df954e1eb7c4b: {
+        type: "request",
+        name: "With JSON Body",
+        method: "POST",
+        url: "https://httpbin.org/post",
+        headers: {
+          ["content-type"]: "application/json",
+        },
+        body: {
+          type: "json",
+          data: {
+            message: "hello!",
+          },
+        },
+      },
+      req_a01b6de924274654bda0835e2a073bd0: {
+        type: "request",
+        name: "With Multipart Body",
+        method: "POST",
+        url: "https://httpbin.org/post",
+        headers: {
+          ["content-type"]: "multipart/form-data",
+        },
+        body: {
+          type: "formMultipart",
+          data: {
+            username: "user",
+            image: () => file("./public/slumber.png"),
+          },
+        },
+      },
+    },
+  },
+  req_a345faa530a7453e83ee967d18555712: {
+    type: "request",
+    name: "Login",
+    method: "POST",
+    url: "https://httpbin.org/anything/login",
+    headers: {
+      ["content-type"]: "application/x-www-form-urlencoded",
+    },
+    body: {
+      type: "formUrlencoded",
+      data: {
+        username: "user",
+        password: "pass",
+      },
+    },
+  },
+};

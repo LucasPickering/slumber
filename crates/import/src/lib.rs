@@ -7,12 +7,12 @@
 // TODO enable other formats
 
 mod common;
-// mod insomnia;
+mod insomnia;
 // mod openapi;
 // mod rest;
 mod legacy;
 
-// pub use insomnia::from_insomnia;
+pub use insomnia::from_insomnia;
 // pub use openapi::from_openapi;
 // pub use rest::from_rest;
 pub use legacy::from_legacy;
@@ -31,10 +31,6 @@ pub struct ImportCollection {
     profiles: IndexMap<ProfileId, Profile<Expression>>,
     /// TODO
     recipes: RecipeTree<Expression>,
-}
-
-pub fn from_insomnia(_: impl AsRef<Path>) -> anyhow::Result<ImportCollection> {
-    todo!()
 }
 
 pub fn from_rest(_: impl AsRef<Path>) -> anyhow::Result<ImportCollection> {

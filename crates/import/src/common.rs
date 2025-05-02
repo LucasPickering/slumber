@@ -8,7 +8,8 @@ use petitscript::{
     ast::{
         ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
         FunctionCall, FunctionDefinition, Identifier, ImportDeclaration,
-        IntoNode, IntoStatement, Module, ObjectLiteral, Statement, Walk,
+        IntoNode, IntoStatement, Literal, Module, ObjectLiteral, Statement,
+        Walk,
     },
 };
 use slumber_core::{
@@ -51,6 +52,101 @@ pub fn call_fn<const R: usize, const KW: usize>(
         arguments.push(ObjectLiteral::new(kwargs).into());
     }
     FunctionCall::named(name, arguments)
+}
+
+/// Convert a list of query parameters pairs into a map. Most formats store
+/// query parameters in a list where keys can be duplicated. Slumber uses a
+/// map format where keys are unique but values can be scalar or a vector. This
+/// will group duplicates keys together to form a list of values.
+pub fn build_query_parameters<V>(
+    parameters: impl IntoIterator<Item = (String, V)>,
+) -> IndexMap<String, QueryParameterValue<Expression>>
+where
+    V: Into<Expression>,
+{
+    // Group by parameter
+    let grouped: IndexMap<String, Vec<Expression>> = parameters
+        .into_iter()
+        .fold(IndexMap::default(), |mut acc, (name, value)| {
+            acc.entry(name).or_default().push(value.into());
+            acc
+        });
+
+    // Flatten 1-length values
+    grouped
+        .into_iter()
+        .map(|(param, mut values)| {
+            // If a param only has one value, flatten the vec
+            let value = if values.len() == 1 {
+                QueryParameterValue::Single(values.remove(0))
+            } else {
+                QueryParameterValue::Many(values)
+            };
+            (param, value)
+        })
+        .collect()
+}
+
+/// Wrapper for converting a JSON value from `serde_json` to an expression
+pub struct Json {
+    pub value: serde_json::Value,
+    /// A hackish abstraction to customize how strings are converted to
+    /// expressions. This enables parsing of templates in the legacy importer
+    pub convert_string: fn(String) -> Expression,
+}
+
+impl Json {
+    pub fn parse(input: &str) -> Result<Self, serde_json::Error> {
+        let value = serde_json::from_str(input)?;
+        Ok(Self {
+            value,
+            convert_string: Expression::from,
+        })
+    }
+}
+
+impl From<Json> for Expression {
+    fn from(json: Json) -> Self {
+        /// Recursively convert a value
+        fn convert(
+            value: serde_json::Value,
+            convert_string: fn(String) -> Expression,
+        ) -> Expression {
+            match value {
+                serde_json::Value::Null => {
+                    Expression::Literal(Literal::Null.s())
+                }
+                serde_json::Value::Bool(b) => b.into(),
+                serde_json::Value::Number(number) => {
+                    if let Some(i) = number.as_i64() {
+                        i.into()
+                    } else if let Some(f) = number.as_f64() {
+                        f.into()
+                    } else {
+                        todo!()
+                    }
+                }
+                serde_json::Value::String(s) => convert_string(s),
+                serde_json::Value::Array(array) => ArrayLiteral::new(
+                    array
+                        .into_iter()
+                        .map(|value| convert(value, convert_string)),
+                )
+                .into(),
+                serde_json::Value::Object(map) => {
+                    ObjectLiteral::new(map.into_iter().map(|(k, v)| {
+                        // We have to support templates in both keys and values
+                        let key = convert_string(k);
+                        let value = convert(v, convert_string);
+                        (key, value)
+                    }))
+                    .into()
+                }
+            }
+        }
+
+        convert(json.value, json.convert_string)
+    }
 }
 
 /// Convert this type into a PetitScript AST element

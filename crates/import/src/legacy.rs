@@ -6,7 +6,7 @@ mod template;
 
 use crate::{
     ImportCollection,
-    common::{IntoPetitAst, call_fn},
+    common::{IntoPetitAst, Json, build_query_parameters, call_fn},
     legacy::{
         collection::{
             self as legacy, Chain, ChainId, ChainOutputTrim,
@@ -24,7 +24,7 @@ use petitscript::ast::{
     FunctionCall, FunctionDefinition, Identifier, IntoExpression, IntoNode,
     Literal, ObjectLiteral, TemplateChunk, TemplateLiteral, Walk,
 };
-use slumber_core::collection::{self as core, QueryParameterValue, RecipeTree};
+use slumber_core::collection::{self as core, RecipeTree};
 use slumber_util::parse_yaml;
 use std::{
     collections::{HashSet, VecDeque},
@@ -360,7 +360,7 @@ impl From<legacy::Recipe> for core::Recipe<Expression> {
             authentication: recipe
                 .authentication
                 .map(core::Authentication::from),
-            query: convert_query_parameters(recipe.query),
+            query: build_query_parameters(recipe.query),
             headers: map_values(recipe.headers, Template::into_ast),
         }
     }
@@ -394,7 +394,19 @@ impl From<legacy::RecipeBody> for core::RecipeBody<Expression> {
                 data: body.into_ast(),
             },
             legacy::RecipeBody::Json(json) => core::RecipeBody::Json {
-                data: json.into_ast(),
+                data: Json {
+                    value: json,
+                    // Convert each string to a template
+                    convert_string: |s| {
+                        // Theoretically the string should be a valid template,
+                        // but if not treat it literally
+                        match s.parse::<Template>() {
+                            Ok(template) => template.into_ast(),
+                            Err(_) => s.into(),
+                        }
+                    },
+                }
+                .into(),
             },
             legacy::RecipeBody::FormUrlencoded(fields) => {
                 core::RecipeBody::FormUrlencoded {
@@ -533,6 +545,13 @@ impl IntoPetitAst for Template {
     }
 }
 
+// TODO de-dupe with IntoPetitAst impl
+impl From<Template> for Expression {
+    fn from(template: Template) -> Self {
+        template.into_ast()
+    }
+}
+
 impl IntoPetitAst for TemplateInputChunk {
     type Output = TemplateChunk;
 
@@ -570,34 +589,6 @@ impl IntoPetitAst for TemplateKey {
             }
         }
     }
-}
-
-/// Convert query parameters from the YAML format to the PS format. The format
-/// changed from a list of tuples to a map of values, so we need to group the
-/// tuples by key.
-fn convert_query_parameters(
-    query_parameters: Vec<(String, Template)>,
-) -> IndexMap<String, QueryParameterValue<Expression>> {
-    let grouped: IndexMap<String, Vec<Template>> = query_parameters
-        .into_iter()
-        .fold(IndexMap::default(), |mut acc, (param, value)| {
-            acc.entry(param).or_default().push(value);
-            acc
-        });
-    grouped
-        .into_iter()
-        .map(|(param, mut values)| {
-            // If a param only has one value, flatten the vec
-            let value = if values.len() == 1 {
-                QueryParameterValue::Single(values.remove(0).into_ast())
-            } else {
-                QueryParameterValue::Many(
-                    values.into_iter().map(Template::into_ast).collect(),
-                )
-            };
-            (param, value)
-        })
-        .collect()
 }
 
 /// Get a function name from a chain ID

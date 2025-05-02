@@ -1,20 +1,23 @@
 //! Import request collections from Insomnia. Based on the Insomnia v4 export
 //! format
 
-use crate::ImportCollection;
+use crate::{
+    ImportCollection,
+    common::{self, Json, call_fn},
+};
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use mime::Mime;
+use petitscript::ast::{Expression, IntoExpression};
 use reqwest::header;
 use serde::{Deserialize, Deserializer, de::Error as _};
 use slumber_core::{
     collection::{
-        Authentication, Collection, Folder, Profile, ProfileId, Recipe,
-        RecipeBody, RecipeId, RecipeNode, RecipeTree,
+        Authentication, Folder, Profile, ProfileId, Recipe, RecipeBody,
+        RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
-    render::Procedure,
 };
 use slumber_util::{HasId, NEW_ISSUE_LINK};
 use std::{
@@ -59,10 +62,14 @@ pub fn from_insomnia(
 
     // Convert everything we care about
     let profiles = build_profiles(&workspace_id, environments);
-    let chains = build_chains(&requests);
     let recipes = build_recipe_tree(&workspace_id, request_groups, requests)?;
 
-    Ok(Collection { profiles, recipes })
+    Ok(ImportCollection {
+        // No declarations needed: we can inline all dynamic data
+        declarations: Vec::new(),
+        profiles,
+        recipes,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -275,7 +282,8 @@ impl Resource {
     }
 }
 
-impl From<RequestGroup> for RecipeNode {
+/// Build a folder
+impl From<RequestGroup> for RecipeNode<Expression> {
     fn from(folder: RequestGroup) -> Self {
         RecipeNode::Folder(Folder {
             id: folder.id.into(),
@@ -286,9 +294,10 @@ impl From<RequestGroup> for RecipeNode {
     }
 }
 
-impl From<Request> for RecipeNode {
+/// Build a recipe
+impl From<Request> for RecipeNode<Expression> {
     fn from(request: Request) -> Self {
-        let mut headers: IndexMap<String, Procedure> = IndexMap::new();
+        let mut headers: IndexMap<String, Expression> = IndexMap::new();
 
         // Preload headers from implicit sources
         if let Some(Body { mime_type, .. }) = &request.body {
@@ -316,6 +325,13 @@ impl From<Request> for RecipeNode {
             .ok()
             .flatten();
 
+        let query = common::build_query_parameters(
+            request
+                .parameters
+                .into_iter()
+                .map(|parameter| (parameter.name, parameter.value)),
+        );
+
         // Load authentication scheme
         let authentication =
             request.authentication.and_then(|authentication| {
@@ -337,24 +353,26 @@ impl From<Request> for RecipeNode {
             method: request.method,
             url: request.url.into(),
             body,
-            query: request
-                .parameters
-                .into_iter()
-                .map(|parameter| (parameter.name, parameter.value.into()))
-                .collect(),
+            query,
             headers,
             authentication,
         })
     }
 }
 
-impl TryFrom<Body> for RecipeBody {
+impl TryFrom<Body> for RecipeBody<Expression> {
     type Error = anyhow::Error;
 
     fn try_from(body: Body) -> anyhow::Result<Self> {
         let body = if body.mime_type == mime::APPLICATION_JSON {
-            RecipeBody::Json {
-                data: body.try_text()?.into(),
+            let text = body.try_text()?;
+            match Json::parse(&text) {
+                Ok(json) => RecipeBody::Json { data: json.into() },
+                // Invalid JSON - fall back to plain text
+                Err(error) => {
+                    error!("Error parsing JSON body `{text}`; {error}");
+                    RecipeBody::Raw { data: text.into() }
+                }
             }
         } else if body.mime_type == mime::APPLICATION_WWW_FORM_URLENCODED {
             RecipeBody::FormUrlencoded {
@@ -366,7 +384,7 @@ impl TryFrom<Body> for RecipeBody {
             }
         } else {
             RecipeBody::Raw {
-                data: body.try_text()?,
+                data: body.try_text()?.into(),
             }
         };
         Ok(body)
@@ -375,26 +393,35 @@ impl TryFrom<Body> for RecipeBody {
 
 /// Convert an Insomnia form parameter into a corresponding map entry, to be
 /// used in a structured body
-impl From<FormParam> for (String, Template) {
+impl From<FormParam> for (String, Expression) {
     fn from(param: FormParam) -> Self {
         match param.kind {
             // Simple string, map to a raw template
-            FormParamKind::String => (param.name, Template::raw(param.value)),
+            FormParamKind::String => (param.name, param.value.into()),
             // We'll map this to a chain that loads the file. The ID of the
             // chain is the ID of this param. We're banking on that chain being
             // created elsewhere. It's a bit spaghetti but otherwise we'd need
             // mutable access to the entire collection, which I think would end
             // up with even more spaghetti
-            FormParamKind::File => (
-                param.name,
-                Template::from_chain(Identifier::escape(&param.id).into()),
-            ),
+            FormParamKind::File => {
+                let path = param.file_name.unwrap_or_else(|| {
+                    // This *should* be present. If it's missing let the user
+                    // know and use a placeholder
+                    error!(
+                        "Form param `{}` is of type `file` but missing \
+                        `file_name` field",
+                        param.id
+                    );
+                    String::default()
+                });
+                (param.name, call_fn("file", [path.into()], []).into_expr())
+            }
         }
     }
 }
 
 /// Convert authentication type. If the type is unknown, return is as `Err`
-impl TryFrom<InsomniaAuthentication> for Authentication {
+impl TryFrom<InsomniaAuthentication> for Authentication<Expression> {
     type Error = String;
 
     fn try_from(
@@ -422,11 +449,11 @@ impl TryFrom<InsomniaAuthentication> for Authentication {
 fn build_profiles(
     workspace_id: &str,
     mut environments: Vec<Environment>,
-) -> IndexMap<ProfileId, Profile> {
+) -> IndexMap<ProfileId, Profile<Expression>> {
     fn convert_data(
         data: IndexMap<String, String>,
-    ) -> impl Iterator<Item = (String, Template)> {
-        data.into_iter().map(|(k, v)| (k, Template::raw(v)))
+    ) -> impl Iterator<Item = (String, Expression)> {
+        data.into_iter().map(|(k, v)| (k, v.into()))
     }
 
     // The Base Environment is the one with the workspace as a parent. We
@@ -436,13 +463,15 @@ fn build_profiles(
     let base_index = environments
         .iter()
         .position(|environment| environment.parent_id == workspace_id);
-    let base_data: IndexMap<String, Template> = base_index
+    let base_data: IndexMap<String, Expression> = base_index
         .map(|i| {
             let environment = environments.remove(i);
             convert_data(environment.data).collect()
         })
         .unwrap_or_default();
 
+    // Convert each env to a profile, copying the base data into each one
+    // TODO should we declare the base env as a separate var instead?
     environments
         .into_iter()
         .map(|environment| {
@@ -467,62 +496,15 @@ fn build_profiles(
         .collect()
 }
 
-/// Build up all the chains we need to represent the Insomnia collection.
-/// Chains don't map 1:1 with any Insomnia resource. They generally are an
-/// explicit representation of some implicit Insomnia behavior, so we have to
-/// crawl over the Insomnia collection to find where chains need to exist. For
-/// each generated chain, we'll need to pick a consistent ID so the consumer can
-/// link to the same chain.
-fn build_chains(requests: &[Request]) -> IndexMap<ChainId, Chain> {
-    let mut chains = IndexMap::new();
-
-    for request in requests {
-        debug!("Generating chains for request `{}`", request.id);
-
-        // Any multipart form param that references a file needs a chain
-        for param in request.body.iter().flat_map(|body| &body.params) {
-            debug!("Generating chains for form parameter `{}`", param.id);
-
-            if let FormParamKind::File = param.kind {
-                let id: ChainId = Identifier::escape(&param.id).into();
-                let Some(path) = &param.file_name else {
-                    error!(
-                        "Form param `{}` is of type `file` \
-                        but missing `file_name` field",
-                        param.id
-                    );
-                    continue;
-                };
-                chains.insert(
-                    id.clone(),
-                    Chain {
-                        id,
-                        source: ChainSource::File {
-                            path: path.to_owned().into(),
-                        },
-                        sensitive: false,
-                        selector: None,
-                        selector_mode: SelectorMode::default(),
-                        trim: Default::default(),
-                        _content_type: serde::de::IgnoredAny,
-                    },
-                );
-            }
-        }
-    }
-
-    chains
-}
-
 /// Expand the flat list of Insomnia resources into a recipe tree
 fn build_recipe_tree(
     workspace_id: &str,
     request_groups: Vec<RequestGroup>,
     requests: Vec<Request>,
-) -> anyhow::Result<RecipeTree> {
+) -> anyhow::Result<RecipeTree<Expression>> {
     // First, we want to match each parent with its children. Hashmap is fine
     // because we won't be iterating over it
-    let mut children_map: HashMap<String, Vec<RecipeNode>> = request_groups
+    let mut children_map: HashMap<String, Vec<RecipeNode<_>>> = request_groups
         .into_iter()
         .map(|request_group| {
             (
@@ -538,14 +520,14 @@ fn build_recipe_tree(
     /// Recursively build the recipe tree by removing children from the given
     /// map, starting with a particular parent node
     fn build_tree(
-        children_map: &mut HashMap<String, Vec<RecipeNode>>,
+        children_map: &mut HashMap<String, Vec<RecipeNode<Expression>>>,
         parent_id: &str,
-    ) -> anyhow::Result<IndexMap<RecipeId, RecipeNode>> {
+    ) -> anyhow::Result<IndexMap<RecipeId, RecipeNode<Expression>>> {
         // Pull in all the kids
         let children = children_map.remove(parent_id).ok_or_else(|| {
             anyhow!("No children found for parent `{parent_id}`")
         })?;
-        let mut tree: IndexMap<RecipeId, RecipeNode> = children
+        let mut tree: IndexMap<RecipeId, RecipeNode<_>> = children
             .into_iter()
             .map(|child| (child.id().clone(), child))
             .collect();
@@ -617,7 +599,7 @@ mod tests {
     /// reasons:
     /// - It's huge so it makes code hard to navigate
     /// - Changes don't require a re-compile
-    const INSOMNIA_IMPORTED_FILE: &str = "insomnia_imported.js";
+    const INSOMNIA_EXPECTED_FILE: &str = "insomnia_expected.js";
 
     /// Catch-all test for insomnia import
     #[rstest]
@@ -628,7 +610,7 @@ mod tests {
             .unwrap()
             .into_petitscript();
         let expected = Engine::default()
-            .parse(test_data_dir.join(INSOMNIA_IMPORTED_FILE))
+            .parse(test_data_dir.join(INSOMNIA_EXPECTED_FILE))
             .unwrap();
         assert_eq!(&imported, expected.data());
     }

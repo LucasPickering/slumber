@@ -4,23 +4,20 @@
 //! `slumber` crate version. If you choose to depend directly on this crate, you
 //! do so at your own risk of breakage.
 
-// TODO enable other formats
-
 mod common;
 mod insomnia;
-mod openapi;
-// mod rest;
 mod legacy;
+mod openapi;
+mod rest;
 
 pub use insomnia::from_insomnia;
-pub use openapi::from_openapi;
-// pub use rest::from_rest;
 pub use legacy::from_legacy;
+pub use openapi::from_openapi;
+pub use rest::from_rest;
 
 use indexmap::IndexMap;
 use petitscript::ast::{Declaration, Expression};
 use slumber_core::collection::{Profile, ProfileId, RecipeTree};
-use std::path::Path;
 
 /// TODO
 #[derive(Debug)]
@@ -31,8 +28,4 @@ pub struct ImportCollection {
     profiles: IndexMap<ProfileId, Profile<Expression>>,
     /// TODO
     recipes: RecipeTree<Expression>,
-}
-
-pub fn from_rest(_: impl AsRef<Path>) -> anyhow::Result<ImportCollection> {
-    todo!()
 }

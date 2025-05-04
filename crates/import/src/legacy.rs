@@ -6,7 +6,9 @@ mod template;
 
 use crate::{
     ImportCollection,
-    common::{IntoPetitAst, Json, build_query_parameters, call_fn},
+    common::{
+        IntoPetitAst, Json, build_query_parameters, build_template, call_fn,
+    },
     legacy::{
         collection::{
             self as legacy, Chain, ChainId, ChainOutputTrim,
@@ -22,7 +24,7 @@ use itertools::Itertools;
 use petitscript::ast::{
     ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
     FunctionCall, FunctionDefinition, Identifier, IntoExpression, IntoNode,
-    Literal, ObjectLiteral, TemplateChunk, TemplateLiteral, Walk,
+    Literal, ObjectLiteral, TemplateChunk, Walk,
 };
 use slumber_core::collection::{self as core, RecipeTree};
 use slumber_util::parse_yaml;
@@ -443,7 +445,7 @@ impl IntoPetitAst for serde_json::Value {
                     } else if let Some(f) = number.as_f64() {
                         f.into()
                     } else {
-                        todo!()
+                        todo!("error number too big")
                     }
                 }
                 serde_json::Value::String(s) => convert_string(s),
@@ -518,30 +520,8 @@ impl IntoPetitAst for Template {
     /// expression. Multi-chunk templates will be converted to a PS template
     /// literal.
     fn into_ast(self) -> Self::Output {
-        let mut chunks = self.chunks;
-        // We can't use pattern matching without keeping the owned values, so
-        // it's an if party instead!!
-        if chunks.is_empty() {
-            "".into()
-        } else if chunks.len() == 1 {
-            match chunks.pop().unwrap() {
-                TemplateInputChunk::Raw(s) => s.into(),
-                // Parent is responsible for deferring dynamic templates into a
-                // lambda as needed. This is only necessary for top-level
-                // dynamic templates so we don't want to do it all the time
-                TemplateInputChunk::Key(key) => key.clone().into_ast().into(),
-            }
-        } else {
-            TemplateLiteral {
-                // Convert each chunk and join them together
-                chunks: chunks
-                    .into_iter()
-                    .map(|chunk| chunk.into_ast().s())
-                    .collect::<Vec<_>>()
-                    .into(),
-            }
-            .into()
-        }
+        let chunks = self.chunks.into_iter().map(TemplateInputChunk::into_ast);
+        build_template(chunks)
     }
 }
 

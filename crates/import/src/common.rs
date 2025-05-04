@@ -9,7 +9,7 @@ use petitscript::{
         ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
         FunctionCall, FunctionDefinition, Identifier, ImportDeclaration,
         IntoNode, IntoStatement, Literal, Module, ObjectLiteral, Statement,
-        Walk,
+        TemplateChunk, TemplateLiteral, Walk,
     },
 };
 use slumber_core::{
@@ -52,6 +52,26 @@ pub fn call_fn<const R: usize, const KW: usize>(
         arguments.push(ObjectLiteral::new(kwargs).into());
     }
     FunctionCall::named(name, arguments)
+}
+
+/// Build template chunks into an expression. If there is only one chunk, we can
+/// avoid the template literal and just use a string literal or plain expression
+pub fn build_template(
+    chunks: impl IntoIterator<Item = TemplateChunk>,
+) -> Expression {
+    let mut chunks = chunks.into_iter().collect_vec();
+    // If we only have a single chunk, we can avoid the template.
+    // We can't use pattern matching on an owned vec so we need if chains
+    if chunks.is_empty() {
+        "".into()
+    } else if chunks.len() == 1 {
+        match chunks.pop().unwrap() {
+            TemplateChunk::Literal(literal) => literal.into(),
+            TemplateChunk::Expression(expression) => expression.into_data(),
+        }
+    } else {
+        TemplateLiteral::new(chunks).into()
+    }
 }
 
 /// Convert a list of query parameters pairs into a map. Most formats store

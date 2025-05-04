@@ -2738,6 +2738,7 @@ dependencies = [
  "serde_json",
  "serde_json_path",
  "serde_test",
+ "serde_urlencoded",
  "serde_yaml",
  "slumber_core",
  "slumber_util",

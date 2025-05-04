@@ -3,7 +3,6 @@ import { file } from "slumber";
 export const profiles = {
   env_3b607180e18c41228387930058c9ca43: {
     name: "Local",
-    default: false,
     data: {
       base_field: "base",
       host: "http://localhost:3000",
@@ -12,7 +11,6 @@ export const profiles = {
   },
   env_4fb19173966e42898a0a77f45af591c9: {
     name: "Remote",
-    default: false,
     data: {
       base_field: "base",
       host: "https://httpbin.org",

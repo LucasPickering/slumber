@@ -47,12 +47,10 @@ export const profiles = {
   },
   ["init-fails"]: {
     name: "Request Init Fails",
-    default: false,
     data: {},
   },
   ["request-fails"]: {
     name: "Request Fails",
-    default: false,
     data: {
       host: "http://localhost:5000",
       username: () => `xX${chain_username()}Xx`,

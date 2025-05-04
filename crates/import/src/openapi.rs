@@ -12,11 +12,7 @@ mod resolve;
 
 use crate::{
     ImportCollection,
-    generate::{
-        Authentication, Collection, DuplicateRecipeIdError, Folder, HttpMethod,
-        Profile, ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode,
-        RecipeTree, Template,
-    },
+    common::{Json, build_query_parameters, call_fn},
     openapi::resolve::ReferenceResolver,
 };
 use anyhow::{Context, anyhow};
@@ -27,6 +23,16 @@ use openapiv3::{
     APIKeyLocation, Components, MediaType, OpenAPI, Operation, Parameter,
     PathItem, PathStyle, Paths, ReferenceOr, RequestBody, Schema,
     SecurityScheme, Server,
+};
+use petitscript::ast::{
+    Expression, IntoExpression, TemplateChunk, TemplateLiteral,
+};
+use slumber_core::{
+    collection::{
+        Authentication, DuplicateRecipeIdError, Folder, Profile, ProfileId,
+        Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
+    },
+    http::HttpMethod,
 };
 use slumber_util::{NEW_ISSUE_LINK, ResultTraced};
 use std::{fs::File, iter, path::Path};
@@ -72,16 +78,17 @@ pub fn from_openapi(
     let profiles = build_profiles(servers);
     let recipes = build_recipe_tree(paths, components)?;
 
-    Ok(Collection {
+    Ok(ImportCollection {
+        declarations: Vec::new(), // No dynamic data to care about
         profiles,
         recipes,
-        chains: IndexMap::new(),
-        _ignore: serde::de::IgnoredAny,
     })
 }
 
 /// Build one profile per server
-fn build_profiles(servers: Vec<Server>) -> IndexMap<ProfileId, Profile> {
+fn build_profiles(
+    servers: Vec<Server>,
+) -> IndexMap<ProfileId, Profile<Expression>> {
     servers
         .into_iter()
         .map(|Server { url, variables, .. }| {
@@ -89,11 +96,9 @@ fn build_profiles(servers: Vec<Server>) -> IndexMap<ProfileId, Profile> {
             // Include a "host" variable for each server, but allow the
             // user-defined variables to override that
             let data =
-                iter::once(("host".to_owned(), Template::raw(url.clone())))
+                iter::once(("host".to_owned(), url.clone().into()))
                     .chain(variables.into_iter().flatten().map(
-                        |(name, variable)| {
-                            (name, Template::raw(variable.default))
-                        },
+                        |(name, variable)| (name, variable.default.into()),
                     ))
                     .collect();
             (
@@ -122,9 +127,10 @@ fn build_profiles(servers: Vec<Server>) -> IndexMap<ProfileId, Profile> {
 fn build_recipe_tree(
     paths: Paths,
     components: Option<Components>,
-) -> Result<RecipeTree, DuplicateRecipeIdError> {
+) -> Result<RecipeTree<Expression>, DuplicateRecipeIdError> {
     let reference_resolver = ReferenceResolver::new(components);
-    let mut recipes: IndexMap<RecipeId, RecipeNode> = IndexMap::new();
+    let mut recipes: IndexMap<RecipeId, RecipeNode<Expression>> =
+        IndexMap::new();
 
     // Helper to add a recipe to the tree, and potentially a folder too
     let mut add_recipe = |path: &str, mut operation: Operation, method| {
@@ -236,11 +242,13 @@ struct RecipeBuilder<'a> {
     id: RecipeId,
     name: String,
     method: HttpMethod,
-    url: String,
-    body: Option<RecipeBody>,
-    authentication: Option<Authentication>,
-    query: Vec<(String, Template)>,
-    headers: IndexMap<String, Template>,
+    /// We're going to build up a template literal incrementally, then we'll
+    /// convert to an expression at the end
+    url: Vec<TemplateChunk>,
+    body: Option<RecipeBody<Expression>>,
+    authentication: Option<Authentication<Expression>>,
+    query: Vec<(String, Expression)>,
+    headers: IndexMap<String, Expression>,
     reference_resolver: &'a ReferenceResolver,
 }
 
@@ -251,17 +259,23 @@ impl<'a> RecipeBuilder<'a> {
         reference_resolver: &'a ReferenceResolver,
         path_name: &str,
         method: HttpMethod,
-    ) -> Recipe {
+    ) -> Recipe<Expression> {
         // Use operation_id if one is provided, otherwise generate one
         let id: RecipeId = operation
             .operation_id
             .unwrap_or_else(|| format!("{path_name}-{method}"))
             .into();
         let name = operation.summary.unwrap_or_else(|| path_name.to_owned());
-        // Build the base URL template. We may modify this to replace its path
-        // params with corresponding chain references, so don't convert it into
-        // a template until the end
-        let url = format!("{{{{host}}}}{path_name}");
+
+        // Build a URL from the path name. The `host` profile field should have
+        // been defined separately from the `servers` block of the OpenAPI spec.
+        // The template will look like: `${profile("host")}/path`
+        // This may be modified later on to convert path parameters into
+        // expression chunks
+        let url: Vec<TemplateChunk> = vec![
+            call_fn("profile", ["host".into()], []).into_expr().into(),
+            path_name.into(),
+        ];
 
         let mut builder = Self {
             id,
@@ -281,30 +295,15 @@ impl<'a> RecipeBuilder<'a> {
         builder.process_parameters(operation.parameters);
         builder.process_security(operation.security);
 
-        // Build the URL from the template we generated
-        let url = builder
-            .url
-            .parse()
-            // We just built this template ourselves, so hopefully parsing
-            // doesn't fail. If it does, fall back to the original URL
-            .with_context(|| {
-                format!(
-                "Error generating URL for recipe `{}`; plain path will be used",
-                builder.id
-            )
-            })
-            .traced()
-            .unwrap_or_else(|_| Template::raw(path_name.to_owned()));
-
         Recipe {
             id: builder.id,
             persist: true,
             name: Some(builder.name),
             method: builder.method,
-            url,
+            url: TemplateLiteral::new(builder.url).into(),
             body: builder.body,
             authentication: builder.authentication,
-            query: builder.query,
+            query: build_query_parameters(builder.query),
             headers: builder.headers,
         }
     }
@@ -328,7 +327,7 @@ impl<'a> RecipeBuilder<'a> {
             })
             .for_each(|parameter| match parameter.into_owned() {
                 Parameter::Query { parameter_data, .. } => {
-                    self.query.push((parameter_data.name, Template::default()));
+                    self.query.push((parameter_data.name, "".into()));
                 }
                 Parameter::Header { parameter_data, .. } => {
                     // if the name field is "Accept", "Content-Type" or
@@ -338,26 +337,14 @@ impl<'a> RecipeBuilder<'a> {
                     match name.as_str() {
                         "Accept" | "Content-Type" | "Authorization" => {}
                         _ => {
-                            self.headers.insert(name, Template::default());
+                            self.headers.insert(name, "".into());
                         }
                     }
                 }
                 Parameter::Path {
                     style: PathStyle::Simple,
                     parameter_data,
-                } => {
-                    // Replace path params with a template key. The key probably
-                    // won't refer to anything, but it's better than being
-                    // completely invalid. We have no way of knowing how the
-                    // user actually wants to fill this
-                    // value
-                    let id = parameter_data.name;
-                    // {id} -> {{id}}
-                    self.url = self.url.replace(
-                        &format!("{{{id}}}"),
-                        &format!("{{{{{id}}}}}"),
-                    );
-                }
+                } => replace_path_param(&mut self.url, &parameter_data.name),
                 Parameter::Path {
                     style: PathStyle::Matrix | PathStyle::Label,
                     parameter_data,
@@ -411,19 +398,17 @@ impl<'a> RecipeBuilder<'a> {
                 } => match scheme.as_str() {
                     "Basic" | "basic" => {
                         self.authentication = Some(Authentication::Basic {
-                            username: Template::from_field("username".into()),
-                            password: Some(Template::from_field(
-                                "password".into(),
-                            )),
+                            username: "username".into(),
+                            password: "password".into(),
                         });
                     }
                     "Bearer" | "bearer" => {
-                        let template = bearer_format
+                        let token = bearer_format
                             .clone()
-                            .map(Template::raw)
-                            .unwrap_or_default();
+                            .unwrap_or_default()
+                            .into();
                         self.authentication =
-                            Some(Authentication::Bearer(template));
+                            Some(Authentication::Bearer{token});
                     }
                     unsupported => {
                         error!(
@@ -435,12 +420,12 @@ impl<'a> RecipeBuilder<'a> {
                 {
                     APIKeyLocation::Query => self.query.push((
                         name.clone(),
-                        Template::from_field("api_key".into()),
+                        call_fn("profile", ["api_key".into()], []).into()
                     )),
                     APIKeyLocation::Header => {
                         self.headers.insert(
                             name.clone(),
-                            Template::from_field("api_key".into()),
+                            call_fn("profile", ["api_key".into()], []).into()
                         );
                     }
                     APIKeyLocation::Cookie => {
@@ -502,7 +487,7 @@ impl<'a> RecipeBuilder<'a> {
                     .ok()
             })
             // Sort known content types first (false < true)
-            .sorted_by_key(|body| matches!(body, RecipeBody::Raw(_)))
+            .sorted_by_key(|body| matches!(body, RecipeBody::Raw { .. }))
             .next();
 
         if let Some(body) = body {
@@ -574,10 +559,10 @@ impl<'a> RecipeBuilder<'a> {
         &self,
         mime: &Mime,
         body: serde_json::Value,
-    ) -> anyhow::Result<RecipeBody> {
+    ) -> anyhow::Result<RecipeBody<Expression>> {
         fn unwrap_object(
             value: serde_json::Value,
-        ) -> anyhow::Result<IndexMap<String, Template>> {
+        ) -> anyhow::Result<IndexMap<String, Expression>> {
             // This may not be correct, but we'll just stringify the value as
             // JSON https://swagger.io/docs/specification/describing-request-body/multipart-requests/
             if let serde_json::Value::Object(object) = value {
@@ -586,12 +571,12 @@ impl<'a> RecipeBuilder<'a> {
                     .map(|(key, value)| {
                         // Convert value to string
                         let value = match value {
-                            serde_json::Value::String(s) => s,
+                            serde_json::Value::String(s) => s.into(),
                             // Do *not* prettify here; we want to be able to
                             // show this in one line in the UI
-                            _ => value.to_string(),
+                            _ => value.to_string().into(),
                         };
-                        (key, Template::raw(value))
+                        (key, value)
                     })
                     .collect())
             } else {
@@ -602,19 +587,66 @@ impl<'a> RecipeBuilder<'a> {
         if mime == &mime::APPLICATION_JSON {
             // Currently we don't match against any JSON extensions. Just a
             // shortcut, could fix later
-            Ok(RecipeBody::Json(body))
+            Ok(RecipeBody::Json {
+                data: Json::new(body).into(),
+            })
         } else if mime == &mime::APPLICATION_WWW_FORM_URLENCODED {
             let form = unwrap_object(body)?;
-            Ok(RecipeBody::FormUrlencoded(form))
+            Ok(RecipeBody::FormUrlencoded { data: form })
         } else if mime == &mime::MULTIPART_FORM_DATA {
             let form = unwrap_object(body)?;
-            Ok(RecipeBody::FormMultipart(form))
+            Ok(RecipeBody::FormMultipart { data: form })
         } else {
             warn!(
                 "Unknown content type `{mime}` for body of recipe `{}`",
                 self.id
             );
-            Ok(RecipeBody::Raw(Template::raw(format!("{body:#}"))))
+            Ok(RecipeBody::Raw {
+                data: format!("{body:#}").into(),
+            })
+        }
+    }
+}
+
+/// Replace a path parameter `p` with a call to `profile("p")`. The field
+/// probably actually be in the profile, but it's better than being a completely
+/// invalid URL. We have no way of knowing how the user actually wants to fill
+/// this value.
+#[expect(unstable_name_collisions)]
+fn replace_path_param(url: &mut Vec<TemplateChunk>, parameter: &str) {
+    // This string looks like `{parameter}`
+    let pattern = format!("{{{}}}", parameter);
+
+    // Replace any occurrence of `{parameter}` with a dynamic chunk. We're going
+    // to be adding chunks as we go, so we can't use a for loop.
+    let mut i = 0;
+    while i < url.len() {
+        // unstable: if-let chain
+        if let TemplateChunk::Literal(s) = &url[i] {
+            // This is a bit ugly but it works well enough and the performance
+            // isn't important
+            let new_chunks = s
+                // Replace instances of `{id}` with expression chunks
+                .split(&pattern)
+                .map(|s| TemplateChunk::Literal(s.into()))
+                .intersperse(TemplateChunk::expression(
+                    call_fn("profile", [parameter.into()], []).into_expr(),
+                ))
+                // Remove lingering empty chunks
+                .filter(|chunk| match chunk {
+                    TemplateChunk::Literal(s) => !s.is_empty(),
+                    TemplateChunk::Expression(_) => true,
+                })
+                // Collect is necessary to break the lifetime on s
+                .collect_vec();
+
+            let len = new_chunks.len();
+            // Replace the chunk at i with 1+ new chunks
+            url.splice(i..=i, new_chunks);
+            // Jump past all the chunks we just inserted
+            i += len;
+        } else {
+            i += 1;
         }
     }
 }
@@ -624,10 +656,10 @@ mod tests {
     use super::*;
     use indexmap::indexmap;
     use openapiv3::{Example, Schema, SchemaData, SchemaKind, Type};
-    use petitscript::Engine;
     use pretty_assertions::assert_eq;
     use rstest::{fixture, rstest};
     use serde_json::json;
+    use slumber_core::ps::ENGINE;
     use slumber_util::test_data_dir;
     use std::{path::PathBuf, sync::OnceLock};
 
@@ -636,7 +668,7 @@ mod tests {
     /// reasons:
     /// - It's huge so it makes code hard to navigate
     /// - Changes don't require a re-compile
-    const OPENAPIV3_IMPORTED_FILE: &str = "openapiv3_petstore_imported.js";
+    const OPENAPIV3_EXPECTED_FILE: &str = "openapiv3_petstore_expected.js";
 
     /// Catch-all test for openapiv3 import
     #[rstest]
@@ -646,10 +678,38 @@ mod tests {
         let imported = from_openapi(test_data_dir.join(OPENAPIV3_FILE))
             .unwrap()
             .into_petitscript();
-        let expected = Engine::new()
-            .parse(test_data_dir.join(OPENAPIV3_IMPORTED_FILE))
+        let expected = ENGINE
+            .parse(test_data_dir.join(OPENAPIV3_EXPECTED_FILE))
             .unwrap();
         assert_eq!(&imported, expected.data());
+    }
+
+    #[rstest]
+    #[case::none("/path", &[], &["/path".into()])]
+    // Typically there would be a / in the path but test this to be safe
+    #[case::id_only("{id}", &["id"], &[path_chunk("id")])]
+    #[case::id_first("{id}/path", &["id"], &[path_chunk("id"), "/path".into()])]
+    #[case::id_last("/path/{id}", &["id"], &["/path/".into(), path_chunk("id")])]
+    #[case::dupe_id(
+        "/{id}/{id}",
+        &["id"],
+        &["/".into(), path_chunk("id"), "/".into(), path_chunk("id")],
+    )]
+    #[case::two_params(
+        "/{id1}/{id2}",
+        &["id1", "id2"],
+        &["/".into(), path_chunk("id1"), "/".into(), path_chunk("id2")],
+    )]
+    fn test_replace_path_param(
+        #[case] path: &str,
+        #[case] parameters: &[&str],
+        #[case] expected_chunks: &[TemplateChunk],
+    ) {
+        let mut chunks = vec![path.into()];
+        for parameter in parameters {
+            replace_path_param(&mut chunks, parameter);
+        }
+        assert_eq!(&chunks, expected_chunks);
     }
 
     /// Test various cases of [RequestBuilder::process_body]
@@ -662,7 +722,7 @@ mod tests {
                 ..Default::default()
             }
         )],
-        RecipeBody::untemplated_json(json!({"field": "value"})),
+        json_body(json!({"field": "value"})),
     )]
     #[case::form_urlencoded(
         [(
@@ -672,11 +732,13 @@ mod tests {
                 ..Default::default()
             }
         )],
-        RecipeBody::FormUrlencoded(indexmap! {
-            // Complex value gets stringified
-            "complex".into() => "[1,2]".into(),
-            "field".into() => "value".into(),
-        }),
+        RecipeBody::FormUrlencoded {
+            data: indexmap! {
+                // Complex value gets stringified
+                "complex".into() => "[1,2]".into(),
+                "field".into() => "value".into(),
+            },
+        },
     )]
     #[case::form_multipart(
         [(
@@ -686,11 +748,13 @@ mod tests {
                 ..Default::default()
             }
         )],
-        RecipeBody::FormMultipart(indexmap! {
-            // Complex value gets stringified
-            "complex".into() => "[1,2]".into(),
-            "field".into() => "value".into(),
-        }),
+        RecipeBody::FormMultipart {
+            data: indexmap! {
+                // Complex value gets stringified
+                "complex".into() => "[1,2]".into(),
+                "field".into() => "value".into(),
+            },
+        },
     )]
     #[case::raw(
         [(
@@ -700,10 +764,7 @@ mod tests {
                 ..Default::default()
             }
         )],
-        RecipeBody::Raw {
-            body: "{\n  \"field\": \"value\"\n}".into(),
-            content_type: None
-        },
+        RecipeBody::Raw { data: "{\n  \"field\": \"value\"\n}".into() },
     )]
     // We can load from the `schema.example` field
     #[case::schema_example(
@@ -720,7 +781,7 @@ mod tests {
                 ..Default::default()
             }
         )],
-        RecipeBody::untemplated_json(json!({"field": "value"})),
+        json_body(json!({"field": "value"})),
     )]
     // We can load from the `examples` field
     #[case::examples_map(
@@ -736,7 +797,7 @@ mod tests {
                 ..Default::default()
             }
         )],
-        RecipeBody::untemplated_json(json!({"field": "value"})),
+        json_body(json!({"field": "value"})),
     )]
     // `example`` field takes priority over `schema.example`
     #[case::field_precedence(
@@ -754,7 +815,7 @@ mod tests {
                 ..Default::default()
             }
         )],
-        RecipeBody::untemplated_json(json!({"field": "example"})),
+        json_body(json!({"field": "example"})),
     )]
     // Known content type takes precedence over unknown ones
     #[case::content_type_precedence(
@@ -774,12 +835,12 @@ mod tests {
                 }
             ),
         ],
-        RecipeBody::untemplated_json(json!({"field": "value"})),
+        json_body(json!({"field": "value"})),
     )]
     fn test_process_body(
         mut builder: RecipeBuilder<'static>,
         #[case] body_content: impl IntoIterator<Item = (&'static str, MediaType)>,
-        #[case] expected: RecipeBody,
+        #[case] expected: RecipeBody<Expression>,
     ) {
         let request_body = RequestBody {
             description: None,
@@ -803,7 +864,10 @@ mod tests {
             id: "test".into(),
             name: "test".into(),
             method: HttpMethod::Get,
-            url: "{{host}}/get".into(),
+            url: vec![
+                call_fn("profile", ["host".into()], []).into_expr().into(),
+                "/get".into(),
+            ],
             body: None,
             authentication: None,
             query: Default::default(),
@@ -811,5 +875,17 @@ mod tests {
             reference_resolver: RESOLVER
                 .get_or_init(|| ReferenceResolver::new(None)),
         }
+    }
+
+    fn json_body(value: serde_json::Value) -> RecipeBody<Expression> {
+        RecipeBody::Json {
+            data: Json::new(value).into(),
+        }
+    }
+
+    fn path_chunk(parameter: &str) -> TemplateChunk {
+        TemplateChunk::expression(
+            call_fn("profile", [parameter.into()], []).into(),
+        )
     }
 }

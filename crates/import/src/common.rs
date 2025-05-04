@@ -21,7 +21,7 @@ use slumber_core::{
 };
 use std::collections::HashSet;
 
-// TODO remove words "template" and "procedure" everywhere
+// TODO remove words "template" everywhere
 
 impl ImportCollection {
     /// Generate a PetitScript AST for this collection. The AST can then be
@@ -96,12 +96,16 @@ pub struct Json {
 }
 
 impl Json {
-    pub fn parse(input: &str) -> Result<Self, serde_json::Error> {
-        let value = serde_json::from_str(input)?;
-        Ok(Self {
+    pub fn new(value: serde_json::Value) -> Self {
+        Self {
             value,
             convert_string: Expression::from,
-        })
+        }
+    }
+
+    pub fn parse(input: &str) -> Result<Self, serde_json::Error> {
+        let value = serde_json::from_str(input)?;
+        Ok(Self::new(value))
     }
 }
 
@@ -208,10 +212,18 @@ impl IntoPetitAst for Profile<Expression> {
 
     /// Generate an object literal representing a profile
     fn into_ast(self) -> Self::Output {
-        ObjectLiteral::new([
-            ("name", self.name.into()),
-            ("default", self.default.into()),
-            ("data", Deferred(self.data).into_ast().into()),
+        ObjectLiteral::filtered([
+            ("name", Some(self.name.into())),
+            (
+                "default",
+                // Omit if disabled, to reduce noise
+                if self.default {
+                    Some(true.into())
+                } else {
+                    None
+                },
+            ),
+            ("data", Some(Deferred(self.data).into_ast().into())),
         ])
     }
 }
@@ -413,9 +425,9 @@ impl IntoPetitAst for Deferred<QueryParameterValue<Expression>> {
 
     fn into_ast(self) -> Self::Output {
         match self.0 {
-            QueryParameterValue::Single(procedure) => {
+            QueryParameterValue::Single(expression) => {
                 // Defer to Deferred!
-                Deferred(procedure).into_ast()
+                Deferred(expression).into_ast()
             }
             QueryParameterValue::Many(mut expressions) => {
                 // If _any_ expression is dynamic, we need to defer the whole

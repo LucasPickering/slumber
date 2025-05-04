@@ -8,12 +8,12 @@
 
 mod common;
 mod insomnia;
-// mod openapi;
+mod openapi;
 // mod rest;
 mod legacy;
 
 pub use insomnia::from_insomnia;
-// pub use openapi::from_openapi;
+pub use openapi::from_openapi;
 // pub use rest::from_rest;
 pub use legacy::from_legacy;
 
@@ -34,9 +34,5 @@ pub struct ImportCollection {
 }
 
 pub fn from_rest(_: impl AsRef<Path>) -> anyhow::Result<ImportCollection> {
-    todo!()
-}
-
-pub fn from_openapi(_: impl AsRef<Path>) -> anyhow::Result<ImportCollection> {
     todo!()
 }

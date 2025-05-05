@@ -8,7 +8,7 @@ mod recipe_tree;
 pub use models::*;
 pub use recipe_tree::*;
 
-use crate::petit::PetitEngine;
+use crate::petit;
 use anyhow::{Context as _, anyhow};
 use itertools::Itertools;
 use petitscript::Process;
@@ -71,11 +71,8 @@ impl CollectionFile {
     /// the file. The returned value will contain the loaded collection as well
     /// as the PS process that loaded it. The process can be used to invoke
     /// render functions.
-    pub fn load(
-        &self,
-        engine: &PetitEngine,
-    ) -> anyhow::Result<LoadedCollection> {
-        engine.load_collection(self.0.clone())
+    pub fn load(&self) -> anyhow::Result<LoadedCollection> {
+        petit::load_collection(self.0.clone())
     }
 
     /// Get the path of the file that this collection was loaded from
@@ -236,8 +233,7 @@ mod tests {
     async fn test_regression(test_data_dir: PathBuf) {
         let LoadedCollection {
             collection: actual, ..
-        } = PetitEngine::new()
-            .load_collection(test_data_dir.join("regression.js"))
+        } = petit::load_collection(test_data_dir.join("regression.js"))
             .unwrap();
 
         // Define some common procedures that are used several times

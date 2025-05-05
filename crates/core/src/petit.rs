@@ -10,8 +10,8 @@ use crate::collection::{Collection, LoadedCollection};
 use anyhow::Context;
 use itertools::Itertools;
 use petitscript::{
-    Engine, Process, Source, Value,
-    ast::{Expression, FunctionCall, IntoNode, Module, ObjectLiteral},
+    Engine, Source, Value,
+    ast::{Expression, FunctionCall, ObjectLiteral},
 };
 use serde::de::IntoDeserializer;
 use std::sync::LazyLock;
@@ -21,8 +21,8 @@ use tracing::{info, info_span};
 pub const MODULE_NAME: &str = "slumber";
 
 /// The PetitScript engine that serves all our Petit needs. We can share one
-/// engine across the entire program, and across all tests. This bad boy will
-/// be configured to run any Slumber action you can throw at it.
+/// engine across the entire program and all tests. This bad boy will be
+/// configured to run any Slumber action you can throw at it.
 pub static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
     let _span = info_span!("Initializing PetitScript engine").entered();
     Engine::builder()
@@ -31,44 +31,20 @@ pub static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
         .build()
 });
 
-/// An interface for invoking PetitScript. This is cheaply cloneable so it can
-/// be shared between threads.
-///
-/// TODO get rid of this?
-#[derive(Clone, derive_more::Debug)]
-pub struct PetitEngine {}
+/// Load a recipe collection from a PS source. Typically the source is a
+/// path to a file, but other source types are supported for testing. The source
+/// will be compiled and executed, and the exported values are expected to
+/// contain the fields of the collection. In addition to returning the
+/// deserialized collection, this will also return the process from which it
+/// was loaded so that we can execute further functions.
+pub fn load_collection(
+    source: impl Source,
+) -> anyhow::Result<LoadedCollection> {
+    info!(?source, "Loading collection file");
 
-impl PetitEngine {
-    /// TODO
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    /// Load a recipe collection from a PS source. Typically the source is a
-    /// path to a file, but other source types are supported for testing. Also
-    /// return the process that it was loaded from, so we can execute further
-    /// functions
-    pub fn load_collection(
-        &self,
-        source: impl Source,
-    ) -> anyhow::Result<LoadedCollection> {
-        info!(?source, "Loading collection file");
-
-        let error_context = format!("Error loading collection from {source:?}");
-        let load = || {
-            let process = ENGINE.compile(source)?;
-            Self::todo2(process)
-        };
-        load().context(error_context)
-    }
-
-    /// TODO test only
-    pub fn todo(&self, module: Module) -> anyhow::Result<LoadedCollection> {
-        let process = ENGINE.compile_ast(module.s())?;
-        Self::todo2(process)
-    }
-
-    fn todo2(process: Process) -> anyhow::Result<LoadedCollection> {
+    let error_context = format!("Error loading collection from {source:?}");
+    let load = || {
+        let process = ENGINE.compile(source)?;
         let exports = process.execute()?;
         // Collection components (profiles, requests, etc.) should be
         // exported individually. We can treat the whole set of named
@@ -81,13 +57,8 @@ impl PetitEngine {
             process,
             collection,
         })
-    }
-}
-
-impl Default for PetitEngine {
-    fn default() -> Self {
-        Self::new()
-    }
+    };
+    load().context(error_context)
 }
 
 /// Generate a function call expression for a native function by name. Pass `R`

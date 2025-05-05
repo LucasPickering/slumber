@@ -56,7 +56,7 @@ mod tests {
             RecipeNode,
         },
         http::HttpMethod,
-        petit::{self, PetitEngine},
+        petit,
         render::Procedure,
         test_util::by_id,
     };
@@ -106,7 +106,7 @@ mod tests {
     fn test_deserialize() {
         let LoadedCollection {
             collection: actual, ..
-        } = PetitEngine::new().load_collection(SOURCE).unwrap();
+        } = petit::load_collection(SOURCE).unwrap();
         let url = Procedure::template([
             // `${profile("host")}/anything`
             TemplateChunk::expression(petit::profile_field("host").into()),

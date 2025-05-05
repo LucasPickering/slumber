@@ -16,7 +16,6 @@ use slumber_core::{
         Exchange, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
         TriggeredRequestError,
     },
-    petit::PetitEngine,
     render::{
         HttpProvider, OverrideKey, OverrideValue, Prompt, Prompter,
         RenderContext, Renderer, Select,
@@ -187,11 +186,10 @@ impl BuildRequestCommand {
     {
         let collection_file = global.collection_file()?;
         let config = Config::load()?;
-        let engine = PetitEngine::new();
         let LoadedCollection {
             collection,
             process,
-        } = collection_file.load(&engine)?;
+        } = collection_file.load()?;
         // Open DB in readonly. Storing requests in history from the CLI isn't
         // really intuitive, and could have a large perf impact for scripting
         // and large responses

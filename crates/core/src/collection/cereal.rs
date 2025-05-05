@@ -138,11 +138,14 @@ pub mod serde_recipe_body {
         #[derive(Deserialize)]
         #[serde(untagged, rename_all = "camelCase")]
         enum RecipeBodyWrapper<P> {
+            // The body variant must come first to give it higher priority,
+            // because the raw variant will accept any expression
             RecipeBody(RecipeBody<P>),
             Raw(P),
         }
 
-        // TODO explain
+        // Support internally tagged enums for any body type. Also support bare
+        // expressions for a raw body
         let wrapper = RecipeBodyWrapper::deserialize(deserializer)?;
         match wrapper {
             RecipeBodyWrapper::RecipeBody(body) => Ok(Some(body)),
@@ -191,4 +194,6 @@ mod tests {
             expected_error
         );
     }
+
+    // TODO test recipe body deserialization
 }

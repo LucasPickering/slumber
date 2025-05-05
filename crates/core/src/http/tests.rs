@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::{
-    collection::{Authentication, Collection, LoadedCollection, Profile},
-    petit::PetitEngine,
+    collection::{Authentication, Collection, Profile},
+    petit,
     render::RenderContext,
     test_util::{TestPrompter, by_id, header_map, http_engine},
 };
@@ -31,8 +31,11 @@ fn renderer(
     let profile = Profile::factory(());
     let profile_id = profile.id.clone();
 
-    let LoadedCollection { process, .. } =
-        PetitEngine::new().load_collection("").unwrap();
+    // Since we're creating the collection programatically, we don't have PS
+    // source code to load the process from. Fortunately we can just create an
+    // empty process, as there won't be any functions in the collection to
+    // invoke.
+    let process = petit::ENGINE.compile("").unwrap();
     let collection = Collection {
         recipes: by_id([recipe]).into(),
         profiles: by_id([profile]),

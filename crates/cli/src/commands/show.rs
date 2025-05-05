@@ -5,7 +5,6 @@ use slumber_config::Config;
 use slumber_core::{
     collection::{CollectionFile, LoadedCollection},
     database::Database,
-    petit::PetitEngine,
 };
 use slumber_util::paths;
 use std::{borrow::Cow, process::ExitCode};
@@ -50,7 +49,7 @@ impl Subcommand for ShowCommand {
             ShowTarget::Collection => {
                 let collection_file = CollectionFile::new(global.file)?;
                 let LoadedCollection { collection, .. } =
-                    collection_file.load(&PetitEngine::new())?;
+                    collection_file.load()?;
                 // TODO yaml bad
                 println!("{}", to_yaml(&collection));
             }

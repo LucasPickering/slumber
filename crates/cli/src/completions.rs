@@ -10,7 +10,6 @@ use clap_complete::CompletionCandidate;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::Database,
-    petit::PetitEngine,
 };
 use std::{ffi::OsStr, ops::Deref};
 
@@ -62,7 +61,7 @@ fn load_collection() -> anyhow::Result<Collection> {
     // For now we just lean on the default collection paths. In the future we
     // should be able to look for a --file arg in the command and use that path
     let collection_file = CollectionFile::new(None)?;
-    let collection = collection_file.load(&PetitEngine::new())?;
+    let collection = collection_file.load()?;
     Ok(collection.collection)
 }
 

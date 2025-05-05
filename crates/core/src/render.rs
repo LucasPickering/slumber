@@ -552,8 +552,6 @@ mod tests {
     use rstest::rstest;
     use slumber_util::assert_err;
 
-    // TODO more tests
-
     #[rstest]
     #[case::url("url", OverrideKey::Url)]
     #[case::profile("profile.field", OverrideKey::Profile("field".into()))]

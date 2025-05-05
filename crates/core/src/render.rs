@@ -383,6 +383,8 @@ impl FromStr for OverrideKey {
                 .parse_next(input)
         }
 
+        // ===== READ THIS =====
+        // If you modify this parsing, update the help docs on --override
         alt((
             "url".map(|_| Self::Url),
             "body".map(|_| Self::Body),

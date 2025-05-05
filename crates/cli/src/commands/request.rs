@@ -87,7 +87,38 @@ pub struct BuildRequestCommand {
     )]
     profile: Option<ProfileId>,
 
-    /// List of key=value field overrides. TODO more detail
+    /// List of key=value field overrides
+    ///
+    /// Available keys:
+    ///
+    /// profile.<field>: Override a single field in the selected profile
+    ///
+    /// url: Override entire URL
+    ///
+    /// body: Override entire body text
+    ///
+    /// query.<query>: Override all values for a query parameter
+    ///
+    /// query.<query>.<index>: Override a single value for a query parameter
+    ///   that appears multiple times. Index starts at 0
+    ///
+    /// headers.<header>: Override value for a header
+    ///
+    /// form.<field>: Override value for a single field in a form body
+    ///
+    /// auth.username: Override username for Basic authentication
+    ///
+    /// auth.password: Override password for Basic authentication
+    ///
+    /// auth.token: Override token for Bearer authentication
+    ///
+    /// Examples
+    ///
+    ///     -o profile.host=http://localhost
+    ///
+    ///     -o query.foo=bar
+    ///
+    ///     -o query.foo.0=bar -o query.foo.1=baz
     #[clap(
         long = "override",
         short = 'o',

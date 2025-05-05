@@ -12,7 +12,7 @@ mod resolve;
 
 use crate::{
     ImportCollection,
-    common::{Json, build_query_parameters, profile_field},
+    common::{Json, build_query_parameters},
     openapi::resolve::ReferenceResolver,
 };
 use anyhow::{Context, anyhow};
@@ -33,6 +33,7 @@ use slumber_core::{
         Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
+    ps,
 };
 use slumber_util::{NEW_ISSUE_LINK, ResultTraced};
 use std::{fs::File, iter, path::Path};
@@ -274,8 +275,10 @@ impl<'a> RecipeBuilder<'a> {
         // The template will look like: `${profile("host")}/path`
         // This may be modified later on to convert path parameters into
         // expression chunks
-        let url: Vec<TemplateChunk> =
-            vec![profile_field("host").into_expr().into(), path_name.into()];
+        let url: Vec<TemplateChunk> = vec![
+            ps::profile_field("host").into_expr().into(),
+            path_name.into(),
+        ];
 
         let mut builder = Self {
             id,
@@ -420,12 +423,12 @@ impl<'a> RecipeBuilder<'a> {
                 {
                     APIKeyLocation::Query => self.query.push((
                         name.clone(),
-                        profile_field("api_key").into()
+                        ps::profile_field("api_key").into()
                     )),
                     APIKeyLocation::Header => {
                         self.headers.insert(
                             name.clone(),
-                            profile_field("api_key").into()
+                            ps::profile_field("api_key").into()
                         );
                     }
                     APIKeyLocation::Cookie => {
@@ -630,7 +633,7 @@ fn replace_path_param(url: &mut Vec<TemplateChunk>, parameter: &str) {
                 .split(&pattern)
                 .map(|s| TemplateChunk::Literal(s.into()))
                 .intersperse(TemplateChunk::expression(
-                    profile_field(parameter).into_expr(),
+                    ps::profile_field(parameter).into_expr(),
                 ))
                 // Remove lingering empty chunks
                 .filter(|chunk| match chunk {
@@ -864,7 +867,10 @@ mod tests {
             id: "test".into(),
             name: "test".into(),
             method: HttpMethod::Get,
-            url: vec![profile_field("host").into_expr().into(), "/get".into()],
+            url: vec![
+                ps::profile_field("host").into_expr().into(),
+                "/get".into(),
+            ],
             body: None,
             authentication: None,
             query: Default::default(),
@@ -881,6 +887,6 @@ mod tests {
     }
 
     fn path_chunk(parameter: &str) -> TemplateChunk {
-        TemplateChunk::expression(profile_field(parameter).into())
+        TemplateChunk::expression(ps::profile_field(parameter).into())
     }
 }

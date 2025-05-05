@@ -144,8 +144,14 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{http::HttpMethod, render::Procedure, test_util::by_id};
+    use crate::{
+        http::HttpMethod,
+        ps::{self, call_fn, profile_field},
+        render::Procedure,
+        test_util::by_id,
+    };
     use indexmap::indexmap;
+    use petitscript::ast::{FunctionCall, TemplateChunk};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde_json::json;
@@ -235,11 +241,21 @@ mod tests {
             .unwrap();
 
         // Define some common procedures that are used several times
-        let url = Procedure::parse(
-            r#"`${profile("host")}/anything/${profile("userGuid")}`"#,
-        );
-        let password = Procedure::parse(
-            r#"prompt({ message: "Password", sensitive: true })"#,
+        let url = Procedure::template([
+            TemplateChunk::expression(ps::profile_field("host").into()),
+            "/anything/".into(),
+            TemplateChunk::expression(ps::profile_field("userGuid").into()),
+        ]);
+        let password = Procedure::test(
+            call_fn(
+                "prompt",
+                [],
+                [
+                    ("message", Some("Password".into())),
+                    ("sensitive", Some(true.into())),
+                ],
+            )
+            .into(),
         );
 
         let expected = Collection {
@@ -248,13 +264,21 @@ mod tests {
                     id: "profile1".into(),
                     name: Some("Profile 1".into()),
                     default: false,
-                    data: indexmap! {
-                        "userGuid".into() => "abc123".into(),
-                        "username".into() => Procedure::parse(
-                            r#"`xX${username()}Xx`"#,
+                    data: [
+                        ("userGuid".into(), "abc123".into()),
+                        (
+                            "username".into(),
+                            Procedure::template([
+                                "xX".into(),
+                                TemplateChunk::expression(
+                                    FunctionCall::named("username", []).into(),
+                                ),
+                                "Xx".into(),
+                            ]),
                         ),
-                        "host".into() => "https://httpbin.org".into(),
-                    },
+                        ("host".into(), "https://httpbin.org".into()),
+                    ]
+                    .into(),
                 },
                 Profile {
                     id: "profile2".into(),
@@ -269,14 +293,24 @@ mod tests {
                 RecipeNode::Recipe(Recipe {
                     id: "textBody".into(),
                     method: HttpMethod::Post,
-                    url: Procedure::parse(
-                        r#"`${profile("host")}/anything/login`"#,
-                    ),
-                    body: Some(RecipeBody::Raw {
-                        data: Procedure::parse(
-                            "`{\"username\": \"${profile(\"username\")}\", \
-                            \"password\": \"${password()}\"}`",
+                    url: Procedure::template([
+                        TemplateChunk::expression(
+                            ps::profile_field("host").into(),
                         ),
+                        "/anything/login".into(),
+                    ]),
+                    body: Some(RecipeBody::Raw {
+                        data: Procedure::template([
+                            r#"{"username": ""#.into(),
+                            TemplateChunk::expression(
+                                profile_field("username").into(),
+                            ),
+                            r#"", "password": ""#.into(),
+                            TemplateChunk::expression(
+                                FunctionCall::named("password", []).into(),
+                            ),
+                            r#""}"#.into(),
+                        ]),
                     }),
                     query: indexmap! {
                         "sudo".into() => "yes_please".into(),
@@ -299,11 +333,11 @@ mod tests {
                             url: url.clone(),
                             query: indexmap! {
                                 "value".into() => [
-                                    Procedure::parse(
-                                        r#"profile("field1")"#,
+                                    Procedure::test(
+                                        ps::profile_field("field1").into()
                                     ),
-                                    Procedure::parse(
-                                        r#"profile("field2")"#,
+                                    Procedure::test(
+                                        ps::profile_field("field2").into()
                                     ),
                                 ].into(),
                             },
@@ -319,7 +353,9 @@ mod tests {
                                     .into(),
                             }),
                             authentication: Some(Authentication::Bearer {
-                                token: Procedure::parse("authToken()"),
+                                token: Procedure::test(
+                                    FunctionCall::named("authToken", []).into(),
+                                ),
                             }),
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
@@ -336,8 +372,8 @@ mod tests {
                                     .into(),
                             }),
                             authentication: Some(Authentication::Basic {
-                                username: Procedure::parse(
-                                    r#"profile("username")"#,
+                                username: Procedure::test(
+                                    ps::profile_field("username").into(),
                                 ),
                                 password: password.clone(),
                             }),

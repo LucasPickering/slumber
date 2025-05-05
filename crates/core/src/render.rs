@@ -37,7 +37,7 @@ use winnow::{
 /// The name "procedure" is fairly arbitrary, but it's specific and unique so
 /// it works. This is the successor to Slumber's previous "template" system,
 /// which were declarative strings.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(into = "Value", from = "Value")]
 pub struct Procedure(Value);
 
@@ -46,24 +46,28 @@ impl Procedure {
         Self(value.into())
     }
 
-    /// TODO
+    /// Programatically build a procedure from an expression. Used for building
+    /// expected values in a test assertion
     #[cfg(any(test, feature = "test"))]
-    pub fn parse(source: &'static str) -> Self {
-        use crate::ps::ENGINE;
-        use petitscript::ast::{FunctionBody, FunctionDefinition, Statement};
-        let module = ENGINE.parse(source).unwrap();
-        let Statement::Expression(expression) = &*module.statements[0] else {
-            todo!()
-        };
+    pub fn test(expression: petitscript::ast::Expression) -> Self {
+        use petitscript::ast::{FunctionBody, FunctionDefinition};
 
         Self(Value::Function(Function::user(
-            FunctionDefinition::new(
-                [],
-                FunctionBody::expression(expression.data().clone()),
-            )
-            .into(),
+            FunctionDefinition::new([], FunctionBody::expression(expression))
+                .into(),
             Default::default(),
         )))
+    }
+
+    /// [Procedure::test] specifically for template literal expressions. Saves a
+    /// level of indentation
+    #[cfg(any(test, feature = "test"))]
+    pub fn template(
+        chunks: impl IntoIterator<Item = petitscript::ast::TemplateChunk>,
+    ) -> Self {
+        use petitscript::ast::TemplateLiteral;
+
+        Self::test(TemplateLiteral::new(chunks).into())
     }
 
     /// Is the procedure a function that will be rendered dynamically into
@@ -75,6 +79,26 @@ impl Procedure {
     /// Get the inner PS value
     pub fn into_value(self) -> Value {
         self.0
+    }
+}
+
+impl Debug for Procedure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // For dynamic procedures, ignore the name and captures in the function
+        // definition. These are implementation details of PS and not relevant
+        // to use. We use the same logic in the PartialEq impl, ignoring those
+        // fields during comparisons. With those fields included in the Debug
+        // impl, the assertion output from pretty_assertions identifies a lot
+        // of false diff for failed assertions, making it hard to debug test
+        // failures.
+        if let Value::Function(Function::User { definition, .. }) = &self.0 {
+            f.debug_struct("Procedure (dynamic)")
+                .field("parameters", &definition.parameters)
+                .field("body", &definition.body)
+                .finish()
+        } else {
+            f.debug_tuple("Procedure").field(&self.0).finish()
+        }
     }
 }
 

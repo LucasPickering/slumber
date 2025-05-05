@@ -30,35 +30,6 @@ impl ImportCollection {
     }
 }
 
-/// Generate a function call expression for a native function by name. Pass `R`
-/// required arguments plus one keyword argument of `KW` entries. Any empty
-/// kwargs will be omitted. If all kwargs are empty, omit the entire kwargs
-/// object.
-///
-/// It would be nice to leverage static typing since we can access the Rust
-/// functions, but it adds a lot of complexity that isn't worth it.
-pub fn call_fn<const R: usize, const KW: usize>(
-    name: &'static str,
-    required: [Expression; R],
-    kwargs: [(&str, Option<Expression>); KW],
-) -> FunctionCall {
-    let mut arguments: Vec<Expression> = required.into();
-    let kwargs = kwargs
-        .into_iter()
-        .filter_map(|(k, v)| Some((k, v?)))
-        .collect_vec();
-    if !kwargs.is_empty() {
-        arguments.push(ObjectLiteral::new(kwargs).into());
-    }
-    FunctionCall::named(name, arguments)
-}
-
-/// Generate a function call expression to the `profile()` function for a
-/// particular field
-pub fn profile_field(field: impl Into<String>) -> FunctionCall {
-    call_fn("profile", [field.into().into()], [])
-}
-
 /// Build template chunks into an expression. If there is only one chunk, we can
 /// avoid the template literal and just use a string literal or plain expression
 pub fn build_template(

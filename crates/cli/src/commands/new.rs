@@ -47,6 +47,7 @@ impl Subcommand for NewCommand {
 mod tests {
     use super::*;
     use indexmap::indexmap;
+    use petitscript::ast::{Expression, TemplateChunk};
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use slumber_core::{
@@ -55,7 +56,7 @@ mod tests {
             RecipeNode,
         },
         http::HttpMethod,
-        ps::PetitEngine,
+        ps::{self, PetitEngine},
         render::Procedure,
         test_util::by_id,
     };
@@ -106,6 +107,11 @@ mod tests {
         let LoadedCollection {
             collection: actual, ..
         } = PetitEngine::new().load_collection(SOURCE).unwrap();
+        let url = Procedure::template([
+            // `${profile("host")}/anything`
+            TemplateChunk::expression(ps::profile_field("host").into()),
+            "/anything".into(),
+        ]);
         let expected = Collection {
             profiles: by_id([Profile {
                 id: "example".into(),
@@ -120,7 +126,7 @@ mod tests {
                     id: "example1".into(),
                     name: Some("Example Request 1".into()),
                     method: HttpMethod::Get,
-                    url: Procedure::parse(r#"`${profile("host")}/anything`"#),
+                    url: url.clone(),
                     ..Recipe::factory(())
                 }),
                 RecipeNode::Folder(Folder {
@@ -130,12 +136,21 @@ mod tests {
                         id: "example2".into(),
                         name: Some("Example Request 2".into()),
                         method: HttpMethod::Post,
-                        url: Procedure::parse(
-                            r#"`${profile("host")}/anything`"#,
-                        ),
+                        url,
                         body: Some(RecipeBody::Json {
-                            data: Procedure::parse(
-                                r#"JSON.parse(response("example1")).data"#,
+                            data: Procedure::test(
+                                // JSON.parse(response("example1")).data
+                                Expression::reference("JSON")
+                                    .call(
+                                        "parse",
+                                        [ps::call_fn(
+                                            "response",
+                                            ["example1".into()],
+                                            [],
+                                        )
+                                        .into()],
+                                    )
+                                    .property("data"),
                             ),
                         }),
                         ..Recipe::factory(())

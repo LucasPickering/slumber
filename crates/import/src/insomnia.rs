@@ -3,7 +3,7 @@
 
 use crate::{
     ImportCollection,
-    common::{self, Json, call_fn},
+    common::{self, Json},
 };
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
@@ -18,6 +18,7 @@ use slumber_core::{
         RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
+    ps,
 };
 use slumber_util::{HasId, NEW_ISSUE_LINK};
 use std::{
@@ -414,7 +415,10 @@ impl From<FormParam> for (String, Expression) {
                     );
                     String::default()
                 });
-                (param.name, call_fn("file", [path.into()], []).into_expr())
+                (
+                    param.name,
+                    ps::call_fn("file", [path.into()], []).into_expr(),
+                )
             }
         }
     }

@@ -4,7 +4,7 @@
 
 use crate::{
     ImportCollection,
-    common::{Json, build_template, call_fn, profile_field},
+    common::{Json, build_template},
 };
 use indexmap::IndexMap;
 use mime::Mime;
@@ -21,6 +21,7 @@ use slumber_core::{
         RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
+    ps,
 };
 use std::path::Path;
 use tracing::error;
@@ -175,7 +176,7 @@ fn build_body(body: RestBody, mime: Option<Mime>) -> RecipeBody<Expression> {
             // type; just treat it as raw text
             let path = template_to_expression(filepath);
             return RecipeBody::Raw {
-                data: call_fn("file", [path], []).into(),
+                data: ps::call_fn("file", [path], []).into(),
             };
         }
     };
@@ -260,7 +261,7 @@ fn template_to_expression(template: Template) -> Expression {
     let chunks = template.parts.into_iter().map(|part| match part {
         TemplatePart::Text(text) => TemplateChunk::Literal(text),
         TemplatePart::Variable(field) => {
-            TemplateChunk::expression(profile_field(field).into())
+            TemplateChunk::expression(ps::profile_field(field).into())
         }
     });
     build_template(chunks)
@@ -346,7 +347,7 @@ mod tests {
         assert_eq!(
             recipe.body,
             Some(RecipeBody::Raw {
-                data: call_fn(
+                data: ps::call_fn(
                     "file",
                     ["./test_data/rest_pets.json".into()],
                     []
@@ -400,7 +401,7 @@ mod tests {
                 data: ObjectLiteral::new([
                     ("animal", "penguin".into()),
                     // Nested template should be parsed
-                    ("name", profile_field("FIRST").into()),
+                    ("name", ps::profile_field("FIRST").into()),
                 ])
                 .into()
             }
@@ -429,8 +430,8 @@ mod tests {
             body,
             RecipeBody::FormUrlencoded {
                 data: IndexMap::from([
-                    ("first".into(), profile_field("FIRST").into()),
-                    ("last".into(), profile_field("LAST").into())
+                    ("first".into(), ps::profile_field("FIRST").into()),
+                    ("last".into(), ps::profile_field("LAST").into())
                 ])
             }
         );

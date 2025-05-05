@@ -1778,6 +1778,7 @@ dependencies = [
 [[package]]
 name = "petitscript"
 version = "0.1.0"
+source = "git+https://github.com/LucasPickering/petitscript#d1a3ff85d24ea2417020bdc5f37fce4421933096"
 dependencies = [
  "bytes",
  "indexmap",

@@ -85,7 +85,7 @@ fn convert_chains(chains: IndexMap<ChainId, Chain>) -> Vec<Declaration> {
     let chains = sort_chains(chains);
     chains
         .into_iter()
-        .map(|(name, definition)| definition.declare(Identifier::new(name)))
+        .map(|(identifier, definition)| definition.declare(identifier))
         .collect()
 }
 
@@ -93,14 +93,14 @@ fn convert_chains(chains: IndexMap<ChainId, Chain>) -> Vec<Declaration> {
 /// come after their dependencies. For example, if `b` calls `a()`, then `a()`
 /// must come before `b()`.
 fn sort_chains(
-    chains: Vec<(String, FunctionDefinition)>,
-) -> Vec<(String, FunctionDefinition)> {
+    chains: Vec<(Identifier, FunctionDefinition)>,
+) -> Vec<(Identifier, FunctionDefinition)> {
     struct ChainFunction {
-        name: String,
+        name: Identifier,
         definition: FunctionDefinition,
         dependencies: Dependencies,
     }
-    struct Dependencies(HashSet<String>);
+    struct Dependencies(HashSet<Identifier>);
 
     /// Find all called chain functions in a single function body
     impl AstVisitor for Dependencies {
@@ -108,7 +108,7 @@ fn sort_chains(
             // unstable: if-let chain
             if let Expression::Identifier(identifier) = call.function.data() {
                 if identifier.as_str().starts_with(CHAIN_FN_PREFIX) {
-                    self.0.insert(identifier.to_string());
+                    self.0.insert(identifier.data().clone());
                 }
             }
         }
@@ -200,7 +200,7 @@ fn sort_chains(
 /// equivalent to evaluating this chain. We don't want to compose the parts into
 /// a declaration yet, because it makes sorting by dependency harder.
 impl IntoPetitAst for Chain {
-    type Output = (String, FunctionDefinition);
+    type Output = (Identifier, FunctionDefinition);
 
     fn into_ast(self) -> Self::Output {
         /// Build an arg list of `R` required arguments plus one keyword
@@ -322,12 +322,12 @@ impl IntoPetitAst for Chain {
         }
 
         let name = chain_id_to_function(&self.id);
-        let definition = FunctionDefinition::new(
+        let identifier = FunctionDefinition::new(
             // Chains don't accept params, so the function won't either
             [],
             FunctionBody::expression(body_expression),
         );
-        (name, definition)
+        (name, identifier)
     }
 }
 
@@ -518,10 +518,9 @@ impl IntoPetitAst for TemplateKey {
             // `{{chains.chain1}}` -> `chain_chain1()`
             // Chain functions are always nullary because old chain references
             // had no way of passing arguments
-            TemplateKey::Chain(chain_id) => FunctionCall::named(
-                Identifier::new(chain_id_to_function(&chain_id)),
-                [],
-            ),
+            TemplateKey::Chain(chain_id) => {
+                FunctionCall::named(chain_id_to_function(&chain_id), [])
+            }
             // `{{env.VAR1}}` -> `env('VAR1')`
             TemplateKey::Environment(identifier) => {
                 FunctionCall::named("env", [identifier.to_string().into_expr()])
@@ -531,9 +530,9 @@ impl IntoPetitAst for TemplateKey {
 }
 
 /// Get a function name from a chain ID
-fn chain_id_to_function(chain_id: &ChainId) -> String {
-    // TODO normalize ID to make sure it's a valid fn name
-    format!("{CHAIN_FN_PREFIX}{}", chain_id.0)
+fn chain_id_to_function(chain_id: &ChainId) -> Identifier {
+    // TODO escape ID so parsing can never fail
+    Identifier::try_from(format!("{CHAIN_FN_PREFIX}{}", chain_id.0)).unwrap()
 }
 
 /// Apply a transformation function to each element in a map

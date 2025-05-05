@@ -1,6 +1,5 @@
 use crate::{GlobalArgs, Subcommand};
 use clap::Parser;
-use serde::Serialize;
 use slumber_config::Config;
 use slumber_core::{
     collection::{CollectionFile, LoadedCollection},
@@ -44,21 +43,18 @@ impl Subcommand for ShowCommand {
             }
             ShowTarget::Config => {
                 let config = Config::load()?;
-                println!("{}", to_yaml(&config));
+                println!("{}", serde_yaml::to_string(&config).unwrap());
             }
             ShowTarget::Collection => {
                 let collection_file = CollectionFile::new(global.file)?;
                 let LoadedCollection { collection, .. } =
                     collection_file.load()?;
-                // TODO yaml bad
-                println!("{}", to_yaml(&collection));
+                println!(
+                    "{:#}",
+                    petitscript::serde::to_value(&collection).unwrap()
+                );
             }
         }
         Ok(ExitCode::SUCCESS)
     }
-}
-
-fn to_yaml<T: Serialize>(value: &T) -> String {
-    // Panic is intentional, indicates a wonky bug
-    serde_yaml::to_string(value).expect("Error serializing")
 }

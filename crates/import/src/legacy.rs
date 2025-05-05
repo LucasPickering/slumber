@@ -26,7 +26,7 @@ use petitscript::ast::{
 };
 use slumber_core::{
     collection::{self as core, RecipeTree},
-    ps,
+    petit,
 };
 use slumber_util::parse_yaml;
 use std::{
@@ -227,19 +227,19 @@ impl IntoPetitAst for Chain {
         // single function call
         let is_prompt = matches!(&self.source, ChainSource::Prompt { .. });
         let mut body_expression = match self.source {
-            ChainSource::Command { command, stdin } => ps::call_fn(
+            ChainSource::Command { command, stdin } => petit::call_fn(
                 "command",
                 [command.into_ast().into()],
                 [("stdin", stdin.map(Template::into_ast))],
             ),
             ChainSource::Environment { variable } => {
-                ps::call_fn("env", [variable.into_ast()], [])
+                petit::call_fn("env", [variable.into_ast()], [])
             }
             ChainSource::File { path } => {
-                ps::call_fn("file", [path.into_ast()], [])
+                petit::call_fn("file", [path.into_ast()], [])
             }
             ChainSource::Prompt { message, default } => {
-                ps::call_fn(
+                petit::call_fn(
                     "prompt",
                     [],
                     [
@@ -254,7 +254,7 @@ impl IntoPetitAst for Chain {
                 recipe,
                 trigger,
                 section: ChainRequestSection::Body,
-            } => ps::call_fn(
+            } => petit::call_fn(
                 "response",
                 [recipe.into_ast()],
                 [("trigger", trigger.into_ast().map(Expression::from))],
@@ -263,12 +263,12 @@ impl IntoPetitAst for Chain {
                 recipe,
                 trigger,
                 section: ChainRequestSection::Header(header),
-            } => ps::call_fn(
+            } => petit::call_fn(
                 "responseHeader",
                 [recipe.into_ast(), header.into_ast()],
                 [("trigger", trigger.into_ast().map(Expression::from))],
             ),
-            ChainSource::Select { message, options } => ps::call_fn(
+            ChainSource::Select { message, options } => petit::call_fn(
                 "select",
                 [options.into_ast()],
                 [("message", message.map(Template::into_ast))],
@@ -516,7 +516,7 @@ impl IntoPetitAst for TemplateKey {
         match self {
             // `{{field1}}` -> `profile('field1')`
             TemplateKey::Field(identifier) => {
-                ps::profile_field(identifier.to_string())
+                petit::profile_field(identifier.to_string())
             }
             // `{{chains.chain1}}` -> `chain_chain1()`
             // Chain functions are always nullary because old chain references
@@ -556,7 +556,7 @@ mod tests {
     use crate::from_legacy;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use slumber_core::ps::ENGINE;
+    use slumber_core::petit::ENGINE;
     use slumber_util::test_data_dir;
     use std::path::PathBuf;
 

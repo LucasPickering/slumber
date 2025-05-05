@@ -56,7 +56,7 @@ mod tests {
             RecipeNode,
         },
         http::HttpMethod,
-        ps::{self, PetitEngine},
+        petit::{self, PetitEngine},
         render::Procedure,
         test_util::by_id,
     };
@@ -109,7 +109,7 @@ mod tests {
         } = PetitEngine::new().load_collection(SOURCE).unwrap();
         let url = Procedure::template([
             // `${profile("host")}/anything`
-            TemplateChunk::expression(ps::profile_field("host").into()),
+            TemplateChunk::expression(petit::profile_field("host").into()),
             "/anything".into(),
         ]);
         let expected = Collection {
@@ -143,7 +143,7 @@ mod tests {
                                 Expression::reference("JSON")
                                     .call(
                                         "parse",
-                                        [ps::call_fn(
+                                        [petit::call_fn(
                                             "response",
                                             ["example1".into()],
                                             [],

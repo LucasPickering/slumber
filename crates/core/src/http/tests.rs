@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     collection::{Authentication, Collection, LoadedCollection, Profile},
-    ps::PetitEngine,
+    petit::PetitEngine,
     render::RenderContext,
     test_util::{TestPrompter, by_id, header_map, http_engine},
 };

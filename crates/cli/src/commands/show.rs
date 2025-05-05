@@ -5,7 +5,7 @@ use slumber_config::Config;
 use slumber_core::{
     collection::{CollectionFile, LoadedCollection},
     database::Database,
-    ps::PetitEngine,
+    petit::PetitEngine,
 };
 use slumber_util::paths;
 use std::{borrow::Cow, process::ExitCode};

@@ -13,7 +13,7 @@
 pub mod collection;
 pub mod database;
 pub mod http;
-pub mod ps;
+pub mod petit;
 pub mod render;
 #[cfg(any(test, feature = "test"))]
 pub mod test_util;

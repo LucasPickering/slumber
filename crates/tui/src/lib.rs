@@ -42,7 +42,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, LoadedCollection, ProfileId},
     database::{CollectionDatabase, Database},
     http::{Exchange, RequestError, RequestId, RequestSeed},
-    ps::PetitEngine,
+    petit::PetitEngine,
     render::{Overrides, Procedure, Prompter, RenderContext, Renderer},
 };
 use slumber_util::ResultTraced;

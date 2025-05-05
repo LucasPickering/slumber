@@ -17,7 +17,7 @@ use slumber_core::{
         Authentication, Folder, Profile, QueryParameterValue, Recipe,
         RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
-    ps,
+    petit,
 };
 use std::collections::HashSet;
 use tracing::warn;
@@ -492,7 +492,7 @@ fn find_slumber_functions(statements: &mut [Statement]) -> Vec<Identifier> {
     let mut visitor = Visitor {
         // Building the whole module just to get a list of fn names is a bit
         // clumsy, but the cost is negligible
-        slumber_fns: &ps::module().named,
+        slumber_fns: &petit::module().named,
         to_import: HashSet::new(),
     };
     for statement in statements {

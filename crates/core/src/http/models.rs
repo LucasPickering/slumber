@@ -6,7 +6,7 @@
 use crate::{
     collection::{ProfileId, RecipeId},
     http::content_type::ContentType,
-    ps::FunctionError,
+    petit::FunctionError,
 };
 use anyhow::Context;
 use bytes::Bytes;

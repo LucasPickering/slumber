@@ -10,7 +10,7 @@ use clap_complete::CompletionCandidate;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::Database,
-    ps::PetitEngine,
+    petit::PetitEngine,
 };
 use std::{ffi::OsStr, ops::Deref};
 

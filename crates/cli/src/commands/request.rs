@@ -16,7 +16,7 @@ use slumber_core::{
         Exchange, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
         TriggeredRequestError,
     },
-    ps::PetitEngine,
+    petit::PetitEngine,
     render::{
         HttpProvider, OverrideKey, OverrideValue, Prompt, Prompter,
         RenderContext, Renderer, Select,

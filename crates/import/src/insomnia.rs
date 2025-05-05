@@ -18,7 +18,7 @@ use slumber_core::{
         RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
-    ps,
+    petit,
 };
 use slumber_util::{HasId, NEW_ISSUE_LINK};
 use std::{
@@ -417,7 +417,7 @@ impl From<FormParam> for (String, Expression) {
                 });
                 (
                     param.name,
-                    ps::call_fn("file", [path.into()], []).into_expr(),
+                    petit::call_fn("file", [path.into()], []).into_expr(),
                 )
             }
         }

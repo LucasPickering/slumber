@@ -3,7 +3,7 @@
 use crate::{
     collection::RecipeId,
     http::{RequestSeed, ResponseRecord},
-    ps::error::FunctionError,
+    petit::error::FunctionError,
     render::{
         OverrideKey, OverrideValue, Prompt, RenderContext, RenderState,
         Renderer, Select,
@@ -614,7 +614,7 @@ mod tests {
         collection::{Collection, Profile},
         database::CollectionDatabase,
         http::{Exchange, RequestRecord, ResponseBody},
-        ps::ENGINE,
+        petit::ENGINE,
         render::{Overrides, Procedure},
         test_util::{
             TestHttpProvider, TestPrompter, TestSelectPrompter, by_id,

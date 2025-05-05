@@ -33,7 +33,7 @@ use slumber_core::{
         Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
-    ps,
+    petit,
 };
 use slumber_util::{NEW_ISSUE_LINK, ResultTraced};
 use std::{fs::File, iter, path::Path};
@@ -276,7 +276,7 @@ impl<'a> RecipeBuilder<'a> {
         // This may be modified later on to convert path parameters into
         // expression chunks
         let url: Vec<TemplateChunk> = vec![
-            ps::profile_field("host").into_expr().into(),
+            petit::profile_field("host").into_expr().into(),
             path_name.into(),
         ];
 
@@ -423,12 +423,12 @@ impl<'a> RecipeBuilder<'a> {
                 {
                     APIKeyLocation::Query => self.query.push((
                         name.clone(),
-                        ps::profile_field("api_key").into()
+                        petit::profile_field("api_key").into()
                     )),
                     APIKeyLocation::Header => {
                         self.headers.insert(
                             name.clone(),
-                            ps::profile_field("api_key").into()
+                            petit::profile_field("api_key").into()
                         );
                     }
                     APIKeyLocation::Cookie => {
@@ -633,7 +633,7 @@ fn replace_path_param(url: &mut Vec<TemplateChunk>, parameter: &str) {
                 .split(&pattern)
                 .map(|s| TemplateChunk::Literal(s.into()))
                 .intersperse(TemplateChunk::expression(
-                    ps::profile_field(parameter).into_expr(),
+                    petit::profile_field(parameter).into_expr(),
                 ))
                 // Remove lingering empty chunks
                 .filter(|chunk| match chunk {
@@ -662,7 +662,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::{fixture, rstest};
     use serde_json::json;
-    use slumber_core::ps::ENGINE;
+    use slumber_core::petit::ENGINE;
     use slumber_util::test_data_dir;
     use std::{path::PathBuf, sync::OnceLock};
 
@@ -868,7 +868,7 @@ mod tests {
             name: "test".into(),
             method: HttpMethod::Get,
             url: vec![
-                ps::profile_field("host").into_expr().into(),
+                petit::profile_field("host").into_expr().into(),
                 "/get".into(),
             ],
             body: None,
@@ -887,6 +887,6 @@ mod tests {
     }
 
     fn path_chunk(parameter: &str) -> TemplateChunk {
-        TemplateChunk::expression(ps::profile_field(parameter).into())
+        TemplateChunk::expression(petit::profile_field(parameter).into())
     }
 }

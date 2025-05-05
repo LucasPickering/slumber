@@ -8,7 +8,7 @@ mod recipe_tree;
 pub use models::*;
 pub use recipe_tree::*;
 
-use crate::ps::PetitEngine;
+use crate::petit::PetitEngine;
 use anyhow::{Context as _, anyhow};
 use itertools::Itertools;
 use petitscript::Process;
@@ -146,7 +146,7 @@ mod tests {
     use super::*;
     use crate::{
         http::HttpMethod,
-        ps::{self, call_fn, profile_field},
+        petit::{self, call_fn, profile_field},
         render::Procedure,
         test_util::by_id,
     };
@@ -242,9 +242,9 @@ mod tests {
 
         // Define some common procedures that are used several times
         let url = Procedure::template([
-            TemplateChunk::expression(ps::profile_field("host").into()),
+            TemplateChunk::expression(petit::profile_field("host").into()),
             "/anything/".into(),
-            TemplateChunk::expression(ps::profile_field("userGuid").into()),
+            TemplateChunk::expression(petit::profile_field("userGuid").into()),
         ]);
         let password = Procedure::test(
             call_fn(
@@ -295,7 +295,7 @@ mod tests {
                     method: HttpMethod::Post,
                     url: Procedure::template([
                         TemplateChunk::expression(
-                            ps::profile_field("host").into(),
+                            petit::profile_field("host").into(),
                         ),
                         "/anything/login".into(),
                     ]),
@@ -334,10 +334,10 @@ mod tests {
                             query: indexmap! {
                                 "value".into() => [
                                     Procedure::test(
-                                        ps::profile_field("field1").into()
+                                        petit::profile_field("field1").into()
                                     ),
                                     Procedure::test(
-                                        ps::profile_field("field2").into()
+                                        petit::profile_field("field2").into()
                                     ),
                                 ].into(),
                             },
@@ -373,7 +373,7 @@ mod tests {
                             }),
                             authentication: Some(Authentication::Basic {
                                 username: Procedure::test(
-                                    ps::profile_field("username").into(),
+                                    petit::profile_field("username").into(),
                                 ),
                                 password: password.clone(),
                             }),

@@ -1,3 +1,5 @@
+//! PetitScript integration
+
 mod error;
 mod functions;
 

@@ -486,9 +486,7 @@ impl Recipe {
             // Strip leading/trailing line breaks because they're going to
             // trigger a validation error and are probably a
             // mistake. We're trading explicitness for convenience
-            // here. This is maybe redundant now with
-            // the Chain::trim field, but this behavior predates that field so
-            // it's left in for backward compatibility.
+            // here.
             trim_bytes(&mut value, |c| c == b'\n' || c == b'\r');
 
             let header: HeaderName = header

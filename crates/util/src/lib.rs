@@ -43,8 +43,8 @@ pub const NEW_ISSUE_LINK: &str =
 /// ```
 /// # use slumber_util::doc_link;
 /// assert_eq!(
-///     doc_link("api/chain"),
-///     "https://slumber.lucaspickering.me/book/api/chain.html",
+///     doc_link("api/example"),
+///     "https://slumber.lucaspickering.me/book/api/example.html",
 /// );
 /// ```
 pub fn doc_link(path: &str) -> String {

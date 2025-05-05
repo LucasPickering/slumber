@@ -399,11 +399,7 @@ impl From<FormParam> for (String, Expression) {
         match param.kind {
             // Simple string, map to a raw template
             FormParamKind::String => (param.name, param.value.into()),
-            // We'll map this to a chain that loads the file. The ID of the
-            // chain is the ID of this param. We're banking on that chain being
-            // created elsewhere. It's a bit spaghetti but otherwise we'd need
-            // mutable access to the entire collection, which I think would end
-            // up with even more spaghetti
+            // We'll map this to an expression that loads the file
             FormParamKind::File => {
                 let path = param.file_name.unwrap_or_else(|| {
                     // This *should* be present. If it's missing let the user

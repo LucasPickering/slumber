@@ -8,8 +8,6 @@
 //! `slumber` crate version. If you choose to depend directly on this crate, you
 //! do so at your own risk of breakage.
 
-// TODO export directly from some of these modules
-
 pub mod collection;
 pub mod database;
 pub mod http;

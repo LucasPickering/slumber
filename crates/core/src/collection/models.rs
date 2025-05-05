@@ -18,8 +18,6 @@ use reqwest::header;
 use serde::{Deserialize, Serialize};
 use std::iter;
 
-// TODO search for "chain" everywhere and rewrite comments
-
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
 ///

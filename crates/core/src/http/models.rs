@@ -796,10 +796,8 @@ impl PartialEq for RequestError {
 
 /// Error occurred while trying to build/execute a triggered request.
 ///
-/// This type implements `Clone` so it can be shared between deduplicated chain
+/// This type implements `Clone` so it can be shared between deduplicated
 /// renders, hence the `Arc`s on inner errors.
-///
-/// TODO move this to http or ps::error
 #[derive(Clone, Debug, Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum TriggeredRequestError {

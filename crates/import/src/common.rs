@@ -189,7 +189,7 @@ impl IntoPetitAst for ImportCollection {
         );
 
         // Walk through the generated AST and track any functions that were
-        // called. Anything that doesn't start with "chain_" is a slumber fn
+        // called from slumber
         let used_functions = find_slumber_functions(&mut statements);
         if !used_functions.is_empty() {
             // Yes inserting to the beginning of a vec is "slow" but it's only

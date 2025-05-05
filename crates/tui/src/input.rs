@@ -5,9 +5,9 @@ use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
     MouseEvent, MouseEventKind,
 };
-use derive_more::Display;
 use indexmap::{IndexMap, indexmap};
 use slumber_config::{Action, InputBinding, KeyCombination};
+use std::fmt::Display;
 use tracing::trace;
 
 /// Top-level input manager. This handles things like bindings and mapping

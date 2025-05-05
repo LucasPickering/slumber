@@ -25,8 +25,8 @@ petitscript = {workspace = true}
 reqwest = {workspace = true, features = ["json", "multipart", "rustls-tls", "rustls-tls-native-roots"]}
 rmp-serde = "1.1.2"
 rstest = {workspace = true, optional = true}
-rusqlite = {version = "0.31.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
-rusqlite_migration = "1.2.0"
+rusqlite = {version = "0.35.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
+rusqlite_migration = "2.1.0"
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 serde_json_path = {workspace = true}

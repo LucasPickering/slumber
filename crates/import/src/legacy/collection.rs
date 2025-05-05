@@ -6,7 +6,6 @@ use crate::legacy::{
     cereal,
     template::{Identifier, Template},
 };
-use derive_more::{From, Into};
 use indexmap::IndexMap;
 use serde::Deserialize;
 use serde_json_path::JsonPath;

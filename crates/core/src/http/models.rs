@@ -11,7 +11,6 @@ use crate::{
 use anyhow::Context;
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
-use derive_more::{Display, From, FromStr};
 use itertools::Itertools;
 use mime::Mime;
 use reqwest::{
@@ -19,7 +18,11 @@ use reqwest::{
     header::{self, HeaderMap},
 };
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, sync::Arc};
+use std::{
+    fmt::{Debug, Display},
+    str::FromStr,
+    sync::Arc,
+};
 use strum::{EnumIter, IntoEnumIterator};
 use thiserror::Error;
 use tracing::error;
@@ -31,9 +34,9 @@ use uuid::Uuid;
     Copy,
     Clone,
     Debug,
-    Display,
+    derive_more::Display,
     Eq,
-    FromStr,
+    derive_more::FromStr,
     Hash,
     Ord,
     PartialEq,

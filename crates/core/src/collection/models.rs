@@ -10,13 +10,13 @@ use crate::{
     http::HttpMethod,
     render::Procedure,
 };
-use derive_more::{Deref, Display, From, Into};
+use derive_more::{Deref, From, Into};
 use indexmap::IndexMap;
 use mime::Mime;
 use petitscript::{error::ValueError, value::FromPetit};
 use reqwest::header;
 use serde::{Deserialize, Serialize};
-use std::iter;
+use std::{fmt::Display, iter};
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
 /// of configuration.
@@ -134,7 +134,7 @@ impl<P> slumber_util::Factory for Profile<P> {
     Debug,
     Deref,
     Default,
-    Display,
+    derive_more::Display,
     Eq,
     From,
     Hash,
@@ -303,7 +303,7 @@ impl slumber_util::Factory<&str> for Recipe {
     Debug,
     Deref,
     Default,
-    Display,
+    derive_more::Display,
     Eq,
     From,
     Hash,

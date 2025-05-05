@@ -2,13 +2,12 @@
 
 use anyhow::{anyhow, bail};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MediaKeyCode};
-use derive_more::Display;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use slumber_util::Mapping;
 use std::{
     borrow::Cow,
-    fmt::{self, Debug},
+    fmt::{self, Debug, Display},
     iter,
     str::FromStr,
 };
@@ -91,7 +90,15 @@ const KEY_MODIFIERS: Mapping<'static, KeyModifiers> = Mapping::new(&[
 /// The order of the variants matters! It defines the ordering used in the help
 /// modal (but doesn't affect behavior).
 #[derive(
-    Copy, Clone, Debug, Display, Eq, PartialEq, Hash, Serialize, Deserialize,
+    Copy,
+    Clone,
+    Debug,
+    derive_more::Display,
+    Eq,
+    PartialEq,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum Action {

@@ -393,6 +393,7 @@ impl Tui {
     /// changes. Return the watcher because it stops when dropped.
     fn watch_collection(&self) -> anyhow::Result<impl 'static + Watcher> {
         // Spawn a watcher for the collection file
+        // TODO watch all imported files as well
         let messages_tx = self.messages_tx();
         let f = move |result: notify::Result<_>| match result {
             // Only reload if the file *content* changes

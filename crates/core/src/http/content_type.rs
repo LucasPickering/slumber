@@ -6,12 +6,17 @@
 //! the response's metadata, use [ResponseRecord::parse_body].
 
 use anyhow::{Context, anyhow};
-use derive_more::{Deref, Display, From};
+use derive_more::{Deref, From};
 use mime::{APPLICATION, JSON, Mime};
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use slumber_util::Mapping;
-use std::{borrow::Cow, ffi::OsStr, fmt::Debug, path::Path};
+use std::{
+    borrow::Cow,
+    ffi::OsStr,
+    fmt::{Debug, Display},
+    path::Path,
+};
 
 /// All supported content types. Each variant should have a corresponding
 /// implementation of [ResponseContent].
@@ -170,7 +175,7 @@ pub trait ResponseContent: Debug + Display + Send + Sync {
 }
 
 /// JSON content type
-#[derive(Debug, Display, Deref, From, PartialEq)]
+#[derive(Debug, derive_more::Display, Deref, From, PartialEq)]
 pub struct Json(serde_json::Value);
 
 impl ResponseContent for Json {

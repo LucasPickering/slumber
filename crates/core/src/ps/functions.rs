@@ -152,12 +152,12 @@ struct JsonPathKwargs {
     mode: JsonPathMode,
 }
 
-/// TODO
+/// Transform a JOSN value using a JSONPath query
 fn json_path(
     _: &Process,
-    (Todo(query), Todo(value), Kwargs(JsonPathKwargs { mode })): (
-        Todo<JsonPath>,
-        Todo<serde_json::Value>,
+    (SerdeArg(query), SerdeArg(value), Kwargs(JsonPathKwargs { mode })): (
+        SerdeArg<JsonPath>,
+        SerdeArg<serde_json::Value>,
         Kwargs<JsonPathKwargs>,
     ),
 ) -> Result<Value, FunctionError> {
@@ -392,15 +392,15 @@ fn mask_sensitive(context: &RenderContext, value: String) -> String {
     }
 }
 
-/// TODO
-struct Todo<T>(T);
+/// Wrapper for a required argument that should be converted from PS using its
+/// `Deserialize` implementation. This differs from [Kwargs] in that the
+/// argument is required here. If the value is `undefined`, deserialization will
+/// fail.
+struct SerdeArg<T>(T);
 
-impl<'de, T: Deserialize<'de>> FromPetit for Todo<T> {
+impl<'de, T: Deserialize<'de>> FromPetit for SerdeArg<T> {
     fn from_petit(value: Value) -> Result<Self, ValueError> {
-        let deserializer = value.into_deserializer();
-        serde_path_to_error::deserialize(deserializer)
-            .map(Self)
-            .map_err(ValueError::other)
+        deserialize(value).map(Self)
     }
 }
 
@@ -416,14 +416,16 @@ impl<'de, T: Default + Deserialize<'de>> FromPetit for Kwargs<T> {
             // If the arg wasn't passed, fall back to the default
             Value::Undefined => Ok(Self(T::default())),
             // Deserialize the value as the kwarg struct
-            _ => {
-                let deserializer = value.into_deserializer();
-                serde_path_to_error::deserialize(deserializer)
-                    .map(Self)
-                    .map_err(ValueError::other)
-            }
+            _ => deserialize(value).map(Self),
         }
     }
+}
+
+fn deserialize<'de, T: Deserialize<'de>>(
+    value: Value,
+) -> Result<T, ValueError> {
+    let deserializer = value.into_deserializer();
+    serde_path_to_error::deserialize(deserializer).map_err(ValueError::other)
 }
 
 /// Define when a recipe with a chained request should auto-execute the
@@ -461,7 +463,10 @@ impl<'de> Deserialize<'de> for RequestTrigger {
                 &self,
                 formatter: &mut std::fmt::Formatter,
             ) -> std::fmt::Result {
-                formatter.write_str("TODO")
+                formatter.write_str(
+                    "\"never\", \"noHistory\", \"always\", or a duration \
+                    string such as \"1h\"",
+                )
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
@@ -469,6 +474,7 @@ impl<'de> Deserialize<'de> for RequestTrigger {
                 E: de::Error,
             {
                 match v {
+                    // If you add a case here, update the expecting string too
                     "never" => Ok(RequestTrigger::Never),
                     "noHistory" => Ok(RequestTrigger::NoHistory),
                     "always" => Ok(RequestTrigger::Always),
@@ -486,11 +492,12 @@ impl<'de> Deserialize<'de> for RequestTrigger {
     }
 }
 
-/// TODO better name
+/// How binary data should be decoded
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 enum Decoding {
-    /// Load data as a UTF-8 string
+    /// Load data as a UTF-8 string. If the data isn't valid UTF-8, return an
+    /// error
     #[default]
     Text,
     /// Load data as raw bytes

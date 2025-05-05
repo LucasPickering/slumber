@@ -19,13 +19,14 @@ use indexmap::IndexMap;
 use petitscript::ast::{Declaration, Expression};
 use slumber_core::collection::{Profile, ProfileId, RecipeTree};
 
-/// TODO
+/// A representation of a Slumber collection that can be generated
+/// programatically by an importer and serialized to PetitScript.
 #[derive(Debug)]
 pub struct ImportCollection {
-    /// TODO
+    /// A set of value and function declarations to be included at the top of
+    /// the file. Most importers will not need this, favoring inlining dynamic
+    /// expressions.
     declarations: Vec<Declaration>,
-    /// TODO
     profiles: IndexMap<ProfileId, Profile<Expression>>,
-    /// TODO
     recipes: RecipeTree<Expression>,
 }

@@ -4,7 +4,7 @@
 
 use crate::{
     ImportCollection,
-    common::{Json, build_template, call_fn},
+    common::{Json, build_template, call_fn, profile_field},
 };
 use indexmap::IndexMap;
 use mime::Mime;
@@ -186,7 +186,16 @@ fn build_body(body: RestBody, mime: Option<Mime>) -> RecipeBody<Expression> {
         // Even though the text has already been parsed as a template, we'll
         // need to treat it as raw text to parse it to JSON. Then we'll parse
         // each inner string as a template again.
-        let value = serde_json::from_str(&text.raw).expect("TODO");
+        let value = match serde_json::from_str(&text.raw) {
+            Ok(value) => value,
+            Err(err) => {
+                // Treat it as raw text
+                error!("Invalid JSON body: {err}");
+                return RecipeBody::Raw {
+                    data: template_to_expression(text),
+                };
+            }
+        };
         let expression: Expression = Json {
             value,
             convert_string: |s| match s.parse::<Template>() {
@@ -202,19 +211,31 @@ fn build_body(body: RestBody, mime: Option<Mime>) -> RecipeBody<Expression> {
         .into();
         RecipeBody::Json { data: expression }
     } else if mime == Some(mime::APPLICATION_WWW_FORM_URLENCODED) {
-        // Parse the body as a URL. We expected everything in the
+        // Parse the body as a URL-encoded form
         let form: IndexMap<String, String> =
-            serde_urlencoded::from_str(&text.raw).expect("TODO");
+            match serde_urlencoded::from_str(&text.raw) {
+                Ok(value) => value,
+                Err(err) => {
+                    // Treat it as raw text
+                    error!("Invalid url-encoded body: {err}");
+                    return RecipeBody::Raw {
+                        data: template_to_expression(text),
+                    };
+                }
+            };
         let data = form
             .into_iter()
             .map(|(field, value)| {
-                let template = value.parse::<Template>()?;
-                let expression = template_to_expression(template);
-                Ok((field, expression))
+                // It's unlikely any individual field will fail to parse because
+                // the REST parser successfully parsed the whole thing as a
+                // template. But if it does, just use the literal value
+                let expression = value
+                    .parse::<Template>()
+                    .map(template_to_expression)
+                    .unwrap_or_else(|_| value.into());
+                (field, expression)
             })
-            // TODO handle error correctly
-            .collect::<anyhow::Result<_>>()
-            .expect("TODO");
+            .collect();
         RecipeBody::FormUrlencoded { data }
     } else {
         // Unknown MIME type - treat it as raw text
@@ -238,9 +259,9 @@ fn map_values(
 fn template_to_expression(template: Template) -> Expression {
     let chunks = template.parts.into_iter().map(|part| match part {
         TemplatePart::Text(text) => TemplateChunk::Literal(text),
-        TemplatePart::Variable(field) => TemplateChunk::expression(
-            call_fn("profile", [field.into()], []).into(),
-        ),
+        TemplatePart::Variable(field) => {
+            TemplateChunk::expression(profile_field(field).into())
+        }
     });
     build_template(chunks)
 }
@@ -379,7 +400,7 @@ mod tests {
                 data: ObjectLiteral::new([
                     ("animal", "penguin".into()),
                     // Nested template should be parsed
-                    ("name", call_fn("profile", ["FIRST".into()], []).into()),
+                    ("name", profile_field("FIRST").into()),
                 ])
                 .into()
             }
@@ -408,14 +429,8 @@ mod tests {
             body,
             RecipeBody::FormUrlencoded {
                 data: IndexMap::from([
-                    (
-                        "first".into(),
-                        call_fn("profile", ["FIRST".into()], []).into()
-                    ),
-                    (
-                        "last".into(),
-                        call_fn("profile", ["LAST".into()], []).into()
-                    )
+                    ("first".into(), profile_field("FIRST").into()),
+                    ("last".into(), profile_field("LAST").into())
                 ])
             }
         );

@@ -8,6 +8,7 @@ use crate::{
     ImportCollection,
     common::{
         IntoPetitAst, Json, build_query_parameters, build_template, call_fn,
+        profile_field,
     },
     legacy::{
         collection::{
@@ -22,9 +23,9 @@ use anyhow::Context;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use petitscript::ast::{
-    ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
-    FunctionCall, FunctionDefinition, Identifier, IntoExpression, IntoNode,
-    Literal, ObjectLiteral, TemplateChunk, Walk,
+    AstVisitor, Declaration, Expression, FunctionBody, FunctionCall,
+    FunctionDefinition, Identifier, IntoExpression, IntoNode, ObjectLiteral,
+    TemplateChunk, Walk,
 };
 use slumber_core::collection::{self as core, RecipeTree};
 use slumber_util::parse_yaml;
@@ -34,7 +35,7 @@ use std::{
     hash::Hash,
     path::Path,
 };
-use tracing::info;
+use tracing::{error, info};
 
 const CHAIN_FN_PREFIX: &str = "chain_";
 
@@ -174,8 +175,22 @@ fn sort_chains(
         output.push((name, definition));
     }
 
+    // If anything is still left in has_deps, that indicates a cycle. We should
+    // include all those functions for completeness, but print an error
+    // indicating that they won't work. This means the original chains had a
+    // cycle too, and therefore never worked.
     if !has_deps.is_empty() {
-        todo!("error for cycle")
+        error!(
+            "Cycle detected between chains: {}. The chains have been \
+            converted to functions, but PetitScript does not support mutual \
+            recursion so they will fail to run.",
+            has_deps.iter().map(|function| &function.name).format(", ")
+        );
+        output.extend(
+            has_deps
+                .into_iter()
+                .map(|function| (function.name, function.definition)),
+        );
     }
 
     output
@@ -424,61 +439,6 @@ impl From<legacy::RecipeBody> for core::RecipeBody<Expression> {
     }
 }
 
-impl IntoPetitAst for serde_json::Value {
-    type Output = Expression;
-
-    /// Convert a JSON value to a literal expression, and defer it if it
-    /// contains any nested templates. This will parse every string in the JSON
-    /// as a template and it any of them contain dynamic chunks, the whole
-    /// object will be deferred at the top level.
-    fn into_ast(self) -> Self::Output {
-        /// Recursively convert a value
-        fn convert(value: serde_json::Value) -> Expression {
-            match value {
-                serde_json::Value::Null => {
-                    Expression::Literal(Literal::Null.s())
-                }
-                serde_json::Value::Bool(b) => b.into(),
-                serde_json::Value::Number(number) => {
-                    if let Some(i) = number.as_i64() {
-                        i.into()
-                    } else if let Some(f) = number.as_f64() {
-                        f.into()
-                    } else {
-                        todo!("error number too big")
-                    }
-                }
-                serde_json::Value::String(s) => convert_string(s),
-                serde_json::Value::Array(array) => {
-                    ArrayLiteral::new(array.into_iter().map(convert)).into()
-                }
-                serde_json::Value::Object(map) => {
-                    ObjectLiteral::new(map.into_iter().map(|(k, v)| {
-                        // We have to support templates in both keys and values
-                        let key = convert_string(k);
-                        let value = convert(v);
-                        (key, value)
-                    }))
-                    .into()
-                }
-            }
-        }
-
-        /// Convert a string to an expression. If it's a dynamic template,
-        /// enable the flag
-        fn convert_string(s: String) -> Expression {
-            // Theoretically the string should be a valid template, but if not
-            // treat it literally
-            match s.parse::<Template>() {
-                Ok(template) => template.into_ast(),
-                Err(_) => s.into(),
-            }
-        }
-
-        convert(self)
-    }
-}
-
 // TODO can we eliminate the usage of IntoAst?
 
 impl IntoPetitAst for SelectOptions {
@@ -552,10 +512,9 @@ impl IntoPetitAst for TemplateKey {
     fn into_ast(self) -> Self::Output {
         match self {
             // `{{field1}}` -> `profile('field1')`
-            TemplateKey::Field(identifier) => FunctionCall::named(
-                "profile",
-                [identifier.to_string().into_expr()],
-            ),
+            TemplateKey::Field(identifier) => {
+                profile_field(identifier.to_string())
+            }
             // `{{chains.chain1}}` -> `chain_chain1()`
             // Chain functions are always nullary because old chain references
             // had no way of passing arguments
@@ -618,4 +577,6 @@ mod tests {
             .unwrap();
         assert_eq!(&imported, expected.data());
     }
+
+    // TODO test chain cycle
 }

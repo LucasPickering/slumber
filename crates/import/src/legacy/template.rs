@@ -1,4 +1,4 @@
-//! TODO
+//! Legacy Slumber template strings. These map to PS template literals
 
 use crate::legacy::collection::ChainId;
 use derive_more::{Deref, Display};
@@ -109,8 +109,6 @@ impl<'de> Deserialize<'de> for Template {
 /// `_`.
 ///
 /// Construct via [FromStr](std::str::FromStr)
-///
-/// TODO update comment, rename to not conflict with PS
 #[derive(
     Clone,
     Debug,

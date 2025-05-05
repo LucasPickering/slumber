@@ -471,7 +471,6 @@ fn build_profiles(
         .unwrap_or_default();
 
     // Convert each env to a profile, copying the base data into each one
-    // TODO should we declare the base env as a separate var instead?
     environments
         .into_iter()
         .map(|environment| {

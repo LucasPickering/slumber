@@ -12,7 +12,7 @@ mod resolve;
 
 use crate::{
     ImportCollection,
-    common::{Json, build_query_parameters, call_fn},
+    common::{Json, build_query_parameters, profile_field},
     openapi::resolve::ReferenceResolver,
 };
 use anyhow::{Context, anyhow};
@@ -274,10 +274,8 @@ impl<'a> RecipeBuilder<'a> {
         // The template will look like: `${profile("host")}/path`
         // This may be modified later on to convert path parameters into
         // expression chunks
-        let url: Vec<TemplateChunk> = vec![
-            call_fn("profile", ["host".into()], []).into_expr().into(),
-            path_name.into(),
-        ];
+        let url: Vec<TemplateChunk> =
+            vec![profile_field("host").into_expr().into(), path_name.into()];
 
         let mut builder = Self {
             id,
@@ -422,12 +420,12 @@ impl<'a> RecipeBuilder<'a> {
                 {
                     APIKeyLocation::Query => self.query.push((
                         name.clone(),
-                        call_fn("profile", ["api_key".into()], []).into()
+                        profile_field("api_key").into()
                     )),
                     APIKeyLocation::Header => {
                         self.headers.insert(
                             name.clone(),
-                            call_fn("profile", ["api_key".into()], []).into()
+                            profile_field("api_key").into()
                         );
                     }
                     APIKeyLocation::Cookie => {
@@ -632,7 +630,7 @@ fn replace_path_param(url: &mut Vec<TemplateChunk>, parameter: &str) {
                 .split(&pattern)
                 .map(|s| TemplateChunk::Literal(s.into()))
                 .intersperse(TemplateChunk::expression(
-                    call_fn("profile", [parameter.into()], []).into_expr(),
+                    profile_field(parameter).into_expr(),
                 ))
                 // Remove lingering empty chunks
                 .filter(|chunk| match chunk {
@@ -866,10 +864,7 @@ mod tests {
             id: "test".into(),
             name: "test".into(),
             method: HttpMethod::Get,
-            url: vec![
-                call_fn("profile", ["host".into()], []).into_expr().into(),
-                "/get".into(),
-            ],
+            url: vec![profile_field("host").into_expr().into(), "/get".into()],
             body: None,
             authentication: None,
             query: Default::default(),
@@ -886,8 +881,6 @@ mod tests {
     }
 
     fn path_chunk(parameter: &str) -> TemplateChunk {
-        TemplateChunk::expression(
-            call_fn("profile", [parameter.into()], []).into(),
-        )
+        TemplateChunk::expression(profile_field(parameter).into())
     }
 }

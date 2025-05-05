@@ -20,8 +20,7 @@ use slumber_core::{
     ps,
 };
 use std::collections::HashSet;
-
-// TODO remove words "template" everywhere
+use tracing::warn;
 
 impl ImportCollection {
     /// Generate a PetitScript AST for this collection. The AST can then be
@@ -36,8 +35,8 @@ impl ImportCollection {
 /// kwargs will be omitted. If all kwargs are empty, omit the entire kwargs
 /// object.
 ///
-/// TODO it would be sick to leverage the typing of the actual functions
-/// somehow. Maybe a macro?
+/// It would be nice to leverage static typing since we can access the Rust
+/// functions, but it adds a lot of complexity that isn't worth it.
 pub fn call_fn<const R: usize, const KW: usize>(
     name: &'static str,
     required: [Expression; R],
@@ -52,6 +51,12 @@ pub fn call_fn<const R: usize, const KW: usize>(
         arguments.push(ObjectLiteral::new(kwargs).into());
     }
     FunctionCall::named(name, arguments)
+}
+
+/// Generate a function call expression to the `profile()` function for a
+/// particular field
+pub fn profile_field(field: impl Into<String>) -> FunctionCall {
+    call_fn("profile", [field.into().into()], [])
 }
 
 /// Build template chunks into an expression. If there is only one chunk, we can
@@ -147,7 +152,14 @@ impl From<Json> for Expression {
                     } else if let Some(f) = number.as_f64() {
                         f.into()
                     } else {
-                        todo!()
+                        // Number doesn't fit into either of our types. Best we
+                        // can do is treat it as a string
+                        warn!(
+                            "JSON number {number} does not fit into a \
+                            PetitScript number. It will be converted to a \
+                            string."
+                        );
+                        convert_string(number.to_string())
                     }
                 }
                 serde_json::Value::String(s) => convert_string(s),
@@ -412,14 +424,11 @@ impl IntoPetitAst for Expression {
     }
 }
 
-/// A newtype to indicate a template's resolution should be deferred via a
-/// nullary lambda. I.e. convert `template` to `() => template`. This should be
-/// used on any top-level template (in recipes and profiles), but not on
-/// templates nested within chain bodies. This is necessary because YAML
-/// templates are deferred by default, and the render engine would implicitly
-/// render nested templates.
-///
-/// TODO would this be better as a trait? call <stuff>.deferred()
+/// A newtype to indicate an expression's resolution should be deferred via a
+/// nullary lambda. I.e. convert `f()` to `() => f()`. This should be
+/// used on any top-level expressions (in recipes and profiles), but not on
+/// expressions nested within function calls. This is necessary to prevent the
+/// evaluation of render procedures during collection load time.
 struct Deferred<T>(T);
 
 impl IntoPetitAst for Deferred<Expression> {
@@ -475,7 +484,7 @@ where
 {
     type Output = ObjectLiteral;
 
-    /// Defer the evaluation of each template in the map
+    /// Defer the evaluation of each expression in the map
     fn into_ast(self) -> Self::Output {
         ObjectLiteral::new(
             self.0

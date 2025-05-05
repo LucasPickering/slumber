@@ -46,7 +46,6 @@ export const profiles = {
     },
   },
   ["init-fails"]: {
-    name: "Request Init Fails",
     data: {},
   },
   ["request-fails"]: {

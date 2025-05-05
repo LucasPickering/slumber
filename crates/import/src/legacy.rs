@@ -37,6 +37,8 @@ use std::{
 };
 use tracing::{error, info};
 
+// TODO sensitive() should be outside JSON.parse()
+
 const CHAIN_FN_PREFIX: &str = "chain_";
 
 /// Convert a legacy Slumber YAML collection into the common import format
@@ -289,13 +291,6 @@ impl IntoPetitAst for Chain {
             }
         };
 
-        // Wrap the body in sensitive(). Skip this for prompts because they
-        // have an equivalent kwarg so it's redundant
-        if self.sensitive && !is_prompt {
-            body_expression =
-                FunctionCall::named("sensitive", [body_expression]).into();
-        }
-
         // Import selectors with a call to jsonpath()
         if let Some(selector) = self.selector {
             let mode = match self.selector_mode {
@@ -319,6 +314,14 @@ impl IntoPetitAst for Chain {
                 ),
             );
             body_expression = json_path_call.into();
+        }
+
+        // Wrap the body in sensitive(). Skip this for prompts because they
+        // have an equivalent kwarg so it's redundant. This must go last so
+        // we're masking the final product, after all transformations
+        if self.sensitive && !is_prompt {
+            body_expression =
+                FunctionCall::named("sensitive", [body_expression]).into();
         }
 
         let name = chain_id_to_function(&self.id);

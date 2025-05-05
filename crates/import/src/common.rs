@@ -245,7 +245,7 @@ impl IntoPetitAst for Profile<Expression> {
     /// Generate an object literal representing a profile
     fn into_ast(self) -> Self::Output {
         ObjectLiteral::filtered([
-            ("name", Some(self.name.into())),
+            ("name", self.name.map(Expression::from)),
             (
                 "default",
                 // Omit if disabled, to reduce noise

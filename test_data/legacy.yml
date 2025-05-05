@@ -11,7 +11,6 @@ profiles:
       username: xX{{chains.username}}Xx
       user_guid: abc123
   init-fails:
-    name: Request Init Fails
     data:
   request-fails:
     name: Request Fails

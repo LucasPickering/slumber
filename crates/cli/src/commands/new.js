@@ -12,7 +12,9 @@ export const profiles = {
     name: "Example Profile",
     data: {
       host: "https://httpbin.org",
-      // TODO show off dynamic profile values
+      // Profile values can be dynamic. This function will be called whenever
+      // a recipe is rendered
+      username: () => command(["whoami"]).trim(),
     },
   },
 };
@@ -24,8 +26,8 @@ export const requests = {
     persist: true,
     method: "GET",
     // Functions can be used to define dynamic data. Here the URL is built
-    // using the `host` field from the selected profile
-    url: () => `${profile("host")}/anything`,
+    // using the `host` field and `username` fields from the selected profile
+    url: () => `${profile("host")}/anything/${profile("username")}`,
   },
   example_folder: {
     type: "folder",

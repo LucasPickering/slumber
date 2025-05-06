@@ -22,7 +22,6 @@ use crate::{
     },
 };
 use derive_more::Display;
-use persisted::SingletonKey;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout},
@@ -225,6 +224,11 @@ impl Draw for ExchangePaneMetadata {
     }
 }
 
+/// Persistence key for selected tab
+#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
+#[persisted(Tab)]
+struct ExchangeTabKey;
+
 #[derive(
     Copy,
     Clone,
@@ -248,7 +252,7 @@ enum Tab {
 #[derive(Debug)]
 struct ExchangePaneContent {
     actions_emitter: Emitter<ExchangePaneMenuAction>,
-    tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
+    tabs: Component<PersistedLazy<ExchangeTabKey, Tabs<Tab>>>,
     state: ExchangePaneContentState,
 }
 

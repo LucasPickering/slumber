@@ -550,32 +550,11 @@ dependencies = [
 
 [[package]]
 name = "derive_more"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a9b99b9cbbe49445b21764dc0625032a89b145a2642e67603e1c936f5458d05"
-dependencies = [
- "derive_more-impl 1.0.0",
-]
-
-[[package]]
-name = "derive_more"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "093242cf7570c207c83073cf82f79706fe7b8317e98620a47d5be7c3d8497678"
 dependencies = [
- "derive_more-impl 2.0.1",
-]
-
-[[package]]
-name = "derive_more-impl"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.101",
- "unicode-xid",
+ "derive_more-impl",
 ]
 
 [[package]]
@@ -1804,20 +1783,18 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "persisted"
-version = "0.4.2"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23976a7a00a0e124857231028b1f9c933d84547b9976e4f1d991cca31b154e76"
+checksum = "40a281cefdac81d883f2ba0a65062e1ebcd47c0b960c14f64a5bae2001eb9c99"
 dependencies = [
- "derive_more 1.0.0",
  "persisted_derive",
- "serde",
 ]
 
 [[package]]
 name = "persisted_derive"
-version = "0.4.2"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a086c782df0cb5b1e0e4e7fe7f0f168f2699ff655f5a2eb07d6663fd8790df2"
+checksum = "112322d121814927877cd3ff46b2249e76f5a6bcb96dcb6184e7fbe390de75af"
 dependencies = [
  "quote",
  "syn 2.0.101",
@@ -2743,7 +2720,7 @@ version = "3.1.1"
 dependencies = [
  "anyhow",
  "crossterm 0.29.0",
- "derive_more 2.0.1",
+ "derive_more",
  "dirs",
  "env-lock",
  "glob",
@@ -2766,7 +2743,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "chrono",
- "derive_more 2.0.1",
+ "derive_more",
  "dialoguer",
  "env-lock",
  "futures",
@@ -2803,7 +2780,7 @@ name = "slumber_import"
 version = "3.1.1"
 dependencies = [
  "anyhow",
- "derive_more 2.0.1",
+ "derive_more",
  "indexmap",
  "itertools 0.14.0",
  "mime",
@@ -2837,7 +2814,7 @@ dependencies = [
  "chrono",
  "cli-clipboard",
  "crossterm 0.29.0",
- "derive_more 2.0.1",
+ "derive_more",
  "editor-command",
  "futures",
  "indexmap",

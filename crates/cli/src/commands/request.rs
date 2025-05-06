@@ -10,7 +10,7 @@ use dialoguer::{Input, Password, Select as DialoguerSelect};
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{LoadedCollection, ProfileId, RecipeId},
+    collection::{ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
     http::{
         Exchange, HttpEngine, RequestRecord, RequestSeed, ResponseRecord,
@@ -217,10 +217,7 @@ impl BuildRequestCommand {
     {
         let collection_file = global.collection_file()?;
         let config = Config::load()?;
-        let LoadedCollection {
-            collection,
-            process,
-        } = collection_file.load()?;
+        let (collection, process) = collection_file.load()?;
         // Open DB in readonly. Storing requests in history from the CLI isn't
         // really intuitive, and could have a large perf impact for scripting
         // and large responses

@@ -157,7 +157,9 @@ pub mod serde_recipe_body {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use petitscript::Value;
+    use crate::render::Procedure;
+    use indexmap::indexmap;
+    use petitscript::{Value, value::Object};
     use rstest::rstest;
     use slumber_util::assert_err;
 
@@ -195,5 +197,72 @@ mod tests {
         );
     }
 
-    // TODO test recipe body deserialization
+    /// Test serializing and deserializing recipe bodies. Round trips should all
+    /// be no-ops.
+    #[rstest]
+    #[case::raw(
+        RecipeBody::Raw { data: "data".into() },
+        "data"
+    )]
+    #[case::json(
+        RecipeBody::Json {
+            data: Procedure::new(Object::new().insert("user", "kevin")),
+        },
+        Object::new()
+            .insert("type", "json")
+            .insert("data", Object::new().insert("user", "kevin")),
+    )]
+    #[case::form_urlencoded(
+        RecipeBody::FormUrlencoded {
+            data: indexmap! {
+                "username".into() => "kevin".into(),
+                "password".into() => "hunter2".into(),
+            }
+        },
+        Object::new()
+            .insert("type", "formUrlencoded")
+            .insert(
+                "data",
+                Object::new()
+                    .insert("username", "kevin")
+                    .insert("password", "hunter2"),
+            ),
+    )]
+    #[case::form_multipart(
+        RecipeBody::FormMultipart {
+            data: indexmap! {
+                "username".into() => "kevin".into(),
+                "password".into() => "hunter2".into(),
+            }
+        },
+        Object::new()
+            .insert("type", "formMultipart")
+            .insert(
+                "data",
+                Object::new()
+                    .insert("username", "kevin")
+                    .insert("password", "hunter2"),
+            ),
+    )]
+    fn test_serde_recipe_body(
+        #[case] body: RecipeBody,
+        #[case] value: impl Into<Value>,
+    ) {
+        let body = Some(body);
+        let value = value.into();
+        assert_eq!(
+            serde_recipe_body::serialize(&body, petitscript::serde::Serializer)
+                .unwrap(),
+            value,
+            "Serialization mismatch"
+        );
+        assert_eq!(
+            serde_recipe_body::deserialize(
+                petitscript::serde::Deserializer::new(value)
+            )
+            .unwrap(),
+            body,
+            "Deserialization mismatch"
+        );
+    }
 }

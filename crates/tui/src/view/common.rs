@@ -15,13 +15,9 @@ pub mod text_window;
 
 use crate::{
     context::TuiContext,
-    view::{
-        draw::Generate,
-        state::Notification,
-        util::{format_duration, format_time},
-    },
+    view::{draw::Generate, state::Notification, util::format_time},
 };
-use chrono::{DateTime, Duration, Local, Utc};
+use chrono::{DateTime, Local, TimeDelta, Utc};
 use itertools::{Itertools, Position};
 use ratatui::{
     text::{Line, Span, Text},
@@ -156,7 +152,7 @@ impl Generate for DateTime<Utc> {
     }
 }
 
-impl Generate for Duration {
+impl Generate for TimeDelta {
     /// 'static because string is generated
     type Output<'this> = Span<'static>;
 
@@ -164,11 +160,17 @@ impl Generate for Duration {
     where
         Self: 'this,
     {
-        format_duration(&self).into()
+        let ms = self.num_milliseconds();
+        if ms < 1000 {
+            format!("{ms}ms")
+        } else {
+            format!("{:.2}s", ms as f64 / 1000.0)
+        }
+        .into()
     }
 }
 
-impl Generate for Option<Duration> {
+impl Generate for Option<TimeDelta> {
     type Output<'this>
         = Span<'this>
     where

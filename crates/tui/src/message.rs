@@ -5,10 +5,10 @@ use crate::view::Confirm;
 use anyhow::Context;
 use derive_more::From;
 use mime::Mime;
-use petitscript::Value;
+use petitscript::{Process, Value};
 use slumber_config::Action;
 use slumber_core::{
-    collection::{LoadedCollection, ProfileId, RecipeId},
+    collection::{Collection, ProfileId, RecipeId},
     http::{
         Exchange, RequestBuildError, RequestError, RequestId, RequestRecord,
     },
@@ -49,7 +49,11 @@ pub enum Message {
     /// Trigger collection reload
     CollectionStartReload,
     /// Store a reloaded collection value in state
-    CollectionEndReload(LoadedCollection),
+    CollectionEndReload {
+        collection: Collection,
+        /// Process from which the collection was loaded
+        process: Process,
+    },
     /// Open the collection in the user's editor
     CollectionEdit,
 

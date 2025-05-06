@@ -657,6 +657,7 @@ impl Authentication<String> {
 /// Body ready to be added to the request. Each variant corresponds to a method
 /// by which we'll add it to the request. This means it is **not** 1:1 with
 /// [RecipeBody]
+#[derive(Debug)]
 enum RenderedBody {
     Raw(Bytes),
     Json(serde_json::Value),

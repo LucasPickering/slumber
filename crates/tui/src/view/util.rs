@@ -10,7 +10,7 @@ use crate::{
 };
 use anyhow::Context;
 use chrono::{
-    DateTime, Duration, Local, Utc,
+    DateTime, Local, Utc,
     format::{DelayedFormat, StrftimeItems},
 };
 use itertools::Itertools;
@@ -151,17 +151,6 @@ pub fn view_text(text: &Text, mime: Option<Mime>) {
 /// Format a datetime for the user
 pub fn format_time(time: &DateTime<Utc>) -> DelayedFormat<StrftimeItems> {
     time.with_timezone(&Local).format("%b %-d %H:%M:%S")
-}
-
-/// Format a duration for the user
-/// TODO can we use the duration from slumber_util for this?
-pub fn format_duration(duration: &Duration) -> String {
-    let ms = duration.num_milliseconds();
-    if ms < 1000 {
-        format!("{ms}ms")
-    } else {
-        format!("{:.2}s", ms as f64 / 1000.0)
-    }
 }
 
 /// Format a byte total, e.g. 1_000_000 -> 1 MB

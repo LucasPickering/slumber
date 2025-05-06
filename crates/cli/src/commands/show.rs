@@ -1,10 +1,7 @@
 use crate::{GlobalArgs, Subcommand};
 use clap::Parser;
 use slumber_config::Config;
-use slumber_core::{
-    collection::{CollectionFile, LoadedCollection},
-    database::Database,
-};
+use slumber_core::{collection::CollectionFile, database::Database};
 use slumber_util::paths;
 use std::{borrow::Cow, process::ExitCode};
 
@@ -47,8 +44,7 @@ impl Subcommand for ShowCommand {
             }
             ShowTarget::Collection => {
                 let collection_file = CollectionFile::new(global.file)?;
-                let LoadedCollection { collection, .. } =
-                    collection_file.load()?;
+                let (collection, _) = collection_file.load()?;
                 println!(
                     "{:#}",
                     petitscript::serde::to_value(&collection).unwrap()

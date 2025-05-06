@@ -37,8 +37,6 @@ use std::{
 };
 use tracing::{error, info};
 
-// TODO sensitive() should be outside JSON.parse()
-
 const CHAIN_FN_PREFIX: &str = "chain_";
 
 /// Convert a legacy Slumber YAML collection into the common import format

@@ -634,8 +634,7 @@ async fn test_override_body_json_invalid(http_engine: &HttpEngine) {
     );
 }
 
-/// Test overriding form body fields
-/// TODO test url and multipart forms separately
+/// Test overriding form fields for a form body
 #[rstest]
 #[tokio::test]
 async fn test_override_body_form(http_engine: &HttpEngine) {

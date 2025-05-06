@@ -260,9 +260,7 @@ fn map_values(
 fn template_to_expression(template: Template) -> Expression {
     let chunks = template.parts.into_iter().map(|part| match part {
         TemplatePart::Text(text) => TemplateChunk::Literal(text),
-        TemplatePart::Variable(field) => {
-            TemplateChunk::expression(petit::profile_field(field).into())
-        }
+        TemplatePart::Variable(field) => petit::profile_chunk(field),
     });
     build_template(chunks)
 }

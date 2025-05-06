@@ -6,12 +6,12 @@ mod functions;
 pub use error::FunctionError;
 pub use functions::*;
 
-use crate::collection::{Collection, LoadedCollection};
+use crate::collection::Collection;
 use anyhow::Context;
 use itertools::Itertools;
 use petitscript::{
-    Engine, Source, Value,
-    ast::{Expression, FunctionCall, ObjectLiteral},
+    Engine, Process, Source, Value,
+    ast::{Expression, FunctionCall, ObjectLiteral, TemplateChunk},
 };
 use serde::de::IntoDeserializer;
 use std::sync::LazyLock;
@@ -39,7 +39,7 @@ pub static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 /// was loaded so that we can execute further functions.
 pub fn load_collection(
     source: impl Source,
-) -> anyhow::Result<LoadedCollection> {
+) -> anyhow::Result<(Collection, Process)> {
     info!(?source, "Loading collection file");
 
     let error_context = format!("Error loading collection from {source:?}");
@@ -53,10 +53,7 @@ pub fn load_collection(
         let collection: Collection = serde_path_to_error::deserialize(
             collection_value.into_deserializer(),
         )?;
-        Ok::<_, anyhow::Error>(LoadedCollection {
-            process,
-            collection,
-        })
+        Ok::<_, anyhow::Error>((collection, process))
     };
     load().context(error_context)
 }
@@ -88,4 +85,9 @@ pub fn call_fn<const R: usize, const KW: usize>(
 /// particular field
 pub fn profile_field(field: impl Into<String>) -> FunctionCall {
     call_fn("profile", [field.into().into()], [])
+}
+
+/// Generate a template chunk expression with a call to `profile()`
+pub fn profile_chunk(field: impl Into<String>) -> TemplateChunk {
+    TemplateChunk::expression(profile_field(field).into())
 }

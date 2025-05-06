@@ -632,9 +632,7 @@ fn replace_path_param(url: &mut Vec<TemplateChunk>, parameter: &str) {
                 // Replace instances of `{id}` with expression chunks
                 .split(&pattern)
                 .map(|s| TemplateChunk::Literal(s.into()))
-                .intersperse(TemplateChunk::expression(
-                    petit::profile_field(parameter).into_expr(),
-                ))
+                .intersperse(petit::profile_chunk(parameter))
                 // Remove lingering empty chunks
                 .filter(|chunk| match chunk {
                     TemplateChunk::Literal(s) => !s.is_empty(),
@@ -887,6 +885,6 @@ mod tests {
     }
 
     fn path_chunk(parameter: &str) -> TemplateChunk {
-        TemplateChunk::expression(petit::profile_field(parameter).into())
+        petit::profile_chunk(parameter)
     }
 }

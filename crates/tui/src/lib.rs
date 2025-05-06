@@ -39,7 +39,7 @@ use petitscript::{Process, Value};
 use ratatui::{Terminal, prelude::CrosstermBackend};
 use slumber_config::{Action, Config};
 use slumber_core::{
-    collection::{Collection, CollectionFile, LoadedCollection, ProfileId},
+    collection::{Collection, CollectionFile, ProfileId},
     database::{CollectionDatabase, Database},
     http::{Exchange, RequestError, RequestId, RequestSeed},
     render::{Overrides, Procedure, Prompter, RenderContext, Renderer},
@@ -118,7 +118,7 @@ impl Tui {
         let (collection, process) = collection_file
             .load()
             .reported(&messages_tx)
-            .map(|loaded| (loaded.collection, Some(loaded.process)))
+            .map(|(collection, process)| (collection, Some(process)))
             // If loading fails, use a default collection. We don't have a
             // process to use for renders, but since the collection is empty
             // it's impossible to trigger a render
@@ -242,14 +242,18 @@ impl Tui {
                 let file = self.collection_file.clone();
                 let messages_tx = self.messages_tx();
                 task::spawn_blocking(move || {
-                    let collection = file.load()?;
-                    messages_tx.send(Message::CollectionEndReload(collection));
+                    let (collection, process) = file.load()?;
+                    messages_tx.send(Message::CollectionEndReload {
+                        collection,
+                        process,
+                    });
                     Ok::<_, anyhow::Error>(())
                 });
             }
-            Message::CollectionEndReload(collection) => {
-                self.reload_collection(collection)
-            }
+            Message::CollectionEndReload {
+                collection,
+                process,
+            } => self.reload_collection(collection, process),
             Message::CollectionEdit => {
                 let path = self.collection_file.path().to_owned();
                 let command = get_editor_command(&path)?;
@@ -423,9 +427,9 @@ impl Tui {
     }
 
     /// Reload state with a new collection
-    fn reload_collection(&mut self, collection: LoadedCollection) {
-        self.collection = Arc::new(collection.collection);
-        self.petit_process = Some(collection.process);
+    fn reload_collection(&mut self, collection: Collection, process: Process) {
+        self.collection = Arc::new(collection);
+        self.petit_process = Some(process);
 
         // Rebuild the whole view, because tons of things can change
         self.view = View::new(

@@ -1,6 +1,9 @@
 //! The plain data types that make up a request collection
 //!
-//! TODO explain generic param on all types
+//! These types all have a type parameter `P`. This type is used for any value
+//! that can be dynamic at render time. Typically this type is [Procedure], but
+//! it can also be [Expression](petitscript::ast::Expression) for collections
+//! that are built programatically.
 
 use crate::{
     collection::{

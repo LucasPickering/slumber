@@ -71,7 +71,7 @@ impl CollectionFile {
     /// the file. The returned value will contain the loaded collection as well
     /// as the PS process that loaded it. The process can be used to invoke
     /// render functions.
-    pub fn load(&self) -> anyhow::Result<LoadedCollection> {
+    pub fn load(&self) -> anyhow::Result<(Collection, Process)> {
         petit::load_collection(self.0.clone())
     }
 
@@ -85,13 +85,6 @@ impl Display for CollectionFile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0.display())
     }
-}
-
-/// TODO better name
-#[derive(Debug)]
-pub struct LoadedCollection {
-    pub collection: Collection,
-    pub process: Process,
 }
 
 /// Search the current directory for a config file matching one of the known
@@ -141,12 +134,7 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        http::HttpMethod,
-        petit::{self, call_fn, profile_field},
-        render::Procedure,
-        test_util::by_id,
-    };
+    use crate::{http::HttpMethod, petit, render::Procedure, test_util::by_id};
     use indexmap::indexmap;
     use petitscript::ast::{FunctionCall, TemplateChunk};
     use pretty_assertions::assert_eq;
@@ -231,19 +219,18 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_regression(test_data_dir: PathBuf) {
-        let LoadedCollection {
-            collection: actual, ..
-        } = petit::load_collection(test_data_dir.join("regression.js"))
-            .unwrap();
+        let (actual, _) =
+            petit::load_collection(test_data_dir.join("regression.js"))
+                .unwrap();
 
         // Define some common procedures that are used several times
         let url = Procedure::template([
-            TemplateChunk::expression(petit::profile_field("host").into()),
+            petit::profile_chunk("host"),
             "/anything/".into(),
-            TemplateChunk::expression(petit::profile_field("userGuid").into()),
+            petit::profile_chunk("userGuid"),
         ]);
         let password = Procedure::test(
-            call_fn(
+            petit::call_fn(
                 "prompt",
                 [],
                 [
@@ -290,17 +277,13 @@ mod tests {
                     id: "textBody".into(),
                     method: HttpMethod::Post,
                     url: Procedure::template([
-                        TemplateChunk::expression(
-                            petit::profile_field("host").into(),
-                        ),
+                        petit::profile_chunk("host"),
                         "/anything/login".into(),
                     ]),
                     body: Some(RecipeBody::Raw {
                         data: Procedure::template([
                             r#"{"username": ""#.into(),
-                            TemplateChunk::expression(
-                                profile_field("username").into(),
-                            ),
+                            petit::profile_chunk("username"),
                             r#"", "password": ""#.into(),
                             TemplateChunk::expression(
                                 FunctionCall::named("password", []).into(),

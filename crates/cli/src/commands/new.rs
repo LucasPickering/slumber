@@ -46,14 +46,14 @@ impl Subcommand for NewCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexmap::indexmap;
-    use petitscript::ast::{Expression, TemplateChunk};
+    use petitscript::ast::{
+        ArrayLiteral, Expression, FunctionCall, IntoExpression,
+    };
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use slumber_core::{
         collection::{
-            Collection, Folder, LoadedCollection, Profile, Recipe, RecipeBody,
-            RecipeNode,
+            Collection, Folder, Profile, Recipe, RecipeBody, RecipeNode,
         },
         http::HttpMethod,
         petit,
@@ -104,29 +104,39 @@ mod tests {
     /// specific contents
     #[test]
     fn test_deserialize() {
-        let LoadedCollection {
-            collection: actual, ..
-        } = petit::load_collection(SOURCE).unwrap();
-        let url = Procedure::template([
-            // `${profile("host")}/anything`
-            TemplateChunk::expression(petit::profile_field("host").into()),
-            "/anything".into(),
-        ]);
+        let (actual, _) = petit::load_collection(SOURCE).unwrap();
         let expected = Collection {
             profiles: by_id([Profile {
                 id: "example".into(),
                 name: Some("Example Profile".into()),
                 default: false,
-                data: indexmap! {
-                    "host".into() => "https://httpbin.org".into()
-                },
+                data: [
+                    ("host".into(), "https://httpbin.org".into()),
+                    (
+                        "username".into(),
+                        Procedure::test(
+                            FunctionCall::named(
+                                "command",
+                                [ArrayLiteral::new(["whoami".into()]).into()],
+                            )
+                            .into_expr()
+                            .call("trim", []),
+                        ),
+                    ),
+                ]
+                .into(),
             }]),
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
                     id: "example1".into(),
                     name: Some("Example Request 1".into()),
                     method: HttpMethod::Get,
-                    url: url.clone(),
+                    url: Procedure::template([
+                        // `${profile("host")}/anything/${profile("username")}`
+                        petit::profile_chunk("host"),
+                        "/anything/".into(),
+                        petit::profile_chunk("username"),
+                    ]),
                     ..Recipe::factory(())
                 }),
                 RecipeNode::Folder(Folder {
@@ -136,7 +146,11 @@ mod tests {
                         id: "example2".into(),
                         name: Some("Example Request 2".into()),
                         method: HttpMethod::Post,
-                        url,
+                        url: Procedure::template([
+                            // `${profile("host")}/anything`
+                            petit::profile_chunk("host"),
+                            "/anything".into(),
+                        ]),
                         body: Some(RecipeBody::Json {
                             data: Procedure::test(
                                 // JSON.parse(response("example1")).data

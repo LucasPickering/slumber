@@ -34,8 +34,9 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::{StreamExt, pin_mut};
-use notify::{RecursiveMode, Watcher, event::ModifyKind};
-use petitscript::{Process, Value};
+use itertools::Itertools;
+use notify::{RecommendedWatcher, RecursiveMode, Watcher, event::ModifyKind};
+use petitscript::{Process, Source, Value};
 use ratatui::{Terminal, prelude::CrosstermBackend};
 use slumber_config::{Action, Config};
 use slumber_core::{
@@ -46,6 +47,7 @@ use slumber_core::{
 };
 use slumber_util::ResultTraced;
 use std::{
+    fmt::Debug,
     io::{self, Stdout},
     ops::Deref,
     path::PathBuf,
@@ -76,15 +78,9 @@ pub struct Tui {
     messages_tx: MessageSender,
     view: View,
     collection_file: CollectionFile,
-    collection: Arc<Collection>,
+    collection_data: CollectionData,
     should_run: bool,
     request_store: RequestStore,
-    /// PS process in which the collection file was loaded. We'll use this to
-    /// execute render functions from the collection. This is `None` iff the
-    /// collection failed to load. In that case, it should be impossible to
-    /// trigger any logic that requires a process. That means we can just
-    /// unwrap this when it's needed.
-    petit_process: Option<Process>,
 }
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
@@ -118,16 +114,19 @@ impl Tui {
         let (collection, process) = collection_file
             .load()
             .reported(&messages_tx)
-            .map(|(collection, process)| (collection, Some(process)))
             // If loading fails, use a default collection. We don't have a
             // process to use for renders, but since the collection is empty
             // it's impossible to trigger a render
-            .unwrap_or_else(|| (Collection::default(), None));
-        let collection = Arc::new(collection);
+            .unwrap_or_else(|| todo!("handle invalid initial collection"));
+        let collection_data =
+            CollectionData::new(collection, process, messages_tx.clone());
 
         let request_store = RequestStore::new(database.clone());
-        let view =
-            View::new(&collection, database.clone(), messages_tx.clone());
+        let view = View::new(
+            &collection_data.collection,
+            database.clone(),
+            messages_tx.clone(),
+        );
 
         // The code to revert the terminal takeover is in `Tui::drop`, so we
         // shouldn't take over the terminal until right before creating the
@@ -141,12 +140,11 @@ impl Tui {
             messages_tx,
 
             collection_file,
-            collection,
+            collection_data,
             should_run: true,
 
             view,
             request_store,
-            petit_process: process,
         };
 
         // Run everything in one local set, so that we can use !Send values
@@ -162,8 +160,6 @@ impl Tui {
     async fn run(mut self) -> anyhow::Result<()> {
         // Spawn background tasks
         self.listen_for_signals();
-        // Hang onto this because it stops running when dropped
-        let _watcher = self.watch_collection()?;
 
         let input_engine = &TuiContext::get().input_engine;
         // Stream of terminal input events
@@ -393,47 +389,14 @@ impl Tui {
         });
     }
 
-    /// Spawn a watcher to automatically reload the collection when the file
-    /// changes. Return the watcher because it stops when dropped.
-    fn watch_collection(&self) -> anyhow::Result<impl 'static + Watcher> {
-        // Spawn a watcher for the collection file
-        // TODO watch all imported files as well
-        let messages_tx = self.messages_tx();
-        let f = move |result: notify::Result<_>| match result {
-            // Only reload if the file *content* changes
-            Ok(
-                event @ notify::Event {
-                    kind: notify::EventKind::Modify(ModifyKind::Data(_)),
-                    ..
-                },
-            ) => {
-                info!(?event, "Collection file changed, reloading");
-                messages_tx.send(Message::CollectionStartReload);
-            }
-            // Do nothing for other event kinds
-            Ok(_) => {}
-            Err(err) => {
-                error!(error = %err, "Error watching collection file");
-            }
-        };
-        let mut watcher = notify::recommended_watcher(f)?;
-        watcher
-            .watch(self.collection_file.path(), RecursiveMode::NonRecursive)?;
-        info!(
-            path = ?self.collection_file.path(), ?watcher,
-            "Watching collection file for changes"
-        );
-        Ok(watcher)
-    }
-
     /// Reload state with a new collection
     fn reload_collection(&mut self, collection: Collection, process: Process) {
-        self.collection = Arc::new(collection);
-        self.petit_process = Some(process);
+        self.collection_data =
+            CollectionData::new(collection, process, self.messages_tx());
 
         // Rebuild the whole view, because tons of things can change
         self.view = View::new(
-            &self.collection,
+            &self.collection_data.collection,
             self.database.clone(),
             self.messages_tx(),
         );
@@ -675,6 +638,7 @@ impl Tui {
                 // Persist in the DB if not disabled by global config or recipe
                 let persist = TuiContext::get().config.persist
                     && self
+                        .collection_data
                         .collection
                         .recipes
                         .try_get_recipe(&exchange.request.recipe_id)
@@ -724,7 +688,7 @@ impl Tui {
         overrides: Overrides,
         is_preview: bool,
     ) -> anyhow::Result<Renderer> {
-        let collection = &self.collection;
+        let collection = &self.collection_data.collection;
         let http_provider =
             TuiHttpProvider::new(self.messages_tx(), is_preview);
         let prompter: Box<dyn Prompter> = if is_preview {
@@ -741,12 +705,7 @@ impl Tui {
             overrides,
             show_sensitive: !is_preview,
         };
-        Ok(Renderer::new(
-            self.petit_process
-                .clone()
-                .expect("PetitScript process not available"),
-            context,
-        ))
+        Ok(Renderer::new(self.collection_data.process.clone(), context))
     }
 }
 
@@ -755,6 +714,102 @@ impl Drop for Tui {
     fn drop(&mut self) {
         if let Err(err) = restore_terminal() {
             error!(error = err.deref(), "Error restoring terminal, sorry!");
+        }
+    }
+}
+
+/// A container for all the data we get when loading a collection. These will
+/// all be wiped out and rebuilt whenever the collection is reloaded.
+#[derive(Debug)]
+struct CollectionData {
+    collection: Arc<Collection>,
+    /// PS process in which the collection file was loaded. We'll use this to
+    /// execute render functions from the collection. This is `None` iff the
+    /// collection failed to load. In that case, it should be impossible to
+    /// trigger any logic that requires a process. That means we can just
+    /// unwrap this when it's needed.
+    process: Process,
+    /// Watcher for changes to the collection file. This will watch the entire
+    /// source tree of the collection, i.e. the root collection file and any
+    /// other files it imports. PS is designed to have minimal source trees
+    /// with no third party dependencies, so this should not be very many
+    /// files.
+    ///
+    /// Whenever any file changes, the collection will be reloaded, which will
+    /// kill this watcher and start a new one. We need a new watcher because
+    /// the set of files in the tree may change. This never needs to be called,
+    /// but we have to hang onto it because when it's dropped, the watcher is
+    /// stopped.
+    ///
+    /// This will be `None` iff the watcher fails to initialize
+    _watcher: Option<RecommendedWatcher>,
+}
+
+impl CollectionData {
+    fn new(
+        collection: Collection,
+        process: Process,
+        messages_tx: MessageSender,
+    ) -> Self {
+        // Spawn a watcher for all paths in the source tree
+        let watcher = notify::recommended_watcher(move |result| {
+            Self::on_file_event(result, messages_tx.clone())
+        })
+        .map(|mut watcher| {
+            let paths =
+                process.sources().filter_map(Source::path).collect_vec();
+            for path in &paths {
+                // If any single file fails, just ignore it
+                watcher
+                    .watch(path, RecursiveMode::NonRecursive)
+                    .with_context(|| format!("Error watching file {path:?}"))
+                    .traced()
+                    .ok();
+            }
+            info!(
+                paths = ?paths, ?watcher,
+                "Watching collection file(s) for changes"
+            );
+            watcher
+        })
+        .inspect_err(|err| {
+            error!(
+                error = %err,
+                "Error starting watcher for collection file(s). Automatic \
+                reload is disabled."
+            );
+        })
+        .ok();
+
+        Self {
+            collection: collection.into(),
+            process,
+            _watcher: watcher,
+        }
+    }
+
+    /// Callback for any file event. If a file was changed, reload the
+    /// collection
+    fn on_file_event(
+        result: notify::Result<notify::Event>,
+        messages_tx: MessageSender,
+    ) {
+        match result {
+            // Only reload if the file *content* changes
+            Ok(
+                event @ notify::Event {
+                    kind: notify::EventKind::Modify(ModifyKind::Data(_)),
+                    ..
+                },
+            ) => {
+                info!(?event, "Collection file changed, reloading");
+                messages_tx.send(Message::CollectionStartReload);
+            }
+            // Do nothing for other event kinds
+            Ok(_) => {}
+            Err(err) => {
+                error!(error = %err, "Error watching collection file");
+            }
         }
     }
 }

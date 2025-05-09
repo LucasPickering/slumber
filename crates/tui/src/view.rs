@@ -11,7 +11,7 @@ pub mod test_util;
 mod util;
 
 pub use common::modal::{IntoModal, ModalPriority};
-pub use context::{UpdateContext, ViewContext};
+pub use context::UpdateContext;
 pub use styles::Styles;
 pub use util::{Confirm, PreviewPrompter, TuiPrompter};
 
@@ -23,15 +23,21 @@ use crate::{
     view::{
         common::modal::Modal,
         component::{Component, Root, RootProps},
+        context::ViewContext,
         debug::DebugMonitor,
+        draw::Generate,
         event::Event,
     },
 };
 use anyhow::anyhow;
-use ratatui::Frame;
+use ratatui::{
+    Frame,
+    layout::{Constraint, Layout},
+    text::Text,
+};
 use slumber_config::Action;
 use slumber_core::{
-    collection::{Collection, ProfileId},
+    collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
     http::RequestId,
 };
@@ -108,6 +114,35 @@ impl View {
         } else {
             draw_impl(&self.root, frame, request_store);
         }
+    }
+
+    /// When the collection fails to load on first launch, we can't show the
+    /// full UI yet. This draws an error state. The TUI loop should be watching
+    /// the collection file so we can retry initialization when the error is
+    /// fixed.
+    pub fn draw_collection_load_error(
+        frame: &mut Frame,
+        collection_file: &CollectionFile,
+        error: &anyhow::Error,
+    ) {
+        let context = TuiContext::get();
+        let [message_area, _, error_area] = Layout::vertical([
+            Constraint::Length(2),
+            Constraint::Length(1), // A nice gap
+            Constraint::Min(1),
+        ])
+        .areas(frame.area());
+        frame.render_widget(error.generate(), error_area);
+        frame.render_widget(
+            Text::styled(
+                format!(
+                    "Watching {collection_file} for changes...\n{} to exit",
+                    context.input_engine.binding_display(Action::ForceQuit),
+                ),
+                context.styles.text.primary,
+            ),
+            message_area,
+        );
     }
 
     /// ID of the selected profile. `None` iff the list is empty
@@ -195,6 +230,21 @@ impl View {
             }
         }
     }
+}
+
+/// Initial view context. This is only exported for tests because initialization
+/// should only be handled by [View] normally.
+#[cfg(test)]
+pub fn init_view_context(
+    collection: Arc<Collection>,
+    database: CollectionDatabase,
+    messages_tx: MessageSender,
+) {
+    ViewContext::init(
+        Arc::clone(&collection),
+        database.clone(),
+        messages_tx.clone(),
+    );
 }
 
 #[cfg(test)]

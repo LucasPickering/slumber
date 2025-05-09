@@ -14,6 +14,7 @@ use petitscript::{
     ast::{Expression, FunctionCall, ObjectLiteral, TemplateChunk},
 };
 use serde::de::IntoDeserializer;
+use slumber_util::ResultTraced;
 use std::sync::LazyLock;
 use tracing::{info, info_span};
 
@@ -55,7 +56,7 @@ pub fn load_collection(
         )?;
         Ok::<_, anyhow::Error>((collection, process))
     };
-    load().context(error_context)
+    load().context(error_context).traced()
 }
 
 /// Generate a function call expression for a native function by name. Pass `R`

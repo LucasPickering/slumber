@@ -4,7 +4,7 @@ use crate::{
     context::TuiContext,
     http::RequestStore,
     message::{Message, MessageSender},
-    view::ViewContext,
+    view,
 };
 use ratatui::{
     Frame, Terminal,
@@ -51,7 +51,7 @@ impl TestHarness {
         let request_store =
             Rc::new(RefCell::new(RequestStore::new(database.clone())));
         let collection = Arc::new(collection);
-        ViewContext::init(
+        view::init_view_context(
             Arc::clone(&collection),
             database.clone(),
             messages_tx.clone(),

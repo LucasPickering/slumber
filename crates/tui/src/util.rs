@@ -1,7 +1,7 @@
 use crate::{
     context::TuiContext,
     message::{Message, MessageSender},
-    view::{Confirm, ViewContext},
+    view::Confirm,
 };
 use anyhow::{Context, bail};
 use bytes::Bytes;
@@ -9,6 +9,7 @@ use crossterm::event;
 use editor_command::EditorBuilder;
 use futures::{FutureExt, future};
 use mime::Mime;
+use notify::{RecommendedWatcher, RecursiveMode, Watcher, event::ModifyKind};
 use slumber_core::render::Prompt;
 use slumber_util::{ResultTraced, doc_link, paths::expand_home};
 use std::{
@@ -32,7 +33,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, debug_span, error, info, warn};
 use uuid::Uuid;
 
-/// Token to manage cancellation of background tasks
+/// Token to manage cancellation of background tasks. When the TUI exits, this
+/// token will be cancelled and any spawned local task should stop.
 pub static CANCEL_TOKEN: LazyLock<CancellationToken> =
     LazyLock::new(CancellationToken::new);
 
@@ -142,13 +144,16 @@ pub fn delete_temp_file(path: &Path) {
 /// generally I/O bound, so we can handle all async stuff on a single thread.
 /// The UI will be redrawn when the task is done. This redraw may be redundant,
 /// but it's thorough and the cost is minimal.
-pub fn spawn(future: impl 'static + Future<Output = ()>) -> JoinHandle<()> {
+pub fn spawn(
+    messages_tx: MessageSender,
+    future: impl 'static + Future<Output = ()>,
+) -> JoinHandle<()> {
     task::spawn_local(async move {
         select! {
             _ = future => {
                 // Assume the task updated _something_ visible to the user,
                 // so trigger a redraw here
-                ViewContext::messages_tx().send(Message::Tick);
+                messages_tx.send(Message::Draw);
             },
             _ = CANCEL_TOKEN.cancelled() => {},
         }
@@ -157,10 +162,11 @@ pub fn spawn(future: impl 'static + Future<Output = ()>) -> JoinHandle<()> {
 
 /// Spawn a fallible task. If it fails, report the error to the user
 pub fn spawn_result(
+    messages_tx: MessageSender,
     future: impl 'static + Future<Output = anyhow::Result<()>>,
 ) -> JoinHandle<()> {
-    spawn(async move {
-        future.await.reported(&ViewContext::messages_tx());
+    spawn(messages_tx.clone(), async move {
+        future.await.reported(&messages_tx);
     })
 }
 
@@ -380,6 +386,50 @@ pub async fn confirm(
     messages_tx.send(Message::ConfirmStart(confirm));
     // Error means we got ghosted :( RUDE!
     rx.await.unwrap_or_default()
+}
+
+/// Spawn a file system watcher that watches a given set of files. When any file
+/// in the set is modified, call the given callback. Return the spawned watcher.
+/// **The watcher will stop when it is dropped, so hang onto the return
+/// value!!**
+pub fn watch_files(
+    paths: &[&Path],
+    on_change: impl Fn(notify::Event) + 'static + Send + Sync,
+) -> notify::Result<RecommendedWatcher> {
+    let on_file_event = move |result: notify::Result<notify::Event>| {
+        match result {
+            // Only reload if the file *content* changes
+            Ok(
+                event @ notify::Event {
+                    kind: notify::EventKind::Modify(ModifyKind::Data(_)),
+                    ..
+                },
+            ) => on_change(event),
+            // Do nothing for other event kinds
+            Ok(_) => {}
+            Err(err) => {
+                error!(error = %err, "Error watching file");
+            }
+        }
+    };
+
+    // Spawn a watcher for all paths in the source tree
+    notify::recommended_watcher(on_file_event)
+        .map(|mut watcher| {
+            for path in paths {
+                // If any single file fails, just ignore it
+                watcher
+                    .watch(path, RecursiveMode::NonRecursive)
+                    .with_context(|| format!("Error watching file {path:?}"))
+                    .traced()
+                    .ok();
+            }
+            info!(paths = ?paths, ?watcher, "Watching file(s) for changes");
+            watcher
+        })
+        .inspect_err(|err| {
+            error!(error = %err, "Error starting watcher for file(s)");
+        })
 }
 
 #[cfg(test)]

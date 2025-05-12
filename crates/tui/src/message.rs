@@ -15,7 +15,7 @@ use slumber_core::{
     render::{Overrides, Procedure, Prompt, ResponseChannel, Select},
 };
 use slumber_util::ResultTraced;
-use std::{fmt::Debug, path::PathBuf, sync::Arc};
+use std::{fmt::Debug, path::PathBuf, process::Command, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
@@ -57,6 +57,10 @@ pub enum Message {
     /// Open the collection in the user's editor
     CollectionEdit,
 
+    /// Run a command in a **blocking** subprocess. The command will take over
+    /// the screen while running. Use for editors.
+    Command(Command),
+
     /// Show a yes/no confirmation to the user. Use the included channel to
     /// return the value.
     ConfirmStart(Confirm),
@@ -69,6 +73,10 @@ pub enum Message {
     CopyRequestCurl,
     /// Copy some text to the clipboard
     CopyText(String),
+
+    /// Trigger a redraw. This should be called whenever we have reason to
+    /// believe the UI may have changed due to a background task
+    Draw,
 
     /// An error occurred in some async process and should be shown to the user
     Error { error: anyhow::Error },
@@ -162,10 +170,6 @@ pub enum Message {
         #[debug(skip)]
         on_complete: Callback<Result<Value, ()>>,
     },
-
-    /// Trigger a redraw. This should be called whenever we have reason to
-    /// believe the UI may have changed due to a background task
-    Tick,
 }
 
 /// A static callback included in a message

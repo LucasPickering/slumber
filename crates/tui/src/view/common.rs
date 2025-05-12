@@ -261,9 +261,7 @@ impl Generate for &anyhow::Error {
                     error.downcast_ref()
                 {
                     let mut message = format!("{error}\n");
-                    // The first frame is always native code so it provides no
-                    // value
-                    for frame in trace.iter().skip(1) {
+                    for frame in trace.iter() {
                         writeln!(&mut message, " {frame}").unwrap();
                     }
                     message

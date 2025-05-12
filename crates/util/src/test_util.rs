@@ -88,6 +88,25 @@ macro_rules! assert_err {
 /// Additionally, evaluate an expression using the bound pattern. This can be
 /// used to apply additional assertions inline, or extract bound values to use
 /// in subsequent statements.
+///
+/// ```
+/// // Assert a value matches a pattern
+/// assert_matches!(&[1, 2, 3], &[_, ..]);
+///
+/// // Add an additional condition
+/// assert_matches!(&[1, 2, 3], &[_, rest @ ..] if rest.len() == 2);
+///
+/// // Assert a match and extract a value
+/// let rest = assert_matches!(&[1, 2, 3], &[_, rest @ ..] => rest);
+/// assert_eq!(rest, &[2, 3]);
+///
+/// // Extract with a condition
+/// let rest = assert_matches!(
+///     &[1, 2, 3],
+///     &[_, rest @ ..] if rest.len() == 2 => rest,
+/// );
+/// assert_eq!(rest, &[2, 3]);
+/// ```
 #[macro_export]
 macro_rules! assert_matches {
     ($expr:expr, $pattern:pat $(if $condition:expr)? $(,)?) => {

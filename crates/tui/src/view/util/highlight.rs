@@ -1,15 +1,9 @@
-//! Utilities for applying syntax highlighting to text.
-//!
-//! Warning: this thing is kinda fucked.
-
-use anyhow::Context;
 use itertools::Itertools;
 use ratatui::{
     style::{Color, Style},
     text::{Line, Span, Text},
 };
 use slumber_core::http::content_type::ContentType;
-use slumber_util::ResultTraced;
 use std::{
     borrow::Cow,
     cell::RefCell,
@@ -19,8 +13,6 @@ use strum::{EnumIter, IntoEnumIterator};
 use tree_sitter_highlight::{
     Highlight, HighlightConfiguration, HighlightEvent, Highlighter,
 };
-
-// TODO simplify this now that we don't have to patch styles together
 
 thread_local! {
     /// Cache the highlighter and its configurations, because we only need one
@@ -32,7 +24,13 @@ thread_local! {
 }
 
 /// Apply syntax highlighting to some text. Syntax language will be determined
-/// from the content type.
+/// from the content type. This will merge highlighting with existing styles on
+/// the text.
+///
+/// **Note:** we don't actually have a need for the style merging since the PS
+/// migration, because we don't do inline template styles anymore. I left the
+/// style patching logic in though because it's not doing any harm and we may
+/// want it again in the future.
 pub fn highlight(content_type: ContentType, mut text: Text<'_>) -> Text<'_> {
     HIGHLIGHTER.with_borrow_mut(|(highlighter, configs)| {
         let config = configs
@@ -40,23 +38,22 @@ pub fn highlight(content_type: ContentType, mut text: Text<'_>) -> Text<'_> {
             .or_insert_with(|| get_config(content_type));
 
         // Each line in the input corresponds to one line in the output, so we
-        // can mutate each line inline
+        // can mutate each line in place
         for line in &mut text.lines {
             // Join the line into a single string so we can pass it to the
             // highlighter. Unfortunately it can't handle subline parsing, it
             // needs at least a line at a time
             let joined = join_line(line);
-            let Ok(events) = highlighter
-                .highlight(config, joined.as_bytes(), None, |_| None)
-                .context("Syntax highlighting error")
-                .traced()
+            let Ok(events) =
+                highlighter
+                    .highlight(config, joined.as_bytes(), None, |_| None)
             else {
                 continue; // Leave the line untouched
             };
 
             let mut builder = LineBuilder::new(line);
             for event in events {
-                match event.context("Syntax highlighting error").traced() {
+                match event {
                     Ok(HighlightEvent::Source { start, end }) => {
                         builder.push_span(&joined, start, end);
                     }

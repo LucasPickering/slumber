@@ -611,22 +611,24 @@ impl RenderContext {
 mod tests {
     use super::*;
     use crate::{
-        collection::{Collection, Profile},
+        collection::{Collection, Profile, Recipe},
         database::CollectionDatabase,
-        http::{Exchange, RequestRecord, ResponseBody},
+        http::{Exchange, HttpEngine, RequestRecord, ResponseBody},
         petit::ENGINE,
         render::{Overrides, Procedure},
         test_util::{
             TestHttpProvider, TestPrompter, TestSelectPrompter, by_id,
-            header_map,
+            header_map, http_engine,
         },
     };
+    use chrono::TimeDelta;
     use indexmap::indexmap;
     use petitscript::{Value, value::Function};
     use rstest::rstest;
     use slumber_util::{Factory, TempDir, assert_err, temp_dir};
     use std::iter;
     use tokio::task;
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
     // These test functions via PS rather than calling them directly so we can
     // test them from a user perspective. This covers extra logic like the
@@ -930,7 +932,6 @@ mod tests {
         ["binary".into(), [("decode", "binary")].into()],
         Value::buffer(b"\xc3\x28"),
     )]
-    // TODO test triggering
     #[tokio::test]
     async fn test_response(
         #[case] arguments: impl IntoIterator<Item = Value>,
@@ -964,6 +965,89 @@ mod tests {
         };
 
         let output = call_fn("response", arguments, context).await.unwrap();
+        assert_eq!(output, expected_output.into());
+    }
+
+    /// Test the `response` function where a request is actually triggered
+    #[rstest]
+    #[case::always("always", true, true)]
+    #[case::expire_cached("20m", true, false)]
+    #[case::expire_triggered("10m", true, true)]
+    #[case::no_history_cached("noHistory", true, false)]
+    #[case::no_history_triggered("noHistory", false, true)]
+    #[case::never("never", true, false)]
+    #[tokio::test]
+    async fn test_response_trigger(
+        http_engine: &HttpEngine,
+        #[case] trigger: &str,
+        #[case] has_history: bool,
+        #[case] expected_triggered: bool,
+    ) {
+        // Mock HTTP response
+        let server = MockServer::start().await;
+        let host = server.uri();
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/get"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string("triggered"),
+            )
+            .mount(&server)
+            .await;
+
+        // Create a collection
+        let recipe_id = "upstream";
+        let recipe = Recipe {
+            url: format!("{host}/get").into(),
+            ..Recipe::factory(recipe_id)
+        };
+        let collection = Collection {
+            profiles: Default::default(),
+            recipes: by_id([recipe]).into(),
+        };
+
+        let database = CollectionDatabase::factory(());
+        // Populate the DB if requested
+        if has_history {
+            let request_text = RequestRecord::factory((None, recipe_id.into()));
+            let response_text = ResponseRecord {
+                id: request_text.id,
+                body: ResponseBody::new("cached".as_bytes().into()),
+                ..ResponseRecord::factory(())
+            };
+
+            database
+                .insert_exchange(&Exchange {
+                    // Set the time in the past so we can test timed triggers
+                    start_time: Utc::now() - TimeDelta::minutes(15),
+                    end_time: Utc::now() - TimeDelta::minutes(15),
+                    ..Exchange::factory((request_text, response_text))
+                })
+                .unwrap();
+        }
+
+        let context = RenderContext {
+            collection: collection.into(),
+            http_provider: Box::new(TestHttpProvider::new(
+                database,
+                Some(http_engine.clone()),
+            )),
+            ..context()
+        };
+
+        // Call the function
+        let output = call_fn(
+            "response",
+            [recipe_id.into(), [("trigger", trigger)].into()],
+            context,
+        )
+        .await
+        .unwrap();
+
+        let expected_output = if expected_triggered {
+            "triggered"
+        } else {
+            "cached"
+        };
         assert_eq!(output, expected_output.into());
     }
 

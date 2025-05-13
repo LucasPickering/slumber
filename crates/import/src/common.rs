@@ -526,5 +526,46 @@ fn is_dynamic(expression: &mut Expression) -> bool {
     visitor.is_dynamic
 }
 
-// TODO test some select edge cases. the common cases will be covered by
-// integration tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    /// Test converting a query parameter value into an expression
+    #[rstest]
+    #[case::single_static(
+        QueryParameterValue::Single("hello".into()),
+        "hello".into(),
+    )]
+    #[case::many_static(
+        QueryParameterValue::Many(vec!["hello".into(), 3.into()]),
+        ArrayLiteral::new(["hello".into(), 3.into()]).into(),
+    )]
+    #[case::single_dynamic(
+        QueryParameterValue::Single(FunctionCall::named("f", []).into()),
+        FunctionDefinition::new(
+            [],
+            FunctionBody::expression(FunctionCall::named("f", []).into()),
+        ).into(),
+    )]
+    #[case::many_dynamic(
+        // If any inner expressions are dynamic, the entire thing gets deferred
+        QueryParameterValue::Many(
+            vec!["hello".into(), FunctionCall::named("f", []).into()],
+        ),
+        FunctionDefinition::new(
+            [],
+            FunctionBody::expression(ArrayLiteral::new([
+                "hello".into(),
+                FunctionCall::named("f", []).into(),
+            ]).into()),
+        ).into(),
+    )]
+    fn test_query_parameter_into_ast(
+        #[case] query_parameter: QueryParameterValue<Expression>,
+        #[case] expected_expression: Expression,
+    ) {
+        let actual = Deferred(query_parameter).into_ast();
+        assert_eq!(actual, expected_expression);
+    }
+}

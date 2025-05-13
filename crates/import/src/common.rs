@@ -157,7 +157,7 @@ impl From<Json> for Expression {
 }
 
 /// Convert this type into a PetitScript AST element
-pub trait IntoPetitAst {
+trait IntoPetitAst {
     /// The AST type generated from this value. This should be as narrow as
     /// possible to make the returned node as flexible as possible. Also having
     /// a simple rule prevents decision making.

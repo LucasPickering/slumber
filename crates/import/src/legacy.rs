@@ -6,7 +6,7 @@ mod template;
 
 use crate::{
     ImportCollection,
-    common::{IntoPetitAst, Json, build_query_parameters, build_template},
+    common::{Json, build_query_parameters, build_template},
     legacy::{
         collection::{
             self as legacy, Chain, ChainId, ChainOutputTrim,
@@ -20,9 +20,9 @@ use anyhow::Context;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use petitscript::ast::{
-    AstVisitor, Declaration, Expression, FunctionBody, FunctionCall,
-    FunctionDefinition, Identifier, IntoExpression, IntoNode, ObjectLiteral,
-    TemplateChunk, Walk,
+    ArrayLiteral, AstVisitor, Declaration, Expression, FunctionBody,
+    FunctionCall, FunctionDefinition, Identifier, IntoExpression,
+    ObjectLiteral, TemplateChunk, Walk,
 };
 use slumber_core::{
     collection::{self as core, RecipeTree},
@@ -81,7 +81,7 @@ pub fn from_legacy(
 /// Convert chains to functions. We have to map the whole collection together so
 /// that the functions can be ordered by dependency.
 fn convert_chains(chains: IndexMap<ChainId, Chain>) -> Vec<Declaration> {
-    let chains = chains.into_values().map(Chain::into_ast).collect();
+    let chains = chains.into_values().map(convert_chain).collect();
     let chains = sort_chains(chains);
     chains
         .into_iter()
@@ -199,137 +199,131 @@ fn sort_chains(
 /// Generate a function name and definition. The function's execution will be
 /// equivalent to evaluating this chain. We don't want to compose the parts into
 /// a declaration yet, because it makes sorting by dependency harder.
-impl IntoPetitAst for Chain {
-    type Output = (Identifier, FunctionDefinition);
-
-    fn into_ast(self) -> Self::Output {
-        /// Build an arg list of `R` required arguments plus one keyword
-        /// argument of `O` entries. Any empty kwargs will be omitted.
-        /// If all kwargs are empty, omit the entire kwargs object
-        fn with_kwargs<const R: usize, const KW: usize>(
-            required: [Expression; R],
-            kwargs: [(&str, Option<Expression>); KW],
-        ) -> Vec<Expression> {
-            let mut arguments: Vec<Expression> = required.into();
-            let kwargs = kwargs
-                .into_iter()
-                .filter_map(|(k, v)| Some((k, v?)))
-                .collect_vec();
-            if !kwargs.is_empty() {
-                arguments.push(ObjectLiteral::new(kwargs).into());
-            }
-            arguments
+fn convert_chain(chain: Chain) -> (Identifier, FunctionDefinition) {
+    /// Build an arg list of `R` required arguments plus one keyword
+    /// argument of `O` entries. Any empty kwargs will be omitted.
+    /// If all kwargs are empty, omit the entire kwargs object
+    fn with_kwargs<const R: usize, const KW: usize>(
+        required: [Expression; R],
+        kwargs: [(&str, Option<Expression>); KW],
+    ) -> Vec<Expression> {
+        let mut arguments: Vec<Expression> = required.into();
+        let kwargs = kwargs
+            .into_iter()
+            .filter_map(|(k, v)| Some((k, v?)))
+            .collect_vec();
+        if !kwargs.is_empty() {
+            arguments.push(ObjectLiteral::new(kwargs).into());
         }
-
-        // Populate the function body according to the source. Start with a
-        // single function call
-        let is_prompt = matches!(&self.source, ChainSource::Prompt { .. });
-        let mut body_expression = match self.source {
-            ChainSource::Command { command, stdin } => petit::call_fn(
-                "command",
-                [command.into_ast().into()],
-                [("stdin", stdin.map(Template::into_ast))],
-            ),
-            ChainSource::Environment { variable } => {
-                petit::call_fn("env", [variable.into_ast()], [])
-            }
-            ChainSource::File { path } => {
-                petit::call_fn("file", [path.into_ast()], [])
-            }
-            ChainSource::Prompt { message, default } => {
-                petit::call_fn(
-                    "prompt",
-                    [],
-                    [
-                        ("message", message.map(Template::into_ast)),
-                        ("default", default.map(Template::into_ast)),
-                        // Only include this flag if it's enabled
-                        ("sensitive", self.sensitive.then_some(true.into())),
-                    ],
-                )
-            }
-            ChainSource::Request {
-                recipe,
-                trigger,
-                section: ChainRequestSection::Body,
-            } => petit::call_fn(
-                "response",
-                [recipe.into_ast()],
-                [("trigger", trigger.into_ast().map(Expression::from))],
-            ),
-            ChainSource::Request {
-                recipe,
-                trigger,
-                section: ChainRequestSection::Header(header),
-            } => petit::call_fn(
-                "responseHeader",
-                [recipe.into_ast(), header.into_ast()],
-                [("trigger", trigger.into_ast().map(Expression::from))],
-            ),
-            ChainSource::Select { message, options } => petit::call_fn(
-                "select",
-                [options.into_ast()],
-                [("message", message.map(Template::into_ast))],
-            ),
-        }
-        .into_expr();
-
-        // To replicate trimming, call the appropriate method from string's
-        // prototype. This requires the expression to resolve to a string.
-        match self.trim {
-            ChainOutputTrim::None => {}
-            ChainOutputTrim::Start => {
-                body_expression = body_expression.call("trimStart", [])
-            }
-            ChainOutputTrim::End => {
-                body_expression = body_expression.call("trimEnd", [])
-            }
-            ChainOutputTrim::Both => {
-                body_expression = body_expression.call("trim", [])
-            }
-        };
-
-        // Import selectors with a call to jsonpath()
-        if let Some(selector) = self.selector {
-            let mode = match self.selector_mode {
-                SelectorMode::Auto => None, // This is default, so we can omit
-                SelectorMode::Single => Some("single".into()),
-                SelectorMode::Array => Some("array".into()),
-            };
-            // The only supported content type in external formats is JSON. We
-            // need to manually parse to JSON here so we can query it. This
-            // ends up looking like:
-            // jsonPath('query', JSON.parse(body_expression))
-            let json_parse_call = FunctionCall::new(
-                Expression::reference("JSON").property("parse"),
-                [body_expression],
-            );
-            let json_path_call = FunctionCall::named(
-                "jsonPath",
-                with_kwargs(
-                    [selector.to_string().into(), json_parse_call.into()],
-                    [("mode", mode)],
-                ),
-            );
-            body_expression = json_path_call.into();
-        }
-
-        // Wrap the body in sensitive(). Skip this for prompts because they
-        // have an equivalent kwarg so it's redundant. This must go last so
-        // we're masking the final product, after all transformations
-        if self.sensitive && !is_prompt {
-            body_expression =
-                FunctionCall::named("sensitive", [body_expression]).into();
-        }
-
-        let name = chain_id_to_function(&self.id);
-        let identifier = FunctionDefinition::new(
-            // Chains don't accept params, so the function won't either
-            [],
-            FunctionBody::expression(body_expression),
-        );
-        (name, identifier)
+        arguments
     }
+
+    // Populate the function body according to the source. Start with a
+    // single function call
+    let is_prompt = matches!(&chain.source, ChainSource::Prompt { .. });
+    let mut body_expression = match chain.source {
+        ChainSource::Command { command, stdin } => petit::call_fn(
+            "command",
+            [convert_templates(command)],
+            [("stdin", stdin.map(convert_template))],
+        ),
+        ChainSource::Environment { variable } => {
+            petit::call_fn("env", [variable.into()], [])
+        }
+        ChainSource::File { path } => petit::call_fn("file", [path.into()], []),
+        ChainSource::Prompt { message, default } => {
+            petit::call_fn(
+                "prompt",
+                [],
+                [
+                    ("message", message.map(convert_template)),
+                    ("default", default.map(convert_template)),
+                    // Only include this flag if it's enabled
+                    ("sensitive", chain.sensitive.then_some(true.into())),
+                ],
+            )
+        }
+        ChainSource::Request {
+            recipe,
+            trigger,
+            section: ChainRequestSection::Body,
+        } => petit::call_fn(
+            "response",
+            [recipe.to_string().into()],
+            [("trigger", convert_chain_request_trigger(trigger))],
+        ),
+        ChainSource::Request {
+            recipe,
+            trigger,
+            section: ChainRequestSection::Header(header),
+        } => petit::call_fn(
+            "responseHeader",
+            [recipe.to_string().into(), header.into()],
+            [("trigger", convert_chain_request_trigger(trigger))],
+        ),
+        ChainSource::Select { message, options } => petit::call_fn(
+            "select",
+            [convert_select_options(options)],
+            [("message", message.map(convert_template))],
+        ),
+    }
+    .into_expr();
+
+    // To replicate trimming, call the appropriate method from string's
+    // prototype. This requires the expression to resolve to a string.
+    match chain.trim {
+        ChainOutputTrim::None => {}
+        ChainOutputTrim::Start => {
+            body_expression = body_expression.call("trimStart", [])
+        }
+        ChainOutputTrim::End => {
+            body_expression = body_expression.call("trimEnd", [])
+        }
+        ChainOutputTrim::Both => {
+            body_expression = body_expression.call("trim", [])
+        }
+    };
+
+    // Import selectors with a call to jsonpath()
+    if let Some(selector) = chain.selector {
+        let mode = match chain.selector_mode {
+            SelectorMode::Auto => None, // This is default, so we can omit
+            SelectorMode::Single => Some("single".into()),
+            SelectorMode::Array => Some("array".into()),
+        };
+        // The only supported content type in external formats is JSON. We
+        // need to manually parse to JSON here so we can query it. This
+        // ends up looking like:
+        // jsonPath('query', JSON.parse(body_expression))
+        let json_parse_call = FunctionCall::new(
+            Expression::reference("JSON").property("parse"),
+            [body_expression],
+        );
+        let json_path_call = FunctionCall::named(
+            "jsonPath",
+            with_kwargs(
+                [selector.to_string().into(), json_parse_call.into()],
+                [("mode", mode)],
+            ),
+        );
+        body_expression = json_path_call.into();
+    }
+
+    // Wrap the body in sensitive(). Skip this for prompts because they
+    // have an equivalent kwarg so it's redundant. This must go last so
+    // we're masking the final product, after all transformations
+    if chain.sensitive && !is_prompt {
+        body_expression =
+            FunctionCall::named("sensitive", [body_expression]).into();
+    }
+
+    let name = chain_id_to_function(&chain.id);
+    let identifier = FunctionDefinition::new(
+        // Chains don't accept params, so the function won't either
+        [],
+        FunctionBody::expression(body_expression),
+    );
+    (name, identifier)
 }
 
 impl From<legacy::Profile> for core::Profile<Expression> {
@@ -338,7 +332,7 @@ impl From<legacy::Profile> for core::Profile<Expression> {
             id: profile.id,
             name: profile.name,
             default: profile.default,
-            data: map_values(profile.data, Template::into_ast),
+            data: map_values(profile.data, convert_template),
         }
     }
 }
@@ -373,13 +367,13 @@ impl From<legacy::Recipe> for core::Recipe<Expression> {
             persist: recipe.persist,
             name: recipe.name,
             method: recipe.method,
-            url: recipe.url.into_ast(),
+            url: convert_template(recipe.url),
             body: recipe.body.map(core::RecipeBody::from),
             authentication: recipe
                 .authentication
                 .map(core::Authentication::from),
             query: build_query_parameters(recipe.query),
-            headers: map_values(recipe.headers, Template::into_ast),
+            headers: map_values(recipe.headers, convert_template),
         }
     }
 }
@@ -389,15 +383,15 @@ impl From<legacy::Authentication> for core::Authentication<Expression> {
         match authentication {
             legacy::Authentication::Basic { username, password } => {
                 core::Authentication::Basic {
-                    username: username.into_ast(),
+                    username: username.into(),
                     password: password
-                        .map(Template::into_ast)
+                        .map(convert_template)
                         .unwrap_or_else(|| "".into()),
                 }
             }
             legacy::Authentication::Bearer(token) => {
                 core::Authentication::Bearer {
-                    token: token.into_ast(),
+                    token: token.into(),
                 }
             }
         }
@@ -408,9 +402,9 @@ impl From<legacy::RecipeBody> for core::RecipeBody<Expression> {
     fn from(body: legacy::RecipeBody) -> Self {
         match body {
             // Raw string body -> create a string or template
-            legacy::RecipeBody::Raw(body) => core::RecipeBody::Raw {
-                data: body.into_ast(),
-            },
+            legacy::RecipeBody::Raw(body) => {
+                core::RecipeBody::Raw { data: body.into() }
+            }
             legacy::RecipeBody::Json(json) => core::RecipeBody::Json {
                 data: Json {
                     value: json,
@@ -419,7 +413,7 @@ impl From<legacy::RecipeBody> for core::RecipeBody<Expression> {
                         // Theoretically the string should be a valid template,
                         // but if not treat it literally
                         match s.parse::<Template>() {
-                            Ok(template) => template.into_ast(),
+                            Ok(template) => template.into(),
                             Err(_) => s.into(),
                         }
                     },
@@ -428,104 +422,90 @@ impl From<legacy::RecipeBody> for core::RecipeBody<Expression> {
             },
             legacy::RecipeBody::FormUrlencoded(fields) => {
                 core::RecipeBody::FormUrlencoded {
-                    data: map_values(fields, Template::into_ast),
+                    data: map_values(fields, convert_template),
                 }
             }
             legacy::RecipeBody::FormMultipart(fields) => {
                 core::RecipeBody::FormMultipart {
-                    data: map_values(fields, Template::into_ast),
+                    data: map_values(fields, convert_template),
                 }
             }
         }
     }
 }
 
-// TODO can we eliminate the usage of IntoAst?
+/// Convert a static list of options into an array literal, or a dynamic
+/// template into an expression that will evaluate to an array
+fn convert_select_options(select_options: SelectOptions) -> Expression {
+    match select_options {
+        // Array literal
+        SelectOptions::Fixed(templates) => convert_templates(templates),
+        // Single expression
+        SelectOptions::Dynamic(template) => template.into(),
+    }
+}
 
-impl IntoPetitAst for SelectOptions {
-    type Output = Expression;
-
-    /// Convert a static list of options into an array literal, or a dynamic
-    /// template into an expression that will evaluate to an array
-    fn into_ast(self) -> Self::Output {
-        match self {
-            // Array literal
-            SelectOptions::Fixed(templates) => templates.into_ast().into(),
-            // Single expression
-            SelectOptions::Dynamic(template) => template.into_ast(),
+/// Generate a string representing a trigger condition. Static conditions
+/// use static strings. The "expire" condition uses a duration string
+fn convert_chain_request_trigger(
+    trigger: ChainRequestTrigger,
+) -> Option<Expression> {
+    match trigger {
+        // The kwargs should be excluded if it's the default
+        ChainRequestTrigger::Never => None,
+        ChainRequestTrigger::NoHistory => Some("noHistory".into()),
+        ChainRequestTrigger::Expire(duration) => {
+            Some(duration.to_string().into())
         }
+        ChainRequestTrigger::Always => Some("always".into()),
     }
 }
 
-impl IntoPetitAst for ChainRequestTrigger {
-    type Output = Option<String>;
-
-    /// Generate a string representing a trigger condition. Static conditions
-    /// use static strings. The "expire" condition uses a duration string
-    fn into_ast(self) -> Self::Output {
-        match self {
-            // The kwargs should be excluded if it's the default
-            Self::Never => None,
-            Self::NoHistory => Some("noHistory".into()),
-            Self::Expire(duration) => Some(duration.to_string()),
-            Self::Always => Some("always".into()),
-        }
-    }
+/// Convert a legacy Slumber template to an expression. Empty and
+/// single-chunk templates will either become a string literal or a bare
+/// expression. Multi-chunk templates will be converted to a PS template
+/// literal.
+fn convert_template(template: Template) -> Expression {
+    let chunks = template.chunks.into_iter().map(convert_template_chunk);
+    build_template(chunks)
 }
 
-impl IntoPetitAst for Template {
-    type Output = Expression;
-
-    /// Convert a legacy Slumber template to an expression. Empty and
-    /// single-chunk templates will either become a string literal or a bare
-    /// expression. Multi-chunk templates will be converted to a PS template
-    /// literal.
-    fn into_ast(self) -> Self::Output {
-        let chunks = self.chunks.into_iter().map(TemplateInputChunk::into_ast);
-        build_template(chunks)
-    }
-}
-
-// TODO de-dupe with IntoPetitAst impl
 impl From<Template> for Expression {
     fn from(template: Template) -> Self {
-        template.into_ast()
+        convert_template(template)
     }
 }
 
-impl IntoPetitAst for TemplateInputChunk {
-    type Output = TemplateChunk;
+/// Convert a series of templates into an array literal expression
+fn convert_templates(templates: Vec<Template>) -> Expression {
+    ArrayLiteral::new(templates.into_iter().map(convert_template)).into()
+}
 
-    fn into_ast(self) -> Self::Output {
-        match self {
-            TemplateInputChunk::Raw(s) => TemplateChunk::Literal(s),
-            TemplateInputChunk::Key(key) => {
-                TemplateChunk::Expression(key.into_ast().into_expr().s())
-            }
+/// Convert from a chunk of a Slumber template to a chunk of a PS template
+fn convert_template_chunk(chunk: TemplateInputChunk) -> TemplateChunk {
+    match chunk {
+        TemplateInputChunk::Raw(s) => TemplateChunk::Literal(s),
+        // `{{field1}}` -> `profile('field1')`
+        TemplateInputChunk::Key(TemplateKey::Field(identifier)) => {
+            TemplateChunk::expression(petit::profile_field(
+                identifier.to_string(),
+            ))
         }
-    }
-}
-
-impl IntoPetitAst for TemplateKey {
-    type Output = FunctionCall;
-
-    /// Generate an expression corresponding to a dynamic template key
-    fn into_ast(self) -> Self::Output {
-        match self {
-            // `{{field1}}` -> `profile('field1')`
-            TemplateKey::Field(identifier) => {
-                petit::profile_field(identifier.to_string())
-            }
-            // `{{chains.chain1}}` -> `chain_chain1()`
-            // Chain functions are always nullary because old chain references
-            // had no way of passing arguments
-            TemplateKey::Chain(chain_id) => {
-                FunctionCall::named(chain_id_to_function(&chain_id), [])
-            }
-            // `{{env.VAR1}}` -> `env('VAR1')`
-            TemplateKey::Environment(identifier) => {
-                FunctionCall::named("env", [identifier.to_string().into_expr()])
-            }
+        // `{{chains.chain1}}` -> `chain_chain1()`
+        // Chain functions are always nullary because old chain references
+        // had no way of passing arguments
+        TemplateInputChunk::Key(TemplateKey::Chain(chain_id)) => {
+            TemplateChunk::expression(FunctionCall::named(
+                chain_id_to_function(&chain_id),
+                [],
+            ))
+        }
+        // `{{env.VAR1}}` -> `env('VAR1')`
+        TemplateInputChunk::Key(TemplateKey::Environment(identifier)) => {
+            TemplateChunk::expression(FunctionCall::named(
+                "env",
+                [identifier.to_string().into_expr()],
+            ))
         }
     }
 }

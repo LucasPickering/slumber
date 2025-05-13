@@ -40,8 +40,6 @@ use std::{fs::File, iter, path::Path};
 use strum::IntoEnumIterator;
 use tracing::{debug, error, info, warn};
 
-// TODO fix body import
-
 /// Load a collection from an OpenAPI v3 specification file
 pub fn from_openapi(
     openapi_file: impl AsRef<Path>,

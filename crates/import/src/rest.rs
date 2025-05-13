@@ -181,8 +181,6 @@ fn build_body(body: RestBody, mime: Option<Mime>) -> RecipeBody<Expression> {
         }
     };
 
-    // TODO support multipart forms. Need to figure out how the REST format
-    // defines them
     if mime == Some(mime::APPLICATION_JSON) {
         // Even though the text has already been parsed as a template, we'll
         // need to treat it as raw text to parse it to JSON. Then we'll parse

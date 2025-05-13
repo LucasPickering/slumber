@@ -253,9 +253,10 @@ mod tests {
                             "username".into(),
                             Procedure::template([
                                 "xX".into(),
-                                TemplateChunk::expression(
-                                    FunctionCall::named("username", []).into(),
-                                ),
+                                TemplateChunk::expression(FunctionCall::named(
+                                    "username",
+                                    [],
+                                )),
                                 "Xx".into(),
                             ]),
                         ),
@@ -285,9 +286,10 @@ mod tests {
                             r#"{"username": ""#.into(),
                             petit::profile_chunk("username"),
                             r#"", "password": ""#.into(),
-                            TemplateChunk::expression(
-                                FunctionCall::named("password", []).into(),
-                            ),
+                            TemplateChunk::expression(FunctionCall::named(
+                                "password",
+                                [],
+                            )),
                             r#""}"#.into(),
                         ]),
                     }),

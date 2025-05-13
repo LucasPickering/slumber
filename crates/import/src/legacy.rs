@@ -551,10 +551,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::from_legacy;
+    use super::*;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use slumber_core::petit::ENGINE;
+    use slumber_core::{
+        petit::{ENGINE, call_fn},
+        test_util::by_id,
+    };
     use slumber_util::test_data_dir;
     use std::path::PathBuf;
 
@@ -578,5 +581,90 @@ mod tests {
         assert_eq!(&imported, expected.data());
     }
 
-    // TODO test chain cycle
+    /// Chains are reordered according to their dependency (topologically
+    /// sorted)
+    #[rstest]
+    fn test_chain_reorder() {
+        // Dependency chain is chain1 -> chain2 -> chain3
+        let chains = by_id([
+            prompt("chain1", "{{chains.chain2}}"),
+            prompt("chain2", "{{chains.chain3}}"),
+            prompt("chain3", "the end"),
+        ]);
+        let actual = convert_chains(chains);
+        let expected = vec![
+            // Functions have been reversed to match the topologically ordering
+            call_prompt("chain_chain3", "the end"),
+            call_prompt(
+                "chain_chain2",
+                FunctionCall::named("chain_chain3", []),
+            ),
+            call_prompt(
+                "chain_chain1",
+                FunctionCall::named("chain_chain2", []),
+            ),
+        ];
+        assert_eq!(actual, expected);
+    }
+
+    /// Chains with a dependency cycle are all included, but there's no
+    /// consistent ordering
+    #[rstest]
+    fn test_chain_cycle() {
+        // Dependency chain is chain1 -> chain2 -> chain3 -> chain1
+        // Since there's no consistent ordering, we keep the input order
+        let chains = by_id([
+            prompt("chain1", "{{chains.chain2}}"),
+            prompt("chain2", "{{chains.chain3}}"),
+            prompt("chain3", "{{chains.chain1}}"),
+        ]);
+        let actual = convert_chains(chains);
+        let expected = vec![
+            call_prompt(
+                "chain_chain1",
+                FunctionCall::named("chain_chain2", []),
+            ),
+            call_prompt(
+                "chain_chain2",
+                FunctionCall::named("chain_chain3", []),
+            ),
+            call_prompt(
+                "chain_chain3",
+                FunctionCall::named("chain_chain1", []),
+            ),
+        ];
+        assert_eq!(actual, expected);
+    }
+
+    /// Build a prompt chain
+    fn prompt(id: &'static str, message: &'static str) -> Chain {
+        Chain {
+            id: id.into(),
+            source: ChainSource::Prompt {
+                message: Some(message.into()),
+                default: None,
+            },
+            sensitive: false,
+            selector: None,
+            selector_mode: SelectorMode::Auto,
+            trim: ChainOutputTrim::None,
+            _content_type: serde::de::IgnoredAny,
+        }
+    }
+
+    /// Define a chain function that calls a prompt
+    fn call_prompt(
+        name: &'static str,
+        message: impl Into<Expression>,
+    ) -> Declaration {
+        FunctionDefinition::new(
+            [],
+            FunctionBody::expression(call_fn(
+                "prompt",
+                [],
+                [("message", Some(message.into()))],
+            )),
+        )
+        .declare(name)
+    }
 }

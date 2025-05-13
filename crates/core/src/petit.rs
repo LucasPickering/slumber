@@ -90,5 +90,5 @@ pub fn profile_field(field: impl Into<String>) -> FunctionCall {
 
 /// Generate a template chunk expression with a call to `profile()`
 pub fn profile_chunk(field: impl Into<String>) -> TemplateChunk {
-    TemplateChunk::expression(profile_field(field).into())
+    TemplateChunk::expression(profile_field(field))
 }

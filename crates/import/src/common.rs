@@ -180,12 +180,10 @@ impl IntoPetitAst for ImportCollection {
 
         // Generate an exported object literal for both profiles and recipes
         statements.push(
-            Declaration::new("profiles", self.profiles.into_ast().into())
-                .export(),
+            Declaration::new("profiles", self.profiles.into_ast()).export(),
         );
         statements.push(
-            Declaration::new("requests", self.recipes.into_ast().into())
-                .export(),
+            Declaration::new("requests", self.recipes.into_ast()).export(),
         );
 
         // Walk through the generated AST and track any functions that were
@@ -435,7 +433,7 @@ impl IntoPetitAst for Deferred<QueryParameterValue<Expression>> {
                 if expressions.iter_mut().any(is_dynamic) {
                     FunctionDefinition::new(
                         [],
-                        FunctionBody::expression(expressions.into_ast().into()),
+                        FunctionBody::expression(expressions.into_ast()),
                     )
                     .into()
                 } else {
@@ -545,7 +543,7 @@ mod tests {
         QueryParameterValue::Single(FunctionCall::named("f", []).into()),
         FunctionDefinition::new(
             [],
-            FunctionBody::expression(FunctionCall::named("f", []).into()),
+            FunctionBody::expression(FunctionCall::named("f", [])),
         ).into(),
     )]
     #[case::many_dynamic(
@@ -558,7 +556,7 @@ mod tests {
             FunctionBody::expression(ArrayLiteral::new([
                 "hello".into(),
                 FunctionCall::named("f", []).into(),
-            ]).into()),
+            ])),
         ).into(),
     )]
     fn test_query_parameter_into_ast(

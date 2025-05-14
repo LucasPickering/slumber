@@ -6,9 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+This is a MAJOR change that replaces the YAML collection format with a new format based on [PetitScript](https://petitscript.org). PetitScript is a new language developed specifically for Slumber. It's an extremely simplified version of JavaScript that enables dynamic configuration and more flexible request templating. This change enables a handful of features that have been requested for a while:
+
+- [Inline file chains (#464)](https://github.com/LucasPickering/slumber/issues/464)
+- [Collection schema definition via TypeScript definitions (#374)](https://github.com/LucasPickering/slumber/issues/374)
+- [Share configuration between collections (#290)](https://github.com/LucasPickering/slumber/issues/290)
+  - PetitScript natively supports importing, so you can share any functions, profiles, requests, etc. between collections just by importing them
+
+### Upgrading
+
+Upgrading to Slumber v4 is easy thanks to the new YAML -> PetitScript importer
+
+- Install the newest version of `slumber`
+- Run `slumber import legacy <yaml file> <petitscript file>`
+  - For example, `slumebr import legacy slumber.yml slumber.js`
+- Start slumbering!
+
+The importer should work 1:1 and provide equivalent behavior, so if you notice any differences, please [file a bug report](https://github.com/LucasPickering/slumber/issues/new/choose). While functionally equivalent, the new collection may be a bit ugly, so feel free to clean it up to your liking.
+
+Since PetitScript is a syntactic subset of JavaScript, you can use any standard JavaScript tooling on it, such as [Prettier](https://prettier.io/) for formatting. This is why PetitScript uses the `.js` extension instead of having its own.
+
+TODO write page on migration and link to it
+
 ### Breaking
 
+- **Replace YAML collection format with PetitScript**
 - Remove `preview_templates` config field. Previews will always be rendered now
+
+### Added
+
+- Functions, profiles, and requests can be shared between collections using exports and imports in PetitScript. TODO link to PS docs for imports/exports
+
+### Changed
+
+- If collection fails to load on initial launch, a different error UI will be shown instead of dropping you into the normal UI with a default collection
+  - The collection file will still be watched for changes so you can fix the error without having to restart Slumber
+- Trigger expiration durations now support multiple units in the same string, for example `1d12hr` or `1m30s`
 
 ### Fixed
 

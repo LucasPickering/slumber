@@ -512,8 +512,10 @@ fn convert_template_chunk(chunk: TemplateInputChunk) -> TemplateChunk {
 
 /// Get a function name from a chain ID
 fn chain_id_to_function(chain_id: &ChainId) -> Identifier {
-    // TODO escape ID so parsing can never fail
-    Identifier::try_from(format!("{CHAIN_FN_PREFIX}{}", chain_id.0)).unwrap()
+    // The only character in a chain ID that isn't valid in a PS ID is `-`, so
+    // we need to replace that with `_`
+    let id = chain_id.0.to_string().replace('-', "_");
+    Identifier::try_from(format!("{CHAIN_FN_PREFIX}{}", id)).unwrap()
 }
 
 /// Apply a transformation function to each element in a map
@@ -563,7 +565,7 @@ mod tests {
 
     /// Chains are reordered according to their dependency (topologically
     /// sorted)
-    #[rstest]
+    #[test]
     fn test_chain_reorder() {
         // Dependency chain is chain1 -> chain2 -> chain3
         let chains = by_id([
@@ -589,7 +591,7 @@ mod tests {
 
     /// Chains with a dependency cycle are all included, but there's no
     /// consistent ordering
-    #[rstest]
+    #[test]
     fn test_chain_cycle() {
         // Dependency chain is chain1 -> chain2 -> chain3 -> chain1
         // Since there's no consistent ordering, we keep the input order
@@ -614,6 +616,13 @@ mod tests {
             ),
         ];
         assert_eq!(actual, expected);
+    }
+
+    /// Chain IDs that don't make valid PS identifiers are escaped
+    #[test]
+    fn test_chain_escape() {
+        let id = "chain-1".into();
+        assert_eq!(chain_id_to_function(&id).as_str(), "chain_chain_1");
     }
 
     /// Build a prompt chain

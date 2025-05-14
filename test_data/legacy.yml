@@ -176,7 +176,6 @@ requests:
     url: "{{host}}/anything"
     headers:
       Content-Type: application/json
-    # TODO add newlines back to this text once PS parsing it fixed
     body: >-
       {"location": "boston", "size": "HUGE"}
 

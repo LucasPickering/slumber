@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- Use a dedicated error state if collection fails to load on TUI launch
+
 ### Fixed
 
 - Fix TUI crash when using an empty select list

@@ -15,10 +15,11 @@ use ratatui::{
 use rstest::fixture;
 use slumber_core::{collection::Collection, database::CollectionDatabase};
 use slumber_util::Factory;
-use std::{cell::RefCell, future::Future, rc::Rc, sync::Arc};
+use std::{cell::RefCell, future::Future, rc::Rc, sync::Arc, time::Duration};
 use tokio::{
     sync::mpsc::{self, UnboundedReceiver},
     task::LocalSet,
+    time,
 };
 
 /// Get a test harness, with a clean terminal etc. See [TestHarness].
@@ -75,9 +76,14 @@ impl TestHarness {
         self.messages_rx.try_recv().expect("Message queue empty")
     }
 
-    /// Pop the next message off the queue, waiting if empty
+    /// Pop the next message off the queue, waiting if empty. This will wait
+    /// with a 1s timeout to prevent missing messages from blocking a test
+    /// forever.
     pub async fn pop_message_wait(&mut self) -> Message {
-        self.messages_rx.recv().await.expect("Message queue closed")
+        time::timeout(Duration::from_secs(1), self.messages_rx.recv())
+            .await
+            .expect("Message did not appear within 1s timeout")
+            .expect("Message queue closed")
     }
 
     /// Clear all messages in the queue

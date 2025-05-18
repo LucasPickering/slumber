@@ -60,8 +60,8 @@ pub fn complete_request_id(current: &OsStr) -> Vec<CompletionCandidate> {
 fn load_collection() -> anyhow::Result<Collection> {
     // For now we just lean on the default collection paths. In the future we
     // should be able to look for a --file arg in the command and use that path
-    let path = CollectionFile::try_path(None, None)?;
-    Collection::load(&path)
+    let collection_file = CollectionFile::new(None)?;
+    collection_file.load()
 }
 
 fn get_candidates<T: Into<String>>(

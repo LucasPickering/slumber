@@ -16,7 +16,7 @@ use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use slumber_util::{ResultTraced, parse_yaml};
-use std::{fs::File, path::PathBuf, time::Duration};
+use std::{fs::File, iter, path::PathBuf, time::Duration};
 use tracing::info;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
@@ -189,12 +189,10 @@ pub struct Recipe {
     pub body: Option<RecipeBody>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authentication: Option<Authentication>,
-    #[serde(
-        default,
-        with = "cereal::serde_query_parameters",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub query: Vec<(String, Template)>,
+    /// A map of key-value query parameters. Each value can either be a single
+    /// value (`?foo=bar`) or multiple (`?foo=bar&foo=baz`)
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub query: IndexMap<String, QueryParameterValue>,
     #[serde(
         default,
         deserialize_with = "cereal::deserialize_headers",
@@ -221,6 +219,22 @@ impl Recipe {
             .and_then(|template| template.display().parse::<Mime>().ok())
             .or_else(|| self.body.as_ref()?.mime())
     }
+
+    /// Get a _flattened_ iterator over this recipe's query parameters. Any
+    /// parameter with multiple values will be flattened so the parameter name
+    /// appears multiple times, once with each value. Each tuple will include
+    /// the index of each value to distinguish repeated parameters. The index
+    /// is unique to each parameter; it resets to 0 for each new parameter. This
+    /// will respect all ordering from the original map.
+    pub fn query_iter(&self) -> impl Iterator<Item = (&str, usize, &Template)> {
+        self.query.iter().flat_map(|(k, v)| {
+            let iter: Box<dyn Iterator<Item = _>> = match v {
+                QueryParameterValue::One(value) => Box::new(iter::once(value)),
+                QueryParameterValue::Many(values) => Box::new(values.iter()),
+            };
+            iter.enumerate().map(move |(i, v)| (k.as_str(), i, v))
+        })
+    }
 }
 
 #[cfg(any(test, feature = "test"))]
@@ -234,7 +248,7 @@ impl slumber_util::Factory for Recipe {
             url: "http://localhost/url".into(),
             body: None,
             authentication: None,
-            query: Vec::new(),
+            query: IndexMap::new(),
             headers: IndexMap::new(),
         }
     }
@@ -326,6 +340,34 @@ pub enum Authentication<T = Template> {
     Basic { username: T, password: Option<T> },
     /// `Authorization: Bearer {token}`
     Bearer(T),
+}
+
+/// A value for a particular query parameter key
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(untagged, deny_unknown_fields)]
+pub enum QueryParameterValue {
+    /// The common case: `?foo=bar`
+    One(Template),
+    /// Multiple values for the same parameter. This will be represented by
+    /// repeating the parameter key: `?foo=bar&foo=baz`
+    Many(Vec<Template>),
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<&str> for QueryParameterValue {
+    fn from(value: &str) -> Self {
+        QueryParameterValue::One(value.into())
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl<const N: usize> From<[&str; N]> for QueryParameterValue {
+    fn from(values: [&str; N]) -> Self {
+        QueryParameterValue::Many(
+            values.into_iter().map(Template::from).collect(),
+        )
+    }
 }
 
 /// Template for a request body. `Raw` is the "default" variant, which
@@ -620,6 +662,7 @@ impl slumber_util::Factory for Collection {
 mod tests {
     use super::*;
     use indexmap::indexmap;
+    use itertools::Itertools;
     use rstest::rstest;
     use slumber_util::Factory;
 
@@ -673,5 +716,24 @@ mod tests {
         };
         let expected = expected.and_then(|value| value.parse::<Mime>().ok());
         assert_eq!(recipe.mime(), expected);
+    }
+
+    #[test]
+    fn test_query_iter() {
+        let recipe = Recipe {
+            query: indexmap! {
+                "param1".into() => ["value1.1", "value1.2"].into(),
+                "param2".into() => "value2.1".into(),
+            },
+            ..Recipe::factory(())
+        };
+        assert_eq!(
+            recipe.query_iter().collect_vec().as_slice(),
+            &[
+                ("param1", 0, &"value1.1".into()),
+                ("param1", 1, &"value1.2".into()),
+                ("param2", 0, &"value2.1".into()),
+            ]
+        );
     }
 }

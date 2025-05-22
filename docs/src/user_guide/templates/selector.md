@@ -48,7 +48,7 @@ requests:
     method: GET
     url: "https://myfishes.fish/anything/current-user"
     query:
-      - auth={{chains.auth_token}}
+      auth: "{{chains.auth_token}}"
 ```
 
 While this example simple extracts inner fields, JSONPath can be used for much more powerful transformations. See the [JSONPath docs](https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html) or [this JSONPath editor](https://jsonpath.com/) for more examples.
@@ -89,7 +89,7 @@ requests:
     method: GET
     url: "https://myfishes.fish/anything/current-user"
     query:
-      - auth={{chains.auth_token}}
+      auth: "{{chains.auth_token}}"
 ```
 
 You can use this capability to manipulate responses via `grep`, `awk`, or any other program you like.

@@ -50,5 +50,8 @@ serde_json = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}
 wiremock = {workspace = true}
 
+[lints]
+workspace = true
+
 [package.metadata.release]
 tag = false

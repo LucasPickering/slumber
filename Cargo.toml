@@ -61,6 +61,12 @@ uuid = {version = "1.10.0", default-features = false}
 winnow = "0.6.16"
 wiremock = {version = "0.6.1", default-features = false}
 
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = {level = "deny", priority = -1}
+
 [dependencies]
 anyhow = {workspace = true, features = ["backtrace"]}
 slumber_cli = {workspace = true, optional = true}

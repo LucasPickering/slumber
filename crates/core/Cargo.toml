@@ -53,5 +53,8 @@ wiremock = {workspace = true}
 [features]
 test = ["dep:rstest", "slumber_util/test"]
 
+[lints]
+workspace = true
+
 [package.metadata.release]
 tag = false

@@ -34,7 +34,8 @@ rstest = {workspace = true}
 serde_test = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}
 
-[features]
+[lints]
+workspace = true
 
 [package.metadata.release]
 tag = false

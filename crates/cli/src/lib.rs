@@ -1,6 +1,3 @@
-#![forbid(unsafe_code)]
-#![deny(clippy::all)]
-
 //! Command line interface for Slumber.
 //!
 //! **This crate is not semver compliant**. The version is locked to the root

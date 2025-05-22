@@ -8,13 +8,14 @@ use itertools::Itertools;
 use slumber_core::{
     collection::{
         Authentication, Chain, ChainId, ChainOutputTrim, ChainSource,
-        Collection, HasId, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
-        RecipeNode, RecipeTree, SelectorMode,
+        Collection, HasId, Profile, ProfileId, QueryParameterValue, Recipe,
+        RecipeBody, RecipeId, RecipeNode, RecipeTree, SelectorMode,
     },
     http::{HttpMethod, content_type::ContentType},
     template::{Identifier, Template},
 };
 
+use crate::common;
 use reqwest::header;
 use rest_parser::{
     Body as RestBody, RestFlavor, RestFormat, RestRequest, RestVariables,
@@ -190,13 +191,10 @@ fn try_build_body(
 /// Logging and skipping any invalid templates
 fn build_query(
     r_query: IndexMap<String, RestTemplate>,
-) -> Vec<(String, Template)> {
-    r_query
-        .into_iter()
-        .filter_map(|(k, v)| {
-            try_build_slumber_template(v).map(|t| (k, t)).traced().ok()
-        })
-        .collect()
+) -> IndexMap<String, QueryParameterValue> {
+    common::build_query_parameters(r_query.into_iter().filter_map(|(k, v)| {
+        try_build_slumber_template(v).map(|t| (k, t)).traced().ok()
+    }))
 }
 
 fn try_build_recipe(
@@ -350,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn can_convert_basic_request() {
+    fn test_can_convert_basic_request() {
         let test_req = RestRequest {
             name: Some("My Request!".into()),
             url: RestTemplate::new("https://httpbin.org"),
@@ -366,13 +364,13 @@ mod tests {
             try_build_recipe(test_req, 0, &IndexMap::new()).unwrap();
 
         assert_eq!(recipe.url, "https://httpbin.org".into());
-        assert_eq!(&recipe.query[1], &("age".into(), "46".into()));
+        assert_eq!(&recipe.query["age"], &"46".into());
         assert_eq!(recipe.method, HttpMethod::Get);
         assert_eq!(recipe.id().clone(), RecipeId::from("My_Request__0"));
     }
 
     #[test]
-    fn can_convert_with_vars() {
+    fn test_can_convert_with_vars() {
         let test_req = RestRequest {
             url: RestTemplate::new("{{HOST}}/get"),
             query: IndexMap::from([
@@ -388,19 +386,13 @@ mod tests {
             try_build_recipe(test_req, 0, &vars).unwrap();
 
         assert_eq!(recipe.url, "{{HOST}}/get".into());
-        assert_eq!(
-            &recipe.query[0],
-            &("first_name".into(), ("{{FIRST_NAME}}").into())
-        );
-        assert_eq!(
-            &recipe.query[1],
-            &("full_name".into(), ("{{FULL_NAME}}").into())
-        );
+        assert_eq!(&recipe.query["first_name"], &"{{FIRST_NAME}}".into());
+        assert_eq!(&recipe.query["full_name"], &"{{FULL_NAME}}".into());
         assert_eq!(recipe.method, HttpMethod::Post);
     }
 
     #[test]
-    fn fails_on_bad_method() {
+    fn test_fails_on_bad_method() {
         let test_req = RestRequest {
             url: RestTemplate::new("{{HOST}}/get"),
             method: RestTemplate::new("INVALID"),
@@ -412,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn can_build_load_chain() {
+    fn test_can_build_load_chain() {
         let test_req = RestRequest {
             url: RestTemplate::new("{{HOST}}/post"),
             method: RestTemplate::new("POST"),
@@ -441,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn can_build_raw_body() {
+    fn test_can_build_raw_body() {
         let test_req = RestRequest {
             url: RestTemplate::new("{{HOST}}/post"),
             method: RestTemplate::new("POST"),
@@ -463,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn can_build_json_body() {
+    fn test_can_build_json_body() {
         let test_req = RestRequest {
             url: RestTemplate::new("{{HOST}}/post"),
             method: RestTemplate::new("POST"),
@@ -491,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    fn can_build_collection_from_rest_format() {
+    fn test_can_build_collection_from_rest_format() {
         let test_req_1 = RestRequest {
             name: Some("Query Request".into()),
             url: RestTemplate::new("https://httpbin.org"),
@@ -550,7 +542,7 @@ mod tests {
     }
 
     #[test]
-    fn can_handle_parse_error() {
+    fn test_can_handle_parse_error() {
         let test_req_1 = RestRequest {
             name: Some("Query Request".into()),
             url: RestTemplate::new("bad template }} for url {{ "),

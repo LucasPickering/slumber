@@ -4,6 +4,7 @@
 //! `slumber` crate version. If you choose to depend directly on this crate, you
 //! do so at your own risk of breakage.
 
+mod common;
 mod insomnia;
 mod openapi;
 mod rest;

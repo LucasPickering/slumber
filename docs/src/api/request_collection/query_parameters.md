@@ -1,32 +1,26 @@
 # Query Parameters
 
-Query parameters are a component of a request URL. They provide additional information to the server about a request. In a request recipe, query parameters can be defined in one of two formats:
+Query parameters are a component of a request URL. They provide additional information to the server about a request. In a request recipe, query parameters are defined as a map of `parameter: value`. The value can be a singular template (string/boolean/etc.) or a list of values.
 
-- Mapping of `key: value`
-- List of strings, in the format `<key>=<value>`
+```yaml
+query:
+  one: value
+  many: [value1, value2]
+```
 
-The mapping format is typically more readable, but the list format allows you to define the same query parameter multiple times. In either format, **the key is treated as a plain string but the value is treated as a template**.
+A single query parameter can repeat multiple times in a URL; The above example will generate the query string `?one=value&many=value1&many=value2`.
 
-> Note: If you need to include a `=` in your parameter _name_, you'll need to use the mapping format. That means there is currently no support for multiple instances of a parameter with `=` in the name. This is very unlikely to be a restriction in the real world, but if you need support for this please [open an issue](https://github.com/LucasPickering/slumber/issues/new/choose).
+> Note: Prior to version 4.0, Slumber supported a string-based query parameter format like `[one=value, many=value1, many=value2]`. This has been removed in 4.0 along with other breaking changes to the collection format. To migrate your collection file, TODO add migration instructions.
 
 ## Examples
 
 ```yaml
 recipes:
-  get_fishes_mapping: !request
+  get_fishes: !request
     method: GET
     url: "{{host}}/get"
     query:
       big: true
-      color: red
+      color: [red, blue]
       name: "{{name}}"
-
-  get_fishes_list: !request
-    method: GET
-    url: "{{host}}/get"
-    query:
-      - big=true
-      - color=red
-      - color=blue
-      - name={{name}}
 ```

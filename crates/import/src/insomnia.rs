@@ -1,7 +1,7 @@
 //! Import request collections from Insomnia. Based on the Insomnia v4 export
 //! format
 
-use crate::ImportInput;
+use crate::{ImportInput, common};
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -338,13 +338,11 @@ impl From<Request> for RecipeNode {
             method: request.method,
             url: Template::raw(request.url),
             body,
-            query: request
-                .parameters
-                .into_iter()
-                .map(|parameter| {
+            query: common::build_query_parameters(
+                request.parameters.into_iter().map(|parameter| {
                     (parameter.name, Template::raw(parameter.value))
-                })
-                .collect(),
+                }),
+            ),
             headers,
             authentication,
         })

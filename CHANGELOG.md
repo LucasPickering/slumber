@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Use a dedicated error state if collection fails to load on TUI launch
+- Update dependency `persisted` to 1.0
+  - A few pieces of your UI state, such as selected tabs, will be lost during the upgrade due to this
 
 ### Fixed
 

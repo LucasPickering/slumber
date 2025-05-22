@@ -12,7 +12,6 @@ use crate::view::{
     util::persistence::PersistedLazy,
 };
 use derive_more::Display;
-use persisted::SingletonKey;
 use ratatui::{Frame, layout::Layout, prelude::Constraint, widgets::Paragraph};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
@@ -26,7 +25,7 @@ use strum::{EnumCount, EnumIter};
 /// recreated every time the recipe/profile changes.
 #[derive(Debug)]
 pub struct RecipeDisplay {
-    tabs: Component<PersistedLazy<SingletonKey<Tab>, Tabs<Tab>>>,
+    tabs: Component<PersistedLazy<RecipeTabKey, Tabs<Tab>>>,
     url: TemplatePreview,
     method: HttpMethod,
     query: Component<RecipeFieldTable<QueryRowKey, QueryRowToggleKey>>,
@@ -194,6 +193,11 @@ impl Draw for RecipeDisplay {
         }
     }
 }
+
+/// Persistence key for selected tab
+#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
+#[persisted(Tab)]
+struct RecipeTabKey;
 
 #[derive(
     Copy,

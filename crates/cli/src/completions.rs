@@ -61,7 +61,8 @@ fn load_collection() -> anyhow::Result<Collection> {
     // For now we just lean on the default collection paths. In the future we
     // should be able to look for a --file arg in the command and use that path
     let collection_file = CollectionFile::new(None)?;
-    collection_file.load()
+    let (collection, _) = collection_file.load()?;
+    Ok(collection)
 }
 
 fn get_candidates<T: Into<String>>(

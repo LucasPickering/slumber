@@ -44,7 +44,7 @@ impl Subcommand for ShowCommand {
             }
             ShowTarget::Collection => {
                 let collection_file = global.collection_file()?;
-                let collection = collection_file.load()?;
+                let (collection, _) = collection_file.load()?;
                 println!("{}", to_yaml(&collection));
             }
         }

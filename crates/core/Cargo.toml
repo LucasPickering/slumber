@@ -21,6 +21,14 @@ futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 mime = {workspace = true}
+minijinja = {version = "2.10.2", default-features = false, features = [
+  "builtins",
+  "debug",
+  "deserialization",
+  "loader",
+  "std_collections",
+  "serde",
+]}
 regex = {version = "1.10.5", default-features = false}
 reqwest = {workspace = true, features = ["multipart", "rustls-tls", "rustls-tls-native-roots"]}
 rstest = {workspace = true, optional = true}

@@ -17,6 +17,11 @@ profiles:
     data:
       <<: *base_profile_data
       host: https://httpbin.org
+  local:
+    name: Local httpbin
+    data:
+      <<: *base_profile_data
+      host: http://localhost:80
   init-fails:
     name: Request Init Fails
     data:
@@ -28,49 +33,48 @@ profiles:
       host: http://localhost:5000
 
 requests:
-  authentication:
-    login: !request
-      <<: *base_request
-      method: POST
-      url: "{{ host }}/anything/login"
-      persist: false
-      query:
-        - sudo=yes_please
-        - fast=no_thanks
-        - fast=actually_maybe
-      headers:
-        Accept: application/json
-      body: !form_urlencoded
-        username: "{{ username }}"
-        password: "{{ prompt(message='Password') }}"
+  authentication: !folder
+    requests:
+      login: !request
+        <<: *base_request
+        method: POST
+        url: "{{ host }}/anything/login"
+        persist: false
+        query:
+          - sudo=yes_please
+          - fast=no_thanks
+          - fast=actually_maybe
+        body: !form_urlencoded
+          username: "{{ username }}"
+          password: "{{ prompt(message='Password', sensitive=true) }}"
 
-    basic_auth: !request
-      <<: *base_request
-      method: POST
-      url: "{{ host }}/anything/login"
-      persist: false
-      authentication: !basic
-        username: "{{ username }}"
-        password: "{{ prompt(message='Password') }}"
-      query:
-        - sudo=yes_please
-        - fast=no_thanks
-        - fast=actually_maybe
-      headers:
-        Accept: application/json
+      basic_auth: !request
+        <<: *base_request
+        method: POST
+        url: "{{ host }}/anything/login"
+        persist: false
+        authentication: !basic
+          username: "{{ username }}"
+          password: "{{ prompt(message='Password') }}"
+        query:
+          - sudo=yes_please
+          - fast=no_thanks
+          - fast=actually_maybe
+        headers:
+          Accept: application/json
 
-    bearer_auth: !request
-      <<: *base_request
-      method: POST
-      url: "{{ host }}/anything/login"
-      persist: false
-      authentication: !bearer "{{ response('login', trigger='12h') | jsonpath('$.form') }}"
-      query:
-        - sudo=yes_please
-        - fast=no_thanks
-        - fast=actually_maybe
-      headers:
-        Accept: application/json
+      bearer_auth: !request
+        <<: *base_request
+        method: POST
+        url: "{{ host }}/anything/login"
+        persist: false
+        authentication: !bearer "{{ response('login', trigger='12h') | jsonpath('$.form') }}"
+        query:
+          - sudo=yes_please
+          - fast=no_thanks
+          - fast=actually_maybe
+        headers:
+          Accept: application/json
 
   users: !folder
     name: Users

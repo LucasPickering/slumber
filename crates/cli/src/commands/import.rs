@@ -38,6 +38,8 @@ enum Format {
 
 impl Subcommand for ImportCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
+        // TODO
+        /*
         // Load the input
         let collection = match self.format {
             Format::Insomnia => {
@@ -63,6 +65,7 @@ impl Subcommand for ImportCommand {
             None => Box::new(io::stdout()),
         };
         serde_yaml::to_writer(&mut writer, &collection)?;
+        */
 
         Ok(ExitCode::SUCCESS)
     }

@@ -6,7 +6,7 @@
 use crate::{
     collection::{Authentication, ProfileId, RecipeBody, RecipeId},
     http::content_type::ContentType,
-    template::{ChainError, Template, TemplateError, TriggeredRequestError},
+    template::Template,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -812,18 +812,20 @@ impl RequestBuildError {
     /// [TriggeredRequestError::NotAllowed]? This makes it easy to attach
     /// additional error context.
     pub fn has_trigger_disabled_error(&self) -> bool {
-        self.source.chain().any(|error| {
-            matches!(
-                error.downcast_ref(),
-                Some(TemplateError::Chain {
-                    error: ChainError::Trigger {
-                        error: TriggeredRequestError::NotAllowed,
-                        ..
-                    },
-                    ..
-                })
-            )
-        })
+        // TODO
+        false
+        // self.source.chain().any(|error| {
+        //     matches!(
+        //         error.downcast_ref(),
+        //         Some(TemplateError::Chain {
+        //             error: ChainError::Trigger {
+        //                 error: TriggeredRequestError::NotAllowed,
+        //                 ..
+        //             },
+        //             ..
+        //         })
+        //     )
+        // })
     }
 }
 

@@ -2,7 +2,7 @@
 
 use crate::{
     collection::{
-        Chain, ChainId, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
+        Profile, ProfileId, Recipe, RecipeBody, RecipeId,
         recipe_tree::RecipeNode,
     },
     http::content_type::ContentType,
@@ -15,7 +15,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{
         self, EnumAccess, Error as _, MapAccess, SeqAccess, VariantAccess,
-        Visitor,
+        Visitor, value::StringDeserializer,
     },
     ser::Error as _,
 };
@@ -63,18 +63,6 @@ impl HasId for RecipeNode {
 
 impl HasId for Recipe {
     type Id = RecipeId;
-
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-
-    fn set_id(&mut self, id: Self::Id) {
-        self.id = id;
-    }
-}
-
-impl HasId for Chain {
-    type Id = ChainId;
 
     fn id(&self) -> &Self::Id {
         &self.id
@@ -145,8 +133,9 @@ where
 /// always support duplicate keys
 pub mod serde_query_parameters {
     use super::*;
-    use serde::ser::SerializeSeq;
+    use serde::{de::value::StrDeserializer, ser::SerializeSeq};
 
+    #[expect(clippy::ptr_arg)]
     pub fn serialize<S>(
         query_parameters: &Vec<(String, Template)>,
         serializer: S,
@@ -154,11 +143,13 @@ pub mod serde_query_parameters {
     where
         S: Serializer,
     {
-        let mut seq = serializer.serialize_seq(Some(query_parameters.len()))?;
-        for (param, value) in query_parameters {
-            seq.serialize_element(&format!("{param}={}", value.display()))?;
-        }
-        seq.end()
+        todo!()
+        // let mut seq =
+        // serializer.serialize_seq(Some(query_parameters.len()))?;
+        // for (param, value) in query_parameters {
+        //     seq.serialize_element(&format!("{param}={}", value.display()))?;
+        // }
+        // seq.end()
     }
 
     pub fn deserialize<'de, D>(
@@ -208,7 +199,8 @@ pub mod serde_query_parameters {
                     }
 
                     let key = param.to_string();
-                    let value = value.parse().map_err(de::Error::custom)?;
+                    let value =
+                        Template::deserialize(StrDeserializer::new(value))?;
 
                     query.push((key, value));
                 }
@@ -283,17 +275,18 @@ impl Serialize for RecipeBody {
                 body,
                 content_type: Some(ContentType::Json),
             } => {
+                todo!()
                 // Reparse the body as JSON. Since it came from JSOn originally,
                 // it *shouldn't* fail to reparse
-                let json = serde_json::Value::from_str(&body.display())
-                    .context("Failed to reparse body as JSON")
-                    .map_err(S::Error::custom)?;
-                serializer.serialize_newtype_variant(
-                    Self::STRUCT_NAME,
-                    1,
-                    Self::VARIANT_JSON,
-                    &json,
-                )
+                // let json = serde_json::Value::from_str(&body.display())
+                //     .context("Failed to reparse body as JSON")
+                //     .map_err(S::Error::custom)?;
+                // serializer.serialize_newtype_variant(
+                //     Self::STRUCT_NAME,
+                //     1,
+                //     Self::VARIANT_JSON,
+                //     &json,
+                // )
             }
             RecipeBody::FormUrlencoded(value) => serializer
                 .serialize_newtype_variant(
@@ -329,7 +322,9 @@ impl<'de> Deserialize<'de> for RecipeBody {
                 where
                     E: de::Error,
                 {
-                    let template = v.to_string().parse().map_err(E::custom)?;
+                    let template = Template::deserialize(
+                        StringDeserializer::new(v.to_string()),
+                    )?;
                     Ok(RecipeBody::Raw {
                         body: template,
                         content_type: None,
@@ -372,9 +367,9 @@ impl<'de> Deserialize<'de> for RecipeBody {
                         // then immediately clone it during the parse :(
                         let json: serde_json::Value =
                             value.newtype_variant()?;
-                        let body = format!("{json:#}")
-                            .parse()
-                            .map_err(A::Error::custom)?;
+                        let body = Template::deserialize(
+                            StringDeserializer::new(format!("{json:#}")),
+                        )?;
                         Ok(RecipeBody::Raw {
                             body,
                             content_type: Some(ContentType::Json),

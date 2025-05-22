@@ -1,7 +1,7 @@
 //! General test utilities, that apply to all parts of the program
 
 use crate::{
-    collection::{ChainSource, HasId, ProfileId, RecipeId},
+    collection::{HasId, ProfileId, RecipeId},
     database::CollectionDatabase,
     http::{Exchange, HttpEngine, RequestSeed},
     template::{
@@ -14,23 +14,10 @@ use indexmap::IndexMap;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
 use slumber_config::HttpEngineConfig;
-use slumber_util::test_data_dir;
 use std::{
     path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
 };
-
-/// A chain that spits out bytes that are *not* valid UTF-8
-#[fixture]
-pub fn invalid_utf8_chain(test_data_dir: PathBuf) -> ChainSource {
-    ChainSource::File {
-        path: test_data_dir
-            .join("invalid_utf8.bin")
-            .to_string_lossy()
-            .to_string()
-            .into(),
-    }
-}
 
 /// Create an HTTP engine for building/sending requests. This is a singleton
 /// because creation is expensive (~300ms), and the engine is immutable.
@@ -78,7 +65,7 @@ impl HttpProvider for TestHttpProvider {
     async fn send_request(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        template_context: TemplateContext,
     ) -> Result<Exchange, TriggeredRequestError> {
         if let Some(http_engine) = &self.http_engine {
             let ticket = http_engine.build(seed, template_context).await?;

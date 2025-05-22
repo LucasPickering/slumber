@@ -625,12 +625,13 @@ impl LoadedState {
         };
 
         Ok(TemplateContext {
+            environment: todo!(),
             selected_profile: profile_id,
             collection: Arc::clone(collection),
-            http_provider: Box::new(http_provider),
+            http_provider: Arc::new(http_provider),
             prompter,
             overrides: Default::default(),
-            state: Default::default(),
+            show_sensitive: !is_preview,
         })
     }
 }

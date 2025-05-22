@@ -11,6 +11,7 @@ pub use recipe_tree::*;
 
 use anyhow::{Context, anyhow};
 use itertools::Itertools;
+use minijinja::Environment;
 use std::{
     env,
     fmt::{self, Debug, Display},
@@ -74,7 +75,7 @@ impl CollectionFile {
     /// Load collection from this file. Use [Self::new] to get a handle to the
     /// file. This pattern enables the TUI to start up and watch the collection
     /// file, even if it's invalid.
-    pub fn load(&self) -> anyhow::Result<Collection> {
+    pub fn load(&self) -> anyhow::Result<(Collection, Environment<'static>)> {
         Collection::load(&self.0)
     }
 

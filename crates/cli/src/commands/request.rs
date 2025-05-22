@@ -31,6 +31,7 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
     str::FromStr,
+    sync::Arc,
 };
 use tracing::warn;
 
@@ -123,7 +124,7 @@ impl Subcommand for RequestCommand {
         let (database, http_engine, seed, template_context) = self
             .build_request
             .build_seed(global, trigger_dependencies)?;
-        let ticket = http_engine.build(seed, &template_context).await.map_err(
+        let ticket = http_engine.build(seed, template_context).await.map_err(
             |error| {
                 // If the build failed because triggered requests are disabled,
                 // replace it with a custom error message
@@ -191,7 +192,8 @@ impl BuildRequestCommand {
     )> {
         let collection_file = global.collection_file()?;
         let config = Config::load()?;
-        let collection = collection_file.load()?;
+        let (collection, environment) = collection_file.load()?;
+        let environment = Arc::new(environment);
         let database = Database::load()?.into_collection(&collection_file)?;
         let http_engine = HttpEngine::new(&config.http);
 
@@ -214,16 +216,17 @@ impl BuildRequestCommand {
         // Build the request
         let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
         let template_context = TemplateContext {
+            environment,
             selected_profile,
             collection: collection.into(),
-            http_provider: Box::new(CliHttpProvider {
+            http_provider: Arc::new(CliHttpProvider {
                 database: database.clone(),
                 http_engine: http_engine.clone(),
                 trigger_dependencies,
             }),
             overrides,
-            prompter: Box::new(CliPrompter),
-            state: Default::default(),
+            prompter: Arc::new(CliPrompter),
+            show_sensitive: true,
         };
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
         Ok((database, http_engine, seed, template_context))
@@ -327,7 +330,7 @@ impl HttpProvider for CliHttpProvider {
     async fn send_request(
         &self,
         seed: RequestSeed,
-        template_context: &TemplateContext,
+        template_context: TemplateContext,
     ) -> Result<Exchange, TriggeredRequestError> {
         if self.trigger_dependencies {
             let ticket = self.http_engine.build(seed, template_context).await?;

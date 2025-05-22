@@ -1,4 +1,4 @@
-use crate::template::Template;
+use crate::{collection::Collection, template::Template};
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{Error, Visitor},
@@ -9,7 +9,7 @@ impl Serialize for Template {
     where
         S: serde::Serializer,
     {
-        self.display().serialize(serializer)
+        todo!()
     }
 }
 
@@ -53,7 +53,15 @@ impl<'de> Deserialize<'de> for Template {
             where
                 E: Error,
             {
-                v.parse().map_err(E::custom)
+                self.visit_string(v.to_owned())
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
+                let id = Collection::add_template(v).map_err(E::custom)?;
+                Ok(Template { id })
             }
         }
 

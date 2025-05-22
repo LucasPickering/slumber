@@ -29,7 +29,7 @@ impl Subcommand for GenerateCommand {
                     .build_request
                     .build_seed(global, self.execute_triggers)?;
                 let command = http_engine
-                    .build_curl(seed, &template_context)
+                    .build_curl(seed, template_context)
                     .await
                     .map_err(|error| {
                         // If the build failed because triggered requests are

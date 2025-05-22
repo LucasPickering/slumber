@@ -28,7 +28,7 @@ serde = {workspace = true}
 serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
 slumber_core = {workspace = true}
-slumber_import = {workspace = true}
+# slumber_import = {workspace = true}
 slumber_util = {workspace = true}
 tokio = {workspace = true, features = ["rt", "macros"]}
 tracing = {workspace = true}

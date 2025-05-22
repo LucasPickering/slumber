@@ -7,7 +7,10 @@ use crate::{
 };
 use anyhow::{Context, anyhow, bail};
 use bytes::Bytes;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{RecommendedWatcher, RecursiveMode};
+use notify_debouncer_full::{
+    DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache,
+};
 use ratatui::Frame;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
@@ -16,7 +19,7 @@ use slumber_core::{
     template::{Prompter, Template, TemplateChunk, TemplateContext},
 };
 use slumber_util::ResultTraced;
-use std::{path::Path, sync::Arc};
+use std::{path::Path, sync::Arc, time::Duration};
 use tokio::task;
 use tracing::{error, info};
 
@@ -176,7 +179,7 @@ enum TuiStateInner {
         /// Watch the collection file and wait for changes that will hopefully
         /// fix it. We have to hang onto this because watching stops when it's
         /// dropped.
-        _watcher: RecommendedWatcher,
+        _watcher: FileWatcher,
     },
 }
 
@@ -203,7 +206,7 @@ struct LoadedState {
     /// Watcher for changes to the collection file. Whenever the file changes,
     /// the collection will be reloaded. This will be `None` iff the watcher
     /// fails to initialize
-    _watcher: Option<RecommendedWatcher>,
+    _watcher: Option<FileWatcher>,
 }
 
 impl LoadedState {
@@ -634,43 +637,51 @@ impl LoadedState {
     }
 }
 
+type FileWatcher = Debouncer<RecommendedWatcher, RecommendedCache>;
+
 /// Spawn a file system watcher that watches the collection file for changes.
 /// When it changes, trigger a collection reload by sending a message. **The
 /// watcher will stop when it is dropped, so hang onto the return value!!**
 fn watch_collection(
     path: &Path,
     messages_tx: MessageSender,
-) -> notify::Result<RecommendedWatcher> {
-    let on_file_event = move |result: notify::Result<notify::Event>| {
-        match dbg!(result) {
-            // Only reload if the file is modified. Some editors may truncrate
-            // and recreate files instead of modifying
-            // https://docs.rs/notify/latest/notify/#editor-behaviour
-            Ok(
-                event @ notify::Event {
-                    // Modify/create type is useless on Windows
-                    // https://github.com/notify-rs/notify/issues/633
-                    kind:
-                        notify::EventKind::Modify(_) | notify::EventKind::Create(_),
-                    ..
-                },
-            ) => {
-                info!(?event, "Collection file changed, reloading");
+) -> notify::Result<FileWatcher> {
+    /// Should this event trigger a reload?
+    fn should_reload(event: &DebouncedEvent) -> bool {
+        // Only reload if the file is modified. Some editors may truncrate
+        // and recreate files instead of modifying
+        // https://docs.rs/notify/latest/notify/#editor-behaviour
+        // Modify/create type is useless on Windows
+        // https://github.com/notify-rs/notify/issues/633
+        matches!(
+            event.event.kind,
+            notify::EventKind::Modify(_) | notify::EventKind::Create(_),
+        )
+    }
+
+    let on_file_event = move |result: DebounceEventResult| {
+        match result {
+            Ok(events) if events.iter().any(should_reload) => {
+                info!(?events, "Collection file changed, reloading");
                 messages_tx.send(Message::CollectionStartReload);
             }
             // Do nothing for other event kinds
             Ok(_) => {}
-            Err(err) => {
-                error!(error = %err, "Error watching file");
+            Err(errors) => {
+                error!(?errors, "Error watching file");
             }
         }
     };
 
     // Spawn the watcher
-    let mut watcher = notify::recommended_watcher(on_file_event)?;
-    watcher.watch(path, RecursiveMode::NonRecursive)?;
-    info!(path = ?path, ?watcher, "Watching file for changes");
-    Ok(watcher)
+    let mut debouncer = notify_debouncer_full::new_debouncer(
+        Duration::from_millis(100),
+        None,
+        on_file_event,
+    )?;
+    debouncer.watch(path, RecursiveMode::NonRecursive)?;
+    info!(path = ?path, ?debouncer, "Watching file for changes");
+    Ok(debouncer)
 }
 
 #[cfg(test)]

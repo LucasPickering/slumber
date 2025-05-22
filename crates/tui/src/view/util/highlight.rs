@@ -95,7 +95,7 @@ pub fn highlight_if(
 fn get_config(content_type: ContentType) -> HighlightConfiguration {
     let mut config = match content_type {
         ContentType::Json => HighlightConfiguration::new(
-            tree_sitter_json::language(),
+            tree_sitter_json::LANGUAGE.into(),
             "json",
             tree_sitter_json::HIGHLIGHTS_QUERY,
             "",

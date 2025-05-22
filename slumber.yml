@@ -10,6 +10,12 @@ profiles:
       host: https://httpbin.org
       username: xX{{chains.username}}Xx
       user_guid: abc123
+  local:
+    name: Local
+    data:
+      host: http://localhost:80
+      username: xX{{chains.username}}Xx
+      user_guid: abc123
   init-fails:
     name: Request Init Fails
     data:

@@ -57,7 +57,7 @@ jobs:
         run: rustup target add ${{ matrix.platform.target }}
 
       - name: Run Clippy
-        run: cargo clippy --target ${{ matrix.platform.target }} --all-targets --all-features -- -D clippy::all
+        run: cargo clippy --target ${{ matrix.platform.target }} --all-targets --all-features
 
   doc:
     name: Check Docs

@@ -1,6 +1,3 @@
-#![forbid(unsafe_code)]
-#![deny(clippy::all)]
-
 use anyhow::Context;
 use slumber_util::{ResultTraced, paths};
 use std::{

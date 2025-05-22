@@ -45,6 +45,9 @@ slumber_util = {workspace = true, features = ["test"]}
 uuid = {workspace = true}
 wiremock = {workspace = true}
 
+[lints]
+workspace = true
+
 [package.metadata.release]
 tag = false
 

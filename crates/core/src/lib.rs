@@ -1,6 +1,3 @@
-#![forbid(unsafe_code)]
-#![deny(clippy::all)]
-
 //! Core frontend-agnostic functionality for Slumber, agnostic of the front end.
 //!
 //! **This crate is not semver compliant**. The version is locked to the root

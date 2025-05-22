@@ -2,12 +2,11 @@
 # deserialization, to make sure we don't accidentally introduce breaking changes
 # to the format
 
-.ignore:
-  base_profile_data: &base_profile_data
-    host: https://httpbin.org
-  base_recipe: &base_recipe
-    headers:
-      Accept: application/json
+.base_profile_data: &base_profile_data
+  host: https://httpbin.org
+.base_recipe: &base_recipe
+  headers:
+    Accept: application/json
 
 profiles:
   profile1:

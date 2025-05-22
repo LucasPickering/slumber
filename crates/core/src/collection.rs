@@ -539,7 +539,6 @@ mod tests {
                 }),
             ])
             .into(),
-            _ignore: IgnoredAny,
         };
         assert_eq!(loaded, expected);
     }

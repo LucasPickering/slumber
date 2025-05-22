@@ -184,13 +184,13 @@ impl EventHandler for Root {
                                     }
                                 },
                             )
-                            .open()
+                            .open();
                         }
                     }
                 }
                 Action::Quit => ViewContext::send_message(Message::Quit),
                 Action::ReloadCollection => {
-                    ViewContext::send_message(Message::CollectionStartReload)
+                    ViewContext::send_message(Message::CollectionStartReload);
                 }
                 _ => propagate.set(),
             })
@@ -292,7 +292,7 @@ impl PersistedContainer for SelectedRequestId {
     fn restore_persisted(&mut self, request_id: Self::Value) {
         // We can't just set the value directly, because then the request won't
         // be loaded from the DB
-        ViewContext::push_event(Event::HttpSelectRequest(request_id))
+        ViewContext::push_event(Event::HttpSelectRequest(request_id));
     }
 }
 

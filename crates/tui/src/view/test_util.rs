@@ -150,7 +150,7 @@ where
         T: Draw<Props>,
     {
         self.terminal.draw(|frame| {
-            self.component.draw(frame, props, self.area, self.has_focus)
+            self.component.draw(frame, props, self.area, self.has_focus);
         });
     }
 
@@ -288,7 +288,7 @@ where
                 queue.is_empty(),
                 "Event queue is not empty. To prevent unintended side effects, \
                 the queue must be empty before an update. {queue:?}"
-            )
+            );
         });
         ViewContext::push_event(event);
         self.drain_draw()
@@ -374,7 +374,7 @@ where
             self.propagated.is_empty(),
             "Expected no propagated events, but got {:?}",
             self.propagated
-        )
+        );
     }
 
     /// Assert that only emitted events were propagated, and those events match

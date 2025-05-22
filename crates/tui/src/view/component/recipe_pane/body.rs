@@ -102,10 +102,10 @@ impl EventHandler for RecipeBodyDisplay {
 }
 
 impl Draw for RecipeBodyDisplay {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         match self {
             RecipeBodyDisplay::Raw(inner) => {
-                inner.draw(frame, (), metadata.area(), true)
+                inner.draw(frame, (), metadata.area(), true);
             }
             RecipeBodyDisplay::Form(form) => form.draw(
                 frame,
@@ -159,7 +159,7 @@ impl RawBody {
     fn open_editor(&mut self) {
         let path = temp_file();
         debug!(?path, "Writing body to file for editing");
-        let Some(_) =
+        let Some(()) =
             fs::write(&path, self.body.template().display().as_bytes())
                 .with_context(|| {
                     format!("Error writing body to file {path:?} for editing")
@@ -174,9 +174,9 @@ impl RawBody {
         ViewContext::send_message(Message::FileEdit {
             path,
             on_complete: Box::new(move |path| {
-                emitter.emit(SaveBodyOverride(path))
+                emitter.emit(SaveBodyOverride(path));
             }),
-        })
+        });
     }
 
     /// Read the user's edited body from the temp file we created, and rebuild
@@ -223,12 +223,12 @@ impl EventHandler for RawBody {
                 _ => propagate.set(),
             })
             .emitted(self.override_emitter, |SaveBodyOverride(path)| {
-                self.load_override(&path)
+                self.load_override(&path);
             })
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 RawBodyMenuAction::View => self.view_body(),
                 RawBodyMenuAction::Copy => {
-                    ViewContext::send_message(Message::CopyRequestBody)
+                    ViewContext::send_message(Message::CopyRequestBody);
                 }
                 RawBodyMenuAction::Edit => self.open_editor(),
                 RawBodyMenuAction::Reset => self.body.reset_override(),
@@ -247,7 +247,7 @@ impl EventHandler for RawBody {
 }
 
 impl Draw for RawBody {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let area = metadata.area();
         self.text_window.draw(
             frame,

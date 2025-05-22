@@ -192,7 +192,7 @@ impl Default for CommandsConfig {
         };
 
         Self {
-            shell: default_shell.iter().map(|s| s.to_string()).collect(),
+            shell: default_shell.iter().map(ToString::to_string).collect(),
             default_query: MimeMap::default(),
         }
     }

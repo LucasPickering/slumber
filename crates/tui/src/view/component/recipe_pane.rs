@@ -65,8 +65,8 @@ impl RecipePane {
         let recipe_state = self.recipe_state.borrow();
         let options = recipe_state.data().as_ref()?.build_options();
         Some(RequestConfig {
-            recipe_id,
             profile_id,
+            recipe_id,
             options,
         })
     }
@@ -81,7 +81,7 @@ impl EventHandler for RecipePane {
                 _ => propagate.set(),
             })
             .emitted(self.actions_emitter, |menu_action| {
-                self.emitter.emit(RecipePaneEvent::Action(menu_action))
+                self.emitter.emit(RecipePaneEvent::Action(menu_action));
             })
     }
 
@@ -155,9 +155,9 @@ impl<'a> Draw<RecipePaneProps<'a>> for RecipePane {
                 frame.render_widget(folder.generate(), inner_area);
             }
             Some(RecipeNode::Recipe(_)) => {
-                recipe_state.draw_opt(frame, (), inner_area, true)
+                recipe_state.draw_opt(frame, (), inner_area, true);
             }
-        };
+        }
     }
 }
 
@@ -230,7 +230,6 @@ impl Generate for &Folder {
         // │ └─Get User
         // └─Modify User
 
-        let mut lines = vec![self.name().into()];
         fn add_lines<'a>(
             lines: &mut Vec<Line<'a>>,
             folder: &'a Folder,
@@ -262,6 +261,8 @@ impl Generate for &Folder {
                 }
             }
         }
+
+        let mut lines = vec![self.name().into()];
         add_lines(&mut lines, self, &mut Vec::new());
         lines.into()
     }

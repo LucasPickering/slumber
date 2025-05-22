@@ -152,7 +152,7 @@ impl Tui {
                     // wanna know about it
                     Some(message.expect("Message channel dropped while running"))
                 },
-                _ = time::sleep(Self::TICK_TIME) => None,
+                () = time::sleep(Self::TICK_TIME) => None,
             };
 
             // We'll try to skip draws if nothing on the screen has changed, to
@@ -165,7 +165,7 @@ impl Tui {
                 // If an error occurs, store it so we can show the user
                 self.handle_message(message).reported(&self.messages_tx);
                 needs_draw = true;
-            };
+            }
 
             // ===== Event Phase =====
             // Let the view handle all queued events. Trigger a draw if there

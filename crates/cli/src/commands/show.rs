@@ -36,7 +36,7 @@ impl Subcommand for ShowCommand {
                         .collection_file()
                         .map(|file| file.to_string())
                         .unwrap_or_else(|error| error.to_string())
-                )
+                );
             }
             ShowTarget::Config => {
                 let config = Config::load()?;

@@ -114,7 +114,7 @@ impl Prompter for TestPrompter {
         // Grab the next value in the sequence. If we're all out, don't respond
         let index = self.index.fetch_add(1, Ordering::Relaxed);
         if let Some(value) = self.responses.get(index) {
-            prompt.channel.respond(value.clone())
+            prompt.channel.respond(value.clone());
         } else if let Some(default) = prompt.default {
             prompt.channel.respond(default);
         }
@@ -151,7 +151,7 @@ impl Prompter for TestSelectPrompter {
     fn select(&self, mut select: Select) {
         let index = self.index.fetch_add(1, Ordering::Relaxed);
         if let Some(value) = self.responses.get(index) {
-            select.channel.respond(select.options.swap_remove(*value))
+            select.channel.respond(select.options.swap_remove(*value));
         }
     }
 }

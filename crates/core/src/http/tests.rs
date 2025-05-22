@@ -799,9 +799,7 @@ async fn test_build_curl_body(
         .build_curl(seed, &template_context)
         .await
         .unwrap();
-    let expected_command = format!(
-        "curl -XGET --url 'http://localhost/url' {}",
-        expected_arguments
-    );
+    let expected_command =
+        format!("curl -XGET --url 'http://localhost/url' {expected_arguments}");
     assert_eq!(command, expected_command);
 }

@@ -83,7 +83,7 @@ impl EventHandler for ResponseBodyView {
 }
 
 impl Draw for ResponseBodyView {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.body.draw(frame, (), metadata.area(), true);
     }
 }
@@ -102,6 +102,7 @@ struct ResponseQueryKey {
 }
 
 /// Serialize a MIME type as its string representation
+#[expect(clippy::ref_option)]
 fn serialize_mime<S>(
     mime: &Option<Mime>,
     serializer: S,
@@ -126,14 +127,14 @@ impl ResponseHeadersView {
 impl EventHandler for ResponseHeadersView {}
 
 impl Draw for ResponseHeadersView {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         frame.render_widget(
             HeaderTable {
                 headers: &self.response.headers,
             }
             .generate(),
             metadata.area(),
-        )
+        );
     }
 }
 

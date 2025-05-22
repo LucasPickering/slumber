@@ -279,6 +279,7 @@ pub enum Event {
 impl Event {
     /// Convert to `Option<Event>` so the methods from [OptionEvent] can be used
     /// to match the event
+    #[expect(clippy::unnecessary_wraps)]
     pub fn opt(self) -> Option<Event> {
         Some(self)
     }

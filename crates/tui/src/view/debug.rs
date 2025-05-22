@@ -38,7 +38,7 @@ impl DebugMonitor {
         frame.render_widget(
             Paragraph::new(text).alignment(Alignment::Right),
             area,
-        )
+        );
     }
 }
 

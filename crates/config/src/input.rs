@@ -229,7 +229,7 @@ impl Display for InputBinding {
             if i > 0 {
                 write!(f, ",")?;
             }
-            write!(f, "{}", combo)?;
+            write!(f, "{combo}")?;
         }
         Ok(())
     }
@@ -301,7 +301,7 @@ impl Display for KeyCombination {
             KeyCode::Esc => write!(f, "<esc>"),
             KeyCode::Enter => write!(f, "<enter>"),
             KeyCode::Delete => write!(f, "<del>"),
-            KeyCode::F(num) => write!(f, "F{}", num),
+            KeyCode::F(num) => write!(f, "F{num}"),
             KeyCode::Char(' ') => write!(f, "<space>"),
             KeyCode::Char(c) => write!(f, "{c}"),
             // Punting on everything else until we need it

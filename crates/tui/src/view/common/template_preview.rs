@@ -80,7 +80,7 @@ impl TemplatePreview {
                     &destination,
                     content_type,
                     style,
-                )
+                );
             };
 
             ViewContext::send_message(Message::TemplatePreview {
@@ -137,7 +137,7 @@ impl Generate for &TemplatePreview {
 
 impl Widget for &TemplatePreview {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        (&**self.text()).render(area, buf)
+        (&**self.text()).render(area, buf);
     }
 }
 
@@ -179,7 +179,7 @@ impl TextStitcher {
     /// Add one chunk to the text. This will recursively split on any line
     /// breaks in the text until it reaches the end.
     fn add_chunk(&mut self, chunk_text: String, style: Style) {
-        let ends_in_newline = chunk_text.ends_with("\n");
+        let ends_in_newline = chunk_text.ends_with('\n');
 
         // The first line should extend the final line of the current text,
         // because there isn't necessarily a line break between chunks

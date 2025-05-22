@@ -125,32 +125,26 @@ impl Template {
 
             // If the key is in the overrides, use the given value
             // without parsing it
-            match context.overrides.get(&raw) {
-                Some(value) => {
-                    trace!(
-                        key = raw,
-                        value, "Rendered template key from override"
-                    );
-                    Ok(RenderedChunk {
-                        value: value.clone().into_bytes().into(),
-                        // The overridden value *could* be marked
-                        // sensitive, but we're taking a shortcut and
-                        // assuming it isn't
-                        sensitive: false,
-                    })
+            if let Some(value) = context.overrides.get(&raw) {
+                trace!(key = raw, value, "Rendered template key from override");
+                Ok(RenderedChunk {
+                    value: value.clone().into_bytes().into(),
+                    // The overridden value *could* be marked
+                    // sensitive, but we're taking a shortcut and
+                    // assuming it isn't
+                    sensitive: false,
+                })
+            } else {
+                let span = trace_span!("Rendering template key", key = raw);
+                let _ = span.enter();
+                stack.push(key)?;
+                // Standard case - parse the key and render it
+                let result = key.to_source().render(context, stack).await;
+                stack.pop();
+                if let Ok(value) = &result {
+                    trace!(?value, "Rendered template key to value");
                 }
-                None => {
-                    let span = trace_span!("Rendering template key", key = raw);
-                    let _ = span.enter();
-                    stack.push(key)?;
-                    // Standard case - parse the key and render it
-                    let result = key.to_source().render(context, stack).await;
-                    stack.pop();
-                    if let Ok(value) = &result {
-                        trace!(?value, "Rendered template key to value");
-                    }
-                    result
-                }
+                result
             }
         }
 
@@ -644,7 +638,7 @@ impl<'a> ChainTemplateSource<'a> {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|error| ChainError::Command {
-                command: command.to_owned(),
+                command: command.clone(),
                 error: error.into(),
             })
             .inspect_err(|err| error!(error = err as &dyn Error))?;
@@ -658,7 +652,7 @@ impl<'a> ChainTemplateSource<'a> {
                 .write_all(input.as_bytes())
                 .await
                 .map_err(|error| ChainError::Command {
-                    command: command.to_owned(),
+                    command: command.clone(),
                     error: error.into(),
                 })
                 .inspect_err(|err| error!(error = err as &dyn Error))?;
@@ -669,7 +663,7 @@ impl<'a> ChainTemplateSource<'a> {
             .wait_with_output()
             .await
             .map_err(|error| ChainError::Command {
-                command: command.to_owned(),
+                command: command.clone(),
                 error: error.into(),
             })
             .inspect_err(|err| error!(error = err as &dyn Error))?;

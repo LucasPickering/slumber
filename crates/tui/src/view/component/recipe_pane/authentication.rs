@@ -105,7 +105,7 @@ impl EventHandler for AuthenticationDisplay {
             .opt()
             .action(|action, propagate| match action {
                 Action::Edit => {
-                    self.state.open_edit_modal(self.override_emitter)
+                    self.state.open_edit_modal(self.override_emitter);
                 }
                 Action::Reset => self.state.reset_override(),
                 _ => propagate.set(),
@@ -113,12 +113,12 @@ impl EventHandler for AuthenticationDisplay {
             .emitted(
                 self.override_emitter,
                 |SaveAuthenticationOverride(value)| {
-                    self.state.set_override(&value)
+                    self.state.set_override(&value);
                 },
             )
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 AuthenticationMenuAction::Edit => {
-                    self.state.open_edit_modal(self.override_emitter)
+                    self.state.open_edit_modal(self.override_emitter);
                 }
                 AuthenticationMenuAction::Reset => self.state.reset_override(),
             })
@@ -141,7 +141,7 @@ impl EventHandler for AuthenticationDisplay {
 }
 
 impl Draw for AuthenticationDisplay {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let styles = &TuiContext::get().styles;
         let [label_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
@@ -273,10 +273,10 @@ impl State {
                 .validator(|value| value.parse::<Template>().is_ok()),
             move |value| {
                 // Defer the state update into an event, so it can get &mut
-                emitter.emit(SaveAuthenticationOverride(value))
+                emitter.emit(SaveAuthenticationOverride(value));
             },
         )
-        .open()
+        .open();
     }
 
     /// Override the value template for whichever field is selected, and

@@ -40,6 +40,7 @@ pub struct Collection {
     /// ignore anything that starts with `.` (recursively) but that
     /// requires a custom serde impl for each type, or changes to the macro
     #[serde(default, skip_serializing, rename = ".ignore")]
+    #[expect(clippy::pub_underscore_fields)]
     pub _ignore: serde::de::IgnoredAny,
 }
 
@@ -90,7 +91,7 @@ impl Profile {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for Profile {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         Self {
             id: ProfileId::factory(()),
             name: None,
@@ -127,7 +128,7 @@ impl From<&str> for ProfileId {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for ProfileId {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         uuid::Uuid::new_v4().to_string().into()
     }
 }
@@ -158,7 +159,7 @@ impl Folder {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for Folder {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         Self {
             id: RecipeId::factory(()),
             name: None,
@@ -171,6 +172,7 @@ impl slumber_util::Factory for Folder {
 /// order to distinguish it from a single instance of an HTTP request. And it's
 /// not called `RequestTemplate` because the word "template" has a specific
 /// meaning related to string interpolation.
+#[expect(clippy::unsafe_derive_deserialize)]
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 #[serde(deny_unknown_fields)]
@@ -215,7 +217,7 @@ impl Recipe {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for Recipe {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         Self {
             id: RecipeId::factory(()),
             persist: true,
@@ -278,14 +280,14 @@ impl FromStr for RecipeId {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for RecipeId {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         uuid::Uuid::new_v4().to_string().into()
     }
 }
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for Chain {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         Self {
             id: "chain1".into(),
             source: ChainSource::Request {
@@ -593,7 +595,7 @@ impl Collection {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for Collection {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         use crate::test_util::by_id;
         // Include a body in the recipe, so body-related behavior can be tested
         let recipe = Recipe {
@@ -675,8 +677,8 @@ mod tests {
             headers.insert("content-type".into(), header.into());
         }
         let recipe = Recipe {
-            headers,
             body,
+            headers,
             ..Recipe::factory(())
         };
         let expected = expected.and_then(|value| value.parse::<Mime>().ok());

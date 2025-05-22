@@ -139,7 +139,7 @@ impl TestTerminal {
         &self,
         expected: impl IntoIterator<Item = impl Into<Line<'a>>>,
     ) {
-        self.0.borrow().backend().assert_buffer_lines(expected)
+        self.0.borrow().backend().assert_buffer_lines(expected);
     }
 
     pub fn draw(&self, f: impl FnOnce(&mut Frame)) {
@@ -162,10 +162,14 @@ pub async fn run_local<T>(future: impl Future<Output = T>) -> T {
 macro_rules! assert_events {
     ($($pattern:pat $(if $condition:expr)?),* $(,)?) => {
         ViewContext::inspect_event_queue(|events| {
+            // Can't use expect(unused_mut) because not all invocations trigger
+            // the warning
+            #[allow(clippy::allow_attributes)]
+            #[allow(unused_mut)]
+            let mut len = 0;
+
             // In order to support conditions on each individual event, we have
             // to unpack them here
-            #[expect(unused_mut)]
-            let mut len = 0;
             $(
                 let Some(event) = events.get(len) else {
                     panic!(

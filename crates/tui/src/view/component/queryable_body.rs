@@ -166,7 +166,7 @@ impl QueryableBody {
             let emitter = self.emitter;
             let abort_handle =
                 self.spawn_command(command, body, move |_, result| {
-                    emitter.emit(QueryComplete(result))
+                    emitter.emit(QueryComplete(result));
                 });
             self.query_state = QueryState::Running(abort_handle);
         }
@@ -280,7 +280,7 @@ impl EventHandler for QueryableBody {
 }
 
 impl Draw for QueryableBody {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let [body_area, query_area] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)])
                 .areas(metadata.area());
@@ -665,7 +665,7 @@ mod tests {
         terminal: TestTerminal,
         response: Arc<ResponseRecord>,
     ) {
-        DatabasePersistedStore::store_persisted(&Key, &"".to_owned());
+        DatabasePersistedStore::store_persisted(&Key, &String::new());
 
         // Setting initial value triggers a debounce event
         let mut component = run_local(async {
@@ -722,7 +722,7 @@ mod tests {
             .assert_empty();
         // Triggers the background task
         run_local(async {
-            component.int().send_key(KeyCode::Enter).assert_empty()
+            component.int().send_key(KeyCode::Enter).assert_empty();
         })
         .await;
         // Success should push a notification
@@ -736,7 +736,7 @@ mod tests {
         // Error should appear as a modal
         component.int().send_text(":bad!").assert_empty();
         run_local(async {
-            component.int().send_key(KeyCode::Enter).assert_empty()
+            component.int().send_key(KeyCode::Enter).assert_empty();
         })
         .await;
         component.int().drain_draw().assert_empty();

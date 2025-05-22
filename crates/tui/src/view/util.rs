@@ -64,11 +64,11 @@ pub struct PreviewPrompter;
 
 impl Prompter for PreviewPrompter {
     fn prompt(&self, prompt: Prompt) {
-        prompt.channel.respond("<prompt>".into())
+        prompt.channel.respond("<prompt>".into());
     }
 
     fn select(&self, select: Select) {
-        select.channel.respond("<select>".into())
+        select.channel.respond("<select>".into());
     }
 }
 

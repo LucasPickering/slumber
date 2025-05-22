@@ -145,12 +145,12 @@ pub fn delete_temp_file(path: &Path) {
 pub fn spawn(future: impl 'static + Future<Output = ()>) -> JoinHandle<()> {
     task::spawn_local(async move {
         select! {
-            _ = future => {
+            () = future => {
                 // Assume the task updated _something_ visible to the user,
                 // so trigger a redraw here
                 ViewContext::messages_tx().send(Message::Draw);
             },
-            _ = CANCEL_TOKEN.cancelled() => {},
+            () = CANCEL_TOKEN.cancelled() => {},
         }
     })
 }

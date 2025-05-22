@@ -70,7 +70,7 @@ impl Template {
                     // extreme rarity, so we need to optimize for the case where
                     // there are none and only allocate when necessary.
                     static REGEX: LazyLock<Regex> =
-                        LazyLock::new(|| Regex::new(r#"\{_*"#).unwrap());
+                        LazyLock::new(|| Regex::new(r"\{_*").unwrap());
                     // Track how far into s we've copied, so we can do as few
                     // copies as possible
                     let mut last_copied = 0;
@@ -100,7 +100,7 @@ impl Template {
                     // If the previous chunk ends with a potential escape
                     // sequence, add an underscore to escape the upcoming key
                     static REGEX: LazyLock<Regex> =
-                        LazyLock::new(|| Regex::new(r#"\{_*$"#).unwrap());
+                        LazyLock::new(|| Regex::new(r"\{_*$").unwrap());
                     if REGEX.is_match(&buf) {
                         buf.to_mut().push_str(ESCAPE);
                     }
@@ -133,9 +133,10 @@ impl Identifier {
     /// Generate an identifier from a string, replacing all invalid chars with
     /// a placeholder. Panic if the string is empty.
     pub fn escape(value: &str) -> Self {
-        if value.is_empty() {
-            panic!("Cannot create identifier from empty string");
-        }
+        assert!(
+            !value.is_empty(),
+            "Cannot create identifier from empty string"
+        );
         Self(
             value
                 .chars()
@@ -319,7 +320,7 @@ mod tests {
         ]),
         true
     )]
-    #[case::binary(r#"\xc3\x28"#, tmpl([raw(r#"\xc3\x28"#)]), false)]
+    #[case::binary(r"\xc3\x28", tmpl([raw(r"\xc3\x28")]), false)]
     #[case::escape_incomplete_key(
         "{_{hello {_{_{", tmpl([raw("{{hello {{{")]), true
     )]
@@ -371,7 +372,7 @@ mod tests {
     #[case::invalid_env("{{env.one.two}}", "invalid key")]
     #[case::whitespace_key("{{ field }}", "invalid identifier")]
     // the first { is escaped, 2nd and 3rd make the key, 4th is a problem
-    #[case::bonus_braces(r#"\\{{{{field}}"#, "invalid identifier")]
+    #[case::bonus_braces(r"\\{{{{field}}", "invalid identifier")]
     fn test_parse_error(#[case] template: &str, #[case] expected_error: &str) {
         assert_err!(template.parse::<Template>(), expected_error);
     }
@@ -396,7 +397,7 @@ mod tests {
     #[rstest]
     #[case::empty("", tmpl([]))]
     #[case::key("{{hello}}", tmpl([raw("{{hello}}")]))]
-    #[case::backslash(r#"\{{hello}}"#, tmpl([raw(r#"\{{hello}}"#)]))]
+    #[case::backslash(r"\{{hello}}", tmpl([raw(r"\{{hello}}")]))]
     fn test_raw(#[case] template: &str, #[case] expected: Template) {
         let escaped = Template::raw(template.into());
         assert_eq!(escaped, expected);
@@ -412,7 +413,7 @@ mod tests {
 
     /// Escaping an empty identifier panics
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "Cannot create identifier from empty string")]
     fn test_escape_identifier_empty() {
         Identifier::escape("");
     }

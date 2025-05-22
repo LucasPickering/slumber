@@ -147,7 +147,7 @@ impl TuiState {
     pub fn draw(&self, frame: &mut Frame) {
         match &self.0 {
             TuiStateInner::Loaded(state) => {
-                state.view.draw(frame, &state.request_store)
+                state.view.draw(frame, &state.request_store);
             }
             TuiStateInner::Error {
                 collection_file,
@@ -157,7 +157,7 @@ impl TuiState {
                 // We can't show the real UI without a collection, so just show
                 // the error. We have a watcher on the file so when it changes,
                 // we'll reload it
-                View::draw_collection_load_error(frame, collection_file, error)
+                View::draw_collection_load_error(frame, collection_file, error);
             }
         }
     }
@@ -265,7 +265,7 @@ impl LoadedState {
                 });
             }
             Message::CollectionEndReload(collection) => {
-                self.reload_collection(collection)
+                self.reload_collection(collection);
             }
             Message::CollectionEdit => {
                 let path = self.collection_file.path().to_owned();
@@ -355,7 +355,7 @@ impl LoadedState {
                     // worth it
                     self.view.selected_profile_id().cloned(),
                     on_complete,
-                )?;
+                );
             }
 
             // All other messages are handled by the root TUI and should never
@@ -398,7 +398,7 @@ impl LoadedState {
             options,
         } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let template_context = self.template_context(profile_id, false);
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         util::spawn_result(async move {
@@ -420,7 +420,7 @@ impl LoadedState {
             options,
         } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let template_context = self.template_context(profile_id, false);
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         util::spawn_result(async move {
@@ -446,7 +446,7 @@ impl LoadedState {
             options,
         } = self.request_config()?;
         let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false)?;
+        let template_context = self.template_context(profile_id, false);
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         util::spawn_result(async move {
@@ -513,8 +513,7 @@ impl LoadedState {
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
 
-        let template_context =
-            self.template_context(profile_id.clone(), false)?;
+        let template_context = self.template_context(profile_id.clone(), false);
         let messages_tx = self.messages_tx();
 
         let seed = RequestSeed::new(recipe_id.clone(), options);
@@ -599,14 +598,13 @@ impl LoadedState {
         template: Template,
         profile_id: Option<ProfileId>,
         on_complete: Callback<Vec<TemplateChunk>>,
-    ) -> anyhow::Result<()> {
-        let context = self.template_context(profile_id, true)?;
+    ) {
+        let context = self.template_context(profile_id, true);
         util::spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render_chunks(&context).await;
             on_complete(chunks);
         });
-        Ok(())
     }
 
     /// Expose app state to the templater. Most of the data has to be cloned out
@@ -616,7 +614,7 @@ impl LoadedState {
         &self,
         profile_id: Option<ProfileId>,
         is_preview: bool,
-    ) -> anyhow::Result<TemplateContext> {
+    ) -> TemplateContext {
         let collection = &self.collection;
         let http_provider =
             TuiHttpProvider::new(self.messages_tx(), is_preview);
@@ -626,14 +624,14 @@ impl LoadedState {
             Box::new(TuiPrompter::new(self.messages_tx()))
         };
 
-        Ok(TemplateContext {
+        TemplateContext {
             selected_profile: profile_id,
             collection: Arc::clone(collection),
             http_provider: Box::new(http_provider),
             prompter,
             overrides: Default::default(),
             state: Default::default(),
-        })
+        }
     }
 }
 

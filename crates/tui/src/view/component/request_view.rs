@@ -87,7 +87,7 @@ impl EventHandler for RequestView {
 }
 
 impl Draw for RequestView {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let request = &self.request;
         let [version_area, url_area, headers_area, body_area] =
             Layout::vertical([

@@ -32,8 +32,7 @@ pub fn from_rest(rest_file: impl AsRef<Path>) -> anyhow::Result<Collection> {
     let rest_file = rest_file.as_ref();
     // Parse the file and determine the flavor using the extension
     let rest_format = RestFormat::parse_file(rest_file)?;
-    let collection = try_build_collection(rest_format)?;
-    Ok(collection)
+    Ok(build_collection(rest_format))
 }
 
 /// In Rest "Chains" and "Requests" are connected
@@ -299,7 +298,7 @@ fn build_profile_map(
     IndexMap::from([(profile_id.clone(), default_profile)])
 }
 
-fn try_build_collection(rest_format: RestFormat) -> anyhow::Result<Collection> {
+fn build_collection(rest_format: RestFormat) -> Collection {
     let RestFormat {
         requests,
         variables,
@@ -318,12 +317,12 @@ fn try_build_collection(rest_format: RestFormat) -> anyhow::Result<Collection> {
 
     let profiles = build_profile_map(flavor, variables);
 
-    Ok(Collection {
+    Collection {
         profiles,
         chains,
         recipes,
         _ignore: IgnoredAny,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -518,7 +517,7 @@ mod tests {
             variables: example_vars(),
         };
 
-        let Collection { recipes, .. } = try_build_collection(format).unwrap();
+        let Collection { recipes, .. } = build_collection(format);
 
         let recipe_1 = recipes.get(&RecipeId::from("Query_Request_0")).unwrap();
         let recipe_2 = recipes.get(&RecipeId::from("Request_1")).unwrap();
@@ -636,6 +635,6 @@ mod tests {
                 assert_eq!(deb_1, deb_2);
             }
             _ => panic!("Invalid Json"),
-        };
+        }
     }
 }

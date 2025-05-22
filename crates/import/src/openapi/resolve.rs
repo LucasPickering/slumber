@@ -230,7 +230,7 @@ mod tests {
         let resolver = ReferenceResolver::new(Some(Components::default()));
         let result =
             resolver.get_by_name::<SecurityScheme>("auth_that_does_not_exist");
-        assert_err!(result, "refers to an object that does not exist")
+        assert_err!(result, "refers to an object that does not exist");
     }
 
     #[rstest]

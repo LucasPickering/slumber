@@ -354,12 +354,12 @@ where
             Action::Toggle
                 if self.is_subscribed(SelectStateEventType::Toggle) =>
             {
-                self.emit_for_selected(SelectStateEvent::Toggle)
+                self.emit_for_selected(SelectStateEvent::Toggle);
             }
             Action::Submit
                 if self.is_subscribed(SelectStateEventType::Submit) =>
             {
-                self.emit_for_selected(SelectStateEvent::Submit)
+                self.emit_for_selected(SelectStateEvent::Submit);
             }
             _ => propagate.set(),
         })
@@ -433,7 +433,7 @@ impl SelectStateData for ListState {
     }
 
     fn select(&mut self, index: Option<usize>) {
-        self.select(index)
+        self.select(index);
     }
 }
 
@@ -443,7 +443,7 @@ impl SelectStateData for TableState {
     }
 
     fn select(&mut self, index: Option<usize>) {
-        self.select(index)
+        self.select(index);
     }
 }
 
@@ -749,7 +749,7 @@ mod tests {
                 // persistence
                 SelectStateEvent::Select(0),
                 SelectStateEvent::Select(1),
-            ])
+            ]);
     }
 
     #[fixture]

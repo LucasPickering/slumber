@@ -78,7 +78,7 @@ impl EventHandler for ExchangePane {
 }
 
 impl Draw for ExchangePane {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let input_engine = &TuiContext::get().input_engine;
         let title =
             input_engine.add_hint("Request / Response", Action::SelectResponse);
@@ -184,7 +184,7 @@ struct ExchangePaneMetadata {
 }
 
 impl Draw for ExchangePaneMetadata {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let tui_context = TuiContext::get();
         let config = &tui_context.config;
         let styles = &tui_context.styles;
@@ -398,30 +398,30 @@ impl EventHandler for ExchangePaneContent {
 }
 
 impl Draw for ExchangePaneContent {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let [tabs_area, content_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
                 .areas(metadata.area());
         self.tabs.draw(frame, (), tabs_area, true);
         match &self.state {
             ExchangePaneContentState::Building => {
-                frame.render_widget("Initializing request...", content_area)
+                frame.render_widget("Initializing request...", content_area);
             }
             ExchangePaneContentState::BuildError { error } => {
-                frame.render_widget(error, content_area)
+                frame.render_widget(error, content_area);
             }
             ExchangePaneContentState::Loading { request } => {
                 match self.tabs.data().selected() {
                     Tab::Request => request.draw(frame, (), content_area, true),
                     Tab::Body | Tab::Headers => {
-                        frame.render_widget("Loading...", content_area)
+                        frame.render_widget("Loading...", content_area);
                     }
                 }
             }
             // Can't show cancelled request here because we might've cancelled
             // during the build
             ExchangePaneContentState::Cancelled => {
-                frame.render_widget("Request cancelled", content_area)
+                frame.render_widget("Request cancelled", content_area);
             }
             ExchangePaneContentState::Response {
                 request,
@@ -431,14 +431,14 @@ impl Draw for ExchangePaneContent {
                 Tab::Request => request.draw(frame, (), content_area, true),
                 Tab::Body => response_body.draw(frame, (), content_area, true),
                 Tab::Headers => {
-                    response_headers.draw(frame, (), content_area, true)
+                    response_headers.draw(frame, (), content_area, true);
                 }
             },
             ExchangePaneContentState::RequestError { request, error } => {
                 match self.tabs.data().selected() {
                     Tab::Request => request.draw(frame, (), content_area, true),
                     Tab::Body | Tab::Headers => {
-                        frame.render_widget(error, content_area)
+                        frame.render_widget(error, content_area);
                     }
                 }
             }
@@ -479,7 +479,8 @@ impl ExchangePaneContentState {
     }
 
     fn has_request_body(&self) -> bool {
-        self.request().is_some_and(|request| request.has_body())
+        self.request()
+            .is_some_and(super::request_view::RequestView::has_body)
     }
 
     fn response(&self) -> Option<&ResponseBodyView> {

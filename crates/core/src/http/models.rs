@@ -137,7 +137,7 @@ impl TryFrom<String> for HttpVersion {
 #[derive(Debug, Error)]
 #[error(
     "Invalid HTTP version `{input}`. Must be one of: {}",
-    HttpVersion::iter().map(|method| method.to_str()).format(", "),
+    HttpVersion::iter().map(HttpVersion::to_str).format(", "),
 )]
 pub struct HttpVersionParseError {
     input: String,
@@ -233,7 +233,7 @@ impl TryFrom<String> for HttpMethod {
 #[derive(Debug, Error)]
 #[error(
     "Invalid HTTP method `{input}`. Must be one of: {}",
-    HttpMethod::iter().map(|method| method.to_str()).format(", "),
+    HttpMethod::iter().map(HttpMethod::to_str).format(", "),
 )]
 pub struct HttpMethodParseError {
     input: String,
@@ -496,7 +496,7 @@ impl RequestRecord {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for RequestRecord {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         Self::factory(RequestId::new())
     }
 }
@@ -535,7 +535,7 @@ impl slumber_util::Factory<(Option<ProfileId>, RecipeId)> for RequestRecord {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for ResponseRecord {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         Self::factory(RequestId::new())
     }
 }
@@ -566,7 +566,7 @@ impl slumber_util::Factory<StatusCode> for ResponseRecord {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for Exchange {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         Self::factory((None, RecipeId::factory(())))
     }
 }

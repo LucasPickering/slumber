@@ -85,7 +85,7 @@ impl Modal for HelpModal {
 impl EventHandler for HelpModal {}
 
 impl Draw for HelpModal {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         // Create layout
         let [collection_area, _, keybindings_area] = Layout::vertical([
             Constraint::Length(Self::GENERAL_LENGTH + 1),

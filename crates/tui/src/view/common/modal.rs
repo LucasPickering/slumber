@@ -161,7 +161,7 @@ impl EventHandler for ModalQueue {
                 // eat the Quit action here because it's  (hopefully)
                 // intuitive and consistent with other TUIs
                 Action::Cancel | Action::Quit if self.is_open() => {
-                    self.close(false)
+                    self.close(false);
                 }
                 Action::Submit if self.is_open() => self.close(true),
                 _ => propagate.set(),
@@ -199,7 +199,7 @@ impl EventHandler for ModalQueue {
 }
 
 impl Draw for ModalQueue {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         if let Some(modal) = self.queue.front() {
             let styles = &TuiContext::get().styles;
             let (width, height) = modal.data().dimensions();

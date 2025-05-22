@@ -43,7 +43,7 @@ impl Subcommand for GenerateCommand {
                             error.source
                         }
                     })?;
-                println!("{}", command);
+                println!("{command}");
             }
         }
         Ok(ExitCode::SUCCESS)

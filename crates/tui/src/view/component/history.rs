@@ -133,7 +133,7 @@ impl EventHandler for History {
                 if let SelectStateEvent::Select(index) = event {
                     ViewContext::push_event(Event::HttpSelectRequest(Some(
                         self.select.data()[index].id(),
-                    )))
+                    )));
                 }
             })
     }
@@ -148,7 +148,7 @@ impl EventHandler for History {
 }
 
 impl Draw for History {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         if self.deleting {
             self.delete_confirm_buttons
                 .draw(frame, (), metadata.area(), true);

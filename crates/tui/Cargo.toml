@@ -25,7 +25,7 @@ itertools = {workspace = true}
 mime = {workspace = true}
 notify = {version = "8.0.0", default-features = false, features = ["macos_fsevent"]}
 notify-debouncer-full = {version = "0.5.0", default-features = false}
-persisted = {version = "0.3.1", features = ["serde"]}
+persisted = "1.0.0"
 ratatui = {workspace = true, features = ["crossterm", "underline-color", "unstable-widget-ref"]}
 reqwest = {workspace = true}
 serde = {workspace = true}

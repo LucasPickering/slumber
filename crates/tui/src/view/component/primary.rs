@@ -32,7 +32,6 @@ use crate::{
     },
 };
 use derive_more::Display;
-use persisted::SingletonKey;
 use ratatui::{
     Frame,
     layout::Layout,
@@ -50,8 +49,7 @@ use strum::{EnumCount, EnumIter, IntoEnumIterator};
 #[derive(Debug)]
 pub struct PrimaryView {
     // Own state
-    selected_pane:
-        PersistedLazy<SingletonKey<PrimaryPane>, FixedSelectState<PrimaryPane>>,
+    selected_pane: PersistedLazy<PrimaryPaneKey, FixedSelectState<PrimaryPane>>,
     fullscreen_mode: Persisted<FullscreenModeKey>,
 
     // Children
@@ -76,7 +74,7 @@ impl PrimaryView {
 
         Self {
             selected_pane: PersistedLazy::new(
-                SingletonKey::default(),
+                Default::default(),
                 FixedSelectState::builder()
                     .subscribe([SelectStateEventType::Select])
                     .build(),
@@ -420,6 +418,11 @@ pub struct PrimaryViewProps<'a> {
     pub selected_request: Option<&'a RequestState>,
 }
 
+/// Persistence key for selected pane
+#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
+#[persisted(PrimaryPane)]
+struct PrimaryPaneKey;
+
 /// Selectable panes in the primary view mode
 #[derive(
     Copy,
@@ -440,6 +443,11 @@ enum PrimaryPane {
     Exchange,
 }
 
+/// Persistence key for fullscreen mode
+#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
+#[persisted(Option<FullscreenMode>)]
+struct FullscreenModeKey;
+
 /// Panes that can be fullscreened. This is separate from [PrimaryPane] because
 /// it makes it easy to check when we should exit fullscreen mode.
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -449,11 +457,6 @@ enum FullscreenMode {
     /// Fullscreen the active request/response exchange
     Exchange,
 }
-
-/// Persistence key for fullscreen mode
-#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
-#[persisted(Option<FullscreenMode>)]
-struct FullscreenModeKey;
 
 /// Menu actions available in all contexts
 #[derive(Copy, Clone, Debug, Display, EnumIter)]
@@ -516,7 +519,7 @@ mod tests {
     #[rstest]
     fn test_pane_persistence(mut harness: TestHarness, terminal: TestTerminal) {
         DatabasePersistedStore::store_persisted(
-            &SingletonKey::<PrimaryPane>::default(),
+            &PrimaryPaneKey,
             &PrimaryPane::Exchange,
         );
         DatabasePersistedStore::store_persisted(

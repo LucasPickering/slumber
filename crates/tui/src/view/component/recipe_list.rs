@@ -17,7 +17,7 @@ use crate::{
     },
 };
 use derive_more::{Deref, DerefMut};
-use persisted::{PersistedKey, SingletonKey};
+use persisted::PersistedKey;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
@@ -60,7 +60,7 @@ pub struct RecipeListPane {
     /// (if they were collapsed at the time of deletion). That isn't really an
     /// issue though, it just means it'll be pre-collapsed if the user ever
     /// adds the folder back. Not worth working around.
-    collapsed: Persisted<SingletonKey<Collapsed>>,
+    collapsed: Persisted<CollapsedKey>,
 
     filter: Component<TextBox>,
     filter_focused: bool,
@@ -73,8 +73,7 @@ impl RecipeListPane {
 
         // This clone is unfortunate, but we can't hold onto a reference to the
         // recipes
-        let collapsed: Persisted<SingletonKey<Collapsed>> =
-            Persisted::default();
+        let collapsed: Persisted<CollapsedKey> = Persisted::default();
         let select = PersistedLazy::new(
             SelectedRecipeKey,
             collapsed.build_select_state(recipes, ""),
@@ -361,6 +360,11 @@ impl Generate for &RecipeListItem {
         .into()
     }
 }
+
+/// Persistence key for collapsed state
+#[derive(Debug, Default, persisted::PersistedKey, Serialize)]
+#[persisted(Collapsed)]
+struct CollapsedKey;
 
 /// Set of collapsed folders. Newtype allows us to encapsulate some extra
 /// functionality

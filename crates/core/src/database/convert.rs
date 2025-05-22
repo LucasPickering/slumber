@@ -33,7 +33,7 @@ use thiserror::Error;
 use url::Url;
 use uuid::Uuid;
 use winnow::{
-    PResult, Parser,
+    ModalResult, Parser,
     combinator::{repeat, terminated},
     token::take_while,
 };
@@ -330,7 +330,7 @@ impl FromSql for SqlWrap<HeaderMap> {
 
         fn header_line(
             input: &mut &[u8],
-        ) -> PResult<(HeaderName, HeaderValue)> {
+        ) -> ModalResult<(HeaderName, HeaderValue)> {
             (
                 terminated(
                     take_while(1.., |c| c != HEADER_FIELD_DELIM)

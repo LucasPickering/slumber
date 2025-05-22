@@ -412,7 +412,7 @@ pub mod serde_duration {
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
     use std::time::Duration;
     use strum::{EnumIter, EnumString, IntoEnumIterator};
-    use winnow::{PResult, Parser, ascii::digit1, token::take_while};
+    use winnow::{ModalResult, Parser, ascii::digit1, token::take_while};
 
     #[derive(Debug, Display, EnumIter, EnumString)]
     enum Unit {
@@ -446,11 +446,11 @@ pub mod serde_duration {
     where
         D: Deserializer<'de>,
     {
-        fn quantity(input: &mut &str) -> PResult<u64> {
+        fn quantity(input: &mut &str) -> ModalResult<u64> {
             digit1.parse_to().parse_next(input)
         }
 
-        fn unit<'a>(input: &mut &'a str) -> PResult<&'a str> {
+        fn unit<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
             take_while(1.., char::is_alphabetic).parse_next(input)
         }
 

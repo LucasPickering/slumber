@@ -24,7 +24,7 @@ requests:
     url: "{{HOST}}/get"
     body: null
     authentication: null
-    query: []
+    query: {}
     headers: {}
   JsonPost_1: !request
     name: JsonPost
@@ -37,7 +37,7 @@ requests:
       username: foo
       password: bar
     query:
-      - hello=123
+      hello: 123
     headers:
       Content-Type: application/json
       X-Http-Method-Override: PUT
@@ -47,7 +47,7 @@ requests:
     url: https://httpbin.org/{{ENDPOINT}}
     body: first={{FIRST}}&last={{LAST}}&full={{FULL}}
     authentication: !bearer efaxijasdfjasdfa
-    query: []
+    query: {}
     headers:
       Content-Type: application/x-www-form-urlencoded
       My-Header: hello
@@ -58,6 +58,6 @@ requests:
     url: "{{HOST}}/post"
     body: "{{chains.Pet_json_3_body}}"
     authentication: null
-    query: []
+    query: {}
     headers:
       Content-Type: application/json

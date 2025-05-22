@@ -45,17 +45,22 @@ impl RecipeDisplay {
             query: RecipeFieldTable::new(
                 "Parameter",
                 QueryRowKey(recipe.id.clone()),
-                recipe.query.iter().enumerate().map(|(i, (param, value))| {
-                    (
-                        param.clone(),
-                        value.clone(),
-                        RecipeOverrideKey::query_param(recipe.id.clone(), i),
-                        QueryRowToggleKey {
-                            recipe_id: recipe.id.clone(),
-                            param: param.clone(),
-                        },
-                    )
-                }),
+                recipe.query_iter().enumerate().map(
+                    |(i, (param, _, value))| {
+                        (
+                            param.to_owned(),
+                            value.clone(),
+                            RecipeOverrideKey::query_param(
+                                recipe.id.clone(),
+                                i,
+                            ),
+                            QueryRowToggleKey {
+                                recipe_id: recipe.id.clone(),
+                                param: param.to_owned(),
+                            },
+                        )
+                    },
+                ),
             )
             .into(),
             headers: RecipeFieldTable::new(

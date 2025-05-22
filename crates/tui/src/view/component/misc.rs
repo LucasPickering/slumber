@@ -59,7 +59,7 @@ impl Modal for ErrorModal {
 impl EventHandler for ErrorModal {}
 
 impl Draw for ErrorModal {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         frame.render_widget(self.0.generate(), metadata.area());
     }
 }
@@ -143,7 +143,7 @@ impl EventHandler for TextBoxModal {
 }
 
 impl Draw for TextBoxModal {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.text_box.draw(
             frame,
             TextBoxProps::default(),
@@ -207,8 +207,11 @@ impl Modal for SelectListModal {
         // Do some simple math to size the select modal correctly to our
         // underlying data
         let options = self.options.data();
-        let longest_option =
-            options.items().map(|s| s.len()).max().unwrap_or(10);
+        let longest_option = options
+            .items()
+            .map(std::string::String::len)
+            .max()
+            .unwrap_or(10);
         // find our widest string to appropriately set width
         let width = std::cmp::max(self.title.len(), longest_option);
         (
@@ -245,7 +248,7 @@ impl EventHandler for SelectListModal {
 }
 
 impl Draw for SelectListModal {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         // Empty state
         let options = self.options.data();
         if options.is_empty() {
@@ -267,7 +270,7 @@ impl IntoModal for Select {
 
     fn into_modal(self) -> Self::Target {
         SelectListModal::new(self.message, self.options, |response| {
-            self.channel.respond(response)
+            self.channel.respond(response);
         })
     }
 }
@@ -348,7 +351,7 @@ impl EventHandler for ConfirmModal {
 }
 
 impl Draw for ConfirmModal {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.buttons.draw(frame, (), metadata.area(), true);
     }
 }
@@ -358,7 +361,7 @@ impl IntoModal for Confirm {
 
     fn into_modal(self) -> Self::Target {
         ConfirmModal::new(self.message, |response| {
-            self.channel.respond(response)
+            self.channel.respond(response);
         })
     }
 }
@@ -417,7 +420,7 @@ impl Modal for DeleteRequestModal {
 }
 
 impl Draw for DeleteRequestModal {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.buttons.draw(frame, (), metadata.area(), true);
     }
 }
@@ -490,7 +493,7 @@ impl Modal for DeleteRecipeRequestsModal {
 }
 
 impl Draw for DeleteRecipeRequestsModal {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.buttons.draw(frame, (), metadata.area(), true);
     }
 }
@@ -523,7 +526,7 @@ impl NotificationText {
 }
 
 impl Draw for NotificationText {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         frame.render_widget(
             Paragraph::new(self.notification.generate()),
             metadata.area(),

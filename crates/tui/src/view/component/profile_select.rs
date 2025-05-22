@@ -75,7 +75,7 @@ impl ProfilePane {
                     .default_profile()
                     .or(collection.profiles.values().next())
                     .map(Profile::id)
-                    .cloned()
+                    .cloned();
             }
         }
 
@@ -118,7 +118,7 @@ impl EventHandler for ProfilePane {
 }
 
 impl Draw for ProfilePane {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let title = TuiContext::get()
             .input_engine
             .add_hint("Profile", Action::SelectProfileList);
@@ -204,7 +204,7 @@ impl EventHandler for ProfileListModal {
 }
 
 impl Draw for ProfileListModal {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         // Empty state
         let select = self.select.data();
         if select.is_empty() {
@@ -234,7 +234,7 @@ impl Draw for ProfileListModal {
                 },
                 detail_area,
                 false,
-            )
+            );
         }
     }
 }

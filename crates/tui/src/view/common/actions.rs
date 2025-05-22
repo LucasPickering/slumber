@@ -116,7 +116,7 @@ impl EventHandler for ActionsModal {
 }
 
 impl Draw for ActionsModal {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         self.actions.draw(
             frame,
             List::from(self.actions.data()),
@@ -226,7 +226,7 @@ mod tests {
     }
 
     impl Draw for Actionable {
-        fn draw(&self, _: &mut Frame, _: (), _: DrawMetadata) {}
+        fn draw(&self, _: &mut Frame, (): (), _: DrawMetadata) {}
     }
 
     impl ToEmitter<TestMenuAction> for Actionable {
@@ -244,11 +244,11 @@ mod tests {
     }
 
     impl IntoMenuAction<()> for TestMenuAction {
-        fn enabled(&self, _: &()) -> bool {
+        fn enabled(&self, &(): &()) -> bool {
             !matches!(self, Self::Disablify)
         }
 
-        fn shortcut(&self, _: &()) -> Option<Action> {
+        fn shortcut(&self, &(): &()) -> Option<Action> {
             match self {
                 Self::Shortcutticated => Some(Action::Edit),
                 _ => None,

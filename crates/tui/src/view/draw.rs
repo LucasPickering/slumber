@@ -32,7 +32,7 @@ where
     T::Target: Draw<Props>,
 {
     fn draw(&self, frame: &mut Frame, props: Props, metadata: DrawMetadata) {
-        self.deref().draw(frame, props, metadata)
+        self.deref().draw(frame, props, metadata);
     }
 }
 

@@ -75,7 +75,7 @@ impl<T: FixedSelect> EventHandler for ButtonGroup<T> {
 }
 
 impl<T: FixedSelect> Draw for ButtonGroup<T> {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let (areas, _) =
             Layout::horizontal(self.select.items().map(|button| {
                 Constraint::Length(button.to_string().len() as u16)
@@ -91,7 +91,7 @@ impl<T: FixedSelect> Draw for ButtonGroup<T> {
                 }
                 .generate(),
                 *area,
-            )
+            );
         }
     }
 }

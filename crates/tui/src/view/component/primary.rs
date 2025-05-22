@@ -218,10 +218,10 @@ impl PrimaryView {
     fn handle_recipe_menu_action(&self, action: RecipeMenuAction) {
         match action {
             RecipeMenuAction::CopyUrl => {
-                ViewContext::send_message(Message::CopyRequestUrl)
+                ViewContext::send_message(Message::CopyRequestUrl);
             }
             RecipeMenuAction::CopyCurl => {
-                ViewContext::send_message(Message::CopyRequestCurl)
+                ViewContext::send_message(Message::CopyRequestCurl);
             }
             RecipeMenuAction::DeleteRecipe => {
                 if let Some(recipe_id) = self.selected_recipe_id() {
@@ -229,7 +229,7 @@ impl PrimaryView {
                         self.selected_profile_id().cloned(),
                         recipe_id.clone(),
                     )
-                    .open()
+                    .open();
                 }
             }
         }
@@ -249,27 +249,27 @@ impl EventHandler for PrimaryView {
 
                 // Pane hotkeys
                 Action::SelectProfileList => {
-                    self.profile_pane.data_mut().open_modal()
+                    self.profile_pane.data_mut().open_modal();
                 }
                 Action::SelectRecipeList => self
                     .selected_pane
                     .get_mut()
                     .select(&PrimaryPane::RecipeList),
                 Action::SelectRecipe => {
-                    self.selected_pane.get_mut().select(&PrimaryPane::Recipe)
+                    self.selected_pane.get_mut().select(&PrimaryPane::Recipe);
                 }
                 Action::SelectResponse => {
-                    self.selected_pane.get_mut().select(&PrimaryPane::Exchange)
+                    self.selected_pane.get_mut().select(&PrimaryPane::Exchange);
                 }
 
                 // Toggle fullscreen
                 Action::Fullscreen => {
                     match self.selected_pane.selected() {
                         PrimaryPane::Recipe => {
-                            self.toggle_fullscreen(FullscreenMode::Recipe)
+                            self.toggle_fullscreen(FullscreenMode::Recipe);
                         }
                         PrimaryPane::Exchange => {
-                            self.toggle_fullscreen(FullscreenMode::Exchange)
+                            self.toggle_fullscreen(FullscreenMode::Exchange);
                         }
                         // This isn't fullscreenable. Still consume the event
                         // though, no one else will need it anyway
@@ -296,7 +296,7 @@ impl EventHandler for PrimaryView {
                 }
                 // Menu action forwarded up
                 RecipeListPaneEvent::Action(action) => {
-                    self.handle_recipe_menu_action(action)
+                    self.handle_recipe_menu_action(action);
                 }
             })
             .emitted(self.recipe_pane.to_emitter(), |event| match event {
@@ -304,7 +304,7 @@ impl EventHandler for PrimaryView {
                     self.selected_pane.get_mut().select(&PrimaryPane::Recipe);
                 }
                 RecipePaneEvent::Action(action) => {
-                    self.handle_recipe_menu_action(action)
+                    self.handle_recipe_menu_action(action);
                 }
             })
             .emitted(self.exchange_pane.borrow().to_emitter(), |event| {
@@ -319,7 +319,7 @@ impl EventHandler for PrimaryView {
                 // Handle our own menu action type
                 match menu_action {
                     GlobalMenuAction::EditCollection => {
-                        ViewContext::send_message(Message::CollectionEdit)
+                        ViewContext::send_message(Message::CollectionEdit);
                     }
                 }
             })

@@ -363,23 +363,23 @@ impl TextState {
     /// Delete character immediately left of the cursor. Return `true` if text
     /// was modified
     fn delete_left(&mut self) -> bool {
-        if !self.is_at_home() {
+        if self.is_at_home() {
+            false
+        } else {
             self.left();
             self.text.remove(self.cursor);
             true
-        } else {
-            false
         }
     }
 
     /// Delete character immediately rightof the cursor. Return `true` if text
     /// was modified
     fn delete_right(&mut self) -> bool {
-        if !self.is_at_end() {
+        if self.is_at_end() {
+            false
+        } else {
             self.text.remove(self.cursor);
             true
-        } else {
-            false
         }
     }
 

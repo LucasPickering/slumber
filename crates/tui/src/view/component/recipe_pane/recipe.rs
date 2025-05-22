@@ -97,11 +97,9 @@ impl RecipeDisplay {
 
     /// Generate a [BuildOptions] instance based on current UI state
     pub fn build_options(&self) -> BuildOptions {
-        let authentication = self
-            .authentication
-            .data()
-            .as_ref()
-            .and_then(|authentication| authentication.override_value());
+        let authentication = self.authentication.data().as_ref().and_then(
+            super::authentication::AuthenticationDisplay::override_value,
+        );
         let form_fields = self
             .body
             .data()
@@ -117,7 +115,7 @@ impl RecipeDisplay {
             .body
             .data()
             .as_ref()
-            .and_then(|body| body.override_value());
+            .and_then(super::body::RecipeBodyDisplay::override_value);
 
         BuildOptions {
             authentication,
@@ -142,7 +140,7 @@ impl EventHandler for RecipeDisplay {
 }
 
 impl Draw for RecipeDisplay {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         // Render request contents
         let method = self.method.to_string();
 
@@ -188,7 +186,7 @@ impl Draw for RecipeDisplay {
                 true,
             ),
             Tab::Authentication => {
-                self.authentication.draw_opt(frame, (), content_area, true)
+                self.authentication.draw_opt(frame, (), content_area, true);
             }
         }
     }

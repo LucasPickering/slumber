@@ -108,7 +108,7 @@ impl View {
         // If debug monitor is enabled, use it to capture the view duration
         if let Some(debug_monitor) = &self.debug_monitor {
             debug_monitor.draw(frame, |frame| {
-                draw_impl(&self.root, frame, request_store)
+                draw_impl(&self.root, frame, request_store);
             });
         } else {
             draw_impl(&self.root, frame, request_store);
@@ -169,12 +169,12 @@ impl View {
 
     /// Queue an event to open a new modal. The input can be anything that
     /// converts to modal content
-    pub fn open_modal(&mut self, modal: impl IntoModal + 'static) {
+    pub fn open_modal(&self, modal: impl IntoModal + 'static) {
         modal.into_modal().open();
     }
 
     /// Queue an event to send an informational notification to the user
-    pub fn notify(&mut self, message: impl ToString) {
+    pub fn notify(&self, message: impl ToString) {
         ViewContext::notify(message);
     }
 
@@ -182,11 +182,11 @@ impl View {
     /// user. If possible, a bound action is provided which tells us what
     /// abstract action the input maps to.
     pub fn handle_input(
-        &mut self,
+        &self,
         event: crossterm::event::Event,
         action: Option<Action>,
     ) {
-        ViewContext::push_event(Event::Input { event, action })
+        ViewContext::push_event(Event::Input { event, action });
     }
 
     /// Drain all view events from the queue. The component three will process
@@ -225,7 +225,7 @@ impl View {
                 // directly convert it to anyhow
                 ViewContext::send_message(Message::Error {
                     error: anyhow!("Error copying text: {error}"),
-                })
+                });
             }
         }
     }

@@ -294,7 +294,7 @@ fn test_get_recipe_requests() {
         .sorted()
         .copied()
         .collect_vec();
-    assert_eq!(ids, expected_ids)
+    assert_eq!(ids, expected_ids);
 }
 
 /// Test deleting all requests for a recipe/profile combo

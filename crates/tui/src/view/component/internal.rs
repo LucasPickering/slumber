@@ -8,7 +8,10 @@ use crate::view::{
     draw::{Draw, DrawMetadata},
     event::{Child, Emitter, Event, LocalEvent, ToChild, ToEmitter},
 };
-use crossterm::event::MouseEvent;
+use crossterm::event::{
+    Event::{Key, Mouse, Paste},
+    MouseEvent,
+};
 use derive_more::Display;
 use ratatui::{Frame, layout::Rect};
 use std::{
@@ -91,7 +94,7 @@ impl<T> Component<T> {
             if component.is_visible() && component.has_focus() {
                 actions.extend(component.data().menu_actions());
                 for child in component.data_mut().children() {
-                    inner(actions, child)
+                    inner(actions, child);
                 }
             }
         }
@@ -160,14 +163,13 @@ impl<T> Component<T> {
             return false;
         }
 
-        use crossterm::event::Event::*;
         if let Event::Input { event, .. } = event {
             match event {
                 Key(_) | Paste(_) => self.has_focus(),
 
                 Mouse(mouse_event) => {
                     // Check if the mouse is over the component
-                    self.intersects(mouse_event)
+                    self.intersects(*mouse_event)
                 }
 
                 // We expect everything else to have already been killed
@@ -192,7 +194,7 @@ impl<T> Component<T> {
     }
 
     /// Did the given mouse event occur over/on this component?
-    fn intersects(&self, mouse_event: &MouseEvent) -> bool {
+    fn intersects(&self, mouse_event: MouseEvent) -> bool {
         self.is_visible()
             && self.metadata.get().area().intersects(Rect {
                 x: mouse_event.column,
@@ -358,7 +360,7 @@ impl DrawGuard {
 
 impl Drop for DrawGuard {
     fn drop(&mut self) {
-        let popped = STACK.with_borrow_mut(|stack| stack.pop());
+        let popped = STACK.with_borrow_mut(std::vec::Vec::pop);
 
         // Do some sanity checks here
         match popped {
@@ -376,7 +378,7 @@ impl Drop for DrawGuard {
         }
         if self.is_root {
             assert!(
-                STACK.with_borrow(|stack| stack.is_empty()),
+                STACK.with_borrow(std::vec::Vec::is_empty),
                 "Render stack is not empty after popping root component"
             );
         }
@@ -491,7 +493,7 @@ mod tests {
     }
 
     impl Draw for Leaf {
-        fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+        fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
             frame.render_widget("hello!", metadata.area());
         }
     }

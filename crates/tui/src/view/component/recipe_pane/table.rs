@@ -162,7 +162,7 @@ where
                 // so we don't need to plumb the index/key through
                 RecipeTableMenuAction::Edit { .. } => self.edit_selected_row(),
                 RecipeTableMenuAction::Reset { .. } => {
-                    self.reset_selected_row()
+                    self.reset_selected_row();
                 }
             })
     }

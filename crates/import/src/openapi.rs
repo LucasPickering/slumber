@@ -67,7 +67,7 @@ pub fn from_openapi(
             "Importer currently only supports OpenAPI v3.0, this spec is
                 version {openapi_version}. We'll try the import anyway, but you
                 may experience issues."
-        )
+        );
     }
 
     let profiles = build_profiles(servers);
@@ -199,7 +199,7 @@ fn build_recipe_tree(
                 // According to the spec, only *external* references can be used
                 // here, and we don't support those, so don't bother
                 // https://spec.openapis.org/oas/v3.0.3#path-item-object
-                error!("References not supported for path items `{reference}`")
+                error!("References not supported for path items `{reference}`");
             }
         }
     }
@@ -367,7 +367,7 @@ impl<'a> RecipeBuilder<'a> {
                     error!(
                         "Unsupported type for path param `{}`",
                         parameter_data.name
-                    )
+                    );
                 }
                 Parameter::Cookie { parameter_data, .. } => {
                     error!(
@@ -389,7 +389,7 @@ impl<'a> RecipeBuilder<'a> {
             // don't care about the values for each scheme
             .unwrap_or_default()
             .into_iter()
-            .flat_map(|scheme| scheme.into_keys())
+            .flat_map(IndexMap::into_keys)
             // Resolve references, throwing away invalid ones
             .filter_map(|scheme_name| {
                 self.reference_resolver

@@ -35,13 +35,13 @@ impl<T: FixedSelect> EventHandler for Tabs<T> {
 }
 
 impl<T: FixedSelect> Draw for Tabs<T> {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         frame.render_widget(
             ratatui::widgets::Tabs::new(T::iter().map(|e| e.to_string()))
                 .select(self.tabs.selected_index())
                 .highlight_style(TuiContext::get().styles.tab.highlight),
             metadata.area(),
-        )
+        );
     }
 }
 
@@ -57,6 +57,6 @@ where
     }
 
     fn restore_persisted(&mut self, value: Self::Value) {
-        self.tabs.restore_persisted(value)
+        self.tabs.restore_persisted(value);
     }
 }

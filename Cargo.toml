@@ -66,8 +66,27 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = {level = "deny", priority = -1}
+pedantic = {level = "warn", priority = -1}
+
 allow_attributes = "deny"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
 dbg_macro = "warn"
+default_trait_access = "allow"
+doc_markdown = "allow"
+explicit_deref_methods = "allow"
+map_unwrap_or = "allow"
+match_same_arms = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+needless_pass_by_value = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+unused_self = "allow"
+used_underscore_binding = "allow"
 
 [dependencies]
 anyhow = {workspace = true, features = ["backtrace"]}

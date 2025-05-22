@@ -89,9 +89,8 @@ fn test_history_delete() {
 }
 
 const fn id(s: &str) -> RequestId {
-    let uuid = match Uuid::try_parse(s) {
-        Ok(uuid) => uuid,
-        Err(_) => panic!("Bad value"), // unwrap() isn't const
+    let Ok(uuid) = Uuid::try_parse(s) else {
+        panic!("Bad value") // unwrap() isn't const
     };
     RequestId(uuid)
 }

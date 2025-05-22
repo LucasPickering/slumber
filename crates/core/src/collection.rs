@@ -125,7 +125,7 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
                 }
 
                 trace!("Found collection file at {first:?}");
-                Some(first.to_path_buf())
+                Some(first.clone())
             }
         }
     }

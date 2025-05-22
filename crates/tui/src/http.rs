@@ -470,7 +470,7 @@ impl HttpProvider for TuiHttpProvider {
                     // Report error to the TUI
                     self.messages_tx.send(Message::HttpBuildError {
                         error: Arc::clone(error),
-                    })
+                    });
                 })?;
 
             // Build successful, send it out

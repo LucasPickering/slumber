@@ -322,14 +322,14 @@ impl StylePatch {
     /// Create a new style patch for the given span, starting at the given
     /// index. If the span has default styling, return `None`.
     fn from_span(start: usize, span: &Span) -> Option<Self> {
-        if span.style != Style::default() {
+        if span.style == Style::default() {
+            None
+        } else {
             Some(Self {
                 start,
                 len: span.content.len(),
                 style: span.style,
             })
-        } else {
-            None
         }
     }
 

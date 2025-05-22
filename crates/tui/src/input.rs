@@ -59,7 +59,7 @@ impl InputEngine {
     /// alone.
     pub fn add_hint(&self, label: impl Display, action: Action) -> String {
         if let Some(binding) = self.binding(action) {
-            format!("{} ({})", label, binding)
+            format!("{label} ({binding})")
         } else {
             label.to_string()
         }
@@ -113,7 +113,7 @@ impl InputEngine {
     /// useless and noisy, or because they actually cause bugs (e.g. double key
     /// presses).
     pub fn event_to_message(&self, event: Event) -> Option<Message> {
-        if !matches!(
+        if matches!(
             event,
             Event::FocusGained
                 | Event::FocusLost
@@ -130,10 +130,10 @@ impl InputEngine {
                     ..
                 })
         ) {
+            None
+        } else {
             let action = self.action(&event);
             Some(Message::Input { event, action })
-        } else {
-            None
         }
     }
 }

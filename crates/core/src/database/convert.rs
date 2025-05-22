@@ -312,7 +312,7 @@ impl ToSql for SqlWrap<&HeaderMap> {
             .sum();
         let mut buf: Vec<u8> = Vec::with_capacity(capacity);
 
-        for (name, value) in self.0.iter() {
+        for (name, value) in self.0 {
             buf.extend(name.as_str().as_bytes());
             buf.push(HEADER_FIELD_DELIM);
             buf.extend(value.as_bytes());

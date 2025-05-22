@@ -13,10 +13,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
-    de::{
-        self, EnumAccess, Error as _, MapAccess, SeqAccess, VariantAccess,
-        Visitor,
-    },
+    de::{self, EnumAccess, Error as _, VariantAccess, Visitor},
     ser::Error as _,
 };
 use std::{hash::Hash, str::FromStr};
@@ -144,8 +141,12 @@ where
 /// of `key: value`. Serialie back to a sequence `key=value`, since that will
 /// always support duplicate keys
 pub mod serde_query_parameters {
-    use super::*;
-    use serde::ser::SerializeSeq;
+    use crate::template::Template;
+    use serde::{
+        Deserializer, Serializer,
+        de::{self, MapAccess, SeqAccess, Visitor},
+        ser::SerializeSeq,
+    };
 
     pub fn serialize<S>(
         query_parameters: &Vec<(String, Template)>,
@@ -714,12 +715,12 @@ mod tests {
     #[case::seconds_longer("100s", Duration::from_secs(100))]
     #[case::minutes("3m", Duration::from_secs(180))]
     #[case::hours("3h", Duration::from_secs(10800))]
-    #[case::days("2d", Duration::from_secs(172800))]
+    #[case::days("2d", Duration::from_secs(172_800))]
     fn test_deserialize_duration(
         #[case] s: &'static str,
         #[case] expected: Duration,
     ) {
-        assert_de_tokens(&WrapDuration(expected), &[Token::Str(s)])
+        assert_de_tokens(&WrapDuration(expected), &[Token::Str(s)]);
     }
 
     #[rstest]
@@ -747,7 +748,7 @@ mod tests {
         #[case] s: &'static str,
         #[case] error: &str,
     ) {
-        assert_de_tokens_error::<WrapDuration>(&[Token::Str(s)], error)
+        assert_de_tokens_error::<WrapDuration>(&[Token::Str(s)], error);
     }
 
     /// Build a YAML mapping

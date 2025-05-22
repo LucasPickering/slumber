@@ -70,8 +70,8 @@ impl ViewContext {
                 recipe_override_store: Default::default(),
                 event_queue: EventQueue::default(),
                 messages_tx,
-            })
-        })
+            });
+        });
     }
 
     /// Execute a function with read-only access to the context
@@ -153,7 +153,7 @@ impl ViewContext {
         Self::with(|context| {
             let refs: Vec<_> = context.event_queue.to_vec();
             f(refs.as_slice());
-        })
+        });
     }
 }
 

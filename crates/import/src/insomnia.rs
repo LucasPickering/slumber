@@ -321,7 +321,7 @@ impl From<Request> for RecipeNode {
                 error!(
                     "Error importing body for request `{id}`: {error}",
                     id = request.id
-                )
+                );
             })
             .ok()
             .flatten();
@@ -530,21 +530,6 @@ fn build_recipe_tree(
     request_groups: Vec<RequestGroup>,
     requests: Vec<Request>,
 ) -> anyhow::Result<RecipeTree> {
-    // First, we want to match each parent with its children. Hashmap is fine
-    // because we won't be iterating over it
-    let mut children_map: HashMap<String, Vec<RecipeNode>> = request_groups
-        .into_iter()
-        .map(|request_group| {
-            (
-                request_group.parent_id.clone(),
-                RecipeNode::from(request_group),
-            )
-        })
-        .chain(requests.into_iter().map(|request| {
-            (request.parent_id.clone(), RecipeNode::from(request))
-        }))
-        .into_group_map();
-
     /// Recursively build the recipe tree by removing children from the given
     /// map, starting with a particular parent node
     fn build_tree(
@@ -569,6 +554,21 @@ fn build_recipe_tree(
 
         Ok(tree)
     }
+
+    // First, we want to match each parent with its children. Hashmap is fine
+    // because we won't be iterating over it
+    let mut children_map: HashMap<String, Vec<RecipeNode>> = request_groups
+        .into_iter()
+        .map(|request_group| {
+            (
+                request_group.parent_id.clone(),
+                RecipeNode::from(request_group),
+            )
+        })
+        .chain(requests.into_iter().map(|request| {
+            (request.parent_id.clone(), RecipeNode::from(request))
+        }))
+        .into_group_map();
 
     let tree = build_tree(&mut children_map, workspace_id)?;
     Ok(RecipeTree::new(tree)?)
@@ -733,6 +733,6 @@ mod tests {
                 Token::MapEnd,
             ],
             "data did not match any variant of untagged enum MapOption",
-        )
+        );
     }
 }

@@ -38,7 +38,7 @@ impl PersistedStore<RecipeOverrideKey> for RecipeOverrideStore {
             debug!(?key, ?template, "Persisting recipe override");
             ViewContext::with_override_store_mut(|store| {
                 store.0.insert(key.clone(), template.clone());
-            })
+            });
         }
     }
 }

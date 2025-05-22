@@ -203,7 +203,7 @@ pub enum TemplateKey {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for TemplateContext {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         use crate::{
             database::CollectionDatabase,
             test_util::{TestHttpProvider, TestPrompter},
@@ -264,7 +264,7 @@ fn join_raw(chunks: Vec<TemplateInputChunk>) -> Vec<TemplateInputChunk> {
                         String::with_capacity(previous.len() + current.len());
                     concat.push_str(previous);
                     concat.push_str(&current);
-                    *previous = Arc::new(concat)
+                    *previous = Arc::new(concat);
                 }
                 (_, chunk) => chunks.push(chunk),
             }

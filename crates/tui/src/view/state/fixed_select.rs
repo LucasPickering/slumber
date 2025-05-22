@@ -75,14 +75,13 @@ where
     /// Panics if the enum is empty.
     pub fn builder() -> FixedSelectStateBuilder<Item, State> {
         let items = Item::iter().collect_vec();
-        if items.is_empty() {
-            // Wr run on the assumption that it's not empty, to prevent
-            // returning Options
-            panic!(
-                "Empty fixed-size collection not allow. \
+        // Wr run on the assumption that it's not empty, to prevent
+        // returning Options
+        assert!(
+            !items.is_empty(),
+            "Empty fixed-size collection not allow. \
                 Add a variant to your enum."
-            );
-        }
+        );
         FixedSelectStateBuilder {
             inner: SelectState::builder(items),
         }

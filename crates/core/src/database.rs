@@ -299,7 +299,7 @@ impl CollectionDatabase {
             )
             .optional()
             .with_context(|| {
-                format!("Error fetching request {} from database", request_id)
+                format!("Error fetching request {request_id} from database")
             })
             .traced()
     }
@@ -341,9 +341,8 @@ impl CollectionDatabase {
             .optional()
             .with_context(|| {
                 format!(
-                    "Error fetching request [profile={:?}; recipe={}] \
-                    from database",
-                    profile_id, recipe_id
+                    "Error fetching request [profile={profile_id:?}; \
+                    recipe={recipe_id}] from database"
                 )
             })
             .traced()
@@ -626,7 +625,7 @@ impl CollectionId {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for Database {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         let mut connection = Connection::open_in_memory().unwrap();
         Self::migrate(&mut connection).unwrap();
         Self {
@@ -637,7 +636,7 @@ impl slumber_util::Factory for Database {
 
 #[cfg(any(test, feature = "test"))]
 impl slumber_util::Factory for CollectionDatabase {
-    fn factory(_: ()) -> Self {
+    fn factory((): ()) -> Self {
         use slumber_util::paths::get_repo_root;
         Database::factory(())
             .into_collection(

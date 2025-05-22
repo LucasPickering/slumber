@@ -66,6 +66,7 @@ impl<'a, T: Copy> Mapping<'a, T> {
 /// Extension trait for [Result]
 pub trait ResultTraced<T, E>: Sized {
     /// If this is an error, trace it. Return the same result.
+    #[must_use]
     fn traced(self) -> Self;
 }
 

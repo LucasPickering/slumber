@@ -49,6 +49,7 @@ enum HistorySubcommand {
         // None -> All profiles
         // Some(None) -> No profile
         // Some(Some("profile1")) -> profile1
+        #[expect(clippy::option_option)]
         profile: Option<Option<ProfileId>>,
 
         /// Show requests for all collections, not just the current
@@ -231,6 +232,7 @@ enum DeleteSelection {
         // Some(Some("profile1")) -> profile1
         // It'd be nice if we could load directly into ProfileFilter, but I
         // couldn't figure out how to set that up with clap
+        #[expect(clippy::option_option)]
         profile: Option<Option<ProfileId>>,
     },
     /// Delete a single request by ID
@@ -258,12 +260,12 @@ fn print_table<const N: usize>(header: [&str; N], rows: &[[String; N]]) {
     }
 
     for (header, width) in header.into_iter().zip(widths.iter()) {
-        print!("{:<width$}", header, width = width);
+        print!("{header:<width$}");
     }
     println!();
     for row in rows {
         for (cell, width) in row.iter().zip(widths) {
-            print!("{:<width$}", cell, width = width);
+            print!("{cell:<width$}");
         }
         println!();
     }

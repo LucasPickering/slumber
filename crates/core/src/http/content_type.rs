@@ -134,7 +134,7 @@ impl ContentType {
     pub fn value_to_string(self, value: &serde_json::Value) -> String {
         match self {
             ContentType::Json => match value {
-                serde_json::Value::Null => "".into(),
+                serde_json::Value::Null => String::new(),
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
             },
@@ -249,7 +249,7 @@ mod tests {
         assert_err!(
             ContentType::from_path(Path::new("turbo.ohno")),
             "Unknown extension `ohno`"
-        )
+        );
     }
 
     /// Test all content types

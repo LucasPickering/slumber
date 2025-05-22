@@ -493,7 +493,7 @@ impl Recipe {
         // Set Content-Type based on the body type. This can be overwritten
         // below if the user explicitly passed a Content-Type value
         if let Some(content_type) =
-            self.body.as_ref().and_then(|body| body.explicit_mime())
+            self.body.as_ref().and_then(RecipeBody::explicit_mime)
         {
             headers.insert(
                 header::CONTENT_TYPE,

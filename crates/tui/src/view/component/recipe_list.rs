@@ -168,7 +168,7 @@ impl EventHandler for RecipeListPane {
             .opt()
             .action(|action, propagate| match action {
                 Action::LeftClick => {
-                    self.emitter.emit(RecipeListPaneEvent::Click)
+                    self.emitter.emit(RecipeListPaneEvent::Click);
                 }
                 Action::Left => {
                     self.set_selected_collapsed(CollapseState::Collapse);
@@ -197,12 +197,12 @@ impl EventHandler for RecipeListPane {
                 TextBoxEvent::Focus => self.filter_focused = true,
                 TextBoxEvent::Change => self.rebuild_select_state(),
                 TextBoxEvent::Cancel | TextBoxEvent::Submit => {
-                    self.filter_focused = false
+                    self.filter_focused = false;
                 }
             })
             .emitted(self.actions_emitter, |menu_action| {
                 // Forward this to our parent
-                self.emitter.emit(RecipeListPaneEvent::Action(menu_action))
+                self.emitter.emit(RecipeListPaneEvent::Action(menu_action));
             })
     }
 
@@ -220,7 +220,7 @@ impl EventHandler for RecipeListPane {
 }
 
 impl Draw for RecipeListPane {
-    fn draw(&self, frame: &mut Frame, _: (), metadata: DrawMetadata) {
+    fn draw(&self, frame: &mut Frame, (): (), metadata: DrawMetadata) {
         let context = TuiContext::get();
 
         let title = context

@@ -521,7 +521,7 @@ mod tests {
         #[derive(Debug, Deserialize)]
         #[serde(transparent)]
         struct Wrap(
-            #[allow(dead_code)]
+            #[expect(dead_code)]
             #[serde(deserialize_with = "deserialize_profiles")]
             IndexMap<ProfileId, Profile>,
         );

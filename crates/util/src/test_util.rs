@@ -103,7 +103,7 @@ macro_rules! assert_matches {
                     condition = stringify!($condition),
                 );
             })?
-            #[allow(unused_variables)]
+            #[expect(unused_variables)]
             $pattern => $output,
             value => panic!(
                 "Unexpected value {value:?} does not match pattern {expected}",

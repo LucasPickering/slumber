@@ -675,6 +675,10 @@ fn watch_collection(
 
     // Spawn the watcher
     let mut debouncer = notify_debouncer_full::new_debouncer(
+        // Collection loading is very fast so we can use a short debounce. If
+        // the user is saving several times rapidly, we can afford to reload
+        // after each one. We just want to batch together related events that
+        // happen simultaneously
         Duration::from_millis(100),
         None,
         on_file_event,

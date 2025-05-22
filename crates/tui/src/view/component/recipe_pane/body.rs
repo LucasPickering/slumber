@@ -37,7 +37,7 @@ use tracing::debug;
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
+#[expect(clippy::large_enum_variant)]
 pub enum RecipeBodyDisplay {
     Raw(Component<RawBody>),
     Form(Component<RecipeFieldTable<FormRowKey, FormRowToggleKey>>),

@@ -23,7 +23,7 @@ pub struct ImportCommand {
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
-#[allow(rustdoc::bare_urls)]
+#[expect(rustdoc::bare_urls)]
 enum Format {
     /// Insomnia export format (JSON or YAML)
     Insomnia,

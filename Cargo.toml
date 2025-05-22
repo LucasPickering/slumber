@@ -66,6 +66,8 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = {level = "deny", priority = -1}
+allow_attributes = "deny"
+dbg_macro = "warn"
 
 [dependencies]
 anyhow = {workspace = true, features = ["backtrace"]}

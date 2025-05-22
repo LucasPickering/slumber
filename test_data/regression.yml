@@ -113,8 +113,8 @@ requests:
         # No headers or authentication
         url: "{{host}}/anything/{{user_guid}}"
         query:
-          - value={{field1}}
-          - value={{field2}}
+          one: "{{field1}}"
+          many: ["{{field1}}", "{{field2}}"]
         headers: # Should parse as an empty map
 
       json_body: !request

@@ -6,7 +6,7 @@ use crate::common::collection_file;
 use itertools::Itertools;
 use rstest::rstest;
 use slumber_core::{
-    collection::{ProfileId, RecipeId},
+    collection::{CollectionFile, ProfileId, RecipeId},
     database::Database,
     http::{Exchange, RequestId},
 };
@@ -126,7 +126,10 @@ fn init_db(data_dir: &Path) -> Database {
     // Add one under a different collection
     let db = database
         .clone()
-        .into_collection(&get_repo_root().join("slumber.yml"))
+        .into_collection(
+            &CollectionFile::new(Some(get_repo_root().join("slumber.yml")))
+                .unwrap(),
+        )
         .unwrap();
     db.insert_exchange(&Exchange::factory(OTHER_COLLECTION_ID))
         .unwrap();

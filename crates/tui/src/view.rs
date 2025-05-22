@@ -24,14 +24,19 @@ use crate::{
         common::modal::Modal,
         component::{Component, Root, RootProps},
         debug::DebugMonitor,
+        draw::Generate,
         event::Event,
     },
 };
 use anyhow::anyhow;
-use ratatui::Frame;
+use ratatui::{
+    Frame,
+    layout::{Constraint, Layout},
+    text::Text,
+};
 use slumber_config::Action;
 use slumber_core::{
-    collection::{CollectionFile, ProfileId},
+    collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
     http::RequestId,
 };
@@ -59,15 +64,11 @@ pub struct View {
 
 impl View {
     pub fn new(
-        collection_file: &CollectionFile,
+        collection: &Arc<Collection>,
         database: CollectionDatabase,
         messages_tx: MessageSender,
     ) -> Self {
-        ViewContext::init(
-            Arc::clone(&collection_file.collection),
-            database,
-            messages_tx,
-        );
+        ViewContext::init(Arc::clone(collection), database, messages_tx);
 
         let debug_monitor = if TuiContext::get().config.debug {
             Some(DebugMonitor::default())
@@ -76,7 +77,7 @@ impl View {
         };
 
         Self {
-            root: Root::new(&collection_file.collection).into(),
+            root: Root::new(collection).into(),
             debug_monitor,
         }
     }
@@ -112,6 +113,35 @@ impl View {
         } else {
             draw_impl(&self.root, frame, request_store);
         }
+    }
+
+    /// When the collection fails to load on first launch, we can't show the
+    /// full UI yet. This draws an error state. The TUI loop should be watching
+    /// the collection file so we can retry initialization when the error is
+    /// fixed.
+    pub fn draw_collection_load_error(
+        frame: &mut Frame,
+        collection_file: &CollectionFile,
+        error: &anyhow::Error,
+    ) {
+        let context = TuiContext::get();
+        let [message_area, _, error_area] = Layout::vertical([
+            Constraint::Length(2),
+            Constraint::Length(1), // A nice gap
+            Constraint::Min(1),
+        ])
+        .areas(frame.area());
+        frame.render_widget(error.generate(), error_area);
+        frame.render_widget(
+            Text::styled(
+                format!(
+                    "Watching {collection_file} for changes...\n{} to exit",
+                    context.input_engine.binding_display(Action::ForceQuit),
+                ),
+                context.styles.text.primary,
+            ),
+            message_area,
+        );
     }
 
     /// ID of the selected profile. `None` iff the list is empty
@@ -215,9 +245,8 @@ mod tests {
     #[rstest]
     fn test_initial_draw(harness: TestHarness, terminal: TestTerminal) {
         let collection = Collection::factory(());
-        let collection_file = CollectionFile::factory(collection);
         let mut view = View::new(
-            &collection_file,
+            &collection.into(),
             harness.database.clone(),
             harness.messages_tx().clone(),
         );

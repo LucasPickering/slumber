@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Breaking
+
+- Represent query parameters as a map of `{parameter: value}` instead of a list of strings like `parameter=value`
+  - The map format has been supported as well, but did not allow for multiple values for the same value, hence the need for the string format
+  - To define multiple values for the same value, you can now use a list associated to the parameter: `{parameter: [value1, value2]}`
+  - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/query_parameters.html) for examples of the new format
+
 ## [3.1.3] - 2025-06-07
 
 ### Fixed

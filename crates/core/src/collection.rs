@@ -144,7 +144,6 @@ mod tests {
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use serde::de::IgnoredAny;
     use serde_json::json;
     use slumber_util::{Factory, TempDir, assert_err, temp_dir, test_data_dir};
     use std::{fs, fs::File, time::Duration};
@@ -461,10 +460,10 @@ mod tests {
                             .into(),
                         content_type: None,
                     }),
-                    query: vec![
-                        ("sudo".into(), "yes_please".into()),
-                        ("fast".into(), "no_thanks".into()),
-                    ],
+                    query: indexmap! {
+                        "sudo".into() => "yes_please".into(),
+                        "fast".into() => "no_thanks".into(),
+                    },
                     headers: indexmap! {
                         "accept".into() => "application/json".into(),
                     },
@@ -479,10 +478,11 @@ mod tests {
                             name: Some("Get User".into()),
                             method: HttpMethod::Get,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-                            query: vec![
-                                ("value".into(), "{{field1}}".into()),
-                                ("value".into(), "{{field2}}".into()),
-                            ],
+                            query: indexmap! {
+                                "one".into() => "{{field1}}".into(),
+                                "many".into() =>
+                                    ["{{field1}}", "{{field2}}"].into(),
+                            },
                             ..Recipe::factory(())
                         }),
                         RecipeNode::Recipe(Recipe {

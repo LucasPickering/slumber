@@ -201,7 +201,6 @@ async fn test_chain_request(
             recipes: by_id([recipe]).into(),
             chains: by_id([chain]),
             profiles: by_id([profile]),
-            ..Collection::factory(())
         }
         .into(),
         http_provider: Box::new(TestHttpProvider::new(database, None)),
@@ -804,7 +803,6 @@ async fn test_chain_dynamic_select(
             recipes: by_id([recipe]).into(),
             chains: by_id([sut_chain, request_chain]),
             profiles: by_id([profile]),
-            ..Collection::factory(())
         }
         .into(),
         http_provider: Box::new(TestHttpProvider::new(database, None)),

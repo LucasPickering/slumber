@@ -464,20 +464,26 @@ impl Recipe {
         options: &BuildOptions,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Vec<(String, String)>> {
-        let iter = self.query.iter().enumerate().filter_map(|(i, (k, v))| {
-            // Look up and apply override. We do this by index because the
-            // keys aren't necessarily unique
-            let template = options.query_parameters.get(i, v)?;
+        let iter =
+            self.query_iter().enumerate().filter_map(|(i, (k, _, v))| {
+                // Look up and apply override. We do this by index because the
+                // keys aren't necessarily unique
+                // TODO use the per-key index instead of the global one as part
+                // of the override refactor
+                let template = options.query_parameters.get(i, v)?;
 
-            Some(async move {
-                Ok::<_, anyhow::Error>((
-                    k.clone(),
-                    template.render_string(template_context).await.context(
-                        format!("Error rendering query parameter `{k}`"),
-                    )?,
-                ))
-            })
-        });
+                Some(async move {
+                    Ok::<_, anyhow::Error>((
+                        k.to_owned(),
+                        template
+                            .render_string(template_context)
+                            .await
+                            .context(format!(
+                                "Error rendering query parameter `{k}`"
+                            ))?,
+                    ))
+                })
+            });
         future::try_join_all(iter).await
     }
 

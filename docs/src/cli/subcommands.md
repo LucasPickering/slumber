@@ -49,7 +49,7 @@ requests:
     method: GET
     url: "{{host}}/fishes"
     query:
-      - big=true
+      big: true
 ```
 
 ```sh
@@ -201,7 +201,7 @@ requests:
     method: GET
     url: "{{host}}/fishes"
     query:
-      - big=true
+      big: true
 ```
 
 ```sh

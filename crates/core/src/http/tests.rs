@@ -52,7 +52,6 @@ fn template_context(
             recipes: by_id(recipes).into(),
             profiles: by_id([profile]),
             chains: by_id(chains),
-            ..Collection::factory(())
         }
         .into(),
         selected_profile: Some(profile_id.clone()),
@@ -104,10 +103,10 @@ async fn test_build_request(http_engine: &HttpEngine) {
     let recipe = Recipe {
         method: HttpMethod::Post,
         url: "{{host}}/users/{{user_id}}".into(),
-        query: vec![
-            ("mode".into(), "{{mode}}".into()),
-            ("fast".into(), "true".into()),
-        ],
+        query: indexmap! {
+            "mode".into() => "{{mode}}".into(),
+            "fast".into() => "true".into(),
+        },
         headers: indexmap! {
             // Leading/trailing newlines should be stripped
             "Accept".into() => "application/json".into(),
@@ -166,12 +165,10 @@ async fn test_build_request(http_engine: &HttpEngine) {
 async fn test_build_url(http_engine: &HttpEngine) {
     let recipe = Recipe {
         url: "{{host}}/users/{{user_id}}".into(),
-        query: vec![
-            ("mode".into(), "{{mode}}".into()),
-            ("fast".into(), "true".into()),
-            ("fast".into(), "false".into()),
-            ("mode".into(), "user".into()),
-        ],
+        query: indexmap! {
+            "mode".into() => ["{{mode}}", "user"].into(),
+            "fast".into() => ["true", "false"].into(),
+        },
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
@@ -185,7 +182,7 @@ async fn test_build_url(http_engine: &HttpEngine) {
 
     assert_eq!(
         url.as_str(),
-        "http://localhost/users/1?mode=sudo&fast=true&fast=false&mode=user"
+        "http://localhost/users/1?mode=sudo&mode=user&fast=true&fast=false"
     );
 }
 
@@ -452,14 +449,15 @@ async fn test_build_options(http_engine: &HttpEngine) {
             // Excluded
             "content-type".into() => "text/plain".into(),
         },
-        query: vec![
+        query: indexmap! {
             // Overridden
-            ("mode".into(), "regular".into()),
+            "mode".into() => "regular".into(),
             // Excluded
-            ("fast".into(), "false".into()),
-            // Included
-            ("fast".into(), "true".into()),
-        ],
+            "fast".into() => [
+                "false", // Excluded
+                "true", // Included
+            ].into(),
+        },
         body: Some(RecipeBody::Raw {
             body: "{{username}}".into(),
             content_type: Some(ContentType::Json),
@@ -687,11 +685,10 @@ fn test_trim_bytes(#[case] bytes: &[u8], #[case] expected: &[u8]) {
 async fn test_build_curl(http_engine: &HttpEngine) {
     let recipe = Recipe {
         method: HttpMethod::Get,
-        query: vec![
-            ("mode".into(), "{{mode}}".into()),
-            ("fast".into(), "true".into()),
-            ("fast".into(), "false".into()),
-        ],
+        query: indexmap! {
+            "mode".into() => "{{mode}}".into(),
+            "fast".into() => ["true", "false"].into(),
+        },
         headers: indexmap! {
             "Accept".into() => "application/json".into(),
             "Content-Type".into() => "application/json".into(),

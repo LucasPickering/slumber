@@ -69,7 +69,6 @@ pub fn from_insomnia(
         profiles,
         recipes,
         chains,
-        _ignore: serde::de::IgnoredAny,
     })
 }
 

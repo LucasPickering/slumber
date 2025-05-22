@@ -101,11 +101,68 @@ pub fn doc_link(path: &str) -> String {
 
 /// Parse bytes from a reader into YAML. This will merge any anchors/aliases.
 pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
-    // Two-step parsing is required for anchor/alias merging
+    // We use two-step parsing to enable pre-processing on the YAML
+
+    // Parse into a YAML value
     let deserializer = serde_yaml::Deserializer::from_reader(reader);
     let mut yaml_value: serde_yaml::Value =
         serde_path_to_error::deserialize(deserializer)?;
+
+    // Merge anchors+aliases
     yaml_value.apply_merge()?;
+    // Remove any top-level fields that start with .
+    if let serde_yaml::Value::Mapping(mapping) = &mut yaml_value {
+        mapping.retain(|key, _| {
+            !key.as_str().is_some_and(|key| key.starts_with('.'))
+        });
+    }
+
     let output = serde_path_to_error::deserialize(yaml_value)?;
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::Deserialize;
+
+    #[derive(Debug, PartialEq, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Data {
+        data: Inner,
+    }
+
+    #[derive(Debug, PartialEq, Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Inner {
+        i: i32,
+        b: bool,
+        s: String,
+    }
+
+    /// Test YAML preprocessing: anchor/alias merging and removing . fields
+    #[test]
+    fn test_parse_yaml() {
+        let yaml = "
+.ignore: &base
+  i: 1
+  b: true
+  s: base
+
+data:
+  i: 2
+  <<: *base
+  s: hello
+";
+
+        let actual: Data = parse_yaml(yaml.as_bytes()).unwrap();
+        let expected = Data {
+            data: Inner {
+                i: 2,
+                b: true,
+                s: "hello".into(),
+            },
+        };
+        assert_eq!(actual, expected);
+    }
 }

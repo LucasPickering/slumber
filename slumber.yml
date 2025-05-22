@@ -72,11 +72,10 @@ chains:
         - html
         - xml
 
-.ignore:
-  base: &base
-    authentication: !bearer "{{chains.auth_token}}"
-    headers:
-      Accept: application/json
+.base_request: &base
+  authentication: !bearer "{{chains.auth_token}}"
+  headers:
+    Accept: application/json
 
 requests:
   login: !request

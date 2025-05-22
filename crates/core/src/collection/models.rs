@@ -35,13 +35,6 @@ pub struct Collection {
     /// intuitive
     #[serde(default, rename = "requests")]
     pub recipes: RecipeTree,
-    /// A hack-ish to allow users to add arbitrary data to their collection
-    /// file without triggering a unknown field error. Ideally we could
-    /// ignore anything that starts with `.` (recursively) but that
-    /// requires a custom serde impl for each type, or changes to the macro
-    #[serde(default, skip_serializing, rename = ".ignore")]
-    #[expect(clippy::pub_underscore_fields)]
-    pub _ignore: serde::de::IgnoredAny,
 }
 
 impl Collection {

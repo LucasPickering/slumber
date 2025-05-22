@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- Any top-level fields in the config or collection file beginning with `.` will now be ignored
+  - The goal is to support "hidden" fields to store reusable components. YAML aliases can be used to pull those components into various parts of your collection
+  - Previously the field `.ignore` was specially supported in the collection format for this purpose; this is a generalization of that special case.
+
 ### Added
 
 - Add config field `follow_redirects` to enable/disable following 3xx redirects (enabled by default)

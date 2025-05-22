@@ -13,11 +13,7 @@ use openapiv3::{
 };
 use std::borrow::Cow;
 use thiserror::Error;
-use winnow::{
-    Parser,
-    combinator::{preceded, rest},
-    error::ErrorKind,
-};
+use winnow::{Parser, combinator::preceded, error::EmptyError, token::rest};
 
 /// Helper struct for resolving references within a single OpenAPI spec. This
 /// does *not* resolve references across multiple files.
@@ -179,7 +175,7 @@ fn parse_reference<T: ComponentKind>(
     // parser instead.
     let mut parser = preceded(
         ("#/components/", T::TYPE_NAME, "/").void(),
-        rest::<&str, ErrorKind>,
+        rest::<&str, EmptyError>,
     );
     parser
         .parse(reference)

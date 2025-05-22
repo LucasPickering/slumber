@@ -86,9 +86,8 @@ requests:
       username: "{{username}}"
       password: "{{chains.password}}"
     query:
-      - sudo=yes_please
-      - fast=no_thanks
-      - fast=actually_maybe
+      sudo: yes_please
+      fast: [no_thanks, actually_maybe]
     headers:
       Accept: application/json
     body: !form_urlencoded
@@ -104,8 +103,8 @@ requests:
         method: GET
         url: "{{host}}/get"
         query:
-          - foo=bar
-          - select={{chains.select_dynamic}}
+          foo: bar
+          select: "{{chains.select_dynamic}}"
 
       get_user: !request
         <<: *base

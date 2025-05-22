@@ -38,8 +38,8 @@ strum = {workspace = true}
 tokio = {workspace = true, features = ["macros", "signal", "tracing"]}
 tokio-util = "0.7.13"
 tracing = {workspace = true}
-tree-sitter-highlight = "0.22.6"
-tree-sitter-json = "0.21.0"
+tree-sitter-highlight = "0.25.4"
+tree-sitter-json = "0.24.8"
 unicode-width = "0.1.13"
 uuid = {workspace = true}
 

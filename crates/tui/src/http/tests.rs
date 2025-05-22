@@ -407,7 +407,6 @@ fn test_delete_recipe_requests(harness: TestHarness) {
     let r2p1_id = create_exchange(&harness, Some(&profile1), Some(&recipe2)).id;
     let r2p2_id = create_exchange(&harness, Some(&profile2), Some(&recipe2)).id;
     let all_ids = [r1p1_id, r2p1_id, r1p2_id, r2p2_id];
-    dbg!(all_ids);
 
     let mut store = harness.request_store.borrow_mut();
 

@@ -1,6 +1,6 @@
 //! OpenAPI v3.0 importer
 
-use crate::openapi::resolve::ReferenceResolver;
+use crate::{common, openapi::resolve::ReferenceResolver};
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -272,7 +272,7 @@ impl<'a> RecipeBuilder<'a> {
             url,
             body: builder.body,
             authentication: builder.authentication,
-            query: builder.query,
+            query: common::build_query_parameters(builder.query),
             headers: builder.headers,
         }
     }

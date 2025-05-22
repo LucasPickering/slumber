@@ -46,7 +46,7 @@ requests:
     method: GET
     url: "{{host}}/fishes"
     query:
-      - big=true
+      big: true
 ```
 
 > Note: the `!request` tag, which tells Slumber that this is a request recipe, not a folder. This is [YAML's tag syntax](https://yaml.org/spec/1.2.2/#24-tags), which is used commonly throughout Slumber to provide explicit configuration.

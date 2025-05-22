@@ -463,10 +463,10 @@ mod tests {
                         \"password\": \"{{chains.password}}\"}"
                             .into(),
                     )),
-                    query: vec![
-                        ("sudo".into(), "yes_please".into()),
-                        ("fast".into(), "no_thanks".into()),
-                    ],
+                    query: indexmap! {
+                        "sudo".into() => "yes_please".into(),
+                        "fast".into() => "no_thanks".into(),
+                    },
                     headers: indexmap! {
                         "accept".into() => "application/json".into(),
                     },
@@ -481,10 +481,11 @@ mod tests {
                             name: Some("Get User".into()),
                             method: HttpMethod::Get,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-                            query: vec![
-                                ("value".into(), "{{field1}}".into()),
-                                ("value".into(), "{{field2}}".into()),
-                            ],
+                            query: indexmap! {
+                                "one".into() => "{{field1}}".into(),
+                                "many".into() =>
+                                    ["{{field1}}", "{{field2}}"].into(),
+                            },
                             ..Recipe::factory(())
                         }),
                         RecipeNode::Recipe(Recipe {

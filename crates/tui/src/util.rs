@@ -148,7 +148,7 @@ pub fn spawn(future: impl 'static + Future<Output = ()>) -> JoinHandle<()> {
             _ = future => {
                 // Assume the task updated _something_ visible to the user,
                 // so trigger a redraw here
-                ViewContext::messages_tx().send(Message::Tick);
+                ViewContext::messages_tx().send(Message::Draw);
             },
             _ = CANCEL_TOKEN.cancelled() => {},
         }

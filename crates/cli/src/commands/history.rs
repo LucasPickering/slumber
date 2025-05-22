@@ -107,11 +107,11 @@ impl Subcommand for HistoryCommand {
                     (None, None, true) => database.get_all_requests()?,
                     // All requests for the current collection
                     (None, None, false) => database
-                        .into_collection(&global.collection_path()?)?
+                        .into_collection(&global.collection_file()?)?
                         .get_all_requests()?,
                     // All requests for a single recipe in current collection
                     (Some(recipe_id), profile, false) => database
-                        .into_collection(&global.collection_path()?)?
+                        .into_collection(&global.collection_file()?)?
                         .get_recipe_requests(profile.into(), &recipe_id)?,
 
                     // Reject invalid arg groupings. This is a bit of a code
@@ -155,7 +155,7 @@ impl Subcommand for HistoryCommand {
 
             HistorySubcommand::Get { request, display } => {
                 let database = Database::load()?
-                    .into_collection(&global.collection_path()?)?;
+                    .into_collection(&global.collection_file()?)?;
                 let exchange = match request {
                     RecipeOrRequest::Recipe(recipe_id) => database
                         .get_latest_request(ProfileFilter::All, &recipe_id)?

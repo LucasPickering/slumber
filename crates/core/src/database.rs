@@ -7,7 +7,7 @@ mod migrations;
 mod tests;
 
 use crate::{
-    collection::{ProfileId, RecipeId},
+    collection::{CollectionFile, ProfileId, RecipeId},
     database::convert::{CollectionPath, JsonEncoded, SqlWrap},
     http::{Exchange, ExchangeSummary, RequestId},
 };
@@ -218,10 +218,10 @@ impl Database {
     /// then grab its generated ID to create a [CollectionDatabase].
     pub fn into_collection(
         self,
-        path: &Path,
+        file: &CollectionFile,
     ) -> anyhow::Result<CollectionDatabase> {
         // Convert to canonicalize and make serializable
-        let path: CollectionPath = path.try_into()?;
+        let path: CollectionPath = file.path().try_into()?;
 
         // We have to set/get in two separate queries, because RETURNING doesn't
         // return anything if the insert didn't modify
@@ -640,7 +640,10 @@ impl slumber_util::Factory for CollectionDatabase {
     fn factory(_: ()) -> Self {
         use slumber_util::paths::get_repo_root;
         Database::factory(())
-            .into_collection(&get_repo_root().join("slumber.yml"))
+            .into_collection(
+                &CollectionFile::new(Some(get_repo_root().join("slumber.yml")))
+                    .unwrap(),
+            )
             .expect("Error initializing DB collection")
     }
 }

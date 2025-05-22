@@ -13,13 +13,10 @@ use anyhow::{Context, anyhow};
 use itertools::Itertools;
 use std::{
     env,
-    fmt::Debug,
+    fmt::{self, Debug, Display},
     fs,
-    future::Future,
     path::{Path, PathBuf},
-    sync::Arc,
 };
-use tokio::task;
 use tracing::{trace, warn};
 
 /// The support file names to be automatically loaded as a config. We only
@@ -32,68 +29,25 @@ const CONFIG_FILES: &[&str] = &[
     ".slumber.yaml",
 ];
 
-/// A wrapper around a request collection, to handle functionality around the
-/// file system.
-#[derive(Debug)]
-pub struct CollectionFile {
-    /// Path to the file that this collection was loaded from
-    path: PathBuf,
-    /// The collection is immutable and needs to be shared across threads for
-    /// template rendering, so we stashing it behind an `Arc` to avoid clones.
-    pub collection: Arc<Collection>,
-}
+/// A handle for a collection file. This makes it easy to load and reload
+/// the collection in the file. This is just a path that we've confirmed exists.
+#[derive(Clone, Debug)]
+pub struct CollectionFile(PathBuf);
 
 impl CollectionFile {
-    /// Create a new collection file with the given path and a default
-    /// collection. Useful when the collection failed to load and you want a
-    /// placeholder.
-    pub fn with_path(path: PathBuf) -> Self {
-        Self {
-            path,
-            collection: Default::default(),
-        }
-    }
-
-    /// Load config from the given file. The caller is responsible for using
-    /// [Self::try_path] to find the file themself. This pattern enables the
-    /// TUI to start up and watch the collection file, even if it's invalid.
-    pub async fn load(path: PathBuf) -> anyhow::Result<Self> {
-        let collection = load_collection(path.clone()).await?.into();
-        Ok(Self { path, collection })
-    }
-
-    /// Reload a new collection from the same file used for this one.
-    ///
-    /// Returns `impl Future` to unlink the future from `&self`'s lifetime.
-    pub fn reload(
-        &self,
-    ) -> impl 'static + Future<Output = anyhow::Result<Collection>> {
-        load_collection(self.path.clone())
-    }
-
-    /// Get the path of the file that this collection was loaded from
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    /// Get the path to the collection file, returning an error if none is
+    /// Get a handle to the collection file, returning an error if none is
     /// available. This will use the override if given, otherwise it will fall
-    /// back to searching the given directory for a collection. If a directory
-    /// is given for the override, search that directory (relative to the
-    /// given/current).
-    ///
-    /// If the directory to search is not given, default to the current
-    /// directory. This is configurable just for testing.
-    pub fn try_path(
-        dir: Option<PathBuf>,
-        override_path: Option<PathBuf>,
-    ) -> anyhow::Result<PathBuf> {
-        let mut dir = if let Some(dir) = dir {
-            dir
-        } else {
-            env::current_dir()?
-        };
+    /// back to searching the given directory for a collection.
+    pub fn new(override_path: Option<PathBuf>) -> anyhow::Result<Self> {
+        Self::with_dir(env::current_dir()?, override_path)
+    }
 
+    /// Get a handle to the collection file, seaching a specific directory. This
+    /// is only useful for testing. Typically you just want [Self::new].
+    pub fn with_dir(
+        mut dir: PathBuf,
+        override_path: Option<PathBuf>,
+    ) -> anyhow::Result<Self> {
         // If the override is a dir, search that dir instead. If it's a file,
         // just return it
         if let Some(override_path) = override_path {
@@ -104,26 +58,35 @@ impl CollectionFile {
             {
                 dir = joined;
             } else {
-                return Ok(joined);
+                return Ok(Self(joined));
             }
         }
 
-        detect_path(&dir).ok_or_else(|| {
-            anyhow!(
+        detect_path(&dir)
+            .ok_or_else(|| {
+                anyhow!(
                 "No collection file found in current or ancestor directories"
             )
-        })
+            })
+            .map(Self)
+    }
+
+    /// Load collection from this file. Use [Self::new] to get a handle to the
+    /// file. This pattern enables the TUI to start up and watch the collection
+    /// file, even if it's invalid.
+    pub fn load(&self) -> anyhow::Result<Collection> {
+        Collection::load(&self.0)
+    }
+
+    /// Get the path of the file that this collection was loaded from
+    pub fn path(&self) -> &Path {
+        &self.0
     }
 }
 
-/// Create a new file with a placeholder path for testing
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory<Collection> for CollectionFile {
-    fn factory(collection: Collection) -> Self {
-        Self {
-            path: PathBuf::default(),
-            collection: collection.into(),
-        }
+impl Display for CollectionFile {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0.display())
     }
 }
 
@@ -171,17 +134,6 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
     search_all(dir)
 }
 
-/// Load a collection from the given file. Takes an owned path because it
-/// needs to be passed to a future
-async fn load_collection(path: PathBuf) -> anyhow::Result<Collection> {
-    // YAML parsing is blocking so do it in a different thread. We could use
-    // tokio::fs for this but that just uses std::fs underneath anyway.
-    task::spawn_blocking(move || Collection::load(&path))
-        .await
-        // This error only occurs if the task panics
-        .context("Error parsing collection")?
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,7 +149,7 @@ mod tests {
     use slumber_util::{Factory, TempDir, assert_err, temp_dir, test_data_dir};
     use std::{fs, fs::File, time::Duration};
 
-    /// Test various cases of try_path
+    /// Test various cases of [CollectionFile::with_dir]
     #[rstest]
     #[case::parent_only(None, true, false, "slumber.yml")]
     #[case::child_only(None, false, true, "child/slumber.yml")]
@@ -209,7 +161,7 @@ mod tests {
         "child/grandchild/slumber.yml"
     )]
     #[case::overriden(Some("override.yml"), true, true, "child/override.yml")]
-    fn test_try_path(
+    fn test_with_dir(
         temp_dir: TempDir,
         #[case] override_path: Option<&str>,
         #[case] has_parent: bool,
@@ -231,15 +183,15 @@ mod tests {
         File::create(child_dir.join("override.yml")).unwrap();
         let expected: PathBuf = temp_dir.join(expected);
 
-        let actual = CollectionFile::try_path(
-            Some(child_dir),
+        let actual = CollectionFile::with_dir(
+            child_dir,
             override_path.map(PathBuf::from),
         )
         .unwrap();
-        assert_eq!(actual, expected);
+        assert_eq!(actual.path(), expected);
     }
 
-    /// Test that try_path fails when no collection file is found and no
+    /// Test that with_dir fails when no collection file is found and no
     /// override is given
     #[rstest]
     #[case::no_file(
@@ -254,14 +206,14 @@ mod tests {
             "The system cannot find the file specified"
         }
     )]
-    fn test_try_path_error(
+    fn test_with_dir_error(
         temp_dir: TempDir,
         #[case] override_path: Option<&str>,
         #[case] expected_err: &str,
     ) {
         assert_err!(
-            CollectionFile::try_path(
-                Some(temp_dir.to_path_buf()),
+            CollectionFile::with_dir(
+                temp_dir.to_path_buf(),
                 override_path.map(PathBuf::from)
             ),
             expected_err
@@ -273,10 +225,8 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_regression(test_data_dir: PathBuf) {
-        let loaded = CollectionFile::load(test_data_dir.join("regression.yml"))
-            .await
-            .unwrap()
-            .collection;
+        let loaded =
+            Collection::load(&test_data_dir.join("regression.yml")).unwrap();
         let expected = Collection {
             profiles: by_id([
                 Profile {
@@ -591,6 +541,6 @@ mod tests {
             .into(),
             _ignore: IgnoredAny,
         };
-        assert_eq!(*loaded, expected);
+        assert_eq!(loaded, expected);
     }
 }

@@ -11,7 +11,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_config::Config;
 use slumber_core::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::{ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
     http::{
         BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
@@ -189,10 +189,10 @@ impl BuildRequestCommand {
         RequestSeed,
         TemplateContext,
     )> {
-        let collection_path = global.collection_path()?;
+        let collection_file = global.collection_file()?;
         let config = Config::load()?;
-        let collection = Collection::load(&collection_path)?;
-        let database = Database::load()?.into_collection(&collection_path)?;
+        let collection = collection_file.load()?;
+        let database = Database::load()?.into_collection(&collection_file)?;
         let http_engine = HttpEngine::new(&config.http);
 
         // Validate profile ID, so we can provide a good error if it's invalid

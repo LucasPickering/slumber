@@ -6,9 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- Use a dedicated error state if collection fails to load on TUI launch
+
 ### Fixed
 
 - Fix TUI crash when using an empty select list
+- Fix automatic collection reloading in Windows
+  - I don't use Windows so I'm not sure exactly what scenarios it may have been broken in, but new unit tests indicate it's working now
 
 ## [3.1.1] - 2025-04-23
 

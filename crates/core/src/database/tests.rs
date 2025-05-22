@@ -22,27 +22,28 @@ impl CollectionDatabase {
 }
 
 #[fixture]
-fn collection_path() -> PathBuf {
-    get_repo_root().join("slumber.yml")
+fn collection_file() -> CollectionFile {
+    CollectionFile::new(Some(get_repo_root().join("slumber.yml"))).unwrap()
 }
 
 #[fixture]
-fn other_collection_path() -> PathBuf {
-    get_repo_root().join("README.md") // Has to be a real file
+fn other_collection_file() -> CollectionFile {
+    // Has to be a real file
+    CollectionFile::new(Some(get_repo_root().join("README.md"))).unwrap()
 }
 
 /// Populate a DB with two collections, and a few exchanges in each one
 #[fixture]
 fn request_db(
-    collection_path: PathBuf,
-    other_collection_path: PathBuf,
+    collection_file: CollectionFile,
+    other_collection_file: CollectionFile,
 ) -> RequestDb {
     let database = Database::factory(());
     let collection1 =
-        database.clone().into_collection(&collection_path).unwrap();
+        database.clone().into_collection(&collection_file).unwrap();
     let collection2 = database
         .clone()
-        .into_collection(&other_collection_path)
+        .into_collection(&other_collection_file)
         .unwrap();
 
     // We separate requests by 3 columns. Create multiple of each column to
@@ -91,13 +92,16 @@ struct RequestDb {
 }
 
 #[rstest]
-fn test_merge(collection_path: PathBuf, other_collection_path: PathBuf) {
+fn test_merge(
+    collection_file: CollectionFile,
+    other_collection_file: CollectionFile,
+) {
     let database = Database::factory(());
     let collection1 =
-        database.clone().into_collection(&collection_path).unwrap();
+        database.clone().into_collection(&collection_file).unwrap();
     let collection2 = database
         .clone()
-        .into_collection(&other_collection_path)
+        .into_collection(&other_collection_file)
         .unwrap();
 
     let exchange1 =
@@ -141,7 +145,7 @@ fn test_merge(collection_path: PathBuf, other_collection_path: PathBuf) {
 
     // Do the merge
     database
-        .merge_collections(&other_collection_path, &collection_path)
+        .merge_collections(other_collection_file.path(), collection_file.path())
         .unwrap();
 
     // Collection 2 values should've overwritten
@@ -161,7 +165,7 @@ fn test_merge(collection_path: PathBuf, other_collection_path: PathBuf) {
     // Make sure collection2 was deleted
     assert_eq!(
         database.collections().unwrap(),
-        vec![collection_path.canonicalize().unwrap()]
+        vec![collection_file.path().canonicalize().unwrap()]
     );
 }
 
@@ -328,13 +332,16 @@ fn test_delete_request(request_db: RequestDb) {
 
 /// Test UI state storage and retrieval
 #[rstest]
-fn test_ui_state(collection_path: PathBuf) {
+fn test_ui_state(
+    collection_file: CollectionFile,
+    other_collection_file: CollectionFile,
+) {
     let database = Database::factory(());
     let collection1 =
-        database.clone().into_collection(&collection_path).unwrap();
+        database.clone().into_collection(&collection_file).unwrap();
     let collection2 = database
         .clone()
-        .into_collection(Path::new("Cargo.toml"))
+        .into_collection(&other_collection_file)
         .unwrap();
 
     let key_type = "MyKey";

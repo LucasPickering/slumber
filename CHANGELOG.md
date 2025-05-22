@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Use a dedicated error state if collection fails to load on TUI launch
 - Update dependency `persisted` to 1.0
   - A few pieces of your UI state, such as selected tabs, will be lost during the upgrade due to this
+- Any top-level fields in the config or collection file beginning with `.` will now be ignored
+  - The goal is to support "hidden" fields to store reusable components. YAML aliases can be used to pull those components into various parts of your collection
+  - Previously the field `.ignore` was specially supported in the collection format for this purpose; this is a generalization of that special case.
 
 ### Fixed
 

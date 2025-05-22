@@ -507,7 +507,6 @@ impl ExchangePaneContentState {
 
 /// Items in the actions popup menu for the Body
 #[derive(Copy, Clone, Debug, Display, EnumIter)]
-#[allow(clippy::enum_variant_names)]
 enum ExchangePaneMenuAction {
     #[display("Copy URL")]
     CopyUrl,

@@ -164,7 +164,7 @@ macro_rules! assert_events {
         ViewContext::inspect_event_queue(|events| {
             // In order to support conditions on each individual event, we have
             // to unpack them here
-            #[allow(unused_mut)]
+            #[expect(unused_mut)]
             let mut len = 0;
             $(
                 let Some(event) = events.get(len) else {

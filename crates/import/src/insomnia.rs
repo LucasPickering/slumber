@@ -93,7 +93,6 @@ struct Grouped {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "_type", rename_all = "snake_case")]
-#[allow(clippy::large_enum_variant)]
 enum Resource {
     /// Maps to a folder
     RequestGroup(RequestGroup),

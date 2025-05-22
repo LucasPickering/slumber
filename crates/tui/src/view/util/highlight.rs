@@ -230,7 +230,7 @@ impl<'a> LineBuilder<'a> {
     /// Add a section of text to the new line. This will check if any cached
     /// styles apply to this section, and if so break it into multiple spans as
     /// needed to keep the old styling.
-    #[allow(clippy::ptr_arg)]
+    #[expect(clippy::ptr_arg)]
     fn push_span(&mut self, text: &Cow<'a, str>, mut start: usize, end: usize) {
         // Keep a reference if we can. If the text is owned, we have to clone
         // because the owned value is going to get dropped after the build

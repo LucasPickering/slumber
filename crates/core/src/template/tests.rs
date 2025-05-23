@@ -9,7 +9,7 @@ use crate::{
         content_type::ContentType,
     },
     template::{
-        ChainError, Template, TemplateChunk, TemplateContext, TemplateError,
+        ChainError, RenderedChunk, Template, TemplateContext, TemplateError,
     },
     test_util::{
         TestHttpProvider, TestPrompter, TestSelectPrompter, by_id, header_map,
@@ -941,8 +941,8 @@ async fn test_chain_duplicate_error() {
     assert_eq!(
         template.render_chunks(&context).await,
         vec![
-            TemplateChunk::Error(expected_error.clone()),
-            TemplateChunk::Error(expected_error)
+            RenderedChunk::Error(expected_error.clone()),
+            RenderedChunk::Error(expected_error)
         ]
     );
 
@@ -975,7 +975,7 @@ async fn test_chain_sensitive() {
         Template::from("{{chains.chain1}}")
             .render_chunks(&context)
             .await,
-        vec![TemplateChunk::Rendered {
+        vec![RenderedChunk::Rendered {
             value: "hello!".into(),
             sensitive: true
         }]
@@ -1135,17 +1135,17 @@ async fn test_render_chunks() {
     assert_eq!(
         chunks,
         vec![
-            TemplateChunk::raw("intro "),
-            TemplateChunk::Rendered {
+            RenderedChunk::raw("intro "),
+            RenderedChunk::Rendered {
                 value: "🧡💛".into(),
                 sensitive: false
             },
             // Each emoji is 4 bytes
-            TemplateChunk::raw(" 💚💙💜 "),
-            TemplateChunk::Error(TemplateError::FieldUnknown {
+            RenderedChunk::raw(" 💚💙💜 "),
+            RenderedChunk::Error(TemplateError::FieldUnknown {
                 field: "unknown".into()
             }),
-            TemplateChunk::raw(" outro"),
+            RenderedChunk::raw(" outro"),
         ]
     );
 }

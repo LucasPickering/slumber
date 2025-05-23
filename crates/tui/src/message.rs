@@ -12,7 +12,7 @@ use slumber_core::{
         BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
         RequestRecord,
     },
-    template::{Prompt, ResponseChannel, Select, Template, TemplateChunk},
+    template::{Prompt, RenderedChunk, ResponseChannel, Select, Template},
 };
 use slumber_util::ResultTraced;
 use std::{fmt::Debug, path::PathBuf, process::Command, sync::Arc};
@@ -163,7 +163,7 @@ pub enum Message {
     TemplatePreview {
         template: Template,
         #[debug(skip)]
-        on_complete: Callback<Vec<TemplateChunk>>,
+        on_complete: Callback<Vec<RenderedChunk>>,
     },
 }
 

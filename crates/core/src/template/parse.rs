@@ -1,11 +1,8 @@
 //! Parsing and stringification for templates
 
-use crate::{
-    collection::ChainId,
-    template::{Identifier, Template, TemplateKey, error::TemplateParseError},
+use crate::template::{
+    Expression, Identifier, Template, TemplateChunk, error::TemplateParseError,
 };
-#[cfg(test)]
-use proptest::strategy::Strategy;
 use regex::Regex;
 use std::{
     borrow::Cow,
@@ -25,27 +22,16 @@ use winnow::{
 /// Character used to escape key openings
 const ESCAPE: &str = "_";
 /// Marks the start of a template key
-const KEY_OPEN: &str = "{{";
+const EXPRESSION_OPEN: &str = "{{";
 /// Marks the end of a template key
-const KEY_CLOSE: &str = "}}";
-// Export these so they can be used in TemplateKey's Display impl
-pub const CHAIN_PREFIX: &str = "chains.";
-pub const ENV_PREFIX: &str = "env.";
+const EXPRESSION_CLOSE: &str = "}}";
 
 impl Template {
     /// Create a template that renders a single field, equivalent to
-    /// `{{<field>}}`
+    /// `{{ <field> }}`
     pub fn from_field(field: Identifier) -> Self {
         Self {
-            chunks: vec![TemplateInputChunk::Key(TemplateKey::Field(field))],
-        }
-    }
-
-    /// Create a template that renders a single chain, equivalent to
-    /// `{{chains.<id>}}`
-    pub fn from_chain(id: ChainId) -> Self {
-        Self {
-            chunks: vec![TemplateInputChunk::Key(TemplateKey::Chain(id))],
+            chunks: vec![TemplateChunk::Expression(Expression::Field(field))],
         }
     }
 
@@ -59,10 +45,10 @@ impl Template {
         // Re-stringify the template
         for chunk in &self.chunks {
             match chunk {
-                TemplateInputChunk::Raw(s) => {
+                TemplateChunk::Raw(s) => {
                     // Add underscores between { to escape them. Any sequence
                     // of {_* followed by another { needs to be escaped. Regex
-                    // matches have to be non-overlapping so we can't  just use
+                    // matches have to be non-overlapping so we can't just use
                     // {_*{, because that wouldn't catch cases like {_{_{. So
                     // we have to do our own lookahead.
                     //
@@ -96,7 +82,7 @@ impl Template {
                         buf.to_mut().push_str(&s[last_copied..]);
                     }
                 }
-                TemplateInputChunk::Key(key) => {
+                TemplateChunk::Expression(expression) => {
                     // If the previous chunk ends with a potential escape
                     // sequence, add an underscore to escape the upcoming key
                     static REGEX: LazyLock<Regex> =
@@ -105,7 +91,11 @@ impl Template {
                         buf.to_mut().push_str(ESCAPE);
                     }
 
-                    write!(buf.to_mut(), "{KEY_OPEN}{key}{KEY_CLOSE}").unwrap();
+                    write!(
+                        buf.to_mut(),
+                        "{EXPRESSION_OPEN}{expression}{EXPRESSION_CLOSE}"
+                    )
+                    .unwrap();
                 }
             }
         }
@@ -154,34 +144,17 @@ impl FromStr for Identifier {
     }
 }
 
-/// A parsed piece of a template. After parsing, each chunk is either raw text
-/// or a parsed key, ready to be rendered.
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum TemplateInputChunk {
-    /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
-    /// stored in an `Arc` so we can share cheaply in each render, without
-    /// having to clone text. This works because templates are immutable. Any
-    /// non-empty string is a valid raw chunk. This text represents what the
-    /// user wants to see, i.e. it does *not* including any escape chars.
-    Raw(
-        #[cfg_attr(test, proptest(strategy = "\".+\".prop_map(String::into)"))]
-        Arc<str>,
-    ),
-    Key(TemplateKey),
-}
-
 /// Parse a template into keys and raw text
 ///
 /// Potential optimizations if parsing is slow:
 /// - Use take_till or similar in raw string parsing
 /// - https://docs.rs/winnow/latest/winnow/_topic/performance/index.html
-fn all_chunks(input: &mut &str) -> ModalResult<Vec<TemplateInputChunk>> {
+fn all_chunks(input: &mut &str) -> ModalResult<Vec<TemplateChunk>> {
     repeat_till(
         0..,
         alt((
-            key.map(TemplateInputChunk::Key),
-            raw.map(TemplateInputChunk::Raw),
+            expression_chunk.map(TemplateChunk::Expression),
+            raw.map(TemplateChunk::Raw),
         ))
         .context(StrContext::Label("template chunk")),
         eof,
@@ -202,7 +175,7 @@ fn raw(input: &mut &str) -> ModalResult<Arc<str>> {
             // char at a time. We could theoretically grab up to the next
             // escape seq or key here but I couldn't figure that out. Potential
             // optimization if perf is a problem
-            (not(KEY_OPEN), any).take(),
+            (not(EXPRESSION_OPEN), any).take(),
         )),
     )
     .map(String::into)
@@ -225,19 +198,19 @@ fn escape_sequence<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
     .parse_next(input)
 }
 
-/// Parse a template key
-fn key(input: &mut &str) -> ModalResult<TemplateKey> {
+/// Parse a template expression with its bounding `{{ }}`
+fn expression_chunk(input: &mut &str) -> ModalResult<Expression> {
     preceded(
-        KEY_OPEN,
+        EXPRESSION_OPEN,
         // Any error inside a template key is fatal, including an unclosed key
-        cut_err(terminated(key_contents, KEY_CLOSE)),
+        cut_err(terminated(expression, EXPRESSION_CLOSE)),
     )
     .context(StrContext::Label("key"))
     .parse_next(input)
 }
 
-/// Parse the contents of a key (inside the `{{ }}`)
-fn key_contents(input: &mut &str) -> ModalResult<TemplateKey> {
+/// Parse the contents of an expression (inside the `{{ }}`)
+fn expression(input: &mut &str) -> ModalResult<Expression> {
     alt((
         preceded(
             CHAIN_PREFIX,
@@ -247,7 +220,7 @@ fn key_contents(input: &mut &str) -> ModalResult<TemplateKey> {
         preceded(ENV_PREFIX, identifier.map(TemplateKey::Environment))
             .context(StrContext::Label("environment")),
         identifier
-            .map(TemplateKey::Field)
+            .map(Expression::Field)
             .context(StrContext::Label("field")),
     ))
     .parse_next(input)
@@ -272,30 +245,30 @@ mod tests {
 
     /// Build a template out of string chunks. Useful when you want to avoid
     /// parsing behavior
-    fn tmpl(chunks: impl IntoIterator<Item = TemplateInputChunk>) -> Template {
+    fn tmpl(chunks: impl IntoIterator<Item = TemplateChunk>) -> Template {
         Template {
             chunks: chunks.into_iter().collect(),
         }
     }
 
     /// Shorthand for creating a new raw chunk
-    fn raw(value: &str) -> TemplateInputChunk {
-        TemplateInputChunk::Raw(value.to_owned().into())
+    fn raw(value: &str) -> TemplateChunk {
+        TemplateChunk::Raw(value.to_owned().into())
     }
 
     /// Shorthand for creating a field key chunk
-    fn key_field(field: &'static str) -> TemplateInputChunk {
-        TemplateInputChunk::Key(TemplateKey::Field(field.into()))
+    fn key_field(field: &'static str) -> TemplateChunk {
+        TemplateChunk::Key(TemplateKey::Field(field.into()))
     }
 
     /// Shorthand for creating an env key chunk
-    fn key_env(variable: &'static str) -> TemplateInputChunk {
-        TemplateInputChunk::Key(TemplateKey::Environment(variable.into()))
+    fn key_env(variable: &'static str) -> TemplateChunk {
+        TemplateChunk::Key(TemplateKey::Environment(variable.into()))
     }
 
     /// Shorthand for creating a chain key chunk
-    fn key_chain(chain_id: &'static str) -> TemplateInputChunk {
-        TemplateInputChunk::Key(TemplateKey::Chain(chain_id.into()))
+    fn key_chain(chain_id: &'static str) -> TemplateChunk {
+        TemplateChunk::Key(TemplateKey::Chain(chain_id.into()))
     }
 
     /// Test round tripping between raw strings and templates. Parse, display,

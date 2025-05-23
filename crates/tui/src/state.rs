@@ -16,7 +16,7 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
     http::{Exchange, RequestError, RequestId, RequestSeed},
-    template::{Prompter, Template, TemplateChunk, TemplateContext},
+    template::{Prompter, RenderedChunk, Template, TemplateContext},
 };
 use slumber_util::ResultTraced;
 use std::{path::Path, sync::Arc, time::Duration};
@@ -597,7 +597,7 @@ impl LoadedState {
         &self,
         template: Template,
         profile_id: Option<ProfileId>,
-        on_complete: Callback<Vec<TemplateChunk>>,
+        on_complete: Callback<Vec<RenderedChunk>>,
     ) {
         let context = self.template_context(profile_id, true);
         util::spawn(async move {

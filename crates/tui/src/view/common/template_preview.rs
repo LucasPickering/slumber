@@ -12,7 +12,7 @@ use ratatui::{
 };
 use slumber_core::{
     http::content_type::ContentType,
-    template::{Template, TemplateChunk},
+    template::{RenderedChunk, Template},
 };
 use std::{
     ops::Deref,
@@ -101,7 +101,7 @@ impl TemplatePreview {
     /// Generate text from the rendered template, and replace the text in the
     /// mutex
     fn calculate_rendered_text(
-        chunks: Vec<TemplateChunk>,
+        chunks: Vec<RenderedChunk>,
         destination: &Mutex<Identified<Text<'static>>>,
         content_type: Option<ContentType>,
         style: Style,
@@ -154,7 +154,7 @@ struct TextStitcher {
 
 impl TextStitcher {
     /// Convert chunks into a series of spans, which can be turned into a line
-    fn stitch_chunks(chunks: &[TemplateChunk]) -> Text<'static> {
+    fn stitch_chunks(chunks: &[RenderedChunk]) -> Text<'static> {
         let styles = &TuiContext::get().styles;
 
         // Each chunk will get its own styling, but we can't just make each
@@ -166,9 +166,9 @@ impl TextStitcher {
         for chunk in chunks {
             let chunk_text = Self::get_chunk_text(chunk);
             let style = match chunk {
-                TemplateChunk::Raw(_) => Style::default(),
-                TemplateChunk::Rendered { .. } => styles.template_preview.text,
-                TemplateChunk::Error(_) => styles.template_preview.error,
+                RenderedChunk::Raw(_) => Style::default(),
+                RenderedChunk::Rendered { .. } => styles.template_preview.text,
+                RenderedChunk::Error(_) => styles.template_preview.error,
             };
 
             stitcher.add_chunk(chunk_text, style);
@@ -212,10 +212,10 @@ impl TextStitcher {
 
     /// Get the renderable text for a chunk of a template. This will clone the
     /// text out of the chunk, because it's all stashed behind Arcs
-    fn get_chunk_text(chunk: &TemplateChunk) -> String {
+    fn get_chunk_text(chunk: &RenderedChunk) -> String {
         match chunk {
-            TemplateChunk::Raw(text) => text.deref().into(),
-            TemplateChunk::Rendered { value, sensitive } => {
+            RenderedChunk::Raw(text) => text.deref().into(),
+            RenderedChunk::Rendered { value, sensitive } => {
                 if *sensitive {
                     // Hide sensitive values. Ratatui has a Masked type, but
                     // it complicates the string ownership a lot and also
@@ -230,7 +230,7 @@ impl TextStitcher {
                 }
             }
             // There's no good way to render the entire error inline
-            TemplateChunk::Error(_) => "Error".into(),
+            RenderedChunk::Error(_) => "Error".into(),
         }
     }
 }

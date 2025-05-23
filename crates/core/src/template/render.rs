@@ -7,7 +7,7 @@ use crate::{
     },
     http::{RequestSeed, ResponseRecord, content_type::ContentType},
     template::{
-        ChainError, Prompt, Select, Template, TemplateChunk, TemplateContext,
+        ChainError, Prompt, Select, Template, RenderedChunk, TemplateContext,
         TemplateError, TemplateKey, parse::TemplateInputChunk,
     },
     util::{FutureCache, FutureCacheOutcome},
@@ -62,7 +62,7 @@ impl Template {
     pub async fn render_chunks(
         &self,
         context: &TemplateContext,
-    ) -> Vec<TemplateChunk> {
+    ) -> Vec<RenderedChunk> {
         self.render_chunks_impl(context, &mut RenderKeyStack::default())
             .await
     }
@@ -80,17 +80,17 @@ impl Template {
         let len = chunks
             .iter()
             .map(|chunk| match chunk {
-                TemplateChunk::Raw(text) => text.len(),
-                TemplateChunk::Rendered { value, .. } => value.len(),
-                TemplateChunk::Error(_) => 0,
+                RenderedChunk::Raw(text) => text.len(),
+                RenderedChunk::Rendered { value, .. } => value.len(),
+                RenderedChunk::Error(_) => 0,
             })
             .sum();
         let mut buf = Vec::with_capacity(len);
         for chunk in chunks {
             match chunk {
-                TemplateChunk::Raw(text) => buf.extend(text.as_bytes()),
-                TemplateChunk::Rendered { value, .. } => buf.extend(value),
-                TemplateChunk::Error(error) => return Err(error),
+                RenderedChunk::Raw(text) => buf.extend(text.as_bytes()),
+                RenderedChunk::Rendered { value, .. } => buf.extend(value),
+                RenderedChunk::Error(error) => return Err(error),
             }
         }
 
@@ -113,7 +113,7 @@ impl Template {
         &'a self,
         context: &'a TemplateContext,
         stack: &mut RenderKeyStack<'a>,
-    ) -> Vec<TemplateChunk> {
+    ) -> Vec<RenderedChunk> {
         async fn render_key<'a>(
             key: &'a TemplateKey,
             context: &'a TemplateContext,
@@ -157,7 +157,7 @@ impl Template {
             async move {
                 match chunk {
                     TemplateInputChunk::Raw(text) => {
-                        TemplateChunk::Raw(Arc::clone(text))
+                        RenderedChunk::Raw(Arc::clone(text))
                     }
                     TemplateInputChunk::Key(key) => {
                         render_key(key, context, &mut stack).await.into()
@@ -188,7 +188,7 @@ impl Template {
     }
 }
 
-impl From<TemplateResult> for TemplateChunk {
+impl From<TemplateResult> for RenderedChunk {
     fn from(result: TemplateResult) -> Self {
         match result {
             Ok(outcome) => Self::Rendered {

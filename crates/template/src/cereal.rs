@@ -1,4 +1,4 @@
-use crate::template::Template;
+use crate::Template;
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{Error, Visitor},

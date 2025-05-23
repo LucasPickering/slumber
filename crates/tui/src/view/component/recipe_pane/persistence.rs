@@ -3,7 +3,7 @@
 use crate::view::{ViewContext, common::template_preview::TemplatePreview};
 use persisted::{PersistedContainer, PersistedLazy, PersistedStore};
 use slumber_core::{
-    collection::RecipeId, http::content_type::ContentType, template::Template,
+    collection::RecipeId, http::content_type::ContentType, Template,
 };
 use std::{collections::HashMap, fmt::Debug};
 use tracing::debug;

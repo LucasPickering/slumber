@@ -6,7 +6,6 @@
 use crate::{
     collection::{Authentication, ProfileId, RecipeBody, RecipeId},
     http::content_type::ContentType,
-    template::{ChainError, Template, TemplateError, TriggeredRequestError},
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -19,6 +18,7 @@ use reqwest::{
     header::{self, HeaderMap},
 };
 use serde::{Deserialize, Serialize};
+use slumber_template::Template;
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 use strum::{EnumIter, IntoEnumIterator};
 use thiserror::Error;

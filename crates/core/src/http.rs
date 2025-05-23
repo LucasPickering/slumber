@@ -45,11 +45,13 @@ mod tests;
 pub use models::*;
 
 use crate::{
-    collection::{Authentication, Recipe, RecipeBody},
+    collection::{
+        Authentication, Collection, ProfileId, Recipe, RecipeBody, RecipeId,
+    },
     http::{content_type::ContentType, curl::CurlBuilder},
-    template::{Template, TemplateContext},
 };
 use anyhow::Context;
+use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use futures::{
@@ -57,6 +59,7 @@ use futures::{
     future::{self, OptionFuture, try_join_all},
     try_join,
 };
+use indexmap::IndexMap;
 use mime::Mime;
 use reqwest::{
     Client, RequestBuilder, Response, Url,
@@ -64,8 +67,9 @@ use reqwest::{
     multipart::{Form, Part},
 };
 use slumber_config::HttpEngineConfig;
+use slumber_template::Template;
 use slumber_util::ResultTraced;
-use std::{collections::HashSet, error::Error};
+use std::{collections::HashSet, error::Error, sync::Arc};
 use tracing::{error, info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
@@ -415,6 +419,52 @@ impl RequestTicket {
             .inspect_err(|err| error!(error = err as &dyn Error)),
         }
     }
+}
+
+/// A little container struct for all the data that the user can access via
+/// templating. Unfortunately this has to own all data so templating can be
+/// deferred into a task (tokio requires `'static` for spawned tasks). If this
+/// becomes a bottleneck, we can `Arc` some stuff.
+#[derive(Debug)]
+pub struct TemplateContext {
+    /// Entire request collection
+    pub collection: Arc<Collection>,
+    /// ID of the profile whose data should be used for rendering. Generally
+    /// the caller should check the ID is valid before passing it, to
+    /// provide a better error to the user if not.
+    pub selected_profile: Option<ProfileId>,
+    /// An interface to allow accessing and sending HTTP chained requests
+    pub http_provider: Box<dyn HttpProvider>,
+    /// Additional key=value overrides passed directly from the user
+    pub overrides: IndexMap<String, String>,
+    /// A conduit to ask the user questions
+    pub prompter: Box<dyn Prompter>,
+    /// State that should be shared across al renders that use this context.
+    /// This is meant to be opaque; just use [Default::default] to initialize.
+    pub state: RenderGroupState,
+}
+
+/// An abstraction that provides behavior for chained HTTP requests. This
+/// enables fetching past requests and sending requests. The implementor is
+/// responsible for providing the data store of the requests, and persisting
+/// the sent request as appropriate.
+#[async_trait] // Native async fn isn't dyn-compatible
+pub trait HttpProvider: Debug + Send + Sync {
+    /// Get the most recent request for a particular profile+recipe
+    async fn get_latest_request(
+        &self,
+        profile_id: Option<&ProfileId>,
+        recipe_id: &RecipeId,
+    ) -> anyhow::Result<Option<Exchange>>;
+
+    /// Build and send an HTTP request. The implementor may choose whether
+    /// triggered chained requests will be sent, and whether the result should
+    /// be persisted in the database.
+    async fn send_request(
+        &self,
+        seed: RequestSeed,
+        template_context: &TemplateContext,
+    ) -> Result<Exchange, TriggeredRequestError>;
 }
 
 impl ResponseRecord {

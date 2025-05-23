@@ -51,6 +51,7 @@ slumber_cli = {path = "./crates/cli", version = "3.1.1"}
 slumber_config = {path = "./crates/config", version = "3.1.1"}
 slumber_core = {path = "./crates/core", version = "3.1.1"}
 slumber_import = {path = "./crates/import", version = "3.1.1"}
+slumber_template = {path = "./crates/template", version = "3.1.1"}
 slumber_tui = {path = "./crates/tui", version = "3.1.1"}
 slumber_util = {path = "./crates/util", version = "3.1.1"}
 strum = {version = "0.26.3", default-features = false}

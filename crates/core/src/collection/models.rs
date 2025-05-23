@@ -6,7 +6,6 @@ use crate::{
         recipe_tree::{RecipeNode, RecipeTree},
     },
     http::{HttpMethod, content_type::ContentType, query::Query},
-    template::{Identifier, Template},
 };
 use anyhow::Context;
 use derive_more::{Deref, Display, From, FromStr, Into};
@@ -14,6 +13,7 @@ use indexmap::IndexMap;
 use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
+use slumber_template::Template;
 use slumber_util::{ResultTraced, parse_yaml};
 use std::{fs::File, iter, path::PathBuf, time::Duration};
 use tracing::info;
@@ -466,9 +466,9 @@ pub struct Chain {
 #[deref(forward)]
 #[serde(transparent)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct ChainId(#[deref(forward)] Identifier);
+pub struct ChainId(#[deref(forward)] String);
 
-impl<T: Into<Identifier>> From<T> for ChainId {
+impl<T: Into<String>> From<T> for ChainId {
     fn from(value: T) -> Self {
         Self(value.into())
     }

@@ -1,29 +1,80 @@
-//! Generate strings (and bytes) from user-written templates with dynamic data
+//! Generate strings (and bytes) from user-written templates with dynamic data.
+//! This engine is focused on rendering templates, and is generally agnostic of
+//! its usage in the rest of the app. As such, there is no logic in here
+//! relating to HTTP or other Slumber concepts.
 
 mod cereal;
+mod display;
 mod error;
 mod parse;
-mod prompt;
 mod render;
 #[cfg(test)]
 mod tests;
 
-pub use error::{ChainError, TemplateError, TriggeredRequestError};
-pub use prompt::{Prompt, Prompter, ResponseChannel, Select};
+pub use error::TemplateError;
 
-use crate::{
-    collection::{Collection, ProfileId, RecipeId},
-    http::{Exchange, RequestSeed},
-    template::render::RenderGroupState,
-};
-use async_trait::async_trait;
 use bytes::Bytes;
 use derive_more::{Deref, Display};
 use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
-use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, marker::PhantomData, sync::Arc};
+
+/// TODO
+pub struct TemplateEngine<Ctx> {
+    _context: PhantomData<Ctx>,
+}
+
+impl<Ctx: TemplateContext> TemplateEngine<Ctx> {
+    /// Render the template using values from the given context. If any chunk
+    /// failed to render, return an error. The template is rendered as bytes,
+    /// meaning it can safely render to non-UTF-8 content. Use
+    /// [Self::render_string] if you want the bytes converted to a string.
+    ///
+    /// TODO return Bytes instead?
+    pub async fn render_bytes(
+        &self,
+        template: &Template,
+        context: &Ctx,
+    ) -> Result<Vec<u8>, TemplateError> {
+        todo!()
+    }
+
+    /// Render the template using values from the given context. If any chunk
+    /// failed to render, return an error. The rendered template will be
+    /// converted from raw bytes to UTF-8. If it is not valid UTF-8, return an
+    /// error.
+    pub async fn render_string(
+        &self,
+        template: &Template,
+        context: &Ctx,
+    ) -> Result<String, TemplateError> {
+        todo!()
+    }
+
+    /// Render the template using values from the given context, returning the
+    /// individual rendered chunks rather than stitching them together into a
+    /// string. If any individual chunk fails to render, its error will be
+    /// returned inline as [RenderedChunk::Error] and the rest of the template
+    /// will still be rendered.
+    pub async fn render_chunks(
+        &self,
+        template: &Template,
+        context: &Ctx,
+    ) -> Vec<RenderedChunk> {
+        todo!()
+    }
+}
+
+/// TODO
+pub trait TemplateContext: Sized {
+    /// TODO
+    async fn get(
+        &self,
+        identifier: &Identifier,
+        engine: &TemplateEngine<Self>,
+    ) -> Result<(), TemplateError>;
+}
 
 /// A parsed template, which can contain raw and/or templated content. The
 /// string is parsed during creation to identify template keys, hence the
@@ -82,13 +133,6 @@ impl From<&str> for Template {
 impl From<String> for Template {
     fn from(value: String) -> Self {
         value.as_str().into()
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-impl From<serde_json::Value> for Template {
-    fn from(value: serde_json::Value) -> Self {
-        format!("{value:#}").into()
     }
 }
 
@@ -152,68 +196,12 @@ pub struct FunctionCall {
     kwargs: IndexMap<Identifier, Expression>,
 }
 
-/// A little container struct for all the data that the user can access via
-/// templating. Unfortunately this has to own all data so templating can be
-/// deferred into a task (tokio requires `'static` for spawned tasks). If this
-/// becomes a bottleneck, we can `Arc` some stuff.
-#[derive(Debug)]
-pub struct TemplateContext {
-    /// Entire request collection
-    pub collection: Arc<Collection>,
-    /// ID of the profile whose data should be used for rendering. Generally
-    /// the caller should check the ID is valid before passing it, to
-    /// provide a better error to the user if not.
-    pub selected_profile: Option<ProfileId>,
-    /// An interface to allow accessing and sending HTTP chained requests
-    pub http_provider: Box<dyn HttpProvider>,
-    /// Additional key=value overrides passed directly from the user
-    pub overrides: IndexMap<String, String>,
-    /// A conduit to ask the user questions
-    pub prompter: Box<dyn Prompter>,
-    /// State that should be shared across al renders that use this context.
-    /// This is meant to be opaque; just use [Default::default] to initialize.
-    pub state: RenderGroupState,
-}
-
-#[cfg(any(test, feature = "test"))]
-impl slumber_util::Factory for TemplateContext {
-    fn factory((): ()) -> Self {
-        use crate::{
-            database::CollectionDatabase,
-            test_util::{TestHttpProvider, TestPrompter},
-        };
-        Self {
-            collection: Default::default(),
-            selected_profile: None,
-            http_provider: Box::new(TestHttpProvider::new(
-                CollectionDatabase::factory(()),
-                None,
-            )),
-            overrides: IndexMap::new(),
-            prompter: Box::<TestPrompter>::default(),
-            state: RenderGroupState::default(),
-        }
-    }
-}
-
 /// An identifier that can be used in a template key. A valid identifier is
 /// any non-empty string that contains only alphanumeric characters, `-`, or
 /// `_`.
 ///
 /// Construct via [FromStr](std::str::FromStr)
-#[derive(
-    Clone,
-    Debug,
-    Deref,
-    Default,
-    Display,
-    Eq,
-    Hash,
-    PartialEq,
-    Serialize,
-    Deserialize,
-)]
-#[serde(transparent)]
+#[derive(Clone, Debug, Deref, Default, Display, Eq, Hash, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Identifier(
     #[cfg_attr(test, proptest(regex = "[a-zA-Z0-9-_]+"))] String,
@@ -248,29 +236,6 @@ impl RenderedChunk {
     fn raw(value: &str) -> Self {
         Self::Raw(value.to_owned().into())
     }
-}
-
-/// An abstraction that provides behavior for chained HTTP requests. This
-/// enables fetching past requests and sending requests. The implementor is
-/// responsible for providing the data store of the requests, and persisting
-/// the sent request as appropriate.
-#[async_trait] // Native async fn isn't dyn-compatible
-pub trait HttpProvider: Debug + Send + Sync {
-    /// Get the most recent request for a particular profile+recipe
-    async fn get_latest_request(
-        &self,
-        profile_id: Option<&ProfileId>,
-        recipe_id: &RecipeId,
-    ) -> anyhow::Result<Option<Exchange>>;
-
-    /// Build and send an HTTP request. The implementor may choose whether
-    /// triggered chained requests will be sent, and whether the result should
-    /// be persisted in the database.
-    async fn send_request(
-        &self,
-        seed: RequestSeed,
-        template_context: &TemplateContext,
-    ) -> Result<Exchange, TriggeredRequestError>;
 }
 
 /// Join consecutive raw chunks in a generated template, to make it valid

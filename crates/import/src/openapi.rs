@@ -21,12 +21,12 @@ use openapiv3::{
     SecurityScheme, Server,
 };
 use slumber_core::{
+    Template,
     collection::{
         Authentication, Collection, DuplicateRecipeIdError, Folder, Profile,
         ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
-    template::Template,
     util::NEW_ISSUE_LINK,
 };
 use slumber_util::ResultTraced;

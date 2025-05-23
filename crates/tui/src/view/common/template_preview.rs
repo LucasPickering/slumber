@@ -243,8 +243,8 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use slumber_core::{
+        TemplateContext,
         collection::{Chain, ChainSource, Collection, Profile},
-        template::TemplateContext,
         test_util::{by_id, invalid_utf8_chain},
     };
     use slumber_util::Factory;

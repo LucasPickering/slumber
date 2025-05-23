@@ -6,7 +6,6 @@ use crate::{
         recipe_tree::RecipeNode,
     },
     http::content_type::ContentType,
-    template::Template,
 };
 use anyhow::Context;
 use indexmap::IndexMap;
@@ -16,6 +15,7 @@ use serde::{
     de::{self, EnumAccess, Error as _, VariantAccess, Visitor},
     ser::Error as _,
 };
+use slumber_template::Template;
 use std::{hash::Hash, str::FromStr};
 
 /// A type that has an `id` field. This is ripe for a derive macro, maybe a fun

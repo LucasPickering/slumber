@@ -2591,6 +2591,7 @@ dependencies = [
  "serde_test",
  "serde_yaml",
  "slumber_config",
+ "slumber_template",
  "slumber_util",
  "strum",
  "thiserror 2.0.12",
@@ -2622,6 +2623,28 @@ dependencies = [
  "slumber_core",
  "slumber_util",
  "strum",
+ "thiserror 2.0.12",
+ "tracing",
+ "winnow",
+]
+
+[[package]]
+name = "slumber_template"
+version = "3.1.1"
+dependencies = [
+ "bytes",
+ "derive_more",
+ "futures",
+ "indexmap",
+ "itertools",
+ "pretty_assertions",
+ "proptest",
+ "proptest-derive",
+ "regex",
+ "rstest",
+ "serde",
+ "serde_test",
+ "slumber_util",
  "thiserror 2.0.12",
  "tracing",
  "winnow",

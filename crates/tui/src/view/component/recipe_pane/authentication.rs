@@ -26,8 +26,8 @@ use ratatui::{
 };
 use slumber_config::Action;
 use slumber_core::{
+    Template,
     collection::{Authentication, RecipeId},
-    template::Template,
 };
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 

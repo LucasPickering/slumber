@@ -159,7 +159,7 @@ pub enum TemplateChunk {
     /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
     /// stored in an `Arc` so we can reference the text in the parsed input
     /// without having to clone it.
-    Raw(Arc<String>),
+    Raw(Arc<str>),
     /// Outcome of rendering a template key
     Rendered { value: Bytes, sensitive: bool },
     /// An error occurred while rendering a template key
@@ -264,7 +264,7 @@ fn join_raw(chunks: Vec<TemplateInputChunk>) -> Vec<TemplateInputChunk> {
                         String::with_capacity(previous.len() + current.len());
                     concat.push_str(previous);
                     concat.push_str(&current);
-                    *previous = Arc::new(concat);
+                    *previous = concat.into();
                 }
                 (_, chunk) => chunks.push(chunk),
             }

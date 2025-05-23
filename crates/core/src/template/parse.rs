@@ -165,8 +165,8 @@ pub enum TemplateInputChunk {
     /// non-empty string is a valid raw chunk. This text represents what the
     /// user wants to see, i.e. it does *not* including any escape chars.
     Raw(
-        #[cfg_attr(test, proptest(strategy = "\".+\".prop_map(Arc::new)"))]
-        Arc<String>,
+        #[cfg_attr(test, proptest(strategy = "\".+\".prop_map(String::into)"))]
+        Arc<str>,
     ),
     Key(TemplateKey),
 }
@@ -192,7 +192,7 @@ fn all_chunks(input: &mut &str) -> ModalResult<Vec<TemplateInputChunk>> {
 }
 
 /// Parse raw text, until we hit a key or end of input
-fn raw(input: &mut &str) -> ModalResult<Arc<String>> {
+fn raw(input: &mut &str) -> ModalResult<Arc<str>> {
     repeat(
         0..,
         alt((
@@ -205,7 +205,7 @@ fn raw(input: &mut &str) -> ModalResult<Arc<String>> {
             (not(KEY_OPEN), any).take(),
         )),
     )
-    .map(Arc::new)
+    .map(String::into)
     .context(StrContext::Label("raw text"))
     .parse_next(input)
 }

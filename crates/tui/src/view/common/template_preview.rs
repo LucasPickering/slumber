@@ -214,7 +214,7 @@ impl TextStitcher {
     /// text out of the chunk, because it's all stashed behind Arcs
     fn get_chunk_text(chunk: &TemplateChunk) -> String {
         match chunk {
-            TemplateChunk::Raw(text) => text.deref().clone(),
+            TemplateChunk::Raw(text) => text.deref().into(),
             TemplateChunk::Rendered { value, sensitive } => {
                 if *sensitive {
                     // Hide sensitive values. Ratatui has a Masked type, but

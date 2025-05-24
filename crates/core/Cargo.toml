@@ -48,11 +48,12 @@ proptest = "1.5.0"
 proptest-derive = "0.5.0"
 rstest = {workspace = true}
 serde_test = {workspace = true}
+slumber_template = {workspace = true, features = ["test"]}
 slumber_util = {workspace = true, features = ["test"]}
 wiremock = {workspace = true}
 
 [features]
-test = ["dep:rstest", "slumber_util/test"]
+test = ["dep:rstest", "slumber_template/test", "slumber_util/test"]
 
 [lints]
 workspace = true

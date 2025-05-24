@@ -1,8 +1,12 @@
-use crate::Template;
+use crate::{Template, TemplateError, Value};
 use serde::{
     Deserialize, Deserializer, Serialize,
-    de::{Error, Visitor},
+    de::{
+        self, Error, IntoDeserializer, Visitor,
+        value::{MapDeserializer, SeqDeserializer},
+    },
 };
+use std::fmt::Display;
 
 impl Serialize for Template {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -61,6 +65,57 @@ impl<'de> Deserialize<'de> for Template {
     }
 }
 
+/// Deserialize from a template [Value]. Used for deserializing values into
+/// function arguments
+pub struct ValueDeserializer(Value);
+
+impl IntoDeserializer<'_, TemplateError> for Value {
+    type Deserializer = ValueDeserializer;
+
+    fn into_deserializer(self) -> ValueDeserializer {
+        ValueDeserializer(self)
+    }
+}
+
+impl<'de> serde::Deserializer<'de> for ValueDeserializer {
+    type Error = TemplateError;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        match self.0 {
+            Value::Null => visitor.visit_none(),
+            Value::Bool(b) => visitor.visit_bool(b),
+            Value::Int(i) => visitor.visit_i64(i),
+            Value::Float(f) => visitor.visit_f64(f),
+            Value::String(string) => visitor.visit_string(string),
+            Value::Bytes(buffer) => visitor.visit_byte_buf(buffer.into()),
+            Value::Array(array) => {
+                visitor.visit_seq(&mut SeqDeserializer::new(array.into_iter()))
+            }
+            Value::Object(object) => {
+                visitor.visit_map(&mut MapDeserializer::new(object.into_iter()))
+            }
+        }
+    }
+
+    serde::forward_to_deserialize_any! {
+        unit bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str
+        string bytes byte_buf identifier ignored_any unit_struct struct map seq
+        tuple tuple_struct enum newtype_struct option
+    }
+}
+
+impl de::Error for TemplateError {
+    fn custom<T>(msg: T) -> Self
+    where
+        T: Display,
+    {
+        TemplateError::Other(msg.to_string().into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,7 +138,7 @@ mod tests {
     #[case::str_true(Token::Str("true"), "true")]
     #[case::str_false(Token::Str("false"), "false")]
     #[case::str_with_keys(Token::Str("{{user_id}}"), "{{user_id}}")]
-    fn test_deserialize(#[case] token: Token, #[case] expected: &str) {
+    fn test_deserialize_template(#[case] token: Token, #[case] expected: &str) {
         assert_de_tokens(&Template::from(expected), &[token]);
     }
 }

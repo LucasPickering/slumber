@@ -812,18 +812,7 @@ impl RequestBuildError {
     /// [TriggeredRequestError::NotAllowed]? This makes it easy to attach
     /// additional error context.
     pub fn has_trigger_disabled_error(&self) -> bool {
-        self.source.chain().any(|error| {
-            matches!(
-                error.downcast_ref(),
-                Some(TemplateError::Chain {
-                    error: ChainError::Trigger {
-                        error: TriggeredRequestError::NotAllowed,
-                        ..
-                    },
-                    ..
-                })
-            )
-        })
+        todo!()
     }
 }
 
@@ -868,6 +857,40 @@ impl PartialEq for RequestError {
             && self.request == other.request
             && self.start_time == other.start_time
             && self.end_time == other.end_time
+    }
+}
+
+/// Error occurred while trying to build/execute a triggered request.
+///
+/// This type implements `Clone` so it can be shared between deduplicated chain
+/// renders, hence the `Arc`s on inner errors.
+#[derive(Clone, Debug, Error)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum TriggeredRequestError {
+    /// This render was invoked in a way that doesn't support automatic request
+    /// execution. In some cases the user needs to explicitly opt in to enable
+    /// it (e.g. with a CLI flag)
+    #[error("Triggered request execution not allowed in this context")]
+    NotAllowed,
+
+    /// Tried to auto-execute a chained request but couldn't build it
+    #[error(transparent)]
+    Build(#[from] Arc<RequestBuildError>),
+
+    /// Chained request was triggered, sent and failed
+    #[error(transparent)]
+    Send(#[from] Arc<RequestError>),
+}
+
+impl From<RequestBuildError> for TriggeredRequestError {
+    fn from(error: RequestBuildError) -> Self {
+        Self::Build(error.into())
+    }
+}
+
+impl From<RequestError> for TriggeredRequestError {
+    fn from(error: RequestError) -> Self {
+        Self::Send(error.into())
     }
 }
 

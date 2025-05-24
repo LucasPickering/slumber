@@ -45,13 +45,11 @@ mod tests;
 pub use models::*;
 
 use crate::{
-    collection::{
-        Authentication, Collection, ProfileId, Recipe, RecipeBody, RecipeId,
-    },
+    collection::{Authentication, Recipe, RecipeBody},
     http::{content_type::ContentType, curl::CurlBuilder},
+    render::{self, TemplateContext},
 };
 use anyhow::Context;
-use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use futures::{
@@ -59,7 +57,6 @@ use futures::{
     future::{self, OptionFuture, try_join_all},
     try_join,
 };
-use indexmap::IndexMap;
 use mime::Mime;
 use reqwest::{
     Client, RequestBuilder, Response, Url,
@@ -69,7 +66,7 @@ use reqwest::{
 use slumber_config::HttpEngineConfig;
 use slumber_template::Template;
 use slumber_util::ResultTraced;
-use std::{collections::HashSet, error::Error, sync::Arc};
+use std::{collections::HashSet, error::Error};
 use tracing::{error, info, info_span};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
@@ -421,52 +418,6 @@ impl RequestTicket {
     }
 }
 
-/// A little container struct for all the data that the user can access via
-/// templating. Unfortunately this has to own all data so templating can be
-/// deferred into a task (tokio requires `'static` for spawned tasks). If this
-/// becomes a bottleneck, we can `Arc` some stuff.
-#[derive(Debug)]
-pub struct TemplateContext {
-    /// Entire request collection
-    pub collection: Arc<Collection>,
-    /// ID of the profile whose data should be used for rendering. Generally
-    /// the caller should check the ID is valid before passing it, to
-    /// provide a better error to the user if not.
-    pub selected_profile: Option<ProfileId>,
-    /// An interface to allow accessing and sending HTTP chained requests
-    pub http_provider: Box<dyn HttpProvider>,
-    /// Additional key=value overrides passed directly from the user
-    pub overrides: IndexMap<String, String>,
-    /// A conduit to ask the user questions
-    pub prompter: Box<dyn Prompter>,
-    /// State that should be shared across al renders that use this context.
-    /// This is meant to be opaque; just use [Default::default] to initialize.
-    pub state: RenderGroupState,
-}
-
-/// An abstraction that provides behavior for chained HTTP requests. This
-/// enables fetching past requests and sending requests. The implementor is
-/// responsible for providing the data store of the requests, and persisting
-/// the sent request as appropriate.
-#[async_trait] // Native async fn isn't dyn-compatible
-pub trait HttpProvider: Debug + Send + Sync {
-    /// Get the most recent request for a particular profile+recipe
-    async fn get_latest_request(
-        &self,
-        profile_id: Option<&ProfileId>,
-        recipe_id: &RecipeId,
-    ) -> anyhow::Result<Option<Exchange>>;
-
-    /// Build and send an HTTP request. The implementor may choose whether
-    /// triggered chained requests will be sent, and whether the result should
-    /// be persisted in the database.
-    async fn send_request(
-        &self,
-        seed: RequestSeed,
-        template_context: &TemplateContext,
-    ) -> Result<Exchange, TriggeredRequestError>;
-}
-
 impl ResponseRecord {
     /// Convert [reqwest::Response] type into [ResponseRecord]. This is async
     /// because the response content is not necessarily loaded when we first get
@@ -499,9 +450,8 @@ impl Recipe {
         &self,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Url> {
-        let url = self
-            .url
-            .render_string(template_context)
+        let url = render::engine()
+            .render_string(&self.url, template_context)
             .await
             .context("Error rendering URL")?;
         url.parse::<Url>()
@@ -525,8 +475,8 @@ impl Recipe {
                 Some(async move {
                     Ok::<_, anyhow::Error>((
                         k.to_owned(),
-                        template
-                            .render_string(template_context)
+                        render::engine()
+                            .render_string(template, template_context)
                             .await
                             .context(format!(
                                 "Error rendering query parameter `{k}`"
@@ -592,17 +542,10 @@ impl Recipe {
         header: &str,
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
-        let mut value = value_template
-            .render(template_context)
+        let mut value = render::engine()
+            .render_bytes(value_template, template_context)
             .await
             .context(format!("Error rendering header `{header}`"))?;
-
-        // Strip leading/trailing line breaks because they're going to trigger a
-        // validation error and are probably a mistake. We're trading
-        // explicitness for convenience here. This is maybe redundant now with
-        // the Chain::trim field, but this behavior predates that field so it's
-        // left in for backward compatibility.
-        trim_bytes(&mut value, |c| c == b'\n' || c == b'\r');
 
         // String -> header conversions are fallible, if headers
         // are invalid
@@ -631,14 +574,15 @@ impl Recipe {
             Some(Authentication::Basic { username, password }) => {
                 let (username, password) = try_join!(
                     async {
-                        username
-                            .render_string(template_context)
+                        render::engine()
+                            .render_string(username, template_context)
                             .await
                             .context("Error rendering username")
                     },
                     async {
                         OptionFuture::from(password.as_ref().map(|password| {
-                            password.render_string(template_context)
+                            render::engine()
+                                .render_string(password, template_context)
                         }))
                         .await
                         .transpose()
@@ -649,8 +593,8 @@ impl Recipe {
             }
 
             Some(Authentication::Bearer(token)) => {
-                let token = token
-                    .render_string(template_context)
+                let token = render::engine()
+                    .render_string(token, template_context)
                     .await
                     .context("Error rendering bearer token")?;
                 Ok(Some(Authentication::Bearer(token)))
@@ -671,7 +615,8 @@ impl Recipe {
 
         let rendered = match body {
             RecipeBody::Raw { body, .. } => RenderedBody::Raw(
-                body.render(template_context)
+                render::engine()
+                    .render_bytes(body, template_context)
                     .await
                     .context("Error rendering body")?
                     .into(),
@@ -682,8 +627,8 @@ impl Recipe {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
-                            let value = template
-                                .render_string(template_context)
+                            let value = render::engine()
+                                .render_string(template, template_context)
                                 .await
                                 .context(format!(
                                     "Error rendering form field `{field}`"
@@ -701,8 +646,8 @@ impl Recipe {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
-                            let value = template
-                                .render(template_context)
+                            let value = render::engine()
+                                .render_bytes(template, template_context)
                                 .await
                                 .context(format!(
                                     "Error rendering form field `{field}`"
@@ -758,7 +703,7 @@ enum RenderedBody {
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
     /// Field:value mapping. Values can be arbitrary bytes
-    FormMultipart(Vec<(String, Vec<u8>)>),
+    FormMultipart(Vec<(String, Bytes)>),
 }
 
 impl RenderedBody {

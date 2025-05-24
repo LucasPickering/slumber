@@ -19,7 +19,7 @@ impl From<ParseError<&str, ContextError>> for TemplateParseError {
 /// Any error that can occur during template rendering.
 ///
 /// The error always holds owned data so it can be detached from the lifetime
-/// of the template context. This requires a mild amount of cloning in error
+/// of the template and context. This requires a mild amount of cloning in error
 /// cases, but those should be infrequent so it's fine.
 ///
 /// These error messages are generally shown with additional parent context, so
@@ -27,6 +27,14 @@ impl From<ParseError<&str, ContextError>> for TemplateParseError {
 #[derive(Debug, Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum TemplateError {
+    /// TODO
+    #[error("TODO")]
+    ExpectedFilter,
+
+    /// TODO
+    #[error("TODO")]
+    ExpectedProducer,
+
     /// A profile field key contained an unknown field
     #[error("Unknown field `{field}`")]
     FieldUnknown { field: String },
@@ -45,4 +53,12 @@ pub enum TemplateError {
     /// descriptive enough so we don't need to give additional context.
     #[error(transparent)]
     InvalidUtf8(FromUtf8Error),
+
+    /// TODO
+    #[error(transparent)]
+    Other(Box<dyn std::error::Error + Send + Sync>),
+
+    /// TODO
+    #[error("TODO")]
+    UnknownFunction { name: String },
 }

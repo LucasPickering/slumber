@@ -63,6 +63,7 @@ winnow = "0.6.16"
 wiremock = {version = "0.6.1", default-features = false}
 
 [workspace.lints.rust]
+async_fn_in_trait = "allow"
 unsafe_code = "forbid"
 
 [workspace.lints.clippy]

@@ -6,6 +6,7 @@
 mod cereal;
 mod display;
 mod error;
+mod function;
 mod parse;
 mod render;
 #[cfg(test)]
@@ -13,30 +14,75 @@ mod tests;
 
 pub use error::TemplateError;
 
+use crate::function::{Function, IntoFilter, IntoProducer};
 use bytes::Bytes;
 use derive_more::{Deref, Display};
+use futures::future;
 use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
-use std::{fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
 /// TODO
+#[derive(Debug)]
 pub struct TemplateEngine<Ctx> {
-    _context: PhantomData<Ctx>,
+    /// Functions that produce values from arguments
+    functions: IndexMap<&'static str, Function<Ctx>>,
 }
 
 impl<Ctx: TemplateContext> TemplateEngine<Ctx> {
+    /// Initialize a new template engine
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a filter function under the given name. If there is already a
+    /// function with that name, it will be overwritten
+    ///
+    /// TODO explain filter vs producer
+    pub fn add_filter<F>(&mut self, name: &'static str, function: F)
+    where
+        F: IntoFilter<Ctx>,
+    {
+        self.functions
+            .insert(name, Function::Filter(function.into_filter()));
+    }
+
+    /// Register a producer function under the given name. If there is already a
+    /// function with that name, it will be overwritten
+    ///
+    /// TODO explain filter vs producer
+    pub fn add_producer<F>(&mut self, name: &'static str, function: F)
+    where
+        F: IntoProducer<Ctx>,
+    {
+        self.functions
+            .insert(name, Function::Producer(function.into_producer()));
+    }
+
+    /// Get a function by name
+    fn get_function(
+        &self,
+        name: &str,
+    ) -> Result<&Function<Ctx>, TemplateError> {
+        // TODO include help message in error
+        self.functions
+            .get(name)
+            .ok_or_else(|| TemplateError::UnknownFunction {
+                name: name.to_owned(),
+            })
+    }
+
     /// Render the template using values from the given context. If any chunk
     /// failed to render, return an error. The template is rendered as bytes,
     /// meaning it can safely render to non-UTF-8 content. Use
     /// [Self::render_string] if you want the bytes converted to a string.
-    ///
-    /// TODO return Bytes instead?
     pub async fn render_bytes(
         &self,
         template: &Template,
         context: &Ctx,
-    ) -> Result<Vec<u8>, TemplateError> {
+    ) -> Result<Bytes, TemplateError> {
+        let chunks = self.render_chunks(template, context).await;
         todo!()
     }
 
@@ -49,6 +95,7 @@ impl<Ctx: TemplateContext> TemplateEngine<Ctx> {
         template: &Template,
         context: &Ctx,
     ) -> Result<String, TemplateError> {
+        let chunks = self.render_chunks(template, context).await;
         todo!()
     }
 
@@ -62,18 +109,43 @@ impl<Ctx: TemplateContext> TemplateEngine<Ctx> {
         template: &Template,
         context: &Ctx,
     ) -> Vec<RenderedChunk> {
-        todo!()
+        // Map over each parsed chunk, and render the expressions into values.
+        // because raw text uses Arc and expressions just contain metadata
+        // The raw text chunks will be mapped 1:1. This clone is pretty cheap
+        let futures = template.chunks.iter().map(|chunk| async move {
+            match chunk {
+                TemplateChunk::Raw(text) => {
+                    RenderedChunk::Raw(Arc::clone(text))
+                }
+                TemplateChunk::Expression(expression) => expression
+                    .render(self, context)
+                    .await
+                    .map_or_else(RenderedChunk::Error, RenderedChunk::Rendered),
+            }
+        });
+
+        // Concurrency!
+        future::join_all(futures).await
+    }
+}
+
+// Manual impl needed to avoid bound on Ctx
+impl<Ctx> Default for TemplateEngine<Ctx> {
+    fn default() -> Self {
+        Self {
+            functions: IndexMap::default(),
+        }
     }
 }
 
 /// TODO
-pub trait TemplateContext: Sized {
+pub trait TemplateContext: Sized + Send + Sync {
     /// TODO
     async fn get(
         &self,
         identifier: &Identifier,
         engine: &TemplateEngine<Self>,
-    ) -> Result<(), TemplateError>;
+    ) -> Result<Value, TemplateError>;
 }
 
 /// A parsed template, which can contain raw and/or templated content. The
@@ -159,33 +231,31 @@ pub enum TemplateChunk {
 pub enum Expression {
     /// TODO
     Literal(Literal),
+    /// Array literal: `[1, "hello", f()]`
+    Array(Vec<Self>),
     /// TODO
     Field(Identifier),
     /// Call to a plain function (**not** a filter)
     Call(FunctionCall),
-    /// Accessing a property on an object value: `env.NAME`
-    Property {
-        value: Box<Expression>,
-        property: Identifier,
-    },
     /// Data piped through a filter: `name | trim()`
     ///
     /// The left-hand side can be any expression, but the right-hand side must
     /// be a function call to a filter function. Filter functions are
     /// specifically defined to take the input "stdin" data as extra input.
     Filter {
-        lhs: Box<Expression>,
-        rhs: FunctionCall,
+        expression: Box<Self>,
+        filter: FunctionCall,
     },
 }
 
-/// TODO
+/// Literal primitive value
 #[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
+    Null,
     Bool(bool),
     Int(i64),
     Float(f64),
-    String(Arc<str>),
+    String(String),
 }
 
 /// Function call in a template expression: `f(true, 0, kwarg0="hello")`
@@ -215,6 +285,20 @@ impl From<&'static str> for Identifier {
     }
 }
 
+/// TODO
+#[derive(Clone, Debug, PartialEq)]
+pub enum Value {
+    // TODO use Arc to make these cheaper to clone?
+    Null,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(String),
+    Bytes(Bytes),
+    Array(Vec<Self>),
+    Object(IndexMap<String, Self>),
+}
+
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string when displayed contiguously.
 #[derive(Debug)]
@@ -225,7 +309,7 @@ pub enum RenderedChunk {
     /// without having to clone it.
     Raw(Arc<str>),
     /// Outcome of rendering a template key
-    Rendered { value: Bytes, sensitive: bool },
+    Rendered(Value),
     /// An error occurred while rendering a template key
     Error(TemplateError),
 }

@@ -542,7 +542,7 @@ impl Recipe {
         header: &str,
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
-        let mut value = render::engine()
+        let value = render::engine()
             .render_bytes(value_template, template_context)
             .await
             .context(format!("Error rendering header `{header}`"))?;
@@ -553,7 +553,7 @@ impl Recipe {
             header
                 .try_into()
                 .context(format!("Error encoding header name `{header}`"))?,
-            value.try_into().context(format!(
+            Vec::<u8>::from(value).try_into().context(format!(
                 "Error encoding value for header `{header}`"
             ))?,
         ))
@@ -715,7 +715,7 @@ impl RenderedBody {
             RenderedBody::FormMultipart(fields) => {
                 let mut form = Form::new();
                 for (field, value) in fields {
-                    let part = Part::bytes(value);
+                    let part = Part::bytes(Vec::from(value));
                     form = form.part(field, part);
                 }
                 builder.multipart(form)

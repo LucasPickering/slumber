@@ -13,21 +13,23 @@ mod render;
 mod tests;
 
 pub use error::TemplateError;
+pub use function::{Kwargs, ViaSerde};
 
-use crate::function::{Function, IntoFilter, IntoProducer};
+use crate::function::{BoxedFunction, Function, FunctionArgs, FunctionOutput};
 use bytes::Bytes;
 use derive_more::{Deref, Display};
 use futures::future;
 use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
+use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc};
 
 /// TODO
 #[derive(Debug)]
 pub struct TemplateEngine<Ctx> {
     /// Functions that produce values from arguments
-    functions: IndexMap<&'static str, Function<Ctx>>,
+    functions: IndexMap<&'static str, BoxedFunction<Ctx>>,
 }
 
 impl<Ctx: TemplateContext> TemplateEngine<Ctx> {
@@ -36,35 +38,28 @@ impl<Ctx: TemplateContext> TemplateEngine<Ctx> {
         Self::default()
     }
 
-    /// Register a filter function under the given name. If there is already a
-    /// function with that name, it will be overwritten
-    ///
-    /// TODO explain filter vs producer
-    pub fn add_filter<F>(&mut self, name: &'static str, function: F)
-    where
-        F: IntoFilter<Ctx>,
+    /// Register a function under the given name. If there is already a function
+    /// with that name, it will be overwritten
+    pub fn add_function<F, Args, Out>(
+        &mut self,
+        name: &'static str,
+        function: F,
+    ) where
+        F: Function<Ctx, Args, Out>,
+        // These bounds aren't strictly necessary because they're implied by
+        // the Function bound, but they make type inference easier and provide
+        // better type error messages
+        Args: for<'a> FunctionArgs<'a, Ctx>,
+        Out: FunctionOutput,
     {
-        self.functions
-            .insert(name, Function::Filter(function.into_filter()));
-    }
-
-    /// Register a producer function under the given name. If there is already a
-    /// function with that name, it will be overwritten
-    ///
-    /// TODO explain filter vs producer
-    pub fn add_producer<F>(&mut self, name: &'static str, function: F)
-    where
-        F: IntoProducer<Ctx>,
-    {
-        self.functions
-            .insert(name, Function::Producer(function.into_producer()));
+        self.functions.insert(name, BoxedFunction::new(function));
     }
 
     /// Get a function by name
     fn get_function(
         &self,
         name: &str,
-    ) -> Result<&Function<Ctx>, TemplateError> {
+    ) -> Result<&BoxedFunction<Ctx>, TemplateError> {
         // TODO include help message in error
         self.functions
             .get(name)
@@ -141,11 +136,11 @@ impl<Ctx> Default for TemplateEngine<Ctx> {
 /// TODO
 pub trait TemplateContext: Sized + Send + Sync {
     /// TODO
-    async fn get(
+    fn get(
         &self,
         identifier: &Identifier,
         engine: &TemplateEngine<Self>,
-    ) -> Result<Value, TemplateError>;
+    ) -> impl Future<Output = Result<Value, TemplateError>> + Send;
 }
 
 /// A parsed template, which can contain raw and/or templated content. The
@@ -237,14 +232,15 @@ pub enum Expression {
     Field(Identifier),
     /// Call to a plain function (**not** a filter)
     Call(FunctionCall),
+    /// TODO update comment
     /// Data piped through a filter: `name | trim()`
     ///
     /// The left-hand side can be any expression, but the right-hand side must
     /// be a function call to a filter function. Filter functions are
     /// specifically defined to take the input "stdin" data as extra input.
-    Filter {
+    Pipe {
         expression: Box<Self>,
-        filter: FunctionCall,
+        call: FunctionCall,
     },
 }
 
@@ -286,7 +282,7 @@ impl From<&'static str> for Identifier {
 }
 
 /// TODO
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     // TODO use Arc to make these cheaper to clone?
     Null,

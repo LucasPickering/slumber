@@ -1,6 +1,7 @@
 data/
 /target/
 /.vscode/
+/.zed/
 .DS_Store
 response.json
 *.sqlite

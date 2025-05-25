@@ -4,6 +4,9 @@
 //! `slumber` crate version. If you choose to depend directly on this crate, you
 //! do so at your own risk of breakage.
 
+// TODO fixups
+
+/*
 mod common;
 mod insomnia;
 mod openapi;
@@ -12,3 +15,20 @@ mod rest;
 pub use insomnia::from_insomnia;
 pub use openapi::from_openapi;
 pub use rest::from_rest;
+ */
+
+use std::path::Path;
+
+use slumber_core::collection::Collection;
+
+pub fn from_insomnia(_: impl AsRef<Path>) -> anyhow::Result<Collection> {
+    todo!()
+}
+
+pub fn from_openapi(_: impl AsRef<Path>) -> anyhow::Result<Collection> {
+    todo!()
+}
+
+pub fn from_rest(_: impl AsRef<Path>) -> anyhow::Result<Collection> {
+    todo!()
+}

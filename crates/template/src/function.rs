@@ -1,157 +1,93 @@
 //! Template function and filter framework
 
-use crate::{
-    TemplateContext, TemplateEngine, TemplateError, Value, render::RenderResult,
+use crate::{TemplateEngine, TemplateError, Value};
+use serde::{
+    Deserialize,
+    de::{IntoDeserializer, value::MapDeserializer},
 };
-use futures::{
-    FutureExt,
-    future::{self, BoxFuture},
-};
-use serde::{Deserialize, de::value::MapDeserializer};
 use std::{
+    collections::VecDeque,
     fmt::{self, Debug},
     mem,
 };
 
 /// TODO
-#[derive(Debug)]
-pub enum Function<Ctx> {
-    Filter(Filter<Ctx>),
-    Producer(Producer<Ctx>),
-}
-
-impl<Ctx> Function<Ctx> {
-    /// TODO
-    pub(crate) fn as_filter(&self) -> Result<&Filter<Ctx>, TemplateError> {
-        if let Self::Filter(filter) = self {
-            Ok(filter)
-        } else {
-            Err(TemplateError::ExpectedFilter)
-        }
-    }
-
-    /// TODO
-    pub(crate) fn as_producer(&self) -> Result<&Producer<Ctx>, TemplateError> {
-        if let Self::Producer(producer) = self {
-            Ok(producer)
-        } else {
-            Err(TemplateError::ExpectedProducer)
-        }
-    }
-}
-
-/// Filters modify some input value, optionally based on some given arguments.
-/// They exclusively live on the right side of a `|` operation. For example, in
-/// `f() | trim()`, `f` is a producer and `trim` is a filter
-pub struct Filter<Ctx>(
+pub(crate) struct BoxedFunction<Ctx>(
     #[expect(clippy::type_complexity)]
     Box<
-        dyn for<'ctx> Fn(
-                &'ctx TemplateEngine<Ctx>,
-                &'ctx Ctx,
-                Value, // Value to filter
-                Arguments,
-            ) -> BoxFuture<'ctx, RenderResult>
+        dyn for<'a> Fn(Arguments<'a, Ctx>) -> Result<Value, TemplateError>
             + Send
             + Sync,
     >,
 );
 
-impl<Ctx> Filter<Ctx> {
-    /// Invoke this filter, apply some operation to the given value
-    pub(crate) async fn call(
+impl<Ctx> BoxedFunction<Ctx> {
+    /// Wrap the given function, whose type is statically known, into a dynamic
+    /// object so it can be stored in the function map. This will provide
+    /// argument and output conversion to make the function type uniform.
+    pub(crate) fn new<F, Args, Out>(function: F) -> Self
+    where
+        F: Function<Ctx, Args, Out>,
+    {
+        let wrap =
+            move |arguments: Arguments<'_, Ctx>| function.invoke(arguments);
+        Self(Box::new(wrap))
+    }
+
+    /// Call this function
+    pub(crate) fn invoke(
         &self,
-        engine: &TemplateEngine<Ctx>,
-        context: &Ctx,
-        value: Value,
-        arguments: Arguments,
-    ) -> RenderResult {
-        (self.0)(engine, context, value, arguments).await
+        arguments: Arguments<'_, Ctx>,
+    ) -> Result<Value, TemplateError> {
+        (self.0)(arguments)
     }
 }
 
-impl<Ctx> Debug for Filter<Ctx> {
+impl<Ctx> Debug for BoxedFunction<Ctx> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Print the pointer to the function as something identifying
-        write!(f, "Filter({:p})", self.0)
-    }
-}
-
-/// TODO
-pub struct Producer<Ctx>(
-    #[expect(clippy::type_complexity)]
-    Box<
-        dyn for<'ctx> Fn(
-                &'ctx TemplateEngine<Ctx>,
-                &'ctx Ctx,
-                Arguments,
-            ) -> BoxFuture<'ctx, RenderResult>
-            + Send
-            + Sync,
-    >,
-);
-
-impl<Ctx> Producer<Ctx> {
-    /// Invoke this producer, creating a new value
-    pub(crate) async fn call(
-        &self,
-        engine: &TemplateEngine<Ctx>,
-        context: &Ctx,
-        arguments: Arguments,
-    ) -> RenderResult {
-        (self.0)(engine, context, arguments).await
-    }
-}
-
-impl<Ctx> Debug for Producer<Ctx> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Print the pointer to the function as something identifying
-        write!(f, "Producer({:p})", self.0)
+        write!(f, "BoxedFunction({:p})", self.0)
     }
 }
 
 /// Arguments passed to a function call
 #[derive(Debug)]
-pub struct Arguments {
-    pub position: Vec<Value>,
+pub struct Arguments<'a, Ctx> {
+    /// TODO
+    pub engine: &'a TemplateEngine<Ctx>,
+    /// TODO
+    pub context: &'a Ctx,
+    /// Position arguments. This queue will be drained from the front as
+    /// arguments are converted, and additional arguments not accepted by the
+    /// function will trigger an error.
+    pub position: VecDeque<Value>,
+    /// Keyword arguments. These will be converted wholesale as a single map,
+    /// as there's no Rust support for kwargs. All keyword arguments are
+    /// optional.
     pub keyword: Vec<(String, Value)>,
 }
 
-/// TODO
-pub trait IntoFilter<Ctx> {
-    fn into_filter(self) -> Filter<Ctx>;
-}
+impl<Ctx> Arguments<'_, Ctx> {
+    /// Pop the next positional argument off the front of the queue. Return an
+    /// error if there are no positional arguments left
+    fn pop_position(&mut self) -> Result<Value, TemplateError> {
+        self.position
+            .pop_front()
+            .ok_or(TemplateError::NotEnoughArguments)
+    }
 
-/// TODO
-pub trait IntoProducer<Ctx, Args, Out> {
-    fn into_producer(self) -> Producer<Ctx>;
-}
-
-impl<Ctx, F, Arg0, Out> IntoProducer<Ctx, (Arg0,), Out> for F
-where
-    F: 'static + Fn(Arg0) -> Out + Send + Sync,
-    Ctx: TemplateContext,
-    Arg0: for<'ctx> FunctionArg<'ctx, Ctx>,
-    Out: FunctionOutput,
-{
-    fn into_producer(self) -> Producer<Ctx> {
-        let f = move |engine: &TemplateEngine<Ctx>,
-                      context: &Ctx,
-                      mut arguments: Arguments|
-              -> BoxFuture<'_, RenderResult> {
-            let result = Arg0::from_arguments(engine, context, &mut arguments)
-                .and_then(|arg0| (self)(arg0).into_result());
-            future::ready(result).boxed()
-        };
-        Producer(Box::new(f))
+    /// Move all keyword arguments out of this struct
+    fn take_keyword(&mut self) -> Vec<(String, Value)> {
+        mem::take(&mut self.keyword)
     }
 }
 
-pub trait FunctionTodo<'ctx, Ctx, Args, Out>: Send + Sync + 'static
-where
-    Args: FunctionArgs<'ctx, Ctx>,
-{
-    fn invoke(&self, args: Args) -> BoxFuture<'ctx, Out>;
+/// TODO
+pub trait Function<Ctx, Args, Out>: 'static + Send + Sync {
+    fn invoke<'a>(
+        &self,
+        arguments: Arguments<'a, Ctx>,
+    ) -> Result<Value, TemplateError>;
 }
 
 /// TODO
@@ -160,13 +96,55 @@ where
 ///
 /// - `'ctx` is the lifetime of the given references to the engine and context.
 /// - `Ctx` is the template context type
-pub trait FunctionArgs<'ctx, Ctx>: Sized {
-    fn from_arguments(
-        engine: &'ctx TemplateEngine<Ctx>,
-        context: &'ctx Ctx,
-        arguments: &mut Arguments,
-    ) -> Result<Self, TemplateError>;
+pub trait FunctionArgs<'a, Ctx>: Sized {}
+
+/// TODO
+macro_rules! tuple_impls {
+    ($($arg_type:ident)*) => {
+        impl<Ctx, F, $($arg_type,)* Out> Function<Ctx, ($($arg_type,)*), Out>
+            for F
+        where
+            $($arg_type: for<'a> FunctionArg<'a, Ctx> + Send + Sync,)*
+            ($($arg_type,)*): for<'a> FunctionArgs<'a, Ctx>,
+            Out: FunctionOutput,
+            F: 'static + Fn($(<$arg_type as FunctionArg<'_, Ctx>>::Output),*) -> Out + Send + Sync,
+        {
+            #[expect(non_snake_case)]
+            fn invoke<'a>(
+                &self,
+                mut arguments: Arguments<'a, Ctx>,
+            ) -> Result<Value, TemplateError> {
+                // Unpack args, convert them, and pass them to the function
+                // TODO error for lingering args in the queue
+                // Convert each argument and pack them into a tuple. We convert
+                // args left-to-right so that each positional arg can pop off
+                // the front of the argument queue
+                // TODO update comment
+                // We can reuse the type name as the var name to avoid
+                // complicated transformations or recursion
+                $(let $arg_type = $arg_type::from_arguments(&mut arguments)?;)*
+                (self)($($arg_type,)*).into_result()
+            }
+        }
+
+        // Impl FunctionArgs for (T0, T1, ...). This impl doesn't provide any
+        // code, but it provides a concrete bound on the argument types that
+        // enables better type inference by the compiler
+        impl<'a, Ctx, $($arg_type,)*> FunctionArgs<'a, Ctx>
+            for ($($arg_type,)*)
+        where
+            $($arg_type: FunctionArg<'a, Ctx> + Send + Sync,)*
+        {}
+    };
 }
+
+// TODO enable and fix unused warnings
+// tuple_impls! {}
+tuple_impls! { T0 }
+tuple_impls! { T0 T1 }
+tuple_impls! { T0 T1 T2 }
+tuple_impls! { T0 T1 T2 T3 }
+tuple_impls! { T0 T1 T2 T3 T4 }
 
 /// TODO
 ///
@@ -174,35 +152,95 @@ pub trait FunctionArgs<'ctx, Ctx>: Sized {
 ///
 /// - `'ctx` is the lifetime of the given references to the engine and context.
 /// - `Ctx` is the template context type
-pub trait FunctionArg<'ctx, Ctx>: Sized {
+pub trait FunctionArg<'a, Ctx>: Sized {
+    /// TODO explain need for this - gets around lifetime issue
+    type Output;
+
     fn from_arguments(
-        engine: &'ctx TemplateEngine<Ctx>,
-        context: &'ctx Ctx,
-        arguments: &mut Arguments,
-    ) -> Result<Self, TemplateError>;
+        arguments: &mut Arguments<'a, Ctx>,
+    ) -> Result<Self::Output, TemplateError>;
 }
 
-impl<'ctx, Ctx> FunctionArg<'ctx, Ctx> for &'ctx TemplateEngine<Ctx> {
+impl<'a, Ctx: 'a> FunctionArg<'a, Ctx> for &TemplateEngine<Ctx> {
+    type Output = &'a TemplateEngine<Ctx>;
+
     fn from_arguments(
-        engine: &'ctx TemplateEngine<Ctx>,
-        _: &'ctx Ctx,
-        _: &mut Arguments,
-    ) -> Result<Self, TemplateError> {
-        Ok(engine)
+        arguments: &mut Arguments<'a, Ctx>,
+    ) -> Result<Self::Output, TemplateError> {
+        Ok(arguments.engine)
     }
 }
 
-impl<'ctx, Ctx> FunctionArg<'ctx, Ctx> for &'ctx Ctx {
+impl<'a, Ctx: 'a> FunctionArg<'a, Ctx> for &Ctx {
+    type Output = &'a Ctx;
+
     fn from_arguments(
-        _: &'ctx TemplateEngine<Ctx>,
-        context: &'ctx Ctx,
-        _: &mut Arguments,
-    ) -> Result<Self, TemplateError> {
-        Ok(context)
+        arguments: &mut Arguments<'a, Ctx>,
+    ) -> Result<Self::Output, TemplateError> {
+        Ok(arguments.context)
+    }
+}
+
+impl<'a, Ctx> FunctionArg<'a, Ctx> for String {
+    type Output = Self;
+
+    fn from_arguments(
+        arguments: &mut Arguments<'a, Ctx>,
+    ) -> Result<Self::Output, TemplateError> {
+        let value = arguments.pop_position()?;
+        if let Value::String(s) = value {
+            Ok(s)
+        } else {
+            todo!("error? convert to string?")
+        }
     }
 }
 
 /// TODO
+pub struct ViaSerde<T>(pub T);
+
+impl<'a, 'de, Ctx, T> FunctionArg<'a, Ctx> for ViaSerde<T>
+where
+    T: Deserialize<'de>,
+{
+    type Output = Self;
+
+    fn from_arguments(
+        arguments: &mut Arguments<'a, Ctx>,
+    ) -> Result<Self::Output, TemplateError> {
+        let value = arguments.pop_position()?;
+        T::deserialize(value.into_deserializer()).map(Self)
+    }
+}
+
+/// Wrapper for a keyword argument struct, which will be deserialized from a
+/// a mapping of keywords. Kwargs should only be used for additional options to
+/// a function that are not required. As such, the struct should include
+/// `#[serde(default)]` so it can be deserialized when keyword args are missing.
+/// It should also include `#[serde(deny_unknown_fields)]` to prevent passing
+/// unrecognized keyword arguments.
+pub struct Kwargs<T>(pub T);
+
+impl<'a, 'de, Ctx, T> FunctionArg<'a, Ctx> for Kwargs<T>
+where
+    T: Deserialize<'de>,
+{
+    type Output = Self;
+
+    fn from_arguments(
+        arguments: &mut Arguments<'a, Ctx>,
+    ) -> Result<Self::Output, TemplateError> {
+        // Use a generic deserializer to convert the kwargs as a mapping
+        let deserializer =
+            MapDeserializer::new(arguments.take_keyword().into_iter());
+        T::deserialize(deserializer).map(Self)
+    }
+}
+
+/// Trait representing a value that can be converted into `Result<Value,
+/// TemplateError>`. This conversion is used to make all function definitions
+/// provide uniform output. The return type of any registered [Function] must
+/// implement this trait.
 pub trait FunctionOutput {
     fn into_result(self) -> Result<Value, TemplateError>;
 }
@@ -226,24 +264,14 @@ where
     }
 }
 
-/// Wrapper for a keyword argument struct, which will be deserialized from a
-/// a mapping of keywords. Kwargs should only be used for additional options to
-/// a function that are not required. As such, the struct should include
-/// `#[serde(default)]` so it can be deserialized when keyword args are missing.
-struct Kwargs<T>(T);
+impl FunctionOutput for String {
+    fn into_result(self) -> Result<Value, TemplateError> {
+        Ok(Value::String(self))
+    }
+}
 
-impl<'a, 'de, Ctx, T> FunctionArg<'a, Ctx> for Kwargs<T>
-where
-    T: 'a + Deserialize<'de>,
-{
-    fn from_arguments(
-        _: &'a TemplateEngine<Ctx>,
-        _: &'a Ctx,
-        arguments: &mut Arguments,
-    ) -> Result<Self, TemplateError> {
-        let kwargs = mem::take(&mut arguments.keyword);
-        // Use a generic deserializer to convert the kwargs as a mapping
-        let deserializer = MapDeserializer::new(kwargs.into_iter());
-        T::deserialize(deserializer).map(Kwargs)
+impl<T: FunctionOutput> FunctionOutput for Option<T> {
+    fn into_result(self) -> Result<Value, TemplateError> {
+        self.map(T::into_result).unwrap_or(Ok(Value::Null))
     }
 }

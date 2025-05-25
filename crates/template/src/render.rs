@@ -4,59 +4,66 @@ use crate::{
     Expression, FunctionCall, Literal, TemplateContext, TemplateEngine,
     TemplateError, Value, function::Arguments,
 };
-use futures::future;
+use futures::{FutureExt, future};
 
 // TODO partial function application instead of filters?
 
-pub type RenderResult = Result<Value, TemplateError>;
+type RenderResult = Result<Value, TemplateError>;
 
 impl Expression {
     /// Render this expression to bytes
-    pub(crate) async fn render<Ctx: TemplateContext>(
+    pub(crate) fn render<Ctx: TemplateContext>(
         &self,
         engine: &TemplateEngine<Ctx>,
         context: &Ctx,
-    ) -> RenderResult {
-        match self {
-            Self::Literal(literal) => Ok(literal.into()),
-            Self::Array(expressions) => {
-                // Render each inner expression
-                let values = future::try_join_all(
-                    expressions
-                        .iter()
-                        .map(|expression| expression.render(engine, context)),
-                )
-                .await?;
-                Ok(Value::Array(values))
-            }
-            Self::Field(identifier) => context.get(identifier, engine).await,
-            Self::Call(call) => {
-                let producer = engine
-                    .get_function(call.function.as_str())?
-                    .as_producer()?;
-                let arguments = call.render_arguments(engine, context).await?;
-                producer.call(engine, context, arguments).await
-            }
-            Self::Filter {
-                expression,
-                filter: call,
-            } => {
-                let value = expression.render(engine, context).await?;
-                let filter =
-                    engine.get_function(call.function.as_str())?.as_filter()?;
-                let arguments = call.render_arguments(engine, context).await?;
-                filter.call(engine, context, value, arguments).await
+    ) -> impl Future<Output = RenderResult> + Send {
+        async move {
+            match self {
+                Self::Literal(literal) => Ok(literal.into()),
+                Self::Array(expressions) => {
+                    // Render each inner expression
+                    let values =
+                        future::try_join_all(expressions.iter().map(
+                            |expression| expression.render(engine, context),
+                        ))
+                        // Box for recursion
+                        .boxed()
+                        .await?;
+                    Ok(Value::Array(values))
+                }
+                Self::Field(identifier) => {
+                    context.get(identifier, engine).await
+                }
+                Self::Call(call) => {
+                    let function =
+                        engine.get_function(call.function.as_str())?;
+                    let arguments =
+                        call.render_arguments(engine, context).await?;
+                    function.invoke(arguments)
+                }
+                Self::Pipe { expression, call } => {
+                    // Box for recursion
+                    let value =
+                        expression.render(engine, context).boxed().await?;
+                    let function =
+                        engine.get_function(call.function.as_str())?;
+                    let mut arguments =
+                        call.render_arguments(engine, context).await?;
+                    // Pipe the filter value in as the first positional argument
+                    arguments.position.push_front(value);
+                    function.invoke(arguments)
+                }
             }
         }
     }
 }
 
 impl FunctionCall {
-    async fn render_arguments<Ctx: TemplateContext>(
+    async fn render_arguments<'a, Ctx: TemplateContext>(
         &self,
-        engine: &TemplateEngine<Ctx>,
-        context: &Ctx,
-    ) -> Result<Arguments, TemplateError> {
+        engine: &'a TemplateEngine<Ctx>,
+        context: &'a Ctx,
+    ) -> Result<Arguments<'a, Ctx>, TemplateError> {
         // Render all position and keyword arguments concurrently
         let position_future = future::try_join_all(
             self.arguments
@@ -70,8 +77,16 @@ impl FunctionCall {
             },
         ));
         let (position, keyword) =
-            future::try_join(position_future, keyword_future).await?;
-        Ok(Arguments { position, keyword })
+            future::try_join(position_future, keyword_future)
+                // Box for recursion
+                .boxed()
+                .await?;
+        Ok(Arguments {
+            engine,
+            context,
+            position: position.into(),
+            keyword,
+        })
     }
 }
 

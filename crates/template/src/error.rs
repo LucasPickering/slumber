@@ -27,14 +27,6 @@ impl From<ParseError<&str, ContextError>> for TemplateParseError {
 #[derive(Debug, Error)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum TemplateError {
-    /// TODO
-    #[error("TODO")]
-    ExpectedFilter,
-
-    /// TODO
-    #[error("TODO")]
-    ExpectedProducer,
-
     /// A profile field key contained an unknown field
     #[error("Unknown field `{field}`")]
     FieldUnknown { field: String },
@@ -54,11 +46,30 @@ pub enum TemplateError {
     #[error(transparent)]
     InvalidUtf8(FromUtf8Error),
 
+    /// TODO comment
+    /// TODO store expected/actual
+    #[error("TODO not enough")]
+    NotEnoughArguments,
+
     /// TODO
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>),
 
+    /// TODO comment
+    /// TODO store expected/actual
+    #[error("TODO too many arguments")]
+    TooManyArguments,
+
     /// TODO
     #[error("TODO")]
     UnknownFunction { name: String },
+}
+
+impl TemplateError {
+    /// TODO
+    pub fn other(
+        error: impl 'static + std::error::Error + Send + Sync,
+    ) -> Self {
+        Self::Other(Box::new(error))
+    }
 }

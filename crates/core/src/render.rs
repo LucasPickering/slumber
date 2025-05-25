@@ -10,13 +10,19 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use derive_more::From;
 use indexmap::IndexMap;
+use itertools::Itertools;
+use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::JsonPath;
-use slumber_template::TemplateEngine;
+use slumber_template::{TemplateEngine, TemplateError, ViaSerde};
 use slumber_util::ResultTraced;
 use std::{
+    env,
     fmt::Debug,
+    io, iter,
+    path::PathBuf,
     sync::{Arc, LazyLock},
 };
+use thiserror::Error;
 use tokio::{fs, sync::oneshot};
 
 /// Shared template engine for the entire process. The template engine is
@@ -24,27 +30,31 @@ use tokio::{fs, sync::oneshot};
 /// everywhere.
 static TEMPLATE_ENGINE: LazyLock<TemplateEngine<TemplateContext>> =
     LazyLock::new(|| {
-        // TODO the rest of these
-        // exports.export_fn("command", sync(command));
-        // exports.export_fn("response", sync(response));
-        // exports.export_fn("responseHeader", sync(response_header));
-        // exports.export_fn("select", sync(select));
-
         let mut engine = TemplateEngine::new();
-        // Filters
-        engine.add_filter("jsonpath", jsonpath);
-        engine.add_filter("sensitive", sensitive);
 
-        // Producers
-        engine.add_producer("file", file);
-        engine.add_producer("prompt", prompt);
+        // TODO remove need for type annotations
+        // Register all functions
+        // engine.add_function("command", command);
+        engine.add_function::<_, (String,), _>("env", env);
+        // engine.add_function("file", file);
+        engine.add_function::<_, (ViaSerde<_>, ViaSerde<_>), _>(
+            "jsonpath", jsonpath,
+        );
+        // engine.add_function("prompt", prompt);
+        // engine.add_function("response", response);
+        // engine.add_function("responseHeader", response_header);
+        // engine.add_function("select", select);
+        engine.add_function::<_, (&TemplateContext, String), _>(
+            "sensitive",
+            sensitive,
+        );
         engine
     });
 
 /// Get a reference to the global template engine. This should be used for all
 /// renders.
 pub fn engine() -> &'static TemplateEngine<TemplateContext> {
-    &*TEMPLATE_ENGINE
+    &TEMPLATE_ENGINE
 }
 
 /// A little container struct for all the data that the user can access via
@@ -164,30 +174,42 @@ impl<T> ResponseChannel<T> {
     }
 }
 
+/// Get the value of an environment variable. Return `None` if the variable is
+/// not set
+fn env(variable: String) -> Option<String> {
+    env::var(variable).ok()
+}
+
+/*
+
 /// TODO
 async fn file(path: &str) -> Vec<u8> {
     fs::read(path).await
 }
+*/
 
 /// Transform a JSON value using a JSONPath query
 fn jsonpath(
-    ViaDeserialize(query): ViaDeserialize<JsonPath>,
-    ViaDeserialize(value): ViaDeserialize<serde_json::Value>,
-) -> Result<serde_json::Value, Error> {
+    // Value first so it can be piped in
+    ViaSerde(value): ViaSerde<serde_json::Value>,
+    ViaSerde(query): ViaSerde<JsonPath>,
+) -> Result<slumber_template::Value, FunctionError> {
     // TODO support mode?
     let node_list = query.query(&value);
-    // TODO can we avoid this collection? is it possible to go NodeList straight
-    // to Value? what serializer/deserialize do we use?
-    let json: serde_json::Value = node_list.into_iter().cloned().collect();
-    // Convert from JSON to minijinja::Value
-    Ok(serde_json::from_value(json).unwrap())
+    // Deserialize from the JSON list into a template value. This should be
+    // infallible because template values are a superset of JSON
+    slumber_template::Value::deserialize(SeqDeserializer::new(
+        node_list.into_iter(),
+    ))
+    .map_err(|_| todo!())
 }
 
+/*
 /// TODO
 async fn prompt(
     context: &TemplateContext,
     kwargs: Kwargs,
-) -> Result<String, Error> {
+) -> Result<String, FunctionError> {
     // TODO static kwargs
     let message: Option<String> = kwargs.get("message")?;
     let default: Option<String> = kwargs.get("default")?;
@@ -212,17 +234,109 @@ async fn prompt(
         Ok(output)
     }
 }
-
-/// TODO
-fn sensitive(context: &TemplateContext, value: String) -> String {
-    mask_sensitive(&context, value)
-}
+*/
 
 /// Hide a sensitive value if the context has show_sensitive disabled
-fn mask_sensitive(context: &TemplateContext, value: String) -> String {
+fn sensitive(context: &TemplateContext, value: String) -> String {
     if context.show_sensitive {
         value
     } else {
         "•".repeat(value.chars().count())
+    }
+}
+
+/// TODO
+#[derive(Debug, Error)]
+pub enum FunctionError {
+    /// Error executing an external command
+    #[error(
+        "Executing command `{}`", iter::once(program).chain(args).format(" ")
+    )]
+    Command {
+        program: String,
+        args: Vec<String>,
+        #[source]
+        error: io::Error,
+    },
+
+    /// User passed an empty command arrary
+    #[error("Command must have at least one element")]
+    CommandEmpty,
+
+    /// An error occurred accessing the persistence database. This error is
+    /// generated by our code so we don't need any extra context.
+    #[error(transparent)]
+    Database(anyhow::Error),
+
+    /// Error opening/reading a file
+    #[error("Reading file `{path}`")]
+    File {
+        path: PathBuf,
+        #[source]
+        error: io::Error,
+    },
+
+    /// Error decoding bytes as UTF-8
+    #[error(transparent)]
+    InvalidUtf8(#[from] std::string::FromUtf8Error),
+
+    /// JSONPath query returned 0 or 2+ results when we expected 1
+    #[error(
+        "Expected exactly one result from JSONPath query `{query}`, \
+        but got {actual_count}"
+    )]
+    JsonPathExactlyOne {
+        query: JsonPath,
+        actual_count: usize,
+    },
+
+    /// JSONPath query returned no results when it should have
+    #[error("No results from JSONPath query `{query}`")]
+    JsonPathNoResults { query: JsonPath },
+
+    /// Render context not available. Could be a bug, but it probably indicates
+    /// a render function was called outside a render
+    #[error(
+        "Render context not available. Slumber render functions can only \
+        be called during a recipe render. For recipe fields, make sure the \
+        template string is a function: () => `My name is ${{username()}}`"
+    )]
+    NoContext,
+
+    /// An bubbled-up error from rendering a profile field value
+    #[error("Nested render for field `{field}`")]
+    ProfileNested {
+        field: String,
+        /// The bubbled error. This needs an `Arc` because profile render
+        /// results are cached, therefore the error must be `Clone`.
+        #[source]
+        error: Arc<anyhow::Error>,
+    },
+
+    /// Never got a reply from the prompt channel. Do *not* store the
+    /// `RecvError` here, because it provides useless extra output to the user.
+    #[error("No reply from prompt/select")]
+    PromptNoReply,
+
+    /// Recipe for `response()` has no history
+    #[error("No response available")]
+    ResponseMissing,
+
+    /// Specified header did not exist in the response
+    #[error("Header `{header}` not in response")]
+    ResponseMissingHeader { header: String },
+
+    /// Something bad happened while triggering a request dependency
+    #[error("Triggering upstream recipe `{recipe_id}`")]
+    Trigger {
+        recipe_id: RecipeId,
+        #[source]
+        error: TriggeredRequestError,
+    },
+}
+
+impl From<FunctionError> for TemplateError {
+    fn from(error: FunctionError) -> Self {
+        TemplateError::other(error)
     }
 }

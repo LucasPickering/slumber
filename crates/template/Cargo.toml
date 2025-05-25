@@ -18,7 +18,7 @@ futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
 regex = {version = "1.10.5", default-features = false}
-serde = {workspace = true}
+serde = {workspace = true, features = ["derive"]}
 slumber_util = {workspace = true}
 thiserror = {workspace = true}
 tracing = {workspace = true}

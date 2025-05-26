@@ -13,7 +13,7 @@ version = {workspace = true}
 [dependencies]
 # TODO trim this down
 bytes = {workspace = true, features = ["serde"]}
-derive_more = {workspace = true, features = ["deref", "display"]}
+derive_more = {workspace = true, features = ["deref", "display", "from"]}
 futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}

@@ -66,11 +66,11 @@ impl FunctionCall {
     ) -> Result<Arguments<'a, Ctx>, TemplateError> {
         // Render all position and keyword arguments concurrently
         let position_future = future::try_join_all(
-            self.arguments
+            self.position
                 .iter()
                 .map(|expression| expression.render(engine, context)),
         );
-        let keyword_future = future::try_join_all(self.kwargs.iter().map(
+        let keyword_future = future::try_join_all(self.keyword.iter().map(
             |(name, expression)| async {
                 let value = expression.render(engine, context).await?;
                 Ok((name.to_string(), value))

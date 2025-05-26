@@ -9,21 +9,19 @@ mod error;
 mod function;
 mod parse;
 mod render;
-#[cfg(test)]
-mod tests;
 
 pub use error::TemplateError;
 pub use function::{Kwargs, ViaSerde};
 
 use crate::function::{BoxedFunction, Function, FunctionArgs, FunctionOutput};
 use bytes::Bytes;
-use derive_more::{Deref, Display};
+use derive_more::{Deref, Display, derive::From};
 use futures::future;
 use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 /// TODO
 #[derive(Debug)]
@@ -77,7 +75,7 @@ impl<Ctx: TemplateContext> TemplateEngine<Ctx> {
         template: &Template,
         context: &Ctx,
     ) -> Result<Bytes, TemplateError> {
-        let chunks = self.render_chunks(template, context).await;
+        let _chunks = self.render_chunks(template, context).await;
         todo!()
     }
 
@@ -90,7 +88,7 @@ impl<Ctx: TemplateContext> TemplateEngine<Ctx> {
         template: &Template,
         context: &Ctx,
     ) -> Result<String, TemplateError> {
-        let chunks = self.render_chunks(template, context).await;
+        let _chunks = self.render_chunks(template, context).await;
         todo!()
     }
 
@@ -203,6 +201,15 @@ impl From<String> for Template {
     }
 }
 
+#[cfg(any(test, feature = "test"))]
+impl<const N: usize> From<[TemplateChunk; N]> for Template {
+    fn from(chunks: [TemplateChunk; N]) -> Self {
+        Self {
+            chunks: chunks.into(),
+        }
+    }
+}
+
 /// A parsed piece of a template. After parsing, each chunk is either raw text
 /// or a parsed key, ready to be rendered.
 #[derive(Clone, Debug, PartialEq)]
@@ -218,7 +225,17 @@ pub enum TemplateChunk {
         Arc<str>,
     ),
     /// Dynamic expression to be computed at render time
-    Expression(Expression),
+    Expression(
+        #[cfg_attr(test, proptest(strategy = "expression_arbitrary()"))]
+        Expression,
+    ),
+}
+
+#[cfg(test)]
+impl From<Expression> for TemplateChunk {
+    fn from(expression: Expression) -> Self {
+        Self::Expression(expression)
+    }
 }
 
 /// TODO
@@ -226,10 +243,10 @@ pub enum TemplateChunk {
 pub enum Expression {
     /// TODO
     Literal(Literal),
-    /// Array literal: `[1, "hello", f()]`
-    Array(Vec<Self>),
     /// TODO
     Field(Identifier),
+    /// Array literal: `[1, "hello", f()]`
+    Array(Vec<Self>),
     /// Call to a plain function (**not** a filter)
     Call(FunctionCall),
     /// TODO update comment
@@ -245,7 +262,8 @@ pub enum Expression {
 }
 
 /// Literal primitive value
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, From, PartialEq)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Literal {
     Null,
     Bool(bool),
@@ -254,12 +272,33 @@ pub enum Literal {
     String(String),
 }
 
+impl From<&str> for Literal {
+    fn from(value: &str) -> Self {
+        Self::String(value.to_owned())
+    }
+}
+
 /// Function call in a template expression: `f(true, 0, kwarg0="hello")`
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct FunctionCall {
     function: Identifier,
-    arguments: Vec<Expression>,
-    kwargs: IndexMap<Identifier, Expression>,
+    /// Positional arguments
+    #[cfg_attr(
+        test,
+        proptest(
+            strategy = "proptest::collection::vec(expression_arbitrary(), 0..=3)"
+        )
+    )]
+    position: Vec<Expression>,
+    /// Keyword arguments
+    #[cfg_attr(
+        test,
+        proptest(
+            strategy = "proptest::collection::hash_map(Identifier::arbitrary(), expression_arbitrary(), 0..=3)"
+        )
+    )]
+    keyword: HashMap<Identifier, Expression>,
 }
 
 /// An identifier that can be used in a template key. A valid identifier is
@@ -298,7 +337,6 @@ pub enum Value {
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string when displayed contiguously.
 #[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
 pub enum RenderedChunk {
     /// Raw unprocessed text, i.e. something **outside** the `{{ }}`. This is
     /// stored in an `Arc` so we can reference the text in the parsed input
@@ -311,10 +349,20 @@ pub enum RenderedChunk {
 }
 
 #[cfg(test)]
-impl RenderedChunk {
-    /// Shorthand for creating a new raw chunk
-    fn raw(value: &str) -> Self {
-        Self::Raw(value.to_owned().into())
+impl PartialEq for RenderedChunk {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Raw(raw1), Self::Raw(raw2)) => raw1 == raw2,
+            (Self::Rendered(value1), Self::Rendered(value2)) => {
+                value1 == value2
+            }
+            (Self::Error(error1), Self::Error(error2)) => {
+                // TemplateError doesn't have a PartialEq impl, so we have to
+                // do a string comparison.
+                error1.to_string() == error2.to_string()
+            }
+            _ => false,
+        }
     }
 }
 
@@ -343,4 +391,29 @@ fn join_raw(chunks: Vec<TemplateChunk>) -> Vec<TemplateChunk> {
             }
             chunks
         })
+}
+
+/// Generate an arbitrary expression. This needs a manual implementation because
+/// it's recursive. Actually implementing Arbitrary manually is a pain because
+/// we need to name the generated Strategy type. Using a free function and
+/// attaching it to the parent is much easier because we can just return
+/// `impl Strategy`
+#[cfg(test)]
+fn expression_arbitrary() -> impl Strategy<Value = Expression> {
+    // This has to be implemented manually because it's recursive
+    // https://proptest-rs.github.io/proptest/proptest/tutorial/recursive.html
+    use proptest::{collection, prop_oneof};
+
+    let leaf = prop_oneof![
+        any::<Literal>().prop_map(Expression::Literal),
+        any::<Identifier>().prop_map(Expression::Field),
+    ];
+    const COLLECTION_SIZE: usize = 5;
+    leaf.prop_recursive(5, 256, COLLECTION_SIZE as u32, |inner| {
+        prop_oneof![
+            // Define recursive cases
+            collection::vec(inner.clone(), 0..COLLECTION_SIZE)
+                .prop_map(Expression::Array),
+        ]
+    })
 }

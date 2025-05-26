@@ -25,7 +25,6 @@ impl From<ParseError<&str, ContextError>> for TemplateParseError {
 /// These error messages are generally shown with additional parent context, so
 /// they should be pretty brief.
 #[derive(Debug, Error)]
-#[cfg_attr(test, derive(PartialEq))]
 pub enum TemplateError {
     /// A profile field key contained an unknown field
     #[error("Unknown field `{field}`")]

@@ -1,9 +1,10 @@
 //! Template stringification
 
 use crate::{
-    Expression, Template, TemplateChunk,
+    Expression, FunctionCall, Literal, Template, TemplateChunk,
     parse::{ESCAPE, EXPRESSION_CLOSE, EXPRESSION_OPEN},
 };
+use itertools::Itertools;
 use regex::Regex;
 use std::{
     borrow::Cow,
@@ -13,9 +14,9 @@ use std::{
 
 impl Template {
     /// Convert the template to a string. This will only allocate for escaped or
-    /// keyed templates. This is guaranteed to return the exact string that was
-    /// parsed to create the template, and therefore will parse back to the same
-    /// template. If it doesn't, that's a bug.
+    /// dynamic templates. This is not guaranteed to return the exact string
+    /// that was parsed to create the template, as whitespace within expressions
+    /// is variable.
     pub fn display(&self) -> Cow<'_, str> {
         let mut buf = Cow::Borrowed("");
 
@@ -83,6 +84,62 @@ impl Template {
 
 impl Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            Self::Literal(literal) => write!(f, "{literal}"),
+            Self::Field(identifier) => write!(f, "{identifier}"),
+            Self::Array(expressions) => {
+                write!(f, "[{}]", expressions.iter().format(", "))
+            }
+            Self::Call(call) => write!(f, "{call}"),
+            Self::Pipe { expression, call } => {
+                write!(f, "{expression} | {call}")
+            }
+        }
+    }
+}
+
+impl Display for Literal {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Literal::Null => write!(fmt, "null"),
+            Literal::Bool(b) => write!(fmt, "{b}"),
+            Literal::Int(i) => write!(fmt, "{i}"),
+            Literal::Float(f) => write!(fmt, "{f}"),
+            // TODO escape quotes
+            Literal::String(s) => write!(fmt, "\"{s}\""),
+        }
+    }
+}
+
+impl Display for FunctionCall {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        enum Argument<'a> {
+            Position(&'a Expression),
+            Keyword(&'a str, &'a Expression),
+        }
+
+        impl<'a> Display for Argument<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    Self::Position(expression) => write!(f, "{expression}"),
+                    Self::Keyword(key, expression) => {
+                        write!(f, "{key}={expression}")
+                    }
+                }
+            }
+        }
+
+        write!(
+            f,
+            "{}({})",
+            self.function,
+            self.position
+                .iter()
+                .map(Argument::Position)
+                .chain(self.keyword.iter().map(|(name, expression)| {
+                    Argument::Keyword(name, expression)
+                }))
+                .join(", ")
+        )
     }
 }

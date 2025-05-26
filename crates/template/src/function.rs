@@ -75,7 +75,7 @@ macro_rules! tuple_impls {
                 // type name as the var name to avoid complicated
                 // transformations or recursion
                 // TODO error for lingering args in the queue
-                $(let $arg_type = $arg_type::from_arguments(&mut arguments)?;)*
+                $(let $arg_type = $arg_type::extract(&mut arguments)?;)*
                 Ok(($($arg_type,)*))
             }
         }
@@ -97,29 +97,60 @@ tuple_impls! { T0 T1 T2 T3 T4 }
 /// - `'ctx` is the lifetime of the given references to the engine and context.
 /// - `Ctx` is the template context type
 trait FunctionArg<'ctx, Ctx>: Sized {
+    fn extract(
+        arguments: &mut Arguments<'ctx, Ctx>,
+    ) -> Result<Self, TemplateError>;
+
+    /*
     /// Get this value from the argument object and convert it. For most types
     /// this will grab the next positional arguments, but this also exposes
     /// the context and keyword arguments which can be used. If an argument
     /// is converted, it should be removed.
     fn from_arguments(
         arguments: &mut Arguments<'ctx, Ctx>,
-    ) -> Result<Self, TemplateError>;
+    ) -> Result<Self, TemplateError>; */
 }
 
 /// Get the template context as a function arg
 impl<'ctx, Ctx: 'ctx> FunctionArg<'ctx, Ctx> for &'ctx Ctx {
-    fn from_arguments(
+    fn extract(
         arguments: &mut Arguments<'ctx, Ctx>,
     ) -> Result<Self, TemplateError> {
-        Ok(arguments.context)
+        Ok(&arguments.context)
     }
 }
 
-impl<'ctx, Ctx> FunctionArg<'ctx, Ctx> for String {
-    fn from_arguments(
-        arguments: &mut Arguments<'ctx, Ctx>,
-    ) -> Result<Self, TemplateError> {
-        let value = arguments.pop_position()?;
+/// Implement [FunctionArg] for types that implement [TryFromValue]. The value
+/// will be extracted as the next positional argument, then converted to the
+/// target type.
+///
+/// This can't just be a blanket impl because it conflicts with the impl on
+/// &Ctx
+macro_rules! impl_function_arg {
+    ($($type:ty),*) => {
+        $(
+            impl<'ctx, Ctx: 'ctx> FunctionArg<'ctx, Ctx> for $type {
+                fn extract(
+                    arguments: &mut Arguments<'ctx, Ctx>,
+                ) -> Result<Self, TemplateError> {
+                    let value = arguments.pop_position()?;
+                    Self::try_from_value(value)
+                }
+            }
+        )*
+    };
+}
+
+impl_function_arg!(String, Vec<String>);
+
+/// TODO
+trait TryFromValue: Sized {
+    /// TODO
+    fn try_from_value(value: Value) -> Result<Self, TemplateError>;
+}
+
+impl TryFromValue for String {
+    fn try_from_value(value: Value) -> Result<Self, TemplateError> {
         if let Value::String(s) = value {
             Ok(s)
         } else {
@@ -128,21 +159,16 @@ impl<'ctx, Ctx> FunctionArg<'ctx, Ctx> for String {
     }
 }
 
-impl<'ctx, Ctx, T> FunctionArg<'ctx, Ctx> for Vec<T>
+/// Convert an array to a list
+impl<T> TryFromValue for Vec<T>
 where
-    T: FunctionArg<'ctx, Ctx>,
+    T: TryFromValue,
 {
-    fn from_arguments(
-        arguments: &mut Arguments<'ctx, Ctx>,
-    ) -> Result<Self, TemplateError> {
-        let value = arguments.pop_position()?;
+    fn try_from_value(value: Value) -> Result<Self, TemplateError> {
         if let Value::Array(array) = value {
-            Ok(array
-                .into_iter()
-                .map(T::from_arguments)
-                .collect::<Result<Vec<_>, _>>()?)
+            array.into_iter().map(T::try_from_value).collect()
         } else {
-            todo!("error")
+            todo!("error? convert to string?")
         }
     }
 }
@@ -151,14 +177,11 @@ where
 /// [Deserialize] implementation.
 pub struct ViaSerde<T>(pub T);
 
-impl<'ctx, 'de, Ctx, T> FunctionArg<'ctx, Ctx> for ViaSerde<T>
+impl<'de, T> TryFromValue for ViaSerde<T>
 where
     T: Deserialize<'de>,
 {
-    fn from_arguments(
-        arguments: &mut Arguments<'ctx, Ctx>,
-    ) -> Result<Self, TemplateError> {
-        let value = arguments.pop_position()?;
+    fn try_from_value(value: Value) -> Result<Self, TemplateError> {
         T::deserialize(value.into_deserializer()).map(Self)
     }
 }
@@ -175,7 +198,7 @@ impl<'ctx, 'de, Ctx, T> FunctionArg<'ctx, Ctx> for Kwargs<T>
 where
     T: Deserialize<'de>,
 {
-    fn from_arguments(
+    fn extract(
         arguments: &mut Arguments<'ctx, Ctx>,
     ) -> Result<Self, TemplateError> {
         // Use a generic deserializer to convert the kwargs as a mapping

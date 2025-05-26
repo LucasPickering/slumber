@@ -90,26 +90,22 @@ pub trait Function<Ctx, Args, Out>: 'static + Send + Sync {
     ) -> Result<Value, TemplateError>;
 }
 
-/// TODO
+/// Implement [Function] for a set of argument types.
 ///
-/// ## Type Params
-///
-/// - `'ctx` is the lifetime of the given references to the engine and context.
-/// - `Ctx` is the template context type
-pub trait FunctionArgs<'a, Ctx>: Sized {}
-
-/// TODO
+/// Example: `tuple_impls! { T0, T1 }` will implement [Function] on
+/// `Fn(T0, T1) -> Out`
 macro_rules! tuple_impls {
     ($($arg_type:ident)*) => {
+        #[allow(clippy::allow_annotations)]
         impl<Ctx, F, $($arg_type,)* Out> Function<Ctx, ($($arg_type,)*), Out>
             for F
         where
             $($arg_type: for<'a> FunctionArg<'a, Ctx> + Send + Sync,)*
-            ($($arg_type,)*): for<'a> FunctionArgs<'a, Ctx>,
             Out: FunctionOutput,
             F: 'static + Fn($(<$arg_type as FunctionArg<'_, Ctx>>::Output),*) -> Out + Send + Sync,
         {
-            #[expect(non_snake_case)]
+            #[allow(non_snake_case)]
+            #[allow(unused)]
             fn invoke<'a>(
                 &self,
                 mut arguments: Arguments<'a, Ctx>,
@@ -127,19 +123,11 @@ macro_rules! tuple_impls {
             }
         }
 
-        // Impl FunctionArgs for (T0, T1, ...). This impl doesn't provide any
-        // code, but it provides a concrete bound on the argument types that
-        // enables better type inference by the compiler
-        impl<'a, Ctx, $($arg_type,)*> FunctionArgs<'a, Ctx>
-            for ($($arg_type,)*)
-        where
-            $($arg_type: FunctionArg<'a, Ctx> + Send + Sync,)*
-        {}
     };
 }
 
-// TODO enable and fix unused warnings
-// tuple_impls! {}
+// Accept functions of 0-5 arguments
+tuple_impls! {}
 tuple_impls! { T0 }
 tuple_impls! { T0 T1 }
 tuple_impls! { T0 T1 T2 }
@@ -153,7 +141,14 @@ tuple_impls! { T0 T1 T2 T3 T4 }
 /// - `'ctx` is the lifetime of the given references to the engine and context.
 /// - `Ctx` is the template context type
 pub trait FunctionArg<'a, Ctx>: Sized {
-    /// TODO explain need for this - gets around lifetime issue
+    /// The output type of the conversion, i.e. the type of the resulting
+    /// argument. Typically this is just `Self`. The associated type is needed
+    /// to declare the lifetimes correctly for the implementations on
+    /// [TemplateEngine] and the template context. Those return references  with
+    /// the `'a` lifetime, and apparently just implementing the trait on `&'a T`
+    /// doesn't work. Somewhere the borrow checker's wires get crossed on the
+    /// lifetime and you end up with an implementation that isn't general
+    /// enough.
     type Output;
 
     fn from_arguments(
@@ -161,6 +156,7 @@ pub trait FunctionArg<'a, Ctx>: Sized {
     ) -> Result<Self::Output, TemplateError>;
 }
 
+/// Get the template engine as a function arg
 impl<'a, Ctx: 'a> FunctionArg<'a, Ctx> for &TemplateEngine<Ctx> {
     type Output = &'a TemplateEngine<Ctx>;
 
@@ -171,6 +167,7 @@ impl<'a, Ctx: 'a> FunctionArg<'a, Ctx> for &TemplateEngine<Ctx> {
     }
 }
 
+/// Get the template context as a function arg
 impl<'a, Ctx: 'a> FunctionArg<'a, Ctx> for &Ctx {
     type Output = &'a Ctx;
 
@@ -196,7 +193,8 @@ impl<'a, Ctx> FunctionArg<'a, Ctx> for String {
     }
 }
 
-/// TODO
+/// Convert a [Value] to a function argument using the argument type's
+/// [Deserialize] implementation.
 pub struct ViaSerde<T>(pub T);
 
 impl<'a, 'de, Ctx, T> FunctionArg<'a, Ctx> for ViaSerde<T>

@@ -13,7 +13,7 @@ mod render;
 pub use error::TemplateError;
 pub use function::{Kwargs, ViaSerde};
 
-use crate::function::{BoxedFunction, Function, FunctionArgs, FunctionOutput};
+use crate::function::{BoxedFunction, Function};
 use bytes::Bytes;
 use derive_more::{Deref, Display, derive::From};
 use futures::future;
@@ -44,11 +44,6 @@ impl<Ctx: TemplateContext> TemplateEngine<Ctx> {
         function: F,
     ) where
         F: Function<Ctx, Args, Out>,
-        // These bounds aren't strictly necessary because they're implied by
-        // the Function bound, but they make type inference easier and provide
-        // better type error messages
-        Args: for<'a> FunctionArgs<'a, Ctx>,
-        Out: FunctionOutput,
     {
         self.functions.insert(name, BoxedFunction::new(function));
     }

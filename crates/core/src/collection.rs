@@ -492,6 +492,7 @@ mod tests {
                             url: "{{host}}/anything/{{user_guid}}".into(),
                             body: Some(RecipeBody::Raw {
                                 body: json!({"username": "new username"})
+                                    .to_string()
                                     .into(),
                                 content_type: Some(ContentType::Json),
                             }),
@@ -510,6 +511,7 @@ mod tests {
                             url: "{{host}}/anything/{{user_guid}}".into(),
                             body: Some(RecipeBody::Raw {
                                 body: json!(r#"{"warning": "NOT an object"}"#)
+                                    .to_string()
                                     .into(),
                                 content_type: Some(ContentType::Json),
                             }),

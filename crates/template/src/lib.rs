@@ -2,6 +2,8 @@
 //! This engine is focused on rendering templates, and is generally agnostic of
 //! its usage in the rest of the app. As such, there is no logic in here
 //! relating to HTTP or other Slumber concepts.
+//!
+//! TODO update comment
 
 mod cereal;
 mod display;
@@ -11,10 +13,10 @@ mod parse;
 mod render;
 
 pub use error::TemplateError;
-pub use function::{Kwargs, ViaSerde};
+pub use function::{
+    Arguments, FromArguments, FunctionOutput, Kwargs, ViaSerde,
+};
 
-use crate::function::{BoxedFunction, Function};
-use bytes::Bytes;
 use derive_more::{Deref, Display, derive::From};
 use futures::future;
 use indexmap::IndexMap;
@@ -24,115 +26,18 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 /// TODO
-#[derive(Debug)]
-pub struct TemplateEngine<Ctx> {
-    /// Functions that produce values from arguments
-    functions: IndexMap<&'static str, BoxedFunction<Ctx>>,
-}
-
-impl<Ctx: TemplateContext> TemplateEngine<Ctx> {
-    /// Initialize a new template engine
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Register a function under the given name. If there is already a function
-    /// with that name, it will be overwritten
-    pub fn add_function<F, Args, Out>(
-        &mut self,
-        name: &'static str,
-        function: F,
-    ) where
-        F: Function<Ctx, Args, Out>,
-    {
-        self.functions.insert(name, BoxedFunction::new(function));
-    }
-
-    /// Get a function by name
-    fn get_function(
-        &self,
-        name: &str,
-    ) -> Result<&BoxedFunction<Ctx>, TemplateError> {
-        // TODO include help message in error
-        self.functions
-            .get(name)
-            .ok_or_else(|| TemplateError::UnknownFunction {
-                name: name.to_owned(),
-            })
-    }
-
-    /// Render the template using values from the given context. If any chunk
-    /// failed to render, return an error. The template is rendered as bytes,
-    /// meaning it can safely render to non-UTF-8 content. Use
-    /// [Self::render_string] if you want the bytes converted to a string.
-    pub async fn render_bytes(
-        &self,
-        template: &Template,
-        context: &Ctx,
-    ) -> Result<Bytes, TemplateError> {
-        let _chunks = self.render_chunks(template, context).await;
-        todo!()
-    }
-
-    /// Render the template using values from the given context. If any chunk
-    /// failed to render, return an error. The rendered template will be
-    /// converted from raw bytes to UTF-8. If it is not valid UTF-8, return an
-    /// error.
-    pub async fn render_string(
-        &self,
-        template: &Template,
-        context: &Ctx,
-    ) -> Result<String, TemplateError> {
-        let _chunks = self.render_chunks(template, context).await;
-        todo!()
-    }
-
-    /// Render the template using values from the given context, returning the
-    /// individual rendered chunks rather than stitching them together into a
-    /// string. If any individual chunk fails to render, its error will be
-    /// returned inline as [RenderedChunk::Error] and the rest of the template
-    /// will still be rendered.
-    pub async fn render_chunks(
-        &self,
-        template: &Template,
-        context: &Ctx,
-    ) -> Vec<RenderedChunk> {
-        // Map over each parsed chunk, and render the expressions into values.
-        // because raw text uses Arc and expressions just contain metadata
-        // The raw text chunks will be mapped 1:1. This clone is pretty cheap
-        let futures = template.chunks.iter().map(|chunk| async move {
-            match chunk {
-                TemplateChunk::Raw(text) => {
-                    RenderedChunk::Raw(Arc::clone(text))
-                }
-                TemplateChunk::Expression(expression) => expression
-                    .render(self, context)
-                    .await
-                    .map_or_else(RenderedChunk::Error, RenderedChunk::Rendered),
-            }
-        });
-
-        // Concurrency!
-        future::join_all(futures).await
-    }
-}
-
-// Manual impl needed to avoid bound on Ctx
-impl<Ctx> Default for TemplateEngine<Ctx> {
-    fn default() -> Self {
-        Self {
-            functions: IndexMap::default(),
-        }
-    }
-}
-
-/// TODO
 pub trait TemplateContext: Sized + Send + Sync {
     /// TODO
     fn get(
         &self,
         identifier: &Identifier,
-        engine: &TemplateEngine<Self>,
+    ) -> impl Future<Output = Result<Value, TemplateError>> + Send;
+
+    /// TODO
+    fn call(
+        &self,
+        function_name: &Identifier,
+        arguments: Arguments<'_, Self>,
     ) -> impl Future<Output = Result<Value, TemplateError>> + Send;
 }
 
@@ -179,6 +84,58 @@ impl Template {
 
     pub fn is_empty(&self) -> bool {
         self.chunks.is_empty()
+    }
+
+    /// Render the template using values from the given context. If any chunk
+    /// failed to render, return an error. The template is rendered as bytes,
+    /// meaning it can safely render to non-UTF-8 content. Use
+    /// [Self::render_string] if you want the bytes converted to a string.
+    pub async fn render_bytes<Ctx: TemplateContext>(
+        &self,
+        context: &Ctx,
+    ) -> Result<Vec<u8>, TemplateError> {
+        let _chunks = self.render_chunks(context).await;
+        todo!()
+    }
+
+    /// Render the template using values from the given context. If any chunk
+    /// failed to render, return an error. The rendered template will be
+    /// converted from raw bytes to UTF-8. If it is not valid UTF-8, return an
+    /// error.
+    pub async fn render_string<Ctx: TemplateContext>(
+        &self,
+        context: &Ctx,
+    ) -> Result<String, TemplateError> {
+        let _chunks = self.render_chunks(context).await;
+        todo!()
+    }
+
+    /// Render the template using values from the given context, returning the
+    /// individual rendered chunks rather than stitching them together into a
+    /// string. If any individual chunk fails to render, its error will be
+    /// returned inline as [RenderedChunk::Error] and the rest of the template
+    /// will still be rendered.
+    pub async fn render_chunks<Ctx: TemplateContext>(
+        &self,
+        context: &Ctx,
+    ) -> Vec<RenderedChunk> {
+        // Map over each parsed chunk, and render the expressions into values.
+        // because raw text uses Arc and expressions just contain metadata
+        // The raw text chunks will be mapped 1:1. This clone is pretty cheap
+        let futures = self.chunks.iter().map(|chunk| async move {
+            match chunk {
+                TemplateChunk::Raw(text) => {
+                    RenderedChunk::Raw(Arc::clone(text))
+                }
+                TemplateChunk::Expression(expression) => expression
+                    .render(context)
+                    .await
+                    .map_or_else(RenderedChunk::Error, RenderedChunk::Rendered),
+            }
+        });
+
+        // Concurrency!
+        future::join_all(futures).await
     }
 }
 
@@ -293,6 +250,7 @@ pub struct FunctionCall {
             strategy = "proptest::collection::hash_map(Identifier::arbitrary(), expression_arbitrary(), 0..=3)"
         )
     )]
+    // TODO make this IndexMap to preserve order
     keyword: HashMap<Identifier, Expression>,
 }
 
@@ -316,7 +274,7 @@ impl From<&'static str> for Identifier {
 }
 
 /// TODO
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, From, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     // TODO use Arc to make these cheaper to clone?
     Null,
@@ -324,7 +282,7 @@ pub enum Value {
     Int(i64),
     Float(f64),
     String(String),
-    Bytes(Bytes),
+    Bytes(Vec<u8>), // TODO Bytes instead?
     Array(Vec<Self>),
     Object(IndexMap<String, Self>),
 }

@@ -197,7 +197,7 @@ async fn test_build_url(http_engine: &HttpEngine) {
 )]
 #[case::json(
     RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).into(),
+        body: json!({"group_id": "{{group_id}}"}).to_string().into(),
         content_type: Some(ContentType::Json),
     },
     b"{\n  \"group_id\": \"3\"\n}",
@@ -305,7 +305,7 @@ async fn test_authentication(
 #[rstest]
 #[case::json(
     RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).into(),
+        body: json!({"group_id": "{{group_id}}"}).to_string().into(),
         content_type: Some(ContentType::Json),
     },
     None,
@@ -316,7 +316,7 @@ async fn test_authentication(
 // Content-Type has been overridden by an explicit header
 #[case::json_content_type_override(
     RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).into(),
+        body: json!({"group_id": "{{group_id}}"}).to_string().into(),
         content_type: Some(ContentType::Json),
     },
     Some("text/plain"),

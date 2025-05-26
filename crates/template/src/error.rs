@@ -3,6 +3,8 @@ use thiserror::Error;
 use tracing::error;
 use winnow::error::{ContextError, ParseError};
 
+use crate::Identifier;
+
 /// An error while parsing a template. This is derived from a nom error
 #[derive(Debug, Error)]
 #[error("{0}")]
@@ -61,7 +63,7 @@ pub enum TemplateError {
 
     /// TODO
     #[error("TODO")]
-    UnknownFunction { name: String },
+    UnknownFunction { name: Identifier },
 }
 
 impl TemplateError {

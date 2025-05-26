@@ -43,11 +43,12 @@ pub mod query;
 mod tests;
 
 pub use models::*;
+use slumber_template::Template;
 
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     http::{content_type::ContentType, curl::CurlBuilder},
-    render::{self, TemplateContext},
+    render::TemplateContext,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -64,7 +65,6 @@ use reqwest::{
     multipart::{Form, Part},
 };
 use slumber_config::HttpEngineConfig;
-use slumber_template::Template;
 use slumber_util::ResultTraced;
 use std::{collections::HashSet, error::Error};
 use tracing::{error, info, info_span};
@@ -450,8 +450,9 @@ impl Recipe {
         &self,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Url> {
-        let url = render::engine()
-            .render_string(&self.url, template_context)
+        let url = self
+            .url
+            .render_string(template_context)
             .await
             .context("Error rendering URL")?;
         url.parse::<Url>()
@@ -475,8 +476,8 @@ impl Recipe {
                 Some(async move {
                     Ok::<_, anyhow::Error>((
                         k.to_owned(),
-                        render::engine()
-                            .render_string(template, template_context)
+                        template
+                            .render_string(template_context)
                             .await
                             .context(format!(
                                 "Error rendering query parameter `{k}`"
@@ -542,10 +543,18 @@ impl Recipe {
         header: &str,
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
-        let value = render::engine()
-            .render_bytes(value_template, template_context)
+        let mut value: Vec<u8> = value_template
+            .render_bytes(template_context)
             .await
-            .context(format!("Error rendering header `{header}`"))?;
+            .context(format!("Error rendering header `{header}`"))?
+            .into();
+
+        // Strip leading/trailing line breaks because they're going to trigger a
+        // validation error and are probably a mistake. We're trading
+        // explicitness for convenience here. This is maybe redundant now with
+        // the Chain::trim field, but this behavior predates that field so it's
+        // left in for backward compatibility.
+        trim_bytes(&mut value, |c| c == b'\n' || c == b'\r');
 
         // String -> header conversions are fallible, if headers
         // are invalid
@@ -553,7 +562,7 @@ impl Recipe {
             header
                 .try_into()
                 .context(format!("Error encoding header name `{header}`"))?,
-            Vec::<u8>::from(value).try_into().context(format!(
+            value.try_into().context(format!(
                 "Error encoding value for header `{header}`"
             ))?,
         ))
@@ -574,15 +583,14 @@ impl Recipe {
             Some(Authentication::Basic { username, password }) => {
                 let (username, password) = try_join!(
                     async {
-                        render::engine()
-                            .render_string(username, template_context)
+                        username
+                            .render_string(template_context)
                             .await
                             .context("Error rendering username")
                     },
                     async {
                         OptionFuture::from(password.as_ref().map(|password| {
-                            render::engine()
-                                .render_string(password, template_context)
+                            password.render_string(template_context)
                         }))
                         .await
                         .transpose()
@@ -593,8 +601,8 @@ impl Recipe {
             }
 
             Some(Authentication::Bearer(token)) => {
-                let token = render::engine()
-                    .render_string(token, template_context)
+                let token = token
+                    .render_string(template_context)
                     .await
                     .context("Error rendering bearer token")?;
                 Ok(Some(Authentication::Bearer(token)))
@@ -615,8 +623,7 @@ impl Recipe {
 
         let rendered = match body {
             RecipeBody::Raw { body, .. } => RenderedBody::Raw(
-                render::engine()
-                    .render_bytes(body, template_context)
+                body.render_bytes(template_context)
                     .await
                     .context("Error rendering body")?
                     .into(),
@@ -627,8 +634,8 @@ impl Recipe {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
-                            let value = render::engine()
-                                .render_string(template, template_context)
+                            let value = template
+                                .render_string(template_context)
                                 .await
                                 .context(format!(
                                     "Error rendering form field `{field}`"
@@ -646,12 +653,13 @@ impl Recipe {
                         let template =
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
-                            let value = render::engine()
-                                .render_bytes(template, template_context)
+                            let value = template
+                                .render_bytes(template_context)
                                 .await
                                 .context(format!(
                                     "Error rendering form field `{field}`"
-                                ))?;
+                                ))?
+                                .into();
                             Ok::<_, anyhow::Error>((field.clone(), value))
                         })
                     },
@@ -703,7 +711,7 @@ enum RenderedBody {
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
     /// Field:value mapping. Values can be arbitrary bytes
-    FormMultipart(Vec<(String, Bytes)>),
+    FormMultipart(Vec<(String, Vec<u8>)>),
 }
 
 impl RenderedBody {
@@ -715,7 +723,7 @@ impl RenderedBody {
             RenderedBody::FormMultipart(fields) => {
                 let mut form = Form::new();
                 for (field, value) in fields {
-                    let part = Part::bytes(Vec::from(value));
+                    let part = Part::bytes(value);
                     form = form.part(field, part);
                 }
                 builder.multipart(form)

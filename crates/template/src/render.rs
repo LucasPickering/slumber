@@ -1,12 +1,10 @@
 //! Template rendering implementation
 
 use crate::{
-    Expression, FunctionCall, Literal, TemplateContext, TemplateEngine,
-    TemplateError, Value, function::Arguments,
+    Expression, FunctionCall, Literal, TemplateContext, TemplateError, Value,
+    function::Arguments,
 };
 use futures::{FutureExt, future};
-
-// TODO partial function application instead of filters?
 
 type RenderResult = Result<Value, TemplateError>;
 
@@ -14,7 +12,6 @@ impl Expression {
     /// Render this expression to bytes
     pub(crate) fn render<Ctx: TemplateContext>(
         &self,
-        engine: &TemplateEngine<Ctx>,
         context: &Ctx,
     ) -> impl Future<Output = RenderResult> + Send {
         async move {
@@ -22,36 +19,28 @@ impl Expression {
                 Self::Literal(literal) => Ok(literal.into()),
                 Self::Array(expressions) => {
                     // Render each inner expression
-                    let values =
-                        future::try_join_all(expressions.iter().map(
-                            |expression| expression.render(engine, context),
-                        ))
-                        // Box for recursion
-                        .boxed()
-                        .await?;
+                    let values = future::try_join_all(
+                        expressions
+                            .iter()
+                            .map(|expression| expression.render(context)),
+                    )
+                    // Box for recursion
+                    .boxed()
+                    .await?;
                     Ok(Value::Array(values))
                 }
-                Self::Field(identifier) => {
-                    context.get(identifier, engine).await
-                }
+                Self::Field(identifier) => context.get(identifier).await,
                 Self::Call(call) => {
-                    let function =
-                        engine.get_function(call.function.as_str())?;
-                    let arguments =
-                        call.render_arguments(engine, context).await?;
-                    function.invoke(arguments)
+                    let arguments = call.render_arguments(context).await?;
+                    context.call(&call.function, arguments).await
                 }
                 Self::Pipe { expression, call } => {
                     // Box for recursion
-                    let value =
-                        expression.render(engine, context).boxed().await?;
-                    let function =
-                        engine.get_function(call.function.as_str())?;
-                    let mut arguments =
-                        call.render_arguments(engine, context).await?;
+                    let value = expression.render(context).boxed().await?;
+                    let mut arguments = call.render_arguments(context).await?;
                     // Pipe the filter value in as the first positional argument
                     arguments.position.push_front(value);
-                    function.invoke(arguments)
+                    context.call(&call.function, arguments).await
                 }
             }
         }
@@ -59,20 +48,19 @@ impl Expression {
 }
 
 impl FunctionCall {
-    async fn render_arguments<'a, Ctx: TemplateContext>(
+    async fn render_arguments<'ctx, Ctx: TemplateContext>(
         &self,
-        engine: &'a TemplateEngine<Ctx>,
-        context: &'a Ctx,
-    ) -> Result<Arguments<'a, Ctx>, TemplateError> {
+        context: &'ctx Ctx,
+    ) -> Result<Arguments<'ctx, Ctx>, TemplateError> {
         // Render all position and keyword arguments concurrently
         let position_future = future::try_join_all(
             self.position
                 .iter()
-                .map(|expression| expression.render(engine, context)),
+                .map(|expression| expression.render(context)),
         );
         let keyword_future = future::try_join_all(self.keyword.iter().map(
             |(name, expression)| async {
-                let value = expression.render(engine, context).await?;
+                let value = expression.render(context).await?;
                 Ok((name.to_string(), value))
             },
         ));
@@ -82,7 +70,6 @@ impl FunctionCall {
                 .boxed()
                 .await?;
         Ok(Arguments {
-            engine,
             context,
             position: position.into(),
             keyword,

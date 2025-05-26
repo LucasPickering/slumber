@@ -1,62 +1,17 @@
 //! Template function and filter framework
 
-use crate::{TemplateEngine, TemplateError, Value};
+use crate::{TemplateError, Value};
 use serde::{
     Deserialize,
     de::{IntoDeserializer, value::MapDeserializer},
 };
-use std::{
-    collections::VecDeque,
-    fmt::{self, Debug},
-    mem,
-};
-
-/// TODO
-pub(crate) struct BoxedFunction<Ctx>(
-    #[expect(clippy::type_complexity)]
-    Box<
-        dyn for<'a> Fn(Arguments<'a, Ctx>) -> Result<Value, TemplateError>
-            + Send
-            + Sync,
-    >,
-);
-
-impl<Ctx> BoxedFunction<Ctx> {
-    /// Wrap the given function, whose type is statically known, into a dynamic
-    /// object so it can be stored in the function map. This will provide
-    /// argument and output conversion to make the function type uniform.
-    pub(crate) fn new<F, Args, Out>(function: F) -> Self
-    where
-        F: Function<Ctx, Args, Out>,
-    {
-        let wrap =
-            move |arguments: Arguments<'_, Ctx>| function.invoke(arguments);
-        Self(Box::new(wrap))
-    }
-
-    /// Call this function
-    pub(crate) fn invoke(
-        &self,
-        arguments: Arguments<'_, Ctx>,
-    ) -> Result<Value, TemplateError> {
-        (self.0)(arguments)
-    }
-}
-
-impl<Ctx> Debug for BoxedFunction<Ctx> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Print the pointer to the function as something identifying
-        write!(f, "BoxedFunction({:p})", self.0)
-    }
-}
+use std::{collections::VecDeque, fmt::Debug, mem};
 
 /// Arguments passed to a function call
 #[derive(Debug)]
-pub struct Arguments<'a, Ctx> {
+pub struct Arguments<'ctx, Ctx> {
     /// TODO
-    pub engine: &'a TemplateEngine<Ctx>,
-    /// TODO
-    pub context: &'a Ctx,
+    pub context: &'ctx Ctx,
     /// Position arguments. This queue will be drained from the front as
     /// arguments are converted, and additional arguments not accepted by the
     /// function will trigger an error.
@@ -67,7 +22,7 @@ pub struct Arguments<'a, Ctx> {
     pub keyword: Vec<(String, Value)>,
 }
 
-impl<Ctx> Arguments<'_, Ctx> {
+impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
     /// Pop the next positional argument off the front of the queue. Return an
     /// error if there are no positional arguments left
     fn pop_position(&mut self) -> Result<Value, TemplateError> {
@@ -80,14 +35,21 @@ impl<Ctx> Arguments<'_, Ctx> {
     fn take_keyword(&mut self) -> Vec<(String, Value)> {
         mem::take(&mut self.keyword)
     }
+
+    /// TODO rename
+    pub fn try_into<T>(self) -> Result<T, TemplateError>
+    where
+        T: FromArguments<'ctx, Ctx>,
+    {
+        T::from_arguments(self)
+    }
 }
 
 /// TODO
-pub trait Function<Ctx, Args, Out>: 'static + Send + Sync {
-    fn invoke<'a>(
-        &self,
-        arguments: Arguments<'a, Ctx>,
-    ) -> Result<Value, TemplateError>;
+pub trait FromArguments<'ctx, Ctx>: Sized {
+    fn from_arguments(
+        arguments: Arguments<'ctx, Ctx>,
+    ) -> Result<Self, TemplateError>;
 }
 
 /// Implement [Function] for a set of argument types.
@@ -97,32 +59,26 @@ pub trait Function<Ctx, Args, Out>: 'static + Send + Sync {
 macro_rules! tuple_impls {
     ($($arg_type:ident)*) => {
         #[allow(clippy::allow_annotations)]
-        impl<Ctx, F, $($arg_type,)* Out> Function<Ctx, ($($arg_type,)*), Out>
-            for F
+        impl<'ctx, Ctx, $($arg_type,)*> FromArguments<'ctx, Ctx>
+            for ($($arg_type,)*)
         where
-            $($arg_type: for<'a> FunctionArg<'a, Ctx> + Send + Sync,)*
-            Out: FunctionOutput,
-            F: 'static + Fn($(<$arg_type as FunctionArg<'_, Ctx>>::Output),*) -> Out + Send + Sync,
+            $($arg_type: FunctionArg<'ctx, Ctx> + Send + Sync,)*
         {
             #[allow(non_snake_case)]
             #[allow(unused)]
-            fn invoke<'a>(
-                &self,
-                mut arguments: Arguments<'a, Ctx>,
-            ) -> Result<Value, TemplateError> {
-                // Unpack args, convert them, and pass them to the function
+            fn from_arguments(
+                mut arguments: Arguments<'ctx, Ctx>,
+            ) -> Result<Self, TemplateError> {
+                // Unpack args, convert them, and pass them to the function. We
+                // convert args left-to-right so that each positional arg can
+                // pop off the front of the argument queue. We can reuse the
+                // type name as the var name to avoid complicated
+                // transformations or recursion
                 // TODO error for lingering args in the queue
-                // Convert each argument and pack them into a tuple. We convert
-                // args left-to-right so that each positional arg can pop off
-                // the front of the argument queue
-                // TODO update comment
-                // We can reuse the type name as the var name to avoid
-                // complicated transformations or recursion
                 $(let $arg_type = $arg_type::from_arguments(&mut arguments)?;)*
-                (self)($($arg_type,)*).into_result()
+                Ok(($($arg_type,)*))
             }
         }
-
     };
 }
 
@@ -140,50 +96,29 @@ tuple_impls! { T0 T1 T2 T3 T4 }
 ///
 /// - `'ctx` is the lifetime of the given references to the engine and context.
 /// - `Ctx` is the template context type
-pub trait FunctionArg<'a, Ctx>: Sized {
-    /// The output type of the conversion, i.e. the type of the resulting
-    /// argument. Typically this is just `Self`. The associated type is needed
-    /// to declare the lifetimes correctly for the implementations on
-    /// [TemplateEngine] and the template context. Those return references  with
-    /// the `'a` lifetime, and apparently just implementing the trait on `&'a T`
-    /// doesn't work. Somewhere the borrow checker's wires get crossed on the
-    /// lifetime and you end up with an implementation that isn't general
-    /// enough.
-    type Output;
-
+trait FunctionArg<'ctx, Ctx>: Sized {
+    /// Get this value from the argument object and convert it. For most types
+    /// this will grab the next positional arguments, but this also exposes
+    /// the context and keyword arguments which can be used. If an argument
+    /// is converted, it should be removed.
     fn from_arguments(
-        arguments: &mut Arguments<'a, Ctx>,
-    ) -> Result<Self::Output, TemplateError>;
-}
-
-/// Get the template engine as a function arg
-impl<'a, Ctx: 'a> FunctionArg<'a, Ctx> for &TemplateEngine<Ctx> {
-    type Output = &'a TemplateEngine<Ctx>;
-
-    fn from_arguments(
-        arguments: &mut Arguments<'a, Ctx>,
-    ) -> Result<Self::Output, TemplateError> {
-        Ok(arguments.engine)
-    }
+        arguments: &mut Arguments<'ctx, Ctx>,
+    ) -> Result<Self, TemplateError>;
 }
 
 /// Get the template context as a function arg
-impl<'a, Ctx: 'a> FunctionArg<'a, Ctx> for &Ctx {
-    type Output = &'a Ctx;
-
+impl<'ctx, Ctx: 'ctx> FunctionArg<'ctx, Ctx> for &'ctx Ctx {
     fn from_arguments(
-        arguments: &mut Arguments<'a, Ctx>,
-    ) -> Result<Self::Output, TemplateError> {
+        arguments: &mut Arguments<'ctx, Ctx>,
+    ) -> Result<Self, TemplateError> {
         Ok(arguments.context)
     }
 }
 
-impl<'a, Ctx> FunctionArg<'a, Ctx> for String {
-    type Output = Self;
-
+impl<'ctx, Ctx> FunctionArg<'ctx, Ctx> for String {
     fn from_arguments(
-        arguments: &mut Arguments<'a, Ctx>,
-    ) -> Result<Self::Output, TemplateError> {
+        arguments: &mut Arguments<'ctx, Ctx>,
+    ) -> Result<Self, TemplateError> {
         let value = arguments.pop_position()?;
         if let Value::String(s) = value {
             Ok(s)
@@ -193,19 +128,36 @@ impl<'a, Ctx> FunctionArg<'a, Ctx> for String {
     }
 }
 
+impl<'ctx, Ctx, T> FunctionArg<'ctx, Ctx> for Vec<T>
+where
+    T: FunctionArg<'ctx, Ctx>,
+{
+    fn from_arguments(
+        arguments: &mut Arguments<'ctx, Ctx>,
+    ) -> Result<Self, TemplateError> {
+        let value = arguments.pop_position()?;
+        if let Value::Array(array) = value {
+            Ok(array
+                .into_iter()
+                .map(T::from_arguments)
+                .collect::<Result<Vec<_>, _>>()?)
+        } else {
+            todo!("error")
+        }
+    }
+}
+
 /// Convert a [Value] to a function argument using the argument type's
 /// [Deserialize] implementation.
 pub struct ViaSerde<T>(pub T);
 
-impl<'a, 'de, Ctx, T> FunctionArg<'a, Ctx> for ViaSerde<T>
+impl<'ctx, 'de, Ctx, T> FunctionArg<'ctx, Ctx> for ViaSerde<T>
 where
     T: Deserialize<'de>,
 {
-    type Output = Self;
-
     fn from_arguments(
-        arguments: &mut Arguments<'a, Ctx>,
-    ) -> Result<Self::Output, TemplateError> {
+        arguments: &mut Arguments<'ctx, Ctx>,
+    ) -> Result<Self, TemplateError> {
         let value = arguments.pop_position()?;
         T::deserialize(value.into_deserializer()).map(Self)
     }
@@ -219,15 +171,13 @@ where
 /// unrecognized keyword arguments.
 pub struct Kwargs<T>(pub T);
 
-impl<'a, 'de, Ctx, T> FunctionArg<'a, Ctx> for Kwargs<T>
+impl<'ctx, 'de, Ctx, T> FunctionArg<'ctx, Ctx> for Kwargs<T>
 where
     T: Deserialize<'de>,
 {
-    type Output = Self;
-
     fn from_arguments(
-        arguments: &mut Arguments<'a, Ctx>,
-    ) -> Result<Self::Output, TemplateError> {
+        arguments: &mut Arguments<'ctx, Ctx>,
+    ) -> Result<Self, TemplateError> {
         // Use a generic deserializer to convert the kwargs as a mapping
         let deserializer =
             MapDeserializer::new(arguments.take_keyword().into_iter());
@@ -259,12 +209,6 @@ where
 {
     fn into_result(self) -> Result<Value, TemplateError> {
         self.map(T::into).map_err(E::into)
-    }
-}
-
-impl FunctionOutput for String {
-    fn into_result(self) -> Result<Value, TemplateError> {
-        Ok(Value::String(self))
     }
 }
 

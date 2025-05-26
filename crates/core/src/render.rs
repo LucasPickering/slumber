@@ -3,7 +3,7 @@
 //! requests.
 
 use crate::{
-    collection::{Collection, ProfileId, RecipeId},
+    collection::{Collection, Profile, ProfileId, RecipeId},
     http::{Exchange, RequestSeed, TriggeredRequestError},
 };
 use anyhow::anyhow;
@@ -13,49 +13,16 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, de::value::SeqDeserializer};
 use serde_json_path::JsonPath;
-use slumber_template::{TemplateEngine, TemplateError, ViaSerde};
+use slumber_template::{
+    Arguments, FunctionOutput, Identifier, Kwargs, TemplateError, ViaSerde,
+};
 use slumber_util::ResultTraced;
 use std::{
-    env,
-    fmt::Debug,
-    io, iter,
-    path::PathBuf,
-    sync::{Arc, LazyLock},
+    env, fmt::Debug, io, iter, path::PathBuf, process::Stdio, sync::Arc,
 };
 use thiserror::Error;
-use tokio::{fs, sync::oneshot};
-
-/// Shared template engine for the entire process. The template engine is
-/// stateless and immutable after initialization, so we can share one instance
-/// everywhere.
-static TEMPLATE_ENGINE: LazyLock<TemplateEngine<TemplateContext>> =
-    LazyLock::new(|| {
-        let mut engine = TemplateEngine::new();
-
-        // TODO remove need for type annotations
-        // Register all functions
-        // engine.add_function("command", command);
-        engine.add_function::<_, (String,), _>("env", env);
-        // engine.add_function("file", file);
-        engine.add_function::<_, (ViaSerde<_>, ViaSerde<_>), _>(
-            "jsonpath", jsonpath,
-        );
-        // engine.add_function("prompt", prompt);
-        // engine.add_function("response", response);
-        // engine.add_function("responseHeader", response_header);
-        // engine.add_function("select", select);
-        engine.add_function::<_, (&TemplateContext, String), _>(
-            "sensitive",
-            sensitive,
-        );
-        engine
-    });
-
-/// Get a reference to the global template engine. This should be used for all
-/// renders.
-pub fn engine() -> &'static TemplateEngine<TemplateContext> {
-    &TEMPLATE_ENGINE
-}
+use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
+use tracing::{debug, debug_span};
 
 /// A little container struct for all the data that the user can access via
 /// templating. Unfortunately this has to own all data so templating can be
@@ -79,13 +46,72 @@ pub struct TemplateContext {
     pub show_sensitive: bool,
 }
 
+impl TemplateContext {
+    fn current_profile(&self) -> Option<&Profile> {
+        self.selected_profile
+            .as_ref()
+            .and_then(|id| self.collection.profiles.get(id))
+    }
+}
+
 impl slumber_template::TemplateContext for TemplateContext {
     async fn get(
         &self,
-        identifier: &slumber_template::Identifier,
-        engine: &TemplateEngine<Self>,
+        field: &slumber_template::Identifier,
     ) -> Result<slumber_template::Value, slumber_template::TemplateError> {
-        todo!()
+        let template = self
+            .current_profile()
+            .and_then(|profile| profile.data.get(field.as_str()))
+            .ok_or_else(|| FunctionError::UnknownField {
+                field: field.to_string(),
+            })?;
+        // TODO nested rendering
+        Ok(slumber_template::Value::String(
+            template.display().to_string(),
+        ))
+    }
+
+    async fn call(
+        &self,
+        function_name: &Identifier,
+        arguments: Arguments<'_, Self>,
+    ) -> Result<slumber_template::Value, TemplateError> {
+        // TODO implement the rest
+        // engine.add_function("response", response);
+        // engine.add_function("responseHeader", response_header);
+        // engine.add_function("select", select);
+        match function_name.as_str() {
+            "command" => command(arguments.try_into()?).await.into_result(),
+            "env" => env(arguments.try_into()?).into_result(),
+            "file" => file(arguments.try_into()?).await.into_result(),
+            "jsonpath" => jsonpath(arguments.try_into()?).into_result(),
+            "prompt" => prompt(arguments.try_into()?).await.into_result(),
+            "sensitive" => sensitive(arguments.try_into()?).into_result(),
+            _ => Err(TemplateError::UnknownFunction {
+                name: function_name.clone(),
+            }),
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
+impl slumber_util::Factory for TemplateContext {
+    fn factory((): ()) -> Self {
+        use crate::{
+            database::CollectionDatabase,
+            test_util::{TestHttpProvider, TestPrompter},
+        };
+        Self {
+            collection: Default::default(),
+            selected_profile: None,
+            http_provider: Box::new(TestHttpProvider::new(
+                CollectionDatabase::factory(()),
+                None,
+            )),
+            overrides: IndexMap::new(),
+            prompter: Box::<TestPrompter>::default(),
+            show_sensitive: true,
+        }
     }
 }
 
@@ -174,25 +200,85 @@ impl<T> ResponseChannel<T> {
     }
 }
 
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CommandKwargs {
+    /// Optional data to pipe to the command via stdin
+    #[serde(default)]
+    stdin: Option<String>,
+}
+
+/// Run a command in a subprocess
+async fn command(
+    (command, Kwargs(CommandKwargs { stdin })): (
+        Vec<String>,
+        Kwargs<CommandKwargs>,
+    ),
+) -> Result<Vec<u8>, FunctionError> {
+    let [program, args @ ..] = command.as_slice() else {
+        return Err(FunctionError::CommandEmpty);
+    };
+    let _ = debug_span!("Executing command", ?program, ?args).entered();
+
+    let output = async {
+        // Spawn the command process
+        let mut process = Command::new(program)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        // Write the stdin to the process
+        if let Some(stdin) = stdin {
+            process
+                .stdin
+                .as_mut()
+                .expect("Process missing stdin")
+                .write_all(stdin.as_bytes())
+                .await?;
+        }
+
+        // Wait for the process to finish
+        process.wait_with_output().await
+    }
+    .await
+    .map_err(|error| FunctionError::Command {
+        program: program.clone(),
+        args: args.into(),
+        error,
+    })?;
+
+    debug!(
+        stdout = %String::from_utf8_lossy(&output.stdout),
+        stderr = %String::from_utf8_lossy(&output.stderr),
+        "Command success"
+    );
+
+    Ok(output.stdout)
+}
+
 /// Get the value of an environment variable. Return `None` if the variable is
 /// not set
-fn env(variable: String) -> Option<String> {
+fn env((variable,): (String,)) -> Option<String> {
     env::var(variable).ok()
 }
 
-/*
-
 /// TODO
-async fn file(path: &str) -> Vec<u8> {
-    fs::read(path).await
+async fn file((path,): (String,)) -> Result<Vec<u8>, FunctionError> {
+    fs::read(&path).await.map_err(|error| FunctionError::File {
+        path: path.into(),
+        error,
+    })
 }
-*/
 
 /// Transform a JSON value using a JSONPath query
 fn jsonpath(
     // Value first so it can be piped in
-    ViaSerde(value): ViaSerde<serde_json::Value>,
-    ViaSerde(query): ViaSerde<JsonPath>,
+    (ViaSerde(value), ViaSerde(query)): (
+        ViaSerde<serde_json::Value>,
+        ViaSerde<JsonPath>,
+    ),
 ) -> Result<slumber_template::Value, FunctionError> {
     // TODO support mode?
     let node_list = query.query(&value);
@@ -204,22 +290,32 @@ fn jsonpath(
     .map_err(|_| todo!())
 }
 
-/*
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PromptKwargs {
+    message: Option<String>,
+    default: Option<String>,
+    /// Mask the prompt value while typing
+    #[serde(default)]
+    sensitive: bool,
+}
+
 /// TODO
 async fn prompt(
-    context: &TemplateContext,
-    kwargs: Kwargs,
+    (
+        context,
+        Kwargs(PromptKwargs {
+            message,
+            default,
+            sensitive: is_sensitive,
+        }),
+    ): (&TemplateContext, Kwargs<PromptKwargs>),
 ) -> Result<String, FunctionError> {
-    // TODO static kwargs
-    let message: Option<String> = kwargs.get("message")?;
-    let default: Option<String> = kwargs.get("default")?;
-    let sensitive: bool =
-        kwargs.get::<Option<bool>>("sensitive")?.unwrap_or(false);
     let (tx, rx) = oneshot::channel();
     context.prompter.prompt(Prompt {
         message: message.unwrap_or_default(),
         default,
-        sensitive,
+        sensitive: is_sensitive,
         channel: tx.into(),
     });
     let output = rx.await.map_err(|_| FunctionError::PromptNoReply)?;
@@ -228,16 +324,15 @@ async fn prompt(
     // This is a little wonky because the preview prompter just spits out a
     // static string anyway, but it's "technically" right and plays well in
     // tests. Also it reminds users that a prompt is sensitive in the TUI :)
-    if sensitive {
-        Ok(mask_sensitive(&context, output))
+    if is_sensitive {
+        Ok(sensitive((&context, output)))
     } else {
         Ok(output)
     }
 }
-*/
 
 /// Hide a sensitive value if the context has show_sensitive disabled
-fn sensitive(context: &TemplateContext, value: String) -> String {
+fn sensitive((context, value): (&TemplateContext, String)) -> String {
     if context.show_sensitive {
         value
     } else {
@@ -333,6 +428,10 @@ pub enum FunctionError {
         #[source]
         error: TriggeredRequestError,
     },
+
+    /// User referenced a field that isn't defined in the current profile
+    #[error("Unknown profile field `{field}`")]
+    UnknownField { field: String },
 }
 
 impl From<FunctionError> for TemplateError {

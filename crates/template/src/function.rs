@@ -1,4 +1,5 @@
-//! Template function and filter framework
+//! Template function framework, including value conversions for function
+//! arguments and outputs
 
 use crate::{TemplateError, Value};
 use serde::{Deserialize, de::IntoDeserializer};
@@ -8,9 +9,15 @@ use std::{
 };
 
 /// Arguments passed to a function call
+///
+/// This container holds all the data a template function may need to construct
+/// its own arguments. All given positional and keyword arguments are expected
+/// to be used, and [assert_consumed](Self::assert_consumed) should be called
+/// after extracting arguments to ensure no additional ones were passed.
 #[derive(Debug)]
 pub struct Arguments<'ctx, Ctx> {
-    /// TODO
+    /// Arbitrary user-provided context available to every template render and
+    /// function call
     pub(crate) context: &'ctx Ctx,
     /// Position arguments. This queue will be drained from the front as
     /// arguments are converted, and additional arguments not accepted by the
@@ -54,7 +61,9 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
         T::deserialize(value.into_deserializer())
     }
 
-    /// TODO
+    /// Remove a keyword argument from the argument set, converting it to type
+    /// `T` using its [TryFromValue] implementation. Return an error if the
+    /// keyword argument does not exist or the conversion fails.
     pub fn pop_keyword<T: Default + TryFromValue>(
         &mut self,
         name: &str,
@@ -66,7 +75,9 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
         }
     }
 
-    /// TODO
+    /// Remove a keyword argument from the argument set, converting it to type
+    /// `T` using its [Deserialize] implementation. Return an error if the
+    /// keyword argument does not exist or the conversion fails.
     pub fn pop_keyword_serde<'de, T: Default + Deserialize<'de>>(
         &mut self,
         name: &str,
@@ -78,7 +89,19 @@ impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
         }
     }
 
-    // TODO add fn to assert all args consumed
+    /// Ensure that all positional and keyword arguments have been consumed.
+    /// Return an error if any arguments were passed by the user but not
+    /// consumed by the function implementation.
+    pub fn ensure_consumed(self) -> Result<(), TemplateError> {
+        if self.position.is_empty() && self.keyword.is_empty() {
+            Ok(())
+        } else {
+            Err(TemplateError::TooManyArguments {
+                position: self.position.into(),
+                keyword: self.keyword,
+            })
+        }
+    }
 }
 
 /// TODO
@@ -122,7 +145,10 @@ where
         if let Value::Array(array) = value {
             array.into_iter().map(T::try_from_value).collect()
         } else {
-            todo!("error? convert to string?")
+            Err(TemplateError::Type {
+                expected: "array",
+                actual: value,
+            })
         }
     }
 }

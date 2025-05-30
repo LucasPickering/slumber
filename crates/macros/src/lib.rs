@@ -83,6 +83,8 @@ pub fn template(attr: TokenStream, item: TokenStream) -> TokenStream {
             #inner_fn
 
             #(#argument_extracts)*
+            // Make sure there were no extra arguments passed in
+            arguments.ensure_consumed()?;
             let output = #inner_fn_ident(#(#call_args),*) #await_inner;
             ::slumber_template::FunctionOutput::into_result(output)
         }

@@ -1,9 +1,9 @@
-use std::string::FromUtf8Error;
+use std::{collections::HashMap, string::FromUtf8Error};
 use thiserror::Error;
 use tracing::error;
 use winnow::error::{ContextError, ParseError};
 
-use crate::Identifier;
+use crate::{Identifier, Value};
 
 /// An error while parsing a template. This is derived from a nom error
 #[derive(Debug, Error)]
@@ -45,7 +45,7 @@ pub enum TemplateError {
     /// bytes we got were not valid UTF-8. The underlying error message is
     /// descriptive enough so we don't need to give additional context.
     #[error(transparent)]
-    InvalidUtf8(FromUtf8Error),
+    InvalidUtf8(#[from] FromUtf8Error),
 
     /// TODO comment
     /// TODO store expected/actual
@@ -59,18 +59,20 @@ pub enum TemplateError {
     /// TODO comment
     /// TODO store expected/actual
     #[error("TODO too many arguments")]
-    TooManyArguments,
+    TooManyArguments {
+        position: Vec<Value>,
+        keyword: HashMap<String, Value>,
+    },
+
+    #[error("Type error; expected `{expected}`, got `{actual}`")]
+    Type {
+        expected: &'static str,
+        actual: Value,
+    },
 
     /// TODO
     #[error("Unknown function `{name}`")]
     UnknownFunction { name: Identifier },
-
-    #[error("Error converting bytes to string")]
-    Utf8(
-        #[from]
-        #[source]
-        FromUtf8Error,
-    ),
 }
 
 impl TemplateError {

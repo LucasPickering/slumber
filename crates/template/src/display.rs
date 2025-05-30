@@ -1,7 +1,7 @@
-//! Template stringification
+//! Template and value stringification
 
 use crate::{
-    Expression, FunctionCall, Literal, Template, TemplateChunk,
+    Expression, FunctionCall, Literal, NULL, Template, TemplateChunk, Value,
     parse::{ESCAPE, EXPRESSION_CLOSE, EXPRESSION_OPEN},
 };
 use itertools::Itertools;
@@ -141,5 +141,30 @@ impl Display for FunctionCall {
                 }))
                 .join(", ")
         )
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Null => write!(fmt, "{NULL}"),
+            Self::Bool(b) => write!(fmt, "{b}"),
+            Self::Int(i) => write!(fmt, "{i}"),
+            Self::Float(f) => write!(fmt, "{f}"),
+            Self::String(s) => write!(fmt, "\"{s}\""),
+            Self::Bytes(b) => todo!(),
+            Self::Array(array) => {
+                write!(fmt, "[{}]", array.iter().format(", "))
+            }
+            Self::Object(object) => {
+                write!(
+                    fmt,
+                    "{{{}}}",
+                    object.iter().format_with(", ", |(k, v), f| f(
+                        &format_args!("{k}: {v}")
+                    ))
+                )
+            }
+        }
     }
 }

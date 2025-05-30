@@ -5,13 +5,13 @@
 profiles:
   works:
     name: This Works
-    default: true
     data:
       host: https://httpbin.org
       username: xX{{chains.username}}Xx
       user_guid: abc123
   local:
     name: Local
+    default: true
     data:
       host: http://localhost:80
       username: xX{{chains.username}}Xx

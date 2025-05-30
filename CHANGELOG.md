@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fix TUI crash when using an empty select list
 - Fix automatic collection reloading in Windows
   - I don't use Windows so I'm not sure exactly what scenarios it may have been broken in, but new unit tests indicate it's working now
+- Fix config loading failing for read-only config files ([#504](https://github.com/LucasPickering/slumber/issues/504))
 
 ## [3.1.1] - 2025-04-23
 

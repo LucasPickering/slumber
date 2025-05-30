@@ -28,8 +28,8 @@ use slumber_util::{
     ResultTraced, parse_yaml,
     paths::{self, create_parent, expand_home},
 };
-use std::{env, fs::OpenOptions, path::PathBuf};
-use tracing::info;
+use std::{env, error::Error, fs::File, io, path::PathBuf};
+use tracing::{error, info};
 
 const PATH_ENV_VAR: &str = "SLUMBER_CONFIG_PATH";
 const FILE: &str = "config.yml";
@@ -39,6 +39,7 @@ const FILE: &str = "config.yml";
 /// are made to the config file while a TUI session is running, they won't be
 /// picked up until the app restarts.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// Configuration for in-app query and export commands
@@ -97,29 +98,54 @@ impl Config {
     /// default value. This only returns an error if the file could be read, but
     /// deserialization failed. This is *not* async because it's only run during
     /// startup, when all operations are synchronous.
-    ///
-    /// Configuration type is dynamic so that different consumers (CLI vs TUI)
-    /// can specify their own types
     pub fn load() -> anyhow::Result<Self> {
         let path = Self::path();
-        create_parent(&path)?;
-
         info!(?path, "Loading configuration file");
 
-        // Open the config file, creating it if it doesn't exist. This will
-        // never create the legacy file, because the file must already exist in
-        // order for the legacy location to be used.
-        (|| {
-            let file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .read(true)
-                .open(&path)?;
-            let config = parse_yaml::<Self>(&file)?;
-            Ok::<_, anyhow::Error>(config)
-        })()
-        .context(format!("Error loading configuration from {path:?}"))
-        .traced()
+        match File::open(&path) {
+            // File loaded - deserialize it. Error here will be fatal because
+            // it probably indicates the user made a mistake in their config and
+            // they want to fix it.
+            Ok(file) => parse_yaml::<Self>(&file)
+                .context(format!("Error loading configuration from {path:?}"))
+                .traced(),
+
+            // File failed to open. This shouldn't stop the program because it
+            // may be a weird fs error the user can't or doesn't want to fix.
+            // Just use a default config.
+            Err(err) => {
+                error!(
+                    error = &err as &dyn Error,
+                    "Error opening config file {path:?}"
+                );
+
+                // File failed to open. Attempt to create it. Whether or not the
+                // create succeeds, we're going to just log the error and use a
+                // default config.
+                //
+                // You could do this read/create all in one operation using
+                // OpenOptions::new().create(true).append(true).read(true),
+                // but that requires write permission on the file even if it
+                // doesn't exist, which may not be the case (e.g. NixOS)
+                // https://github.com/LucasPickering/slumber/issues/504
+                //
+                // This two step approach does have the risk of a race
+                // condition, but it's exceptionally unlikely and worst case
+                // scenario we show an error and continue with the default
+                // config
+                if let io::ErrorKind::NotFound = err.kind() {
+                    let _ = create_parent(&path)
+                        .and_then(|_| {
+                            File::create_new(&path)?;
+                            Ok(())
+                        })
+                        .context("Error creating config file {path:?}")
+                        .traced();
+                }
+
+                Ok(Self::default())
+            }
+        }
     }
 }
 
@@ -141,6 +167,7 @@ impl Default for Config {
 
 /// Configuration for the engine that handles HTTP requests
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 #[serde(default)]
 pub struct HttpEngineConfig {
     /// TLS cert errors on these hostnames are ignored. Be careful!
@@ -170,6 +197,7 @@ impl Default for HttpEngineConfig {
 
 /// Configuration for in-app query and export commands
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 #[serde(default, deny_unknown_fields)]
 pub struct CommandsConfig {
     /// Wrapping shell to parse and execute commands
@@ -201,6 +229,31 @@ impl Default for CommandsConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use env_lock::EnvGuard;
+    use rstest::{fixture, rstest};
+    use slumber_util::{TempDir, assert_err, temp_dir};
+    use std::fs;
+
+    struct ConfigPath {
+        path: PathBuf,
+        dir: TempDir,
+        /// Guard on [PATH_ENV_VAR], so multiple tests can't modify it at once
+        _guard: EnvGuard<'static>,
+    }
+
+    /// Create a temp dir, get a path to a config file from it, and set
+    /// [PATH_ENV_VAR] to point to that file
+    #[fixture]
+    fn config_path(temp_dir: TempDir) -> ConfigPath {
+        let path = temp_dir.join("config.yml");
+        let guard =
+            env_lock::lock_env([(PATH_ENV_VAR, Some(path.to_str().unwrap()))]);
+        ConfigPath {
+            path,
+            dir: temp_dir,
+            _guard: guard,
+        }
+    }
 
     #[test]
     fn test_custom_config_path() {
@@ -213,5 +266,67 @@ mod tests {
             Config::path(),
             dirs::home_dir().unwrap().join("dotfiles/slumber.yml")
         );
+    }
+
+    /// We can load the config when the config file already exists but is
+    /// readonly
+    #[rstest]
+    fn test_load_file_exists_readonly(config_path: ConfigPath) {
+        fs::write(&config_path.path, "debug: true\n").unwrap();
+        let mut permissions =
+            fs::metadata(&config_path.path).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&config_path.path, permissions).unwrap();
+
+        let config = Config::load().unwrap();
+        assert_eq!(
+            config,
+            Config {
+                debug: true,
+                ..Config::default()
+            }
+        );
+    }
+
+    /// If the config file doesn't already exist, we'll create it
+    #[rstest]
+    fn test_load_file_does_not_exist_can_create(config_path: ConfigPath) {
+        // Ensure file does not exist
+        assert!(!config_path.path.exists());
+
+        // Should be default values
+        let config = Config::load().unwrap();
+        assert_eq!(config, Config::default());
+
+        // File should now exist
+        assert!(config_path.path.exists());
+    }
+
+    /// If the config file doesn't already exist, we'll attempt to create it.
+    /// If we don't have permission to create it, use the default
+    #[rstest]
+    // Directory permissions are funky in windows and I don't feel like figuring
+    // it out
+    #[cfg(unix)]
+    fn test_load_file_does_not_exist_cannot_create(config_path: ConfigPath) {
+        let mut permissions =
+            fs::metadata(&*config_path.dir).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&*config_path.dir, permissions).unwrap();
+
+        // Should be default values
+        let config = Config::load().unwrap();
+        assert_eq!(config, Config::default());
+
+        // File still does not exist
+        assert!(!config_path.path.exists());
+    }
+
+    /// Loading a config file with contents that don't deserialize correctly
+    /// returns an error
+    #[rstest]
+    fn test_load_file_invalid(config_path: ConfigPath) {
+        fs::write(&config_path.path, "fake_field: true\n").unwrap();
+        assert_err!(Config::load(), "unknown field `fake_field`");
     }
 }

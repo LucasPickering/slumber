@@ -89,21 +89,14 @@ pub trait TryFromValue: Sized {
 
 impl TryFromValue for bool {
     fn try_from_value(value: Value) -> Result<Self, TemplateError> {
-        if let Value::Bool(b) = value {
-            Ok(b)
-        } else {
-            todo!("error? convert to bool?")
-        }
+        Ok(value.to_bool())
     }
 }
 
 impl TryFromValue for String {
     fn try_from_value(value: Value) -> Result<Self, TemplateError> {
-        if let Value::String(s) = value {
-            Ok(s)
-        } else {
-            todo!("error? convert to string?")
-        }
+        // This will succeed for anything other than invalid UTF-8 bytes
+        value.try_into_string()
     }
 }
 

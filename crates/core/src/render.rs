@@ -132,10 +132,9 @@ impl slumber_template::TemplateContext for TemplateContext {
             .ok_or_else(|| FunctionError::UnknownField {
                 field: field.to_string(),
             })?;
-        // TODO nested rendering
-        Ok(slumber_template::Value::String(
-            template.display().to_string(),
-        ))
+        // TODO error context
+        let bytes = template.render_bytes(self).await?;
+        Ok(slumber_template::Value::Bytes(bytes))
     }
 
     async fn call(
@@ -153,6 +152,7 @@ impl slumber_template::TemplateContext for TemplateContext {
             "response_header" => functions::response_header(arguments).await,
             "select" => functions::select(arguments).await,
             "sensitive" => functions::sensitive(arguments),
+            "trim" => functions::trim(arguments),
             _ => Err(TemplateError::UnknownFunction {
                 name: function_name.clone(),
             }),

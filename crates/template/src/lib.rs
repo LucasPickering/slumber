@@ -21,7 +21,7 @@ use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug, string::FromUtf8Error, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use crate::parse::{FALSE, NULL, TRUE};
 
@@ -307,10 +307,34 @@ pub enum Value {
 }
 
 impl Value {
+    /// Convert this value to a boolean, according to its truthiness.
+    /// Truthiness/falsiness is defined for each type as:
+    /// - `null` - `false`
+    /// - `bool` - Own value
+    /// - `int` - `false` if zero
+    /// - `float` - `false` if zero
+    /// - `string` - `false` if empty
+    /// - `bytes` - `false` if empty
+    /// - `array` - `false` if empty
+    /// - `object` - `false` if empty
+    /// These correspond to the truthiness rules from Python.
+    pub fn to_bool(&self) -> bool {
+        match self {
+            Self::Null => false,
+            Self::Bool(b) => *b,
+            Self::Int(i) => *i != 0,
+            Self::Float(f) => *f != 0.0,
+            Self::String(s) => !s.is_empty(),
+            Self::Bytes(bytes) => !bytes.is_empty(),
+            Self::Array(array) => !array.is_empty(),
+            Self::Object(object) => !object.is_empty(),
+        }
+    }
+
     /// Attempt to convert this value to a string. This can fail only if the
     /// value contains non-UTF-8 bytes, or if it is a collection that contains
     /// non-UTF-8 bytes.
-    pub fn try_into_string(self) -> Result<String, FromUtf8Error> {
+    pub fn try_into_string(self) -> Result<String, TemplateError> {
         match self {
             Self::Null => Ok(NULL.into()),
             Self::Bool(false) => Ok(FALSE.into()),
@@ -318,7 +342,9 @@ impl Value {
             Self::Int(i) => Ok(i.to_string().into()),
             Self::Float(f) => Ok(f.to_string().into()),
             Self::String(s) => Ok(s),
-            Self::Bytes(bytes) => String::from_utf8(bytes),
+            Self::Bytes(bytes) => {
+                String::from_utf8(bytes).map_err(TemplateError::from)
+            }
             Self::Array(value) => todo!(),
             Self::Object(value) => {
                 todo!()

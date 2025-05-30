@@ -62,8 +62,15 @@ pub enum TemplateError {
     TooManyArguments,
 
     /// TODO
-    #[error("TODO")]
+    #[error("Unknown function `{name}`")]
     UnknownFunction { name: Identifier },
+
+    #[error("Error converting bytes to string")]
+    Utf8(
+        #[from]
+        #[source]
+        FromUtf8Error,
+    ),
 }
 
 impl TemplateError {

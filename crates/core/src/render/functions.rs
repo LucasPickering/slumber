@@ -191,6 +191,21 @@ pub fn sensitive(
     mask_sensitive(context, value)
 }
 
+/// Trim whitespace from a string
+#[template(TemplateContext)]
+pub fn trim(
+    value: String,
+    #[kwarg]
+    #[serde]
+    mode: TrimMode,
+) -> String {
+    match mode {
+        TrimMode::Start => value.trim_start().to_string(),
+        TrimMode::End => value.trim_end().to_string(),
+        TrimMode::Both => value.trim().to_string(),
+    }
+}
+
 fn mask_sensitive(context: &TemplateContext, value: String) -> String {
     if context.show_sensitive {
         value
@@ -261,4 +276,17 @@ impl<'de> Deserialize<'de> for RequestTrigger {
 
         deserializer.deserialize_any(RequestTriggerVisitor)
     }
+}
+
+/// Trim whitespace from a string
+#[derive(Copy, Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum TrimMode {
+    /// Trim the start of the output
+    Start,
+    /// Trim the end of the output
+    End,
+    /// Trim the start and end of the output
+    #[default]
+    Both,
 }

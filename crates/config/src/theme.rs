@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 /// User-configurable visual settings. These are used to generate the full style
 /// set.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(PartialEq))]
 #[serde(default, deny_unknown_fields)]
 pub struct Theme {
     pub primary_color: Color,

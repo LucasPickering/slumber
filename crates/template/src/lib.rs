@@ -21,7 +21,9 @@ use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, string::FromUtf8Error, sync::Arc};
+
+use crate::parse::{FALSE, NULL, TRUE};
 
 /// TODO
 /// TODO rename to Context
@@ -93,8 +95,26 @@ impl Template {
         &self,
         context: &Ctx,
     ) -> Result<Vec<u8>, TemplateError> {
-        let _chunks = self.render_chunks(context).await;
-        todo!()
+        let chunks = self.render_chunks(context).await;
+        // TODO optimize this:
+        // - Pre-allocate vec with capacity
+        // - Avoid reallocation where possible for single-chunk results
+        chunks.into_iter().try_fold(Vec::new(), |mut acc, chunk| {
+            match chunk {
+                RenderedChunk::Raw(s) => acc.extend(s.as_bytes()),
+                RenderedChunk::Rendered(Value::Bytes(bytes)) => {
+                    acc.extend(bytes)
+                }
+                RenderedChunk::Rendered(value) => acc.extend(
+                    value
+                        .try_into_string()
+                        .expect("TODO remove unwrap")
+                        .into_bytes(),
+                ),
+                RenderedChunk::Error(error) => return Err(error),
+            }
+            Ok(acc)
+        })
     }
 
     /// Render the template using values from the given context. If any chunk
@@ -105,8 +125,8 @@ impl Template {
         &self,
         context: &Ctx,
     ) -> Result<String, TemplateError> {
-        let _chunks = self.render_chunks(context).await;
-        todo!()
+        let bytes = self.render_bytes(context).await?;
+        String::from_utf8(bytes).map_err(TemplateError::other)
     }
 
     /// Render the template using values from the given context, returning the
@@ -284,6 +304,27 @@ pub enum Value {
     Bytes(Vec<u8>), // TODO Bytes instead?
     Array(Vec<Self>),
     Object(IndexMap<String, Self>),
+}
+
+impl Value {
+    /// Attempt to convert this value to a string. This can fail only if the
+    /// value contains non-UTF-8 bytes, or if it is a collection that contains
+    /// non-UTF-8 bytes.
+    pub fn try_into_string(self) -> Result<String, FromUtf8Error> {
+        match self {
+            Self::Null => Ok(NULL.into()),
+            Self::Bool(false) => Ok(FALSE.into()),
+            Self::Bool(true) => Ok(TRUE.into()),
+            Self::Int(i) => Ok(i.to_string().into()),
+            Self::Float(f) => Ok(f.to_string().into()),
+            Self::String(s) => Ok(s),
+            Self::Bytes(bytes) => String::from_utf8(bytes),
+            Self::Array(value) => todo!(),
+            Self::Object(value) => {
+                todo!()
+            }
+        }
+    }
 }
 
 /// A piece of a rendered template string. A collection of chunks collectively

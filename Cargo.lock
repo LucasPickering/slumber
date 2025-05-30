@@ -2691,6 +2691,7 @@ dependencies = [
  "shell-words",
  "slumber_config",
  "slumber_core",
+ "slumber_template",
  "slumber_util",
  "strum",
  "tokio",

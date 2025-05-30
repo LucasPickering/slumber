@@ -16,8 +16,9 @@ use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
     http::{Exchange, RequestError, RequestId, RequestSeed},
-    template::{Prompter, RenderedChunk, Template, TemplateContext},
+    render::{Prompter, TemplateContext},
 };
+use slumber_template::{RenderedChunk, Template};
 use slumber_util::ResultTraced;
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio::task;
@@ -630,7 +631,7 @@ impl LoadedState {
             http_provider: Box::new(http_provider),
             prompter,
             overrides: Default::default(),
-            state: Default::default(),
+            show_sensitive: !is_preview,
         }
     }
 }

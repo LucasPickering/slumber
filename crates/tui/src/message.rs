@@ -12,8 +12,9 @@ use slumber_core::{
         BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
         RequestRecord,
     },
-    template::{Prompt, RenderedChunk, ResponseChannel, Select, Template},
+    render::{Prompt, ResponseChannel, Select},
 };
+use slumber_template::{RenderedChunk, Template};
 use slumber_util::ResultTraced;
 use std::{fmt::Debug, path::PathBuf, process::Command, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;

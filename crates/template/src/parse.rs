@@ -23,6 +23,9 @@ pub(crate) const ESCAPE: &str = "_";
 pub(crate) const EXPRESSION_OPEN: &str = "{{";
 /// Marks the end of a template key
 pub(crate) const EXPRESSION_CLOSE: &str = "}}";
+pub(crate) const NULL: &str = "null";
+pub(crate) const FALSE: &str = "false";
+pub(crate) const TRUE: &str = "true";
 
 impl Template {
     /// Create a template that renders a single field, equivalent to
@@ -182,9 +185,9 @@ fn primary_expression(input: &mut &str) -> ModalResult<Expression> {
 /// Parse a literal: null, bool, int, float, string
 fn literal(input: &mut &str) -> ModalResult<Literal> {
     alt((
-        "null".map(|_| Literal::Null),
-        "true".map(|_| Literal::Bool(true)),
-        "false".map(|_| Literal::Bool(false)),
+        NULL.map(|_| Literal::Null),
+        FALSE.map(|_| Literal::Bool(false)),
+        TRUE.map(|_| Literal::Bool(true)),
         // int must come before float because all ints are valid floats too
         dec_int.map(Literal::Int).context(StrContext::Label("int")),
         float

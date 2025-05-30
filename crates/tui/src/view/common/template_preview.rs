@@ -10,10 +10,8 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::Widget,
 };
-use slumber_core::{
-    http::content_type::ContentType,
-    template::{RenderedChunk, Template},
-};
+use slumber_core::http::content_type::ContentType;
+use slumber_template::{RenderedChunk, Template};
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
@@ -106,7 +104,7 @@ impl TemplatePreview {
         content_type: Option<ContentType>,
         style: Style,
     ) {
-        let text = TextStitcher::stitch_chunks(&chunks);
+        let text = TextStitcher::stitch_chunks(chunks);
         let text = highlight::highlight_if(content_type, text).set_style(style);
         *destination
             .lock()
@@ -154,7 +152,7 @@ struct TextStitcher {
 
 impl TextStitcher {
     /// Convert chunks into a series of spans, which can be turned into a line
-    fn stitch_chunks(chunks: &[RenderedChunk]) -> Text<'static> {
+    fn stitch_chunks(chunks: Vec<RenderedChunk>) -> Text<'static> {
         let styles = &TuiContext::get().styles;
 
         // Each chunk will get its own styling, but we can't just make each
@@ -164,12 +162,12 @@ impl TextStitcher {
         // manually split the lines
         let mut stitcher = Self::default();
         for chunk in chunks {
-            let chunk_text = Self::get_chunk_text(chunk);
             let style = match chunk {
                 RenderedChunk::Raw(_) => Style::default(),
                 RenderedChunk::Rendered { .. } => styles.template_preview.text,
                 RenderedChunk::Error(_) => styles.template_preview.error,
             };
+            let chunk_text = Self::get_chunk_text(chunk);
 
             stitcher.add_chunk(chunk_text, style);
         }
@@ -212,22 +210,17 @@ impl TextStitcher {
 
     /// Get the renderable text for a chunk of a template. This will clone the
     /// text out of the chunk, because it's all stashed behind Arcs
-    fn get_chunk_text(chunk: &RenderedChunk) -> String {
+    fn get_chunk_text(chunk: RenderedChunk) -> String {
         match chunk {
             RenderedChunk::Raw(text) => text.deref().into(),
-            RenderedChunk::Rendered { value, sensitive } => {
-                if *sensitive {
-                    // Hide sensitive values. Ratatui has a Masked type, but
-                    // it complicates the string ownership a lot and also
-                    // exposes the length of the sensitive text
-                    "<sensitive>".into()
-                } else {
-                    // We could potentially use MaybeStr to show binary data as
-                    // hex, but that could get weird if there's text data in the
-                    // template as well. This is simpler and prevents giant
-                    // binary blobs from getting rendered in.
-                    std::str::from_utf8(value).unwrap_or("<binary>").to_owned()
-                }
+            RenderedChunk::Rendered(value) => {
+                // We could potentially use MaybeStr to show binary data as
+                // hex, but that could get weird if there's text data in the
+                // template as well. This is simpler and prevents giant
+                // binary blobs from getting rendered in.
+                value
+                    .try_into_string()
+                    .unwrap_or_else(|_| "<binary>".into())
             }
             // There's no good way to render the entire error inline
             RenderedChunk::Error(_) => "Error".into(),
@@ -243,8 +236,8 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use slumber_core::{
-        TemplateContext,
         collection::{Chain, ChainSource, Collection, Profile},
+        render::TemplateContext,
         test_util::{by_id, invalid_utf8_chain},
     };
     use slumber_util::Factory;
@@ -312,7 +305,7 @@ mod tests {
         };
 
         let chunks = template.render_chunks(&context).await;
-        let text = TextStitcher::stitch_chunks(&chunks);
+        let text = TextStitcher::stitch_chunks(chunks);
         assert_eq!(text, Text::from(expected));
     }
 

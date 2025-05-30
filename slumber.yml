@@ -3,7 +3,7 @@
 # documentation is at: https://slumber.lucaspickering.me/book/
 
 .base_profile_data: &base_profile_data
-  username: xX{{ command(['whoami']) | trim | sensitive }}Xx
+  username: xX{{ command(['whoami']) | trim() | sensitive() }}Xx
   user_guid: abc123
 .base_request: &base_request
   headers:

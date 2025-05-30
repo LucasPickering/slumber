@@ -197,12 +197,11 @@ fn literal(input: &mut &str) -> ModalResult<Literal> {
 
 /// Parse a string literal: '...' or "..."
 fn string_literal(input: &mut &str) -> ModalResult<Literal> {
-    delimited(
-        "\"",
-        // "" can only mean string literal, so an error after " is fatal
-        cut_err(take_while(0.., |c| c != '"')),
-        "\"",
-    )
+    // " and ' can only mean string literal, so an error after the open is fatal
+    alt((
+        delimited("\"", cut_err(take_while(0.., |c| c != '"')), "\""),
+        delimited("'", cut_err(take_while(0.., |c| c != '\'')), "'"),
+    ))
     .map(|s: &str| Literal::String(s.to_owned()))
     .context(StrContext::Label("string literal"))
     .parse_next(input)
@@ -427,29 +426,11 @@ mod tests {
         assert_eq!(parsed, expected.into(), "incorrect parsed template");
     }
 
-    /// Test parsing error cases. The error messages are not very descriptive
-    /// so don't even bother looking for particular content
+    /// Test parsing error cases
     #[rstest]
     #[case::unclosed_expression("{{", "invalid expression")]
     #[case::empty_expression("{{}}", "invalid expression")]
     #[case::invalid_expression("{{.}}", "invalid expression")]
-    #[case::function_incomplete("{{ bogus( }}", "invalid key")]
-    #[case::function_dupe_kwarg(
-        "{{ f(a=1, a=2) }}",
-        "duplicate keyword argument `a`"
-    )]
-    #[case::function_positional_after_kwarg(
-        "{{ f(a=1, 2) }}",
-        "positional argument after keyword argument"
-    )]
-    #[case::pipe_incomplete("{{ bogus | }}", "pipe missing right-hand side")]
-    #[case::pipe_to_literal(
-        "{{ f() | 3 }}",
-        "pipe right-hand side must be function call"
-    )]
-    #[case::property_incomplete("{{ bogus. }}", "invalid expression")]
-    #[case::array_incomplete("{{ [bogus }}", "unclosed array")]
-    #[case::string_incomplete("{{ \"bogus }}", "unclosed string")]
     // the first { is escaped, 2nd and 3rd make the expression, 4th is a problem
     #[case::bonus_braces(r"\\{{{{field}}", "invalid expression")]
     fn test_parse_template_error(
@@ -478,7 +459,8 @@ mod tests {
     #[case::literal_float_negative("-3.5", literal(-3.5))]
     #[case::literal_float_positive("3.5", literal(3.5))]
     #[case::literal_float_scientific("3.5e3", literal(3500.0))]
-    #[case::literal_string("\"hello\"", literal("hello"))]
+    #[case::literal_string_double("\"hello\"", literal("hello"))]
+    // TODO test string escaping "
     #[case::field("field1", field("field1"))]
     #[case::array(
         "[1, \"hi\", field]", array([literal(1), literal("hi"), field("field")]),
@@ -522,7 +504,9 @@ mod tests {
 
     /// Test parsing expressions that don't round trip
     #[rstest]
-    #[case::array_trailing_comma("[1,]", array([literal(1)]),)]
+    #[case::literal_string_single("'hello'", literal("hello"))]
+    // TODO test string escaping '
+    #[case::array_trailing_comma("[1,]", array([literal(1)]))]
     #[case::function_trailing_comma("f(1,)", call("f", [literal(1)], []))]
     fn test_parse_expression(
         #[case] input: &'static str,
@@ -533,6 +517,38 @@ mod tests {
             .parse(input)
             .unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(parsed, expected, "incorrect parsed expression");
+    }
+
+    /// Test parsing error cases for expressions
+    #[rstest]
+    #[case::function_incomplete("bogus(", "invalid key")]
+    #[case::function_dupe_kwarg(
+        "f(a=1, a=2)",
+        "duplicate keyword argument `a`"
+    )]
+    #[case::function_positional_after_kwarg(
+        "f(a=1, 2)",
+        "positional argument after keyword argument"
+    )]
+    #[case::pipe_incomplete("bogus |", "pipe missing right-hand side")]
+    #[case::pipe_to_literal(
+        "f() | 3",
+        "pipe right-hand side must be function call"
+    )]
+    // This case is common because Jinja allows this when piping to filters
+    #[case::pipe_to_identifier(
+        "f() | trim",
+        "pipe right-hand side must be function call"
+    )]
+    #[case::invalid_function_arg("command(\"invalid)", "TODO")]
+    #[case::property_incomplete("bogus.", "invalid expression")]
+    #[case::array_incomplete("[bogus", "unclosed array")]
+    #[case::string_incomplete("\"bogus", "unclosed string")]
+    fn test_parse_expression_error(
+        #[case] input: &str,
+        #[case] expected_error: &str,
+    ) {
+        assert_err!(expression.parse(input), expected_error);
     }
 
     /// Test that [Template::from_field] generates the correct template

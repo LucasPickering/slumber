@@ -71,7 +71,7 @@ impl Template {
 
                     write!(
                         buf.to_mut(),
-                        "{EXPRESSION_OPEN}{expression}{EXPRESSION_CLOSE}"
+                        "{EXPRESSION_OPEN} {expression} {EXPRESSION_CLOSE}"
                     )
                     .unwrap();
                 }

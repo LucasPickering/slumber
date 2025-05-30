@@ -710,7 +710,7 @@ fn content_type_header(headers: &HeaderMap) -> Option<Mime> {
 ///
 /// The generic type is to make this usable with references to bodies. In most
 /// cases you can just use the default.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ResponseBody<T = Bytes> {
     /// Raw body
     data: T,

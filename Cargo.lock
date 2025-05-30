@@ -2591,6 +2591,7 @@ dependencies = [
  "serde_test",
  "serde_yaml",
  "slumber_config",
+ "slumber_macros",
  "slumber_template",
  "slumber_util",
  "strum",
@@ -2629,6 +2630,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "slumber_macros"
+version = "3.1.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
+]
+
+[[package]]
 name = "slumber_template"
 version = "3.1.1"
 dependencies = [
@@ -2640,11 +2650,13 @@ dependencies = [
  "pretty_assertions",
  "proptest",
  "proptest-derive",
+ "quote",
  "regex",
  "rstest",
  "serde",
  "serde_test",
  "slumber_util",
+ "syn 2.0.101",
  "thiserror 2.0.12",
  "tracing",
  "winnow",
@@ -2697,12 +2709,14 @@ version = "3.1.1"
 dependencies = [
  "anyhow",
  "dirs",
+ "itertools",
  "rstest",
  "serde",
  "serde_path_to_error",
  "serde_yaml",
  "tracing",
  "uuid",
+ "winnow",
 ]
 
 [[package]]

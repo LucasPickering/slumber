@@ -13,9 +13,7 @@ mod parse;
 mod render;
 
 pub use error::TemplateError;
-pub use function::{
-    Arguments, FromArguments, FunctionOutput, Kwargs, ViaSerde,
-};
+pub use function::{Arguments, FunctionOutput, TryFromValue};
 
 use derive_more::{Deref, Display, derive::From};
 use futures::future;
@@ -26,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 /// TODO
+/// TODO rename to Context
 pub trait TemplateContext: Sized + Send + Sync {
     /// TODO
     fn get(

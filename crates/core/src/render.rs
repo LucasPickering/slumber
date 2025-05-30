@@ -6,15 +6,17 @@ mod functions;
 
 use crate::{
     collection::{Collection, Profile, ProfileId, RecipeId},
-    http::{Exchange, RequestSeed, TriggeredRequestError},
+    http::{Exchange, RequestSeed, ResponseRecord, TriggeredRequestError},
+    render::functions::RequestTrigger,
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
+use chrono::Utc;
 use derive_more::From;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde_json_path::JsonPath;
-use slumber_template::{Arguments, FunctionOutput, Identifier, TemplateError};
+use slumber_template::{Arguments, Identifier, TemplateError};
 use slumber_util::ResultTraced;
 use std::{fmt::Debug, io, iter, path::PathBuf, sync::Arc};
 use thiserror::Error;
@@ -38,7 +40,8 @@ pub struct TemplateContext {
     pub overrides: IndexMap<String, String>,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
-    /// TODO
+    /// Should sensitive values be shown normally or masked? Enabled for
+    /// request renders, disabled for previews
     pub show_sensitive: bool,
 }
 
@@ -47,6 +50,74 @@ impl TemplateContext {
         self.selected_profile
             .as_ref()
             .and_then(|id| self.collection.profiles.get(id))
+    }
+
+    /// Get the most recent response for a profile+recipe pair. This will
+    /// trigger the request if it is expired, and await the response
+    async fn get_latest_response(
+        &self,
+        recipe_id: &RecipeId,
+        trigger: RequestTrigger,
+    ) -> Result<Arc<ResponseRecord>, FunctionError> {
+        // Defer loading the most recent exchange until we know we'll need it
+        let get_latest = || async {
+            self.http_provider
+                .get_latest_request(self.selected_profile.as_ref(), recipe_id)
+                .await
+                .map_err(FunctionError::Database)
+        };
+
+        // Helper to execute the request, if triggered
+        let send_request = || async {
+            // There are 3 different ways we can generate the build optoins:
+            // 1. Default (enable all query params/headers)
+            // 2. Load from UI state for both TUI and CLI
+            // 3. Load from UI state for TUI, enable all for CLI
+            // These all have their own issues:
+            // 1. Triggered request doesn't necessarily match behavior if user
+            //  were to execute the request themself
+            // 2. CLI behavior is silently controlled by UI state
+            // 3. TUI and CLI behavior may not match
+            // All 3 options are unintuitive in some way, but 1 is the easiest
+            // to implement so I'm going with that for now.
+            let build_options = Default::default();
+
+            self.http_provider
+                .send_request(
+                    RequestSeed::new(recipe_id.clone(), build_options),
+                    self,
+                )
+                .await
+                .map_err(|error| FunctionError::Trigger {
+                    recipe_id: recipe_id.clone(),
+                    error,
+                })
+        };
+
+        let exchange = match trigger {
+            RequestTrigger::Never => {
+                get_latest().await?.ok_or(FunctionError::ResponseMissing)?
+            }
+            RequestTrigger::NoHistory => {
+                // If a exchange is present in history, use that. If not, fetch
+                if let Some(exchange) = get_latest().await? {
+                    exchange
+                } else {
+                    send_request().await?
+                }
+            }
+            RequestTrigger::Expire { duration } => match get_latest().await? {
+                Some(exchange)
+                    if exchange.end_time + duration.inner() >= Utc::now() =>
+                {
+                    exchange
+                }
+                _ => send_request().await?,
+            },
+            RequestTrigger::Always => send_request().await?,
+        };
+
+        Ok(exchange.response)
     }
 }
 
@@ -73,29 +144,15 @@ impl slumber_template::TemplateContext for TemplateContext {
         arguments: Arguments<'_, Self>,
     ) -> Result<slumber_template::Value, TemplateError> {
         match function_name.as_str() {
-            "command" => functions::command(arguments.try_into()?)
-                .await
-                .into_result(),
-            "env" => functions::env(arguments.try_into()?).into_result(),
-            "file" => {
-                functions::file(arguments.try_into()?).await.into_result()
-            }
-            "jsonpath" => {
-                functions::jsonpath(arguments.try_into()?).into_result()
-            }
-            "prompt" => {
-                functions::prompt(arguments.try_into()?).await.into_result()
-            }
-            "response" => {
-                functions::response(arguments.try_into()?).into_result()
-            }
-            "response_header" => {
-                functions::response_header(arguments.try_into()?).into_result()
-            }
-            "select" => functions::select(arguments.try_into()?).into_result(),
-            "sensitive" => {
-                functions::sensitive(arguments.try_into()?).into_result()
-            }
+            "command" => functions::command(arguments).await,
+            "env" => functions::env(arguments),
+            "file" => functions::file(arguments).await,
+            "jsonpath" => functions::jsonpath(arguments),
+            "prompt" => functions::prompt(arguments).await,
+            "response" => functions::response(arguments).await,
+            "response_header" => functions::response_header(arguments).await,
+            "select" => functions::select(arguments).await,
+            "sensitive" => functions::sensitive(arguments),
             _ => Err(TemplateError::UnknownFunction {
                 name: function_name.clone(),
             }),

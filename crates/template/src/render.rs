@@ -72,7 +72,7 @@ impl FunctionCall {
         Ok(Arguments {
             context,
             position: position.into(),
-            keyword,
+            keyword: keyword.into_iter().collect(),
         })
     }
 }

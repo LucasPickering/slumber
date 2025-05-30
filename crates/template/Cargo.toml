@@ -1,36 +1,38 @@
 [package]
-authors = {workspace = true}
+authors = { workspace = true }
 description = "Template engine for Slumber. Not intended for external use."
-edition = {workspace = true}
-homepage = {workspace = true}
-keywords = {workspace = true}
-license = {workspace = true}
+edition = { workspace = true }
+homepage = { workspace = true }
+keywords = { workspace = true }
+license = { workspace = true }
 name = "slumber_template"
-repository = {workspace = true}
-rust-version = {workspace = true}
-version = {workspace = true}
+repository = { workspace = true }
+rust-version = { workspace = true }
+version = { workspace = true }
 
 [dependencies]
 # TODO trim this down
-bytes = {workspace = true, features = ["serde"]}
-derive_more = {workspace = true, features = ["deref", "display", "from"]}
-futures = {workspace = true}
-indexmap = {workspace = true, features = ["serde"]}
-itertools = {workspace = true}
-regex = {version = "1.10.5", default-features = false}
-serde = {workspace = true, features = ["derive"]}
-slumber_util = {workspace = true}
-thiserror = {workspace = true}
-tracing = {workspace = true}
-winnow = {workspace = true}
+bytes = { workspace = true, features = ["serde"] }
+derive_more = { workspace = true, features = ["deref", "display", "from"] }
+futures = { workspace = true }
+indexmap = { workspace = true, features = ["serde"] }
+itertools = { workspace = true }
+quote = "1.0.40"
+regex = { version = "1.10.5", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+slumber_util = { workspace = true }
+syn = "2.0.101"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+winnow = { workspace = true }
 
 [dev-dependencies]
-pretty_assertions = {workspace = true}
+pretty_assertions = { workspace = true }
 proptest = "1.5.0"
 proptest-derive = "0.5.0"
-rstest = {workspace = true}
-serde_test = {workspace = true}
-slumber_util = {workspace = true, features = ["test"]}
+rstest = { workspace = true }
+serde_test = { workspace = true }
+slumber_util = { workspace = true, features = ["test"] }
 
 [features]
 test = ["slumber_util/test"]

@@ -4,31 +4,22 @@ use crate::{
     collection::RecipeId,
     render::{FunctionError, Prompt, Select, TemplateContext},
 };
-use itertools::Itertools;
 use serde::{
     Deserialize,
     de::{self, Visitor, value::SeqDeserializer},
 };
 use serde_json_path::JsonPath;
-use slumber_template::{Kwargs, ViaSerde};
-use std::{env, fmt::Debug, process::Stdio, sync::Arc, time::Duration};
+use slumber_macros::template;
+use slumber_util::TimeSpan;
+use std::{env, fmt::Debug, process::Stdio, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
 use tracing::{debug, debug_span};
 
-#[derive(Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CommandKwargs {
-    /// Optional data to pipe to the command via stdin
-    #[serde(default)]
-    stdin: Option<String>,
-}
-
 /// Run a command in a subprocess
+#[template(TemplateContext)]
 pub async fn command(
-    (command, Kwargs(CommandKwargs { stdin })): (
-        Vec<String>,
-        Kwargs<CommandKwargs>,
-    ),
+    command: Vec<String>,
+    #[kwarg] stdin: Option<String>,
 ) -> Result<Vec<u8>, FunctionError> {
     let [program, args @ ..] = command.as_slice() else {
         return Err(FunctionError::CommandEmpty);
@@ -75,12 +66,14 @@ pub async fn command(
 
 /// Get the value of an environment variable. Return `None` if the variable is
 /// not set
-pub fn env((variable,): (String,)) -> Option<String> {
+#[template(TemplateContext)]
+pub fn env(variable: String) -> Option<String> {
     env::var(variable).ok()
 }
 
-/// TODO
-pub async fn file((path,): (String,)) -> Result<Vec<u8>, FunctionError> {
+/// Load contents of a file
+#[template(TemplateContext)]
+pub async fn file(path: String) -> Result<Vec<u8>, FunctionError> {
     fs::read(&path).await.map_err(|error| FunctionError::File {
         path: path.into(),
         error,
@@ -88,12 +81,11 @@ pub async fn file((path,): (String,)) -> Result<Vec<u8>, FunctionError> {
 }
 
 /// Transform a JSON value using a JSONPath query
+#[template(TemplateContext)]
 pub fn jsonpath(
     // Value first so it can be piped in
-    (ViaSerde(value), ViaSerde(query)): (
-        ViaSerde<serde_json::Value>,
-        ViaSerde<JsonPath>,
-    ),
+    #[serde] value: serde_json::Value,
+    #[serde] query: JsonPath,
 ) -> Result<slumber_template::Value, FunctionError> {
     // TODO support mode?
     let node_list = query.query(&value);
@@ -105,32 +97,19 @@ pub fn jsonpath(
     .map_err(|_| todo!())
 }
 
-#[derive(Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PromptKwargs {
-    message: Option<String>,
-    default: Option<String>,
-    /// Mask the prompt value while typing
-    #[serde(default)]
-    sensitive: bool,
-}
-
 /// Prompt the user to enter a text value
+#[template(TemplateContext)]
 pub async fn prompt(
-    (
-        context,
-        Kwargs(PromptKwargs {
-            message,
-            default,
-            sensitive: is_sensitive,
-        }),
-    ): (&TemplateContext, Kwargs<PromptKwargs>),
+    #[context] context: &TemplateContext,
+    #[kwarg] message: Option<String>,
+    #[kwarg] default: Option<String>,
+    #[kwarg] sensitive: bool,
 ) -> Result<String, FunctionError> {
     let (tx, rx) = oneshot::channel();
     context.prompter.prompt(Prompt {
         message: message.unwrap_or_default(),
         default,
-        sensitive: is_sensitive,
+        sensitive: sensitive,
         channel: tx.into(),
     });
     let output = rx.await.map_err(|_| FunctionError::PromptNoReply)?;
@@ -139,49 +118,40 @@ pub async fn prompt(
     // This is a little wonky because the preview prompter just spits out a
     // static string anyway, but it's "technically" right and plays well in
     // tests. Also it reminds users that a prompt is sensitive in the TUI :)
-    if is_sensitive {
-        Ok(sensitive((&context, output)))
+    if sensitive {
+        Ok(mask_sensitive(&context, output))
     } else {
         Ok(output)
     }
 }
 
-/// Keyword args for both [response] and [response_headers]
-#[derive(Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ResponseKwargs {
-    /// If/when should we trigger an upstream request?
-    #[serde(default)]
-    trigger: RequestTrigger,
-}
-
 /// Load the most recent response body for a recipe and the current profile
-async fn response(
-    (context, recipe_id, Kwargs(ResponseKwargs { trigger })): (
-        &TemplateContext,
-        RecipeId,
-        Kwargs<ResponseKwargs>,
-    ),
+#[template(TemplateContext)]
+pub async fn response(
+    #[context] context: &TemplateContext,
+    #[serde] recipe_id: RecipeId,
+    #[kwarg]
+    #[serde]
+    trigger: RequestTrigger,
 ) -> Result<Vec<u8>, FunctionError> {
-    let response = context
-        .get_latest_response(process, &recipe_id, trigger)
-        .await?;
+    let response = context.get_latest_response(&recipe_id, trigger).await?;
     let body = match Arc::try_unwrap(response) {
         Ok(response) => response.body,
         Err(response) => response.body.clone(),
     };
-    body.into_bytes()
+    Ok(body.into_bytes().to_vec())
 }
 
 /// Load a header value from the most recent response for a recipe and the
 /// current profile
-async fn response_header(
-    (context, recipe_id, header, Kwargs(ResponseKwargs { trigger })): (
-        &TemplateContext,
-        RecipeId,
-        String,
-        Kwargs<ResponseKwargs>,
-    ),
+#[template(TemplateContext)]
+pub async fn response_header(
+    #[context] context: &TemplateContext,
+    #[serde] recipe_id: RecipeId,
+    header: String,
+    #[kwarg]
+    #[serde]
+    trigger: RequestTrigger,
 ) -> Result<Vec<u8>, FunctionError> {
     let response = context.get_latest_response(&recipe_id, trigger).await?;
     // Only clone the header value if necessary
@@ -192,22 +162,15 @@ async fn response_header(
     .ok_or_else(|| FunctionError::ResponseMissingHeader { header })?;
     // HeaderValue doesn't expose any way to move its bytes out so we must clone
     // https://github.com/hyperium/http/issues/661
-    header_value.as_bytes().to_vec()
-}
-
-#[derive(Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SelectKwargs {
-    message: Option<String>,
+    Ok(header_value.as_bytes().to_vec())
 }
 
 /// Ask the user to select a value from a list
-async fn select(
-    (context, options, Kwargs(SelectKwargs { message })): (
-        &TemplateContext,
-        Vec<String>,
-        Kwargs<SelectKwargs>,
-    ),
+#[template(TemplateContext)]
+pub async fn select(
+    #[context] context: &TemplateContext,
+    options: Vec<String>,
+    #[kwarg] message: Option<String>,
 ) -> Result<String, FunctionError> {
     let (tx, rx) = oneshot::channel();
     context.prompter.select(Select {
@@ -220,7 +183,15 @@ async fn select(
 }
 
 /// Hide a sensitive value if the context has show_sensitive disabled
-fn sensitive((context, value): (&TemplateContext, String)) -> String {
+#[template(TemplateContext)]
+pub fn sensitive(
+    #[context] context: &TemplateContext,
+    value: String,
+) -> String {
+    mask_sensitive(context, value)
+}
+
+fn mask_sensitive(context: &TemplateContext, value: String) -> String {
     if context.show_sensitive {
         value
     } else {
@@ -231,7 +202,7 @@ fn sensitive((context, value): (&TemplateContext, String)) -> String {
 /// Define when a recipe with a chained request should auto-execute the
 /// dependency request.
 #[derive(Copy, Clone, Debug, Default)]
-enum RequestTrigger {
+pub enum RequestTrigger {
     /// Never trigger the request. This is the default because upstream
     /// requests could be mutating, so we want the user to explicitly opt into
     /// automatic execution.
@@ -241,7 +212,7 @@ enum RequestTrigger {
     NoHistory,
     /// Trigger the request if the last response is older than some
     /// duration (or there is none in history)
-    Expire { duration: Duration },
+    Expire { duration: TimeSpan },
     /// Trigger the request every time the dependent request is rendered
     Always,
 }
@@ -281,7 +252,7 @@ impl<'de> Deserialize<'de> for RequestTrigger {
                     // Anything else is parsed as a duration
                     _ => {
                         let duration =
-                            v.parse::<Duration>().map_err(de::Error::custom)?;
+                            v.parse::<TimeSpan>().map_err(de::Error::custom)?;
                         Ok(RequestTrigger::Expire { duration })
                     }
                 }

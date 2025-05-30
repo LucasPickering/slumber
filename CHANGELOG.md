@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [3.1.2] - 2025-05-30
+
 ### Changed
 
 - Use a dedicated error state if collection fails to load on TUI launch

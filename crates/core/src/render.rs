@@ -142,7 +142,7 @@ impl slumber_template::TemplateContext for TemplateContext {
 
         // Render the nested template
         let bytes = template.render_bytes(self).await?;
-        Ok(slumber_template::Value::Bytes(bytes))
+        Ok(bytes.into())
     }
 
     async fn call(

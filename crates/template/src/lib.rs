@@ -8,10 +8,11 @@
 mod cereal;
 mod display;
 mod error;
+mod eval;
 mod function;
 mod parse;
-mod render;
 
+use bytes::{Bytes, BytesMut};
 pub use error::TemplateError;
 pub use function::{Arguments, FunctionOutput, TryFromValue};
 
@@ -94,27 +95,30 @@ impl Template {
     pub async fn render_bytes<Ctx: TemplateContext>(
         &self,
         context: &Ctx,
-    ) -> Result<Vec<u8>, TemplateError> {
+    ) -> Result<Bytes, TemplateError> {
         let chunks = self.render_chunks(context).await;
         // TODO optimize this:
         // - Pre-allocate vec with capacity
         // - Avoid reallocation where possible for single-chunk results
-        chunks.into_iter().try_fold(Vec::new(), |mut acc, chunk| {
-            match chunk {
-                RenderedChunk::Raw(s) => acc.extend(s.as_bytes()),
-                RenderedChunk::Rendered(Value::Bytes(bytes)) => {
-                    acc.extend(bytes)
+        chunks
+            .into_iter()
+            .try_fold(BytesMut::new(), |mut acc, chunk| {
+                match chunk {
+                    RenderedChunk::Raw(s) => acc.extend(s.as_bytes()),
+                    RenderedChunk::Rendered(Value::Bytes(bytes)) => {
+                        acc.extend(bytes)
+                    }
+                    RenderedChunk::Rendered(value) => acc.extend(
+                        value
+                            .try_into_string()
+                            .expect("TODO remove unwrap")
+                            .into_bytes(),
+                    ),
+                    RenderedChunk::Error(error) => return Err(error),
                 }
-                RenderedChunk::Rendered(value) => acc.extend(
-                    value
-                        .try_into_string()
-                        .expect("TODO remove unwrap")
-                        .into_bytes(),
-                ),
-                RenderedChunk::Error(error) => return Err(error),
-            }
-            Ok(acc)
-        })
+                Ok(acc)
+            })
+            .map(Bytes::from)
     }
 
     /// Render the template using values from the given context. If any chunk
@@ -126,7 +130,7 @@ impl Template {
         context: &Ctx,
     ) -> Result<String, TemplateError> {
         let bytes = self.render_bytes(context).await?;
-        String::from_utf8(bytes).map_err(TemplateError::other)
+        String::from_utf8(bytes.into()).map_err(TemplateError::other)
     }
 
     /// Render the template using values from the given context, returning the
@@ -295,13 +299,12 @@ impl From<&'static str> for Identifier {
 /// TODO
 #[derive(Clone, Debug, From, PartialEq, Serialize, Deserialize)]
 pub enum Value {
-    // TODO use Arc to make these cheaper to clone?
     Null,
     Bool(bool),
     Int(i64),
     Float(f64),
     String(String),
-    Bytes(Vec<u8>), // TODO Bytes instead?
+    Bytes(Bytes),
     Array(Vec<Self>),
     Object(IndexMap<String, Self>),
 }
@@ -343,7 +346,7 @@ impl Value {
             Self::Float(f) => Ok(f.to_string().into()),
             Self::String(s) => Ok(s),
             Self::Bytes(bytes) => {
-                String::from_utf8(bytes).map_err(TemplateError::from)
+                String::from_utf8(bytes.into()).map_err(TemplateError::from)
             }
             // Use the display impl
             Self::Array(_) | Self::Object(_) => Ok(self.to_string()),

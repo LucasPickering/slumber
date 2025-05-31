@@ -152,7 +152,7 @@ impl Display for Value {
             Self::Int(i) => write!(fmt, "{i}"),
             Self::Float(f) => write!(fmt, "{f}"),
             Self::String(s) => write!(fmt, "\"{s}\""),
-            Self::Bytes(b) => todo!(),
+            Self::Bytes(_) => todo!(),
             Self::Array(array) => {
                 write!(fmt, "[{}]", array.iter().format(", "))
             }

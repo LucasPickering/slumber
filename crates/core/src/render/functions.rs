@@ -4,6 +4,7 @@ use crate::{
     collection::RecipeId,
     render::{FunctionError, Prompt, Select, TemplateContext},
 };
+use bytes::Bytes;
 use serde::{
     Deserialize,
     de::{self, Visitor, value::SeqDeserializer},
@@ -20,7 +21,7 @@ use tracing::{debug, debug_span};
 pub async fn command(
     command: Vec<String>,
     #[kwarg] stdin: Option<String>,
-) -> Result<Vec<u8>, FunctionError> {
+) -> Result<Bytes, FunctionError> {
     let [program, args @ ..] = command.as_slice() else {
         return Err(FunctionError::CommandEmpty);
     };
@@ -61,7 +62,7 @@ pub async fn command(
         "Command success"
     );
 
-    Ok(output.stdout)
+    Ok(output.stdout.into())
 }
 
 /// Get the value of an environment variable. Return `None` if the variable is
@@ -73,11 +74,12 @@ pub fn env(variable: String) -> Option<String> {
 
 /// Load contents of a file
 #[template(TemplateContext)]
-pub async fn file(path: String) -> Result<Vec<u8>, FunctionError> {
-    fs::read(&path).await.map_err(|error| FunctionError::File {
+pub async fn file(path: String) -> Result<Bytes, FunctionError> {
+    let bytes = fs::read(&path).await.map_err(|error| FunctionError::File {
         path: path.into(),
         error,
-    })
+    })?;
+    Ok(bytes.into())
 }
 
 /// Transform a JSON value using a JSONPath query
@@ -133,13 +135,13 @@ pub async fn response(
     #[kwarg]
     #[serde]
     trigger: RequestTrigger,
-) -> Result<Vec<u8>, FunctionError> {
+) -> Result<Bytes, FunctionError> {
     let response = context.get_latest_response(&recipe_id, trigger).await?;
     let body = match Arc::try_unwrap(response) {
         Ok(response) => response.body,
         Err(response) => response.body.clone(),
     };
-    Ok(body.into_bytes().to_vec())
+    Ok(body.into_bytes())
 }
 
 /// Load a header value from the most recent response for a recipe and the
@@ -152,7 +154,7 @@ pub async fn response_header(
     #[kwarg]
     #[serde]
     trigger: RequestTrigger,
-) -> Result<Vec<u8>, FunctionError> {
+) -> Result<Bytes, FunctionError> {
     let response = context.get_latest_response(&recipe_id, trigger).await?;
     // Only clone the header value if necessary
     let header_value = match Arc::try_unwrap(response) {
@@ -162,7 +164,7 @@ pub async fn response_header(
     .ok_or_else(|| FunctionError::ResponseMissingHeader { header })?;
     // HeaderValue doesn't expose any way to move its bytes out so we must clone
     // https://github.com/hyperium/http/issues/661
-    Ok(header_value.as_bytes().to_vec())
+    Ok(header_value.as_bytes().to_vec().into())
 }
 
 /// Ask the user to select a value from a list

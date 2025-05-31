@@ -1,7 +1,7 @@
 //! General test utilities, that apply to all parts of the program
 
 use crate::{
-    collection::{ChainSource, HasId, ProfileId, RecipeId},
+    collection::{HasId, ProfileId, RecipeId},
     database::CollectionDatabase,
     http::{Exchange, HttpEngine, RequestSeed, TriggeredRequestError},
     render::{HttpProvider, Prompt, Prompter, Select, TemplateContext},
@@ -11,22 +11,14 @@ use indexmap::IndexMap;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
 use slumber_config::HttpEngineConfig;
-use slumber_util::test_data_dir;
-use std::{
-    path::PathBuf,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use slumber_template::Template;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// A chain that spits out bytes that are *not* valid UTF-8
-#[fixture]
-pub fn invalid_utf8_chain(test_data_dir: PathBuf) -> ChainSource {
-    ChainSource::File {
-        path: test_data_dir
-            .join("invalid_utf8.bin")
-            .to_string_lossy()
-            .to_string()
-            .into(),
-    }
+/// A template that spits out bytes that are *not* valid UTF-8
+pub fn invalid_utf8() -> Template {
+    // let path = test_data_dir()
+    //     .join("invalid_utf8.bin");
+    todo!()
 }
 
 /// Create an HTTP engine for building/sending requests. This is a singleton

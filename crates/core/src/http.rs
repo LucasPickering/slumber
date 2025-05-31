@@ -38,7 +38,6 @@
 pub mod content_type;
 mod curl;
 mod models;
-pub mod query;
 #[cfg(test)]
 mod tests;
 

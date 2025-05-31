@@ -275,7 +275,6 @@ mod tests {
     #[tokio::test]
     async fn test_template_stitch(
         _harness: TestHarness,
-        invalid_utf8_chain: ChainSource,
         #[case] template: Template,
         #[case] expected: Vec<Line<'static>>,
     ) {
@@ -295,7 +294,6 @@ mod tests {
         };
         let collection = Collection {
             profiles: by_id([profile]),
-            chains: by_id([chain]),
             ..Collection::factory(())
         };
         let context = TemplateContext {

@@ -345,10 +345,8 @@ impl Value {
             Self::Bytes(bytes) => {
                 String::from_utf8(bytes).map_err(TemplateError::from)
             }
-            Self::Array(value) => todo!(),
-            Self::Object(value) => {
-                todo!()
-            }
+            // Use the display impl
+            Self::Array(_) | Self::Object(_) => Ok(self.to_string()),
         }
     }
 }

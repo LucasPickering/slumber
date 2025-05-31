@@ -300,7 +300,7 @@ data:
     // Subsecond precision is lost
     #[case::seconds_subsecond_lost(Duration::from_millis(400), "0s")]
     #[case::seconds_subsecond_round_down(Duration::from_millis(1999), "1s")]
-    fn test_duration_to_string(
+    fn test_time_span_to_string(
         #[case] duration: Duration,
         #[case] expected: &'static str,
     ) {
@@ -317,7 +317,7 @@ data:
     #[case::composite("2d3h10m17s", Duration::from_secs(
         2 * 86400 + 3 * 3600 + 10 * 60 + 17
     ))]
-    fn test_duration_parse(
+    fn test_time_span_parse(
         #[case] s: &'static str,
         #[case] expected: Duration,
     ) {
@@ -330,10 +330,10 @@ data:
     #[case::trailing_whitespace("1s ", "Invalid duration")]
     #[case::decimal("3.5s", "Invalid duration")]
     #[case::invalid_unit("3hr", "Units are `s`, `m`, `h`, `d`")]
-    fn test_duration_parse_error(
+    fn test_time_span_parse_error(
         #[case] s: &'static str,
         #[case] expected_error: &str,
     ) {
-        assert_err!(s.parse::<Duration>(), expected_error);
+        assert_err!(s.parse::<TimeSpan>(), expected_error);
     }
 }

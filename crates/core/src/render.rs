@@ -126,13 +126,21 @@ impl slumber_template::TemplateContext for TemplateContext {
         &self,
         field: &slumber_template::Identifier,
     ) -> Result<slumber_template::Value, slumber_template::TemplateError> {
+        // Check overrides first. The override value is NOT treated as a
+        // template
+        if let Some(value) = self.overrides.get(field.as_str()) {
+            return Ok(value.clone().into());
+        }
+
+        // Then check the current profile
         let template = self
             .current_profile()
             .and_then(|profile| profile.data.get(field.as_str()))
             .ok_or_else(|| FunctionError::UnknownField {
                 field: field.to_string(),
             })?;
-        // TODO error context
+
+        // Render the nested template
         let bytes = template.render_bytes(self).await?;
         Ok(slumber_template::Value::Bytes(bytes))
     }

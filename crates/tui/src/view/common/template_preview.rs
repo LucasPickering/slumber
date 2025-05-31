@@ -236,9 +236,9 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use slumber_core::{
-        collection::{Chain, ChainSource, Collection, Profile},
+        collection::{Collection, Profile},
         render::TemplateContext,
-        test_util::{by_id, invalid_utf8_chain},
+        test_util::by_id,
     };
     use slumber_util::Factory;
 
@@ -287,11 +287,6 @@ mod tests {
             ..Profile::factory(())
         };
         let profile_id = profile.id.clone();
-        let chain = Chain {
-            id: "binary".into(),
-            source: invalid_utf8_chain,
-            ..Chain::factory(())
-        };
         let collection = Collection {
             profiles: by_id([profile]),
             ..Collection::factory(())

@@ -16,9 +16,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A template that spits out bytes that are *not* valid UTF-8
 pub fn invalid_utf8() -> Template {
-    // let path = test_data_dir()
-    //     .join("invalid_utf8.bin");
-    todo!()
+    "{{ b'\\xc3\\x28' }}".into()
 }
 
 /// Create an HTTP engine for building/sending requests. This is a singleton

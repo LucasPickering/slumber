@@ -71,8 +71,6 @@ impl Drop for TempDir {
 #[macro_export]
 macro_rules! assert_err {
     ($result:expr, $msg:expr) => {{
-        use itertools::Itertools as _;
-
         let error = $result.unwrap_err();
         let msg = $msg;
         let actual = format!("{error:#}");

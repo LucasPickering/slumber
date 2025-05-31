@@ -25,4 +25,4 @@ requests:
         method: POST
         url: "{{ host }}/anything"
         body:
-          !json { "data": "{{ response('examples') | jsonpath('$.data') }}" }
+          !json { "data": "{{ response('example1') | jsonpath('$.data') }}" }

@@ -1,10 +1,12 @@
 //! Template parsing
 
 use crate::{
-    Expression, FunctionCall, Identifier, Literal, Template, TemplateChunk,
+    Template, TemplateChunk,
     error::TemplateParseError,
+    expression::{Expression, FunctionCall, Identifier, Literal},
 };
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use indexmap::IndexMap;
+use std::{str::FromStr, sync::Arc};
 use winnow::{
     ModalResult, Parser,
     ascii::{dec_int, float, multispace0},
@@ -263,7 +265,7 @@ fn call(input: &mut &str) -> ModalResult<FunctionCall> {
     // - Positional arg after kwarg
     // - Repeated kwarg
     let (position, keyword) = arguments.into_iter().try_fold(
-        (Vec::new(), HashMap::new()),
+        (Vec::new(), IndexMap::new()),
         |(mut arguments, mut kwargs), argument| {
             match argument {
                 Argument::Position(expression) => {
@@ -463,7 +465,7 @@ mod tests {
     #[case::literal_float_positive("3.5", literal(3.5))]
     #[case::literal_float_scientific("3.5e3", literal(3500.0))]
     #[case::literal_string_double("\"hello\"", literal("hello"))]
-    // TODO test string escaping "
+    #[case::literal_string_double_escape(r#""hello \"""#, literal("hello \""))]
     #[case::field("field1", field("field1"))]
     #[case::array(
         "[1, \"hi\", field]", array([literal(1), literal("hi"), field("field")]),
@@ -508,7 +510,7 @@ mod tests {
     /// Test parsing expressions that don't round trip
     #[rstest]
     #[case::literal_string_single("'hello'", literal("hello"))]
-    // TODO test string escaping '
+    #[case::literal_string_single_escape(r"'hello \'", literal("hello '"))]
     #[case::array_trailing_comma("[1,]", array([literal(1)]))]
     #[case::function_trailing_comma("f(1,)", call("f", [literal(1)], []))]
     fn test_parse_expression(

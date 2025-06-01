@@ -2,29 +2,31 @@
 //! This engine is focused on rendering templates, and is generally agnostic of
 //! its usage in the rest of the app. As such, there is no logic in here
 //! relating to HTTP or other Slumber concepts.
-//!
-//! TODO update comment
 
 mod cereal;
 mod display;
 mod error;
-mod eval;
-mod function;
+mod expression;
 mod parse;
+#[cfg(test)]
+mod test_util;
 
-use bytes::{Bytes, BytesMut};
 pub use error::TemplateError;
-pub use function::{Arguments, FunctionOutput, TryFromValue};
+pub use expression::{Expression, FunctionCall, Identifier, Literal};
 
-use derive_more::{Deref, Display, derive::From};
+use crate::parse::{FALSE, NULL, TRUE};
+use bytes::{Bytes, BytesMut};
+use derive_more::From;
 use futures::future;
 use indexmap::IndexMap;
 #[cfg(test)]
 use proptest::{arbitrary::any, strategy::Strategy};
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
-
-use crate::parse::{FALSE, NULL, TRUE};
+use serde::{Deserialize, Serialize, de::IntoDeserializer};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::Debug,
+    sync::Arc,
+};
 
 /// TODO
 /// TODO rename to Context
@@ -63,7 +65,9 @@ pub struct Template {
     /// metadata.
     #[cfg_attr(
         test,
-        proptest(strategy = "any::<Vec<TemplateChunk>>().prop_map(join_raw)")
+        proptest(
+            strategy = "any::<Vec<TemplateChunk>>().prop_map(test_util::join_raw)"
+        )
     )]
     chunks: Vec<TemplateChunk>,
 }
@@ -201,7 +205,10 @@ pub enum TemplateChunk {
     ),
     /// Dynamic expression to be computed at render time
     Expression(
-        #[cfg_attr(test, proptest(strategy = "expression_arbitrary()"))]
+        #[cfg_attr(
+            test,
+            proptest(strategy = "test_util::expression_arbitrary()")
+        )]
         Expression,
     ),
 }
@@ -210,89 +217,6 @@ pub enum TemplateChunk {
 impl From<Expression> for TemplateChunk {
     fn from(expression: Expression) -> Self {
         Self::Expression(expression)
-    }
-}
-
-/// TODO
-#[derive(Clone, Debug, PartialEq)]
-pub enum Expression {
-    /// TODO
-    Literal(Literal),
-    /// TODO
-    Field(Identifier),
-    /// Array literal: `[1, "hello", f()]`
-    Array(Vec<Self>),
-    /// Call to a plain function (**not** a filter)
-    Call(FunctionCall),
-    /// TODO update comment
-    /// Data piped through a filter: `name | trim()`
-    ///
-    /// The left-hand side can be any expression, but the right-hand side must
-    /// be a function call to a filter function. Filter functions are
-    /// specifically defined to take the input "stdin" data as extra input.
-    Pipe {
-        expression: Box<Self>,
-        call: FunctionCall,
-    },
-}
-
-/// Literal primitive value
-#[derive(Clone, Debug, From, PartialEq)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum Literal {
-    Null,
-    Bool(bool),
-    Int(i64),
-    Float(f64),
-    String(String),
-}
-
-impl From<&str> for Literal {
-    fn from(value: &str) -> Self {
-        Self::String(value.to_owned())
-    }
-}
-
-/// Function call in a template expression: `f(true, 0, kwarg0="hello")`
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct FunctionCall {
-    function: Identifier,
-    /// Positional arguments
-    #[cfg_attr(
-        test,
-        proptest(
-            strategy = "proptest::collection::vec(expression_arbitrary(), 0..=3)"
-        )
-    )]
-    position: Vec<Expression>,
-    /// Keyword arguments
-    #[cfg_attr(
-        test,
-        proptest(
-            strategy = "proptest::collection::hash_map(Identifier::arbitrary(), expression_arbitrary(), 0..=3)"
-        )
-    )]
-    // TODO make this IndexMap to preserve order
-    keyword: HashMap<Identifier, Expression>,
-}
-
-/// An identifier that can be used in a template key. A valid identifier is
-/// any non-empty string that contains only alphanumeric characters, `-`, or
-/// `_`.
-///
-/// Construct via [FromStr](std::str::FromStr)
-#[derive(Clone, Debug, Deref, Default, Display, Eq, Hash, PartialEq)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct Identifier(
-    #[cfg_attr(test, proptest(regex = "[a-zA-Z0-9-_]+"))] String,
-);
-
-/// A shortcut for creating identifiers from static strings. Since the string
-/// is defined in code we're assuming it's valid.
-impl From<&'static str> for Identifier {
-    fn from(value: &'static str) -> Self {
-        Self(value.parse().unwrap())
     }
 }
 
@@ -354,6 +278,18 @@ impl Value {
     }
 }
 
+impl From<&Literal> for Value {
+    fn from(literal: &Literal) -> Self {
+        match literal {
+            Literal::Null => Value::Null,
+            Literal::Bool(b) => Value::Bool(*b),
+            Literal::Int(i) => Value::Int(*i),
+            Literal::Float(f) => Value::Float(*f),
+            Literal::String(s) => Value::String(s.clone()),
+        }
+    }
+}
+
 /// A piece of a rendered template string. A collection of chunks collectively
 /// constitutes a rendered string when displayed contiguously.
 #[derive(Debug)]
@@ -386,54 +322,181 @@ impl PartialEq for RenderedChunk {
     }
 }
 
-/// Join consecutive raw chunks in a generated template, to make it valid
-#[cfg(test)]
-fn join_raw(chunks: Vec<TemplateChunk>) -> Vec<TemplateChunk> {
-    let len = chunks.len();
-    chunks
-        .into_iter()
-        .fold(Vec::with_capacity(len), |mut chunks, chunk| {
-            match (chunks.last_mut(), chunk) {
-                // If previous and current are both raw, join them together
-                (
-                    Some(TemplateChunk::Raw(previous)),
-                    TemplateChunk::Raw(current),
-                ) => {
-                    // The current string is inside an Arc so we can't push
-                    // into it, we have to clone it out :(
-                    let mut concat =
-                        String::with_capacity(previous.len() + current.len());
-                    concat.push_str(previous);
-                    concat.push_str(&current);
-                    *previous = concat.into();
-                }
-                (_, chunk) => chunks.push(chunk),
-            }
-            chunks
-        })
+/// Arguments passed to a function call
+///
+/// This container holds all the data a template function may need to construct
+/// its own arguments. All given positional and keyword arguments are expected
+/// to be used, and [assert_consumed](Self::assert_consumed) should be called
+/// after extracting arguments to ensure no additional ones were passed.
+#[derive(Debug)]
+pub struct Arguments<'ctx, Ctx> {
+    /// Arbitrary user-provided context available to every template render and
+    /// function call
+    pub(crate) context: &'ctx Ctx,
+    /// Position arguments. This queue will be drained from the front as
+    /// arguments are converted, and additional arguments not accepted by the
+    /// function will trigger an error.
+    pub(crate) position: VecDeque<Value>,
+    /// Keyword arguments. These will be converted wholesale as a single map,
+    /// as there's no Rust support for kwargs. All keyword arguments are
+    /// optional.
+    pub(crate) keyword: HashMap<String, Value>,
 }
 
-/// Generate an arbitrary expression. This needs a manual implementation because
-/// it's recursive. Actually implementing Arbitrary manually is a pain because
-/// we need to name the generated Strategy type. Using a free function and
-/// attaching it to the parent is much easier because we can just return
-/// `impl Strategy`
-#[cfg(test)]
-fn expression_arbitrary() -> impl Strategy<Value = Expression> {
-    // This has to be implemented manually because it's recursive
-    // https://proptest-rs.github.io/proptest/proptest/tutorial/recursive.html
-    use proptest::{collection, prop_oneof};
+impl<'ctx, Ctx> Arguments<'ctx, Ctx> {
+    /// Get a reference to the template context
+    pub fn context(&self) -> &'ctx Ctx {
+        self.context
+    }
 
-    let leaf = prop_oneof![
-        any::<Literal>().prop_map(Expression::Literal),
-        any::<Identifier>().prop_map(Expression::Field),
-    ];
-    const COLLECTION_SIZE: usize = 5;
-    leaf.prop_recursive(5, 256, COLLECTION_SIZE as u32, |inner| {
-        prop_oneof![
-            // Define recursive cases
-            collection::vec(inner.clone(), 0..COLLECTION_SIZE)
-                .prop_map(Expression::Array),
-        ]
-    })
+    /// Pop the next positional argument off the front of the queue and convert
+    /// it to type `T` using its [TryFromValue] implementation. Return an error
+    /// if there are no positional arguments left or the conversion fails.
+    pub fn pop_position<T: TryFromValue>(
+        &mut self,
+    ) -> Result<T, TemplateError> {
+        let value = self
+            .position
+            .pop_front()
+            .ok_or(TemplateError::NotEnoughArguments)?;
+        T::try_from_value(value)
+    }
+
+    /// Pop the next positional argument off the front of the queue and convert
+    /// it to type `T` using its [Deserialize] implementation. Return an error
+    /// if there are no positional arguments left or the conversion fails.
+    pub fn pop_position_serde<'de, T: Deserialize<'de>>(
+        &mut self,
+    ) -> Result<T, TemplateError> {
+        let value = self
+            .position
+            .pop_front()
+            .ok_or(TemplateError::NotEnoughArguments)?;
+        T::deserialize(value.into_deserializer())
+    }
+
+    /// Remove a keyword argument from the argument set, converting it to type
+    /// `T` using its [TryFromValue] implementation. Return an error if the
+    /// keyword argument does not exist or the conversion fails.
+    pub fn pop_keyword<T: Default + TryFromValue>(
+        &mut self,
+        name: &str,
+    ) -> Result<T, TemplateError> {
+        match self.keyword.remove(name) {
+            Some(value) => T::try_from_value(value),
+            // Kwarg not provided - use the default value
+            None => Ok(T::default()),
+        }
+    }
+
+    /// Remove a keyword argument from the argument set, converting it to type
+    /// `T` using its [Deserialize] implementation. Return an error if the
+    /// keyword argument does not exist or the conversion fails.
+    pub fn pop_keyword_serde<'de, T: Default + Deserialize<'de>>(
+        &mut self,
+        name: &str,
+    ) -> Result<T, TemplateError> {
+        match self.keyword.remove(name) {
+            Some(value) => T::deserialize(value.into_deserializer()),
+            // Kwarg not provided - use the default value
+            None => Ok(T::default()),
+        }
+    }
+
+    /// Ensure that all positional and keyword arguments have been consumed.
+    /// Return an error if any arguments were passed by the user but not
+    /// consumed by the function implementation.
+    pub fn ensure_consumed(self) -> Result<(), TemplateError> {
+        if self.position.is_empty() && self.keyword.is_empty() {
+            Ok(())
+        } else {
+            Err(TemplateError::TooManyArguments {
+                position: self.position.into(),
+                keyword: self.keyword,
+            })
+        }
+    }
+}
+
+/// Convert [Value] to a type fallibly
+///
+/// This is used for converting function arguments to the static types expected
+/// by the function implementations.
+pub trait TryFromValue: Sized {
+    fn try_from_value(value: Value) -> Result<Self, TemplateError>;
+}
+
+impl TryFromValue for bool {
+    fn try_from_value(value: Value) -> Result<Self, TemplateError> {
+        Ok(value.to_bool())
+    }
+}
+
+impl TryFromValue for String {
+    fn try_from_value(value: Value) -> Result<Self, TemplateError> {
+        // This will succeed for anything other than invalid UTF-8 bytes
+        value.try_into_string()
+    }
+}
+
+impl<T> TryFromValue for Option<T>
+where
+    T: TryFromValue,
+{
+    fn try_from_value(value: Value) -> Result<Self, TemplateError> {
+        if let Value::Null = value {
+            Ok(None)
+        } else {
+            T::try_from_value(value).map(Some)
+        }
+    }
+}
+
+/// Convert an array to a list
+impl<T> TryFromValue for Vec<T>
+where
+    T: TryFromValue,
+{
+    fn try_from_value(value: Value) -> Result<Self, TemplateError> {
+        if let Value::Array(array) = value {
+            array.into_iter().map(T::try_from_value).collect()
+        } else {
+            Err(TemplateError::Type {
+                expected: "array",
+                actual: value,
+            })
+        }
+    }
+}
+
+/// Convert any value into `Result<Value, TemplateError>`
+///
+/// This is used for converting function outputs back to template values.
+pub trait FunctionOutput {
+    fn into_result(self) -> Result<Value, TemplateError>;
+}
+
+impl<T> FunctionOutput for T
+where
+    Value: From<T>,
+{
+    fn into_result(self) -> Result<Value, TemplateError> {
+        Ok(self.into())
+    }
+}
+
+impl<T, E> FunctionOutput for Result<T, E>
+where
+    T: Into<Value> + Send + Sync,
+    E: Into<TemplateError> + Send + Sync,
+{
+    fn into_result(self) -> Result<Value, TemplateError> {
+        self.map(T::into).map_err(E::into)
+    }
+}
+
+impl<T: FunctionOutput> FunctionOutput for Option<T> {
+    fn into_result(self) -> Result<Value, TemplateError> {
+        self.map(T::into_result).unwrap_or(Ok(Value::Null))
+    }
 }

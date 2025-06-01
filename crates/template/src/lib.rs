@@ -189,6 +189,13 @@ impl<const N: usize> From<[TemplateChunk; N]> for Template {
     }
 }
 
+#[cfg(any(test, feature = "test"))]
+impl From<serde_json::Value> for Template {
+    fn from(value: serde_json::Value) -> Self {
+        format!("{value:#}").into()
+    }
+}
+
 /// A parsed piece of a template. After parsing, each chunk is either raw text
 /// or a parsed key, ready to be rendered.
 #[derive(Clone, Debug, PartialEq)]

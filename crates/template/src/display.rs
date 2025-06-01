@@ -106,7 +106,7 @@ impl Display for Literal {
             Literal::Int(i) => write!(fmt, "{i}"),
             Literal::Float(f) => write!(fmt, "{f}"),
             // TODO escape quotes
-            Literal::String(s) => write!(fmt, "\"{s}\""),
+            Literal::String(s) => write!(fmt, "'{s}'"),
         }
     }
 }

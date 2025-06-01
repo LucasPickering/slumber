@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     collection::{Authentication, Collection, Profile},
-    test_util::{TestPrompter, by_id, header_map, http_engine},
+    test_util::{TestPrompter, by_id, header_map, http_engine, invalid_utf8},
 };
 use indexmap::{IndexMap, indexmap};
 use pretty_assertions::assert_eq;
@@ -183,14 +183,14 @@ async fn test_build_url(http_engine: &HttpEngine) {
 )]
 #[case::json(
     RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).to_string().into(),
+        body: json!({"group_id": "{{group_id}}"}).into(),
         content_type: Some(ContentType::Json),
     },
     b"{\n  \"group_id\": \"3\"\n}",
 )]
 #[case::binary(
     RecipeBody::Raw {
-        body: "{{chains.binary}}".into(),
+        body: invalid_utf8(),
         content_type: None,
     },
     b"\xc3\x28",
@@ -282,7 +282,7 @@ async fn test_authentication(
 #[rstest]
 #[case::json(
     RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).to_string().into(),
+        body: json!({"group_id": "{{group_id}}"}).into(),
         content_type: Some(ContentType::Json),
     },
     None,
@@ -293,7 +293,7 @@ async fn test_authentication(
 // Content-Type has been overridden by an explicit header
 #[case::json_content_type_override(
     RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).to_string().into(),
+        body: json!({"group_id": "{{group_id}}"}).into(),
         content_type: Some(ContentType::Json),
     },
     Some("text/plain"),
@@ -323,7 +323,7 @@ async fn test_authentication(
 #[case::form_multipart(
     RecipeBody::FormMultipart(indexmap! {
         "user_id".into() => "{{user_id}}".into(),
-        "binary".into() => "{{chains.binary}}".into()
+        "binary".into() => invalid_utf8(),
     }),
     None,
     // multipart bodies are automatically turned into streams by reqwest,

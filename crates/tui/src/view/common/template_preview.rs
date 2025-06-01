@@ -269,7 +269,7 @@ mod tests {
         ]
     )]
     #[case::binary(
-        "binary data: {{chains.binary}}",
+        r"binary data: {{ b'\xc3\x28' }}",
         vec![Line::from(vec![Span::raw("binary data: "), rendered("<binary>")])]
     )]
     #[tokio::test]

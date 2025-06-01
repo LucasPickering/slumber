@@ -339,26 +339,22 @@ mod tests {
     /// of enums is a bit different, and we specifically only care about YAML.
     #[rstest]
     #[case::raw(
-        RecipeBody::Raw { body: "{{user_id}}".into(), content_type: None },
-        "{{user_id}}"
+        RecipeBody::Raw { body: "{{ user_id }}".into(), content_type: None },
+        "{{ user_id }}"
     )]
     #[case::json(
         RecipeBody::Raw {
-            body: serde_json::to_string_pretty(&json!({"user": "{{user_id}}"}))
-                .unwrap()
-                .into(),
+            body: json!({"user": "{{ user_id }}"}).into(),
             content_type: Some(ContentType::Json),
         },
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
-            value: mapping([("user", "{{user_id}}")])
+            value: mapping([("user", "{{ user_id }}")])
         })),
     )]
     #[case::json_nested(
         RecipeBody::Raw {
-            body: serde_json::to_string_pretty(
-                &json!(r#"{"warning": "NOT an object"}"#)
-            ).unwrap().into(),
+            body: json!(r#"{"warning": "NOT an object"}"#).into(),
             content_type: Some(ContentType::Json),
         },
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
@@ -368,14 +364,14 @@ mod tests {
     )]
     #[case::form_urlencoded(
         RecipeBody::FormUrlencoded(indexmap! {
-            "username".into() => "{{username}}".into(),
-            "password".into() => "{{chains.password}}".into(),
+            "username".into() => "{{ username }}".into(),
+            "password".into() => "{{ prompt('Password', sensitive=true) }}".into(),
         }),
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("form_urlencoded"),
             value: mapping([
-                ("username", "{{username}}"),
-                ("password", "{{chains.password}}"),
+                ("username", "{{ username }}"),
+                ("password", "{{ prompt('Password', sensitive=true) }}"),
             ])
         }))
     )]
@@ -412,7 +408,7 @@ mod tests {
     #[case::raw_tag(
         serde_yaml::Value::Tagged(Box::new(TaggedValue{
             tag: Tag::new("raw"),
-            value: "{{user_id}}".into()
+            value: "{{ user_id }}".into()
         })),
         "unknown variant `raw`, expected one of \
         `json`, `form_urlencoded`, `form_multipart`",
@@ -420,9 +416,9 @@ mod tests {
     #[case::form_urlencoded_wrong_type(
         serde_yaml::Value::Tagged(Box::new(TaggedValue{
             tag: Tag::new("form_urlencoded"),
-            value: "{{user_id}}".into()
+            value: "{{ user_id }}".into()
         })),
-        "invalid type: string \"{{user_id}}\", expected a map"
+        "invalid type: string \"{{ user_id }}\", expected a map"
     )]
     fn test_deserialize_recipe_error(
         #[case] yaml: impl Into<serde_yaml::Value>,

@@ -128,13 +128,10 @@ mod tests {
                         method: HttpMethod::Post,
                         url: "{{ host }}/anything".into(),
                         body: Some(RecipeBody::Raw {
-                            body: format!(
-                                "{:#}",
-                                json!({
-                                    "data": "{{ response('example1') \
-                                    | jsonpath('$.data') }}"
-                                })
-                            )
+                            body: json!({
+                                "data": "{{ response('example1') \
+                                | jsonpath('$.data') }}"
+                            })
                             .into(),
                             content_type: Some(ContentType::Json),
                         }),

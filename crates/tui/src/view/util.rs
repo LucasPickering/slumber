@@ -22,6 +22,7 @@ use ratatui::{
 use slumber_core::template::{Prompt, Prompter, ResponseChannel, Select};
 use slumber_util::ResultTraced;
 use std::{io::Write, path::Path};
+use tracing::trace;
 
 /// A data structure for representation a yes/no confirmation. This is similar
 /// to [Prompt], but it only asks a yes/no question.
@@ -139,6 +140,7 @@ pub fn view_text(text: &Text, mime: Option<Mime>) {
     }
 
     let path = temp_file();
+    trace!(?path, "Writing body to temporary file");
     let result = helper(text, &path)
         .with_context(|| format!("Error writing to file {path:?}"))
         .traced();

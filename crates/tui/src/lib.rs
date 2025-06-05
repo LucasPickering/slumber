@@ -33,7 +33,6 @@ use std::{
     io::{self, Stdout},
     ops::Deref,
     path::PathBuf,
-    process::Command,
     time::Duration,
 };
 use tokio::{
@@ -41,7 +40,7 @@ use tokio::{
     sync::mpsc::{self, UnboundedReceiver},
     task, time,
 };
-use tracing::{debug, error, info, info_span, trace};
+use tracing::{debug, error, info, trace};
 
 /// Main controller struct for the TUI. The app uses a React-ish architecture
 /// for the view, with a wrapping controller (this struct)
@@ -184,7 +183,12 @@ impl Tui {
     /// Handle an incoming message. Any error here will be displayed as a modal
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
-            Message::Command(command) => self.run_command(command),
+            Message::ClearTerminal { message } => {
+                self.terminal.draw(|frame| {
+                    frame.render_widget(message, frame.area());
+                })?;
+                Ok(())
+            }
 
             // This message exists just to trigger a draw
             Message::Draw => Ok(()),
@@ -242,45 +246,6 @@ impl Tui {
     /// Draw the view onto the screen
     fn draw(&mut self) -> anyhow::Result<()> {
         self.terminal.draw(|frame| self.state.draw(frame))?;
-        Ok(())
-    }
-
-    /// Run a **blocking** subprocess that will take over the terminal. Used
-    /// for opening an external editor or pager.
-    fn run_command(&mut self, mut command: Command) -> anyhow::Result<()> {
-        let span = info_span!("Running command", ?command).entered();
-        let error_context = format!("Error spawning command `{command:?}`");
-
-        // Block while the editor runs. Useful for terminal editors since
-        // they'll take over the whole screen. Potentially annoying for GUI
-        // editors that block, but we'll just hope the command is
-        // fire-and-forget. If this becomes an issue we can try to detect if the
-        // subprocess took over the terminal and cut it loose if not, or add a
-        // config field for it.
-        self.terminal.draw(|frame| {
-            frame.render_widget(
-                "Waiting for subprocess to close...",
-                frame.area(),
-            );
-        })?;
-
-        let mut stdout = io::stdout();
-        crossterm::execute!(stdout, LeaveAlternateScreen)?;
-        command.status().context(error_context)?;
-        // Some editors *cough* vim *cough* dump garbage to the event buffer on
-        // exit. I've never figured out what actually causes it, but a simple
-        // solution is to dump all events in the buffer before returning to
-        // Slumber. It's possible we lose some real user input here (e.g. if
-        // other events were queued behind the event to open the editor).
-        util::clear_event_buffer();
-        crossterm::execute!(stdout, EnterAlternateScreen)?;
-        drop(span);
-
-        // Redraw immediately. The main loop will probably be in the tick
-        // timeout when we go back to it, so that adds a 250ms delay to
-        // redrawing the screen that we want to skip.
-        self.draw()?;
-
         Ok(())
     }
 }

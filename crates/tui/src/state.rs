@@ -270,7 +270,7 @@ impl LoadedState {
             Message::CollectionEdit => {
                 let path = self.collection_file.path().to_owned();
                 let command = util::get_editor_command(&path)?;
-                self.messages_tx.send(Message::Command(command));
+                util::yield_terminal(command, &self.messages_tx)?;
             }
             Message::CopyRequestUrl => self.copy_request_url()?,
             Message::CopyRequestBody => self.copy_request_body()?,
@@ -288,16 +288,18 @@ impl LoadedState {
             }
             Message::FileEdit { path, on_complete } => {
                 let command = util::get_editor_command(&path)?;
-                self.messages_tx.send(Message::Command(command));
+                util::yield_terminal(command, &self.messages_tx)?;
                 on_complete(path);
-                // The callback may queue an event to read the file, so we can't
-                // delete it yet. Caller is responsible for cleaning up
             }
             Message::FileView { path, mime } => {
                 let command = util::get_pager_command(&path, mime.as_ref())?;
-                self.messages_tx.send(Message::Command(command));
-                // We don't need to read the contents back so we can clean up
+                let result = util::yield_terminal(command, &self.messages_tx);
+                // We don't need to read the contents back so we can clean up.
+                // Do this regardless of if the command passed. This could be a
+                // bit cleaner with a newtype on the PathBuf that deletes the
+                // file on drop
                 util::delete_temp_file(&path);
+                result?;
             }
             Message::Error { error } => self.view.open_modal(error),
             Message::HttpBeginRequest => self.send_request()?,
@@ -360,7 +362,7 @@ impl LoadedState {
 
             // All other messages are handled by the root TUI and should never
             // get here
-            Message::Command(_) | Message::Quit | Message::Draw => {
+            Message::ClearTerminal { .. } | Message::Quit | Message::Draw => {
                 panic!(
                     "Unexpected message in TuiState; should have been handled \
                     by parent: {message:?}"

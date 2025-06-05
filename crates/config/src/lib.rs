@@ -135,7 +135,7 @@ impl Config {
                 // config
                 if let io::ErrorKind::NotFound = err.kind() {
                     let _ = create_parent(&path)
-                        .and_then(|_| {
+                        .and_then(|()| {
                             File::create_new(&path)?;
                             Ok(())
                         })

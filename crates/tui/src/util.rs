@@ -5,7 +5,10 @@ use crate::{
 };
 use anyhow::{Context, bail};
 use bytes::Bytes;
-use crossterm::event;
+use crossterm::{
+    event,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
+};
 use editor_command::EditorBuilder;
 use futures::{FutureExt, future};
 use mime::Mime;
@@ -29,7 +32,7 @@ use tokio::{
     task::{self, JoinHandle},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, debug_span, error, info, warn};
+use tracing::{debug, debug_span, error, info, info_span, warn};
 use uuid::Uuid;
 
 /// Token to manage cancellation of background tasks
@@ -71,6 +74,65 @@ impl Flag {
     pub fn set(&mut self) {
         self.0 = true;
     }
+}
+
+/// Run a **blocking** subprocess that will take over the terminal. Used
+/// for opening an external editor or pager. Useful for terminal editors since
+/// they'll take over the whole screen. Potentially annoying for GUI editors
+/// that block, but we'll just hope the command is fire-and-forget. If this
+/// becomes an issue we can try to detect if the subprocess took over the
+/// terminal and cut it loose if not, or add a config field for it.
+pub fn yield_terminal(
+    mut command: Command,
+    messages_tx: &MessageSender,
+) -> anyhow::Result<()> {
+    let span = info_span!("Running command", ?command).entered();
+    let error_context = format!("Error spawning command `{command:?}`");
+
+    // Clear the terminal and display a message. For terminal programs this
+    // will only be displayed briefly, but for GUI editors it will be helpful
+    messages_tx.send(Message::ClearTerminal {
+        message: "Waiting for subprocess to close...",
+    });
+
+    let mut stdout = io::stdout();
+    crossterm::execute!(stdout, LeaveAlternateScreen)?;
+
+    // Run the command. Make sure to perform cleanup even if the command
+    // failed
+    let command_result = command
+        .status()
+        .map_err(anyhow::Error::from)
+        .and_then(|status| {
+            if status.success() {
+                info!(status = status.code(), "Command succeeded");
+                Ok(())
+            } else {
+                // It would be nice to log stdout/stderr here, but we can't
+                // capture them because some commands (e.g. `less`) will behave
+                // differently when redirected
+                error!(status = status.code(), "Command failed");
+                // Show the error to the user
+                Err(anyhow::anyhow!("Command failed with status {}", status))
+            }
+        })
+        .context(error_context);
+
+    // Some editors *cough* vim *cough* dump garbage to the event buffer on
+    // exit. I've never figured out what actually causes it, but a simple
+    // solution is to dump all events in the buffer before returning to
+    // Slumber. It's possible we lose some real user input here (e.g. if
+    // other events were queued behind the event to open the editor).
+    clear_event_buffer();
+    crossterm::execute!(stdout, EnterAlternateScreen)?;
+    drop(span);
+
+    // Redraw immediately. The main loop will probably be in the tick
+    // timeout when we go back to it, so that adds a 250ms delay to
+    // redrawing the screen that we want to skip.
+    messages_tx.send(Message::Draw);
+
+    command_result
 }
 
 /// Clear all input events in the terminal event buffer

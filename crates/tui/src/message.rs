@@ -15,7 +15,7 @@ use slumber_core::{
     template::{Prompt, ResponseChannel, Select, Template, TemplateChunk},
 };
 use slumber_util::ResultTraced;
-use std::{fmt::Debug, path::PathBuf, process::Command, sync::Arc};
+use std::{fmt::Debug, path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
@@ -46,16 +46,16 @@ impl MessageSender {
 /// context), but are all handled by the top-level controller.
 #[derive(derive_more::Debug)]
 pub enum Message {
+    /// Clear the terminal and display a message. Use this before deferring to
+    /// a subprocess
+    ClearTerminal { message: &'static str },
+
     /// Trigger collection reload
     CollectionStartReload,
     /// Store a reloaded collection value in state
     CollectionEndReload(Collection),
     /// Open the collection in the user's editor
     CollectionEdit,
-
-    /// Run a command in a **blocking** subprocess. The command will take over
-    /// the screen while running. Use for editors.
-    Command(Command),
 
     /// Show a yes/no confirmation to the user. Use the included channel to
     /// return the value.

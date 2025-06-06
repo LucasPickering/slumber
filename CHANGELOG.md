@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Fix pager view action (regression in 3.1.2)
+- Fully restore terminal before exiting to editor/pager
+  - This means any stdout/stderr that the external process writes will be properly formatted in the terminal
 
 ## [3.1.2] - 2025-05-30
 

@@ -362,7 +362,7 @@ impl LoadedState {
 
             // All other messages are handled by the root TUI and should never
             // get here
-            Message::ClearTerminal { .. } | Message::Quit | Message::Draw => {
+            Message::ClearTerminal | Message::Quit | Message::Draw => {
                 panic!(
                     "Unexpected message in TuiState; should have been handled \
                     by parent: {message:?}"

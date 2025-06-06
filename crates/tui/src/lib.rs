@@ -90,7 +90,9 @@ impl Tui {
         // The code to revert the terminal takeover is in `Tui::drop`, so we
         // shouldn't take over the terminal until right before creating the
         // `Tui`.
-        let terminal = initialize_terminal()?;
+        initialize_panic_handler();
+        initialize_terminal()?;
+        let terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
 
         let app = Tui {
             terminal,
@@ -183,10 +185,8 @@ impl Tui {
     /// Handle an incoming message. Any error here will be displayed as a modal
     fn handle_message(&mut self, message: Message) -> anyhow::Result<()> {
         match message {
-            Message::ClearTerminal { message } => {
-                self.terminal.draw(|frame| {
-                    frame.render_widget(message, frame.area());
-                })?;
+            Message::ClearTerminal => {
+                self.terminal.clear()?;
                 Ok(())
             }
 

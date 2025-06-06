@@ -46,9 +46,8 @@ impl MessageSender {
 /// context), but are all handled by the top-level controller.
 #[derive(derive_more::Debug)]
 pub enum Message {
-    /// Clear the terminal and display a message. Use this before deferring to
-    /// a subprocess
-    ClearTerminal { message: &'static str },
+    /// Clear the terminal. Use this before deferring to a subprocess
+    ClearTerminal,
 
     /// Trigger collection reload
     CollectionStartReload,

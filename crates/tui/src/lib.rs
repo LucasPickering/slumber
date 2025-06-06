@@ -21,10 +21,7 @@ use crate::{
     util::{CANCEL_TOKEN, ResultReported},
 };
 use anyhow::Context;
-use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
-};
+use crossterm::event::{Event, EventStream};
 use futures::{StreamExt, pin_mut};
 use ratatui::{Terminal, prelude::CrosstermBackend};
 use slumber_config::{Action, Config};
@@ -40,7 +37,7 @@ use tokio::{
     sync::mpsc::{self, UnboundedReceiver},
     task, time,
 };
-use tracing::{debug, error, info, trace};
+use tracing::{error, info, trace};
 
 /// Main controller struct for the TUI. The app uses a React-ish architecture
 /// for the view, with a wrapping controller (this struct)
@@ -91,7 +88,7 @@ impl Tui {
         // shouldn't take over the terminal until right before creating the
         // `Tui`.
         initialize_panic_handler();
-        initialize_terminal()?;
+        util::initialize_terminal()?;
         let terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
 
         let app = Tui {
@@ -253,7 +250,7 @@ impl Tui {
 /// Restore terminal on app exit
 impl Drop for Tui {
     fn drop(&mut self) {
-        if let Err(err) = restore_terminal() {
+        if let Err(err) = util::restore_terminal() {
             error!(error = err.deref(), "Error restoring terminal, sorry!");
         }
     }
@@ -263,29 +260,7 @@ impl Drop for Tui {
 fn initialize_panic_handler() {
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        let _ = restore_terminal();
+        let _ = util::restore_terminal();
         original_hook(panic_info);
     }));
-}
-
-/// Set up terminal for TUI
-fn initialize_terminal() -> anyhow::Result<Term> {
-    initialize_panic_handler();
-    crossterm::terminal::enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    crossterm::execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    Ok(Terminal::new(backend)?)
-}
-
-/// Return terminal to initial state
-fn restore_terminal() -> anyhow::Result<()> {
-    debug!("Restoring terminal");
-    crossterm::terminal::disable_raw_mode()?;
-    crossterm::execute!(
-        io::stdout(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    Ok(())
 }

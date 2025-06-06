@@ -1,6 +1,6 @@
 use crate::{
     message::Message,
-    util::{ResultReported, delete_temp_file, temp_file},
+    util::{ResultReported, TempFile},
     view::{
         Component, ViewContext,
         common::{
@@ -27,10 +27,7 @@ use slumber_core::{
     http::content_type::ContentType,
     template::Template,
 };
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::fs;
 use strum::{EnumIter, IntoEnumIterator};
 use tracing::debug;
 
@@ -157,37 +154,33 @@ impl RawBody {
     /// the body to a temp file so the editor subprocess can access it. We'll
     /// read it back later.
     fn open_editor(&mut self) {
-        let path = temp_file();
-        debug!(?path, "Writing body to file for editing");
-        let Some(()) =
-            fs::write(&path, self.body.template().display().as_bytes())
-                .with_context(|| {
-                    format!("Error writing body to file {path:?} for editing")
-                })
+        let Some(file) =
+            TempFile::new(self.body.template().display().as_bytes())
                 .reported(&ViewContext::messages_tx())
         else {
             // Write failed
             return;
         };
+        debug!(?file, "Wrote body to file for editing");
 
         let emitter = self.override_emitter;
         ViewContext::send_message(Message::FileEdit {
-            path,
-            on_complete: Box::new(move |path| {
-                emitter.emit(SaveBodyOverride(path));
+            file,
+            on_complete: Box::new(move |file| {
+                emitter.emit(SaveBodyOverride(file));
             }),
         });
     }
 
     /// Read the user's edited body from the temp file we created, and rebuild
     /// the body from that
-    fn load_override(&mut self, path: &Path) {
+    fn load_override(&mut self, file: TempFile) {
         // Read the body back from the temp file we handed to the editor, then
         // delete it to prevent cluttering the disk
-        debug!(?path, "Reading edited body from file");
-        let Some(body) = fs::read_to_string(path)
+        debug!(?file, "Reading edited body from file");
+        let Some(body) = fs::read_to_string(file.path())
             .with_context(|| {
-                format!("Error reading edited body from file {path:?}")
+                format!("Error reading edited body from file {:?}", file.path())
             })
             .reported(&ViewContext::messages_tx())
         else {
@@ -195,9 +188,6 @@ impl RawBody {
             // read failed it's very unlikely the delete would succeed
             return;
         };
-
-        // Clean up after ourselves
-        delete_temp_file(path);
 
         let Some(template) = body
             .parse::<Template>()
@@ -222,8 +212,8 @@ impl EventHandler for RawBody {
                 Action::Reset => self.body.reset_override(),
                 _ => propagate.set(),
             })
-            .emitted(self.override_emitter, |SaveBodyOverride(path)| {
-                self.load_override(&path);
+            .emitted(self.override_emitter, |SaveBodyOverride(file)| {
+                self.load_override(file);
             })
             .emitted(self.actions_emitter, |menu_action| match menu_action {
                 RawBodyMenuAction::View => self.view_body(),
@@ -313,7 +303,7 @@ impl IntoMenuAction<RawBody> for RawBodyMenuAction {
 /// Local event to save a user's override body. Triggered from the on_complete
 /// callback when the user closes the editor.
 #[derive(Debug)]
-struct SaveBodyOverride(PathBuf);
+struct SaveBodyOverride(TempFile);
 
 #[cfg(test)]
 mod tests {
@@ -361,18 +351,18 @@ mod tests {
         // Open the editor
         harness.clear_messages();
         component.int().send_key(KeyCode::Char('e')).assert_empty();
-        let (path, on_complete) = assert_matches!(
+        let (file, on_complete) = assert_matches!(
             harness.pop_message_now(),
             Message::FileEdit {
-                path,
+                file,
                 on_complete,
-            } => (path, on_complete),
+            } => (file, on_complete),
         );
-        assert_eq!(fs::read(&path).unwrap(), b"hello!");
+        assert_eq!(fs::read(file.path()).unwrap(), b"hello!");
 
         // Simulate the editor modifying the file
-        fs::write(&path, "goodbye!").unwrap();
-        on_complete(path);
+        fs::write(file.path(), "goodbye!").unwrap();
+        on_complete(file);
         component.int().drain_draw().assert_empty();
 
         assert_eq!(

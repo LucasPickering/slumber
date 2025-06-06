@@ -1,7 +1,7 @@
 //! Async message passing! This is how inputs and other external events trigger
 //! state updates.
 
-use crate::view::Confirm;
+use crate::{util::TempFile, view::Confirm};
 use anyhow::Context;
 use derive_more::From;
 use mime::Mime;
@@ -15,7 +15,7 @@ use slumber_core::{
     template::{Prompt, ResponseChannel, Select, Template, TemplateChunk},
 };
 use slumber_util::ResultTraced;
-use std::{fmt::Debug, path::PathBuf, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::trace;
 
@@ -78,15 +78,16 @@ pub enum Message {
 
     /// Open a file in the user's external editor
     FileEdit {
-        path: PathBuf,
-        /// Function to call once the edit is done. The original path will be
-        /// passed back
+        file: TempFile,
+        /// Function to call once the edit is done. The original file will be
+        /// passed back so the caller can read its contents before it gets
+        /// dropped+deleted.
         #[debug(skip)]
-        on_complete: Callback<PathBuf>,
+        on_complete: Callback<TempFile>,
     },
     /// Open a file to be viewed in the user's external pager
     FileView {
-        path: PathBuf,
+        file: TempFile,
         /// MIME type of the file being viewed
         mime: Option<Mime>,
     },

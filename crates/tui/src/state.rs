@@ -286,20 +286,18 @@ impl LoadedState {
                     },
                 )?;
             }
-            Message::FileEdit { path, on_complete } => {
-                let command = util::get_editor_command(&path)?;
+            Message::FileEdit { file, on_complete } => {
+                let command = util::get_editor_command(file.path())?;
                 util::yield_terminal(command, &self.messages_tx)?;
-                on_complete(path);
+                on_complete(file);
             }
-            Message::FileView { path, mime } => {
-                let command = util::get_pager_command(&path, mime.as_ref())?;
-                let result = util::yield_terminal(command, &self.messages_tx);
-                // We don't need to read the contents back so we can clean up.
-                // Do this regardless of if the command passed. This could be a
-                // bit cleaner with a newtype on the PathBuf that deletes the
-                // file on drop
-                util::delete_temp_file(&path);
-                result?;
+            Message::FileView { file, mime } => {
+                let command =
+                    util::get_pager_command(file.path(), mime.as_ref())?;
+                util::yield_terminal(command, &self.messages_tx)?;
+                // Dropping the file deletes it, so we can't do it until after
+                // the command is done
+                drop(file);
             }
             Message::Error { error } => self.view.open_modal(error),
             Message::HttpBeginRequest => self.send_request()?,

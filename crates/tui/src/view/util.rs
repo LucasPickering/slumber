@@ -5,10 +5,9 @@ pub mod persistence;
 
 use crate::{
     message::{Message, MessageSender},
-    util::temp_file,
+    util::{ResultReported, TempFile},
     view::ViewContext,
 };
-use anyhow::Context;
 use chrono::{
     DateTime, Duration, Local, Utc,
     format::{DelayedFormat, StrftimeItems},
@@ -20,8 +19,7 @@ use ratatui::{
     text::{Line, Text},
 };
 use slumber_core::template::{Prompt, Prompter, ResponseChannel, Select};
-use slumber_util::ResultTraced;
-use std::{io::Write, path::Path};
+use std::io::Write;
 use tracing::trace;
 
 /// A data structure for representation a yes/no confirmation. This is similar
@@ -122,13 +120,9 @@ pub fn str_to_text(s: &str) -> Text<'static> {
 /// should be the value of an associated `Content-Type` header, if any. This is
 /// used to select the correct pager command.
 pub fn view_text(text: &Text, mime: Option<Mime>) {
-    // Shitty try block
-    fn helper(text: &Text, path: &Path) -> anyhow::Result<()> {
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(path)?;
+    // Write text to the file line-by-line. This avoids having to copy the bytes
+    // to a single chunk of bytes just to write them out
+    let Some(file) = TempFile::with_file(|file| {
         for line in &text.lines {
             for span in &line.spans {
                 file.write_all(span.content.as_bytes())?;
@@ -137,17 +131,12 @@ pub fn view_text(text: &Text, mime: Option<Mime>) {
             file.write_all(b"\n")?;
         }
         Ok(())
-    }
-
-    let path = temp_file();
-    trace!(?path, "Writing body to temporary file");
-    let result = helper(text, &path)
-        .with_context(|| format!("Error writing to file {path:?}"))
-        .traced();
-    match result {
-        Ok(()) => ViewContext::send_message(Message::FileView { path, mime }),
-        Err(error) => ViewContext::send_message(Message::Error { error }),
-    }
+    })
+    .reported(&ViewContext::messages_tx()) else {
+        return;
+    };
+    trace!(?file, "Wrote body to temporary file");
+    ViewContext::send_message(Message::FileView { file, mime });
 }
 
 /// Format a datetime for the user

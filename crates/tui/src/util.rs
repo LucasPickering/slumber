@@ -16,8 +16,9 @@ use slumber_core::{template::Prompt, util::doc_link};
 use slumber_util::{ResultTraced, paths::expand_home};
 use std::{
     env,
+    fs::{self, File},
     future::Future,
-    io,
+    io::{self, Write},
     ops::Deref,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -73,6 +74,55 @@ impl Flag {
     /// Enable the flag
     pub fn set(&mut self) {
         self.0 = true;
+    }
+}
+
+/// A temporary file. The file is created with a random name when the struct is
+/// initialized, and deleted when the struct is dropped.
+#[derive(Debug)]
+pub struct TempFile {
+    path: PathBuf,
+}
+
+impl TempFile {
+    /// Create a new temporary file with the given contents
+    pub fn new(contents: &[u8]) -> anyhow::Result<Self> {
+        Self::with_file(|file| file.write_all(contents))
+    }
+
+    /// Create a new temporary file and call a function to initialize it with
+    /// data. This is used for writing a ratatui `Text` object to a file, which
+    /// isn't accessible as a single chunk of bytes.
+    pub fn with_file(
+        mut writer: impl FnMut(&mut File) -> io::Result<()>,
+    ) -> anyhow::Result<Self> {
+        let path = env::temp_dir().join(format!("slumber-{}", Uuid::new_v4()));
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&path)
+            .with_context(|| {
+                format!("Error creating temporary file {path:?}")
+            })?;
+        writer(&mut file).with_context(|| {
+            format!("Error writing to temporary file {path:?}")
+        })?;
+        Ok(Self { path })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path)
+            .with_context(|| {
+                format!("Error deleting temporary file {:?}", self.path)
+            })
+            .traced();
     }
 }
 
@@ -208,19 +258,6 @@ pub async fn signals() -> anyhow::Result<()> {
     future::select_all(futures).await;
     info!("Received exit signal");
     Ok(())
-}
-
-/// Get a path to a random temp file
-pub fn temp_file() -> PathBuf {
-    env::temp_dir().join(format!("slumber-{}", Uuid::new_v4()))
-}
-
-/// Delete a file. If it fails, trace and move on because it's not important
-/// enough to bother the user
-pub fn delete_temp_file(path: &Path) {
-    let _ = std::fs::remove_file(path)
-        .with_context(|| format!("Error deleting file {path:?}"))
-        .traced();
 }
 
 /// Spawn a task on the main thread. Most tasks can use this because the app is

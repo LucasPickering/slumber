@@ -157,7 +157,7 @@ impl TextBox {
             }
             _ => return false, // Event should be propagated
         };
-        // If text _content_ changed, trigger the auto-submit debounce
+        // If text _content_ changed, trigger the change event
         if text_changed {
             self.change();
         }

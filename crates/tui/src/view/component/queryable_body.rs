@@ -82,8 +82,6 @@ impl QueryableBody {
             ))
             .placeholder_focused("Enter query command (ex: `jq .results`)")
             .default_value(default_query.clone().unwrap_or_default());
-        // Don't use a debounce on this one, because we don't want to
-        // auto-execute commands that will have a side effect
         let export_text_box = TextBox::default().placeholder_focused(
             "Enter export command (ex: `tee > response.json`)",
         );
@@ -549,8 +547,8 @@ mod tests {
 
         // Type something into the query box
         component.int().send_key(KeyCode::Char('/')).assert_empty();
-        // Both the debounce and the subprocess use local tasks, so we need to
-        // run in a local set. When this future exits, all tasks are done
+        // The subprocess uses local tasks, so we need to run in a local set.
+        // When this future exits, all tasks are done
         run_local(async {
             component
                 .int()
@@ -570,15 +568,11 @@ mod tests {
 
         // Cancelling out of the text box should reset the query value
         component.int().send_key(KeyCode::Char('/')).assert_empty();
-        run_local(async {
-            // Local task needed for the debounce
-            component
-                .int()
-                .send_text("more text")
-                .send_key(KeyCode::Esc)
-                .assert_empty();
-        })
-        .await;
+        component
+            .int()
+            .send_text("more text")
+            .send_key(KeyCode::Esc)
+            .assert_empty();
         let data = component.data();
         assert_eq!(data.last_executed_query.as_deref(), Some("head -c 1"));
         assert_eq!(data.query_text_box.data().text(), "head -c 1");
@@ -637,8 +631,8 @@ mod tests {
         terminal: TestTerminal,
         response: Arc<ResponseRecord>,
     ) {
-        // Setting initial value triggers a debounce event
-        let mut component = run_local(async {
+        // Local task is spawned to execute the initial subprocess
+        let component = run_local(async {
             TestComponent::new(
                 &harness,
                 &terminal,
@@ -646,9 +640,6 @@ mod tests {
             )
         })
         .await;
-
-        // After the debounce, there's a change event that spawns the command
-        run_local(async { component.int().drain_draw().assert_empty() }).await;
 
         assert_eq!(
             component.data().last_executed_query.as_deref(),
@@ -667,8 +658,8 @@ mod tests {
     ) {
         DatabasePersistedStore::store_persisted(&Key, &String::new());
 
-        // Setting initial value triggers a debounce event
-        let mut component = run_local(async {
+        // Local task is spawned to execute the initial subprocess
+        let component = run_local(async {
             TestComponent::new(
                 &harness,
                 &terminal,
@@ -680,9 +671,6 @@ mod tests {
             )
         })
         .await;
-
-        // After the debounce, there's a change event that spawns the command
-        run_local(async { component.int().drain_draw().assert_empty() }).await;
 
         assert_eq!(
             component.data().last_executed_query.as_deref(),
@@ -699,7 +687,6 @@ mod tests {
         response: Arc<ResponseRecord>,
         temp_dir: TempDir,
     ) {
-        // Setting initial value triggers a debounce event
         let mut component = TestComponent::builder(
             &harness,
             &terminal,

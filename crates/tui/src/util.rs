@@ -6,7 +6,7 @@ use crate::{
 use anyhow::{Context, bail};
 use bytes::Bytes;
 use crossterm::{
-    event,
+    event::{self, DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use editor_command::EditorBuilder;
@@ -89,14 +89,13 @@ pub fn yield_terminal(
     let span = info_span!("Running command", ?command).entered();
     let error_context = format!("Error spawning command `{command:?}`");
 
-    // Clear the terminal and display a message. For terminal programs this
-    // will only be displayed briefly, but for GUI editors it will be helpful
-    messages_tx.send(Message::ClearTerminal {
-        message: "Waiting for subprocess to close...",
-    });
+    // Clear the terminal so the buffer is empty. This forces a total redraw
+    // when we take it back over. Otherwise ratatui would think the screen is
+    // still intact and not draw anything
+    messages_tx.send(Message::ClearTerminal);
 
-    let mut stdout = io::stdout();
-    crossterm::execute!(stdout, LeaveAlternateScreen)?;
+    // Reset terminal to normal
+    restore_terminal()?;
 
     // Run the command. Make sure to perform cleanup even if the command
     // failed
@@ -124,7 +123,7 @@ pub fn yield_terminal(
     // Slumber. It's possible we lose some real user input here (e.g. if
     // other events were queued behind the event to open the editor).
     clear_event_buffer();
-    crossterm::execute!(stdout, EnterAlternateScreen)?;
+    initialize_terminal()?; // Take it back over
     drop(span);
 
     // Redraw immediately. The main loop will probably be in the tick
@@ -133,6 +132,30 @@ pub fn yield_terminal(
     messages_tx.send(Message::Draw);
 
     command_result
+}
+
+/// Set up terminal for TUI
+pub fn initialize_terminal() -> anyhow::Result<()> {
+    debug!("Initializing terminal");
+    crossterm::terminal::enable_raw_mode()?;
+    crossterm::execute!(
+        io::stdout(),
+        EnterAlternateScreen,
+        EnableMouseCapture
+    )?;
+    Ok(())
+}
+
+/// Return terminal to initial state
+pub fn restore_terminal() -> anyhow::Result<()> {
+    debug!("Restoring terminal");
+    crossterm::terminal::disable_raw_mode()?;
+    crossterm::execute!(
+        io::stdout(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    Ok(())
 }
 
 /// Clear all input events in the terminal event buffer

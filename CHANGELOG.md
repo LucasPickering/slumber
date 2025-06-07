@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] - ReleaseDate
 
+## [3.1.3] - 2025-06-07
+
 ### Fixed
 
 - Fix pager view action (regression in 3.1.2)

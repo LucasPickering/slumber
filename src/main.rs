@@ -69,11 +69,11 @@ async fn main() -> anyhow::Result<()> {
     ))
 }
 
-/// Set up tracing to a log file, and optionally the console as well. If there's
+/// Set up tracing to a log file, and optionally stdout as well. If there's
 /// an error creating the log file, we'll skip that part. This means in the TUI
 /// the error (and all other tracing) will never be visible, but that's a
 /// problem for another day.
-fn initialize_tracing(console_output: bool) {
+fn initialize_tracing(stdout: bool) {
     // Failing to log shouldn't be a fatal crash, so just move on
     let log_file = initialize_log_file()
         .context("Error creating log file")
@@ -102,7 +102,7 @@ fn initialize_tracing(console_output: bool) {
     });
 
     // Enable console output for CLI
-    let console_subscriber = if console_output {
+    let stdout_subscriber = if stdout {
         Some(
             tracing_subscriber::fmt::layer()
                 .with_writer(io::stderr)
@@ -115,10 +115,22 @@ fn initialize_tracing(console_output: bool) {
         None
     };
 
-    tracing_subscriber::registry()
-        .with(file_subscriber)
-        .with(console_subscriber)
-        .init();
+    // Enable tokio-console subscriber when tokio_tracing feature is enabled
+    #[cfg(feature = "tokio_tracing")]
+    {
+        tracing_subscriber::registry()
+            .with(file_subscriber)
+            .with(stdout_subscriber)
+            .with(console_subscriber::spawn())
+            .init()
+    }
+    #[cfg(not(feature = "tokio_tracing"))]
+    {
+        tracing_subscriber::registry()
+            .with(file_subscriber)
+            .with(stdout_subscriber)
+            .init()
+    }
 }
 
 /// Create the log file. If it already exists, make sure it's not over a max

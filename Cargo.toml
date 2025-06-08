@@ -47,12 +47,12 @@ serde = {version = "1.0.204", default-features = false}
 serde_json = {version = "1.0.120", default-features = false, features = ["preserve_order"]}
 serde_test = "1.0.176"
 serde_yaml = {version = "0.9.0", default-features = false}
-slumber_cli = {path = "./crates/cli", version = "3.1.3" }
-slumber_config = {path = "./crates/config", version = "3.1.3" }
-slumber_core = {path = "./crates/core", version = "3.1.3" }
-slumber_import = {path = "./crates/import", version = "3.1.3" }
-slumber_tui = {path = "./crates/tui", version = "3.1.3" }
-slumber_util = {path = "./crates/util", version = "3.1.3" }
+slumber_cli = {path = "./crates/cli", version = "3.1.3"}
+slumber_config = {path = "./crates/config", version = "3.1.3"}
+slumber_core = {path = "./crates/core", version = "3.1.3"}
+slumber_import = {path = "./crates/import", version = "3.1.3"}
+slumber_tui = {path = "./crates/tui", version = "3.1.3"}
+slumber_util = {path = "./crates/util", version = "3.1.3"}
 strum = {version = "0.26.3", default-features = false}
 thiserror = "2.0.12"
 tokio = {version = "1.39.2", default-features = false}
@@ -90,6 +90,7 @@ used_underscore_binding = "allow"
 
 [dependencies]
 anyhow = {workspace = true, features = ["backtrace"]}
+console-subscriber = {version = "0.4.1", default-features = false, optional = true}
 slumber_cli = {workspace = true, optional = true}
 slumber_tui = {workspace = true, optional = true}
 slumber_util = {workspace = true}
@@ -102,6 +103,8 @@ default = ["cli", "tui"]
 # TUI and CLI can be disabled in dev to speed compilation while not in use
 cli = ["dep:slumber_cli"]
 tui = ["dep:slumber_tui"]
+# Enable tokio-console tracing
+tokio_tracing = ["dep:console-subscriber", "tokio/tracing"]
 
 # The profile that 'cargo dist' will build with
 [profile.dist]
@@ -111,7 +114,7 @@ lto = "thin"
 [package.metadata.release]
 pre-release-hook = ["python", "./gifs.py", "--check"]
 pre-release-replacements = [
-  {file = "CHANGELOG.md", search = "## \\[Unreleased\\] - ReleaseDate", replace = "## [Unreleased] - ReleaseDate\n\n## [{{version}}] - {{date}}"},
+    {file = "CHANGELOG.md", search = "## \\[Unreleased\\] - ReleaseDate", replace = "## [Unreleased] - ReleaseDate\n\n## [{{version}}] - {{date}}"},
 ]
 
 # Config for 'dist'

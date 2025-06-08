@@ -102,7 +102,10 @@ impl Tui {
 
         // Run everything in one local set, so that we can use !Send values
         let local = task::LocalSet::new();
-        local.spawn_local(app.run());
+        task::Builder::new()
+            .name("main")
+            .spawn_local_on(app.run(), &local)
+            .unwrap();
         local.await;
         Ok(())
     }
@@ -225,7 +228,7 @@ impl Tui {
     /// Spawn a task to listen in the background for quit signals
     fn listen_for_signals(&self) {
         let messages_tx = self.messages_tx();
-        util::spawn_result(async move {
+        util::spawn_result("signals", async move {
             util::signals().await?;
             messages_tx.send(Message::Quit);
             Ok(())

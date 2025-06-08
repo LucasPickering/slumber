@@ -94,7 +94,7 @@ console-subscriber = {version = "0.4.1", default-features = false, optional = tr
 slumber_cli = {workspace = true, optional = true}
 slumber_tui = {workspace = true, optional = true}
 slumber_util = {workspace = true}
-tokio = {workspace = true, features = ["macros", "rt"]}
+tokio = {workspace = true, features = ["macros", "rt", "tracing"]}
 tracing = {workspace = true}
 tracing-subscriber = {version = "0.3.17", default-features = false, features = ["ansi", "fmt", "registry"]}
 
@@ -104,7 +104,7 @@ default = ["cli", "tui"]
 cli = ["dep:slumber_cli"]
 tui = ["dep:slumber_tui"]
 # Enable tokio-console tracing
-tokio_tracing = ["dep:console-subscriber", "tokio/tracing"]
+tokio_tracing = ["dep:console-subscriber"]
 
 # The profile that 'cargo dist' will build with
 [profile.dist]

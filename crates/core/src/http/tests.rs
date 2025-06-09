@@ -68,7 +68,17 @@ async fn mock_server() -> String {
     let host = server.uri();
     Mock::given(matchers::method("GET"))
         .and(matchers::path("/get"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("hello!"))
+        .respond_with(
+            ResponseTemplate::new(StatusCode::OK).set_body_string("hello!"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(matchers::method("GET"))
+        .and(matchers::path("/redirect"))
+        .respond_with(
+            ResponseTemplate::new(StatusCode::MOVED_PERMANENTLY)
+                .insert_header("Location", format!("{host}/get")),
+        )
         .mount(&server)
         .await;
     host
@@ -802,4 +812,49 @@ async fn test_build_curl_body(
     let expected_command =
         format!("curl -XGET --url 'http://localhost/url' {expected_arguments}");
     assert_eq!(command, expected_command);
+}
+
+/// By default, the engine will follow 3xx redirects
+#[rstest]
+#[tokio::test]
+async fn test_follow_redirects(http_engine: &HttpEngine) {
+    let host = mock_server().await;
+    let recipe = Recipe {
+        url: format!("{host}/redirect").as_str().into(),
+        ..Recipe::factory(())
+    };
+    let recipe_id = recipe.id.clone();
+    let template_context = template_context([recipe], []);
+
+    // Build+send the request
+    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
+    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let exchange = ticket.send().await.unwrap();
+
+    // Should hit /redirect which redirects to /get, which returns the body
+    assert_eq!(exchange.response.status, StatusCode::OK);
+    assert_eq!(exchange.response.body.bytes().as_ref(), b"hello!");
+}
+
+/// Client should not follow redirects when the config field is disabled
+#[tokio::test]
+async fn test_follow_redirects_disabled() {
+    let http_engine = HttpEngine::new(&HttpEngineConfig {
+        follow_redirects: false,
+        ..Default::default()
+    });
+    let host = mock_server().await;
+    let recipe = Recipe {
+        url: format!("{host}/redirect").as_str().into(),
+        ..Recipe::factory(())
+    };
+    let recipe_id = recipe.id.clone();
+    let template_context = template_context([recipe], []);
+
+    // Build+send the request
+    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
+    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let exchange = ticket.send().await.unwrap();
+
+    assert_eq!(exchange.response.status, StatusCode::MOVED_PERMANENTLY);
 }

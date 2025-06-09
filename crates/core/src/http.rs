@@ -62,6 +62,7 @@ use reqwest::{
     Client, RequestBuilder, Response, Url,
     header::{self, HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
+    redirect,
 };
 use slumber_config::HttpEngineConfig;
 use slumber_util::ResultTraced;
@@ -89,8 +90,17 @@ pub struct HttpEngine {
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
     pub fn new(config: &HttpEngineConfig) -> Self {
+        // redirect::Policy doesn't implement Clone, so we have to create it
+        // multiple times
+        let make_redirect_policy = if config.follow_redirects {
+            redirect::Policy::default
+        } else {
+            redirect::Policy::none
+        };
+
         let client = Client::builder()
             .user_agent(USER_AGENT)
+            .redirect(make_redirect_policy())
             .build()
             .expect("Error building reqwest client");
         let danger_client = if config.ignore_certificate_hosts.is_empty() {
@@ -99,6 +109,7 @@ impl HttpEngine {
             Some((
                 Client::builder()
                     .user_agent(USER_AGENT)
+                    .redirect(make_redirect_policy())
                     .danger_accept_invalid_certs(true)
                     .build()
                     .expect("Error building reqwest client"),

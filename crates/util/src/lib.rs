@@ -14,9 +14,23 @@ mod test_util;
 #[cfg(feature = "test")]
 pub use test_util::*;
 
-use serde::de::DeserializeOwned;
-use std::{fmt::Debug, io::Read, ops::Deref};
+use anyhow::anyhow;
+use itertools::Itertools;
+use serde::{
+    Deserialize,
+    de::{DeserializeOwned, Error as _},
+};
+use std::{
+    fmt::{self, Debug, Display},
+    io::Read,
+    ops::Deref,
+    str::FromStr,
+    time::Duration,
+};
 use tracing::error;
+use winnow::{
+    ModalResult, Parser, ascii::digit1, combinator::repeat, token::take_while,
+};
 
 /// A static mapping between values (of type `T`) and labels (strings). Used to
 /// both stringify from and parse to `T`.
@@ -98,9 +112,144 @@ pub fn parse_yaml<T: DeserializeOwned>(reader: impl Read) -> anyhow::Result<T> {
     Ok(output)
 }
 
+/// A newtype for [Duration] that provides formatting, parsing, and
+/// deserialization. The name is meant to make it harder to confuse with
+/// [Duration].
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct TimeSpan(Duration);
+
+impl TimeSpan {
+    /// Get the inner [Duration]
+    pub fn inner(self) -> Duration {
+        self.0
+    }
+}
+
+impl Display for TimeSpan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Use the largest units possible
+        let mut remaining = self.0.as_secs();
+
+        // Make sure 0 doesn't give us an empty string
+        if remaining == 0 {
+            return write!(f, "0s");
+        }
+
+        // Start with the biggest units
+        let units = DurationUnit::ALL
+            .iter()
+            .sorted_by_key(|unit| unit.seconds())
+            .rev();
+        for unit in units {
+            let quantity = remaining / unit.seconds();
+            if quantity > 0 {
+                remaining %= unit.seconds();
+                write!(f, "{quantity}{unit}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl FromStr for TimeSpan {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        fn quantity(input: &mut &str) -> ModalResult<u64> {
+            digit1.parse_to().parse_next(input)
+        }
+
+        fn unit(input: &mut &str) -> ModalResult<DurationUnit> {
+            take_while(1.., char::is_alphabetic)
+                .parse_to()
+                .parse_next(input)
+        }
+
+        // Parse one or more quantity-unit pairs and sum them all up
+        let seconds = repeat(1.., (quantity, unit))
+            .fold(
+                || 0,
+                |acc, (quantity, unit)| acc + (quantity * unit.seconds()),
+            )
+            .parse(s)
+            // The format is so simple there isn't much value in spitting out a
+            // specific parsing error, just use a canned one
+            .map_err(|_| {
+                anyhow!(
+                    "Invalid duration, must be `(<quantity><unit>)+` \
+                    (e.g. `12d` or `1h30m`). Units are {}",
+                    DurationUnit::ALL.iter().format_with(", ", |unit, f| f(
+                        &format_args!("`{unit}`")
+                    ))
+                )
+            })?;
+
+        Ok(Self(Duration::from_secs(seconds)))
+    }
+}
+
+impl<'de> Deserialize<'de> for TimeSpan {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(D::Error::custom)
+    }
+}
+
+/// Supported units for duration parsing/formatting
+#[derive(Debug)]
+enum DurationUnit {
+    Second,
+    Minute,
+    Hour,
+    Day,
+}
+
+impl DurationUnit {
+    const ALL: &[Self] = &[Self::Second, Self::Minute, Self::Hour, Self::Day];
+
+    fn seconds(&self) -> u64 {
+        match self {
+            DurationUnit::Second => 1,
+            DurationUnit::Minute => 60,
+            DurationUnit::Hour => 60 * 60,
+            DurationUnit::Day => 60 * 60 * 24,
+        }
+    }
+}
+
+impl Display for DurationUnit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Second => write!(f, "s"),
+            Self::Minute => write!(f, "m"),
+            Self::Hour => write!(f, "h"),
+            Self::Day => write!(f, "d"),
+        }
+    }
+}
+
+impl FromStr for DurationUnit {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "s" => Ok(Self::Second),
+            "m" => Ok(Self::Minute),
+            "h" => Ok(Self::Hour),
+            "d" => Ok(Self::Day),
+            _ => Err(anyhow!("Invalid duration unit `{s}`")),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::assert_err;
+    use rstest::rstest;
     use serde::Deserialize;
 
     #[derive(Debug, PartialEq, Deserialize)]
@@ -141,5 +290,50 @@ data:
             },
         };
         assert_eq!(actual, expected);
+    }
+
+    #[rstest]
+    #[case::zero(Duration::from_secs(0), "0s")]
+    #[case::seconds_short(Duration::from_secs(3), "3s")]
+    #[case::seconds_hour(Duration::from_secs(3600), "1h")]
+    #[case::seconds_composite(Duration::from_secs(3690), "1h1m30s")]
+    // Subsecond precision is lost
+    #[case::seconds_subsecond_lost(Duration::from_millis(400), "0s")]
+    #[case::seconds_subsecond_round_down(Duration::from_millis(1999), "1s")]
+    fn test_time_span_to_string(
+        #[case] duration: Duration,
+        #[case] expected: &'static str,
+    ) {
+        assert_eq!(&TimeSpan(duration).to_string(), expected);
+    }
+
+    #[rstest]
+    #[case::seconds_zero("0s", Duration::from_secs(0))]
+    #[case::seconds_short("1s", Duration::from_secs(1))]
+    #[case::seconds_longer("100s", Duration::from_secs(100))]
+    #[case::minutes("3m", Duration::from_secs(180))]
+    #[case::hours("3h", Duration::from_secs(10_800))]
+    #[case::days("2d", Duration::from_secs(172_800))]
+    #[case::composite("2d3h10m17s", Duration::from_secs(
+        2 * 86400 + 3 * 3600 + 10 * 60 + 17
+    ))]
+    fn test_time_span_parse(
+        #[case] s: &'static str,
+        #[case] expected: Duration,
+    ) {
+        assert_eq!(s.parse::<TimeSpan>().unwrap(), TimeSpan(expected));
+    }
+
+    #[rstest]
+    #[case::negative("-1s", "Invalid duration")]
+    #[case::whitespace(" 1s ", "Invalid duration")]
+    #[case::trailing_whitespace("1s ", "Invalid duration")]
+    #[case::decimal("3.5s", "Invalid duration")]
+    #[case::invalid_unit("3hr", "Units are `s`, `m`, `h`, `d`")]
+    fn test_time_span_parse_error(
+        #[case] s: &'static str,
+        #[case] expected_error: &str,
+    ) {
+        assert_err!(s.parse::<TimeSpan>(), expected_error);
     }
 }

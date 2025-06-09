@@ -38,16 +38,16 @@
 pub mod content_type;
 mod curl;
 mod models;
-pub mod query;
 #[cfg(test)]
 mod tests;
 
 pub use models::*;
+use slumber_template::Template;
 
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     http::{content_type::ContentType, curl::CurlBuilder},
-    template::{Template, TemplateContext},
+    render::TemplateContext,
 };
 use anyhow::Context;
 use bytes::Bytes;
@@ -542,10 +542,11 @@ impl Recipe {
         header: &str,
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
-        let mut value = value_template
-            .render(template_context)
+        let mut value: Vec<u8> = value_template
+            .render_bytes(template_context)
             .await
-            .context(format!("Error rendering header `{header}`"))?;
+            .context(format!("Error rendering header `{header}`"))?
+            .into();
 
         // Strip leading/trailing line breaks because they're going to trigger a
         // validation error and are probably a mistake. We're trading
@@ -621,10 +622,9 @@ impl Recipe {
 
         let rendered = match body {
             RecipeBody::Raw { body, .. } => RenderedBody::Raw(
-                body.render(template_context)
+                body.render_bytes(template_context)
                     .await
-                    .context("Error rendering body")?
-                    .into(),
+                    .context("Error rendering body")?,
             ),
             RecipeBody::FormUrlencoded(fields) => {
                 let iter = fields.iter().enumerate().filter_map(
@@ -652,11 +652,12 @@ impl Recipe {
                             options.form_fields.get(i, value_template)?;
                         Some(async move {
                             let value = template
-                                .render(template_context)
+                                .render_bytes(template_context)
                                 .await
                                 .context(format!(
                                     "Error rendering form field `{field}`"
-                                ))?;
+                                ))?
+                                .into();
                             Ok::<_, anyhow::Error>((field.clone(), value))
                         })
                     },

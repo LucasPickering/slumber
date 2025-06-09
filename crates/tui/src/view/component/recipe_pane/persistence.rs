@@ -2,9 +2,8 @@
 
 use crate::view::{ViewContext, common::template_preview::TemplatePreview};
 use persisted::{PersistedContainer, PersistedLazy, PersistedStore};
-use slumber_core::{
-    collection::RecipeId, http::content_type::ContentType, template::Template,
-};
+use slumber_core::{collection::RecipeId, http::content_type::ContentType};
+use slumber_template::Template;
 use std::{collections::HashMap, fmt::Debug};
 use tracing::debug;
 

@@ -1,39 +1,40 @@
 [package]
 authors = {workspace = true}
-description = "Import from other formats to Slumber collections. Not intended for external use."
+description = "Template engine for Slumber. Not intended for external use."
 edition = {workspace = true}
 homepage = {workspace = true}
 keywords = {workspace = true}
 license = {workspace = true}
-name = "slumber_import"
+name = "slumber_template"
 repository = {workspace = true}
 rust-version = {workspace = true}
 version = {workspace = true}
 
 [dependencies]
-anyhow = {workspace = true}
+bytes = {workspace = true, features = ["serde"]}
+derive_more = {workspace = true, features = ["deref", "display", "from"]}
+futures = {workspace = true}
 indexmap = {workspace = true, features = ["serde"]}
 itertools = {workspace = true}
-mime = {workspace = true}
-openapiv3 = "2.0.0"
-reqwest = {workspace = true}
-rest_parser = "0.1.6"
-serde = {workspace = true}
+regex = {version = "1.10.5", default-features = false}
+serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
-serde_yaml = {workspace = true}
-slumber_core = {workspace = true}
-slumber_template = {workspace = true}
 slumber_util = {workspace = true}
-strum = {workspace = true}
 thiserror = {workspace = true}
 tracing = {workspace = true}
 winnow = {workspace = true}
 
 [dev-dependencies]
 pretty_assertions = {workspace = true}
+proptest = "1.5.0"
+proptest-derive = "0.5.0"
 rstest = {workspace = true}
+serde_json = {workspace = true}
 serde_test = {workspace = true}
-slumber_core = {workspace = true, features = ["test"]}
+slumber_util = {workspace = true, features = ["test"]}
+
+[features]
+test = ["slumber_util/test"]
 
 [lints]
 workspace = true

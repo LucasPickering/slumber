@@ -3,7 +3,7 @@ profiles:
     name: /v3
     data:
       host: /v3
-chains: {}
+
 requests:
   tag/pet: !folder
     name: pet
@@ -11,7 +11,7 @@ requests:
       addPet: !request
         name: Add a new pet to the store
         method: POST
-        url: "{{host}}/pet"
+        url: "{{ host }}/pet"
         body: null
         authentication: null
         query: {}
@@ -19,7 +19,7 @@ requests:
       updatePet: !request
         name: Update an existing pet
         method: PUT
-        url: "{{host}}/pet"
+        url: "{{ host }}/pet"
         body: null
         authentication: null
         query: {}
@@ -27,7 +27,7 @@ requests:
       findPetsByStatus: !request
         name: Finds Pets by status
         method: GET
-        url: "{{host}}/pet/findByStatus"
+        url: "{{ host }}/pet/findByStatus"
         body: null
         authentication: null
         query:
@@ -36,7 +36,7 @@ requests:
       findPetsByTags: !request
         name: Finds Pets by tags
         method: GET
-        url: "{{host}}/pet/findByTags"
+        url: "{{ host }}/pet/findByTags"
         body: null
         authentication: null
         query:
@@ -45,7 +45,7 @@ requests:
       deletePet: !request
         name: Deletes a pet
         method: DELETE
-        url: "{{host}}/pet/{{petId}}"
+        url: "{{ host }}/pet/{{petId}}"
         body: null
         authentication: null
         query: {}
@@ -54,7 +54,7 @@ requests:
       getPetById: !request
         name: Find pet by ID
         method: GET
-        url: "{{host}}/pet/{{petId}}"
+        url: "{{ host }}/pet/{{petId}}"
         body: null
         authentication: null
         query: {}
@@ -63,7 +63,7 @@ requests:
       updatePetWithForm: !request
         name: Updates a pet in the store with form data
         method: POST
-        url: "{{host}}/pet/{{petId}}"
+        url: "{{ host }}/pet/{{petId}}"
         body: null
         authentication: null
         query:
@@ -73,7 +73,7 @@ requests:
       uploadFile: !request
         name: uploads an image
         method: POST
-        url: "{{host}}/pet/{{petId}}/uploadImage"
+        url: "{{ host }}/pet/{{petId}}/uploadImage"
         body: null
         authentication: null
         query:
@@ -85,7 +85,7 @@ requests:
       getInventory: !request
         name: Returns pet inventories by status
         method: GET
-        url: "{{host}}/store/inventory"
+        url: "{{ host }}/store/inventory"
         body: null
         authentication: null
         query: {}
@@ -94,7 +94,7 @@ requests:
       placeOrder: !request
         name: Place an order for a pet
         method: POST
-        url: "{{host}}/store/order"
+        url: "{{ host }}/store/order"
         body: null
         authentication: null
         query: {}
@@ -102,7 +102,7 @@ requests:
       deleteOrder: !request
         name: Delete purchase order by ID
         method: DELETE
-        url: "{{host}}/store/order/{{orderId}}"
+        url: "{{ host }}/store/order/{{orderId}}"
         body: null
         authentication: null
         query: {}
@@ -110,7 +110,7 @@ requests:
       getOrderById: !request
         name: Find purchase order by ID
         method: GET
-        url: "{{host}}/store/order/{{orderId}}"
+        url: "{{ host }}/store/order/{{orderId}}"
         body: null
         authentication: null
         query: {}
@@ -121,7 +121,7 @@ requests:
       createUser: !request
         name: Create user
         method: POST
-        url: "{{host}}/user"
+        url: "{{ host }}/user"
         body: null
         authentication: null
         query: {}
@@ -129,7 +129,7 @@ requests:
       createUsersWithListInput: !request
         name: Creates list of users with given input array
         method: POST
-        url: "{{host}}/user/createWithList"
+        url: "{{ host }}/user/createWithList"
         body: null
         authentication: null
         query: {}
@@ -137,7 +137,7 @@ requests:
       loginUser: !request
         name: Logs user into the system
         method: GET
-        url: "{{host}}/user/login"
+        url: "{{ host }}/user/login"
         body: null
         authentication: null
         query:
@@ -147,7 +147,7 @@ requests:
       logoutUser: !request
         name: Logs out current logged in user session
         method: GET
-        url: "{{host}}/user/logout"
+        url: "{{ host }}/user/logout"
         body: null
         authentication: null
         query: {}
@@ -155,7 +155,7 @@ requests:
       deleteUser: !request
         name: Delete user
         method: DELETE
-        url: "{{host}}/user/{{username}}"
+        url: "{{ host }}/user/{{username}}"
         body: null
         authentication: null
         query: {}
@@ -163,7 +163,7 @@ requests:
       getUserByName: !request
         name: Get user by user name
         method: GET
-        url: "{{host}}/user/{{username}}"
+        url: "{{ host }}/user/{{username}}"
         body: null
         authentication: null
         query: {}
@@ -171,7 +171,7 @@ requests:
       updateUser: !request
         name: Update user
         method: PUT
-        url: "{{host}}/user/{{username}}"
+        url: "{{ host }}/user/{{username}}"
         body: null
         authentication: null
         query: {}

@@ -50,7 +50,6 @@ fn test_generate_curl_trigger_error() {
     command.assert().failure().stderr(
         "Triggered requests are disabled by default; pass `--execute-triggers` to enable
   Error rendering URL
-  Resolving chain `trigger`
   Triggering upstream recipe `getUser`
   Triggered request execution not allowed in this context
 ",

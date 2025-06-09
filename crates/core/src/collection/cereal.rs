@@ -2,11 +2,10 @@
 
 use crate::{
     collection::{
-        Chain, ChainId, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
+        Profile, ProfileId, Recipe, RecipeBody, RecipeId,
         recipe_tree::RecipeNode,
     },
     http::content_type::ContentType,
-    template::Template,
 };
 use anyhow::Context;
 use indexmap::IndexMap;
@@ -16,6 +15,7 @@ use serde::{
     de::{self, EnumAccess, Error as _, VariantAccess, Visitor},
     ser::Error as _,
 };
+use slumber_template::Template;
 use std::{hash::Hash, str::FromStr};
 
 /// A type that has an `id` field. This is ripe for a derive macro, maybe a fun
@@ -60,18 +60,6 @@ impl HasId for RecipeNode {
 
 impl HasId for Recipe {
     type Id = RecipeId;
-
-    fn id(&self) -> &Self::Id {
-        &self.id
-    }
-
-    fn set_id(&mut self, id: Self::Id) {
-        self.id = id;
-    }
-}
-
-impl HasId for Chain {
-    type Id = ChainId;
 
     fn id(&self) -> &Self::Id {
         &self.id
@@ -303,106 +291,17 @@ impl<'de> Deserialize<'de> for RecipeBody {
     }
 }
 
-/// Serialize/deserialize a duration with unit shorthand. This does *not* handle
-/// subsecond precision. Supported units are:
-/// - s
-/// - m
-/// - h
-/// - d
-///
-/// Examples: `30s`, `5m`, `12h`, `3d`
-pub mod serde_duration {
-    use derive_more::Display;
-    use itertools::Itertools;
-    use serde::{Deserialize, Deserializer, Serializer, de::Error};
-    use std::time::Duration;
-    use strum::{EnumIter, EnumString, IntoEnumIterator};
-    use winnow::{ModalResult, Parser, ascii::digit1, token::take_while};
-
-    #[derive(Debug, Display, EnumIter, EnumString)]
-    enum Unit {
-        #[display("s")]
-        #[strum(serialize = "s")]
-        Second,
-        #[display("m")]
-        #[strum(serialize = "m")]
-        Minute,
-        #[display("h")]
-        #[strum(serialize = "h")]
-        Hour,
-        #[display("d")]
-        #[strum(serialize = "d")]
-        Day,
-    }
-
-    pub fn serialize<S>(
-        duration: &Duration,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // Always serialize as seconds, because it's easiest. Sub-second
-        // precision is lost
-        S::serialize_str(serializer, &format!("{}s", duration.as_secs()))
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        fn quantity(input: &mut &str) -> ModalResult<u64> {
-            digit1.parse_to().parse_next(input)
-        }
-
-        fn unit<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
-            take_while(1.., char::is_alphabetic).parse_next(input)
-        }
-
-        let input = String::deserialize(deserializer)?;
-        let (quantity, unit) = (quantity, unit)
-            .parse(&input)
-            // The format is so simple there isn't much value in spitting out a
-            // specific parsing error, just use a canned one
-            .map_err(|_| {
-                D::Error::custom(
-                    "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)",
-                )
-            })?;
-
-        let unit = unit.parse().map_err(|_| {
-            D::Error::custom(format!(
-                "Unknown duration unit `{unit}`; must be one of {}",
-                Unit::iter()
-                    .format_with(", ", |unit, f| f(&format_args!("`{unit}`")))
-            ))
-        })?;
-        let seconds = match unit {
-            Unit::Second => quantity,
-            Unit::Minute => quantity * 60,
-            Unit::Hour => quantity * 60 * 60,
-            Unit::Day => quantity * 60 * 60 * 24,
-        };
-        Ok(Duration::from_secs(seconds))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use indexmap::indexmap;
     use rstest::rstest;
-    use serde::Serialize;
     use serde_json::json;
-    use serde_test::{
-        Token, assert_de_tokens, assert_de_tokens_error, assert_ser_tokens,
-    };
     use serde_yaml::{
         Mapping,
         value::{Tag, TaggedValue},
     };
     use slumber_util::assert_err;
-    use std::time::Duration;
 
     #[rstest]
     #[case::multiple_default(
@@ -440,26 +339,22 @@ mod tests {
     /// of enums is a bit different, and we specifically only care about YAML.
     #[rstest]
     #[case::raw(
-        RecipeBody::Raw { body: "{{user_id}}".into(), content_type: None },
-        "{{user_id}}"
+        RecipeBody::Raw { body: "{{ user_id }}".into(), content_type: None },
+        "{{ user_id }}"
     )]
     #[case::json(
         RecipeBody::Raw {
-            body: serde_json::to_string_pretty(&json!({"user": "{{user_id}}"}))
-                .unwrap()
-                .into(),
+            body: json!({"user": "{{ user_id }}"}).into(),
             content_type: Some(ContentType::Json),
         },
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
-            value: mapping([("user", "{{user_id}}")])
+            value: mapping([("user", "{{ user_id }}")])
         })),
     )]
     #[case::json_nested(
         RecipeBody::Raw {
-            body: serde_json::to_string_pretty(
-                &json!(r#"{"warning": "NOT an object"}"#)
-            ).unwrap().into(),
+            body: json!(r#"{"warning": "NOT an object"}"#).into(),
             content_type: Some(ContentType::Json),
         },
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
@@ -469,14 +364,14 @@ mod tests {
     )]
     #[case::form_urlencoded(
         RecipeBody::FormUrlencoded(indexmap! {
-            "username".into() => "{{username}}".into(),
-            "password".into() => "{{chains.password}}".into(),
+            "username".into() => "{{ username }}".into(),
+            "password".into() => "{{ prompt('Password', sensitive=true) }}".into(),
         }),
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("form_urlencoded"),
             value: mapping([
-                ("username", "{{username}}"),
-                ("password", "{{chains.password}}"),
+                ("username", "{{ username }}"),
+                ("password", "{{ prompt('Password', sensitive=true) }}"),
             ])
         }))
     )]
@@ -513,7 +408,7 @@ mod tests {
     #[case::raw_tag(
         serde_yaml::Value::Tagged(Box::new(TaggedValue{
             tag: Tag::new("raw"),
-            value: "{{user_id}}".into()
+            value: "{{ user_id }}".into()
         })),
         "unknown variant `raw`, expected one of \
         `json`, `form_urlencoded`, `form_multipart`",
@@ -521,9 +416,9 @@ mod tests {
     #[case::form_urlencoded_wrong_type(
         serde_yaml::Value::Tagged(Box::new(TaggedValue{
             tag: Tag::new("form_urlencoded"),
-            value: "{{user_id}}".into()
+            value: "{{ user_id }}".into()
         })),
-        "invalid type: string \"{{user_id}}\", expected a map"
+        "invalid type: string \"{{ user_id }}\", expected a map"
     )]
     fn test_deserialize_recipe_error(
         #[case] yaml: impl Into<serde_yaml::Value>,
@@ -533,67 +428,6 @@ mod tests {
             serde_yaml::from_value::<RecipeBody>(yaml.into()),
             expected_error
         );
-    }
-
-    /// A wrapper that forces serde_test to use our custom serialize/deserialize
-    /// functions
-    #[derive(Debug, PartialEq, Serialize, Deserialize)]
-    #[serde(transparent)]
-    struct WrapDuration(#[serde(with = "super::serde_duration")] Duration);
-
-    #[rstest]
-    #[case::seconds_short(Duration::from_secs(3), "3s")]
-    #[case::seconds_long(Duration::from_secs(3000), "3000s")]
-    // Subsecond precision is lost
-    #[case::seconds_subsecond_lost(Duration::from_millis(400), "0s")]
-    #[case::seconds_subsecond_round_down(Duration::from_millis(1999), "1s")]
-    fn test_serialize_duration(
-        #[case] duration: Duration,
-        #[case] expected: &'static str,
-    ) {
-        assert_ser_tokens(&WrapDuration(duration), &[Token::String(expected)]);
-    }
-
-    #[rstest]
-    #[case::seconds_zero("0s", Duration::from_secs(0))]
-    #[case::seconds_short("1s", Duration::from_secs(1))]
-    #[case::seconds_longer("100s", Duration::from_secs(100))]
-    #[case::minutes("3m", Duration::from_secs(180))]
-    #[case::hours("3h", Duration::from_secs(10800))]
-    #[case::days("2d", Duration::from_secs(172_800))]
-    fn test_deserialize_duration(
-        #[case] s: &'static str,
-        #[case] expected: Duration,
-    ) {
-        assert_de_tokens(&WrapDuration(expected), &[Token::Str(s)]);
-    }
-
-    #[rstest]
-    #[case::negative(
-        "-1s",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::whitespace(
-        " 1s ",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::trailing_whitespace(
-        "1s ",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::decimal(
-        "3.5s",
-        "Invalid duration, must be `<quantity><unit>` (e.g. `12d`)"
-    )]
-    #[case::invalid_unit(
-        "3hr",
-        "Unknown duration unit `hr`; must be one of `s`, `m`, `h`, `d`"
-    )]
-    fn test_deserialize_duration_error(
-        #[case] s: &'static str,
-        #[case] error: &str,
-    ) {
-        assert_de_tokens_error::<WrapDuration>(&[Token::Str(s)], error);
     }
 
     /// Build a YAML mapping

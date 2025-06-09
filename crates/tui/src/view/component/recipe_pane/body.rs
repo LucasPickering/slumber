@@ -25,8 +25,8 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Recipe, RecipeBody, RecipeId},
     http::content_type::ContentType,
-    template::Template,
 };
+use slumber_template::Template;
 use std::fs;
 use strum::{EnumIter, IntoEnumIterator};
 use tracing::debug;

@@ -31,7 +31,9 @@ serde_json = {workspace = true}
 serde_json_path = "0.7.1"
 serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
+slumber_template = {workspace = true}
 slumber_util = {workspace = true}
+slumber_macros = {workspace = true}
 strum = {workspace = true, features = ["derive"]}
 thiserror = {workspace = true}
 tokio = {workspace = true, features = ["fs", "process"]}
@@ -47,11 +49,12 @@ proptest = "1.5.0"
 proptest-derive = "0.5.0"
 rstest = {workspace = true}
 serde_test = {workspace = true}
+slumber_template = {workspace = true, features = ["test"]}
 slumber_util = {workspace = true, features = ["test"]}
 wiremock = {workspace = true}
 
 [features]
-test = ["dep:rstest", "slumber_util/test"]
+test = ["dep:rstest", "slumber_template/test", "slumber_util/test"]
 
 [lints]
 workspace = true

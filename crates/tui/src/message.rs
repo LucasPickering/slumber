@@ -12,8 +12,9 @@ use slumber_core::{
         BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
         RequestRecord,
     },
-    template::{Prompt, ResponseChannel, Select, Template, TemplateChunk},
+    render::{Prompt, ResponseChannel, Select},
 };
+use slumber_template::{RenderedChunk, Template};
 use slumber_util::ResultTraced;
 use std::{fmt::Debug, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
@@ -163,7 +164,7 @@ pub enum Message {
     TemplatePreview {
         template: Template,
         #[debug(skip)]
-        on_complete: Callback<Vec<TemplateChunk>>,
+        on_complete: Callback<Vec<RenderedChunk>>,
     },
 }
 

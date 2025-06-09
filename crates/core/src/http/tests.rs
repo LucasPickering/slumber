@@ -2,10 +2,8 @@
 
 use super::*;
 use crate::{
-    collection::{Authentication, Chain, ChainSource, Collection, Profile},
-    test_util::{
-        TestPrompter, by_id, header_map, http_engine, invalid_utf8_chain,
-    },
+    collection::{Authentication, Collection, Profile},
+    test_util::{TestPrompter, by_id, header_map, http_engine, invalid_utf8},
 };
 use indexmap::{IndexMap, indexmap};
 use pretty_assertions::assert_eq;
@@ -21,7 +19,6 @@ use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 /// add to the created collection
 fn template_context(
     recipes: impl IntoIterator<Item = Recipe>,
-    chains: impl IntoIterator<Item = Chain>,
 ) -> TemplateContext {
     let profile_data = indexmap! {
         "host".into() => "http://localhost".into(),
@@ -37,21 +34,10 @@ fn template_context(
         ..Profile::factory(())
     };
     let profile_id = profile.id.clone();
-    let chains = [Chain {
-        id: "text".into(),
-        source: ChainSource::Prompt {
-            message: None,
-            default: None,
-        },
-        ..Chain::factory(())
-    }]
-    .into_iter()
-    .chain(chains);
     TemplateContext {
         collection: Collection {
             recipes: by_id(recipes).into(),
             profiles: by_id([profile]),
-            chains: by_id(chains),
         }
         .into(),
         selected_profile: Some(profile_id.clone()),
@@ -126,7 +112,7 @@ async fn test_build_request(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let template_context = template_context([recipe]);
 
     let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
     let ticket = http_engine.build(seed, &template_context).await.unwrap();
@@ -182,7 +168,7 @@ async fn test_build_url(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let template_context = template_context([recipe]);
 
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
     let url = http_engine
@@ -214,7 +200,7 @@ async fn test_build_url(http_engine: &HttpEngine) {
 )]
 #[case::binary(
     RecipeBody::Raw {
-        body: "{{chains.binary}}".into(),
+        body: invalid_utf8(),
         content_type: None,
     },
     b"\xc3\x28",
@@ -222,22 +208,13 @@ async fn test_build_url(http_engine: &HttpEngine) {
 #[tokio::test]
 async fn test_build_body(
     http_engine: &HttpEngine,
-    invalid_utf8_chain: ChainSource,
     #[case] body: RecipeBody,
     #[case] expected_body: &[u8],
 ) {
-    let template_context = template_context(
-        [Recipe {
-            body: Some(body),
-            ..Recipe::factory(())
-        }],
-        [Chain {
-            // Invalid UTF-8
-            id: "binary".into(),
-            source: invalid_utf8_chain,
-            ..Chain::factory(())
-        }],
-    );
+    let template_context = template_context([Recipe {
+        body: Some(body),
+        ..Recipe::factory(())
+    }]);
     let seed = RequestSeed::new(
         template_context.collection.first_recipe_id().clone(),
         BuildOptions::default(),
@@ -282,7 +259,7 @@ async fn test_authentication(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let template_context = template_context([recipe]);
 
     let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
     let ticket = http_engine.build(seed, &template_context).await.unwrap();
@@ -356,7 +333,7 @@ async fn test_authentication(
 #[case::form_multipart(
     RecipeBody::FormMultipart(indexmap! {
         "user_id".into() => "{{user_id}}".into(),
-        "binary".into() => "{{chains.binary}}".into()
+        "binary".into() => invalid_utf8(),
     }),
     None,
     // multipart bodies are automatically turned into streams by reqwest,
@@ -369,7 +346,6 @@ async fn test_authentication(
 #[tokio::test]
 async fn test_structured_body(
     http_engine: &HttpEngine,
-    invalid_utf8_chain: ChainSource,
     #[case] body: RecipeBody,
     #[case] content_type: Option<&str>,
     #[case] expected_body: Option<&'static [u8]>,
@@ -388,15 +364,7 @@ async fn test_structured_body(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context(
-        [recipe],
-        [Chain {
-            // Invalid UTF-8
-            id: "binary".into(),
-            source: invalid_utf8_chain,
-            ..Chain::factory(())
-        }],
-    );
+    let template_context = template_context([recipe]);
 
     let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
     let ticket = http_engine.build(seed, &template_context).await.unwrap();
@@ -475,7 +443,7 @@ async fn test_build_options(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let template_context = template_context([recipe]);
 
     let seed = RequestSeed::new(
         recipe_id.clone(),
@@ -545,7 +513,7 @@ async fn test_build_options_form(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let template_context = template_context([recipe]);
 
     let seed = RequestSeed::new(
         recipe_id.clone(),
@@ -591,7 +559,7 @@ async fn test_chain_duplicate(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let template_context = template_context([recipe]);
 
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
     let ticket = http_engine.build(seed, &template_context).await.unwrap();
@@ -617,7 +585,7 @@ async fn test_send_request(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let template_context = template_context([recipe]);
 
     // Build+send the request
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
@@ -662,7 +630,7 @@ async fn test_render_headers_strip() {
         },
         ..Recipe::factory(())
     };
-    let template_context = template_context([], []);
+    let template_context = template_context([]);
     let rendered = recipe
         .render_headers(&BuildOptions::default(), &template_context)
         .await
@@ -706,7 +674,7 @@ async fn test_build_curl(http_engine: &HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let template_context = template_context([recipe]);
 
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
     let command = http_engine
@@ -751,7 +719,7 @@ async fn test_build_curl_authentication(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let template_context = template_context([recipe]);
 
     let seed = RequestSeed::new(recipe_id, BuildOptions::default());
     let command = http_engine
@@ -799,7 +767,7 @@ async fn test_build_curl_body(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let template_context = template_context([recipe]);
 
     let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
     let command = http_engine

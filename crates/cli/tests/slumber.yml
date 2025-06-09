@@ -13,25 +13,16 @@ profiles:
       host: http://server
       username: username2
 
-chains:
-  # chain that triggers a request
-  trigger:
-    source: !request
-      recipe: getUser
-      trigger: !always
-    content_type: json
-    selector: $.username
-
 requests:
   getUser: !request
     method: GET
-    url: "{{host}}/users/{{username}}"
+    url: "{{ host }}/users/{{ username }}"
 
   jsonBody: !request
     method: POST
-    url: "{{host}}/json"
-    body: !json { "username": "{{username}}", "name": "Frederick Smidgen" }
+    url: "{{ host }}/json"
+    body: !json { "username": "{{ username }}", "name": "Frederick Smidgen" }
 
   chained: !request
     method: GET
-    url: "{{host}}/chained/{{chains.trigger}}"
+    url: "{{ host }}/chained/{{ response('getUser', trigger='always') | jsonpath('$.username') }}"

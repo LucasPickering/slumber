@@ -3,7 +3,7 @@ profiles:
     name: /v3
     data:
       host: /v3
-chains: {}
+
 requests:
   tag/pet: !folder
     name: pet
@@ -11,7 +11,7 @@ requests:
       addPet: !request
         name: Add a new pet to the store
         method: POST
-        url: "{{host}}/pet"
+        url: "{{ host }}/pet"
         body:
           !json {
             "id": 10,
@@ -24,7 +24,7 @@ requests:
       updatePet: !request
         name: Update an existing pet
         method: PUT
-        url: "{{host}}/pet"
+        url: "{{ host }}/pet"
         body:
           !json {
             "id": 10,
@@ -37,38 +37,38 @@ requests:
       findPetsByStatus: !request
         name: Finds Pets by status
         method: GET
-        url: "{{host}}/pet/findByStatus"
+        url: "{{ host }}/pet/findByStatus"
         query:
           status: ""
       findPetsByTags: !request
         name: Finds Pets by tags
         method: GET
-        url: "{{host}}/pet/findByTags"
+        url: "{{ host }}/pet/findByTags"
         query:
           tags: ""
       deletePet: !request
         name: Deletes a pet
         method: DELETE
-        url: "{{host}}/pet/{{petId}}"
+        url: "{{ host }}/pet/{{petId}}"
         headers:
           api_key: ""
       getPetById: !request
         name: Find pet by ID
         method: GET
-        url: "{{host}}/pet/{{petId}}"
+        url: "{{ host }}/pet/{{petId}}"
         headers:
           api_key: "{{api_key}}"
       updatePetWithForm: !request
         name: Updates a pet in the store with form data
         method: POST
-        url: "{{host}}/pet/{{petId}}"
+        url: "{{ host }}/pet/{{petId}}"
         query:
           name: ""
           status: ""
       uploadFile: !request
         name: uploads an image
         method: POST
-        url: "{{host}}/pet/{{petId}}/uploadImage"
+        url: "{{ host }}/pet/{{petId}}/uploadImage"
         query:
           additionalMetadata: ""
         body: '""'
@@ -78,13 +78,13 @@ requests:
       getInventory: !request
         name: Returns pet inventories by status
         method: GET
-        url: "{{host}}/store/inventory"
+        url: "{{ host }}/store/inventory"
         headers:
           api_key: "{{api_key}}"
       placeOrder: !request
         name: Place an order for a pet
         method: POST
-        url: "{{host}}/store/order"
+        url: "{{ host }}/store/order"
         body:
           !json {
             id: 10,
@@ -97,18 +97,18 @@ requests:
       deleteOrder: !request
         name: Delete purchase order by ID
         method: DELETE
-        url: "{{host}}/store/order/{{orderId}}"
+        url: "{{ host }}/store/order/{{orderId}}"
       getOrderById: !request
         name: Find purchase order by ID
         method: GET
-        url: "{{host}}/store/order/{{orderId}}"
+        url: "{{ host }}/store/order/{{orderId}}"
   tag/user: !folder
     name: user
     requests:
       createUser: !request
         name: Create user
         method: POST
-        url: "{{host}}/user"
+        url: "{{ host }}/user"
         body: !json {
             id: 10,
             username: "theUser",
@@ -124,7 +124,7 @@ requests:
       createUsersWithListInput: !request
         name: Creates list of users with given input array
         method: POST
-        url: "{{host}}/user/createWithList"
+        url: "{{ host }}/user/createWithList"
         body:
           !json [
             {
@@ -141,26 +141,26 @@ requests:
       loginUser: !request
         name: Logs user into the system
         method: GET
-        url: "{{host}}/user/login"
+        url: "{{ host }}/user/login"
         query:
           username: ""
           password: ""
       logoutUser: !request
         name: Logs out current logged in user session
         method: GET
-        url: "{{host}}/user/logout"
+        url: "{{ host }}/user/logout"
       deleteUser: !request
         name: Delete user
         method: DELETE
-        url: "{{host}}/user/{{username}}"
+        url: "{{ host }}/user/{{ username }}"
       getUserByName: !request
         name: Get user by user name
         method: GET
-        url: "{{host}}/user/{{username}}"
+        url: "{{ host }}/user/{{ username }}"
       updateUser: !request
         name: Update user
         method: PUT
-        url: "{{host}}/user/{{username}}"
+        url: "{{ host }}/user/{{ username }}"
         body:
           !json {
             id: 10,

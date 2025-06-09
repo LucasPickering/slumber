@@ -175,6 +175,8 @@ pub struct HttpEngineConfig {
     /// Request/response bodies over this size are treated differently, for
     /// performance reasons
     pub large_body_size: usize,
+    /// Follow 3xx redirects automatically. Enabled by default
+    pub follow_redirects: bool,
 }
 
 impl HttpEngineConfig {
@@ -191,6 +193,7 @@ impl Default for HttpEngineConfig {
         Self {
             ignore_certificate_hosts: Default::default(),
             large_body_size: 1000 * 1000, // 1MB
+            follow_redirects: true,
         }
     }
 }

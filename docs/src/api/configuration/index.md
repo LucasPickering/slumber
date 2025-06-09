@@ -66,6 +66,14 @@ Enable developer information in the TUI
 
 Command to use when opening files for in-app editing. [More info](../../user_guide/tui/editor.md#editing)
 
+### `follow_redirects`
+
+**Type:** `boolean`
+
+**Default:** `true`
+
+Enable/disable following redirects (3xx status codes) automatically. If enabled, the HTTP client follow redirects [up to 10 times](https://docs.rs/reqwest/0.12.15/reqwest/index.html#redirect-policies).
+
 ### `ignore_certificate_hosts`
 
 **Type:** `string`

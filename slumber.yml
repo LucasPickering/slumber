@@ -171,3 +171,8 @@ requests:
     name: Dynamic Response Type
     method: GET
     url: "{{host}}/{{chains.response_type}}"
+
+  redirect: !request
+    name: Redirect
+    method: GET
+    url: "{{host}}/redirect-to?url={{host}}/get"

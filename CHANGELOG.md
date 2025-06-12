@@ -25,6 +25,8 @@ The new collection _should_ be equivalent to the old one, but you should keep yo
   - The map format has been supported as well, but did not allow for multiple values for the same value, hence the need for the string format
   - To define multiple values for the same value, you can now use a list associated to the parameter: `{parameter: [value1, value2]}`
   - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/query_parameters.html) for examples of the new format
+- Profile override values given to the `--override` flag are now treated as templates
+  - Previously the literal value was always used without additional rendering
 
 ### Changed
 

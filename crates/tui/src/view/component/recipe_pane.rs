@@ -63,11 +63,11 @@ impl RecipePane {
         let recipe_id = state_key.recipe_id.clone()?;
         let profile_id = state_key.selected_profile_id.clone();
         let recipe_state = self.recipe_state.borrow();
-        let options = recipe_state.data().as_ref()?.build_options();
+        let overrides = recipe_state.data().as_ref()?.overrides();
         Some(RequestConfig {
             profile_id,
             recipe_id,
-            options,
+            overrides,
         })
     }
 }

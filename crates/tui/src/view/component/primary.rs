@@ -495,7 +495,7 @@ mod tests {
     use crossterm::event::KeyCode;
     use persisted::PersistedStore;
     use rstest::rstest;
-    use slumber_core::http::BuildOptions;
+    use slumber_core::http::OverrideMap;
     use slumber_util::assert_matches;
 
     /// Create component to be tested
@@ -545,7 +545,7 @@ mod tests {
         let expected_config = RequestConfig {
             recipe_id: harness.collection.first_recipe_id().clone(),
             profile_id: Some(harness.collection.first_profile_id().clone()),
-            options: BuildOptions::default(),
+            overrides: OverrideMap::default(),
         };
         assert_eq!(component.data().request_config(), Some(expected_config));
     }

@@ -66,7 +66,7 @@ fn build_authentication(r_auth: RestAuthorization) -> Authentication {
         RestAuthorization::Basic { username, password } => {
             Authentication::Basic {
                 username: Template::raw(username),
-                password: password.map(Template::raw),
+                password: password.map(Template::raw).unwrap_or_default(),
             }
         }
     }

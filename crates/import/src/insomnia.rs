@@ -411,7 +411,7 @@ impl TryFrom<Authentication> for collection::Authentication {
             Authentication::Basic { username, password } => {
                 Ok(collection::Authentication::Basic {
                     username: Template::raw(username),
-                    password: Some(Template::raw(password)),
+                    password: Template::raw(password),
                 })
             }
             Authentication::Bearer { token } => {

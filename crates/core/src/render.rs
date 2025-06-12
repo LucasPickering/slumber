@@ -6,14 +6,16 @@ mod functions;
 
 use crate::{
     collection::{Collection, Profile, ProfileId, RecipeId},
-    http::{Exchange, RequestSeed, ResponseRecord, TriggeredRequestError},
+    http::{
+        Exchange, OverrideKey, OverrideMap, OverrideValue, RequestSeed,
+        ResponseRecord, TriggeredRequestError,
+    },
     render::functions::RequestTrigger,
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::Utc;
 use derive_more::From;
-use indexmap::IndexMap;
 use itertools::Itertools;
 use serde_json_path::JsonPath;
 use slumber_template::{Arguments, Identifier, TemplateError};
@@ -36,8 +38,10 @@ pub struct TemplateContext {
     pub selected_profile: Option<ProfileId>,
     /// An interface to allow accessing and sending HTTP chained requests
     pub http_provider: Box<dyn HttpProvider>,
-    /// Additional key=value overrides passed directly from the user
-    pub overrides: IndexMap<String, String>,
+    /// Additional overrides passed directly from the user. This handles
+    /// overrides from the --override CLI option as well as in-session TUI
+    /// overrides
+    pub overrides: OverrideMap,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
     /// Should sensitive values be shown normally or masked? Enabled for
@@ -69,7 +73,7 @@ impl TemplateContext {
 
         // Helper to execute the request, if triggered
         let send_request = || async {
-            // There are 3 different ways we can generate the build optoins:
+            // There are 3 different ways we can generate the overrides:
             // 1. Default (enable all query params/headers)
             // 2. Load from UI state for both TUI and CLI
             // 3. Load from UI state for TUI, enable all for CLI
@@ -80,13 +84,10 @@ impl TemplateContext {
             // 3. TUI and CLI behavior may not match
             // All 3 options are unintuitive in some way, but 1 is the easiest
             // to implement so I'm going with that for now.
-            let build_options = Default::default();
 
+            // TODO don't forward request overrides to chained request
             self.http_provider
-                .send_request(
-                    RequestSeed::new(recipe_id.clone(), build_options),
-                    self,
-                )
+                .send_request(RequestSeed::new(recipe_id.clone()), self)
                 .await
                 .map_err(|error| FunctionError::Trigger {
                     recipe_id: recipe_id.clone(),
@@ -126,16 +127,19 @@ impl slumber_template::TemplateContext for TemplateContext {
         &self,
         field: &slumber_template::Identifier,
     ) -> Result<slumber_template::Value, slumber_template::TemplateError> {
-        // Check overrides first. The override value is NOT treated as a
-        // template
-        if let Some(value) = self.overrides.get(field.as_str()) {
-            return Ok(value.clone().into());
-        }
-
-        // Then check the current profile
-        let template = self
-            .current_profile()
-            .and_then(|profile| profile.data.get(field.as_str()))
+        // Check if this field has been overridden
+        let template =
+            match self.overrides.get(&OverrideKey::Profile(field.clone())) {
+                // No override, grab it from the profile
+                None => self
+                    .current_profile()
+                    .and_then(|profile| profile.data.get(field.as_str())),
+                // Field is omitted
+                Some(OverrideValue::Omit) => None,
+                // We've been given an override template, use it
+                Some(OverrideValue::Override(value)) => Some(value),
+            }
+            // If the field is missing, freak the FUCK out
             .ok_or_else(|| FunctionError::UnknownField {
                 field: field.to_string(),
             })?;
@@ -182,7 +186,7 @@ impl slumber_util::Factory for TemplateContext {
                 CollectionDatabase::factory(()),
                 None,
             )),
-            overrides: IndexMap::new(),
+            overrides: OverrideMap::default(),
             prompter: Box::<TestPrompter>::default(),
             show_sensitive: true,
         }

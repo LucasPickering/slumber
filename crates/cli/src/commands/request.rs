@@ -14,20 +14,19 @@ use slumber_core::{
     collection::{ProfileId, RecipeId},
     database::{CollectionDatabase, Database},
     http::{
-        BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
-        ResponseRecord, TriggeredRequestError,
+        Exchange, HttpEngine, OverrideKey, OverrideValue, RequestRecord,
+        RequestSeed, ResponseRecord, TriggeredRequestError,
     },
     render::{HttpProvider, Prompt, Prompter, Select, TemplateContext},
     util::MaybeStr,
 };
+use slumber_template::Template;
 use slumber_util::ResultTraced;
 use std::{
-    error::Error,
     fs::OpenOptions,
     io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
     process::ExitCode,
-    str::FromStr,
 };
 use tracing::warn;
 
@@ -85,15 +84,61 @@ pub struct BuildRequestCommand {
     )]
     profile: Option<ProfileId>,
 
-    /// List of key=value template field overrides
+    /// List of key=value field overrides
+    ///
+    /// Pass the flag multiple times to override multiple fields. To omit a
+    /// field entirely, pass the key alone, without the `=`.
+    ///
+    /// TODO add a doc section on how to use this
+    ///
+    /// Available keys:
+    ///
+    /// <field>: Override a single field in the selected profile
+    ///
+    /// rq.url: Override entire URL
+    ///
+    /// rq.body: Override entire body text
+    ///
+    /// rq.query.<query>: Override all values for a query parameter
+    ///
+    /// rq.query.<query>.<index>: Override a single value for a query parameter
+    ///   that appears multiple times. Index starts at 0
+    ///
+    /// rq.headers.<header>: Override value for a header
+    ///
+    /// rq.form.<field>: Override value for a single field in a URL-encoded or
+    /// multipart form body
+    ///
+    /// rq.auth.username: Override username for Basic authentication
+    ///
+    /// rq.auth.password: Override password for Basic authentication
+    ///
+    /// rq.auth.token: Override token for Bearer authentication
+    ///
+    /// Note: `rq.` prefix is required for overriding request components to
+    /// differentiate those fields from profile field names
+    ///
+    /// Examples
+    ///
+    ///     Override profile field `host`
+    ///     -o host=http://localhost
+    ///
+    ///     Override query parameter `foo`
+    ///     -o rq.query.foo=bar
+    ///
+    ///     Override two instances of query parameter `foo`
+    ///     -o rq.query.foo.0=bar -o rq.query.foo.1=baz
+    ///
+    ///     Omit header `foo` entirely
+    ///     -o rq.headers.foo
     #[clap(
         long = "override",
         short = 'o',
-        value_parser = parse_key_val::<String, String>,
+        value_parser = parse_override,
         // There's no reasonable way of doing completions on this, so disable
         value_hint = ValueHint::Other,
     )]
-    overrides: Vec<(String, String)>,
+    overrides: Vec<(OverrideKey, OverrideValue)>,
 }
 
 /// Helper for any subcommand that prints exchange (request/response)
@@ -209,7 +254,11 @@ impl BuildRequestCommand {
         });
 
         // Build the request
-        let overrides: IndexMap<_, _> = self.overrides.into_iter().collect();
+        let overrides = self
+            .overrides
+            .into_iter()
+            .collect::<IndexMap<_, _>>()
+            .into();
         let template_context = TemplateContext {
             selected_profile,
             collection: collection.into(),
@@ -222,7 +271,7 @@ impl BuildRequestCommand {
             prompter: Box::new(CliPrompter),
             show_sensitive: true,
         };
-        let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());
+        let seed = RequestSeed::new(self.recipe_id);
         Ok((database, http_engine, seed, template_context))
     }
 }
@@ -390,18 +439,18 @@ impl Prompter for CliPrompter {
     }
 }
 
-/// Parse a single key=value pair for an argument
-fn parse_key_val<T, U>(
-    s: &str,
-) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
-where
-    T: FromStr,
-    T::Err: Error + Send + Sync + 'static,
-    U: FromStr,
-    U::Err: Error + Send + Sync + 'static,
-{
-    let (key, value) = s
-        .split_once('=')
-        .ok_or_else(|| format!("invalid key=value: no \"=\" found in `{s}`"))?;
-    Ok((key.parse()?, value.parse()?))
+/// Parse a single key=value pair for --override
+fn parse_override(s: &str) -> Result<(OverrideKey, OverrideValue), String> {
+    if let Some((key, value)) = s.split_once('=') {
+        // Value given - parse it as a template
+        let key: OverrideKey = key.parse()?;
+        let value = value
+            .parse::<Template>()
+            .map_err(|error| error.to_string())?;
+        Ok((key, OverrideValue::Override(value)))
+    } else {
+        // No value given - omit the field
+        let key: OverrideKey = s.parse()?;
+        Ok((key, OverrideValue::Omit))
+    }
 }

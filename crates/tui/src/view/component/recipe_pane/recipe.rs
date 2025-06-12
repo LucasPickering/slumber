@@ -4,7 +4,6 @@ use crate::view::{
     component::recipe_pane::{
         authentication::AuthenticationDisplay,
         body::RecipeBodyDisplay,
-        persistence::RecipeOverrideKey,
         table::{RecipeFieldTable, RecipeFieldTableProps},
     },
     draw::{Draw, DrawMetadata},
@@ -16,7 +15,7 @@ use ratatui::{Frame, layout::Layout, prelude::Constraint, widgets::Paragraph};
 use serde::{Deserialize, Serialize};
 use slumber_core::{
     collection::{Recipe, RecipeId},
-    http::{BuildOptions, HttpMethod},
+    http::{HttpMethod, OverrideKey, OverrideMap},
 };
 use strum::{EnumCount, EnumIter};
 
@@ -44,41 +43,36 @@ impl RecipeDisplay {
             url: TemplatePreview::new(recipe.url.clone(), None, false),
             query: RecipeFieldTable::new(
                 "Parameter",
+                recipe.id.clone(),
                 QueryRowKey(recipe.id.clone()),
-                recipe.query_iter().enumerate().map(
-                    |(i, (param, _, value))| {
-                        (
-                            param.to_owned(),
-                            value.clone(),
-                            RecipeOverrideKey::query_param(
-                                recipe.id.clone(),
-                                i,
-                            ),
-                            QueryRowToggleKey {
-                                recipe_id: recipe.id.clone(),
-                                param: param.to_owned(),
-                            },
-                        )
-                    },
-                ),
+                recipe.query_iter().map(|(param, i, value)| {
+                    (
+                        param.to_owned(),
+                        value.clone(),
+                        OverrideKey::Query(param.to_owned(), Some(i)),
+                        QueryRowToggleKey {
+                            recipe_id: recipe.id.clone(),
+                            param: param.to_owned(),
+                        },
+                    )
+                }),
             )
             .into(),
             headers: RecipeFieldTable::new(
                 "Header",
+                recipe.id.clone(),
                 HeaderRowKey(recipe.id.clone()),
-                recipe.headers.iter().enumerate().map(
-                    |(i, (header, value))| {
-                        (
-                            header.clone(),
-                            value.clone(),
-                            RecipeOverrideKey::header(recipe.id.clone(), i),
-                            HeaderRowToggleKey {
-                                recipe_id: recipe.id.clone(),
-                                header: header.clone(),
-                            },
-                        )
-                    },
-                ),
+                recipe.headers.iter().map(|(header, value)| {
+                    (
+                        header.clone(),
+                        value.clone(),
+                        OverrideKey::Header(header.clone()),
+                        HeaderRowToggleKey {
+                            recipe_id: recipe.id.clone(),
+                            header: header.clone(),
+                        },
+                    )
+                }),
             )
             .into(),
             body: recipe
@@ -100,35 +94,20 @@ impl RecipeDisplay {
         }
     }
 
-    /// Generate a [BuildOptions] instance based on current UI state
-    pub fn build_options(&self) -> BuildOptions {
-        let authentication = self.authentication.data().as_ref().and_then(
-            super::authentication::AuthenticationDisplay::override_value,
-        );
-        let form_fields = self
-            .body
-            .data()
-            .as_ref()
-            .and_then(|body| match body {
-                RecipeBodyDisplay::Raw(_) => None,
-                RecipeBodyDisplay::Form(form) => {
-                    Some(form.data().to_build_overrides())
-                }
-            })
-            .unwrap_or_default();
-        let body = self
-            .body
-            .data()
-            .as_ref()
-            .and_then(super::body::RecipeBodyDisplay::override_value);
+    /// Generate a [OverrideMap] instance based on current UI state
+    pub fn overrides(&self) -> OverrideMap {
+        let mut overrides = OverrideMap::default();
 
-        BuildOptions {
-            authentication,
-            headers: self.headers.data().to_build_overrides(),
-            query_parameters: self.query.data().to_build_overrides(),
-            form_fields,
-            body,
+        if let Some(authentication) = self.authentication.data().as_ref() {
+            overrides.extend(authentication.overrides());
         }
+        overrides.extend(self.headers.data().overrides());
+        overrides.extend(self.query.data().overrides());
+        if let Some(body) = self.body.data() {
+            overrides.extend(body.overrides());
+        }
+
+        overrides
     }
 }
 

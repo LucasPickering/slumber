@@ -409,7 +409,7 @@ impl<'a> RecipeBuilder<'a> {
                     "Basic" | "basic" => {
                         self.authentication = Some(Authentication::Basic {
                             username: Template::from_field("username".into()),
-                            password: Some(Template::from_field(
+                            password: (Template::from_field(
                                 "password".into(),
                             )),
                         });

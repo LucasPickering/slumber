@@ -9,7 +9,7 @@ use slumber_config::Action;
 use slumber_core::{
     collection::{Collection, ProfileId, RecipeId},
     http::{
-        BuildOptions, Exchange, RequestBuildError, RequestError, RequestId,
+        Exchange, OverrideMap, RequestBuildError, RequestError, RequestId,
         RequestRecord,
     },
     render::{Prompt, ResponseChannel, Select},
@@ -177,5 +177,5 @@ pub type Callback<T> = Box<dyn 'static + Send + Sync + FnOnce(T)>;
 pub struct RequestConfig {
     pub profile_id: Option<ProfileId>,
     pub recipe_id: RecipeId,
-    pub options: BuildOptions,
+    pub overrides: OverrideMap,
 }

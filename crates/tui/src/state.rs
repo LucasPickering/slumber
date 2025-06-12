@@ -15,7 +15,7 @@ use ratatui::Frame;
 use slumber_core::{
     collection::{Collection, CollectionFile, ProfileId},
     database::CollectionDatabase,
-    http::{Exchange, RequestError, RequestId, RequestSeed},
+    http::{Exchange, OverrideMap, RequestError, RequestId, RequestSeed},
     render::{Prompter, TemplateContext},
 };
 use slumber_template::{RenderedChunk, Template};
@@ -398,10 +398,11 @@ impl LoadedState {
         let RequestConfig {
             profile_id,
             recipe_id,
-            options,
+            overrides,
         } = self.request_config()?;
-        let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false);
+        let seed = RequestSeed::new(recipe_id);
+        let template_context =
+            self.template_context(profile_id, overrides, false);
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         util::spawn_result(async move {
@@ -420,10 +421,11 @@ impl LoadedState {
         let RequestConfig {
             profile_id,
             recipe_id,
-            options,
+            overrides,
         } = self.request_config()?;
-        let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false);
+        let seed = RequestSeed::new(recipe_id);
+        let template_context =
+            self.template_context(profile_id, overrides, false);
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         util::spawn_result(async move {
@@ -446,10 +448,11 @@ impl LoadedState {
         let RequestConfig {
             profile_id,
             recipe_id,
-            options,
+            overrides,
         } = self.request_config()?;
-        let seed = RequestSeed::new(recipe_id, options);
-        let template_context = self.template_context(profile_id, false);
+        let seed = RequestSeed::new(recipe_id);
+        let template_context =
+            self.template_context(profile_id, overrides, false);
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
         util::spawn_result(async move {
@@ -511,15 +514,16 @@ impl LoadedState {
         let RequestConfig {
             profile_id,
             recipe_id,
-            options,
+            overrides,
         } = self.request_config()?;
         // Launch the request in a separate task so it doesn't block.
         // These clones are all cheap.
 
-        let template_context = self.template_context(profile_id.clone(), false);
+        let template_context =
+            self.template_context(profile_id.clone(), overrides, false);
         let messages_tx = self.messages_tx();
 
-        let seed = RequestSeed::new(recipe_id.clone(), options);
+        let seed = RequestSeed::new(recipe_id.clone());
         let request_id = seed.id;
 
         // Don't use spawn_result here, because errors are handled specially for
@@ -602,7 +606,14 @@ impl LoadedState {
         profile_id: Option<ProfileId>,
         on_complete: Callback<Vec<RenderedChunk>>,
     ) {
-        let context = self.template_context(profile_id, true);
+        let context = self.template_context(
+            profile_id,
+            // Since we're rendering an individual template rather than a
+            // request, and the TUI doesn't provide a way to override profile
+            // fields, we don't need to pass any overrides
+            OverrideMap::default(),
+            true,
+        );
         util::spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render_chunks(&context).await;
@@ -616,6 +627,7 @@ impl LoadedState {
     fn template_context(
         &self,
         profile_id: Option<ProfileId>,
+        overrides: OverrideMap,
         is_preview: bool,
     ) -> TemplateContext {
         let collection = &self.collection;
@@ -632,7 +644,7 @@ impl LoadedState {
             collection: Arc::clone(collection),
             http_provider: Box::new(http_provider),
             prompter,
-            overrides: Default::default(),
+            overrides,
             show_sensitive: !is_preview,
         }
     }

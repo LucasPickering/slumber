@@ -312,7 +312,14 @@ impl slumber_util::Factory for RecipeId {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`
-    Basic { username: T, password: Option<T> },
+    Basic {
+        username: T,
+        /// The password field is optional in basic auth. If omitted, the
+        /// pre-encoding string will be `username:`, so omitting the password
+        /// is the same as having an empty string.
+        #[serde(default)]
+        password: T,
+    },
     /// `Authorization: Bearer {token}`
     Bearer(T),
 }

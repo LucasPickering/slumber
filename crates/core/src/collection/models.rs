@@ -181,17 +181,28 @@ pub struct Recipe {
     pub id: RecipeId,
     #[serde(default = "cereal::persist_default")]
     pub persist: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// *Not* a template string because the usefulness doesn't justify the
     /// complexity. This gives the user an immediate error if the method is
     /// wrong which is helpful.
     pub method: HttpMethod,
     pub url: Template,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<RecipeBody>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub authentication: Option<Authentication>,
-    #[serde(default, with = "cereal::serde_query_parameters")]
+    #[serde(
+        default,
+        with = "cereal::serde_query_parameters",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub query: Vec<(String, Template)>,
-    #[serde(default, deserialize_with = "cereal::deserialize_headers")]
+    #[serde(
+        default,
+        deserialize_with = "cereal::deserialize_headers",
+        skip_serializing_if = "IndexMap::is_empty"
+    )]
     pub headers: IndexMap<String, Template>,
 }
 

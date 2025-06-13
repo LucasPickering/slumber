@@ -6,11 +6,13 @@
 //! This module is an implementation of an easily-extendable resolver for
 //! components stored inside an OpenAPI specifications.
 
+use anyhow::Context;
 use indexmap::IndexMap;
 use openapiv3::{
     Components, Example, Parameter, ReferenceOr, RequestBody, Schema,
     SecurityScheme,
 };
+use slumber_util::ResultTraced;
 use std::borrow::Cow;
 use thiserror::Error;
 use winnow::{Parser, combinator::preceded, error::EmptyError, token::rest};
@@ -96,6 +98,30 @@ impl ComponentKind for SecurityScheme {
     }
 }
 
+/// Extra layer of abstraction on [ComponentKind] to enable resolving references
+/// of `ReferenceOr<Box<T>>`
+pub trait IntoComponentKind {
+    type Output: ComponentKind + Clone;
+
+    fn into_output(self) -> Self::Output;
+}
+
+impl<T: Clone + ComponentKind> IntoComponentKind for T {
+    type Output = T;
+
+    fn into_output(self) -> Self::Output {
+        self
+    }
+}
+
+impl IntoComponentKind for Box<Schema> {
+    type Output = Schema;
+
+    fn into_output(self) -> Self::Output {
+        *self
+    }
+}
+
 impl ReferenceResolver {
     pub fn new(components: Option<Components>) -> Self {
         Self(components.unwrap_or_default())
@@ -121,15 +147,18 @@ impl ReferenceResolver {
     /// Resolve a [ReferenceOr] into the contained item. If the item is already
     /// there, just unwrap it and returned the owned value. If it's a reference,
     /// resolve it and return a reference to the data.
-    pub fn resolve<T: Clone + ComponentKind>(
+    pub fn resolve<T: IntoComponentKind>(
         &self,
+        path: String, // For logging/debugging
         reference_or: ReferenceOr<T>,
-    ) -> Result<Cow<'_, T>, ResolveError> {
+    ) -> anyhow::Result<Cow<'_, T::Output>> {
         match reference_or {
-            ReferenceOr::Item(item) => Ok(Cow::Owned(item)),
-            ReferenceOr::Reference { reference } => {
-                self.get_by_reference(&reference).map(Cow::Borrowed)
-            }
+            ReferenceOr::Item(item) => Ok(Cow::Owned(item.into_output())),
+            ReferenceOr::Reference { reference } => self
+                .get_by_reference(&reference)
+                .map(Cow::Borrowed)
+                .context(path)
+                .traced(),
         }
     }
 

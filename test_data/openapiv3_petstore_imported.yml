@@ -12,73 +12,66 @@ requests:
         name: Add a new pet to the store
         method: POST
         url: "{{host}}/pet"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
+        body:
+          !json {
+            "id": 10,
+            "name": "doggie",
+            "category": { "id": 1, "name": "Dogs" },
+            "photoUrls": [""],
+            "tags": [{ "id": 0, "name": "" }],
+            "status": "available",
+          }
       updatePet: !request
         name: Update an existing pet
         method: PUT
         url: "{{host}}/pet"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
+        body:
+          !json {
+            "id": 10,
+            "name": "doggie",
+            "category": { "id": 1, "name": "Dogs" },
+            "photoUrls": [""],
+            "tags": [{ "id": 0, "name": "" }],
+            "status": "available",
+          }
       findPetsByStatus: !request
         name: Finds Pets by status
         method: GET
         url: "{{host}}/pet/findByStatus"
-        body: null
-        authentication: null
         query:
           status: ""
-        headers: {}
       findPetsByTags: !request
         name: Finds Pets by tags
         method: GET
         url: "{{host}}/pet/findByTags"
-        body: null
-        authentication: null
         query:
           tags: ""
-        headers: {}
       deletePet: !request
         name: Deletes a pet
         method: DELETE
         url: "{{host}}/pet/{{petId}}"
-        body: null
-        authentication: null
-        query: {}
         headers:
           api_key: ""
       getPetById: !request
         name: Find pet by ID
         method: GET
         url: "{{host}}/pet/{{petId}}"
-        body: null
-        authentication: null
-        query: {}
         headers:
           api_key: "{{api_key}}"
       updatePetWithForm: !request
         name: Updates a pet in the store with form data
         method: POST
         url: "{{host}}/pet/{{petId}}"
-        body: null
-        authentication: null
         query:
           name: ""
           status: ""
-        headers: {}
       uploadFile: !request
         name: uploads an image
         method: POST
         url: "{{host}}/pet/{{petId}}/uploadImage"
-        body: null
-        authentication: null
         query:
           additionalMetadata: ""
-        headers: {}
+        body: '""'
   tag/store: !folder
     name: store
     requests:
@@ -86,35 +79,29 @@ requests:
         name: Returns pet inventories by status
         method: GET
         url: "{{host}}/store/inventory"
-        body: null
-        authentication: null
-        query: {}
         headers:
           api_key: "{{api_key}}"
       placeOrder: !request
         name: Place an order for a pet
         method: POST
         url: "{{host}}/store/order"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
+        body:
+          !json {
+            id: 10,
+            petId: 198772,
+            quantity: 7,
+            shipDate: "",
+            status: "approved",
+            complete: false,
+          }
       deleteOrder: !request
         name: Delete purchase order by ID
         method: DELETE
         url: "{{host}}/store/order/{{orderId}}"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
       getOrderById: !request
         name: Find purchase order by ID
         method: GET
         url: "{{host}}/store/order/{{orderId}}"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
   tag/user: !folder
     name: user
     requests:
@@ -122,57 +109,66 @@ requests:
         name: Create user
         method: POST
         url: "{{host}}/user"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
+        body: !json {
+            id: 10,
+            username: "theUser",
+            firstName: "John",
+            lastName: "James",
+            email: "john@email.com",
+            # The schema says these are string fields, but the example values
+            # in the spec are numbers, so we just use the examples
+            password: 12345,
+            phone: 12345,
+            userStatus: 1,
+          }
       createUsersWithListInput: !request
         name: Creates list of users with given input array
         method: POST
         url: "{{host}}/user/createWithList"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
+        body:
+          !json [
+            {
+              id: 10,
+              username: "theUser",
+              firstName: "John",
+              lastName: "James",
+              email: "john@email.com",
+              password: 12345,
+              phone: 12345,
+              userStatus: 1,
+            },
+          ]
       loginUser: !request
         name: Logs user into the system
         method: GET
         url: "{{host}}/user/login"
-        body: null
-        authentication: null
         query:
           username: ""
           password: ""
-        headers: {}
       logoutUser: !request
         name: Logs out current logged in user session
         method: GET
         url: "{{host}}/user/logout"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
       deleteUser: !request
         name: Delete user
         method: DELETE
         url: "{{host}}/user/{{username}}"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
       getUserByName: !request
         name: Get user by user name
         method: GET
         url: "{{host}}/user/{{username}}"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
       updateUser: !request
         name: Update user
         method: PUT
         url: "{{host}}/user/{{username}}"
-        body: null
-        authentication: null
-        query: {}
-        headers: {}
+        body:
+          !json {
+            id: 10,
+            username: "theUser",
+            firstName: "John",
+            lastName: "James",
+            email: "john@email.com",
+            password: 12345,
+            phone: 12345,
+            userStatus: 1,
+          }

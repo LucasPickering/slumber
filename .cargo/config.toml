@@ -1,4 +1,0 @@
-[build]
-# Enable tokio unstable features
-# https://docs.rs/tokio/latest/tokio/index.html#unstable-features
-rustflags = ["--cfg", "tokio_unstable"]

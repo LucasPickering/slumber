@@ -204,7 +204,7 @@ impl QueryableBody {
         body: Bytes,
         on_complete: impl 'static + FnOnce(String, anyhow::Result<Vec<u8>>),
     ) -> AbortHandle {
-        util::spawn("spawn_command", async move {
+        util::spawn(async move {
             let shell = &TuiContext::get().config.commands.shell;
             let result = util::run_command(shell, &command, Some(&body))
                 .await

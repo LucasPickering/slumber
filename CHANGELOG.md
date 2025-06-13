@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - **Reminder:** Global configuration is not automatically reloaded. After making changes to your `config.yml`, you'll need to restart Slumber for changes to take effect
   - [See docs for more](https://slumber.lucaspickering.me/book/api/configuration/index.html#follow_redirects)
 
+## Fixed
+
+- Import JSON bodies from OpenAPI spec operations that don't have an `example` field
+  - Now it will infer a body from the schema definition if no examples are provided
+
 ## [3.1.3] - 2025-06-07
 
 ### Fixed

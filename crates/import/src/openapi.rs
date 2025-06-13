@@ -16,9 +16,9 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use mime::Mime;
 use openapiv3::{
-    APIKeyLocation, Components, MediaType, OpenAPI, Operation, Parameter,
-    PathItem, PathStyle, Paths, ReferenceOr, RequestBody, Schema,
-    SecurityScheme, Server,
+    APIKeyLocation, AnySchema, Components, MediaType, ObjectType, OpenAPI,
+    Operation, Parameter, PathItem, PathStyle, Paths, ReferenceOr, RequestBody,
+    Schema, SchemaKind, SecurityScheme, Server, Type,
 };
 use slumber_core::{
     collection::{
@@ -323,9 +323,10 @@ impl<'a> RecipeBuilder<'a> {
                 // For any reference that fails to resolve, print the error and
                 // throw it away
                 self.reference_resolver
-                    .resolve::<Parameter>(parameter)
-                    .with_context(|| format!("{id}.parameters", id = self.id))
-                    .traced()
+                    .resolve::<Parameter>(
+                        format!("{id}.parameters", id = self.id),
+                        parameter,
+                    )
                     .ok()
             })
             .for_each(|parameter| match parameter.into_owned() {
@@ -463,19 +464,17 @@ impl<'a> RecipeBuilder<'a> {
     /// grab the first valid one.
     fn process_body(&mut self, request_body: ReferenceOr<RequestBody>) {
         // If the reference is invalid, log it and fuck off
-        let Ok(request_body) = self
-            .reference_resolver
-            .resolve::<RequestBody>(request_body)
-            .with_context(|| format!("{}.requestBody", self.id))
-            .traced()
-        else {
+        let Ok(request_body) = self.reference_resolver.resolve::<RequestBody>(
+            format!("{}.requestBody", self.id),
+            request_body,
+        ) else {
             return;
         };
 
         let body = request_body
             .content
             .iter()
-            // Parse each MIME type
+            // Parse each MIME type and exclude bodies with an invalid type
             .filter_map(|(content_type, media_type)| {
                 let mime = content_type
                     .parse::<Mime>()
@@ -498,14 +497,15 @@ impl<'a> RecipeBuilder<'a> {
             })
             // Convert each example into our body format
             .filter_map(|(mime, value)| {
-                self.get_body(&mime, value)
+                self.convert_body(&mime, value)
                     .with_context(|| format!("{}.requestBody.{mime}", self.id))
                     .traced()
                     .ok()
             })
             // Sort known content types first
             .sorted_by_key(|body| {
-                // This that *don't* match will sort first, because false < true
+                // This means bodies that *don't* match will sort first, because
+                // false < true
                 matches!(
                     body,
                     RecipeBody::Raw {
@@ -533,6 +533,7 @@ impl<'a> RecipeBuilder<'a> {
     ///   exclusive with `media_type.example`, but we support both because it's
     ///   easy)
     /// - `media_type.schema.examples`
+    /// - `media_type.schema.properties` (build an example from the schema def)
     fn get_examples(
         &'a self,
         mime: Mime,
@@ -549,39 +550,155 @@ impl<'a> RecipeBuilder<'a> {
                 .filter_map(move |(name, example)| {
                     let example = self
                         .reference_resolver
-                        .resolve(example.clone())
-                        .with_context(|| {
+                        .resolve(
                             format!(
                                 "{id}.requestBody.content.{mime_}\
                                 .examples.{name}",
                                 id = self.id,
-                            )
-                        })
-                        .traced()
+                            ),
+                            example.clone(),
+                        )
                         .ok()?
                         .into_owned();
                     example.value
                 });
+
+        // If there was no example for the operation, look at the underlying
+        // schema
         let schema_example = media_type.schema.as_ref().and_then(|schema| {
+            let schema_path = format!(
+                "{id}.requestBody.content.{mime}.schema",
+                id = self.id,
+            );
             let schema = self
                 .reference_resolver
-                .resolve::<Schema>(schema.clone())
-                .with_context(|| {
-                    format!(
-                        "{id}.requestBody.content.{mime}.schema",
-                        id = self.id,
-                    )
-                })
-                .traced()
+                .resolve::<Schema>(schema_path.clone(), schema.clone())
                 .ok()?;
-            schema.schema_data.example.clone()
+
+            // If there's no example declared on the schema, generate one from
+            // its properties
+            schema
+                .schema_data
+                .example
+                .clone()
+                .or_else(|| Some(self.schema_to_json(&schema, schema_path)))
         });
 
         example.into_iter().chain(examples).chain(schema_example)
     }
 
+    /// Build an example JSON value from a schema definition. This will be
+    /// called recursively to convert individual parts of complex bodies
+    fn schema_to_json(
+        &self,
+        schema: &Schema,
+        schema_path: String,
+    ) -> serde_json::Value {
+        fn first<T>(enumeration: &[Option<T>]) -> Option<&T> {
+            enumeration.first().and_then(Option::as_ref)
+        }
+
+        // If an example value exists, use it
+        if let Some(example) = &schema.schema_data.example {
+            return example.clone();
+        }
+
+        match &schema.schema_kind {
+            // Any boolean enum is just going go be [false, true]
+            SchemaKind::Type(Type::Boolean(_)) => false.into(),
+            // Floats
+            SchemaKind::Type(Type::Number(number)) => {
+                // Try the first value in the enum
+                first(&number.enumeration)
+                    .copied()
+                    // Then try minimum or maximum to ensure the value is valid
+                    .or(number.minimum)
+                    .or(number.maximum)
+                    // Fallback to a default
+                    .unwrap_or(0.0)
+                    .into()
+            }
+            SchemaKind::Type(Type::Integer(integer)) => {
+                // Try the first value in the enum
+                first(&integer.enumeration)
+                    .copied()
+                    // Then try minimum or maximum to ensure the value is valid
+                    .or(integer.minimum)
+                    .or(integer.maximum)
+                    // Fallback to a default
+                    .unwrap_or(0)
+                    .into()
+            }
+            SchemaKind::Type(Type::String(string)) => {
+                // Try the first value in the enum
+                first(&string.enumeration)
+                    .map(String::from)
+                    // Otherwise use the default. We could try to come up with
+                    // something based on the `format` or `pattern` fields but
+                    // I'm taking a shortcut
+                    .unwrap_or_default()
+                    .into()
+            }
+
+            SchemaKind::Type(Type::Array(array)) => {
+                let vec = if let Some(schema) =
+                    array.items.clone().and_then(|schema| {
+                        self.reference_resolver
+                            // This path is kinda bogus but tracking where in
+                            // the object we actually are is a lot harder
+                            .resolve(schema_path.clone(), schema)
+                            .ok()
+                    }) {
+                    // Convert the inner schema to a value and wrap it
+                    vec![self.schema_to_json(&schema, schema_path)]
+                } else {
+                    vec![]
+                };
+                serde_json::Value::Array(vec)
+            }
+            // For an object, expand all its properties. This is the primary
+            // case for the top level of a structured body
+            SchemaKind::Type(Type::Object(ObjectType {
+                properties, ..
+            }))
+            | SchemaKind::Any(AnySchema { properties, .. }) => {
+                let map = properties
+                    .iter()
+                    .filter_map(|(property, schema)| {
+                        let schema = self
+                            .reference_resolver
+                            .resolve(schema_path.clone(), schema.clone())
+                            .ok()?;
+                        let value =
+                            self.schema_to_json(&schema, schema_path.clone());
+                        Some((property.clone(), value))
+                    })
+                    .collect();
+                serde_json::Value::Object(map)
+            }
+
+            SchemaKind::OneOf { one_of: schemas }
+            | SchemaKind::AllOf { all_of: schemas }
+            | SchemaKind::AnyOf { any_of: schemas } => {
+                // Grab the first schema in the list and use its body.
+                // Technically for allOf we should join properties from all
+                // fields but I'm being lazy
+                let Some(schema) = schemas.first().and_then(|schema| {
+                    self.reference_resolver
+                        .resolve(schema_path.clone(), schema.clone())
+                        .ok()
+                }) else {
+                    return serde_json::Value::Null;
+                };
+                self.schema_to_json(&schema, schema_path)
+            }
+            // We can't infer anything about what should go here
+            SchemaKind::Not { .. } => serde_json::Value::Null,
+        }
+    }
+
     /// Convert a body of a single example to a recipe body
-    fn get_body(
+    fn convert_body(
         &self,
         mime: &Mime,
         body: serde_json::Value,

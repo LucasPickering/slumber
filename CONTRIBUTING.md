@@ -53,7 +53,7 @@ That's it!
 - [Fork the repo](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo)
 - Clone your fork
 - `cd slumber`
-- Run `./tui.sh`
+- Run `./tui.py`
   - This will install the appropriate Rust/Cargo toolchain if you don't have it already
   - If you don't have `watchexec-cli` installed, you can just run `cargo run` instead
 

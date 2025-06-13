@@ -254,18 +254,15 @@ impl LoadedState {
                 // likelihood this will be extremely fast, but it's possible
                 // there's some edge case that causes it to be slow and we don't
                 // want to block the render loop
-                task::Builder::new()
-                    .name("collection_reload")
-                    .spawn_blocking(move || {
-                        let message = match collection_file.load() {
-                            Ok(collection) => {
-                                Message::CollectionEndReload(collection)
-                            }
-                            Err(error) => Message::Error { error },
-                        };
-                        messages_tx.send(message);
-                    })
-                    .unwrap();
+                task::spawn_blocking(move || {
+                    let message = match collection_file.load() {
+                        Ok(collection) => {
+                            Message::CollectionEndReload(collection)
+                        }
+                        Err(error) => Message::Error { error },
+                    };
+                    messages_tx.send(message);
+                });
             }
             Message::CollectionEndReload(collection) => {
                 self.reload_collection(collection);
@@ -404,7 +401,7 @@ impl LoadedState {
         let template_context = self.template_context(profile_id, false);
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
-        util::spawn_result("copy_request_url", async move {
+        util::spawn_result(async move {
             let url = TuiContext::get()
                 .http_engine
                 .build_url(seed, &template_context)
@@ -426,7 +423,7 @@ impl LoadedState {
         let template_context = self.template_context(profile_id, false);
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
-        util::spawn_result("copy_request_body", async move {
+        util::spawn_result(async move {
             let body = TuiContext::get()
                 .http_engine
                 .build_body(seed, &template_context)
@@ -452,7 +449,7 @@ impl LoadedState {
         let template_context = self.template_context(profile_id, false);
         let messages_tx = self.messages_tx();
         // Spawn a task to do the render+copy
-        util::spawn_result("copy_request_curl", async move {
+        util::spawn_result(async move {
             let command = TuiContext::get()
                 .http_engine
                 .build_curl(seed, &template_context)
@@ -487,10 +484,11 @@ impl LoadedState {
             // never parsed. This clone is cheap so we're being efficient!
             exchange.response.body.bytes().clone()
         });
-        util::spawn_result(
-            "save_response_body",
-            util::save_file(self.messages_tx(), default_path, data),
-        );
+        util::spawn_result(util::save_file(
+            self.messages_tx(),
+            default_path,
+            data,
+        ));
         Ok(())
     }
 
@@ -523,7 +521,7 @@ impl LoadedState {
 
         // Don't use spawn_result here, because errors are handled specially for
         // requests
-        let join_handle = util::spawn("send_request", async move {
+        let join_handle = util::spawn(async move {
             // Build the request
             let result = TuiContext::get()
                 .http_engine
@@ -602,7 +600,7 @@ impl LoadedState {
         on_complete: Callback<Vec<TemplateChunk>>,
     ) {
         let context = self.template_context(profile_id, true);
-        util::spawn("render_template_preview", async move {
+        util::spawn(async move {
             // Render chunks, then write them to the output destination
             let chunks = template.render_chunks(&context).await;
             on_complete(chunks);

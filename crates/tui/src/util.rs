@@ -264,32 +264,24 @@ pub async fn signals() -> anyhow::Result<()> {
 /// generally I/O bound, so we can handle all async stuff on a single thread.
 /// The UI will be redrawn when the task is done. This redraw may be redundant,
 /// but it's thorough and the cost is minimal.
-pub fn spawn(
-    name: &str,
-    future: impl 'static + Future<Output = ()>,
-) -> JoinHandle<()> {
-    task::Builder::new()
-        .name(name)
-        .spawn_local(async move {
-            select! {
-                () = future => {
-                    // Assume the task updated _something_ visible to the user,
-                    // so trigger a redraw here
-                    ViewContext::messages_tx().send(Message::Draw);
-                },
-                () = CANCEL_TOKEN.cancelled() => {},
-            }
-        })
-        // As far as I can tell this never panics
-        .unwrap()
+pub fn spawn(future: impl 'static + Future<Output = ()>) -> JoinHandle<()> {
+    task::spawn_local(async move {
+        select! {
+            () = future => {
+                // Assume the task updated _something_ visible to the user,
+                // so trigger a redraw here
+                ViewContext::messages_tx().send(Message::Draw);
+            },
+            () = CANCEL_TOKEN.cancelled() => {},
+        }
+    })
 }
 
 /// Spawn a fallible task. If it fails, report the error to the user
 pub fn spawn_result(
-    name: &str,
     future: impl 'static + Future<Output = anyhow::Result<()>>,
 ) -> JoinHandle<()> {
-    spawn(name, async move {
+    spawn(async move {
         future.await.reported(&ViewContext::messages_tx());
     })
 }

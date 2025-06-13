@@ -47,3 +47,9 @@ requests:
 Create this file, then run the TUI with `slumber`.
 
 For a more extensive example, see [the docs](https://slumber.lucaspickering.me/book/getting_started.html).
+
+## Development
+
+### [tokio-console](https://github.com/tokio-rs/console)
+
+You can monitor tokio tasks with tokio-console by enabling the `tokio_tracing` feature, as well as setting the `--cfg tokio_unstable` compiler flag.

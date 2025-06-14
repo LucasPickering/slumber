@@ -15,7 +15,7 @@ By default, configuration is stored in a platform-specific configuration directo
 You can also find the config path by running:
 
 ```sh
-slumber show paths
+slumber show paths config
 ```
 
 If the config directory doesn't exist yet, Slumber will create it automatically when starting the TUI for the first time.

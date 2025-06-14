@@ -4,7 +4,7 @@ Each Slumber session logs information and events to a log file. This can often b
 
 ## Finding the Log File
 
-To find the path to the log file, hit the `?` to open the help dialog. It will be listed under the General section. Alternatively, run the command `slumber show paths`.
+To find the path to the log file, hit the `?` to open the help dialog. It will be listed under the General section. Alternatively, run the command `slumber show paths log`.
 
 Once you have the path to a log file, you can watch the logs with `tail -f <log file>`, or get the entire log contents with `cat <log file>`.
 

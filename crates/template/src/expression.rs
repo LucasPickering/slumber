@@ -3,6 +3,7 @@
 #[cfg(test)]
 use crate::test_util;
 use crate::{Arguments, TemplateContext, TemplateError, Value};
+use bytes::Bytes;
 use derive_more::{Deref, Display, From};
 use futures::{FutureExt, future};
 use indexmap::IndexMap;
@@ -77,6 +78,12 @@ impl From<String> for Expression {
     }
 }
 
+impl From<&str> for Expression {
+    fn from(value: &str) -> Self {
+        Self::Literal(Literal::from(value))
+    }
+}
+
 /// Literal primitive value
 #[derive(Clone, Debug, From, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
@@ -86,11 +93,18 @@ pub enum Literal {
     Int(i64),
     Float(f64),
     String(String),
+    Bytes(#[cfg_attr(test, proptest(strategy = "test_util::bytes()"))] Bytes),
 }
 
 impl From<&str> for Literal {
     fn from(value: &str) -> Self {
         Self::String(value.to_owned())
+    }
+}
+
+impl<const N: usize> From<&[u8; N]> for Literal {
+    fn from(value: &[u8; N]) -> Self {
+        Self::Bytes(Bytes::from(value.to_vec()))
     }
 }
 

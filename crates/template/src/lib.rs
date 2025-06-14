@@ -95,8 +95,10 @@ impl Template {
     /// Create a template that loads a file
     ///
     /// ```
+    /// use slumber_template::Template;
+    ///
     /// let template = Template::file("path/to/file".into());
-    /// assert_eq!(template.to_string(), "{{ file('path/to/file') }}");
+    /// assert_eq!(template.display(), "{{ file('path/to/file') }}");
     /// ```
     pub fn file(path: String) -> Template {
         Self::function_call("file", [path], [] as [(&str, Expression); 0])
@@ -106,9 +108,11 @@ impl Template {
     /// expression that invokes a function with arguments.
     ///
     /// ```
+    /// use slumber_template::Template;
+    ///
     /// let template =
     ///     Template::function_call("hello", ["john"], [("mode", "caps")]);
-    /// assert_eq!(template.to_string(), "{{ hello('john', mode='caps') }}");
+    /// assert_eq!(template.display(), "{{ hello('john', mode='caps') }}");
     /// ```
     pub fn function_call(
         name: &'static str,
@@ -339,6 +343,7 @@ impl From<&Literal> for Value {
             Literal::Int(i) => Value::Int(*i),
             Literal::Float(f) => Value::Float(*f),
             Literal::String(s) => Value::String(s.clone()),
+            Literal::Bytes(bytes) => Value::Bytes(bytes.clone()),
         }
     }
 }

@@ -6,17 +6,17 @@ use crate::{
     expression::{Expression, FunctionCall, Identifier, Literal},
 };
 use indexmap::IndexMap;
-use std::{str::FromStr, sync::Arc};
+use std::{convert, str::FromStr, sync::Arc};
 use winnow::{
-    ModalResult, Parser,
-    ascii::{dec_int, float, multispace0},
+    ModalParser, ModalResult, Parser,
+    ascii::{dec_int, escaped, float, multispace0},
     combinator::{
-        alt, cut_err, delimited, eof, not, opt, peek, preceded, repeat,
+        alt, cut_err, delimited, eof, fail, not, opt, peek, preceded, repeat,
         repeat_till, separated, separated_pair, terminated,
     },
-    error::{ContextError, ErrMode, ParserError, StrContext},
-    stream::Accumulate,
-    token::{any, take_while},
+    error::{ContextError, StrContext, StrContextValue},
+    stream::{Accumulate, AsChar},
+    token::{any, one_of, take_till, take_while},
 };
 
 /// Character used to escape key openings
@@ -91,11 +91,11 @@ fn all_chunks(input: &mut &str) -> ModalResult<Vec<TemplateChunk>> {
             expression_chunk.map(TemplateChunk::Expression),
             raw.map(TemplateChunk::Raw),
         ))
-        .context(StrContext::Label("template chunk")),
+        .context(ctx_label("template chunk")),
         eof,
     )
     .map(|(chunks, _)| chunks)
-    .context(StrContext::Label("template"))
+    .context(ctx_label("template"))
     .parse_next(input)
 }
 
@@ -114,7 +114,7 @@ fn raw(input: &mut &str) -> ModalResult<Arc<str>> {
         )),
     )
     .map(String::into)
-    .context(StrContext::Label("raw text"))
+    .context(ctx_label("raw text"))
     .parse_next(input)
 }
 
@@ -141,7 +141,7 @@ fn expression_chunk(input: &mut &str) -> ModalResult<Expression> {
         cut_err(expression),
         EXPRESSION_CLOSE,
     )
-    .context(StrContext::Label("expression"))
+    .context(ctx_label("expression"))
     .parse_next(input)
 }
 
@@ -179,8 +179,14 @@ fn primary_expression(input: &mut &str) -> ModalResult<Expression> {
         // call will always parse as a field, but not vice versa
         call.map(Expression::Call),
         identifier.map(Expression::Field),
+        // If all cases fail, the error from the last case is used. But we want
+        // to report an error of "invalid expression" instead
+        fail.context(ctx_expected("literal"))
+            .context(ctx_expected("array"))
+            .context(ctx_expected("function call"))
+            .context(ctx_expected("field")),
     )))
-    .context(StrContext::Label("expression"))
+    .context(ctx_label("expression"))
     .parse_next(input)
 }
 
@@ -190,12 +196,22 @@ fn literal(input: &mut &str) -> ModalResult<Literal> {
         NULL.map(|_| Literal::Null),
         FALSE.map(|_| Literal::Bool(false)),
         TRUE.map(|_| Literal::Bool(true)),
-        // int must come before float because all ints are valid floats too
-        dec_int.map(Literal::Int).context(StrContext::Label("int")),
-        float
-            .map(Literal::Float)
-            .context(StrContext::Label("float")),
+        // If we see a number with a . or e/E (for scientific notation), it's a
+        // float. Otherwise it's an int. We need to do this peek check to
+        // prevent the int parser from eating the first half of a float and
+        // leaving us in an unrecoverable state. We can't put the float parser
+        // first because it would consume all ints.
+        preceded(
+            peek((
+                opt('-'),
+                take_while(1.., |c: char| c.is_ascii_digit()),
+                one_of(['.', 'e', 'E']),
+            )),
+            float.map(Literal::Float).context(ctx_label("float")),
+        ),
+        dec_int.map(Literal::Int).context(ctx_label("int")),
         string_literal,
+        byte_literal,
     ))
     .parse_next(input)
 }
@@ -204,24 +220,53 @@ fn literal(input: &mut &str) -> ModalResult<Literal> {
 fn string_literal(input: &mut &str) -> ModalResult<Literal> {
     // " and ' can only mean string literal, so an error after the open is fatal
     alt((
-        delimited("\"", cut_err(take_while(0.., |c| c != '"')), "\""),
-        delimited("'", cut_err(take_while(0.., |c| c != '\'')), "'"),
+        quoted_literal('\'', convert::identity, convert::identity, fail),
+        quoted_literal('"', convert::identity, convert::identity, fail),
     ))
-    .map(|s: &str| Literal::String(s.to_owned()))
-    .context(StrContext::Label("string literal"))
+    .map(Literal::String)
+    .context(ctx_label("string literal"))
+    .parse_next(input)
+}
+
+/// Parse a byte literal: b'...' or b"..."
+fn byte_literal(input: &mut &str) -> ModalResult<Literal> {
+    /// Parse an escaped byte code: \x00
+    fn byte_code(input: &mut &str) -> ModalResult<u8> {
+        preceded(
+            "x",
+            // Once we've seen \x, we expect exactly two hex digits
+            cut_err(
+                take_while(2, AsChar::is_hex_digit)
+                    // We know we have two hex digits, so the parse can't fail
+                    .map(|s| u8::from_str_radix(s, 16).unwrap())
+                    .context(ctx_label("byte code"))
+                    .context(StrContext::Expected(
+                        StrContextValue::Description(
+                            "two hex digits [0-9a-fA-F]",
+                        ),
+                    )),
+            ),
+        )
+        .parse_next(input)
+    }
+
+    preceded(
+        "b",
+        alt((
+            quoted_literal('\'', str::as_bytes, |c| c as u8, byte_code),
+            quoted_literal('"', str::as_bytes, |c| c as u8, byte_code),
+        )),
+    )
+    .map(|bytes: Vec<u8>| Literal::Bytes(bytes.into()))
+    .context(ctx_label("byte literal"))
     .parse_next(input)
 }
 
 /// Parse an array: [expr, ...]
 fn array(input: &mut &str) -> ModalResult<Vec<Expression>> {
-    (delimited(
-        "[",
-        // [] can only mean arrays, so an error after [ is fatal
-        cut_err(ws(comma_separated(expression))),
-        "]",
-    ))
-    .context(StrContext::Label("array"))
-    .parse_next(input)
+    (delimited_list('[', expression, ']'))
+        .context(ctx_label("array"))
+        .parse_next(input)
 }
 
 /// Parse a function call: `f(...)`
@@ -237,10 +282,10 @@ fn call(input: &mut &str) -> ModalResult<FunctionCall> {
             // Parse kwarg first because it's more specific
             separated_pair(identifier, ws('='), expression)
                 .map(|(name, expression)| Argument::Keyword(name, expression))
-                .context(StrContext::Label("keyword argument")),
+                .context(ctx_label("keyword argument")),
             expression
                 .map(Argument::Position)
-                .context(StrContext::Label("positional argument")),
+                .context(ctx_label("positional argument")),
         ))
         .parse_next(input)
     }
@@ -250,42 +295,44 @@ fn call(input: &mut &str) -> ModalResult<FunctionCall> {
     // This makes it a bit easier to provide useful errors when kwargs appear
     // before positional args.
     let (name, arguments): (Identifier, Vec<Argument>) = (
-        identifier,
-        delimited(
-            "(",
-            // Parens are only used for function calls, so any error is fatal
-            cut_err(ws(comma_separated(argument))),
-            ")",
-        )
-        .context(StrContext::Label("function arguments")),
+        identifier.context(ctx_label("function name")),
+        delimited_list('(', argument, ')'),
     )
-        .context(StrContext::Label("function call"))
+        .context(ctx_label("function call"))
         .parse_next(input)?;
+
     // Unpack the args and look for two error cases:
     // - Positional arg after kwarg
     // - Repeated kwarg
-    let (position, keyword) = arguments.into_iter().try_fold(
-        (Vec::new(), IndexMap::new()),
-        |(mut arguments, mut kwargs), argument| {
-            match argument {
-                Argument::Position(expression) => {
-                    if !kwargs.is_empty() {
-                        return Err(ErrMode::assert(
-                            input,
-                            "position after keyword",
-                        ));
-                    }
-                    arguments.push(expression);
+    let mut position: Vec<Expression> = Vec::new();
+    let mut keyword: IndexMap<Identifier, Expression> = IndexMap::new();
+    for argument in arguments {
+        match argument {
+            Argument::Position(expression) => {
+                if !keyword.is_empty() {
+                    return cut_err(fail)
+                        .context(ctx_label(
+                            "positional argument after keyword argument",
+                        ))
+                        .context(ctx_expected(
+                            "keyword arguments to be after \
+                            positional arguments",
+                        ))
+                        .parse_next(input);
                 }
-                Argument::Keyword(name, expression) => {
-                    if kwargs.insert(name, expression).is_some() {
-                        return Err(ErrMode::assert(input, "repeat kwarg"));
-                    }
+                position.push(expression);
+            }
+            Argument::Keyword(name, expression) => {
+                if keyword.insert(name, expression).is_some() {
+                    return cut_err(fail)
+                        .context(ctx_label("duplicate keyword argument"))
+                        .context(ctx_expected("keyword arguments to be unique"))
+                        .parse_next(input);
                 }
             }
-            Ok((arguments, kwargs))
-        },
-    )?;
+        }
+    }
+
     Ok(FunctionCall {
         function: name,
         position,
@@ -302,28 +349,91 @@ fn pipe_call(input: &mut &str) -> ModalResult<FunctionCall> {
         ws("|"),
         // Once we've hit a |, the only possible option is a pipe so an error
         // on the right side is fatal
-        cut_err(call),
+        cut_err(call.context(ctx_expected("function call"))),
     )
-    .context(StrContext::Label("pipe"))
+    .context(ctx_label("pipe"))
     .parse_next(input)
 }
 
-/// Repeat a parser with commas separating each element. Supports an optional
-/// trailing comma
-fn comma_separated<'a, O, Acc, F>(
+/// Create a parser for a comma-separated list with bounding delimiters.
+/// Supports an optional trailing comma and whitespace around each element. The
+/// open delimiter must be unambiguous, such that any error after the open is
+/// fatal.
+fn delimited_list<'a, O, Acc, F>(
+    open: char,
     parser: F,
-) -> impl Parser<&'a str, Acc, ContextError>
+    close: char,
+) -> impl ModalParser<&'a str, Acc, ContextError>
 where
-    F: Parser<&'a str, O, ContextError>,
+    F: ModalParser<&'a str, O, ContextError>,
     Acc: Accumulate<O>,
 {
-    terminated(separated(0.., parser, ws(",")), opt(ws(",")))
+    preceded(
+        open,
+        // Delimiters are unambiguous, so once we see the open any error is
+        // fatal
+        cut_err(terminated(
+            ws(terminated(
+                separated(0.., parser, ws(",")), // Comma-separated elements
+                opt(ws(",")),                    // Optional trailing comma
+            )),
+            close.context(StrContext::Expected(StrContextValue::CharLiteral(
+                close,
+            ))),
+        )),
+    )
+}
+
+/// Create a parser for some contents bounded by a symmetrical delimiter, e.g.
+/// a string or byte literal. Supports escape sequences using \.
+///
+/// ## Params
+///
+/// - `quote_char` - Delimiter character (`'` or `"`)
+/// - `map_contents` - Function to map unescaped contents to the output type
+/// - `map_escape` - Function to map escaped characters to the output type
+/// - `escape` - Parser for escaped characters within the literal
+fn quoted_literal<'a, Output, MapOutput, EscapeOutput>(
+    quote_char: char,
+    map_contents: impl (Fn(&'a str) -> MapOutput) + Copy,
+    map_escape: impl (Fn(char) -> EscapeOutput) + Copy,
+    escape: impl ModalParser<&'a str, EscapeOutput, ContextError>,
+) -> impl ModalParser<&'a str, Output, ContextError>
+where
+    Output: Accumulate<MapOutput> + Accumulate<EscapeOutput>,
+{
+    // The opening quote is unambiguous, so once we've seen it, errors are fatal
+    preceded(
+        quote_char,
+        cut_err(terminated(
+            escaped(
+                // escaped() requires this to take 1+ chars
+                take_till(1.., move |c| c == quote_char || c == '\\')
+                    .map(map_contents),
+                '\\',
+                alt((
+                    alt((
+                        "\\".value('\\'),
+                        "n".value('\n'),
+                        "r".value('\r'),
+                        "t".value('\t'),
+                        quote_char,
+                    ))
+                    .map(map_escape),
+                    escape,
+                )),
+            ),
+            cut_err(quote_char.context(StrContext::Expected(
+                StrContextValue::CharLiteral(quote_char),
+            ))),
+        )),
+    )
 }
 
 /// Wrap a parser to allow whitespace on either side of it
-fn ws<'a, O, F>(parser: F) -> impl Parser<&'a str, O, ContextError>
+fn ws<'a, O, F>(parser: F) -> impl ModalParser<&'a str, O, ContextError>
 where
-    F: Parser<&'a str, O, ContextError>,
+    F: ModalParser<&'a str, O, ContextError>,
 {
     delimited(multispace0, parser, multispace0)
 }
@@ -333,8 +443,18 @@ where
 fn identifier(input: &mut &str) -> ModalResult<Identifier> {
     take_while(1.., Identifier::is_char_allowed)
         .map(|id: &str| Identifier(id.to_owned()))
-        .context(StrContext::Label("identifier"))
+        .context(ctx_label("identifier"))
         .parse_next(input)
+}
+
+/// Create a [StrContext::Label]
+fn ctx_label(label: &'static str) -> StrContext {
+    StrContext::Label(label)
+}
+
+/// Create a [StrContext::Expected]
+fn ctx_expected(expected: &'static str) -> StrContext {
+    StrContext::Expected(StrContextValue::Description(expected))
 }
 
 #[cfg(test)]
@@ -454,99 +574,144 @@ mod tests {
     /// the expressions to enable the round tripping. A separate test case
     /// one-way string->template parsing.
     #[rstest]
-    #[case::literal_null("null", literal(Literal::Null))]
-    #[case::literal_bool_false("false", literal(false))]
-    #[case::literal_bool_true("true", literal(true))]
-    #[case::literal_int_negative("-10", literal(-10))]
-    #[case::literal_int_positive("17", literal(17))]
-    #[case::literal_int_min("-9223372036854775808", literal(i64::MIN))]
-    #[case::literal_int_max("9223372036854775807", literal(i64::MAX))]
-    #[case::literal_float_negative("-3.5", literal(-3.5))]
-    #[case::literal_float_positive("3.5", literal(3.5))]
-    #[case::literal_float_scientific("3.5e3", literal(3500.0))]
-    #[case::literal_string_double("\"hello\"", literal("hello"))]
-    #[case::literal_string_double_escape(r#""hello \"""#, literal("hello \""))]
-    #[case::field("field1", field("field1"))]
-    #[case::array(
-        "[1, \"hi\", field]", array([literal(1), literal("hi"), field("field")]),
+    // ===== Primitive literals =====
+    #[case::literal_null("null", literal(Literal::Null), None)]
+    #[case::literal_bool_false("false", literal(false), None)]
+    #[case::literal_bool_true("true", literal(true), None)]
+    #[case::literal_int_negative("-10", literal(-10),None)]
+    #[case::literal_int_positive("17", literal(17), None)]
+    #[case::literal_int_min("-9223372036854775808", literal(i64::MIN), None)]
+    #[case::literal_int_max("9223372036854775807", literal(i64::MAX), None)]
+    #[case::literal_float_negative("-3.5", literal(-3.5), None)]
+    #[case::literal_float_positive("3.5", literal(3.5), None)]
+    #[case::literal_float_scientific("3.5e3", literal(3500.0), Some("3500.0"))]
+    // ===== String literals =====
+    #[case::literal_string_single("'hello'", literal("hello"), None)]
+    #[case::literal_string_single_empty("''", literal(""), None)]
+    #[case::literal_string_single_escape(
+        r"'hello \'\n\t\r\\'",
+        literal("hello '\n\t\r\\"),
+        None
     )]
+    // Double quote strings display back to single quotes
+    #[case::literal_string_double_empty("\"\"", literal(""), Some("''"))]
+    #[case::literal_string_double_escape(
+        r#""hello \"""#,
+        literal("hello \""),
+        Some("'hello \"'")
+    )]
+    #[case::literal_string_double(
+        "\"hello\"",
+        literal("hello"),
+        Some("'hello'")
+    )]
+    // ===== Bytes literals =====
+    #[case::literal_bytes_single(
+        r"b'hello\xc3\x28'",
+        literal(b"hello\xc3\x28"),
+        Some(r"b'hello\xc3('")
+    )]
+    #[case::literal_bytes_single_escape(
+        r"b'hello \'\n\t\r\\'",
+        literal(b"hello '\n\t\r\\"),
+        // Non-graphic ASCII characters are reprinted as their byte codes
+        Some(r"b'hello \'\x0a\x09\x0d\\'")
+    )]
+    // Double quote byte strings display back to single quotes
+    #[case::literal_bytes_double(
+        r#"b"hello\xc3\x28""#,
+        literal(b"hello\xc3\x28"),
+        Some(r"b'hello\xc3('")
+    )]
+    #[case::literal_bytes_double_escape(
+        r#"b"hello \"\n\t\r\\""#,
+        literal(b"hello \"\n\t\r\\"),
+        Some(r#"b'hello "\x0a\x09\x0d\\'"#)
+    )]
+    // ===== Array literals =====
+    #[case::array(
+        "[1, 'hi', field]",
+        array([literal(1), literal("hi"), field("field")]),
+        None,
+    )]
+    #[case::array_trailing_comma("[1,]", array([literal(1)]), Some("[1]"))]
+    // ===== Fields =====
+    #[case::field("field1", field("field1"), None)]
+    // ===== Function calls =====
     #[case::function(
-        "f(1, \"hi\", a=field)",
+        "f(1, 'hi', a=field)",
         call("f", [literal(1), literal("hi")], [("a", field("field"))]),
+        None
     )]
     #[case::function_nested(
         "f(g(h()))",
         call("f", [call("g", [call("h", [], [])], [])], []),
+        None
     )]
+    #[case::function_trailing_comma(
+        "f(1,)", call("f", [literal(1)], []), Some("f(1)")
+    )]
+    // ===== Pipes =====
     #[case::pipe(
         "f(1, a=2) | g(3, a=4)",
         pipe(
             call("f", [literal(1)], [("a", literal(2))]),
             call("g", [literal(3)], [("a", literal(4))]),
         ),
+        None
     )]
     // Pipes are left-associative
     #[case::pipe_chain(
         "1 | f() | g()",
-        pipe(pipe(literal(1),  call("f", [], [])), call("g", [], [])),
+        pipe(pipe(literal(1),  call("f", [], [])), call("g", [], [])),None
     )]
     #[case::pipe_nested(
         "f(1 | g())",
-        call("f", [pipe(literal(1), call("g", [], []))], []),
+        call("f", [pipe(literal(1), call("g", [], []))], []),None
     )]
     fn test_parse_display_expression(
         #[case] input: &'static str,
         #[case] expected: Expression,
+        #[case] expected_display: Option<&'static str>,
     ) {
         let parsed: Expression = expression
             .parse(input)
             .unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(parsed, expected, "incorrect parsed expression");
         let stringified = parsed.to_string();
-        assert_eq!(stringified, input, "incorrect stringified expression");
-    }
-
-    /// Test parsing expressions that don't round trip
-    #[rstest]
-    #[case::literal_string_single("'hello'", literal("hello"))]
-    #[case::literal_string_single_escape(r"'hello \'", literal("hello '"))]
-    #[case::array_trailing_comma("[1,]", array([literal(1)]))]
-    #[case::function_trailing_comma("f(1,)", call("f", [literal(1)], []))]
-    fn test_parse_expression(
-        #[case] input: &'static str,
-        #[case] expected: Expression,
-    ) {
-        let parsed: Expression = expression
-            .parse(input)
-            .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(parsed, expected, "incorrect parsed expression");
+        let expected_str = expected_display.unwrap_or(input);
+        assert_eq!(
+            stringified, expected_str,
+            "incorrect stringified expression"
+        );
     }
 
     /// Test parsing error cases for expressions
     #[rstest]
-    #[case::function_incomplete("bogus(", "invalid key")]
+    #[case::function_incomplete("bogus(", "invalid function call")]
     #[case::function_dupe_kwarg(
         "f(a=1, a=2)",
-        "duplicate keyword argument `a`"
+        "invalid duplicate keyword argument"
     )]
     #[case::function_positional_after_kwarg(
         "f(a=1, 2)",
-        "positional argument after keyword argument"
+        "invalid positional argument after keyword argument"
     )]
-    #[case::pipe_incomplete("bogus |", "pipe missing right-hand side")]
-    #[case::pipe_to_literal(
-        "f() | 3",
-        "pipe right-hand side must be function call"
-    )]
+    #[case::pipe_incomplete("bogus |", "expected function call")]
+    #[case::pipe_to_literal("f() | 3", "expected function call")]
     // This case is common because Jinja allows this when piping to filters
-    #[case::pipe_to_identifier(
-        "f() | trim",
-        "pipe right-hand side must be function call"
+    #[case::pipe_to_identifier("f() | trim", "expected function call")]
+    // Make sure errors within a function arg are handled correctly
+    #[case::invalid_function_arg(
+        "command(\"invalid)",
+        "invalid string literal"
     )]
-    #[case::invalid_function_arg("command(\"invalid)", "TODO")]
     #[case::property_incomplete("bogus.", "invalid expression")]
-    #[case::array_incomplete("[bogus", "unclosed array")]
-    #[case::string_incomplete("\"bogus", "unclosed string")]
+    #[case::array_incomplete("[bogus", "invalid array")]
+    #[case::string_incomplete("'bogus", "invalid string")]
+    #[case::bytes_incomplete("b'bogus", "invalid byte literal")]
+    #[case::bytes_invalid_code_short(r"b'\x2'", "invalid byte code")]
+    #[case::bytes_invalid_code_not_hex(r"b'\x2w'", "invalid byte code")]
     fn test_parse_expression_error(
         #[case] input: &str,
         #[case] expected_error: &str,

@@ -44,7 +44,7 @@ requests:
           fast: [no_thanks, actually_maybe]
         body: !form_urlencoded
           username: "{{ username }}"
-          password: "{{ prompt(message='Password', sensitive=true) }}"
+          password: "{{ prompt(message='Password', sensitive=true }}"
 
       basic_auth: !request
         <<: *base_request

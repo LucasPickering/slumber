@@ -104,9 +104,17 @@ impl Display for Literal {
             Literal::Null => write!(fmt, "null"),
             Literal::Bool(b) => write!(fmt, "{b}"),
             Literal::Int(i) => write!(fmt, "{i}"),
-            Literal::Float(f) => write!(fmt, "{f}"),
-            // TODO escape quotes
-            Literal::String(s) => write!(fmt, "'{s}'"),
+            // Always show ".0" for floats that are whole numbers to
+            // distinguish from ints
+            Literal::Float(f) => {
+                if f.fract() == 0.0 {
+                    write!(fmt, "{f:.1}")
+                } else {
+                    write!(fmt, "{f}")
+                }
+            }
+            Literal::String(s) => fmt_string(fmt, s),
+            Self::Bytes(bytes) => fmt_bytes(fmt, bytes),
         }
     }
 }
@@ -151,8 +159,8 @@ impl Display for Value {
             Self::Bool(b) => write!(fmt, "{b}"),
             Self::Int(i) => write!(fmt, "{i}"),
             Self::Float(f) => write!(fmt, "{f}"),
-            Self::String(s) => write!(fmt, "\"{s}\""),
-            Self::Bytes(_) => todo!(),
+            Self::String(s) => fmt_string(fmt, s),
+            Self::Bytes(bytes) => fmt_bytes(fmt, bytes),
             Self::Array(array) => {
                 write!(fmt, "[{}]", array.iter().format(", "))
             }
@@ -167,4 +175,44 @@ impl Display for Value {
             }
         }
     }
+}
+
+/// Format a string value/literal. Always format with single quotes because it's
+/// simple and more compatible with YAML than double quotes
+fn fmt_string(fmt: &mut fmt::Formatter<'_>, s: &str) -> fmt::Result {
+    write!(fmt, "'")?;
+    for c in s.chars() {
+        match c {
+            // Escape characters as needed
+            '\'' => write!(fmt, "\\'"),
+            '\\' => write!(fmt, "\\\\"),
+            '\n' => write!(fmt, "\\n"),
+            '\r' => write!(fmt, "\\r"),
+            '\t' => write!(fmt, "\\t"),
+            _ => write!(fmt, "{c}"),
+        }?;
+    }
+    write!(fmt, "'")?;
+    Ok(())
+}
+
+/// Format a byte value/literal. Always format with single quotes because it's
+/// simple and more compatible with YAML than double quotes
+fn fmt_bytes(fmt: &mut fmt::Formatter<'_>, bytes: &[u8]) -> fmt::Result {
+    write!(fmt, "b'")?;
+    for byte in bytes {
+        match *byte {
+            // Escape visible characters
+            b'\'' => write!(fmt, "\\'")?,
+            b'\\' => write!(fmt, "\\\\")?,
+            // If the byte is printable ASCII, print it
+            byte if byte.is_ascii() && !byte.is_ascii_control() => {
+                write!(fmt, "{}", byte as char)?;
+            }
+            // Otherwise print the raw byte value
+            byte => write!(fmt, "\\x{byte:02x}")?,
+        }
+    }
+    write!(fmt, "'")?;
+    Ok(())
 }

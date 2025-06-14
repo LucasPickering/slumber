@@ -1,4 +1,5 @@
 use crate::{Expression, Identifier, Literal, TemplateChunk};
+use bytes::Bytes;
 use indexmap::IndexMap;
 use proptest::{
     collection,
@@ -7,6 +8,11 @@ use proptest::{
     sample::SizeRange,
 };
 use std::hash::Hash;
+
+/// Generate an arbitrary byte array
+pub fn bytes() -> impl Strategy<Value = Bytes> {
+    any::<Vec<u8>>().prop_map(Bytes::from)
+}
 
 /// Join consecutive raw chunks in a generated template, to make it valid
 pub fn join_raw(chunks: Vec<TemplateChunk>) -> Vec<TemplateChunk> {

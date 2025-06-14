@@ -4,7 +4,7 @@ use serde::Serialize;
 use slumber_config::Config;
 use slumber_core::database::Database;
 use slumber_util::paths;
-use std::process::ExitCode;
+use std::{path::Path, process::ExitCode};
 
 /// Print meta information about Slumber (config, collections, etc.)
 #[derive(Clone, Debug, Parser)]
@@ -20,16 +20,30 @@ enum ShowTarget {
         /// Print the path for just a single target
         target: Option<PathsTarget>,
     },
-    /// Print loaded configuration
+    /// Print global Slumber configuration
     ///
     /// This loads the config and re-stringifies it, so it will print exactly
     /// what Slumber will use in action.
-    Config,
+    Config {
+        /// Open the configuration file in the default editor
+        ///
+        /// See docs for how you can configure which editor to use:
+        /// https://slumber.lucaspickering.me/book/user_guide/tui/editor.html#editing
+        #[clap(long)]
+        edit: bool,
+    },
     /// Print current request collection
     ///
     /// This loads the collection and re-stringifies it, so it will print
     /// exactly what Slumber will use in action.
-    Collection,
+    Collection {
+        /// Open the configuration file in the default editor
+        ///
+        /// See docs for how you can configure which editor to use:
+        /// https://slumber.lucaspickering.me/book/user_guide/tui/editor.html#editing
+        #[clap(long)]
+        edit: bool,
+    },
 }
 
 #[derive(Copy, Clone, Debug, clap::ValueEnum)]
@@ -56,45 +70,70 @@ impl Subcommand for ShowCommand {
                         .map(|file| file.to_string())
                         .unwrap_or_else(|error| error.to_string())
                 );
+                Ok(ExitCode::SUCCESS)
             }
             ShowTarget::Paths {
                 target: Some(PathsTarget::Config),
             } => {
                 println!("{}", Config::path().display());
+                Ok(ExitCode::SUCCESS)
             }
             ShowTarget::Paths {
                 target: Some(PathsTarget::Collection),
             } => {
                 println!("{}", global.collection_file()?);
+                Ok(ExitCode::SUCCESS)
             }
             ShowTarget::Paths {
                 target: Some(PathsTarget::Database),
             } => {
                 println!("{}", Database::path().display());
+                Ok(ExitCode::SUCCESS)
             }
             ShowTarget::Paths {
                 target: Some(PathsTarget::Log),
             } => {
                 println!("{}", paths::log_file().display());
+                Ok(ExitCode::SUCCESS)
             }
 
             // Print config
-            ShowTarget::Config => {
+            ShowTarget::Config { edit } => {
                 let config = Config::load()?;
-                println!("{}", to_yaml(&config));
+                if edit {
+                    let path = Config::path();
+                    edit_file(&config, &path)
+                } else {
+                    println!("{}", to_yaml(&config));
+                    Ok(ExitCode::SUCCESS)
+                }
             }
             // Print collection
-            ShowTarget::Collection => {
+            ShowTarget::Collection { edit } => {
                 let collection_file = global.collection_file()?;
-                let collection = collection_file.load()?;
-                println!("{}", to_yaml(&collection));
+                if edit {
+                    let config = Config::load()?;
+                    edit_file(&config, collection_file.path())
+                } else {
+                    let collection = collection_file.load()?;
+                    println!("{}", to_yaml(&collection));
+                    Ok(ExitCode::SUCCESS)
+                }
             }
         }
-        Ok(ExitCode::SUCCESS)
     }
 }
 
 fn to_yaml<T: Serialize>(value: &T) -> String {
     // Panic is intentional, indicates a wonky bug
     serde_yaml::to_string(value).expect("Error serializing")
+}
+
+/// Open a file in the user's configured editor
+fn edit_file(config: &Config, path: &Path) -> anyhow::Result<ExitCode> {
+    let mut command = config.editor_command(path)?;
+    let status = command.spawn()?.wait()?;
+    // https://doc.rust-lang.org/stable/std/process/struct.ExitStatus.html#differences-from-exitcode
+    let code = status.code().and_then(|code| u8::try_from(code).ok());
+    Ok(code.map(ExitCode::from).unwrap_or(ExitCode::FAILURE))
 }

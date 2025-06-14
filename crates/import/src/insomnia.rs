@@ -15,8 +15,8 @@ use slumber_core::{
     },
     http::{HttpMethod, content_type::ContentType},
     template::{Identifier, Template},
-    util::NEW_ISSUE_LINK,
 };
+use slumber_util::NEW_ISSUE_LINK;
 use std::{
     collections::HashMap, fmt::Display, fs::File, path::Path, str::FromStr,
 };

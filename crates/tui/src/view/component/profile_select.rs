@@ -32,10 +32,8 @@ use ratatui::{
 };
 use serde::Serialize;
 use slumber_config::Action;
-use slumber_core::{
-    collection::{Collection, HasId, Profile, ProfileId},
-    util::doc_link,
-};
+use slumber_core::collection::{Collection, HasId, Profile, ProfileId};
+use slumber_util::doc_link;
 
 /// Minimal pane to show the current profile, and handle interaction to open the
 /// profile list modal

@@ -29,10 +29,10 @@ use ratatui::{
     text::{Line, Text},
 };
 use slumber_config::Action;
-use slumber_core::{
-    collection::{Folder, HasId, ProfileId, RecipeId, RecipeNode},
-    util::doc_link,
+use slumber_core::collection::{
+    Folder, HasId, ProfileId, RecipeId, RecipeNode,
 };
+use slumber_util::doc_link;
 use strum::{EnumIter, IntoEnumIterator};
 
 /// Display for the current recipe node, which could be a recipe, a folder, or

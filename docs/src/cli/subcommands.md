@@ -221,5 +221,7 @@ See `slumber show --help` for more options.
 ```sh
 slumber show paths # Show paths of various Slumber data files/directories
 slumber show config # Print global configuration
+slumber show config --edit # Edit global configuration
 slumber show collection # Print collection file
+slumber show collection --edit # Edit collection file
 ```

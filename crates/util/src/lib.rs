@@ -18,6 +18,10 @@ use serde::de::DeserializeOwned;
 use std::{fmt::Debug, io::Read, ops::Deref};
 use tracing::error;
 
+/// Link to the GitHub New Issue form
+pub const NEW_ISSUE_LINK: &str =
+    "https://github.com/LucasPickering/slumber/issues/new/choose";
+
 /// A static mapping between values (of type `T`) and labels (strings). Used to
 /// both stringify from and parse to `T`.
 pub struct Mapping<'a, T: Copy>(&'a [(T, &'a [&'a str])]);
@@ -73,6 +77,25 @@ pub trait ResultTraced<T, E>: Sized {
 impl<T> ResultTraced<T, anyhow::Error> for anyhow::Result<T> {
     fn traced(self) -> Self {
         self.inspect_err(|err| error!(error = err.deref()))
+    }
+}
+
+/// Get a link to a page on the doc website. This will append the doc prefix,
+/// as well as the suffix.
+///
+/// ```
+/// use slumber_util::doc_link;
+/// assert_eq!(
+///     doc_link("api/chain"),
+///     "https://slumber.lucaspickering.me/book/api/chain.html",
+/// );
+/// ```
+pub fn doc_link(path: &str) -> String {
+    const ROOT: &str = "https://slumber.lucaspickering.me/book/";
+    if path.is_empty() {
+        ROOT.into()
+    } else {
+        format!("{ROOT}{path}.html")
     }
 }
 

@@ -2,9 +2,9 @@ use crate::{
     collection::{ChainId, ProfileId, RecipeId},
     http::{RequestBuildError, RequestError, query::QueryError},
     template::TemplateKey,
-    util::doc_link,
 };
 use itertools::Itertools;
+use slumber_util::doc_link;
 use std::{fmt::Display, io, path::PathBuf, string::FromUtf8Error, sync::Arc};
 use thiserror::Error;
 use tracing::error;

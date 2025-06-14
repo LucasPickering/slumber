@@ -1,6 +1,6 @@
 # Configuration
 
-Configuration provides _application_-level settings, as opposed to collection-level settings.
+Configuration provides _global_ settings for all of Slumber, as opposed to collection-level settings.
 
 ## Location & Creation
 
@@ -16,6 +16,12 @@ You can also find the config path by running:
 
 ```sh
 slumber show paths config
+```
+
+You can open the config file in [your preferred editor](../../user_guide/tui/editor.md#editing) with:
+
+```sh
+slumber show config --edit
 ```
 
 If the config directory doesn't exist yet, Slumber will create it automatically when starting the TUI for the first time.

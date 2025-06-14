@@ -21,14 +21,23 @@ pub use input::{Action, InputBinding, KeyCombination};
 pub use theme::Theme;
 
 use crate::mime::MimeMap;
+use ::mime::Mime;
 use anyhow::Context;
+use editor_command::EditorBuilder;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use slumber_util::{
-    ResultTraced, parse_yaml,
+    ResultTraced, doc_link, parse_yaml,
     paths::{self, create_parent, expand_home},
 };
-use std::{env, error::Error, fs::File, io, path::PathBuf};
+use std::{
+    env,
+    error::Error,
+    fs::File,
+    io,
+    path::{Path, PathBuf},
+    process::Command,
+};
 use tracing::{error, info};
 
 const PATH_ENV_VAR: &str = "SLUMBER_CONFIG_PATH";
@@ -146,6 +155,56 @@ impl Config {
                 Ok(Self::default())
             }
         }
+    }
+
+    /// Get a command to open the given file in the user's configured editor.
+    /// Default editor is `vim`. Return an error if the command couldn't be
+    /// built.
+    pub fn editor_command(&self, file: &Path) -> anyhow::Result<Command> {
+        EditorBuilder::new()
+            // Config field takes priority over environment variables
+            .source(self.editor.as_deref())
+            .environment()
+            .source(Some("vim"))
+            .path(file)
+            .build()
+            .with_context(|| {
+                format!(
+                    "Error opening editor; see {}",
+                    doc_link("user_guide/tui/editor"),
+                )
+            })
+    }
+
+    /// Get a command to open the given file in the user's configured file
+    /// pager. Default is `less` on Unix, `more` on Windows. Return an error
+    /// if the command couldn't be built.
+    pub fn pager_command(
+        &self,
+        file: &Path,
+        mime: Option<&Mime>,
+    ) -> anyhow::Result<Command> {
+        // Use a built-in pager
+        let default = if cfg!(windows) { "more" } else { "less" };
+
+        // Select command from the config based on content type
+        let config_command = mime
+            .and_then(|mime| self.pager.get(mime))
+            .map(String::as_str);
+
+        EditorBuilder::new()
+            // Config field takes priority over environment variables
+            .source(config_command)
+            .source(env::var("PAGER").ok())
+            .source(Some(default))
+            .path(file)
+            .build()
+            .with_context(|| {
+                format!(
+                    "Error opening pager; see {}",
+                    doc_link("user_guide/tui/editor"),
+                )
+            })
     }
 }
 

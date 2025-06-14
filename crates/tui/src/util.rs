@@ -1,5 +1,4 @@
 use crate::{
-    context::TuiContext,
     message::{Message, MessageSender},
     view::{Confirm, ViewContext},
 };
@@ -9,10 +8,8 @@ use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use editor_command::EditorBuilder;
 use futures::{FutureExt, future};
-use mime::Mime;
-use slumber_core::{template::Prompt, util::doc_link};
+use slumber_core::template::Prompt;
 use slumber_util::{ResultTraced, paths::expand_home};
 use std::{
     env,
@@ -360,53 +357,6 @@ pub async fn save_file(
     // (specifically it resolves symlinks), which might be confusing
     messages_tx.send(Message::Notify(format!("Saved to {}", path.display())));
     Ok(())
-}
-
-/// Get a command to open the given file in the user's configured editor.
-/// Default editor is `vim`. Return an error if the command couldn't be built.
-pub fn get_editor_command(file: &Path) -> anyhow::Result<Command> {
-    EditorBuilder::new()
-        // Config field takes priority over environment variables
-        .source(TuiContext::get().config.editor.as_deref())
-        .environment()
-        .source(Some("vim"))
-        .path(file)
-        .build()
-        .with_context(|| {
-            format!(
-                "Error opening editor; see {}",
-                doc_link("user_guide/tui/editor"),
-            )
-        })
-}
-
-/// Get a command to open the given file in the user's configured file pager.
-/// Default is `less` on Unix, `more` on Windows. Return an error if the command
-/// couldn't be built.
-pub fn get_pager_command(
-    file: &Path,
-    mime: Option<&Mime>,
-) -> anyhow::Result<Command> {
-    // Use a built-in pager
-    let default = if cfg!(windows) { "more" } else { "less" };
-
-    // Select command from the config based on content type
-    let config_command =
-        mime.and_then(|mime| TuiContext::get().config.pager.get(mime));
-
-    EditorBuilder::new()
-        // Config field takes priority over environment variables
-        .source(config_command)
-        .source(env::var("PAGER").ok())
-        .source(Some(default))
-        .path(file)
-        .build()
-        .with_context(|| {
-            format!(
-                "Error opening pager; see {}",
-                doc_link("user_guide/tui/editor"),
-            )
-        })
 }
 
 /// Run a command, optionally piping some stdin to it. This will use given shell

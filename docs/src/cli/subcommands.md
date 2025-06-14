@@ -59,7 +59,7 @@ slumber generate curl --profile production list_fishes -o host=http://localhost:
 
 ## `slumber history`
 
-View and modify your Slumber request history. Slumber stores every command sent **from the TUI** in a local SQLite database (requests are **not** stored remotely). You can find the database file with `slumber show paths`.
+View and modify your Slumber request history. Slumber stores every command sent **from the TUI** in a local SQLite database (requests are **not** stored remotely). You can find the database file with `slumber show paths db`.
 
 You can use the `slumber history` subcommand to browse and delete request history.
 

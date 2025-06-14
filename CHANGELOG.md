@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - The behavior has always been to follow redirects, so this adds the ability to disable that globally
   - **Reminder:** Global configuration is not automatically reloaded. After making changes to your `config.yml`, you'll need to restart Slumber for changes to take effect
   - [See docs for more](https://slumber.lucaspickering.me/book/api/configuration/index.html#follow_redirects)
+- Add optional `target` argument to `slumber show paths` to show just a single path
+  - E.g. `slumber show paths config` prints just the config path
 
 ## Fixed
 

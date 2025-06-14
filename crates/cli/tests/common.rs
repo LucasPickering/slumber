@@ -21,7 +21,7 @@ pub fn slumber() -> (Command, TempDir) {
 }
 
 fn tests_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests")
 }
 
 /// Path to the CLI test collection file

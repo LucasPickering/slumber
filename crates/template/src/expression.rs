@@ -165,13 +165,17 @@ impl FunctionCall {
 
 /// An identifier that can be used in a template key. A valid identifier is
 /// any non-empty string that contains only alphanumeric characters, `-`, or
-/// `_`.
+/// `_`. The first character must be a letter or underscore. Hyphens and numbers
+/// are not allowed first to avoid ambiguity with number literals.
 ///
 /// Construct via [FromStr](std::str::FromStr)
 #[derive(Clone, Debug, Deref, Default, Display, Eq, Hash, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Identifier(
-    #[cfg_attr(test, proptest(regex = "[a-zA-Z0-9-_]+"))] pub(crate) String,
+    // \p{L} will spit out valid unicode letters
+    // https://www.unicode.org/reports/tr44/tr44-24.html#General_Category_Values
+    #[cfg_attr(test, proptest(regex = r"[\p{L}_][\p{L}0-9-_]*"))]
+    pub(crate)  String,
 );
 
 /// A shortcut for creating identifiers from static strings. Since the string

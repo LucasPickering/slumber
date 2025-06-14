@@ -27,6 +27,7 @@ The new collection _should_ be equivalent to the old one, but you should keep yo
   - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/query_parameters.html) for examples of the new format
 - Profile override values given to the `--override` flag are now treated as templates
   - Previously the literal value was always used without additional rendering
+- Profile field names must now begin with a letter or underscore
 
 ### Changed
 

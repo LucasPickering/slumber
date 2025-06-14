@@ -113,6 +113,13 @@ tui = ["dep:slumber_tui"]
 # Enable tokio-console tracing
 tokio_tracing = ["dep:console-subscriber"]
 
+# https://proptest-rs.github.io/proptest/proptest/tips-and-best-practices.html#performance
+[profile.test.package.proptest]
+opt-level = 3
+
+[profile.test.package.rand_chacha]
+opt-level = 3
+
 # The profile that 'cargo dist' will build with
 [profile.dist]
 inherits = "release"

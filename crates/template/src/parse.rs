@@ -50,9 +50,14 @@ impl FromStr for Template {
 }
 
 impl Identifier {
-    /// Which characters are allowed in identifiers?
+    /// Is the character allowed in an identifier?
     fn is_char_allowed(c: char) -> bool {
-        c.is_alphanumeric() || "-_".contains(c)
+        Self::is_char_allowed_first(c) || c.is_numeric() || c == '-'
+    }
+
+    /// Is the character allowed as the first character in an identifier?
+    fn is_char_allowed_first(c: char) -> bool {
+        c.is_alphabetic() || c == '_'
     }
 
     /// Generate an identifier from a string, replacing all invalid chars with
@@ -65,7 +70,16 @@ impl Identifier {
         Self(
             value
                 .chars()
-                .map(|c| if Self::is_char_allowed(c) { c } else { '_' })
+                .enumerate()
+                .map(|(i, c)| {
+                    if i == 0 && Self::is_char_allowed_first(c)
+                        || (i > 0 && Self::is_char_allowed(c))
+                    {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
                 .collect(),
         )
     }
@@ -135,11 +149,10 @@ fn escape_sequence<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
 
 /// Parse a template expression with its bounding `{{ }}`
 fn expression_chunk(input: &mut &str) -> ModalResult<Expression> {
-    delimited(
+    preceded(
         EXPRESSION_OPEN,
         // Any error inside a template key is fatal, including an unclosed key
-        cut_err(expression),
-        EXPRESSION_CLOSE,
+        cut_err(terminated(expression, EXPRESSION_CLOSE)),
     )
     .context(ctx_label("expression"))
     .parse_next(input)
@@ -172,20 +185,23 @@ fn expression(input: &mut &str) -> ModalResult<Expression> {
 /// have to exclude pipes here because they are left-recursive, which triggers
 /// an infinite loop in parsing.
 fn primary_expression(input: &mut &str) -> ModalResult<Expression> {
-    ws(alt((
-        literal.map(Expression::Literal),
-        array.map(Expression::Array),
-        // Look for a fn call before a field to reduce backtracking. A fn
-        // call will always parse as a field, but not vice versa
-        call.map(Expression::Call),
-        identifier.map(Expression::Field),
-        // If all cases fail, the error from the last case is used. But we want
-        // to report an error of "invalid expression" instead
-        fail.context(ctx_expected("literal"))
-            .context(ctx_expected("array"))
-            .context(ctx_expected("function call"))
-            .context(ctx_expected("field")),
-    )))
+    ws(terminated(
+        alt((
+            literal.map(Expression::Literal),
+            array.map(Expression::Array),
+            // Look for a fn call before a field to reduce backtracking. A fn
+            // call will always parse as a field, but not vice versa
+            call.map(Expression::Call),
+            identifier.map(Expression::Field),
+            // If all cases fail, the error from the last case is used. But we
+            // want to report an error of "invalid expression" instead
+            fail.context(ctx_expected("literal"))
+                .context(ctx_expected("array"))
+                .context(ctx_expected("function call"))
+                .context(ctx_expected("field")),
+        )),
+        boundary,
+    ))
     .context(ctx_label("expression"))
     .parse_next(input)
 }
@@ -438,10 +454,34 @@ where
     delimited(multispace0, parser, multispace0)
 }
 
+/// Detect the end of a token without consuming any input. This parser is used
+/// after parsing an expression to ensure we got the entire token. For example,
+/// it prevents parsing `1user` as a number with lingering input.
+fn boundary(input: &mut &str) -> ModalResult<()> {
+    // A token boundary is the same set of characters that cannot be included
+    // in an identifier, as an identifier is a superset of what's allowed in
+    // number literals.
+    if input.is_empty()
+        || !Identifier::is_char_allowed(input.chars().next().unwrap())
+    {
+        Ok(())
+    } else {
+        cut_err(fail)
+            .context(ctx_expected("end of token"))
+            .parse_next(input)
+    }
+}
+
 /// Parse a field name/chain ID/env variable etc, inside a key. See [Identifier]
 /// for the definition of allowed syntax.
 fn identifier(input: &mut &str) -> ModalResult<Identifier> {
-    take_while(1.., Identifier::is_char_allowed)
+    (
+        // The first char must be a letter, so if we see that we're
+        // unambiguously in an identifier. Any error after is fatal.
+        take_while(1, Identifier::is_char_allowed_first),
+        cut_err(take_while(0.., Identifier::is_char_allowed)),
+    )
+        .take()
         .map(|id: &str| Identifier(id.to_owned()))
         .context(ctx_label("identifier"))
         .parse_next(input)
@@ -556,6 +596,7 @@ mod tests {
     #[case::unclosed_expression("{{", "invalid expression")]
     #[case::empty_expression("{{}}", "invalid expression")]
     #[case::invalid_expression("{{.}}", "invalid expression")]
+    #[case::trailing_dot("{{bogus.}}", "invalid expression")]
     // the first { is escaped, 2nd and 3rd make the expression, 4th is a problem
     #[case::bonus_braces(r"\\{{{{field}}", "invalid expression")]
     fn test_parse_template_error(
@@ -688,6 +729,8 @@ mod tests {
 
     /// Test parsing error cases for expressions
     #[rstest]
+    #[case::field_leading_number("1user", "invalid expression")]
+    #[case::field_leading_dash("-user", "invalid expression")]
     #[case::function_incomplete("bogus(", "invalid function call")]
     #[case::function_dupe_kwarg(
         "f(a=1, a=2)",
@@ -706,7 +749,6 @@ mod tests {
         "command(\"invalid)",
         "invalid string literal"
     )]
-    #[case::property_incomplete("bogus.", "invalid expression")]
     #[case::array_incomplete("[bogus", "invalid array")]
     #[case::string_incomplete("'bogus", "invalid string")]
     #[case::bytes_incomplete("b'bogus", "invalid byte literal")]
@@ -739,6 +781,8 @@ mod tests {
     #[rstest]
     #[case::valid("valid-identifier_yeah", "valid-identifier_yeah")]
     #[case::invalid("not valid!", "not_valid_")]
+    #[case::leading_number("1not", "_not")]
+    #[case::leading_dash("-not", "_not")]
     fn test_escape_identifier(#[case] input: &str, #[case] expected: &str) {
         let parsed = Identifier::escape(input);
         assert_eq!(parsed.as_str(), expected);

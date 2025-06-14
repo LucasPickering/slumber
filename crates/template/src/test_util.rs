@@ -1,9 +1,9 @@
-use crate::{Expression, Identifier, Literal, TemplateChunk};
+use crate::{Expression, FunctionCall, Identifier, Literal, TemplateChunk};
 use bytes::Bytes;
 use indexmap::IndexMap;
 use proptest::{
     collection,
-    prelude::{Strategy, any},
+    prelude::{Arbitrary, Strategy, any},
     prop_oneof,
     sample::SizeRange,
 };
@@ -49,18 +49,32 @@ pub fn expression_arbitrary() -> impl Strategy<Value = Expression> {
     // This has to be implemented manually because it's recursive
     // https://proptest-rs.github.io/proptest/proptest/tutorial/recursive.html
 
-    use crate::Expression;
-    const COLLECTION_SIZE: usize = 5;
-
     let leaf = prop_oneof![
         any::<Literal>().prop_map(Expression::Literal),
         any::<Identifier>().prop_map(Expression::Field),
     ];
-    leaf.prop_recursive(5, 256, COLLECTION_SIZE as u32, |inner| {
+    leaf.prop_recursive(2, 10, 2, |inner| {
         prop_oneof![
             // Define recursive cases
-            collection::vec(inner.clone(), 0..COLLECTION_SIZE)
-                .prop_map(Expression::Array),
+            collection::vec(inner.clone(), 0..=2).prop_map(Expression::Array),
+            // Generate a function call
+            (
+                Identifier::arbitrary(),
+                collection::vec(inner.clone(), 0..=1),
+                collection::hash_map(
+                    Identifier::arbitrary(),
+                    inner.clone(),
+                    0..=1
+                )
+            )
+                .prop_map(|(function, position, keyword)| {
+                    Expression::Call(FunctionCall {
+                        function,
+                        position,
+                        keyword: keyword.into_iter().collect(),
+                    })
+                }),
+            // Being lazy and skipping pipe expressions
         ]
     })
 }

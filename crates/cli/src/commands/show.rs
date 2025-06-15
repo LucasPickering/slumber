@@ -2,7 +2,7 @@ use crate::{GlobalArgs, Subcommand};
 use clap::Parser;
 use serde::Serialize;
 use slumber_config::Config;
-use slumber_core::database::Database;
+use slumber_core::{database::Database, util};
 use slumber_util::paths;
 use std::{path::Path, process::ExitCode};
 
@@ -99,11 +99,14 @@ impl Subcommand for ShowCommand {
 
             // Print config
             ShowTarget::Config { edit } => {
-                let config = Config::load()?;
                 if edit {
+                    // If the config is invalid, the user is probably trying to
+                    // fix it so we should open anyway
+                    let config = Config::load().unwrap_or_default();
                     let path = Config::path();
-                    edit_file(&config, &path)
+                    edit_and_validate(&config, &path, || Config::load().is_ok())
                 } else {
+                    let config = Config::load()?;
                     println!("{}", to_yaml(&config));
                     Ok(ExitCode::SUCCESS)
                 }
@@ -113,7 +116,9 @@ impl Subcommand for ShowCommand {
                 let collection_file = global.collection_file()?;
                 if edit {
                     let config = Config::load()?;
-                    edit_file(&config, collection_file.path())
+                    edit_and_validate(&config, collection_file.path(), || {
+                        collection_file.load().is_ok()
+                    })
                 } else {
                     let collection = collection_file.load()?;
                     println!("{}", to_yaml(&collection));
@@ -129,11 +134,31 @@ fn to_yaml<T: Serialize>(value: &T) -> String {
     serde_yaml::to_string(value).expect("Error serializing")
 }
 
-/// Open a file in the user's configured editor
-fn edit_file(config: &Config, path: &Path) -> anyhow::Result<ExitCode> {
-    let mut command = config.editor_command(path)?;
-    let status = command.spawn()?.wait()?;
-    // https://doc.rust-lang.org/stable/std/process/struct.ExitStatus.html#differences-from-exitcode
-    let code = status.code().and_then(|code| u8::try_from(code).ok());
-    Ok(code.map(ExitCode::from).unwrap_or(ExitCode::FAILURE))
+/// Open a file in the user's configured editor. After the user closes the
+/// editor, check if the file is valid using the given predicate. If it's
+/// invalid, let the user know and offer to reopen it. This loop will repeat
+/// indefinitely until the file is valid or the user chooses to exit.
+fn edit_and_validate(
+    config: &Config,
+    path: &Path,
+    is_valid: impl Fn() -> bool,
+) -> anyhow::Result<ExitCode> {
+    loop {
+        let mut command = config.editor_command(path)?;
+        let status = command.spawn()?.wait()?;
+
+        // After editing, verify the file is valid. If not, offer to reopen
+        if !is_valid()
+            && util::confirm(format!(
+                "{path} is invalid, would you like to reopen it?",
+                path = path.display(),
+            ))
+        {
+            continue;
+        }
+
+        // https://doc.rust-lang.org/stable/std/process/struct.ExitStatus.html#differences-from-exitcode
+        let code = status.code().and_then(|code| u8::try_from(code).ok());
+        return Ok(code.map(ExitCode::from).unwrap_or(ExitCode::FAILURE));
+    }
 }

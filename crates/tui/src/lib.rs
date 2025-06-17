@@ -131,12 +131,31 @@ impl Tui {
         // minimum rate enforced by a timeout
         while self.should_run {
             // ===== Message Phase =====
-            // Grab one message out of the queue and handle it. This will block
-            // while the queue is empty so we don't waste CPU cycles. The
-            // timeout here makes sure we don't block forever, so things like
-            // time displays during in-flight requests will update.
+            // Wait for one of 3 things to happen:
+            // - Message appears in the queue
+            // - Input event from the terminal
+            // - Timeout (to ensure we show state updates while a request is
+            //   ticking)
+            //
+            // The goal is to only do work when there's something to do, to
+            // minimize the idle CPU usage
 
             let message = select! {
+                // The ordering and usage of `biased` is very important here:
+                // if there's a message in the queue, we want to handle it
+                // immediately *before* the input stream is polled. If the
+                // message triggers a subprocess that yields the terminal, then
+                // polling the input stream can interfere with the spawned
+                // process. By checking the message queue first, we ensure the
+                // input stream only gets polled when there are no messages.
+                // See https://github.com/LucasPickering/slumber/issues/506 and
+                // associated PR
+                biased;
+                message = self.messages_rx.recv() => {
+                    // Error would indicate a very weird and fatal bug so we
+                    // wanna know about it
+                    Some(message.expect("Message channel dropped while running"))
+                },
                 event_option = input_stream.next() => {
                     if let Some(event) = event_option {
                         Some(event)
@@ -144,11 +163,6 @@ impl Tui {
                         // We ran out of input, just end the program
                         break;
                     }
-                },
-                message = self.messages_rx.recv() => {
-                    // Error would indicate a very weird and fatal bug so we
-                    // wanna know about it
-                    Some(message.expect("Message channel dropped while running"))
                 },
                 () = time::sleep(Self::TICK_TIME) => None,
             };

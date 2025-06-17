@@ -15,8 +15,7 @@ anyhow = {workspace = true}
 async-trait = {workspace = true}
 bytes = {workspace = true}
 chrono = {workspace = true}
-cli-clipboard = "0.4.0"
-crossterm = {workspace = true, features = ["bracketed-paste", "windows", "events", "event-stream"]}
+crossterm = {workspace = true, features = ["bracketed-paste", "events", "event-stream", "osc52", "windows"]}
 derive_more = {workspace = true, features = ["debug", "deref", "deref_mut", "display", "from"]}
 futures = {workspace = true}
 indexmap = {workspace = true}

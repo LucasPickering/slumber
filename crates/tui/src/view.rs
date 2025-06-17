@@ -12,6 +12,7 @@ mod util;
 
 pub use common::modal::{IntoModal, ModalPriority};
 pub use context::{UpdateContext, ViewContext};
+use crossterm::clipboard::CopyToClipboard;
 pub use styles::Styles;
 pub use util::{Confirm, PreviewPrompter, TuiPrompter};
 
@@ -31,6 +32,7 @@ use crate::{
 use anyhow::anyhow;
 use ratatui::{
     Frame,
+    crossterm::execute,
     layout::{Constraint, Layout},
     text::Text,
 };
@@ -40,7 +42,7 @@ use slumber_core::{
     database::CollectionDatabase,
     http::RequestId,
 };
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, io, sync::Arc};
 use tracing::{trace, trace_span, warn};
 
 /// Primary entrypoint for the view. This contains the main draw functions, as
@@ -218,16 +220,8 @@ impl View {
 
     /// Copy text to the user's clipboard, and notify them
     pub fn copy_text(&mut self, text: String) {
-        match cli_clipboard::set_contents(text) {
-            Ok(()) => self.notify("Copied text to clipboard"),
-            Err(error) => {
-                // Returned error doesn't impl 'static so we can't
-                // directly convert it to anyhow
-                ViewContext::send_message(Message::Error {
-                    error: anyhow!("Error copying text: {error}"),
-                });
-            }
-        }
+        execute!(io::stdout(), CopyToClipboard::to_clipboard_from(text));
+        self.notify("Copied text to clipboard");
     }
 }
 

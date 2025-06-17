@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Import JSON bodies from OpenAPI spec operations that don't have an `example` field
   - Now it will infer a body from the schema definition if no examples are provided
+- Fix occasional hang when opening `fx` as a pager [#506](https://github.com/LucasPickering/slumber/issues/506)
 
 ## [3.1.3] - 2025-06-07
 

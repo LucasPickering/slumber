@@ -1,12 +1,15 @@
 use crate::{GlobalArgs, Subcommand};
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
+use slumber_import::ImportInput;
 use std::{
     fs::File,
     io::{self, Write},
     path::PathBuf,
     process::ExitCode,
+    str::FromStr,
 };
+use tracing::info;
 
 /// Generate a Slumber request collection from an external format
 ///
@@ -16,14 +19,14 @@ use std::{
 pub struct ImportCommand {
     /// Input format
     format: Format,
-    /// Collection to import
-    input_file: PathBuf,
+    /// File to import (path or URL)
+    #[clap(value_parser = ImportInput::from_str)]
+    input: ImportInput,
     /// Destination for the new slumber collection file [default: stdout]
     output_file: Option<PathBuf>,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
-#[expect(rustdoc::bare_urls)]
 enum Format {
     /// Insomnia export format (JSON or YAML)
     Insomnia,
@@ -38,13 +41,17 @@ enum Format {
 
 impl Subcommand for ImportCommand {
     async fn execute(self, _global: GlobalArgs) -> anyhow::Result<ExitCode> {
-        // Load the input
+        info!(
+            input = ?self.input, format = ?self.format, "Importing collection"
+        );
         let collection = match self.format {
             Format::Insomnia => {
-                slumber_import::from_insomnia(&self.input_file)?
+                slumber_import::from_insomnia(&self.input).await?
             }
-            Format::Openapi => slumber_import::from_openapi(&self.input_file)?,
-            Format::Rest => slumber_import::from_rest(&self.input_file)?,
+            Format::Openapi => {
+                slumber_import::from_openapi(&self.input).await?
+            }
+            Format::Rest => slumber_import::from_rest(&self.input).await?,
         };
 
         // Write the output
@@ -62,7 +69,8 @@ impl Subcommand for ImportCommand {
             ),
             None => Box::new(io::stdout()),
         };
-        serde_yaml::to_writer(&mut writer, &collection)?;
+        serde_yaml::to_writer(&mut writer, &collection)
+            .context(format!("Error loading collection from {}", self.input))?;
 
         Ok(ExitCode::SUCCESS)
     }

@@ -36,7 +36,7 @@ strum = {workspace = true, features = ["derive"]}
 thiserror = {workspace = true}
 tokio = {workspace = true, features = ["fs", "process"]}
 tracing = {workspace = true}
-url = {version = "2.0.0", features = ["serde"]}# Inherited from reqwest
+url = {workspace = true, features = ["serde"]}
 uuid = {workspace = true, features = ["serde", "v4"]}
 winnow = {workspace = true}
 

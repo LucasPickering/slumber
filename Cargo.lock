@@ -2312,8 +2312,6 @@ dependencies = [
 [[package]]
 name = "rest_parser"
 version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "575c220d2c01ec29da1d36c6fbd1deb7fe001597336f54f22f5f1a35cbeaa5c8"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2798,6 +2796,7 @@ dependencies = [
  "slumber_util",
  "tokio",
  "tracing",
+ "url",
  "uuid",
  "wiremock",
 ]
@@ -2869,6 +2868,8 @@ name = "slumber_import"
 version = "3.1.3"
 dependencies = [
  "anyhow",
+ "derive_more",
+ "futures",
  "indexmap 2.9.0",
  "itertools",
  "mime",
@@ -2885,6 +2886,7 @@ dependencies = [
  "slumber_util",
  "strum",
  "thiserror 2.0.12",
+ "tokio",
  "tracing",
  "winnow",
 ]

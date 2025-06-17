@@ -57,6 +57,7 @@ strum = {version = "0.26.3", default-features = false}
 thiserror = "2.0.12"
 tokio = {version = "1.39.2", default-features = false}
 tracing = "0.1.40"
+url = "2.0.0"
 uuid = {version = "1.10.0", default-features = false}
 winnow = "0.6.16"
 wiremock = {version = "0.6.1", default-features = false}

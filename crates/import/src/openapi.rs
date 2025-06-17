@@ -16,18 +16,14 @@
 mod resolve;
 mod v3_0;
 
+use crate::ImportInput;
 use anyhow::{Context, anyhow};
 use slumber_core::collection::Collection;
 use slumber_util::NEW_ISSUE_LINK;
-use std::{fs::File, path::Path};
-use tracing::{info, warn};
+use tracing::warn;
 
 /// Loads a collection from an OpenAPI v3 specification file
-pub fn from_openapi(
-    openapi_file: impl AsRef<Path>,
-) -> anyhow::Result<Collection> {
-    let path = openapi_file.as_ref();
-    info!(file = ?path, "Loading OpenAPI collection");
+pub async fn from_openapi(input: &ImportInput) -> anyhow::Result<Collection> {
     warn!(
         "The OpenAPI importer is approximate. Some features are missing \
             and it may not give you an equivalent or fulling functional
@@ -36,15 +32,12 @@ pub fn from_openapi(
             {NEW_ISSUE_LINK}"
     );
 
-    let file = File::open(path)
-        .context(format!("Error opening OpenAPI collection file {path:?}"))?;
-
     // Read the spec into YAML and use the `version` field to determine which
     // importer to use. The format can be YAML or JSON, so we can just treat it
     // all as YAML
-    let yaml = serde_yaml::from_reader(file).context(format!(
-        "Error deserializing OpenAPI collection file {path:?}"
-    ))?;
+    let content = input.load().await?;
+    let yaml = serde_yaml::from_str(&content)
+        .context("Error deserializing OpenAPI collection")?;
 
     let version =
         get_version(&yaml).ok_or_else(|| anyhow!("Missing OpenAPI version"))?;
@@ -80,9 +73,10 @@ mod tests {
 
     /// Catch-all test for OpenAPI v3.0 import
     #[rstest]
-    fn test_openapiv3_0_import(test_data_dir: PathBuf) {
-        let imported =
-            from_openapi(test_data_dir.join(OPENAPI_V3_0_FILE)).unwrap();
+    #[tokio::test]
+    async fn test_openapiv3_0_import(test_data_dir: PathBuf) {
+        let input = ImportInput::Path(test_data_dir.join(OPENAPI_V3_0_FILE));
+        let imported = from_openapi(&input).await.unwrap();
         let expected =
             Collection::load(&test_data_dir.join(OPENAPI_V3_0_IMPORTED_FILE))
                 .unwrap();

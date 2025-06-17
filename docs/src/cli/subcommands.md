@@ -118,13 +118,19 @@ Supported formats:
 The general format is:
 
 ```sh
-slumber import <format> <input> [output]
+slumber import <format> <path|url> [output]
 ```
 
 For example, to import from an Insomnia collection `insomnia.json`:
 
 ```sh
 slumber import insomnia insomnia.json slumber.yml
+```
+
+Or to import an OpenAPI spec from a server:
+
+```sh
+slumber import openapi https://petstore3.swagger.io/api/v3/openapi.json slumber.yml
 ```
 
 Requested formats:

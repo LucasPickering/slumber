@@ -23,15 +23,19 @@ use rest_parser::{
     template::{Template as RestTemplate, TemplatePart as RestTemplatePart},
 };
 use slumber_util::ResultTraced;
-use std::path::Path;
 use tracing::error;
+
+use crate::ImportInput;
 
 /// Convert a VSCode `.rest` file or a Jetbrains `.http` file into a slumber
 /// collection
-pub fn from_rest(rest_file: impl AsRef<Path>) -> anyhow::Result<Collection> {
-    let rest_file = rest_file.as_ref();
-    // Parse the file and determine the flavor using the extension
-    let rest_format = RestFormat::parse_file(rest_file)?;
+pub async fn from_rest(input: &ImportInput) -> anyhow::Result<Collection> {
+    let content = input.load().await?;
+    let flavor = input
+        .file_name()
+        .map(RestFlavor::from_path)
+        .unwrap_or_default();
+    let rest_format = RestFormat::parse(&content, flavor)?;
     Ok(build_collection(rest_format))
 }
 
@@ -327,7 +331,10 @@ fn build_collection(rest_format: RestFormat) -> Collection {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use pretty_assertions::assert_eq;
+    use rstest::rstest;
     use slumber_util::test_data_dir;
 
     use super::*;
@@ -582,12 +589,13 @@ mod tests {
         assert!(rec.is_ok());
     }
 
-    #[test]
-    fn can_load_collection_from_file() {
-        let test_http_path = test_data_dir().join("rest_http_bin.http");
-        let test_slumber_path = test_data_dir().join("rest_imported.yml");
+    #[rstest]
+    #[tokio::test]
+    async fn can_load_collection_from_file(test_data_dir: PathBuf) {
+        let input = ImportInput::Path(test_data_dir.join("rest_http_bin.http"));
+        let test_slumber_path = test_data_dir.join("rest_imported.yml");
 
-        let collection = from_rest(test_http_path).unwrap();
+        let collection = from_rest(&input).await.unwrap();
         let loaded_collection = Collection::load(&test_slumber_path).unwrap();
 
         assert_eq!(collection.profiles, loaded_collection.profiles);

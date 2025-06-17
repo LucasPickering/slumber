@@ -1,6 +1,7 @@
 //! Import request collections from Insomnia. Based on the Insomnia v4 export
 //! format
 
+use crate::ImportInput;
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -17,36 +18,27 @@ use slumber_core::{
     template::{Identifier, Template},
 };
 use slumber_util::NEW_ISSUE_LINK;
-use std::{
-    collections::HashMap, fmt::Display, fs::File, path::Path, str::FromStr,
-};
-use tracing::{debug, error, info, warn};
+use std::{collections::HashMap, fmt::Display, str::FromStr};
+use tracing::{debug, error, warn};
 
 /// Convert an Insomnia exported collection into the slumber format. This
 /// supports YAML *or* JSON input.
 ///
 /// This is not async because it's only called by the CLI, where we don't
 /// care about blocking. It keeps the code simpler.
-pub fn from_insomnia(
-    insomnia_file: impl AsRef<Path>,
-) -> anyhow::Result<Collection> {
-    let insomnia_file = insomnia_file.as_ref();
+pub async fn from_insomnia(input: &ImportInput) -> anyhow::Result<Collection> {
     // First, deserialize into the insomnia format
-    info!(file = ?insomnia_file, "Loading Insomnia collection");
     warn!(
         "The Insomnia importer is approximate. Some features are missing \
             and it most likely will not give you an equivalent collection. If \
             you would like to request support for a particular Insomnia \
             feature, please open an issue: {NEW_ISSUE_LINK}"
     );
-    let file = File::open(insomnia_file).context(format!(
-        "Error opening Insomnia collection file {insomnia_file:?}"
-    ))?;
+
     // The format can be YAML or JSON, so we can just treat it all as YAML
-    let mut insomnia: Insomnia =
-        serde_yaml::from_reader(file).context(format!(
-            "Error deserializing Insomnia collection file {insomnia_file:?}"
-        ))?;
+    let content = input.load().await?;
+    let mut insomnia: Insomnia = serde_yaml::from_str(&content)
+        .context("Error deserializing Insomnia collection")?;
 
     // Match Insomnia's visual order. This isn't entirely accurate because
     // Insomnia reorders folders/requests according to the tree structure,
@@ -630,9 +622,10 @@ mod tests {
 
     /// Catch-all test for insomnia import
     #[rstest]
-    fn test_insomnia_import(test_data_dir: PathBuf) {
-        let imported =
-            from_insomnia(test_data_dir.join(INSOMNIA_FILE)).unwrap();
+    #[tokio::test]
+    async fn test_insomnia_import(test_data_dir: PathBuf) {
+        let input = ImportInput::Path(test_data_dir.join(INSOMNIA_FILE));
+        let imported = from_insomnia(&input).await.unwrap();
         let expected =
             Collection::load(&test_data_dir.join(INSOMNIA_IMPORTED_FILE))
                 .unwrap();

@@ -24,6 +24,21 @@ fn test_import_local(test_data_dir: PathBuf) {
     assert_openapi_imported(&test_data_dir, &output.get_output().stdout);
 }
 
+/// Test `slumber import` from stdin to stdout
+#[rstest]
+#[tokio::test]
+async fn test_import_stdin(test_data_dir: PathBuf) {
+    let (mut command, _) = common::slumber();
+    let output = command
+        .args(["import", "openapi", "-"])
+        .pipe_stdin(test_data_dir.join(OPENAPI_FILE))
+        .unwrap()
+        .assert()
+        .success();
+
+    assert_openapi_imported(&test_data_dir, &output.get_output().stdout);
+}
+
 /// Test `slumber import` from a remote file over HTTP
 #[rstest]
 #[tokio::test]

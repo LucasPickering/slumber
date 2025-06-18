@@ -118,13 +118,21 @@ Supported formats:
 The general format is:
 
 ```sh
-slumber import <format> <path|url> [output]
+slumber import <format> <input> [output]
 ```
+
+Possible inputs are:
+
+- `-` for stdin
+- Path to a local file
+- URL to download via HTTP
 
 For example, to import from an Insomnia collection `insomnia.json`:
 
 ```sh
 slumber import insomnia insomnia.json slumber.yml
+# Or, to read from stdin and print to stdout
+slumber import insomnia - < insomnia.json
 ```
 
 Or to import an OpenAPI spec from a server:

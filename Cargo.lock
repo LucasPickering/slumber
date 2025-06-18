@@ -2311,7 +2311,9 @@ dependencies = [
 
 [[package]]
 name = "rest_parser"
-version = "0.1.6"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04f757c5db07440bc38f0545d038767320c557fcb427c8cf200c859de1e84cb1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

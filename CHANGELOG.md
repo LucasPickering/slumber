@@ -16,8 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - E.g. `slumber show paths config` prints just the config path
 - Add `--edit` flag to `slumber show config` and `slumber show collection`
   - This will open the global config/collection file in your configured editor, similar to `git config --edit`
-- `slumber import` now accepts a URL in addition to a file path
-  - If a URL is given, the file will be downloaded and imported
+- `slumber import` now supports importing from stdin or a URL
+  - If no input argument is given, it will read from stdin, e.g. `slumber import openapi < openapi.json`
+  - If a URL is given, the file will be downloaded and imported, e.g. `slumber import openapi https://example.com/openapi.json`
 
 ## Fixed
 

@@ -13,7 +13,7 @@ pub use prompt::{Prompt, Prompter, ResponseChannel, Select};
 
 use crate::{
     collection::{ChainId, Collection, ProfileId, RecipeId},
-    http::{Exchange, RequestSeed},
+    http::{Exchange, Overrides, RequestSeed},
     template::{
         parse::{CHAIN_PREFIX, ENV_PREFIX, TemplateInputChunk},
         render::RenderGroupState,
@@ -70,7 +70,7 @@ pub struct TemplateContext {
     /// An interface to allow accessing and sending HTTP chained requests
     pub http_provider: Box<dyn HttpProvider>,
     /// Additional key=value overrides passed directly from the user
-    pub overrides: IndexMap<String, String>,
+    pub overrides: Overrides,
     /// A conduit to ask the user questions
     pub prompter: Box<dyn Prompter>,
     /// State that should be shared across al renders that use this context.

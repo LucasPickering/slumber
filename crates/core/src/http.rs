@@ -47,9 +47,9 @@ pub use models::*;
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
     http::{content_type::ContentType, curl::CurlBuilder},
-    template::{Template, TemplateContext},
+    template::{Identifier, Template, TemplateContext},
 };
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use bytes::Bytes;
 use chrono::Utc;
 use futures::{
@@ -57,6 +57,7 @@ use futures::{
     future::{self, OptionFuture, try_join_all},
     try_join,
 };
+use indexmap::IndexMap;
 use mime::Mime;
 use reqwest::{
     Client, RequestBuilder, Response, Url,
@@ -66,8 +67,14 @@ use reqwest::{
 };
 use slumber_config::HttpEngineConfig;
 use slumber_util::ResultTraced;
-use std::{collections::HashSet, error::Error};
+use std::{collections::HashSet, error::Error, str::FromStr};
 use tracing::{error, info, info_span};
+use winnow::{
+    ModalResult, Parser,
+    ascii::dec_uint,
+    combinator::{alt, opt, preceded},
+    token::take_while,
+};
 
 const USER_AGENT: &str = concat!("slumber/", env!("CARGO_PKG_VERSION"));
 
@@ -130,14 +137,9 @@ impl HttpEngine {
         seed: RequestSeed,
         template_context: &TemplateContext,
     ) -> Result<RequestTicket, RequestBuildError> {
-        let RequestSeed {
-            id,
-            recipe_id,
-            options,
-        } = &seed;
+        let RequestSeed { id, recipe_id } = &seed;
         let _ =
-            info_span!("Build request", request_id = %id, ?recipe_id, ?options)
-                .entered();
+            info_span!("Build request", request_id = %id, ?recipe_id).entered();
 
         let future = async {
             let recipe = template_context
@@ -148,10 +150,10 @@ impl HttpEngine {
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
                 recipe.render_url(template_context),
-                recipe.render_query(options, template_context),
-                recipe.render_headers(options, template_context),
-                recipe.render_authentication(options, template_context),
-                recipe.render_body(options, template_context),
+                recipe.render_query(template_context),
+                recipe.render_headers(template_context),
+                recipe.render_authentication(template_context),
+                recipe.render_body(template_context),
             )?;
 
             // Build the reqwest request first, so we can have it do all the
@@ -196,14 +198,9 @@ impl HttpEngine {
         seed: RequestSeed,
         template_context: &TemplateContext,
     ) -> Result<Url, RequestBuildError> {
-        let RequestSeed {
-            id,
-            recipe_id,
-            options,
-        } = &seed;
-        let _ =
-            info_span!("Build request URL", request_id = %id, ?recipe_id, ?options)
-                .entered();
+        let RequestSeed { id, recipe_id } = &seed;
+        let _ = info_span!("Build request URL", request_id = %id, ?recipe_id)
+            .entered();
 
         let future = async {
             let recipe = template_context
@@ -214,7 +211,7 @@ impl HttpEngine {
             // Parallelization!
             let (url, query) = try_join!(
                 recipe.render_url(template_context),
-                recipe.render_query(options, template_context),
+                recipe.render_query(template_context),
             )?;
 
             // Use RequestBuilder so we can offload the handling of query params
@@ -236,14 +233,9 @@ impl HttpEngine {
         seed: RequestSeed,
         template_context: &TemplateContext,
     ) -> Result<Option<Bytes>, RequestBuildError> {
-        let RequestSeed {
-            id,
-            recipe_id,
-            options,
-        } = &seed;
-        let _ =
-            info_span!("Build request body", request_id = %id, ?recipe_id, ?options)
-                .entered();
+        let RequestSeed { id, recipe_id } = &seed;
+        let _ = info_span!("Build request body", request_id = %id, ?recipe_id)
+            .entered();
 
         let future = async {
             let recipe = template_context
@@ -251,9 +243,7 @@ impl HttpEngine {
                 .recipes
                 .try_get_recipe(recipe_id)?;
 
-            let Some(body) =
-                recipe.render_body(options, template_context).await?
-            else {
+            let Some(body) = recipe.render_body(template_context).await? else {
                 return Ok(None);
             };
 
@@ -298,14 +288,9 @@ impl HttpEngine {
         seed: RequestSeed,
         template_context: &TemplateContext,
     ) -> Result<String, RequestBuildError> {
-        let RequestSeed {
-            id,
-            recipe_id,
-            options,
-        } = &seed;
-        let _ =
-            info_span!("Build request cURL", request_id = %id, ?recipe_id, ?options)
-                .entered();
+        let RequestSeed { id, recipe_id } = &seed;
+        let _ = info_span!("Build request cURL", request_id = %id, ?recipe_id)
+            .entered();
 
         let future = async {
             let recipe = template_context
@@ -316,10 +301,10 @@ impl HttpEngine {
             // Render everything up front so we can parallelize it
             let (url, query, headers, authentication, body) = try_join!(
                 recipe.render_url(template_context),
-                recipe.render_query(options, template_context),
-                recipe.render_headers(options, template_context),
-                recipe.render_authentication(options, template_context),
-                recipe.render_body(options, template_context),
+                recipe.render_query(template_context),
+                recipe.render_headers(template_context),
+                recipe.render_authentication(template_context),
+                recipe.render_body(template_context),
             )?;
 
             // Buidl the command
@@ -352,6 +337,174 @@ impl HttpEngine {
 impl Default for HttpEngine {
     fn default() -> Self {
         Self::new(&HttpEngineConfig::default())
+    }
+}
+
+/// A set of fields whose values have been overridden at render time. Typically
+/// the value for a recipe field is statically set in the collection, or
+/// dynamically calculated via a function set in the recipe. Overrides allow
+/// the user to modify values for a single request without modifying the
+/// collection.
+///
+/// Override keys are used internally by the TUI and can be passed by the user
+/// in the CLI with the `--override` flag.
+#[derive(Debug, Default, derive_more::From)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+pub struct Overrides {
+    /// TODO explain why no OverrideValue
+    pub profile: IndexMap<String, Template>,
+    /// Override request URL. This uses just a template rather than
+    /// [OverrideValue] because it's not possible to omit the URL
+    pub url: Option<Template>,
+    pub query: IndexMap<QueryOverrideKey, OverrideValue>,
+    pub headers: IndexMap<String, OverrideValue>,
+    pub authentication_username: Option<OverrideValue>,
+    pub authentication_password: Option<OverrideValue>,
+    /// Override token for bearer auth
+    pub authentication_token: Option<OverrideValue>,
+    pub body: Option<BodyOverride>,
+}
+
+/// TODO
+#[derive(Debug, Eq, Hash, PartialEq)]
+enum QueryOverrideKey {
+    /// TODO
+    All { param: String },
+    /// TODO
+    One { param: String, index: usize },
+}
+
+/// TODO
+#[derive(Debug)]
+#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+enum BodyOverride {
+    /// Override the entire body. Original content type will be retained
+    Raw(OverrideValue),
+    /// Override individual fields in a form body
+    Form(IndexMap<String, OverrideValue>),
+}
+
+impl Overrides {
+    /// Get override value by key
+    pub fn get(&self, key: &OverrideKey) -> Option<&OverrideValue> {
+        self.0.get(key)
+    }
+
+    /// Get override value by key, returning the given default if the value
+    /// isn't present. Return `None` iff the value is `Omit`.
+    pub fn get_or_default<'a>(
+        &'a self,
+        key: &OverrideKey,
+        default: &'a Template,
+    ) -> Option<&'a Template> {
+        match self.0.get(key) {
+            None => Some(default),
+            Some(OverrideValue::Override(template)) => Some(template),
+            Some(OverrideValue::Omit) => None,
+        }
+    }
+
+    /// Add a key to the map
+    pub fn insert(
+        &mut self,
+        key: OverrideKey,
+        value: OverrideValue,
+    ) -> Option<OverrideValue> {
+        self.0.insert(key, value)
+    }
+
+    /// Add all entries into another map to this one
+    pub fn extend(&mut self, other: Self) {
+        self.0.extend(other.0);
+    }
+}
+
+/// A key specifying a single value in a request to be overridden. Users can
+/// override a specific part of a recipe OR a template key. Overriding template
+/// keys provides more granular and customizable control over individual parts
+/// of a template.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum OverrideKey {
+    /// Override the value of a profile field
+    Profile(Identifier),
+    /// Override the request URL
+    Url,
+    /// Override a single query parameter value. Query parameters can appear
+    /// multiple times, so an additional index is used to disambiguate between
+    /// multiple occurrences of the same param. The index will be `0` for the
+    /// first appearance of *that parameter*, `1` for the second, etc. If no
+    /// index is given, replace all occurrences of the parameter with entry.
+    Query(String, Option<usize>),
+    /// Override a single header value
+    Header(String),
+    /// Override the request's entire body. For raw/JSON bodies
+    Body,
+    /// Override a form body field
+    Form(String),
+    /// Override the username in basic authentication
+    AuthenticationUsername,
+    /// Override the password in basic authentication
+    AuthenticationPassword,
+    /// Override the token in bearer token authentication
+    AuthenticationToken,
+}
+
+/// Parse an override key from a string source such as a CLI flag
+impl FromStr for OverrideKey {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        /// Parse 1 or more characters
+        fn any1<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
+            // TODO is there a better way to write this?
+            // TODO improve error
+            take_while(1.., |_| true).parse_next(input)
+        }
+
+        fn request_component(input: &mut &str) -> ModalResult<OverrideKey> {
+            alt((
+                "url".map(|_| OverrideKey::Url),
+                "body".map(|_| OverrideKey::Body),
+                // query.<param> or query.<param>.<index>
+                preceded("query.", (any1, opt(preceded(".", dec_uint))))
+                    .map(|(param, i)| OverrideKey::Query(param.into(), i)),
+                preceded("headers.", any1)
+                    .map(|s| OverrideKey::Header(s.into())),
+                preceded("form.", any1).map(|s| OverrideKey::Form(s.into())),
+                "auth.username".map(|_| OverrideKey::AuthenticationUsername),
+                "auth.password".map(|_| OverrideKey::AuthenticationPassword),
+                "auth.token".map(|_| OverrideKey::AuthenticationToken),
+            ))
+            .parse_next(input)
+        }
+
+        // ===== READ THIS =====
+        // If you modify this parsing, update the help docs on --override
+        // TODO fix template overrides
+        alt((
+            // rq. prefix is used for all request components
+            preceded("rq.", request_component),
+            // Anything else must be a profile field
+            any1.parse_to::<Identifier>().map(OverrideKey::Profile),
+        ))
+        .parse(s)
+        .map_err(|error| error.to_string())
+    }
+}
+
+/// An overridden recipe value. A value can be overriden either by providing a
+/// new value, or by omitting it. Omitting a value drops it from the recipe.
+/// Useful e.g. for disabling a query parameter.
+#[derive(Clone, Debug, PartialEq)]
+pub enum OverrideValue {
+    Omit,
+    Override(Template),
+}
+
+#[cfg(any(test, feature = "test"))]
+impl From<&str> for OverrideValue {
+    fn from(value: &str) -> Self {
+        OverrideValue::Override(Template::from(value))
     }
 }
 
@@ -460,8 +613,12 @@ impl Recipe {
         &self,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Url> {
-        let url = self
-            .url
+        let template = template_context
+            .overrides
+            .get_or_default(&OverrideKey::Url, &self.url)
+            // Omitting the URL doesn't make sense
+            .ok_or_else(|| anyhow!("URL cannot be omitted"))?;
+        let url = template
             .render_string(template_context)
             .await
             .context("Error rendering URL")?;
@@ -472,23 +629,29 @@ impl Recipe {
     /// Render query key=value params
     async fn render_query(
         &self,
-        options: &BuildOptions,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Vec<(String, String)>> {
-        let iter = self.query.iter().enumerate().filter_map(|(i, (k, v))| {
-            // Look up and apply override. We do this by index because the
-            // keys aren't necessarily unique
-            let template = options.query_parameters.get(i, v)?;
+        let iter =
+            self.query_iter().filter_map(|(param, i, value_template)| {
+                // Apply override or omit as requested
+                let template = template_context.overrides.get_or_default(
+                    // TODO check for None as well
+                    &OverrideKey::Query(param.into(), Some(i)),
+                    value_template,
+                )?;
 
-            Some(async move {
-                Ok::<_, anyhow::Error>((
-                    k.clone(),
-                    template.render_string(template_context).await.context(
-                        format!("Error rendering query parameter `{k}`"),
-                    )?,
-                ))
-            })
-        });
+                Some(async move {
+                    Ok::<_, anyhow::Error>((
+                        param.to_owned(),
+                        template
+                            .render_string(template_context)
+                            .await
+                            .context(format!(
+                                "Error rendering query parameter `{param}`"
+                            ))?,
+                    ))
+                })
+            });
         future::try_join_all(iter).await
     }
 
@@ -496,7 +659,6 @@ impl Recipe {
     /// authentication and other implicit headers
     async fn render_headers(
         &self,
-        options: &BuildOptions,
         template_context: &TemplateContext,
     ) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
@@ -517,17 +679,21 @@ impl Recipe {
         }
 
         // Render headers in an iterator so we can parallelize
-        let iter = self.headers.iter().enumerate().filter_map(
-            move |(i, (header, value_template))| {
-                // Look up and apply override. We do this by index because the
-                // keys aren't necessarily unique
-                let template = options.headers.get(i, value_template)?;
+        let iter =
+            self.headers
+                .iter()
+                .filter_map(move |(header, value_template)| {
+                    // Apply override or omit as requested
+                    let template = template_context.overrides.get_or_default(
+                        &OverrideKey::Header(header.into()),
+                        value_template,
+                    )?;
 
-                Some(async move {
-                    self.render_header(template_context, header, template).await
-                })
-            },
-        );
+                    Some(async move {
+                        self.render_header(template_context, header, template)
+                            .await
+                    })
+                });
 
         let rendered = future::try_join_all(iter).await?;
         headers.reserve(rendered.len());
@@ -548,7 +714,7 @@ impl Recipe {
         value_template: &Template,
     ) -> anyhow::Result<(HeaderName, HeaderValue)> {
         let mut value = value_template
-            .render(template_context)
+            .render_bytes(template_context)
             .await
             .context(format!("Error rendering header `{header}`"))?;
 
@@ -575,15 +741,22 @@ impl Recipe {
     /// data. This can be passed to [reqwest::RequestBuilder]
     async fn render_authentication(
         &self,
-        options: &BuildOptions,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Option<Authentication<String>>> {
-        let authentication = options
-            .authentication
-            .as_ref()
-            .or(self.authentication.as_ref());
-        match authentication {
+        match &self.authentication {
             Some(Authentication::Basic { username, password }) => {
+                let Some(username) = template_context.overrides.get_or_default(
+                    &OverrideKey::AuthenticationUsername,
+                    username,
+                ) else {
+                    // If username is omitted, don't include any auth
+                    return Ok(None);
+                };
+                // If password is omitted, replace it with an empty string
+                let password = template_context.overrides.get_or_default(
+                    &OverrideKey::AuthenticationPassword,
+                    password,
+                );
                 let (username, password) = try_join!(
                     async {
                         username
@@ -596,7 +769,7 @@ impl Recipe {
                             password.render_string(template_context)
                         }))
                         .await
-                        .transpose()
+                        .unwrap_or(Ok(String::new())) // Password omitted
                         .context("Error rendering password")
                     },
                 )?;
@@ -604,6 +777,12 @@ impl Recipe {
             }
 
             Some(Authentication::Bearer(token)) => {
+                let Some(token) = template_context
+                    .overrides
+                    .get_or_default(&OverrideKey::AuthenticationToken, token)
+                else {
+                    return Ok(None);
+                };
                 let token = token
                     .render_string(template_context)
                     .await
@@ -617,25 +796,37 @@ impl Recipe {
     /// Render request body
     async fn render_body(
         &self,
-        options: &BuildOptions,
         template_context: &TemplateContext,
     ) -> anyhow::Result<Option<RenderedBody>> {
-        let Some(body) = options.body.as_ref().or(self.body.as_ref()) else {
+        let overrides = &template_context.overrides;
+        // TODO allow overriding body regardless of type defined in recipe
+        let Some(body) = self.body.as_ref() else {
             return Ok(None);
         };
 
         let rendered = match body {
-            RecipeBody::Raw { body, .. } => RenderedBody::Raw(
-                body.render(template_context)
-                    .await
-                    .context("Error rendering body")?
-                    .into(),
-            ),
+            RecipeBody::Raw { body, .. } => {
+                let Some(body) =
+                    overrides.get_or_default(&OverrideKey::Body, body)
+                else {
+                    return Ok(None);
+                };
+                RenderedBody::Raw(
+                    body.render_bytes(template_context)
+                        .await
+                        .context("Error rendering body")?,
+                )
+            }
             RecipeBody::FormUrlencoded(fields) => {
-                let iter = fields.iter().enumerate().filter_map(
-                    |(i, (field, value_template))| {
+                let iter =
+                    fields.iter().filter_map(|(field, value_template)| {
+                        // Apply override or omit as requested
                         let template =
-                            options.form_fields.get(i, value_template)?;
+                            template_context.overrides.get_or_default(
+                                &OverrideKey::Form(field.into()),
+                                value_template,
+                            )?;
+
                         Some(async move {
                             let value = template
                                 .render_string(template_context)
@@ -645,16 +836,20 @@ impl Recipe {
                                 ))?;
                             Ok::<_, anyhow::Error>((field.clone(), value))
                         })
-                    },
-                );
+                    });
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormUrlencoded(rendered)
             }
             RecipeBody::FormMultipart(fields) => {
-                let iter = fields.iter().enumerate().filter_map(
-                    |(i, (field, value_template))| {
+                let iter =
+                    fields.iter().filter_map(|(field, value_template)| {
+                        // Apply override or omit as requested
                         let template =
-                            options.form_fields.get(i, value_template)?;
+                            template_context.overrides.get_or_default(
+                                &OverrideKey::Form(field.into()),
+                                value_template,
+                            )?;
+
                         Some(async move {
                             let value = template
                                 .render(template_context)
@@ -664,8 +859,7 @@ impl Recipe {
                                 ))?;
                             Ok::<_, anyhow::Error>((field.clone(), value))
                         })
-                    },
-                );
+                    });
                 let rendered = try_join_all(iter).await?;
                 RenderedBody::FormMultipart(rendered)
             }
@@ -678,7 +872,7 @@ impl Authentication<String> {
     fn apply(self, builder: RequestBuilder) -> RequestBuilder {
         match self {
             Authentication::Basic { username, password } => {
-                builder.basic_auth(username, password)
+                builder.basic_auth(username, Some(password))
             }
             Authentication::Bearer(token) => builder.bearer_auth(token),
         }

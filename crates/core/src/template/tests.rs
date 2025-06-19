@@ -1098,7 +1098,7 @@ async fn test_render_binary(invalid_utf8_chain: ChainSource) {
 
     assert_eq!(
         Template::from("{{chains.chain1}}")
-            .render(&context)
+            .render_bytes(&context)
             .await
             .unwrap(),
         b"\xc3\x28"

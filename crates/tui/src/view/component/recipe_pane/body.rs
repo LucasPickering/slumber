@@ -8,7 +8,7 @@ use crate::{
             text_window::{ScrollbarMargins, TextWindow, TextWindowProps},
         },
         component::recipe_pane::{
-            persistence::{RecipeOverrideKey, RecipeTemplate},
+            persistence::RecipeTemplate,
             table::{RecipeFieldTable, RecipeFieldTableProps},
         },
         context::UpdateContext,
@@ -18,13 +18,16 @@ use crate::{
     },
 };
 use anyhow::Context;
+use indexmap::indexmap;
 use mime::Mime;
 use ratatui::Frame;
 use serde::Serialize;
 use slumber_config::Action;
 use slumber_core::{
     collection::{Recipe, RecipeBody, RecipeId},
-    http::content_type::ContentType,
+    http::{
+        OverrideKey, Overrides, OverrideValue, content_type::ContentType,
+    },
     template::Template,
 };
 use std::fs;
@@ -53,12 +56,13 @@ impl RecipeBodyDisplay {
             | RecipeBody::FormMultipart(fields) => {
                 let inner = RecipeFieldTable::new(
                     "Field",
+                    recipe.id.clone(),
                     FormRowKey(recipe.id.clone()),
-                    fields.iter().enumerate().map(|(i, (field, value))| {
+                    fields.iter().map(|(field, value)| {
                         (
                             field.clone(),
                             value.clone(),
-                            RecipeOverrideKey::form_field(recipe.id.clone(), i),
+                            OverrideKey::Form(field.clone()),
                             FormRowToggleKey {
                                 recipe_id: recipe.id.clone(),
                                 field: field.clone(),
@@ -71,20 +75,25 @@ impl RecipeBodyDisplay {
         }
     }
 
-    /// If the user has applied a temporary edit to the body, get the override
-    /// value. Return `None` to use the recipe's stock body.
-    pub fn override_value(&self) -> Option<RecipeBody> {
+    /// If the user has applied a temporary edits to the body, get the override
+    /// value. For text bodies this will be either empty or a single override
+    /// entry. For forms it will be one for each override  Return `None` to
+    /// use the recipe's stock body.
+    pub fn overrides(&self) -> Overrides {
         match self {
-            RecipeBodyDisplay::Raw(inner)
-                if inner.data().body.is_overridden() =>
-            {
-                let inner = inner.data();
-                Some(RecipeBody::Raw {
-                    body: inner.body.template().clone(),
-                    content_type: inner.body.content_type(),
-                })
+            Self::Raw(component) => {
+                let data = component.data();
+                if data.body.is_overridden() {
+                    indexmap! {
+                        OverrideKey::Body =>
+                            OverrideValue::Override(data.body.template().clone())
+                    }
+                    .into()
+                } else {
+                    Overrides::default()
+                }
             }
-            _ => None,
+            Self::Form(component) => component.data().overrides(),
         }
     }
 }
@@ -136,7 +145,8 @@ impl RawBody {
             override_emitter: Default::default(),
             actions_emitter: Default::default(),
             body: RecipeTemplate::new(
-                RecipeOverrideKey::body(recipe.id.clone()),
+                recipe.id.clone(),
+                OverrideKey::Body,
                 template,
                 content_type,
             ),
@@ -312,14 +322,11 @@ mod tests {
         context::TuiContext,
         test_util::{TestHarness, TestTerminal, harness, terminal},
         view::{
-            component::recipe_pane::persistence::{
-                RecipeOverrideStore, RecipeOverrideValue,
-            },
+            component::recipe_pane::persistence::RecipeOverrideStore,
             test_util::TestComponent,
         },
     };
     use crossterm::event::KeyCode;
-    use persisted::PersistedStore;
     use ratatui::{style::Styled, text::Span};
     use rstest::rstest;
     use slumber_util::{Factory, assert_matches};
@@ -345,7 +352,7 @@ mod tests {
         );
 
         // Check initial state
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.data().overrides(), Overrides::default());
         terminal.assert_buffer_lines([vec![gutter("1"), " hello!  ".into()]]);
 
         // Open the editor
@@ -366,11 +373,8 @@ mod tests {
         component.int().drain_draw().assert_empty();
 
         assert_eq!(
-            component.data().override_value(),
-            Some(RecipeBody::Raw {
-                body: "goodbye!".into(),
-                content_type: Some(ContentType::Json),
-            })
+            component.data().overrides(),
+            indexmap! { OverrideKey::Body => "goodbye!".into() }.into(),
         );
         terminal.assert_buffer_lines([vec![
             gutter("1"),
@@ -379,17 +383,13 @@ mod tests {
         ]]);
 
         // Persistence store should be updated
-        let persisted = RecipeOverrideStore::load_persisted(
-            &RecipeOverrideKey::body(recipe.id.clone()),
-        );
-        assert_eq!(
-            persisted,
-            Some(RecipeOverrideValue::Override("goodbye!".into()))
-        );
+        let persisted =
+            RecipeOverrideStore::get(recipe.id.clone(), OverrideKey::Body);
+        assert_eq!(persisted, Some("goodbye!".into()));
 
         // Reset edited state
         component.int().send_key(KeyCode::Char('z')).assert_empty();
-        assert_eq!(component.data().override_value(), None);
+        assert_eq!(component.data().overrides(), Overrides::default());
     }
 
     /// Override template should be loaded from the persistence store on init
@@ -405,9 +405,10 @@ mod tests {
             }),
             ..Recipe::factory(())
         };
-        RecipeOverrideStore::store_persisted(
-            &RecipeOverrideKey::body(recipe.id.clone()),
-            &RecipeOverrideValue::Override("hello!".into()),
+        RecipeOverrideStore::set(
+            recipe.id.clone(),
+            OverrideKey::Body,
+            "hello!".into(),
         );
 
         let component = TestComponent::new(
@@ -417,11 +418,8 @@ mod tests {
         );
 
         assert_eq!(
-            component.data().override_value(),
-            Some(RecipeBody::Raw {
-                body: "hello!".into(),
-                content_type: Some(ContentType::Json),
-            })
+            component.data().overrides(),
+            indexmap! { OverrideKey::Body => "hello!".into() }.into(),
         );
         terminal.assert_buffer_lines([vec![
             gutter("1"),

@@ -35,11 +35,11 @@ impl Template {
     /// Render the template using values from the given context. If any chunk
     /// failed to render, return an error. The template is rendered as bytes.
     /// Use [Self::render_string] if you want the bytes converted to a string.
-    pub async fn render(
+    pub async fn render_bytes(
         &self,
         context: &TemplateContext,
     ) -> Result<Vec<u8>, TemplateError> {
-        self.render_impl(context, &mut RenderKeyStack::default())
+        self.render_bytes_impl(context, &mut RenderKeyStack::default())
             .await
     }
 
@@ -67,8 +67,8 @@ impl Template {
             .await
     }
 
-    /// Internal version of [Self::render] with local render state
-    async fn render_impl<'a>(
+    /// Internal version of [Self::render_bytes] with local render state
+    async fn render_bytes_impl<'a>(
         &'a self,
         context: &'a TemplateContext,
         stack: &mut RenderKeyStack<'a>,
@@ -103,7 +103,7 @@ impl Template {
         context: &'a TemplateContext,
         stack: &mut RenderKeyStack<'a>,
     ) -> Result<String, TemplateError> {
-        let bytes = self.render_impl(context, stack).await?;
+        let bytes = self.render_bytes_impl(context, stack).await?;
         String::from_utf8(bytes).map_err(TemplateError::InvalidUtf8)
     }
 
@@ -266,14 +266,13 @@ impl<'a> TemplateSource<'a> for FieldTemplateSource<'a> {
         })?;
 
         // recursion!
-        let rendered =
-            template
-                .render_impl(context, stack)
-                .await
-                .map_err(|error| TemplateError::FieldNested {
-                    field: field.to_owned(),
-                    error: Box::new(error),
-                })?;
+        let rendered = template
+            .render_bytes_impl(context, stack)
+            .await
+            .map_err(|error| TemplateError::FieldNested {
+                field: field.to_owned(),
+                error: Box::new(error),
+            })?;
         Ok(RenderedChunk {
             value: rendered.into(),
             sensitive: false,
@@ -462,6 +461,9 @@ impl<'a> ChainTemplateSource<'a> {
         };
         // Helper to execute the request, if triggered
         let send_request = || async {
+            // TODO pass profile overrides to child but not rq overrides
+            // TODO update comment
+            //
             // There are 3 different ways we can generate the request config:
             // 1. Default (enable all query params/headers)
             // 2. Load from UI state for both TUI and CLI
@@ -473,14 +475,10 @@ impl<'a> ChainTemplateSource<'a> {
             // 3. TUI and CLI behavior may not match
             // All 3 options are unintuitive in some way, but 1 is the easiest
             // to implement so I'm going with that for now.
-            let build_options = Default::default();
 
             context
                 .http_provider
-                .send_request(
-                    RequestSeed::new(recipe_id.clone(), build_options),
-                    context,
-                )
+                .send_request(RequestSeed::new(recipe_id.clone()), context)
                 .await
                 .map_err(|error| ChainError::Trigger {
                     recipe_id: recipe.id.clone(),

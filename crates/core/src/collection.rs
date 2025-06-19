@@ -515,7 +515,7 @@ mod tests {
                             }),
                             authentication: Some(Authentication::Basic {
                                 username: "{{username}}".into(),
-                                password: Some("{{password}}".into()),
+                                password: "{{password}}".into(),
                             }),
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),

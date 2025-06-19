@@ -4,7 +4,7 @@
 //! exchange is incomplete or failed.
 
 use crate::{
-    collection::{Authentication, ProfileId, RecipeBody, RecipeId},
+    collection::{ProfileId, RecipeId},
     http::content_type::ContentType,
     template::{ChainError, Template, TemplateError, TriggeredRequestError},
 };
@@ -248,43 +248,15 @@ pub struct RequestSeed {
     pub id: RequestId,
     /// Recipe from which the request should be rendered
     pub recipe_id: RecipeId,
-    /// Configuration for the build
-    pub options: BuildOptions,
 }
 
 impl RequestSeed {
-    pub fn new(recipe_id: RecipeId, options: BuildOptions) -> Self {
+    pub fn new(recipe_id: RecipeId) -> Self {
         Self {
             id: RequestId::new(),
             recipe_id,
-            options,
         }
     }
-}
-
-/// Options for modifying a recipe during a build, corresponding to changes the
-/// user can make in the TUI (as opposed to the collection file). This is
-/// helpful for applying temporary modifications made by the user. By providing
-/// this in a separate struct, we prevent the need to clone, modify, and pass
-/// recipes everywhere. Recipes could be very large so cloning may be expensive,
-/// and this options layer makes the available modifications clear and
-/// restricted.
-///
-/// These store *indexes* rather than keys because keys may not be necessarily
-/// unique (e.g. in the case of query params). Technically some could use keys
-/// and some could use indexes, but I chose consistency.
-#[derive(Debug, Default)]
-#[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-pub struct BuildOptions {
-    /// Authentication can be overridden, but not disabled. For simplicity,
-    /// the override is wholesale rather than by field.
-    pub authentication: Option<Authentication>,
-    pub headers: BuildFieldOverrides,
-    pub query_parameters: BuildFieldOverrides,
-    pub form_fields: BuildFieldOverrides,
-    /// Override body. This should *not* be used for form bodies, since those
-    /// can be override on a field-by-field basis.
-    pub body: Option<RecipeBody>,
 }
 
 /// A collection of modifications made to a particular section of a recipe

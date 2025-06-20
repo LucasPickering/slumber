@@ -16,8 +16,8 @@ use slumber_core::{
         ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
-    template::Template,
 };
+use slumber_template::Template;
 use slumber_util::ResultTraced;
 use std::iter;
 use strum::IntoEnumIterator;
@@ -38,11 +38,7 @@ pub fn from_openapi_v3_0(
     let profiles = build_profiles(servers);
     let recipes = build_recipe_tree(paths, components)?;
 
-    Ok(Collection {
-        profiles,
-        recipes,
-        chains: IndexMap::new(),
-    })
+    Ok(Collection { profiles, recipes })
 }
 
 /// Build one profile per server

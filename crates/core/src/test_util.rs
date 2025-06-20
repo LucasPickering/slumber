@@ -32,10 +32,11 @@ pub fn invalid_utf8_chain(test_data_dir: PathBuf) -> ChainSource {
     }
 }
 
-/// Create an HTTP engine for building/sending requests. This is a singleton
-/// because creation is expensive (~300ms), and the engine is immutable.
+/// Create an HTTP engine for building/sending requests. We need to create a new
+/// engine for each test because each reqwest client is bound to a specific
+/// tokio runtime, and each test gets its own runtime.
+/// See https://github.com/LucasPickering/slumber/pull/524
 #[fixture]
-#[once]
 pub fn http_engine() -> HttpEngine {
     HttpEngine::new(&HttpEngineConfig {
         ignore_certificate_hosts: vec!["danger".to_owned()],

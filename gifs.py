@@ -13,6 +13,7 @@ import subprocess
 
 TAPE_DIR = "tapes/"
 OUTPUT_REGEX = re.compile(r"^Output \"(?P<path>.*)\"$")
+GIF_MD_FILE = "gifs.md"
 
 
 def main() -> None:
@@ -34,20 +35,29 @@ def generate_all(tapes: list[str]) -> None:
     if not tapes:
         tapes = get_tapes()
     print(f"Generating GIFs for: {tapes}")
+    print(f"GIFs will be visible in {GIF_MD_FILE}")
 
     run(["cargo", "build"])
-    for tape in tapes:
-        generate(tape)
-    print("Don't forget to check all GIFs before pushing!")
+    # As each GIF is generated, add it to a markdown file so it can be reviewed easily
+    with open(GIF_MD_FILE, "w") as f:
+        for tape in tapes:
+            gif = generate(tape)
+            f.write(f"{gif}\n\n![]({gif})\n\n")
+            f.flush()
+
+    print(f"Don't forget to check all GIFs in {GIF_MD_FILE} before pushing!")
 
 
-def generate(tape: str) -> None:
+def generate(tape_path: str) -> str:
+    """Generate a single GIF. Return the path to the generated GIF"""
     print("Deleting data/")
     shutil.rmtree("data/")
-    run(["vhs", tape])
+    run(["vhs", tape_path])
+    return get_gif_path(tape_path)
 
 
 def check_all(tapes: list[str]) -> None:
+    """Check all GIFs to see if any are outdated"""
     if not tapes:
         tapes = get_tapes()
     latest_commit = run(["git", "rev-parse", "HEAD"])
@@ -73,14 +83,17 @@ def check(gif_path: str, latest_commit: str) -> bool:
 
 
 def get_tapes() -> list[str]:
+    """Get a list of all tape files"""
     return glob.glob(os.path.join(TAPE_DIR, "*"))
 
 
 def get_tape_path(tape_name: str) -> str:
+    """Get path to a tape file by name"""
     return os.path.join(TAPE_DIR, f"{tape_name}.tape")
 
 
 def get_gif_path(tape_path: str) -> str:
+    """Get path to the GIF that a tape generates"""
     with open(tape_path) as f:
         for line in f:
             m = OUTPUT_REGEX.match(line)

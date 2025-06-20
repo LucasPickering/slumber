@@ -1,7 +1,7 @@
 use anyhow::{Context, anyhow};
 use std::{
     borrow::Cow,
-    env, fs,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -58,7 +58,7 @@ fn debug_or(path: PathBuf) -> PathBuf {
     {
         let _ = path; // Remove unused warning
         // Check the env var, for tests
-        env::var(DATA_DIRECTORY_ENV_VARIABLE)
+        std::env::var(DATA_DIRECTORY_ENV_VARIABLE)
             .map(PathBuf::from)
             .unwrap_or_else(|_| get_repo_root().join("data/"))
     }

@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `slumber import` now supports importing from stdin or a URL
   - If no input argument is given, it will read from stdin, e.g. `slumber import openapi < openapi.json`
   - If a URL is given, the file will be downloaded and imported, e.g. `slumber import openapi https://example.com/openapi.json`
+- Add OpenAPI v3.1 importer [#513](https://github.com/LucasPickering/slumber/issues/513)
 
 ## Fixed
 

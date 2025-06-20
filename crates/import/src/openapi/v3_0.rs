@@ -28,21 +28,12 @@ pub fn from_openapi_v3_0(
     spec: serde_yaml::Value,
 ) -> anyhow::Result<Collection> {
     let OpenAPI {
-        openapi: openapi_version,
         components,
         paths,
         servers,
         ..
     } = serde_yaml::from_value(spec)
         .context("Error deserializing OpenAPI collection")?;
-
-    if !openapi_version.starts_with("3.0.") {
-        warn!(
-            "Importer currently only supports OpenAPI v3.0, this spec is
-                version {openapi_version}. We'll try the import anyway, but you
-                may experience issues."
-        );
-    }
 
     let profiles = build_profiles(servers);
     let recipes = build_recipe_tree(paths, components)?;
@@ -388,10 +379,8 @@ impl<'a> RecipeBuilder<'a> {
                 } => match scheme.as_str() {
                     "Basic" | "basic" => {
                         self.authentication = Some(Authentication::Basic {
-                            username: Template::from_field("username".into()),
-                            password: Some(Template::from_field(
-                                "password".into(),
-                            )),
+                            username: Template::from_field("username"),
+                            password: Some(Template::from_field("password")),
                         });
                     }
                     "Bearer" | "bearer" => {
@@ -412,12 +401,12 @@ impl<'a> RecipeBuilder<'a> {
                 {
                     APIKeyLocation::Query => self.query.push((
                         name.clone(),
-                        Template::from_field("api_key".into()),
+                        Template::from_field("api_key"),
                     )),
                     APIKeyLocation::Header => {
                         self.headers.insert(
                             name.clone(),
-                            Template::from_field("api_key".into()),
+                            Template::from_field("api_key"),
                         );
                     }
                     APIKeyLocation::Cookie => {

@@ -108,8 +108,7 @@ Importers are **approximate**. They'll give the you skeleton of a collection fil
 Supported formats:
 
 - Insomnia
-- [OpenAPI v3.0](https://spec.openapis.org/oas/v3.0.3)
-  - Note: Despite the minor version bump, OpenAPI v3.1 is _not_ backward compatible with v3.0. If you have a v3.1 spec, it _may_ work with this importer, but no promises.
+- [OpenAPI v3.0](https://spec.openapis.org/oas/v3.0.3) and [OpenAPI v3.1](https://spec.openapis.org/oas/v3.1.1.html)
 - [VSCode `.rest`](https://github.com/Huachao/vscode-restclient)
 - [JetBrains `.http`](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html)
 

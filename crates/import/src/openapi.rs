@@ -15,6 +15,7 @@
 
 mod resolve;
 mod v3_0;
+mod v3_1;
 
 use crate::ImportInput;
 use anyhow::{Context, anyhow};
@@ -43,9 +44,11 @@ pub async fn from_openapi(input: &ImportInput) -> anyhow::Result<Collection> {
         get_version(&yaml).ok_or_else(|| anyhow!("Missing OpenAPI version"))?;
     if version.starts_with("3.0.") {
         v3_0::from_openapi_v3_0(yaml)
+    } else if version.starts_with("3.1.") {
+        v3_1::from_openapi_v3_1(yaml)
     } else {
         Err(anyhow!(
-            "Unsupported OpenAPI version. Only OpenAPI 3.0 is supported"
+            "Unsupported OpenAPI version. Supported versions are: 3.0, 3.1"
         ))
     }
 }
@@ -71,6 +74,10 @@ mod tests {
     const OPENAPI_V3_0_IMPORTED_FILE: &str =
         "openapi_v3_0_petstore_imported.yml";
 
+    const OPENAPI_V3_1_FILE: &str = "openapi_v3_1_petstore.yml";
+    const OPENAPI_V3_1_IMPORTED_FILE: &str =
+        "openapi_v3_1_petstore_imported.yml";
+
     /// Catch-all test for OpenAPI v3.0 import
     #[rstest]
     #[tokio::test]
@@ -79,6 +86,18 @@ mod tests {
         let imported = from_openapi(&input).await.unwrap();
         let expected =
             Collection::load(&test_data_dir.join(OPENAPI_V3_0_IMPORTED_FILE))
+                .unwrap();
+        assert_eq!(imported, expected);
+    }
+
+    /// Catch-all test for OpenAPI v3.1 import
+    #[rstest]
+    #[tokio::test]
+    async fn test_openapiv3_1_import(test_data_dir: PathBuf) {
+        let input = ImportInput::Path(test_data_dir.join(OPENAPI_V3_1_FILE));
+        let imported = from_openapi(&input).await.unwrap();
+        let expected =
+            Collection::load(&test_data_dir.join(OPENAPI_V3_1_IMPORTED_FILE))
                 .unwrap();
         assert_eq!(imported, expected);
     }

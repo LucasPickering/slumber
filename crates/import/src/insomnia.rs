@@ -61,7 +61,6 @@ pub async fn from_insomnia(input: &ImportInput) -> anyhow::Result<Collection> {
         profiles,
         recipes,
         chains,
-        _ignore: serde::de::IgnoredAny,
     })
 }
 

@@ -42,7 +42,6 @@ pub fn from_openapi_v3_0(
         profiles,
         recipes,
         chains: IndexMap::new(),
-        _ignore: serde::de::IgnoredAny,
     })
 }
 

@@ -24,12 +24,13 @@ slumber --file ../another-project/
 
 A request collection supports the following top-level fields:
 
-| Field      | Type                                                    | Description                                                                                                        | Default |
-| ---------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------- |
-| `profiles` | [`mapping[string, Profile]`](./profile.md)              | Static template values                                                                                             | `{}`    |
-| `requests` | [`mapping[string, RequestRecipe]`](./request_recipe.md) | Requests Slumber can send                                                                                          | `{}`    |
-| `chains`   | [`mapping[string, Chain]`](./chain.md)                  | Complex template values                                                                                            | `{}`    |
-| `.ignore`  | Any                                                     | Extra data to be ignored by Slumber (useful with [YAML anchors](https://yaml.org/spec/1.2.2/#anchors-and-aliases)) |         |
+| Field      | Type                                                    | Description               | Default |
+| ---------- | ------------------------------------------------------- | ------------------------- | ------- |
+| `profiles` | [`mapping[string, Profile]`](./profile.md)              | Static template values    | `{}`    |
+| `requests` | [`mapping[string, RequestRecipe]`](./request_recipe.md) | Requests Slumber can send | `{}`    |
+| `chains`   | [`mapping[string, Chain]`](./chain.md)                  | Complex template values   | `{}`    |
+
+In addition to these fields, any top-level field beginning with `.` will be ignored. This can be combined with [YAML anchors](https://yaml.org/spec/1.2.2/#anchors-and-aliases) to define reusable components in your collection file.
 
 ## Examples
 
@@ -59,11 +60,11 @@ chains:
       recipe: login
     selector: $.token
 
-# Use YAML anchors for de-duplication (Anything under .ignore will not trigger an error for unknown fields)
-.ignore:
-  base: &base
-    headers:
-      Accept: application/json
+# Use YAML anchors for de-duplication. Normally unknown fields in the
+# collection trigger an error; the . prefix tells Slumber to ignore this field
+.base: &base
+  headers:
+    Accept: application/json
 
 requests:
   login: !request

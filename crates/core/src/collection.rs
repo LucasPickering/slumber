@@ -144,7 +144,6 @@ mod tests {
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
-    use serde::de::IgnoredAny;
     use serde_json::json;
     use slumber_util::{Factory, TempDir, assert_err, temp_dir, test_data_dir};
     use std::{fs, fs::File, time::Duration};
@@ -539,7 +538,6 @@ mod tests {
                 }),
             ])
             .into(),
-            _ignore: IgnoredAny,
         };
         assert_eq!(loaded, expected);
     }

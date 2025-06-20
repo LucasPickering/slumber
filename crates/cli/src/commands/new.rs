@@ -147,7 +147,6 @@ mod tests {
                 }),
             ])
             .into(),
-            _ignore: serde::de::IgnoredAny,
         };
         assert_eq!(collection, expected);
     }

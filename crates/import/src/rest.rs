@@ -5,7 +5,6 @@
 use anyhow::anyhow;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use serde::de::IgnoredAny;
 use slumber_core::{
     collection::{
         Authentication, Chain, ChainId, ChainOutputTrim, ChainSource,
@@ -325,7 +324,6 @@ fn build_collection(rest_format: RestFormat) -> Collection {
         profiles,
         chains,
         recipes,
-        _ignore: IgnoredAny,
     }
 }
 

@@ -57,13 +57,12 @@ chains:
     source: !prompt
       message: Fish ID
 
-# This is needed to tell Slumber not to complain about an unknown key
-.ignore:
-  # The name here is arbitrary, pick any name you like
-  request_base: &request_base
-    headers:
-      Accept: application/json
-    authentication: !bearer "{{chains.token}}"
+# The name here is arbitrary, pick any name you like. Make sure it starts with
+# . to avoid errors about an unknown field
+.request_base: &request_base
+  headers:
+    Accept: application/json
+  authentication: !bearer "{{chains.token}}"
 
 requests:
   list_fish: !request
@@ -99,11 +98,10 @@ chains:
     source: !prompt
       message: Fish ID
 
-.ignore:
-  request_base: &request_base
-    headers: &headers_base # This will let us pull in the header map
-      Accept: application/json
-    authentication: !bearer "{{chains.token}}"
+.request_base: &request_base
+  headers: &headers_base # This will let us pull in the header map
+    Accept: application/json
+  authentication: !bearer "{{chains.token}}"
 
 requests:
   list_fish: !request

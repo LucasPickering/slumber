@@ -21,6 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - If a URL is given, the file will be downloaded and imported, e.g. `slumber import openapi https://example.com/openapi.json`
 - Add OpenAPI v3.1 importer [#513](https://github.com/LucasPickering/slumber/issues/513)
 
+### Changed
+
+- Any top-level fields in the config or collection file beginning with `.` will now be ignored
+  - The goal is to support "hidden" fields to store reusable components. YAML aliases can be used to pull those components into various parts of your collection
+  - Previously the field `.ignore` was specially supported in the collection format for this purpose; this is a generalization of that special case.
+
 ## Fixed
 
 - Import JSON bodies from OpenAPI spec operations that don't have an `example` field

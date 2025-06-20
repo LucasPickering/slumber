@@ -35,9 +35,11 @@ pub const ENV_PREFIX: &str = "env.";
 impl Template {
     /// Create a template that renders a single field, equivalent to
     /// `{{<field>}}`
-    pub fn from_field(field: Identifier) -> Self {
+    pub fn from_field(field: impl Into<Identifier>) -> Self {
         Self {
-            chunks: vec![TemplateInputChunk::Key(TemplateKey::Field(field))],
+            chunks: vec![TemplateInputChunk::Key(TemplateKey::Field(
+                field.into(),
+            ))],
         }
     }
 
@@ -380,7 +382,7 @@ mod tests {
     /// Test that [Template::from_field] generates the correct template
     #[test]
     fn test_from_field() {
-        let template = Template::from_field("field1".into());
+        let template = Template::from_field("field1");
         assert_eq!(template.display(), "{{field1}}");
         assert_eq!(&template.chunks, &[key_field("field1")]);
     }

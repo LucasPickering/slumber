@@ -90,26 +90,33 @@ pub struct HttpEngine {
 impl HttpEngine {
     /// Build a new HTTP engine, which can be used for the entire program life
     pub fn new(config: &HttpEngineConfig) -> Self {
-        // redirect::Policy doesn't implement Clone, so we have to create it
-        // multiple times
-        let make_redirect_policy = if config.follow_redirects {
-            redirect::Policy::default
-        } else {
-            redirect::Policy::none
+        let make_builder = || {
+            let redirect_policy = if config.follow_redirects {
+                redirect::Policy::default()
+            } else {
+                redirect::Policy::none()
+            };
+
+            Client::builder()
+                .user_agent(USER_AGENT)
+                .redirect(redirect_policy)
+                // Disabling loading native certs in tests. It adds 100-300ms
+                // per test and we never need them because we only make requests
+                // to localhost
+                //
+                // Why we use native certs:
+                // https://github.com/LucasPickering/slumber/issues/275
+                .tls_built_in_native_certs(!cfg!(test))
         };
 
-        let client = Client::builder()
-            .user_agent(USER_AGENT)
-            .redirect(make_redirect_policy())
+        let client = make_builder()
             .build()
             .expect("Error building reqwest client");
         let danger_client = if config.ignore_certificate_hosts.is_empty() {
             None
         } else {
             Some((
-                Client::builder()
-                    .user_agent(USER_AGENT)
-                    .redirect(make_redirect_policy())
+                make_builder()
                     .danger_accept_invalid_certs(true)
                     .build()
                     .expect("Error building reqwest client"),

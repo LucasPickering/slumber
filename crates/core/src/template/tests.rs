@@ -201,7 +201,6 @@ async fn test_chain_request(
             recipes: by_id([recipe]).into(),
             chains: by_id([chain]),
             profiles: by_id([profile]),
-            ..Collection::factory(())
         }
         .into(),
         http_provider: Box::new(TestHttpProvider::new(database, None)),
@@ -395,7 +394,7 @@ async fn test_chain_request_error(
     )]
 #[tokio::test]
 async fn test_triggered_request(
-    http_engine: &HttpEngine,
+    http_engine: HttpEngine,
     #[case] trigger: ChainRequestTrigger,
     // Optional request data to store in the database
     #[case] exchange: Option<Exchange>,
@@ -804,7 +803,6 @@ async fn test_chain_dynamic_select(
             recipes: by_id([recipe]).into(),
             chains: by_id([sut_chain, request_chain]),
             profiles: by_id([profile]),
-            ..Collection::factory(())
         }
         .into(),
         http_provider: Box::new(TestHttpProvider::new(database, None)),

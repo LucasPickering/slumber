@@ -52,7 +52,6 @@ fn template_context(
             recipes: by_id(recipes).into(),
             profiles: by_id([profile]),
             chains: by_id(chains),
-            ..Collection::factory(())
         }
         .into(),
         selected_profile: Some(profile_id.clone()),
@@ -92,7 +91,7 @@ async fn mock_server() -> String {
 #[case::safe("safe", false)]
 #[case::danger("danger", true)]
 fn test_get_client(
-    http_engine: &HttpEngine,
+    http_engine: HttpEngine,
     #[case] hostname: &str,
     #[case] expected_danger: bool,
 ) {
@@ -110,7 +109,7 @@ fn test_get_client(
 
 #[rstest]
 #[tokio::test]
-async fn test_build_request(http_engine: &HttpEngine) {
+async fn test_build_request(http_engine: HttpEngine) {
     let recipe = Recipe {
         method: HttpMethod::Post,
         url: "{{host}}/users/{{user_id}}".into(),
@@ -173,7 +172,7 @@ async fn test_build_request(http_engine: &HttpEngine) {
 /// should *not* be built
 #[rstest]
 #[tokio::test]
-async fn test_build_url(http_engine: &HttpEngine) {
+async fn test_build_url(http_engine: HttpEngine) {
     let recipe = Recipe {
         url: "{{host}}/users/{{user_id}}".into(),
         query: vec![
@@ -224,7 +223,7 @@ async fn test_build_url(http_engine: &HttpEngine) {
 )]
 #[tokio::test]
 async fn test_build_body(
-    http_engine: &HttpEngine,
+    http_engine: HttpEngine,
     invalid_utf8_chain: ChainSource,
     #[case] body: RecipeBody,
     #[case] expected_body: &[u8],
@@ -272,7 +271,7 @@ async fn test_build_body(
 #[case::bearer(Authentication::Bearer("{{token}}".into()), "Bearer tokenzzz")]
 #[tokio::test]
 async fn test_authentication(
-    http_engine: &HttpEngine,
+    http_engine: HttpEngine,
     #[case] authentication: Authentication,
     #[case] expected_header: &str,
 ) {
@@ -371,7 +370,7 @@ async fn test_authentication(
 )]
 #[tokio::test]
 async fn test_structured_body(
-    http_engine: &HttpEngine,
+    http_engine: HttpEngine,
     invalid_utf8_chain: ChainSource,
     #[case] body: RecipeBody,
     #[case] content_type: Option<&str>,
@@ -448,7 +447,7 @@ async fn test_structured_body(
 /// bodies
 #[rstest]
 #[tokio::test]
-async fn test_build_options(http_engine: &HttpEngine) {
+async fn test_build_options(http_engine: HttpEngine) {
     let recipe = Recipe {
         authentication: Some(Authentication::Basic {
             username: "username".into(),
@@ -533,7 +532,7 @@ async fn test_build_options(http_engine: &HttpEngine) {
 /// because it's incompatible with testing raw body overrides
 #[rstest]
 #[tokio::test]
-async fn test_build_options_form(http_engine: &HttpEngine) {
+async fn test_build_options_form(http_engine: HttpEngine) {
     let recipe = Recipe {
         // This should implicitly set the content-type header
         body: Some(RecipeBody::FormUrlencoded(indexmap! {
@@ -585,7 +584,7 @@ async fn test_build_options_form(http_engine: &HttpEngine) {
 /// so that the chain is only computed once
 #[rstest]
 #[tokio::test]
-async fn test_chain_duplicate(http_engine: &HttpEngine) {
+async fn test_chain_duplicate(http_engine: HttpEngine) {
     let recipe = Recipe {
         method: HttpMethod::Post,
         url: "{{host}}/{{chains.text}}".into(),
@@ -612,7 +611,7 @@ async fn test_chain_duplicate(http_engine: &HttpEngine) {
 /// Test launching a built request
 #[rstest]
 #[tokio::test]
-async fn test_send_request(http_engine: &HttpEngine) {
+async fn test_send_request(http_engine: HttpEngine) {
     let host = mock_server().await;
     let recipe = Recipe {
         url: format!("{host}/get").as_str().into(),
@@ -694,7 +693,7 @@ fn test_trim_bytes(#[case] bytes: &[u8], #[case] expected: &[u8]) {
 /// Build a curl command with query parameters and headers
 #[rstest]
 #[tokio::test]
-async fn test_build_curl(http_engine: &HttpEngine) {
+async fn test_build_curl(http_engine: HttpEngine) {
     let recipe = Recipe {
         method: HttpMethod::Get,
         query: vec![
@@ -745,7 +744,7 @@ async fn test_build_curl(http_engine: &HttpEngine) {
 )]
 #[tokio::test]
 async fn test_build_curl_authentication(
-    http_engine: &HttpEngine,
+    http_engine: HttpEngine,
     #[case] authentication: Authentication,
     #[case] expected_arguments: &str,
 ) {
@@ -793,7 +792,7 @@ async fn test_build_curl_authentication(
 )]
 #[tokio::test]
 async fn test_build_curl_body(
-    http_engine: &HttpEngine,
+    http_engine: HttpEngine,
     #[case] body: RecipeBody,
     #[case] expected_arguments: &str,
 ) {
@@ -817,7 +816,7 @@ async fn test_build_curl_body(
 /// By default, the engine will follow 3xx redirects
 #[rstest]
 #[tokio::test]
-async fn test_follow_redirects(http_engine: &HttpEngine) {
+async fn test_follow_redirects(http_engine: HttpEngine) {
     let host = mock_server().await;
     let recipe = Recipe {
         url: format!("{host}/redirect").as_str().into(),

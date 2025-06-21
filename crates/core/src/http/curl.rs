@@ -86,6 +86,9 @@ impl CurlBuilder {
                 let body = as_text(body)?;
                 write!(&mut self.command, " --data '{body}'").unwrap();
             }
+            RenderedBody::Json(json) => {
+                write!(&mut self.command, " --json '{json}'").unwrap();
+            }
             // Use the first-class form support where possible
             RenderedBody::FormUrlencoded(form) => {
                 for (field, value) in form {

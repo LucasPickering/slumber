@@ -28,6 +28,7 @@ persisted = "1.0.0"
 ratatui = {workspace = true, features = ["crossterm", "underline-color", "unstable-widget-ref"]}
 reqwest = {workspace = true}
 serde = {workspace = true}
+serde_json = {workspace = true}
 serde_yaml = {workspace = true}
 shell-words = "1.1.0"
 slumber_config = {workspace = true}
@@ -45,7 +46,6 @@ uuid = {workspace = true}
 [dev-dependencies]
 pretty_assertions = {workspace = true}
 rstest = {workspace = true}
-serde_json = {workspace = true}
 slumber_core = {workspace = true, features = ["test"]}
 wiremock = {workspace = true}
 

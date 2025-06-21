@@ -10,7 +10,7 @@ use crate::{
 use indexmap::{IndexMap, indexmap};
 use pretty_assertions::assert_eq;
 use regex::Regex;
-use reqwest::{Body, StatusCode};
+use reqwest::{Body, StatusCode, header};
 use rstest::rstest;
 use serde_json::json;
 use slumber_util::Factory;
@@ -203,21 +203,16 @@ async fn test_build_url(http_engine: HttpEngine) {
 #[case::raw(
     RecipeBody::Raw {
         body: r#"{"group_id":"{{group_id}}"}"#.into(),
-        content_type: None,
     },
     br#"{"group_id":"3"}"#
 )]
 #[case::json(
-    RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).into(),
-        content_type: Some(ContentType::Json),
-    },
-    b"{\n  \"group_id\": \"3\"\n}",
+    RecipeBody::json(json!({"group_id": "{{group_id}}"})).unwrap(),
+    br#"{"group_id":"3"}"#,
 )]
 #[case::binary(
     RecipeBody::Raw {
         body: "{{chains.binary}}".into(),
-        content_type: None,
     },
     b"\xc3\x28",
 )]
@@ -316,23 +311,17 @@ async fn test_authentication(
 /// hypothetically vary from the request record.
 #[rstest]
 #[case::json(
-    RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).into(),
-        content_type: Some(ContentType::Json),
-    },
+    RecipeBody::json(json!({"group_id": "{{group_id}}"})).unwrap(),
     None,
-    Some(b"{\n  \"group_id\": \"3\"\n}".as_slice()),
+    Some(b"{\"group_id\":\"3\"}".as_slice()),
     "^application/json$",
     &[],
 )]
 // Content-Type has been overridden by an explicit header
 #[case::json_content_type_override(
-    RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).into(),
-        content_type: Some(ContentType::Json),
-    },
+    RecipeBody::json(json!({"group_id": "{{group_id}}"})).unwrap(),
     Some("text/plain"),
-    Some(b"{\n  \"group_id\": \"3\"\n}".as_slice()),
+    Some(br#"{"group_id":"3"}"#.as_slice()),
     "^text/plain$",
     &[],
 )]
@@ -471,7 +460,6 @@ async fn test_build_options(http_engine: HttpEngine) {
         ],
         body: Some(RecipeBody::Raw {
             body: "{{username}}".into(),
-            content_type: Some(ContentType::Json),
         }),
         ..Recipe::factory(())
     };
@@ -769,11 +757,8 @@ async fn test_build_curl_authentication(
 /// Build a curl command with each possible type of body
 #[rstest]
 #[case::json(
-    RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).to_string().into(),
-        content_type: Some(ContentType::Json),
-    },
-    "--header 'content-type: application/json' --data '{\"group_id\":\"3\"}'"
+    RecipeBody::json(json!({"group_id": "{{group_id}}"})).unwrap(),
+    r#"--json '{"group_id":"3"}'"#
 )]
 #[case::form_urlencoded(
     RecipeBody::FormUrlencoded(indexmap! {

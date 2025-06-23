@@ -1,4 +1,5 @@
 use anyhow::Context;
+use dotenv::dotenv;
 use slumber_util::{ResultTraced, paths};
 use std::{
     fs::{self, File, OpenOptions},
@@ -14,6 +15,7 @@ use tracing_subscriber::{filter::Targets, fmt::format::FmtSpan, prelude::*};
 async fn main() -> anyhow::Result<std::process::ExitCode> {
     use slumber_cli::Args;
     use std::process::ExitCode;
+    dotenv().ok();
 
     // Global initialization
     Args::complete(); // If COMPLETE var is enabled, process will stop here

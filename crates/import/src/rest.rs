@@ -2,14 +2,14 @@
 //! files. VSCode: https://github.com/Huachao/vscode-restclient
 //! Jetbrains: https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html
 
-use anyhow::anyhow;
+use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use slumber_core::{
     collection::{
         Authentication, Chain, ChainId, ChainOutputTrim, ChainSource,
-        Collection, HasId, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
-        RecipeNode, RecipeTree, SelectorMode,
+        Collection, HasId, JsonTemplate, Profile, ProfileId, Recipe,
+        RecipeBody, RecipeId, RecipeNode, RecipeTree, SelectorMode,
     },
     http::{HttpMethod, content_type::ContentType},
     template::{Identifier, Template},
@@ -56,11 +56,19 @@ struct CompleteBody {
 fn try_build_slumber_template(
     template: RestTemplate,
 ) -> anyhow::Result<Template> {
+    rest_template_to_slumber_string(template)
+        .parse()
+        .map_err(|err| anyhow!("Failed to parse REST template! {err}"))
+}
+
+/// Convert a RESt template to a string that can be parsed into a Slumber
+/// template
+fn rest_template_to_slumber_string(template: RestTemplate) -> String {
     // Rest templates allow spaces in variables
     // For example `{{ HOST}}` or `{{ HOST }}`
     // These must be removed before putting it through the slumber
     // template parser
-    let raw_template = template
+    template
         .parts
         .into_iter()
         .map(|part| match part {
@@ -69,11 +77,7 @@ fn try_build_slumber_template(
                 "{{".to_string() + var.as_str() + "}}"
             }
         })
-        .join("");
-
-    raw_template
-        .parse()
-        .map_err(|err| anyhow!("Failed to parse REST template! {err}"))
+        .join("")
 }
 
 /// Convert a map of REST templates to Slumber templates (like headers or
@@ -119,9 +123,7 @@ fn try_build_chain_from_load_body(
     let id: Identifier = Identifier::escape(&full_id);
 
     let path = try_build_slumber_template(filepath)?;
-
-    let content_type =
-        guess_is_json(headers, variables).then_some(ContentType::Json);
+    let content_type = guess_content_type(headers, variables);
 
     Ok(Chain {
         id: id.into(),
@@ -134,53 +136,52 @@ fn try_build_chain_from_load_body(
     })
 }
 
-/// Attempt to use headers to determine if the request is JSON
-fn guess_is_json(
-    r_headers: &IndexMap<String, RestTemplate>,
-    variables: &RestVariables,
-) -> bool {
-    r_headers.iter().any(|(name, value)| {
-        name.to_lowercase() == header::CONTENT_TYPE.as_str()
-            && value.render(variables) == mime::APPLICATION_JSON.to_string()
-    })
-}
-
 /// If the request has JSON headers, mark it as such
 fn guess_content_type(
     headers: &IndexMap<String, RestTemplate>,
     variables: &RestVariables,
 ) -> Option<ContentType> {
-    guess_is_json(headers, variables).then_some(ContentType::Json)
+    headers
+        .iter()
+        .any(|(name, value)| {
+            name.to_lowercase() == header::CONTENT_TYPE.as_str()
+                && value.render(variables) == mime::APPLICATION_JSON.to_string()
+        })
+        .then_some(ContentType::Json)
 }
-
 fn try_build_body(
     body: RestBody,
     recipe_id: &str,
     headers: &IndexMap<String, RestTemplate>,
     variables: &RestVariables,
 ) -> anyhow::Result<CompleteBody> {
-    // We only want the text for now
-    let (template, chain, content_type) = match body {
-        RestBody::Text(text) => (
-            try_build_slumber_template(text)?,
-            None,
-            guess_content_type(headers, variables),
-        ),
+    let (recipe_body, chain) = match body {
+        RestBody::Text(text) => {
+            let recipe_body = match guess_content_type(headers, variables) {
+                Some(ContentType::Json) => {
+                    // Parse the body as JSON. Convert the REST template here
+                    // to a string that's compatible with Slumber templates
+                    let json: JsonTemplate =
+                        rest_template_to_slumber_string(text)
+                            .parse()
+                            .context("Error parsing body as JSON")?;
+                    RecipeBody::Json(json)
+                }
+                None => RecipeBody::Raw(try_build_slumber_template(text)?),
+            };
+            (recipe_body, None)
+        }
         RestBody::SaveToFile { text, .. } => {
-            (try_build_slumber_template(text)?, None, None)
+            let template = try_build_slumber_template(text)?;
+            (RecipeBody::Raw(template), None)
         }
         RestBody::LoadFromFile { filepath, .. } => {
             let chain = try_build_chain_from_load_body(
                 filepath, recipe_id, headers, variables,
             )?;
             let template = Template::from_chain(chain.id().clone());
-            (template, Some(chain), None)
+            (RecipeBody::Raw(template), Some(chain))
         }
-    };
-
-    let recipe_body = RecipeBody::Raw {
-        body: template,
-        content_type,
     };
 
     Ok(CompleteBody { recipe_body, chain })
@@ -329,13 +330,15 @@ fn build_collection(rest_format: RestFormat) -> Collection {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
+    use super::*;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
+    use serde_json::json;
     use slumber_util::test_data_dir;
+    use std::path::PathBuf;
 
-    use super::*;
+    const REST_FILE: &str = "rest_http_bin.http";
+    const REST_IMPORTED_FILE: &str = "rest_imported.yml";
 
     fn example_vars() -> RestVariables {
         IndexMap::from([
@@ -349,8 +352,19 @@ mod tests {
         ])
     }
 
+    /// Catch-all test for REST import
+    #[rstest]
+    #[tokio::test]
+    async fn test_rest_import(test_data_dir: PathBuf) {
+        let input = ImportInput::Path(test_data_dir.join(REST_FILE));
+        let imported = from_rest(&input).await.unwrap();
+        let expected =
+            Collection::load(&test_data_dir.join(REST_IMPORTED_FILE)).unwrap();
+        assert_eq!(imported, expected);
+    }
+
     #[test]
-    fn can_convert_basic_request() {
+    fn test_convert_basic_request() {
         let test_req = RestRequest {
             name: Some("My Request!".into()),
             url: RestTemplate::new("https://httpbin.org"),
@@ -372,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn can_convert_with_vars() {
+    fn test_convert_with_vars() {
         let test_req = RestRequest {
             url: RestTemplate::new("{{HOST}}/get"),
             query: IndexMap::from([
@@ -412,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn can_build_load_chain() {
+    fn test_build_load_chain() {
         let test_req = RestRequest {
             url: RestTemplate::new("{{HOST}}/post"),
             method: RestTemplate::new("POST"),
@@ -441,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn can_build_raw_body() {
+    fn test_build_raw_body() {
         let test_req = RestRequest {
             url: RestTemplate::new("{{HOST}}/post"),
             method: RestTemplate::new("POST"),
@@ -453,17 +467,11 @@ mod tests {
             try_build_recipe(test_req, 0, &example_vars()).unwrap();
 
         let body = recipe.body.unwrap();
-        assert_eq!(
-            body,
-            RecipeBody::Raw {
-                body: ("test data").into(),
-                content_type: None,
-            }
-        );
+        assert_eq!(body, RecipeBody::Raw(("test data").into()));
     }
 
     #[test]
-    fn can_build_json_body() {
+    fn test_build_json_body() {
         let test_req = RestRequest {
             url: RestTemplate::new("{{HOST}}/post"),
             method: RestTemplate::new("POST"),
@@ -472,7 +480,8 @@ mod tests {
                 RestTemplate::new("application/json"),
             )]),
             body: Some(RestBody::Text(RestTemplate::new(
-                "{\"animal\": \"penguin\"}",
+                // Template should be transformed correctly
+                r#"{"animal": "penguin", "name": "{{ FULL }}"}"#,
             ))),
             ..RestRequest::default()
         };
@@ -480,18 +489,39 @@ mod tests {
         let CompleteRecipe { recipe, .. } =
             try_build_recipe(test_req, 0, &example_vars()).unwrap();
 
-        let body = recipe.body.unwrap();
         assert_eq!(
-            body,
-            RecipeBody::Raw {
-                body: ("{\"animal\": \"penguin\"}").into(),
-                content_type: Some(ContentType::Json),
-            }
+            recipe.body,
+            Some(
+                RecipeBody::json(
+                    json!({"animal": "penguin", "name": "{{FULL}}"})
+                )
+                .unwrap()
+            ),
         );
     }
 
+    /// An invalid JSON body should not be accepted
     #[test]
-    fn can_build_collection_from_rest_format() {
+    fn test_build_json_body_error() {
+        let test_req = RestRequest {
+            url: RestTemplate::new("{{HOST}}/post"),
+            method: RestTemplate::new("POST"),
+            headers: IndexMap::from([(
+                "Content-Type".into(),
+                RestTemplate::new("application/json"),
+            )]),
+            body: Some(RestBody::Text(RestTemplate::new("invalid json"))),
+            ..RestRequest::default()
+        };
+
+        let CompleteRecipe { recipe, .. } =
+            try_build_recipe(test_req, 0, &example_vars()).unwrap();
+
+        assert_eq!(recipe.body, None,);
+    }
+
+    #[test]
+    fn test_build_collection_from_rest_format() {
         let test_req_1 = RestRequest {
             name: Some("Query Request".into()),
             url: RestTemplate::new("https://httpbin.org"),
@@ -535,22 +565,17 @@ mod tests {
                 assert_eq!(body1, &None,);
                 assert_eq!(
                     body2,
-                    &Some(RecipeBody::Raw {
-                        body: ("{\"animal\": \"penguin\"}").into(),
-                        content_type: Some(ContentType::Json),
-                    })
+                    &Some(
+                        RecipeBody::json(json!({"animal": "penguin"})).unwrap()
+                    )
                 );
             }
             _ => panic!("Invalid! {recipe_1:?} {recipe_2:?}"),
         }
     }
 
-    fn remove_whitespace(s: &str) -> String {
-        s.chars().filter(|c| !c.is_whitespace()).collect()
-    }
-
     #[test]
-    fn can_handle_parse_error() {
+    fn test_handle_parse_error() {
         let test_req_1 = RestRequest {
             name: Some("Query Request".into()),
             url: RestTemplate::new("bad template }} for url {{ "),
@@ -585,62 +610,5 @@ mod tests {
         let rec = try_build_recipe(test_req_2, 0, &vars);
         // Should parse and just ignore the invalid query var
         assert!(rec.is_ok());
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn can_load_collection_from_file(test_data_dir: PathBuf) {
-        let input = ImportInput::Path(test_data_dir.join("rest_http_bin.http"));
-        let test_slumber_path = test_data_dir.join("rest_imported.yml");
-
-        let collection = from_rest(&input).await.unwrap();
-        let loaded_collection = Collection::load(&test_slumber_path).unwrap();
-
-        assert_eq!(collection.profiles, loaded_collection.profiles);
-        assert_eq!(collection.chains, loaded_collection.chains);
-
-        // Saving and loading messes with the JSON whitespace
-        // Compare it here
-
-        let recipe_1 = RecipeId::from("SimpleGet_0");
-        let recipe_2 = RecipeId::from("JsonPost_1");
-        let recipe_3 = RecipeId::from("Request_2");
-        let recipe_4 = RecipeId::from("Pet_json_3");
-        assert_eq!(
-            collection.recipes.try_get_recipe(&recipe_1).unwrap(),
-            loaded_collection.recipes.try_get_recipe(&recipe_1).unwrap()
-        );
-        assert_eq!(
-            collection.recipes.try_get_recipe(&recipe_3).unwrap(),
-            loaded_collection.recipes.try_get_recipe(&recipe_3).unwrap()
-        );
-        assert_eq!(
-            collection.recipes.try_get_recipe(&recipe_4).unwrap(),
-            loaded_collection.recipes.try_get_recipe(&recipe_4).unwrap()
-        );
-
-        // This request should have slightly different whitespace because it is
-        // JSON parsed To avoid rendering the output, just clean up the
-        // debug output and compare that
-        let bod_1 = collection.recipes.try_get_recipe(&recipe_2).unwrap();
-        let bod_2 = collection.recipes.try_get_recipe(&recipe_2).unwrap();
-
-        match (bod_1, bod_2) {
-            (
-                Recipe {
-                    body: Some(RecipeBody::Raw { body: b1, .. }),
-                    ..
-                },
-                Recipe {
-                    body: Some(RecipeBody::Raw { body: b2, .. }),
-                    ..
-                },
-            ) => {
-                let deb_1 = remove_whitespace(&format!("{b1:?}"));
-                let deb_2 = remove_whitespace(&format!("{b2:?}"));
-                assert_eq!(deb_1, deb_2);
-            }
-            _ => panic!("Invalid Json"),
-        }
     }
 }

@@ -3,10 +3,11 @@
 use crate::{
     collection::{
         cereal,
+        json::JsonTemplate,
         recipe_tree::{RecipeNode, RecipeTree},
     },
     http::{HttpMethod, content_type::ContentType, query::Query},
-    template::{Identifier, Template},
+    template::{Identifier, Template, TemplateParseError},
 };
 use anyhow::Context;
 use derive_more::{Deref, Display, From, FromStr, Into};
@@ -334,13 +335,9 @@ pub enum Authentication<T = Template> {
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub enum RecipeBody {
     /// Plain string/bytes body
-    Raw {
-        body: Template,
-        /// For structured body types such as `!json`, we'll stringify during
-        /// deserialization then just store the content type. This makes
-        /// internal logic much simpler because we can just work with templates
-        content_type: Option<ContentType>,
-    },
+    Raw(Template),
+    /// `application/json` body
+    Json(JsonTemplate),
     /// `application/x-www-form-urlencoded` fields. Values must be strings
     FormUrlencoded(IndexMap<String, Template>),
     /// `multipart/form-data` fields. Values can be binary
@@ -348,13 +345,16 @@ pub enum RecipeBody {
 }
 
 impl RecipeBody {
+    /// Build a JSON body, parsing the internal strings as templates.
+    /// Useful for importing from external formats.
+    pub fn json(value: serde_json::Value) -> Result<Self, TemplateParseError> {
+        Ok(Self::Json(value.try_into()?))
+    }
+
     /// Build a JSON body *without* parsing the internal strings as templates.
     /// Useful for importing from external formats.
     pub fn untemplated_json(value: serde_json::Value) -> Self {
-        Self::Raw {
-            body: Template::raw(format!("{value:#}")),
-            content_type: Some(ContentType::Json),
-        }
+        Self::Json(JsonTemplate::raw(value))
     }
 
     /// Get the anticipated MIME type that will appear in the `Content-Type`
@@ -363,9 +363,8 @@ impl RecipeBody {
     /// an explicit header.
     pub fn mime(&self) -> Option<Mime> {
         match self {
-            RecipeBody::Raw { content_type, .. } => {
-                content_type.as_ref().map(ContentType::to_mime)
-            }
+            RecipeBody::Raw(_) => None,
+            RecipeBody::Json(_) => Some(mime::APPLICATION_JSON),
             RecipeBody::FormUrlencoded(_) => {
                 Some(mime::APPLICATION_WWW_FORM_URLENCODED)
             }
@@ -377,10 +376,7 @@ impl RecipeBody {
 #[cfg(any(test, feature = "test"))]
 impl From<&str> for RecipeBody {
     fn from(template: &str) -> Self {
-        Self::Raw {
-            body: template.into(),
-            content_type: None,
-        }
+        Self::Raw(template.into())
     }
 }
 
@@ -603,10 +599,9 @@ impl slumber_util::Factory for Collection {
         use crate::test_util::by_id;
         // Include a body in the recipe, so body-related behavior can be tested
         let recipe = Recipe {
-            body: Some(RecipeBody::Raw {
-                body: r#"{"message": "hello"}"#.into(),
-                content_type: Some(ContentType::Json),
-            }),
+            body: Some(RecipeBody::Json(
+                r#"{"message": "hello"}"#.parse().unwrap(),
+            )),
             ..Recipe::factory(())
         };
         let profile = Profile::factory(());
@@ -630,35 +625,23 @@ mod tests {
     #[case::header(
         // Header takes precedence over body
         Some("text/plain"),
-        Some(RecipeBody::Raw {
-            body: "hi!".into(),
-            content_type: Some(ContentType::Json),
-        }),
+        Some(RecipeBody::untemplated_json("hi!".into())),
         Some("text/plain")
     )]
     #[case::unknown_mime(
         // Fall back to body type
         Some("bogus"),
-        Some(RecipeBody::Raw {
-            body: "hi!".into(),
-            content_type: Some(ContentType::Json),
-        }),
+        Some(RecipeBody::untemplated_json("hi!".into())),
         Some("application/json")
     )]
     #[case::json_body(
         None,
-        Some(RecipeBody::Raw {
-            body: "hi!".into(),
-            content_type: Some(ContentType::Json),
-        }),
+        Some(RecipeBody::untemplated_json("hi!".into())),
         Some("application/json")
     )]
     #[case::unknown_body(
         None,
-        Some(RecipeBody::Raw {
-            body: "hi!".into(),
-            content_type: None,
-        }),
+        Some(RecipeBody::Raw("hi!".into())),
         None,
     )]
     #[case::form_urlencoded_body(

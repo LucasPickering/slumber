@@ -14,7 +14,7 @@ GET {{ HOST}}/get HTTP/1.1
 POST {{HOST}}/post?hello=123 HTTP/1.1
 authorization: Basic Zm9vOmJhcg==
 content-type: application/json
-X-Http-Method-Override: PUT
+x-http-method-override: PUT
 
 {
     "data": "my data",

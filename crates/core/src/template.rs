@@ -8,7 +8,9 @@ mod render;
 #[cfg(test)]
 mod tests;
 
-pub use error::{ChainError, TemplateError, TriggeredRequestError};
+pub use error::{
+    ChainError, TemplateError, TemplateParseError, TriggeredRequestError,
+};
 pub use prompt::{Prompt, Prompter, ResponseChannel, Select};
 
 use crate::{

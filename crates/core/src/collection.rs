@@ -2,10 +2,12 @@
 //! possible
 
 mod cereal;
+mod json;
 mod models;
 mod recipe_tree;
 
 pub use cereal::HasId;
+pub use json::JsonTemplate;
 pub use models::*;
 pub use recipe_tree::*;
 
@@ -454,12 +456,11 @@ mod tests {
                     id: "text_body".into(),
                     method: HttpMethod::Post,
                     url: "{{host}}/anything/login".into(),
-                    body: Some(RecipeBody::Raw {
-                        body: "{\"username\": \"{{username}}\", \
+                    body: Some(RecipeBody::Raw(
+                        "{\"username\": \"{{username}}\", \
                         \"password\": \"{{chains.password}}\"}"
                             .into(),
-                        content_type: None,
-                    }),
+                    )),
                     query: vec![
                         ("sudo".into(), "yes_please".into()),
                         ("fast".into(), "no_thanks".into()),
@@ -489,11 +490,12 @@ mod tests {
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-                            body: Some(RecipeBody::Raw {
-                                body: json!({"username": "new username"})
-                                    .into(),
-                                content_type: Some(ContentType::Json),
-                            }),
+                            body: Some(
+                                RecipeBody::json(
+                                    json!({"username": "new username"}),
+                                )
+                                .unwrap(),
+                            ),
                             authentication: Some(Authentication::Bearer(
                                 "{{chains.auth_token}}".into(),
                             )),
@@ -507,11 +509,12 @@ mod tests {
                             name: Some("Modify User".into()),
                             method: HttpMethod::Put,
                             url: "{{host}}/anything/{{user_guid}}".into(),
-                            body: Some(RecipeBody::Raw {
-                                body: json!(r#"{"warning": "NOT an object"}"#)
-                                    .into(),
-                                content_type: Some(ContentType::Json),
-                            }),
+                            body: Some(
+                                RecipeBody::json(json!(
+                                    r#"{"warning": "NOT an object"}"#
+                                ))
+                                .unwrap(),
+                            ),
                             authentication: Some(Authentication::Basic {
                                 username: "{{username}}".into(),
                                 password: Some("{{password}}".into()),

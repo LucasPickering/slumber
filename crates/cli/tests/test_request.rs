@@ -81,10 +81,7 @@ async fn test_request_dry_run() {
     command.assert().success().stderr(
         "> POST http://server/json HTTP/1.1
 > content-type: application/json
-> {
-  \"username\": \"username1\",
-  \"name\": \"Frederick Smidgen\"
-}
+> {\"username\":\"username1\",\"name\":\"Frederick Smidgen\"}
 ",
     );
 }

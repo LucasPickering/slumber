@@ -14,7 +14,7 @@ use slumber_core::{
         ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
         SelectorMode,
     },
-    http::{HttpMethod, content_type::ContentType},
+    http::HttpMethod,
     template::{Identifier, Template},
 };
 use slumber_util::NEW_ISSUE_LINK;
@@ -356,10 +356,15 @@ impl TryFrom<Body> for RecipeBody {
 
     fn try_from(body: Body) -> anyhow::Result<Self> {
         let body = if body.mime_type == mime::APPLICATION_JSON {
-            RecipeBody::Raw {
-                body: Template::raw(body.try_text()?),
-                content_type: Some(ContentType::Json),
-            }
+            // Parse the body as JSON
+            let json =
+                serde_json::from_str(&body.try_text()?).with_context(|| {
+                    format!(
+                        "Body has MIME type `{}` but failed to parse as JSON",
+                        mime::APPLICATION_JSON
+                    )
+                })?;
+            RecipeBody::untemplated_json(json)
         } else if body.mime_type == mime::APPLICATION_WWW_FORM_URLENCODED {
             RecipeBody::FormUrlencoded(
                 body.params.into_iter().map(FormParam::into).collect(),
@@ -369,10 +374,7 @@ impl TryFrom<Body> for RecipeBody {
                 body.params.into_iter().map(FormParam::into).collect(),
             )
         } else {
-            RecipeBody::Raw {
-                body: Template::raw(body.try_text()?),
-                content_type: None,
-            }
+            RecipeBody::Raw(Template::raw(body.try_text()?))
         };
         Ok(body)
     }

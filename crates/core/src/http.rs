@@ -46,7 +46,7 @@ pub use models::*;
 
 use crate::{
     collection::{Authentication, Recipe, RecipeBody},
-    http::{content_type::ContentType, curl::CurlBuilder},
+    http::curl::CurlBuilder,
     template::{Template, TemplateContext},
 };
 use anyhow::Context;
@@ -57,10 +57,9 @@ use futures::{
     future::{self, OptionFuture, try_join_all},
     try_join,
 };
-use mime::Mime;
 use reqwest::{
     Client, RequestBuilder, Response, Url,
-    header::{self, HeaderMap, HeaderName, HeaderValue},
+    header::{HeaderMap, HeaderName, HeaderValue},
     multipart::{Form, Part},
     redirect,
 };
@@ -268,8 +267,10 @@ impl HttpEngine {
                 // If we have the bytes, we don't need to bother building a
                 // request
                 RenderedBody::Raw(bytes) => Ok(Some(bytes)),
+
                 // The body is complex - offload the hard work to RequestBuilder
-                RenderedBody::FormUrlencoded(_)
+                RenderedBody::Json(_)
+                | RenderedBody::FormUrlencoded(_)
                 | RenderedBody::FormMultipart(_) => {
                     let url = Url::parse("http://localhost").unwrap();
                     let client = self.get_client(&url);
@@ -508,21 +509,6 @@ impl Recipe {
     ) -> anyhow::Result<HeaderMap> {
         let mut headers = HeaderMap::new();
 
-        // Set Content-Type based on the body type. This can be overwritten
-        // below if the user explicitly passed a Content-Type value
-        if let Some(content_type) =
-            self.body.as_ref().and_then(RecipeBody::explicit_mime)
-        {
-            headers.insert(
-                header::CONTENT_TYPE,
-                content_type
-                    .as_ref()
-                    // A MIME type should always be a valid header value
-                    .try_into()
-                    .expect("Invalid MIME"),
-            );
-        }
-
         // Render headers in an iterator so we can parallelize
         let iter = self.headers.iter().enumerate().filter_map(
             move |(i, (header, value_template))| {
@@ -632,11 +618,16 @@ impl Recipe {
         };
 
         let rendered = match body {
-            RecipeBody::Raw { body, .. } => RenderedBody::Raw(
+            RecipeBody::Raw(body) => RenderedBody::Raw(
                 body.render(template_context)
                     .await
                     .context("Error rendering body")?
                     .into(),
+            ),
+            RecipeBody::Json(json) => RenderedBody::Json(
+                json.render(template_context)
+                    .await
+                    .context("Error rendering body")?,
             ),
             RecipeBody::FormUrlencoded(fields) => {
                 let iter = fields.iter().enumerate().filter_map(
@@ -692,30 +683,13 @@ impl Authentication<String> {
     }
 }
 
-impl RecipeBody {
-    /// Get the value that we should set for the `Content-Type` header,
-    /// according to the body. This will only return `Some` for JSON, as the
-    /// form content types will have this header set automatically by reqwest
-    /// via the builder methods we use.
-    fn explicit_mime(&self) -> Option<Mime> {
-        match self {
-            RecipeBody::Raw { content_type, .. } => {
-                content_type.as_ref().map(ContentType::to_mime)
-            }
-            // Do *not* set anything for these, because reqwest will do that
-            // automatically and we don't want to interfere
-            RecipeBody::FormUrlencoded(_) | RecipeBody::FormMultipart(_) => {
-                None
-            }
-        }
-    }
-}
-
 /// Body ready to be added to the request. Each variant corresponds to a method
 /// by which we'll add it to the request. This means it is **not** 1:1 with
 /// [RecipeBody]
 enum RenderedBody {
     Raw(Bytes),
+    /// JSON body
+    Json(serde_json::Value),
     /// Field:value mapping. Value is `String` because only string data can be
     /// URL-encoded
     FormUrlencoded(Vec<(String, String)>),
@@ -728,6 +702,7 @@ impl RenderedBody {
         // Set body. The variant tells us _how_ to set it
         match self {
             RenderedBody::Raw(bytes) => builder.body(bytes),
+            RenderedBody::Json(json) => builder.json(&json),
             RenderedBody::FormUrlencoded(fields) => builder.form(&fields),
             RenderedBody::FormMultipart(fields) => {
                 let mut form = Form::new();

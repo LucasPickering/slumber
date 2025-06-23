@@ -49,12 +49,13 @@ mod tests {
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
+    use serde_json::json;
     use slumber_core::{
         collection::{
             Chain, ChainSource, Collection, Folder, Profile, Recipe,
             RecipeBody, RecipeNode,
         },
-        http::{HttpMethod, content_type::ContentType},
+        http::HttpMethod,
         test_util::by_id,
     };
     use slumber_util::{Factory, TempDir, temp_dir};
@@ -137,11 +138,12 @@ mod tests {
                         name: Some("Example Request 2".into()),
                         method: HttpMethod::Post,
                         url: "{{host}}/anything".into(),
-                        body: Some(RecipeBody::Raw {
-                            body: "{\n  \"data\": \"{{chains.example}}\"\n}"
-                                .into(),
-                            content_type: Some(ContentType::Json),
-                        }),
+                        body: Some(
+                            RecipeBody::json(
+                                json!({"data": "{{chains.example}}"}),
+                            )
+                            .unwrap(),
+                        ),
                         ..Recipe::factory(())
                     })]),
                 }),

@@ -105,7 +105,7 @@ impl RecipeDisplay {
             .data()
             .as_ref()
             .and_then(|body| match body {
-                RecipeBodyDisplay::Raw(_) => None,
+                RecipeBodyDisplay::Raw(_) | RecipeBodyDisplay::Json(_) => None,
                 RecipeBodyDisplay::Form(form) => {
                     Some(form.data().to_build_overrides())
                 }

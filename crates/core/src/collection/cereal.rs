@@ -5,18 +5,15 @@ use crate::{
         Chain, ChainId, Profile, ProfileId, Recipe, RecipeBody, RecipeId,
         recipe_tree::RecipeNode,
     },
-    http::content_type::ContentType,
     template::Template,
 };
-use anyhow::Context;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{self, EnumAccess, Error as _, VariantAccess, Visitor},
-    ser::Error as _,
 };
-use std::{hash::Hash, str::FromStr};
+use std::hash::Hash;
 
 /// A type that has an `id` field. This is ripe for a derive macro, maybe a fun
 /// project some day?
@@ -276,19 +273,10 @@ impl Serialize for RecipeBody {
         // This involves a lot of duplication, but any abstraction will probably
         // just make it worse
         match self {
-            RecipeBody::Raw {
-                body,
-                content_type: None,
-            } => body.serialize(serializer),
-            RecipeBody::Raw {
-                body,
-                content_type: Some(ContentType::Json),
-            } => {
-                // Reparse the body as JSON. Since it came from JSOn originally,
-                // it *shouldn't* fail to reparse
-                let json = serde_json::Value::from_str(&body.display())
-                    .context("Failed to reparse body as JSON")
-                    .map_err(S::Error::custom)?;
+            RecipeBody::Raw(body) => body.serialize(serializer),
+            RecipeBody::Json(json_template) => {
+                // Convert the JSON template back to regular JSON
+                let json: serde_json::Value = json_template.into();
                 serializer.serialize_newtype_variant(
                     Self::STRUCT_NAME,
                     1,
@@ -331,10 +319,7 @@ impl<'de> Deserialize<'de> for RecipeBody {
                     E: de::Error,
                 {
                     let template = v.to_string().parse().map_err(E::custom)?;
-                    Ok(RecipeBody::Raw {
-                        body: template,
-                        content_type: None,
-                    })
+                    Ok(RecipeBody::Raw(template))
                 }
             };
         }
@@ -368,18 +353,11 @@ impl<'de> Deserialize<'de> for RecipeBody {
                 let (tag, value) = data.variant::<String>()?;
                 match tag.as_str() {
                     RecipeBody::VARIANT_JSON => {
-                        // Pretty print the JSON now and parse it as a template.
-                        // This is inefficient because we stringify the value
-                        // then immediately clone it during the parse :(
+                        // Deserialize to regular JSON
                         let json: serde_json::Value =
                             value.newtype_variant()?;
-                        let body = format!("{json:#}")
-                            .parse()
-                            .map_err(A::Error::custom)?;
-                        Ok(RecipeBody::Raw {
-                            body,
-                            content_type: Some(ContentType::Json),
-                        })
+                        // Parse strings as templates
+                        RecipeBody::json(json).map_err(A::Error::custom)
                     }
                     RecipeBody::VARIANT_FORM_URLENCODED => {
                         Ok(RecipeBody::FormUrlencoded(value.newtype_variant()?))
@@ -536,28 +514,18 @@ mod tests {
     /// of enums is a bit different, and we specifically only care about YAML.
     #[rstest]
     #[case::raw(
-        RecipeBody::Raw { body: "{{user_id}}".into(), content_type: None },
+        RecipeBody::Raw("{{user_id}}".into()),
         "{{user_id}}"
     )]
     #[case::json(
-        RecipeBody::Raw {
-            body: serde_json::to_string_pretty(&json!({"user": "{{user_id}}"}))
-                .unwrap()
-                .into(),
-            content_type: Some(ContentType::Json),
-        },
+        RecipeBody::json(json!({"user": "{{user_id}}"})).unwrap(),
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
             value: mapping([("user", "{{user_id}}")])
         })),
     )]
     #[case::json_nested(
-        RecipeBody::Raw {
-            body: serde_json::to_string_pretty(
-                &json!(r#"{"warning": "NOT an object"}"#)
-            ).unwrap().into(),
-            content_type: Some(ContentType::Json),
-        },
+        RecipeBody::json(json!(r#"{"warning": "NOT an object"}"#)).unwrap(),
         serde_yaml::Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("json"),
             value: r#"{"warning": "NOT an object"}"#.into()

@@ -426,13 +426,7 @@ impl<'a> RecipeBuilder<'a> {
             .sorted_by_key(|body| {
                 // This means bodies that *don't* match will sort first, because
                 // false < true
-                matches!(
-                    body,
-                    RecipeBody::Raw {
-                        content_type: None,
-                        ..
-                    }
-                )
+                matches!(body, RecipeBody::Raw(_))
             })
             .next();
 
@@ -614,10 +608,7 @@ impl<'a> RecipeBuilder<'a> {
                 "Unknown content type `{mime}` for body of recipe `{}`",
                 self.id
             );
-            Ok(RecipeBody::Raw {
-                body: Template::raw(format!("{body:#}")),
-                content_type: None,
-            })
+            Ok(RecipeBody::Raw(Template::raw(format!("{body:#}"))))
         }
     }
 }

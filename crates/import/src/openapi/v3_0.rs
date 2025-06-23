@@ -468,13 +468,7 @@ impl<'a> RecipeBuilder<'a> {
             .sorted_by_key(|body| {
                 // This means bodies that *don't* match will sort first, because
                 // false < true
-                matches!(
-                    body,
-                    RecipeBody::Raw {
-                        content_type: None,
-                        ..
-                    }
-                )
+                matches!(body, RecipeBody::Raw(_))
             })
             .next();
 
@@ -704,10 +698,7 @@ impl<'a> RecipeBuilder<'a> {
                 "Unknown content type `{mime}` for body of recipe `{}`",
                 self.id
             );
-            Ok(RecipeBody::Raw {
-                body: Template::raw(format!("{body:#}")),
-                content_type: None,
-            })
+            Ok(RecipeBody::Raw(Template::raw(format!("{body:#}"))))
         }
     }
 }
@@ -770,10 +761,7 @@ mod tests {
                 ..Default::default()
             }
         )],
-        RecipeBody::Raw {
-            body: "{\n  \"field\": \"value\"\n}".into(),
-            content_type: None
-        },
+        RecipeBody::Raw("{\n  \"field\": \"value\"\n}".into()),
     )]
     // We can load from the `schema.example` field
     #[case::schema_example(

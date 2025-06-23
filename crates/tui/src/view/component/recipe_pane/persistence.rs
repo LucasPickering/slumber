@@ -101,10 +101,6 @@ impl RecipeTemplate {
         &self.0.preview
     }
 
-    pub fn content_type(&self) -> Option<ContentType> {
-        self.0.content_type
-    }
-
     pub fn is_overridden(&self) -> bool {
         self.0.override_template.is_some()
     }

@@ -10,19 +10,16 @@ use crate::{
 use indexmap::{IndexMap, indexmap};
 use pretty_assertions::assert_eq;
 use regex::Regex;
-use reqwest::{Body, StatusCode};
+use reqwest::{Body, StatusCode, header};
 use rstest::rstest;
 use serde_json::json;
-use slumber_util::Factory;
+use slumber_util::{Factory, test_data_dir};
 use std::ptr;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
 /// Create a template context. Take a set of extra recipes and chains to
 /// add to the created collection
-fn template_context(
-    recipes: impl IntoIterator<Item = Recipe>,
-    chains: impl IntoIterator<Item = Chain>,
-) -> TemplateContext {
+fn template_context(recipe: Recipe) -> TemplateContext {
     let profile_data = indexmap! {
         "host".into() => "http://localhost".into(),
         "mode".into() => "sudo".into(),
@@ -37,19 +34,25 @@ fn template_context(
         ..Profile::factory(())
     };
     let profile_id = profile.id.clone();
-    let chains = [Chain {
-        id: "text".into(),
-        source: ChainSource::Prompt {
-            message: None,
-            default: None,
+    let chains = [
+        Chain {
+            id: "text".into(),
+            source: ChainSource::Prompt {
+                message: None,
+                default: None,
+            },
+            ..Chain::factory(())
         },
-        ..Chain::factory(())
-    }]
-    .into_iter()
-    .chain(chains);
+        Chain {
+            // Invalid UTF-8
+            id: "binary".into(),
+            source: invalid_utf8_chain(test_data_dir()),
+            ..Chain::factory(())
+        },
+    ];
     TemplateContext {
         collection: Collection {
-            recipes: by_id(recipes).into(),
+            recipes: by_id([recipe]).into(),
             profiles: by_id([profile]),
             chains: by_id(chains),
         }
@@ -58,6 +61,14 @@ fn template_context(
         prompter: Box::new(TestPrompter::new(["first", "second"])),
         ..TemplateContext::factory(())
     }
+}
+
+/// Construct a [RequestSeed] for the first recipe in the context
+fn seed(context: &TemplateContext, build_options: BuildOptions) -> RequestSeed {
+    RequestSeed::new(
+        context.collection.first_recipe_id().clone(),
+        build_options,
+    )
 }
 
 /// Create a mock HTTP server and return its URL
@@ -126,10 +137,10 @@ async fn test_build_request(http_engine: HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let context = template_context(recipe);
 
-    let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let seed = seed(&context, BuildOptions::default());
+    let ticket = http_engine.build(seed, &context).await.unwrap();
 
     let expected_url: Url = "http://localhost/users/1?mode=sudo&fast=true"
         .parse()
@@ -155,9 +166,7 @@ async fn test_build_request(http_engine: HttpEngine) {
         *ticket.record,
         RequestRecord {
             id: ticket.record.id,
-            profile_id: Some(
-                template_context.collection.first_profile_id().clone()
-            ),
+            profile_id: Some(context.collection.first_profile_id().clone()),
             recipe_id,
             method: HttpMethod::Post,
             http_version: HttpVersion::Http11,
@@ -183,14 +192,9 @@ async fn test_build_url(http_engine: HttpEngine) {
         ],
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let url = http_engine
-        .build_url(seed, &template_context)
-        .await
-        .unwrap();
+    let context = template_context(recipe);
+    let seed = seed(&context, BuildOptions::default());
+    let url = http_engine.build_url(seed, &context).await.unwrap();
 
     assert_eq!(
         url.as_str(),
@@ -201,53 +205,26 @@ async fn test_build_url(http_engine: HttpEngine) {
 /// Test building just a body. URL/query/headers should *not* be built.
 #[rstest]
 #[case::raw(
-    RecipeBody::Raw {
-        body: r#"{"group_id":"{{group_id}}"}"#.into(),
-        content_type: None,
-    },
+    RecipeBody::Raw(r#"{"group_id":"{{group_id}}"}"#.into()),
     br#"{"group_id":"3"}"#
 )]
 #[case::json(
-    RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).into(),
-        content_type: Some(ContentType::Json),
-    },
-    b"{\n  \"group_id\": \"3\"\n}",
+    RecipeBody::json(json!({"group_id": "{{group_id}}"})).unwrap(),
+    br#"{"group_id":"3"}"#,
 )]
-#[case::binary(
-    RecipeBody::Raw {
-        body: "{{chains.binary}}".into(),
-        content_type: None,
-    },
-    b"\xc3\x28",
-)]
+#[case::binary(RecipeBody::Raw("{{chains.binary}}".into()), b"\xc3\x28")]
 #[tokio::test]
 async fn test_build_body(
     http_engine: HttpEngine,
-    invalid_utf8_chain: ChainSource,
     #[case] body: RecipeBody,
     #[case] expected_body: &[u8],
 ) {
-    let template_context = template_context(
-        [Recipe {
-            body: Some(body),
-            ..Recipe::factory(())
-        }],
-        [Chain {
-            // Invalid UTF-8
-            id: "binary".into(),
-            source: invalid_utf8_chain,
-            ..Chain::factory(())
-        }],
-    );
-    let seed = RequestSeed::new(
-        template_context.collection.first_recipe_id().clone(),
-        BuildOptions::default(),
-    );
-    let body = http_engine
-        .build_body(seed, &template_context)
-        .await
-        .unwrap();
+    let context = template_context(Recipe {
+        body: Some(body),
+        ..Recipe::factory(())
+    });
+    let seed = seed(&context, BuildOptions::default());
+    let body = http_engine.build_body(seed, &context).await.unwrap();
 
     assert_eq!(body.as_deref(), Some(expected_body));
 }
@@ -284,18 +261,16 @@ async fn test_authentication(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let context = template_context(recipe);
 
-    let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let seed = seed(&context, BuildOptions::default());
+    let ticket = http_engine.build(seed, &context).await.unwrap();
 
     assert_eq!(
         *ticket.record,
         RequestRecord {
             id: ticket.record.id,
-            profile_id: Some(
-                template_context.collection.first_profile_id().clone()
-            ),
+            profile_id: Some(context.collection.first_profile_id().clone()),
             recipe_id,
             method: HttpMethod::Get,
             http_version: HttpVersion::Http11,
@@ -316,23 +291,17 @@ async fn test_authentication(
 /// hypothetically vary from the request record.
 #[rstest]
 #[case::json(
-    RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).into(),
-        content_type: Some(ContentType::Json),
-    },
+    RecipeBody::json(json!({"group_id": "{{group_id}}"})).unwrap(),
     None,
-    Some(b"{\n  \"group_id\": \"3\"\n}".as_slice()),
+    Some(b"{\"group_id\":\"3\"}".as_slice()),
     "^application/json$",
     &[],
 )]
 // Content-Type has been overridden by an explicit header
 #[case::json_content_type_override(
-    RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).into(),
-        content_type: Some(ContentType::Json),
-    },
+    RecipeBody::json(json!({"group_id": "{{group_id}}"})).unwrap(),
     Some("text/plain"),
-    Some(b"{\n  \"group_id\": \"3\"\n}".as_slice()),
+    Some(br#"{"group_id":"3"}"#.as_slice()),
     "^text/plain$",
     &[],
 )]
@@ -371,7 +340,6 @@ async fn test_authentication(
 #[tokio::test]
 async fn test_structured_body(
     http_engine: HttpEngine,
-    invalid_utf8_chain: ChainSource,
     #[case] body: RecipeBody,
     #[case] content_type: Option<&str>,
     #[case] expected_body: Option<&'static [u8]>,
@@ -390,18 +358,10 @@ async fn test_structured_body(
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context(
-        [recipe],
-        [Chain {
-            // Invalid UTF-8
-            id: "binary".into(),
-            source: invalid_utf8_chain,
-            ..Chain::factory(())
-        }],
-    );
+    let context = template_context(recipe);
 
-    let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let seed = seed(&context, BuildOptions::default());
+    let ticket = http_engine.build(seed, &context).await.unwrap();
 
     // Assert on the actual built request *and* the record, to make sure
     // they're consistent with each other
@@ -436,31 +396,97 @@ async fn test_structured_body(
                     .chain(extra_headers.iter().copied())
             ),
             ..RequestRecord::factory((
-                Some(template_context.collection.first_profile_id().clone()),
+                Some(context.collection.first_profile_id().clone()),
                 recipe_id
             ))
         }
     );
 }
 
-/// Test disabling and overriding authentication, query params, headers, and
-/// bodies
+/// Test overriding authentication in BuildOptions
 #[rstest]
 #[tokio::test]
-async fn test_build_options(http_engine: HttpEngine) {
+async fn test_override_authentication(http_engine: HttpEngine) {
     let recipe = Recipe {
         authentication: Some(Authentication::Basic {
             username: "username".into(),
             password: None,
         }),
+        ..Recipe::factory(())
+    };
+    let context = template_context(recipe);
+
+    let seed = seed(
+        &context,
+        BuildOptions {
+            authentication: Some(Authentication::Basic {
+                username: "{{username}}".into(),
+                password: Some("{{password}}".into()),
+            }),
+            ..Default::default()
+        },
+    );
+    let ticket = http_engine.build(seed, &context).await.unwrap();
+
+    assert_eq!(
+        ticket
+            .record
+            .headers
+            .get("Authorization")
+            .and_then(|v| v.to_str().ok()),
+        Some("Basic dXNlcjpodW50ZXIy")
+    );
+}
+
+/// Test overriding headers in BuildOptions
+#[rstest]
+#[tokio::test]
+async fn test_override_headers(http_engine: HttpEngine) {
+    let recipe = Recipe {
+        body: Some(RecipeBody::json(json!("test")).unwrap()),
         headers: indexmap! {
             // Included
             "Accept".into() => "application/json".into(),
-            // Overidden
+            // Overridden
             "Big-Guy".into() => "style1".into(),
-            // Excluded
+            // Excluded (replaced by default from body)
             "content-type".into() => "text/plain".into(),
         },
+        ..Recipe::factory(())
+    };
+    let context = template_context(recipe);
+    let seed = seed(
+        &context,
+        BuildOptions {
+            headers: [
+                (1, BuildFieldOverride::Override("style2".into())),
+                (2, BuildFieldOverride::Omit),
+            ]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        },
+    );
+    let ticket = http_engine.build(seed, &context).await.unwrap();
+
+    assert_eq!(
+        ticket.record.headers,
+        header_map([
+            ("accept", "application/json"),
+            ("Big-Guy", "style2"),
+            // It picked up the default content-type from the body,
+            // because ours was excluded
+            ("content-type", "application/json"),
+        ])
+    );
+}
+
+/// Test overriding query parameters in BuildOptions
+#[rstest]
+#[tokio::test]
+async fn test_override_query(http_engine: HttpEngine) {
+    let recipe = Recipe {
+        url: "http://localhost/url".into(),
         query: vec![
             // Overridden
             ("mode".into(), "regular".into()),
@@ -469,62 +495,86 @@ async fn test_build_options(http_engine: HttpEngine) {
             // Included
             ("fast".into(), "true".into()),
         ],
-        body: Some(RecipeBody::Raw {
-            body: "{{username}}".into(),
-            content_type: Some(ContentType::Json),
-        }),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
-
-    let seed = RequestSeed::new(
-        recipe_id.clone(),
+    let context = template_context(recipe);
+    let seed = seed(
+        &context,
         BuildOptions {
-            authentication: Some(Authentication::Basic {
-                username: "{{username}}".into(),
-                password: Some("{{password}}".into()),
-            }),
-            headers: [
-                (1, BuildFieldOverride::Override("style2".into())),
-                (2, BuildFieldOverride::Omit),
-            ]
-            .into_iter()
-            .collect(),
             query_parameters: [
-                // Overridding template should get rendered
                 (0, BuildFieldOverride::Override("{{mode}}".into())),
                 (1, BuildFieldOverride::Omit),
             ]
             .into_iter()
             .collect(),
-            body: Some("{{password}}".into()),
-            // Form field override has to be in a different test, because
-            // we're using a raw body
-            form_fields: Default::default(),
+            ..Default::default()
         },
     );
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &context).await.unwrap();
+
+    // Should override "mode" and omit "fast=false"
+    assert_eq!(
+        ticket.record.url.as_str(),
+        "http://localhost/url?mode=sudo&fast=true"
+    );
+}
+
+/// Test overriding raw body in BuildOptions
+#[rstest]
+#[tokio::test]
+async fn test_override_body_raw(http_engine: HttpEngine) {
+    let recipe = Recipe {
+        body: Some(RecipeBody::Raw("{{username}}".into())),
+        ..Recipe::factory(())
+    };
+    let context = template_context(recipe);
+    let seed = seed(
+        &context,
+        BuildOptions {
+            body: Some("{{password}}".into()),
+            ..Default::default()
+        },
+    );
+    let ticket = http_engine.build(seed, &context).await.unwrap();
 
     assert_eq!(
-        *ticket.record,
-        RequestRecord {
-            id: ticket.record.id,
-            profile_id: template_context.selected_profile.clone(),
-            recipe_id,
-            method: HttpMethod::Get,
-            http_version: HttpVersion::Http11,
-            url: "http://localhost/url?mode=sudo&fast=true".parse().unwrap(),
-            headers: header_map([
-                ("Authorization", "Basic dXNlcjpodW50ZXIy"),
-                ("accept", "application/json"),
-                ("Big-Guy", "style2"),
-                // It picked up the default content-type from the body,
-                // because ours was excluded
-                ("content-type", "application/json"),
-            ]),
-            body: Some(b"hunter2".as_slice().into()),
-        }
+        ticket
+            .record
+            .body
+            .as_deref()
+            .and_then(|bytes| std::str::from_utf8(bytes).ok()),
+        Some("hunter2")
+    );
+}
+
+/// Test overriding JSON body in BuildOptions
+#[rstest]
+#[tokio::test]
+async fn test_override_body_json(http_engine: HttpEngine) {
+    let recipe = Recipe {
+        body: Some(
+            RecipeBody::json(json!({"username": "{{username}}"})).unwrap(),
+        ),
+        ..Recipe::factory(())
+    };
+    let context = template_context(recipe);
+
+    let seed = seed(
+        &context,
+        BuildOptions {
+            body: Some(RecipeBody::json(json!({"username": "user1"})).unwrap()),
+            ..Default::default()
+        },
+    );
+    let ticket = http_engine.build(seed, &context).await.unwrap();
+
+    assert_eq!(
+        ticket
+            .record
+            .body
+            .as_deref()
+            .and_then(|bytes| std::str::from_utf8(bytes).ok()),
+        Some(r#"{"username":"user1"}"#)
     );
 }
 
@@ -532,7 +582,7 @@ async fn test_build_options(http_engine: HttpEngine) {
 /// because it's incompatible with testing raw body overrides
 #[rstest]
 #[tokio::test]
-async fn test_build_options_form(http_engine: HttpEngine) {
+async fn test_override_body_form(http_engine: HttpEngine) {
     let recipe = Recipe {
         // This should implicitly set the content-type header
         body: Some(RecipeBody::FormUrlencoded(indexmap! {
@@ -546,10 +596,10 @@ async fn test_build_options_form(http_engine: HttpEngine) {
         ..Recipe::factory(())
     };
     let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let context = template_context(recipe);
 
-    let seed = RequestSeed::new(
-        recipe_id.clone(),
+    let seed = seed(
+        &context,
         BuildOptions {
             form_fields: [
                 (1, BuildFieldOverride::Omit),
@@ -560,13 +610,13 @@ async fn test_build_options_form(http_engine: HttpEngine) {
             ..Default::default()
         },
     );
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &context).await.unwrap();
 
     assert_eq!(
         *ticket.record,
         RequestRecord {
             id: ticket.record.id,
-            profile_id: template_context.selected_profile.clone(),
+            profile_id: context.selected_profile.clone(),
             recipe_id,
             method: HttpMethod::Get,
             http_version: HttpVersion::Http11,
@@ -591,11 +641,10 @@ async fn test_chain_duplicate(http_engine: HttpEngine) {
         body: Some("{{chains.text}}".into()),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let context = template_context(recipe);
 
-    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let seed = seed(&context, BuildOptions::default());
+    let ticket = http_engine.build(seed, &context).await.unwrap();
 
     let expected_url: Url = "http://localhost/first".parse().unwrap();
     let expected_body = b"first";
@@ -617,12 +666,11 @@ async fn test_send_request(http_engine: HttpEngine) {
         url: format!("{host}/get").as_str().into(),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let context = template_context(recipe);
+    let seed = seed(&context, BuildOptions::default());
 
     // Build+send the request
-    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &context).await.unwrap();
     let exchange = ticket.send().await.unwrap();
 
     // Cheat on this one, because we don't know exactly when the server
@@ -663,9 +711,9 @@ async fn test_render_headers_strip() {
         },
         ..Recipe::factory(())
     };
-    let template_context = template_context([], []);
+    let context = template_context(Recipe::factory(()));
     let rendered = recipe
-        .render_headers(&BuildOptions::default(), &template_context)
+        .render_headers(&BuildOptions::default(), &context)
         .await
         .unwrap();
 
@@ -707,14 +755,10 @@ async fn test_build_curl(http_engine: HttpEngine) {
         },
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let context = template_context(recipe);
+    let seed = seed(&context, BuildOptions::default());
 
-    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let command = http_engine
-        .build_curl(seed, &template_context)
-        .await
-        .unwrap();
+    let command = http_engine.build_curl(seed, &context).await.unwrap();
     let expected_command = "curl -XGET \
     --url 'http://localhost/url?mode=sudo&fast=true&fast=false' \
     --header 'accept: application/json' \
@@ -752,14 +796,9 @@ async fn test_build_curl_authentication(
         authentication: Some(authentication),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
-
-    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let command = http_engine
-        .build_curl(seed, &template_context)
-        .await
-        .unwrap();
+    let context = template_context(recipe);
+    let seed = seed(&context, BuildOptions::default());
+    let command = http_engine.build_curl(seed, &context).await.unwrap();
     let expected_command = format!(
         "curl -XGET --url 'http://localhost/url' {expected_arguments}",
     );
@@ -769,11 +808,8 @@ async fn test_build_curl_authentication(
 /// Build a curl command with each possible type of body
 #[rstest]
 #[case::json(
-    RecipeBody::Raw {
-        body: json!({"group_id": "{{group_id}}"}).to_string().into(),
-        content_type: Some(ContentType::Json),
-    },
-    "--header 'content-type: application/json' --data '{\"group_id\":\"3\"}'"
+    RecipeBody::json(json!({"group_id": "{{group_id}}"})).unwrap(),
+    r#"--json '{"group_id":"3"}'"#
 )]
 #[case::form_urlencoded(
     RecipeBody::FormUrlencoded(indexmap! {
@@ -800,14 +836,10 @@ async fn test_build_curl_body(
         body: Some(body),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let context = template_context(recipe);
 
-    let seed = RequestSeed::new(recipe_id.clone(), BuildOptions::default());
-    let command = http_engine
-        .build_curl(seed, &template_context)
-        .await
-        .unwrap();
+    let seed = seed(&context, BuildOptions::default());
+    let command = http_engine.build_curl(seed, &context).await.unwrap();
     let expected_command =
         format!("curl -XGET --url 'http://localhost/url' {expected_arguments}");
     assert_eq!(command, expected_command);
@@ -822,12 +854,11 @@ async fn test_follow_redirects(http_engine: HttpEngine) {
         url: format!("{host}/redirect").as_str().into(),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let context = template_context(recipe);
+    let seed = seed(&context, BuildOptions::default());
 
     // Build+send the request
-    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &context).await.unwrap();
     let exchange = ticket.send().await.unwrap();
 
     // Should hit /redirect which redirects to /get, which returns the body
@@ -847,12 +878,11 @@ async fn test_follow_redirects_disabled() {
         url: format!("{host}/redirect").as_str().into(),
         ..Recipe::factory(())
     };
-    let recipe_id = recipe.id.clone();
-    let template_context = template_context([recipe], []);
+    let context = template_context(recipe);
+    let seed = seed(&context, BuildOptions::default());
 
     // Build+send the request
-    let seed = RequestSeed::new(recipe_id, BuildOptions::default());
-    let ticket = http_engine.build(seed, &template_context).await.unwrap();
+    let ticket = http_engine.build(seed, &context).await.unwrap();
     let exchange = ticket.send().await.unwrap();
 
     assert_eq!(exchange.response.status, StatusCode::MOVED_PERMANENTLY);

@@ -15,12 +15,9 @@ use slumber_core::{
     database::{CollectionDatabase, Database},
     http::{
         BuildOptions, Exchange, HttpEngine, RequestRecord, RequestSeed,
-        ResponseRecord,
+        ResponseRecord, TriggeredRequestError,
     },
-    template::{
-        HttpProvider, Prompt, Prompter, Select, TemplateContext,
-        TriggeredRequestError,
-    },
+    render::{HttpProvider, Prompt, Prompter, Select, TemplateContext},
     util::MaybeStr,
 };
 use slumber_util::ResultTraced;
@@ -223,6 +220,7 @@ impl BuildRequestCommand {
             }),
             overrides,
             prompter: Box::new(CliPrompter),
+            show_sensitive: true,
             state: Default::default(),
         };
         let seed = RequestSeed::new(self.recipe_id, BuildOptions::default());

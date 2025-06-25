@@ -17,9 +17,9 @@ use slumber_core::{
     database::{CollectionDatabase, ProfileFilter},
     http::{
         Exchange, ExchangeSummary, RequestBuildError, RequestError, RequestId,
-        RequestRecord, RequestSeed,
+        RequestRecord, RequestSeed, TriggeredRequestError,
     },
-    template::{HttpProvider, TemplateContext, TriggeredRequestError},
+    render::{HttpProvider, TemplateContext},
 };
 use std::{
     collections::{HashMap, hash_map::Entry},

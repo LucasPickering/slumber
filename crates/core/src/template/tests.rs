@@ -9,7 +9,7 @@ use crate::{
         content_type::ContentType,
     },
     template::{
-        ChainError, Template, TemplateChunk, TemplateContext, TemplateError,
+        ChainError, RenderError, Template, TemplateChunk, TemplateContext,
     },
     test_util::{
         TestHttpProvider, TestPrompter, TestSelectPrompter, by_id, header_map,
@@ -57,7 +57,7 @@ async fn test_override() {
     };
 
     assert_eq!(
-        render!("{{field1}}", context).unwrap(),
+        render!("{{ field1 }}", context).unwrap(),
         "override".to_owned()
     );
     assert_eq!(
@@ -84,7 +84,7 @@ async fn test_override() {
 #[case::complex(
         // Test complex stitching. Emoji is important to test because the
         // stitching uses character indexes
-        "start {{user_id}} 🧡💛 {{group_id}} end",
+        "start {{ user_id }} 🧡💛 {{group_id}} end",
         "start 1 🧡💛 3 end"
     )]
 #[tokio::test]
@@ -92,7 +92,7 @@ async fn test_field(#[case] template: &str, #[case] expected: &str) {
     let context = profile_context(indexmap! {
         "user_id".into() => "1".into(),
         "group_id".into() => "3".into(),
-        "nested".into() => "user id: {{user_id}}".into(),
+        "nested".into() => "user id: {{ user_id }}".into(),
     });
 
     assert_eq!(&render!(template, context).unwrap(), expected);
@@ -934,7 +934,7 @@ async fn test_chain_duplicate_error() {
     let template = Template::from("{{chains.chain1}}{{chains.chain1}}");
 
     // Chunked render
-    let expected_error = TemplateError::Chain {
+    let expected_error = RenderError::Chain {
         chain_id,
         error: ChainError::PromptNoResponse,
     };
@@ -1129,7 +1129,7 @@ async fn test_render_chunks() {
     let context =
         profile_context(indexmap! { "user_id".into() => "🧡💛".into() });
 
-    let chunks = Template::from("intro {{user_id}} 💚💙💜 {{unknown}} outro")
+    let chunks = Template::from("intro {{ user_id }} 💚💙💜 {{unknown}} outro")
         .render_chunks(&context)
         .await;
     assert_eq!(
@@ -1142,7 +1142,7 @@ async fn test_render_chunks() {
             },
             // Each emoji is 4 bytes
             TemplateChunk::raw(" 💚💙💜 "),
-            TemplateChunk::Error(TemplateError::FieldUnknown {
+            TemplateChunk::Error(RenderError::FieldUnknown {
                 field: "unknown".into()
             }),
             TemplateChunk::raw(" outro"),
@@ -1156,10 +1156,10 @@ async fn test_render_chunks() {
 async fn test_render_escaped() {
     let context =
         profile_context(indexmap! { "user_id".into() => "user1".into() });
-    let template = "user: {{user_id}} escaped: {_{user_id}}";
+    let template = "user: {{ user_id }} escaped: {_{user_id}}";
     assert_eq!(
         render!(template, context).unwrap(),
-        "user: user1 escaped: {{user_id}}"
+        "user: user1 escaped: {{ user_id }}"
     );
 }
 

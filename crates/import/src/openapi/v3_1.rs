@@ -14,12 +14,14 @@ use slumber_core::{
         ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
-    template::Template,
 };
+use slumber_template::Template;
 use slumber_util::ResultTraced;
 use std::{iter, mem};
 use strum::IntoEnumIterator;
 use tracing::{debug, error, warn};
+
+use crate::common;
 
 /// Loads a collection from an OpenAPI v3.1 specification
 pub fn from_openapi_v3_1(
@@ -35,11 +37,7 @@ pub fn from_openapi_v3_1(
     );
     let recipes = build_recipe_tree(spec)?;
 
-    Ok(Collection {
-        profiles,
-        recipes,
-        chains: IndexMap::new(),
-    })
+    Ok(Collection { profiles, recipes })
 }
 
 /// Build one profile per server
@@ -209,7 +207,7 @@ impl<'a> RecipeBuilder<'a> {
         // Build the base URL template. We may modify this to replace its path
         // params with corresponding chain references, so don't convert it into
         // a template until the end
-        let url = format!("{{{{host}}}}{path_name}");
+        let url = format!("{{{{ host }}}}{path_name}");
 
         let mut builder = Self {
             id,
@@ -252,7 +250,7 @@ impl<'a> RecipeBuilder<'a> {
             url,
             body: builder.body,
             authentication: builder.authentication,
-            query: builder.query,
+            query: common::build_query_parameters(builder.query),
             headers: builder.headers,
         }
     }

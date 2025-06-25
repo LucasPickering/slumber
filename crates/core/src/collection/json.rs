@@ -1,12 +1,12 @@
 //! Utilities for working with templated JSON
 
-use crate::template::{
-    Template, TemplateContext, TemplateError, TemplateParseError,
-};
 use futures::future;
 use indexmap::IndexMap;
+use slumber_template::{RenderError, Template, TemplateParseError};
 use std::str::FromStr;
 use thiserror::Error;
+
+use crate::render::TemplateContext;
 
 /// A JSON value like [serde_json::Value], but all strings are templates
 #[derive(Clone, Debug)]
@@ -43,7 +43,7 @@ impl JsonTemplate {
     pub async fn render(
         &self,
         context: &TemplateContext,
-    ) -> Result<serde_json::Value, TemplateError> {
+    ) -> Result<serde_json::Value, RenderError> {
         let rendered = match self {
             Self::Null => serde_json::Value::Null,
             Self::Bool(b) => serde_json::Value::Bool(*b),
@@ -62,7 +62,7 @@ impl JsonTemplate {
                 let map = future::try_join_all(map.iter().map(
                     |(key, value)| async {
                         let value = value.render(context).await?;
-                        Ok((key.clone(), value))
+                        Ok::<_, RenderError>((key.clone(), value))
                     },
                 ))
                 .await?;

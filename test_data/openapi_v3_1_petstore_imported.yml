@@ -3,7 +3,7 @@ profiles:
     name: http://petstore.swagger.io/v2
     data:
       host: http://petstore.swagger.io/v2
-chains: {}
+
 requests:
   tag/pet: !folder
     name: pet

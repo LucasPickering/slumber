@@ -32,7 +32,7 @@ use slumber_core::{
     collection::{ProfileId, RecipeId},
     database::ProfileFilter,
     http::RequestId,
-    template::{Prompt, Select},
+    render::{Prompt, Select},
 };
 use std::fmt::Debug;
 use strum::{EnumCount, EnumIter};

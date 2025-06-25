@@ -30,8 +30,8 @@ use slumber_config::Action;
 use slumber_core::{
     collection::HasId,
     http::{BuildFieldOverride, BuildFieldOverrides},
-    template::Template,
 };
+use slumber_template::Template;
 
 /// A table of key-value mappings. This is used in a new places in the recipe
 /// pane, and provides some common functionality:

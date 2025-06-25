@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Breaking
 
+This release contains a number of breaking changes to the collection format. The major one is a change in the template format, but there are a few other quality of life improvements as well.
+
+You can automatically migrate your collection to the new v4 format with:
+
+```sh
+slumber import v3 <old file> <new file>
+```
+
+The new collection _should_ be equivalent to the old one, but you should keep your old version around just in case something broke. If you notice any differences, please [file a bug!](https://github.com/lucaspickering/slumber/issues/new).
+
+- Replace template chains with a more intuitive function syntax
+  - Instead of defining chains separately then referencing them in templates, you can now call functions directly in templates: `{{ response('login') | jsonpath('$.token') }}`
+  - TODO link to docs for this
 - Represent query parameters as a map of `{parameter: value}` instead of a list of strings like `parameter=value`
   - The map format has been supported as well, but did not allow for multiple values for the same value, hence the need for the string format
   - To define multiple values for the same value, you can now use a list associated to the parameter: `{parameter: [value1, value2]}`

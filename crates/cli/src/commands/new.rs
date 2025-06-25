@@ -55,8 +55,7 @@ mod tests {
     use serde_json::json;
     use slumber_core::{
         collection::{
-            Chain, ChainSource, Collection, Folder, Profile, Recipe,
-            RecipeBody, RecipeNode,
+            Collection, Folder, Profile, Recipe, RecipeBody, RecipeNode,
         },
         http::HttpMethod,
         test_util::by_id,
@@ -115,22 +114,12 @@ mod tests {
                     "host".into() => "https://httpbin.org".into()
                 },
             }]),
-            chains: by_id([Chain {
-                id: "example".into(),
-                source: ChainSource::Request {
-                    recipe: "example1".into(),
-                    trigger: Default::default(),
-                    section: Default::default(),
-                },
-                selector: Some("$.data".parse().unwrap()),
-                ..Chain::factory(())
-            }]),
             recipes: by_id([
                 RecipeNode::Recipe(Recipe {
                     id: "example1".into(),
                     name: Some("Example Request 1".into()),
                     method: HttpMethod::Get,
-                    url: "{{host}}/anything".into(),
+                    url: "{{ host }}/anything".into(),
                     ..Recipe::factory(())
                 }),
                 RecipeNode::Folder(Folder {
@@ -140,10 +129,11 @@ mod tests {
                         id: "example2".into(),
                         name: Some("Example Request 2".into()),
                         method: HttpMethod::Post,
-                        url: "{{host}}/anything".into(),
+                        url: "{{ host }}/anything".into(),
                         body: Some(
                             RecipeBody::json(
-                                json!({"data": "{{chains.example}}"}),
+                                json!({"data": "{{ response('example1') \
+                                | jsonpath('$.data') }}"}),
                             )
                             .unwrap(),
                         ),

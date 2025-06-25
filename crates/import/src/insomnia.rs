@@ -10,13 +10,12 @@ use reqwest::header;
 use serde::{Deserialize, Deserializer, de::Error as _};
 use slumber_core::{
     collection::{
-        self, Chain, ChainId, ChainSource, Collection, Folder, HasId, Profile,
-        ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
-        SelectorMode,
+        self, Collection, Folder, HasId, Profile, ProfileId, Recipe,
+        RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
-    template::{Identifier, Template},
 };
+use slumber_template::Template;
 use slumber_util::NEW_ISSUE_LINK;
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 use tracing::{debug, error, warn};
@@ -54,14 +53,12 @@ pub async fn from_insomnia(input: &ImportInput) -> anyhow::Result<Collection> {
 
     // Convert everything we care about
     let profiles = build_profiles(&workspace_id, environments);
-    let chains = build_chains(&requests);
     let recipes = build_recipe_tree(&workspace_id, request_groups, requests)?;
 
     Ok(Collection {
         name: None,
         profiles,
         recipes,
-        chains,
     })
 }
 
@@ -379,6 +376,7 @@ impl TryFrom<Body> for RecipeBody {
     }
 }
 
+/*  */
 /// Convert an Insomnia form parameter into a corresponding map entry, to be
 /// used in a structured body
 impl From<FormParam> for (String, Template) {
@@ -386,15 +384,18 @@ impl From<FormParam> for (String, Template) {
         match param.kind {
             // Simple string, map to a raw template
             FormParamKind::String => (param.name, Template::raw(param.value)),
-            // We'll map this to a chain that loads the file. The ID of the
-            // chain is the ID of this param. We're banking on that chain being
-            // created elsewhere. It's a bit spaghetti but otherwise we'd need
-            // mutable access to the entire collection, which I think would end
-            // up with even more spaghetti
-            FormParamKind::File => (
-                param.name,
-                Template::from_chain(Identifier::escape(&param.id).into()),
-            ),
+            // Generate a function call to load the file
+            FormParamKind::File => {
+                let path = param.file_name.unwrap_or_else(|| {
+                    error!(
+                        "Form param `{}` is of type `file` but missing \
+                        `file_name` field",
+                        param.id
+                    );
+                    "unknown".into()
+                });
+                (param.name, Template::file(path))
+            }
         }
     }
 }
@@ -467,53 +468,6 @@ fn build_profiles(
             )
         })
         .collect()
-}
-
-/// Build up all the chains we need to represent the Insomnia collection.
-/// Chains don't map 1:1 with any Insomnia resource. They generally are an
-/// explicit representation of some implicit Insomnia behavior, so we have to
-/// crawl over the Insomnia collection to find where chains need to exist. For
-/// each generated chain, we'll need to pick a consistent ID so the consumer can
-/// link to the same chain.
-fn build_chains(requests: &[Request]) -> IndexMap<ChainId, Chain> {
-    let mut chains = IndexMap::new();
-
-    for request in requests {
-        debug!("Generating chains for request `{}`", request.id);
-
-        // Any multipart form param that references a file needs a chain
-        for param in request.body.iter().flat_map(|body| &body.params) {
-            debug!("Generating chains for form parameter `{}`", param.id);
-
-            if let FormParamKind::File = param.kind {
-                let id: ChainId = Identifier::escape(&param.id).into();
-                let Some(path) = &param.file_name else {
-                    error!(
-                        "Form param `{}` is of type `file` \
-                        but missing `file_name` field",
-                        param.id
-                    );
-                    continue;
-                };
-                chains.insert(
-                    id.clone(),
-                    Chain {
-                        id,
-                        source: ChainSource::File {
-                            path: Template::raw(path.to_owned()),
-                        },
-                        sensitive: false,
-                        selector: None,
-                        selector_mode: SelectorMode::default(),
-                        content_type: None,
-                        trim: Default::default(),
-                    },
-                );
-            }
-        }
-    }
-
-    chains
 }
 
 /// Expand the flat list of Insomnia resources into a recipe tree

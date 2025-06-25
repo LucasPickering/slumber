@@ -73,13 +73,10 @@ impl Drop for TempDir {
 /// the given message
 #[macro_export]
 macro_rules! assert_err {
-    ($e:expr, $msg:expr) => {{
-        use itertools::Itertools as _;
-
+    ($result:expr, $msg:expr) => {{
+        let error = $result.unwrap_err();
         let msg = $msg;
-        // Include all source errors so wrappers don't hide the important stuff
-        let error: anyhow::Error = $e.unwrap_err().into();
-        let actual = error.chain().map(ToString::to_string).join(": ");
+        let actual = format!("{error:#}");
         assert!(
             actual.contains(msg),
             "Expected error message to contain {msg:?}, but was: {actual:?}"

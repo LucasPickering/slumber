@@ -9,7 +9,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::{FutureExt, future};
-use slumber_core::template::Prompt;
+use slumber_core::render::Prompt;
 use slumber_util::{ResultTraced, paths::expand_home};
 use std::{
     env,

@@ -9,7 +9,7 @@ mod render;
 mod tests;
 
 pub use error::{
-    ChainError, TemplateError, TemplateParseError, TriggeredRequestError,
+    ChainError, RenderError, TemplateParseError, TriggeredRequestError,
 };
 pub use prompt::{Prompt, Prompter, ResponseChannel, Select};
 
@@ -165,7 +165,7 @@ pub enum TemplateChunk {
     /// Outcome of rendering a template key
     Rendered { value: Bytes, sensitive: bool },
     /// An error occurred while rendering a template key
-    Error(TemplateError),
+    Error(RenderError),
 }
 
 #[cfg(test)]

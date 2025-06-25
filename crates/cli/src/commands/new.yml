@@ -13,18 +13,11 @@ profiles:
     data:
       host: https://httpbin.org
 
-# Chains allow you to use dynamic data in your request templates
-chains:
-  example:
-    source: !request
-      recipe: example1
-    selector: $.data
-
 requests:
   example1: !request
     name: Example Request 1
     method: GET
-    url: "{{host}}/anything"
+    url: "{{ host }}/anything"
 
   example_folder: !folder
     name: Example Folder
@@ -32,5 +25,6 @@ requests:
       example2: !request
         name: Example Request 2
         method: POST
-        url: "{{host}}/anything"
-        body: !json { "data": "{{chains.example}}" }
+        url: "{{ host }}/anything"
+        body:
+          !json { "data": "{{ response('example1') | jsonpath('$.data') }}" }

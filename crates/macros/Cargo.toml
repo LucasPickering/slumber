@@ -1,0 +1,25 @@
+[package]
+authors = { workspace = true }
+description = "Procedural macros for Slumber. Not intended for external use."
+edition = { workspace = true }
+homepage = { workspace = true }
+keywords = { workspace = true }
+license = { workspace = true }
+name = "slumber_macros"
+repository = { workspace = true }
+rust-version = { workspace = true }
+version = { workspace = true }
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.95"
+quote = "1.0.40"
+syn = { version = "2.0.101", features = ["full"] }
+
+[lints]
+workspace = true
+
+[package.metadata.release]
+tag = false

@@ -1,5 +1,6 @@
 use indexmap::IndexMap;
-use slumber_core::{collection::QueryParameterValue, template::Template};
+use slumber_core::collection::QueryParameterValue;
+use slumber_template::Template;
 
 /// Convert a list of query parameters pairs into a map. Most formats store
 /// query parameters in a list where keys can be duplicated. Slumber uses a

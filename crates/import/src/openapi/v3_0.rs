@@ -16,8 +16,8 @@ use slumber_core::{
         ProfileId, Recipe, RecipeBody, RecipeId, RecipeNode, RecipeTree,
     },
     http::HttpMethod,
-    template::Template,
 };
+use slumber_template::Template;
 use slumber_util::ResultTraced;
 use std::iter;
 use strum::IntoEnumIterator;
@@ -43,7 +43,6 @@ pub fn from_openapi_v3_0(
         name: Some(info.title),
         profiles,
         recipes,
-        chains: IndexMap::new(),
     })
 }
 
@@ -229,7 +228,7 @@ impl<'a> RecipeBuilder<'a> {
         // Build the base URL template. We may modify this to replace its path
         // params with corresponding chain references, so don't convert it into
         // a template until the end
-        let url = format!("{{{{host}}}}{path_name}");
+        let url = format!("{{{{ host }}}}{path_name}");
 
         let mut builder = Self {
             id,
@@ -863,7 +862,7 @@ mod tests {
             id: "test".into(),
             name: "test".into(),
             method: HttpMethod::Get,
-            url: "{{host}}/get".into(),
+            url: "{{ host }}/get".into(),
             body: None,
             authentication: None,
             query: Default::default(),

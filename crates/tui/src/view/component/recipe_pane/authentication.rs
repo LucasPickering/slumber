@@ -25,10 +25,8 @@ use ratatui::{
     Frame, layout::Layout, prelude::Constraint, text::Span, widgets::TableState,
 };
 use slumber_config::Action;
-use slumber_core::{
-    collection::{Authentication, RecipeId},
-    template::Template,
-};
+use slumber_core::collection::{Authentication, RecipeId};
+use slumber_template::Template;
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
 /// Display authentication settings for a recipe

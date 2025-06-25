@@ -4,24 +4,22 @@
 
 use anyhow::{Context, anyhow};
 use indexmap::IndexMap;
-use itertools::Itertools;
 use slumber_core::{
     collection::{
-        Authentication, Chain, ChainId, ChainOutputTrim, ChainSource,
-        Collection, HasId, JsonTemplate, Profile, ProfileId,
+        Authentication, Collection, JsonTemplate, Profile, ProfileId,
         QueryParameterValue, Recipe, RecipeBody, RecipeId, RecipeNode,
-        RecipeTree, SelectorMode,
+        RecipeTree,
     },
     http::{HttpMethod, content_type::ContentType},
-    template::{Identifier, Template},
 };
+use slumber_template::{Identifier, Template};
 
 use crate::common;
 use reqwest::header;
 use rest_parser::{
     Body as RestBody, RestFlavor, RestFormat, RestRequest, RestVariables,
     headers::Authorization as RestAuthorization,
-    template::{Template as RestTemplate, TemplatePart as RestTemplatePart},
+    template::Template as RestTemplate,
 };
 use slumber_util::ResultTraced;
 use tracing::error;
@@ -40,46 +38,16 @@ pub async fn from_rest(input: &ImportInput) -> anyhow::Result<Collection> {
     Ok(build_collection(rest_format))
 }
 
-/// In Rest "Chains" and "Requests" are connected
-/// The only chain is loading from a file
-#[derive(Debug)]
-struct CompleteRecipe {
-    recipe: Recipe,
-    chain: Option<Chain>,
-}
-
-#[derive(Debug)]
-struct CompleteBody {
-    recipe_body: RecipeBody,
-    chain: Option<Chain>,
-}
-
 /// Convert a REST Template into a Slumber Template
-fn try_build_slumber_template(
-    template: RestTemplate,
-) -> anyhow::Result<Template> {
-    rest_template_to_slumber_string(template)
-        .parse()
-        .map_err(|err| anyhow!("Failed to parse REST template! {err}"))
-}
-
-/// Convert a RESt template to a string that can be parsed into a Slumber
-/// template
-fn rest_template_to_slumber_string(template: RestTemplate) -> String {
-    // Rest templates allow spaces in variables
-    // For example `{{ HOST}}` or `{{ HOST }}`
-    // These must be removed before putting it through the slumber
-    // template parser
-    template
-        .parts
-        .into_iter()
-        .map(|part| match part {
-            RestTemplatePart::Text(text) => text,
-            RestTemplatePart::Variable(var) => {
-                "{{".to_string() + var.as_str() + "}}"
-            }
-        })
-        .join("")
+fn build_template(template: RestTemplate) -> Template {
+    // Coincidentally, REST templates are all valid Slumber templates so we
+    // don't need to do any extra work here
+    let input = template.to_string();
+    input.parse().unwrap_or_else(|err| {
+        error!("Failed to convert REST template to Slumber template: {err}");
+        // Fall back to the raw string
+        Template::raw(input)
+    })
 }
 
 /// Convert a map of REST templates to Slumber templates (like headers or
@@ -90,9 +58,7 @@ fn build_slumber_templates(
 ) -> IndexMap<String, Template> {
     template_map
         .into_iter()
-        .filter_map(|(k, v)| {
-            try_build_slumber_template(v).map(|t| (k, t)).traced().ok()
-        })
+        .map(|(k, v)| (k, build_template(v)))
         .collect()
 }
 
@@ -111,33 +77,6 @@ fn build_authentication(r_auth: RestAuthorization) -> Authentication {
     }
 }
 
-/// REST supports loading bodies from external files,
-/// this is connected to the request.
-/// In slumber, this needs to be converted into a request and
-/// a chain
-fn try_build_chain_from_load_body(
-    filepath: RestTemplate,
-    recipe_id: &str,
-    headers: &IndexMap<String, RestTemplate>,
-    variables: &RestVariables,
-) -> anyhow::Result<Chain> {
-    let full_id = format!("{recipe_id}_body");
-    let id: Identifier = Identifier::escape(&full_id);
-
-    let path = try_build_slumber_template(filepath)?;
-    let content_type = guess_content_type(headers, variables);
-
-    Ok(Chain {
-        id: id.into(),
-        content_type,
-        trim: ChainOutputTrim::None,
-        source: ChainSource::File { path },
-        sensitive: false,
-        selector: None,
-        selector_mode: SelectorMode::Single,
-    })
-}
-
 /// If the request has JSON headers, mark it as such
 fn guess_content_type(
     headers: &IndexMap<String, RestTemplate>,
@@ -151,42 +90,38 @@ fn guess_content_type(
         })
         .then_some(ContentType::Json)
 }
-fn try_build_body(
+
+fn build_body(
     body: RestBody,
-    recipe_id: &str,
     headers: &IndexMap<String, RestTemplate>,
     variables: &RestVariables,
-) -> anyhow::Result<CompleteBody> {
-    let (recipe_body, chain) = match body {
+) -> anyhow::Result<RecipeBody> {
+    match body {
         RestBody::Text(text) => {
-            let recipe_body = match guess_content_type(headers, variables) {
+            match guess_content_type(headers, variables) {
                 Some(ContentType::Json) => {
-                    // Parse the body as JSON. Convert the REST template here
-                    // to a string that's compatible with Slumber templates
-                    let json: JsonTemplate =
-                        rest_template_to_slumber_string(text)
-                            .parse()
-                            .context("Error parsing body as JSON")?;
-                    RecipeBody::Json(json)
+                    // Parse the body as JSON. REST templates are compatible
+                    // with Slumber templates so we don't need to transform
+                    // the string at all
+                    let json: JsonTemplate = text
+                        .raw
+                        .parse()
+                        .context("Error parsing body as JSON")?;
+                    Ok(RecipeBody::Json(json))
                 }
-                None => RecipeBody::Raw(try_build_slumber_template(text)?),
-            };
-            (recipe_body, None)
+                None => Ok(RecipeBody::Raw(build_template(text))),
+            }
         }
         RestBody::SaveToFile { text, .. } => {
-            let template = try_build_slumber_template(text)?;
-            (RecipeBody::Raw(template), None)
+            Ok(RecipeBody::Raw(build_template(text)))
         }
         RestBody::LoadFromFile { filepath, .. } => {
-            let chain = try_build_chain_from_load_body(
-                filepath, recipe_id, headers, variables,
-            )?;
-            let template = Template::from_chain(chain.id().clone());
-            (RecipeBody::Raw(template), Some(chain))
+            // This is a shortcut. REST supports templates in the file path,
+            // but we can't embed a template in a template so we're just using
+            // the literal string.
+            Ok(RecipeBody::Raw(Template::file(filepath.raw)))
         }
-    };
-
-    Ok(CompleteBody { recipe_body, chain })
+    }
 }
 
 /// Build the query variables
@@ -194,16 +129,16 @@ fn try_build_body(
 fn build_query(
     r_query: IndexMap<String, RestTemplate>,
 ) -> IndexMap<String, QueryParameterValue> {
-    common::build_query_parameters(r_query.into_iter().filter_map(|(k, v)| {
-        try_build_slumber_template(v).map(|t| (k, t)).traced().ok()
-    }))
+    common::build_query_parameters(
+        r_query.into_iter().map(|(k, v)| (k, build_template(v))),
+    )
 }
 
 fn try_build_recipe(
     request: RestRequest,
     index: usize,
     variables: &RestVariables,
-) -> anyhow::Result<CompleteRecipe> {
+) -> anyhow::Result<Recipe> {
     let name = request.name.unwrap_or("Request".to_string());
 
     let slug = Identifier::escape(&name);
@@ -218,26 +153,21 @@ fn try_build_recipe(
     let method: HttpMethod = rendered_method
         .parse()
         .map_err(|_| anyhow!("Unsupported method: {:?}!", request.method))?;
-    let url = try_build_slumber_template(request.url)?;
+    let url = build_template(request.url);
     let authentication = request.authorization.map(build_authentication);
     let query = build_query(request.query);
 
-    let complete_body = request
-        .body
-        .map(|b| try_build_body(b, &id, &request.headers, variables));
-
-    let (body, chain) = match complete_body {
-        Some(Ok(complete)) => (Some(complete.recipe_body), complete.chain),
-        Some(Err(err)) => {
-            error!("Failed to convert body! {err}");
-            (None, None)
-        }
-        _ => (None, None),
-    };
+    let body = request.body.and_then(|body| {
+        // If body fails to parse, throw it away
+        build_body(body, &request.headers, variables)
+            .with_context(|| format!("Error parsing body for `{name}`"))
+            .traced()
+            .ok()
+    });
 
     let headers = build_slumber_templates(request.headers);
 
-    let recipe = Recipe {
+    Ok(Recipe {
         id,
         persist: true,
         name: name.into(),
@@ -247,31 +177,7 @@ fn try_build_recipe(
         body,
         headers,
         query,
-    };
-
-    Ok(CompleteRecipe { recipe, chain })
-}
-
-/// Rest has no request nesting feature so a tree will always be flat
-fn build_recipe_tree_with_chains(
-    completed: Vec<CompleteRecipe>,
-) -> (RecipeTree, IndexMap<ChainId, Chain>) {
-    let mut chains: IndexMap<ChainId, Chain> = IndexMap::new();
-    let recipe_node_map = completed
-        .into_iter()
-        .map(|CompleteRecipe { recipe, chain }| {
-            if let Some(load_chain) = chain {
-                chains.insert(load_chain.id().clone(), load_chain);
-            }
-
-            (recipe.id().clone(), RecipeNode::Recipe(recipe))
-        })
-        .collect::<IndexMap<RecipeId, RecipeNode>>();
-
-    let recipe_tree = RecipeTree::new(recipe_node_map)
-        .expect("IDs are injected by the recipe converter!");
-
-    (recipe_tree, chains)
+    })
 }
 
 fn flavor_name_and_id(flavor: RestFlavor) -> (String, String) {
@@ -298,7 +204,7 @@ fn build_profile_map(
         data: build_slumber_templates(variables),
     };
 
-    IndexMap::from([(profile_id.clone(), default_profile)])
+    IndexMap::from([(profile_id, default_profile)])
 }
 
 fn build_collection(rest_format: RestFormat) -> Collection {
@@ -308,28 +214,31 @@ fn build_collection(rest_format: RestFormat) -> Collection {
         flavor,
     } = rest_format;
 
-    let completed_recipes = requests
+    let recipes: IndexMap<RecipeId, RecipeNode> = requests
         .into_iter()
         .enumerate()
         .filter_map(|(index, req)| {
-            try_build_recipe(req, index, &variables).traced().ok()
+            let recipe =
+                try_build_recipe(req, index, &variables).traced().ok()?;
+            Some((recipe.id.clone(), recipe.into()))
         })
-        .collect::<Vec<_>>();
+        .collect();
 
-    let (recipes, chains) = build_recipe_tree_with_chains(completed_recipes);
+    let recipe_tree = RecipeTree::new(recipes)
+        .expect("IDs are injected by the recipe converter!");
 
     let profiles = build_profile_map(flavor, variables);
 
     Collection {
         profiles,
-        chains,
-        recipes,
+        recipes: recipe_tree,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde_json::json;
@@ -375,13 +284,12 @@ mod tests {
             ..RestRequest::default()
         };
 
-        let CompleteRecipe { recipe, .. } =
-            try_build_recipe(test_req, 0, &IndexMap::new()).unwrap();
+        let recipe = try_build_recipe(test_req, 0, &IndexMap::new()).unwrap();
 
         assert_eq!(recipe.url, "https://httpbin.org".into());
         assert_eq!(&recipe.query["age"], &"46".into());
         assert_eq!(recipe.method, HttpMethod::Get);
-        assert_eq!(recipe.id().clone(), RecipeId::from("My_Request__0"));
+        assert_eq!(recipe.id, RecipeId::from("My_Request__0"));
     }
 
     #[test]
@@ -397,8 +305,7 @@ mod tests {
         };
 
         let vars = example_vars();
-        let CompleteRecipe { recipe, .. } =
-            try_build_recipe(test_req, 0, &vars).unwrap();
+        let recipe = try_build_recipe(test_req, 0, &vars).unwrap();
 
         assert_eq!(recipe.url, "{{HOST}}/get".into());
         assert_eq!(&recipe.query["first_name"], &"{{FIRST_NAME}}".into());
@@ -435,16 +342,15 @@ mod tests {
             ..RestRequest::default()
         };
 
-        let CompleteRecipe { chain, .. } =
-            try_build_recipe(test_req, 0, &IndexMap::new()).unwrap();
-
-        let chain = chain.unwrap();
-        assert_eq!(chain.id().clone(), ChainId::from("Request_0_body"));
-        let expected_source = ChainSource::File {
-            path: Template::raw("./test_data/rest_pets.json".into()),
-        };
-        assert_eq!(chain.source, expected_source);
-        assert_eq!(chain.content_type, Some(ContentType::Json));
+        let recipe = try_build_recipe(test_req, 0, &IndexMap::new()).unwrap();
+        assert_eq!(
+            recipe.body,
+            // Intuitively you might think this should be JSON, but the
+            // body value is a raw template rather than a static JSON object
+            Some(RecipeBody::Raw(
+                "{{ file('./test_data/rest_pets.json') }}".into()
+            ),)
+        );
     }
 
     #[test]
@@ -456,8 +362,7 @@ mod tests {
             ..RestRequest::default()
         };
 
-        let CompleteRecipe { recipe, .. } =
-            try_build_recipe(test_req, 0, &example_vars()).unwrap();
+        let recipe = try_build_recipe(test_req, 0, &example_vars()).unwrap();
 
         let body = recipe.body.unwrap();
         assert_eq!(body, RecipeBody::Raw(("test data").into()));
@@ -479,8 +384,7 @@ mod tests {
             ..RestRequest::default()
         };
 
-        let CompleteRecipe { recipe, .. } =
-            try_build_recipe(test_req, 0, &example_vars()).unwrap();
+        let recipe = try_build_recipe(test_req, 0, &example_vars()).unwrap();
 
         assert_eq!(
             recipe.body,
@@ -499,18 +403,16 @@ mod tests {
         let test_req = RestRequest {
             url: RestTemplate::new("{{HOST}}/post"),
             method: RestTemplate::new("POST"),
-            headers: IndexMap::from([(
-                "Content-Type".into(),
-                RestTemplate::new("application/json"),
-            )]),
+            headers: indexmap! {
+                "Content-Type".into() => RestTemplate::new("application/json"),
+            },
             body: Some(RestBody::Text(RestTemplate::new("invalid json"))),
             ..RestRequest::default()
         };
 
-        let CompleteRecipe { recipe, .. } =
-            try_build_recipe(test_req, 0, &example_vars()).unwrap();
+        let recipe = try_build_recipe(test_req, 0, &example_vars()).unwrap();
 
-        assert_eq!(recipe.body, None,);
+        assert_eq!(recipe.body, None);
     }
 
     #[test]
@@ -571,7 +473,7 @@ mod tests {
     fn test_handle_parse_error() {
         let test_req_1 = RestRequest {
             name: Some("Query Request".into()),
-            url: RestTemplate::new("bad template }} for url {{ "),
+            url: RestTemplate::new("bad template }} for url {{"),
             query: IndexMap::from([
                 ("name".into(), RestTemplate::new("joe")),
                 ("age".into(), RestTemplate::new("46")),
@@ -581,9 +483,9 @@ mod tests {
         };
 
         let vars = example_vars();
-        let rec = try_build_recipe(test_req_1, 0, &vars);
-        // Should fail to parse this recipe because of bad URL template
-        assert!(rec.is_err());
+        let recipe = try_build_recipe(test_req_1, 0, &vars).unwrap();
+        // Bad template should be escaped, and not cause an error
+        assert_eq!(recipe.url.display(), "bad template }} for url {_{");
 
         let test_req_2 = RestRequest {
             name: Some("Query Request".into()),

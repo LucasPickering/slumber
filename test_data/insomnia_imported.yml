@@ -13,11 +13,6 @@ profiles:
       host: https://httpbin.org
       greeting: howdy
 
-chains:
-  pair_b9dfab38415a4c98a08d99a1d4a35682:
-    source: !file
-      path: ./public/slumber.png
-
 requests:
   fld_9a7332db608943b093c929a82c81df50: !folder
     name: My Folder
@@ -97,7 +92,7 @@ requests:
           content-type: multipart/form-data
         body: !form_multipart
           username: user
-          image: "{{chains.pair_b9dfab38415a4c98a08d99a1d4a35682}}"
+          image: "{{ file('./public/slumber.png') }}"
 
   req_a345faa530a7453e83ee967d18555712: !request
     name: Login

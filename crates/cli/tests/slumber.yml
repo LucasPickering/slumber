@@ -14,15 +14,20 @@ profiles:
       username: username2
 
 requests:
-  getUser: !request
+  getUser:
+    type: request
     method: GET
     url: "{{ host }}/users/{{ username }}"
 
-  jsonBody: !request
+  jsonBody:
+    type: request
     method: POST
     url: "{{ host }}/json"
-    body: !json { "username": "{{ username }}", "name": "Frederick Smidgen" }
+    body:
+      type: json
+      data: { "username": "{{ username }}", "name": "Frederick Smidgen" }
 
-  chained: !request
+  chained:
+    type: request
     method: GET
     url: "{{ host }}/chained/{{ response('getUser', trigger='always') | jsonpath('$.username') }}"

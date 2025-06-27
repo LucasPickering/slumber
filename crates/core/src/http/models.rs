@@ -150,6 +150,8 @@ pub struct HttpVersionParseError {
 /// The FromStr implementation will be case-insensitive
 #[derive(Copy, Clone, Debug, EnumIter, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+// TODO use serde enum impl to make schemars work
 #[serde(into = "&str", try_from = "String")]
 pub enum HttpMethod {
     Connect,

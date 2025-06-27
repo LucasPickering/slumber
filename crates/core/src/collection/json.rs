@@ -11,6 +11,7 @@ use thiserror::Error;
 /// A JSON value like [serde_json::Value], but all strings are templates
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged, expecting = "JSON value")]
 pub enum JsonTemplate {
     Null,

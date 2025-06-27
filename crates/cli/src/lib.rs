@@ -7,6 +7,8 @@
 mod commands;
 mod completions;
 
+#[cfg(feature = "schema")]
+use crate::commands::schema::SchemaCommand;
 use crate::commands::{
     collections::CollectionsCommand, db::DbCommand, generate::GenerateCommand,
     history::HistoryCommand, import::ImportCommand, new::NewCommand,
@@ -76,6 +78,8 @@ pub enum CliCommand {
     Import(ImportCommand),
     New(NewCommand),
     Request(RequestCommand),
+    #[cfg(feature = "schema")]
+    Schema(SchemaCommand),
     Show(ShowCommand),
 }
 
@@ -90,6 +94,8 @@ impl CliCommand {
             Self::Import(command) => command.execute(global).await,
             Self::New(command) => command.execute(global).await,
             Self::Request(command) => command.execute(global).await,
+            #[cfg(feature = "schema")]
+            Self::Schema(command) => command.execute(global).await,
             Self::Show(command) => command.execute(global).await,
         }
     }

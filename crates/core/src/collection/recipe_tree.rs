@@ -18,14 +18,17 @@ use thiserror::Error;
 /// the same ID anyway.
 #[derive(derive_more::Debug, Default)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RecipeTree {
     /// Tree structure storing all the folder/recipe data
+    #[cfg_attr(feature = "schema", schemars(flatten))]
     tree: IndexMap<RecipeId, RecipeNode>,
     /// A flattened version of the tree, with each ID pointing to its path in
     /// the tree. This is possible because the IDs are globally unique. It is
     /// an invariant that every lookup key in this map is valid, therefore it's
     /// safe to panic if one is found to be invalid.
     #[debug(skip)] // It's big and useless
+    #[cfg_attr(feature = "schema", schemars(skip))]
     nodes_by_id: IndexMap<RecipeId, RecipeLookupKey>,
 }
 
@@ -65,6 +68,7 @@ impl IntoIterator for RecipeLookupKey {
 #[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
 #[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(
     tag = "type",
     rename_all = "snake_case",

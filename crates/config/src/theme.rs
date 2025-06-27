@@ -5,16 +5,22 @@ use serde::{Deserialize, Serialize};
 /// set.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct Theme {
+    #[cfg_attr(feature = "schema", schemars(with = "String"))]
     pub primary_color: Color,
     /// Theoretically we could calculate this bsed on primary color, but for
     /// named or indexed colors, we don't know the exact RGB code since it
     /// depends on the user's terminal theme. It's much easier and less
     /// fallible to just have the user specify it.
+    #[cfg_attr(feature = "schema", schemars(with = "String"))]
     pub primary_text_color: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "String"))]
     pub secondary_color: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "String"))]
     pub success_color: Color,
+    #[cfg_attr(feature = "schema", schemars(with = "String"))]
     pub error_color: Color,
 }
 

@@ -26,6 +26,12 @@ use tracing::info;
 /// be very large. Instead, it's hidden behind an `Arc` by `CollectionFile`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "schema",
+    // Allow any top-level property beginning with .
+    schemars(extend("patternProperties" = {"^\\.": {}}))
+)]
 #[serde(deny_unknown_fields)]
 pub struct Collection {
     #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
@@ -56,6 +62,7 @@ impl Collection {
 /// Mutually exclusive hot-swappable config group
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
@@ -109,6 +116,7 @@ impl slumber_util::Factory for Profile {
 )]
 #[deref(forward)]
 #[serde(transparent)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ProfileId(String);
 
 #[cfg(any(test, feature = "test"))]
@@ -128,6 +136,7 @@ impl slumber_util::Factory for ProfileId {
 /// A gathering of like-minded recipes and/or folders
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Folder {
     #[serde(skip)] // This will be auto-populated from the map key
@@ -167,6 +176,7 @@ impl slumber_util::Factory for Folder {
 #[expect(clippy::unsafe_derive_deserialize)]
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
@@ -276,6 +286,7 @@ impl slumber_util::Factory<&str> for Recipe {
 )]
 #[deref(forward)]
 #[serde(transparent)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RecipeId(String);
 
 #[cfg(any(test, feature = "test"))]
@@ -310,6 +321,7 @@ impl slumber_util::Factory for RecipeId {
 /// `T=String`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`
@@ -321,6 +333,7 @@ pub enum Authentication<T = Template> {
 /// A value for a particular query parameter key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(
     untagged,
     deny_unknown_fields,
@@ -358,6 +371,7 @@ impl<const N: usize> From<[&str; N]> for QueryParameterValue {
 /// header).
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(
     tag = "type",
     content = "data",

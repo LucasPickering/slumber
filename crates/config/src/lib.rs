@@ -49,6 +49,7 @@ const FILE: &str = "config.yml";
 /// picked up until the app restarts.
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// Configuration for in-app query and export commands
@@ -227,6 +228,7 @@ impl Default for Config {
 /// Configuration for the engine that handles HTTP requests
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default)]
 pub struct HttpEngineConfig {
     /// TLS cert errors on these hostnames are ignored. Be careful!
@@ -260,6 +262,7 @@ impl Default for HttpEngineConfig {
 /// Configuration for in-app query and export commands
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(default, deny_unknown_fields)]
 pub struct CommandsConfig {
     /// Wrapping shell to parse and execute commands

@@ -94,15 +94,12 @@ impl FromStr for ImportInput {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "-" {
             Ok(Self::Stdin)
-        } else if let Ok(url) = s.parse::<Url>() {
+        } else if let Ok(url) = s.parse::<Url>()
             // Windows paths (C:\...) parse as URLs, so we need to make sure
             // it's an HTTP URL
-            // unstable: if-let chain (Rust 1.88)
-            if ["http", "https"].contains(&url.scheme()) {
-                Ok(Self::Url(url))
-            } else {
-                Ok(Self::Path(PathBuf::from(s)))
-            }
+            && ["http", "https"].contains(&url.scheme())
+        {
+            Ok(Self::Url(url))
         } else {
             Ok(Self::Path(PathBuf::from(s)))
         }

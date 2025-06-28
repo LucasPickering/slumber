@@ -64,7 +64,8 @@ impl Subcommand for ImportCommand {
                     .open(&output_file)
                     .context(format!(
                         "Error opening collection output file \
-                        {output_file:?}"
+                        `{}`",
+                        output_file.display()
                     ))?,
             ),
             None => Box::new(io::stdout()),

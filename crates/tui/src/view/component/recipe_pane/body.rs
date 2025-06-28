@@ -34,7 +34,6 @@ use tracing::debug;
 /// Render recipe body. The variant is based on the incoming body type, and
 /// determines the representation
 #[derive(Debug)]
-#[expect(clippy::large_enum_variant)]
 pub enum RecipeBodyDisplay {
     /// A raw text body with no known content type
     Raw(Component<TextBody>),
@@ -219,7 +218,10 @@ impl TextBody {
         debug!(?file, "Reading edited body from file");
         let Some(body) = fs::read_to_string(file.path())
             .with_context(|| {
-                format!("Error reading edited body from file {:?}", file.path())
+                format!(
+                    "Error reading edited body from file `{}`",
+                    file.path().display()
+                )
             })
             .reported(&ViewContext::messages_tx())
         else {

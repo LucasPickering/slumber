@@ -100,10 +100,10 @@ impl TempFile {
             .truncate(true)
             .open(&path)
             .with_context(|| {
-                format!("Error creating temporary file {path:?}")
+                format!("Error creating temporary file `{}`", path.display())
             })?;
         writer(&mut file).with_context(|| {
-            format!("Error writing to temporary file {path:?}")
+            format!("Error writing to temporary file `{}`", path.display())
         })?;
         Ok(Self { path })
     }
@@ -117,7 +117,10 @@ impl Drop for TempFile {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.path)
             .with_context(|| {
-                format!("Error deleting temporary file {:?}", self.path)
+                format!(
+                    "Error deleting temporary file `{}`",
+                    self.path.display()
+                )
             })
             .traced();
     }

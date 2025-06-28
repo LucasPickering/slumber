@@ -60,7 +60,9 @@ impl Subcommand for DbCommand {
             .arg(&path)
             .args(self.args)
             .spawn()
-            .with_context(|| format!("Error opening database file {path:?}"))?
+            .with_context(|| {
+                format!("Error opening database file `{}`", path.display())
+            })?
             .wait()
             .await?;
 

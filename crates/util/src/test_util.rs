@@ -60,7 +60,10 @@ impl Drop for TempDir {
         // Clean up
         let _ = fs::remove_dir_all(&self.0)
             .with_context(|| {
-                format!("Error deleting temporary directory {:?}", self.0)
+                format!(
+                    "Error deleting temporary directory `{}`",
+                    self.0.display()
+                )
             })
             .traced();
     }

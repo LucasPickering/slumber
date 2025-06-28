@@ -116,7 +116,10 @@ impl Config {
             // it probably indicates the user made a mistake in their config and
             // they want to fix it.
             Ok(file) => parse_yaml::<Self>(&file)
-                .context(format!("Error loading configuration from {path:?}"))
+                .context(format!(
+                    "Error loading configuration from `{}`",
+                    path.display()
+                ))
                 .traced(),
 
             // File failed to open. This shouldn't stop the program because it

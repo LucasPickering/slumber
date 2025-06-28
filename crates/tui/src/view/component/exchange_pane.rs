@@ -138,6 +138,7 @@ pub enum ExchangePaneEvent {
 /// Inner state for the exchange pane. This contains all the empty states, as
 /// well as one variant for the populated state
 #[derive(Debug, Default)]
+#[expect(clippy::large_enum_variant)]
 enum State {
     /// Recipe list is empty
     #[default]
@@ -448,6 +449,7 @@ impl Draw for ExchangePaneContent {
 
 /// Various request states that can appear under the tab bar
 #[derive(Debug)]
+
 enum ExchangePaneContentState {
     Building,
     BuildError {

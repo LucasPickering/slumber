@@ -165,6 +165,7 @@ impl TuiState {
 
 /// Inner enum for [TuiState] to avoid exposing the variant values
 #[derive(Debug)]
+#[expect(clippy::large_enum_variant)]
 enum TuiStateInner {
     /// TUI loaded successfully and is off and running
     Loaded(LoadedState),

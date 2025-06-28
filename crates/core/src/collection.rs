@@ -55,7 +55,9 @@ impl CollectionFile {
         if let Some(override_path) = override_path {
             let joined = dir.join(override_path);
             if fs::metadata(&joined)
-                .with_context(|| format!("Error loading {joined:?}"))?
+                .with_context(|| {
+                    format!("Error loading `{}`", joined.display())
+                })?
                 .is_dir()
             {
                 dir = joined;

@@ -59,7 +59,10 @@ impl ImportInput {
                 info!(?path, "Reading local file for import");
                 let content =
                     fs::read_to_string(path).await.with_context(|| {
-                        format!("Error importing from local file {path:?}")
+                        format!(
+                            "Error importing from local file `{}`",
+                            path.display()
+                        )
                     })?;
                 Ok(content)
             }

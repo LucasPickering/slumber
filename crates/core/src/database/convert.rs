@@ -151,7 +151,7 @@ impl TryFrom<&Path> for CollectionPath {
 
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         path.canonicalize()
-            .context(format!("Error canonicalizing path {path:?}"))
+            .context(format!("Error canonicalizing path `{}`", path.display()))
             .traced()
             .map(Self)
     }

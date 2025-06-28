@@ -278,7 +278,7 @@ impl DisplayExchangeCommand {
                         .write(true)
                         .open(path)
                         .with_context(|| {
-                            format!("Error opening file {path:?}")
+                            format!("Error opening file `{}`", path.display())
                         })?,
                 )
             };

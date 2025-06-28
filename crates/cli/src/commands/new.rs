@@ -33,9 +33,12 @@ impl Subcommand for NewCommand {
             .write(true)
             .truncate(self.overwrite)
             .open(&path)
-            .with_context(|| format!("Error opening file {path:?}"))?;
-        file.write_all(SOURCE)
-            .with_context(|| format!("Error writing to file {path:?}"))?;
+            .with_context(|| {
+                format!("Error opening file `{}`", path.display())
+            })?;
+        file.write_all(SOURCE).with_context(|| {
+            format!("Error writing to file `{}`", path.display())
+        })?;
 
         eprintln!("New collection created at `{}`", path.display());
 

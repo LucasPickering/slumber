@@ -170,22 +170,20 @@ impl EventHandler for Root {
                         .reported(&ViewContext::messages_tx());
                 }
                 Action::Cancel => {
-                    if let Some(request_id) = self.selected_request_id.0 {
-                        // unstable: if-let chain
-                        // https://github.com/rust-lang/rust/pull/132833
-                        if context.request_store.can_cancel(request_id) {
-                            ConfirmModal::new(
-                                "Cancel request?".into(),
-                                move |response| {
-                                    if response {
-                                        ViewContext::send_message(
-                                            Message::HttpCancel(request_id),
-                                        );
-                                    }
-                                },
-                            )
-                            .open();
-                        }
+                    if let Some(request_id) = self.selected_request_id.0
+                        && context.request_store.can_cancel(request_id)
+                    {
+                        ConfirmModal::new(
+                            "Cancel request?".into(),
+                            move |response| {
+                                if response {
+                                    ViewContext::send_message(
+                                        Message::HttpCancel(request_id),
+                                    );
+                                }
+                            },
+                        )
+                        .open();
                     }
                 }
                 Action::Quit => ViewContext::send_message(Message::Quit),

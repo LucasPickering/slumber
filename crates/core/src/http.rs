@@ -601,12 +601,12 @@ impl Recipe {
                 Ok(Some(Authentication::Basic { username, password }))
             }
 
-            Some(Authentication::Bearer(token)) => {
+            Some(Authentication::Bearer { token }) => {
                 let token = token
                     .render_string(template_context)
                     .await
                     .context("Rendering bearer token")?;
-                Ok(Some(Authentication::Bearer(token)))
+                Ok(Some(Authentication::Bearer { token }))
             }
             None => Ok(None),
         }
@@ -683,7 +683,7 @@ impl Authentication<String> {
             Authentication::Basic { username, password } => {
                 builder.basic_auth(username, password)
             }
-            Authentication::Bearer(token) => builder.bearer_auth(token),
+            Authentication::Bearer { token } => builder.bearer_auth(token),
         }
     }
 }

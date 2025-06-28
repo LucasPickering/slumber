@@ -12,17 +12,21 @@ profiles:
       host: https://httpbin.org
 
 requests:
-  example1: !request
+  example1:
+    type: request
     name: Example Request 1
     method: GET
     url: "{{ host }}/anything"
 
-  example_folder: !folder
+  example_folder:
+    type: folder
     name: Example Folder
     requests:
-      example2: !request
+      example2:
+        type: request
         name: Example Request 2
         method: POST
         url: "{{ host }}/anything"
         body:
-          !json { "data": "{{ response('example1') | jsonpath('$.data') }}" }
+          type: json
+          data: { "data": "{{ response('example1') | jsonpath('$.data') }}" }

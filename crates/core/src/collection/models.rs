@@ -313,18 +313,22 @@ impl slumber_util::Factory for RecipeId {
 /// `T=String`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`
     Basic { username: T, password: Option<T> },
     /// `Authorization: Bearer {token}`
-    Bearer(T),
+    Bearer { token: T },
 }
 
 /// A value for a particular query parameter key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(untagged, deny_unknown_fields)]
+#[serde(
+    untagged,
+    deny_unknown_fields,
+    expecting = "string or array of strings"
+)]
 pub enum QueryParameterValue {
     /// The common case: `?foo=bar`
     One(Template),
@@ -355,17 +359,26 @@ impl<const N: usize> From<[&str; N]> for QueryParameterValue {
 /// HTTP engine uses the variant to determine not only how to serialize the
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(
+    tag = "type",
+    content = "data",
+    rename_all = "snake_case",
+    expecting = "TODO",
+    deny_unknown_fields
+)]
 pub enum RecipeBody {
-    /// Plain string/bytes body
-    Raw(Template),
     /// `application/json` body
     Json(JsonTemplate),
     /// `application/x-www-form-urlencoded` fields. Values must be strings
     FormUrlencoded(IndexMap<String, Template>),
     /// `multipart/form-data` fields. Values can be binary
     FormMultipart(IndexMap<String, Template>),
+    /// Plain string/bytes body. Must be the last variant to support untagged.
+    /// This captures any value that doesn't fit one of the above variants.
+    #[serde(untagged)]
+    Raw(Template),
 }
 
 impl RecipeBody {

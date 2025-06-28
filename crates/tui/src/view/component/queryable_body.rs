@@ -400,14 +400,16 @@ impl TextState {
             // separate task because it's generally very fast. If this is slow
             // enough that it affects the user, the "large" body size is
             // probably too low
-            // unstable: if-let chain
-            // https://github.com/rust-lang/rust/pull/132833
-            let (text, pretty): (Cow<str>, bool) = match content_type {
-                Some(content_type) if prettify => content_type
+            let (text, pretty): (Cow<str>, bool) = if let Some(content_type) =
+                content_type
+                && prettify
+            {
+                content_type
                     .prettify(text)
                     .map(|body| (Cow::Owned(body), true))
-                    .unwrap_or((Cow::Borrowed(text), false)),
-                _ => (Cow::Borrowed(text), false),
+                    .unwrap_or((Cow::Borrowed(text), false))
+            } else {
+                (Cow::Borrowed(text), false)
             };
 
             let text =

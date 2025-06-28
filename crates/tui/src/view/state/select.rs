@@ -286,18 +286,15 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
     /// event will *not* be emitted if no item is select, or the selected item
     /// is disabled.
     fn emit_for_selected(&self, event_fn: impl Fn(usize) -> SelectStateEvent) {
-        // unstable: if-let chain
-        // https://github.com/rust-lang/rust/pull/132833
-        match self.selected_index() {
+        if let Some(selected) = self.selected_index()
             // Don't send event for disabled items
-            Some(selected) if !self.items[selected].disabled => {
-                let event = event_fn(selected);
-                // Check if the parent subscribed to this event type
-                if self.is_subscribed(SelectStateEventType::from(&event)) {
-                    self.emitter.emit(event);
-                }
+            && !self.items[selected].disabled
+        {
+            let event = event_fn(selected);
+            // Check if the parent subscribed to this event type
+            if self.is_subscribed(SelectStateEventType::from(&event)) {
+                self.emitter.emit(event);
             }
-            _ => {}
         }
     }
 

@@ -1,0 +1,20 @@
+# Slumber Testing Rules and Commands
+
+This file contains comprehensive instructions for running tests in the Slumber project.
+
+## Project Structure
+
+Slumber is organized as a Rust workspace with all crates under `crates/*`
+
+## Quick Reference
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests for a specific crate
+cargo test -p slumber_core
+
+# Run a specific test
+cargo test -p slumber_core -- test_regression
+```

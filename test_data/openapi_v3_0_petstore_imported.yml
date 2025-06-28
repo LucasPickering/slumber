@@ -5,128 +5,197 @@ profiles:
       host: /v3
 
 requests:
-  tag/pet: !folder
+  tag/pet:
+    type: folder
     name: pet
     requests:
-      addPet: !request
+      addPet:
+        type: request
         name: Add a new pet to the store
         method: POST
         url: "{{ host }}/pet"
         body:
-          !json {
-            "id": 10,
-            "name": "doggie",
-            "category": { "id": 1, "name": "Dogs" },
-            "photoUrls": [""],
-            "tags": [{ "id": 0, "name": "" }],
-            "status": "available",
-          }
-      updatePet: !request
+          type: json
+          data:
+            {
+              "id": 10,
+              "name": "doggie",
+              "category": { "id": 1, "name": "Dogs" },
+              "photoUrls": [""],
+              "tags": [{ "id": 0, "name": "" }],
+              "status": "available",
+            }
+      updatePet:
+        type: request
         name: Update an existing pet
         method: PUT
         url: "{{ host }}/pet"
         body:
-          !json {
-            "id": 10,
-            "name": "doggie",
-            "category": { "id": 1, "name": "Dogs" },
-            "photoUrls": [""],
-            "tags": [{ "id": 0, "name": "" }],
-            "status": "available",
-          }
-      findPetsByStatus: !request
+          type: json
+          data:
+            {
+              "id": 10,
+              "name": "doggie",
+              "category": { "id": 1, "name": "Dogs" },
+              "photoUrls": [""],
+              "tags": [{ "id": 0, "name": "" }],
+              "status": "available",
+            }
+      findPetsByStatus:
+        type: request
         name: Finds Pets by status
         method: GET
         url: "{{ host }}/pet/findByStatus"
         query:
           status: ""
-      findPetsByTags: !request
+      findPetsByTags:
+        type: request
         name: Finds Pets by tags
         method: GET
         url: "{{ host }}/pet/findByTags"
         query:
           tags: ""
-      deletePet: !request
+      deletePet:
+        type: request
         name: Deletes a pet
         method: DELETE
         url: "{{ host }}/pet/{{petId}}"
         headers:
           api_key: ""
-      getPetById: !request
+      getPetById:
+        type: request
         name: Find pet by ID
         method: GET
         url: "{{ host }}/pet/{{petId}}"
         headers:
           api_key: "{{api_key}}"
-      updatePetWithForm: !request
+      updatePetWithForm:
+        type: request
         name: Updates a pet in the store with form data
         method: POST
         url: "{{ host }}/pet/{{petId}}"
         query:
           name: ""
           status: ""
-      uploadFile: !request
+      uploadFile:
+        type: request
         name: uploads an image
         method: POST
         url: "{{ host }}/pet/{{petId}}/uploadImage"
         query:
           additionalMetadata: ""
         body: '""'
-  tag/store: !folder
+  tag/store:
+    type: folder
     name: store
     requests:
-      getInventory: !request
+      getInventory:
+        type: request
         name: Returns pet inventories by status
         method: GET
         url: "{{ host }}/store/inventory"
         headers:
           api_key: "{{api_key}}"
-      placeOrder: !request
+      placeOrder:
+        type: request
         name: Place an order for a pet
         method: POST
         url: "{{ host }}/store/order"
         body:
-          !json {
-            id: 10,
-            petId: 198772,
-            quantity: 7,
-            shipDate: "",
-            status: "approved",
-            complete: false,
-          }
-      deleteOrder: !request
+          type: json
+          data:
+            {
+              id: 10,
+              petId: 198772,
+              quantity: 7,
+              shipDate: "",
+              status: "approved",
+              complete: false,
+            }
+      deleteOrder:
+        type: request
         name: Delete purchase order by ID
         method: DELETE
         url: "{{ host }}/store/order/{{orderId}}"
-      getOrderById: !request
+      getOrderById:
+        type: request
         name: Find purchase order by ID
         method: GET
         url: "{{ host }}/store/order/{{orderId}}"
-  tag/user: !folder
+  tag/user:
+    type: folder
     name: user
     requests:
-      createUser: !request
+      createUser:
+        type: request
         name: Create user
         method: POST
         url: "{{ host }}/user"
-        body: !json {
-            id: 10,
-            username: "theUser",
-            firstName: "John",
-            lastName: "James",
-            email: "john@email.com",
-            # The schema says these are string fields, but the example values
-            # in the spec are numbers, so we just use the examples
-            password: 12345,
-            phone: 12345,
-            userStatus: 1,
-          }
-      createUsersWithListInput: !request
+        body:
+          type: json
+          data: {
+              id: 10,
+              username: "theUser",
+              firstName: "John",
+              lastName: "James",
+              email: "john@email.com",
+              # The schema says these are string fields, but the example values
+              # in the spec are numbers, so we just use the examples
+              password: 12345,
+              phone: 12345,
+              userStatus: 1,
+            }
+      createUsersWithListInput:
+        type: request
         name: Creates list of users with given input array
         method: POST
         url: "{{ host }}/user/createWithList"
         body:
-          !json [
+          type: json
+          data:
+            [
+              {
+                id: 10,
+                username: "theUser",
+                firstName: "John",
+                lastName: "James",
+                email: "john@email.com",
+                password: 12345,
+                phone: 12345,
+                userStatus: 1,
+              },
+            ]
+      loginUser:
+        type: request
+        name: Logs user into the system
+        method: GET
+        url: "{{ host }}/user/login"
+        query:
+          username: ""
+          password: ""
+      logoutUser:
+        type: request
+        name: Logs out current logged in user session
+        method: GET
+        url: "{{ host }}/user/logout"
+      deleteUser:
+        type: request
+        name: Delete user
+        method: DELETE
+        url: "{{ host }}/user/{{ username }}"
+      getUserByName:
+        type: request
+        name: Get user by user name
+        method: GET
+        url: "{{ host }}/user/{{ username }}"
+      updateUser:
+        type: request
+        name: Update user
+        method: PUT
+        url: "{{ host }}/user/{{ username }}"
+        body:
+          type: json
+          data:
             {
               id: 10,
               username: "theUser",
@@ -136,39 +205,4 @@ requests:
               password: 12345,
               phone: 12345,
               userStatus: 1,
-            },
-          ]
-      loginUser: !request
-        name: Logs user into the system
-        method: GET
-        url: "{{ host }}/user/login"
-        query:
-          username: ""
-          password: ""
-      logoutUser: !request
-        name: Logs out current logged in user session
-        method: GET
-        url: "{{ host }}/user/logout"
-      deleteUser: !request
-        name: Delete user
-        method: DELETE
-        url: "{{ host }}/user/{{ username }}"
-      getUserByName: !request
-        name: Get user by user name
-        method: GET
-        url: "{{ host }}/user/{{ username }}"
-      updateUser: !request
-        name: Update user
-        method: PUT
-        url: "{{ host }}/user/{{ username }}"
-        body:
-          !json {
-            id: 10,
-            username: "theUser",
-            firstName: "John",
-            lastName: "James",
-            email: "john@email.com",
-            password: 12345,
-            phone: 12345,
-            userStatus: 1,
-          }
+            }

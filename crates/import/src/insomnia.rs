@@ -409,7 +409,9 @@ impl TryFrom<Authentication> for collection::Authentication {
                 })
             }
             Authentication::Bearer { token } => {
-                Ok(collection::Authentication::Bearer(Template::raw(token)))
+                Ok(collection::Authentication::Bearer {
+                    token: Template::raw(token),
+                })
             }
             // Caller should print a warning for this
             Authentication::Other { kind } => Err(kind),

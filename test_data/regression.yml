@@ -22,7 +22,8 @@ profiles:
       <<: *base_profile_data
 
 requests:
-  text_body: !request
+  text_body:
+    type: request
     method: POST
     # Missing name
     url: "{{ host }}/anything/login"
@@ -35,10 +36,12 @@ requests:
     body: >-
       {"username":"{{ username }}","password":"{{ prompt('Password', sensitive=true) }}"}
 
-  users: !folder
+  users:
+    type: folder
     name: Users
     requests:
-      simple: !request
+      simple:
+        type: request
         name: Simple
         method: GET
         # No headers or authentication
@@ -46,29 +49,38 @@ requests:
         query:
           one: "{{ field1 }}"
           many: ["{{ field1 }}", "{{ field2 }}"]
-        headers: # Should parse as an empty map
 
-      json_body: !request
+      json_body:
+        type: request
         <<: *base_recipe
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"
-        authentication: !bearer "{{ response('login') | jsonpath('$.token') }}"
-        body: !json { "username": "new username" }
-        query: # Should parse as an empty map
+        authentication:
+          type: bearer
+          token: "{{ response('login') | jsonpath('$.token') }}"
+        body:
+          type: json
+          data: { "username": "new username" }
 
-      json_body_but_not: !request
+      json_body_but_not:
+        type: request
         <<: *base_recipe
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"
-        authentication: !basic
+        authentication:
+          type: basic
           username: "{{ username }}"
           password: "{{password}}"
-        # Nested JSON is *not* parsed
-        body: !json '{"warning": "NOT an object"}'
+        body:
+          type: json
+          data: '{"warning": "NOT an object"}'
 
-      form_urlencoded_body: !request
+      form_urlencoded_body:
+        type: request
         <<: *base_recipe
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"
-        body: !form_urlencoded
-          username: "new username"
+        body:
+          type: form_urlencoded
+          data:
+            username: "new username"

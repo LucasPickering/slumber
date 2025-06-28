@@ -725,7 +725,8 @@ mod tests {
             file.path(),
             r#"
 requests:
-    test: !request
+    test:
+        type: "request"
         method: "GET"
         url: "test"
 "#,

@@ -65,9 +65,9 @@ fn build_slumber_templates(
 /// Convert REST Authentication to Slumber Authentication
 fn build_authentication(r_auth: RestAuthorization) -> Authentication {
     match r_auth {
-        RestAuthorization::Bearer(bearer) => {
-            Authentication::Bearer(Template::raw(bearer))
-        }
+        RestAuthorization::Bearer(bearer) => Authentication::Bearer {
+            token: Template::raw(bearer),
+        },
         RestAuthorization::Basic { username, password } => {
             Authentication::Basic {
                 username: Template::raw(username),

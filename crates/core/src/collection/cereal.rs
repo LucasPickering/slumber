@@ -1,14 +1,11 @@
 //! Serialization/deserialization helpers for various types
 
 use crate::collection::{
-    Profile, ProfileId, Recipe, RecipeBody, RecipeId, recipe_tree::RecipeNode,
+    Profile, ProfileId, Recipe, RecipeId, recipe_tree::RecipeNode,
 };
 use indexmap::IndexMap;
 use itertools::Itertools;
-use serde::{
-    Deserialize, Deserializer, Serialize, Serializer,
-    de::{self, EnumAccess, Error as _, VariantAccess, Visitor},
-};
+use serde::{Deserialize, Deserializer, de};
 use slumber_template::Template;
 use std::hash::Hash;
 
@@ -138,145 +135,72 @@ where
         .collect())
 }
 
-impl RecipeBody {
-    // Constants for serialize/deserialization. Typically these are generated
-    // by macros, but we need custom implementation
-    const STRUCT_NAME: &'static str = "RecipeBody";
-    const VARIANT_JSON: &'static str = "json";
-    const VARIANT_FORM_URLENCODED: &'static str = "form_urlencoded";
-    const VARIANT_FORM_MULTIPART: &'static str = "form_multipart";
-    const ALL_VARIANTS: &'static [&'static str] = &[
-        Self::VARIANT_JSON,
-        Self::VARIANT_FORM_URLENCODED,
-        Self::VARIANT_FORM_MULTIPART,
-    ];
-}
+/*
+ * TODO delete this
+/// Custom serialize/deserialize for RecipeBody. This can't be an impl directly
+/// on the type because we're just wrapping that type's impl to also support a
+/// bare value as a raw body. RecipeBody is only used in one place so adding
+/// this wrapper isn't a big deal.
+pub mod serde_recipe_body {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use slumber_template::Template;
 
-/// Custom serialization for RecipeBody, so the `Raw` variant serializes as a
-/// scalar without a tag
-impl Serialize for RecipeBody {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    use crate::collection::RecipeBody;
+
+    #[expect(clippy::ref_option)]
+    pub fn serialize<S>(
+        body: &Option<RecipeBody>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        // This involves a lot of duplication, but any abstraction will probably
-        // just make it worse
-        match self {
-            RecipeBody::Raw(body) => body.serialize(serializer),
-            RecipeBody::Json(json_template) => {
-                // Convert the JSON template back to regular JSON
-                let json: serde_json::Value = json_template.into();
-                serializer.serialize_newtype_variant(
-                    Self::STRUCT_NAME,
-                    1,
-                    Self::VARIANT_JSON,
-                    &json,
-                )
-            }
-            RecipeBody::FormUrlencoded(value) => serializer
-                .serialize_newtype_variant(
-                    Self::STRUCT_NAME,
-                    2,
-                    Self::VARIANT_FORM_URLENCODED,
-                    value,
-                ),
-            RecipeBody::FormMultipart(value) => serializer
-                .serialize_newtype_variant(
-                    Self::STRUCT_NAME,
-                    3,
-                    Self::VARIANT_FORM_MULTIPART,
-                    value,
-                ),
+        match body {
+            // Serialize a raw body as just the contained value
+            Some(RecipeBody::Raw(data)) => data.serialize(serializer),
+            // Serialize anything else as a tagged enum
+            Some(body) => body.serialize(serializer),
+            None => serializer.serialize_none(),
         }
     }
-}
 
-// Custom deserialization for RecipeBody, to support raw template or structured
-// body with a tag
-impl<'de> Deserialize<'de> for RecipeBody {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<Option<RecipeBody>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct RecipeBodyVisitor;
-
-        /// For all primitives, parse it as a template and create a raw body
-        macro_rules! visit_primitive {
-            ($func:ident, $type:ty) => {
-                fn $func<E>(self, v: $type) -> Result<Self::Value, E>
-                where
-                    E: de::Error,
-                {
-                    let template = v.to_string().parse().map_err(E::custom)?;
-                    Ok(RecipeBody::Raw(template))
-                }
-            };
+        #[derive(Deserialize)]
+        #[serde(untagged, rename_all = "snake_case")]
+        enum RecipeBodyWrapper {
+            // The body variant must come first to give it higher priority,
+            // because the raw variant will accept any expression
+            RecipeBody(RecipeBody),
+            Raw(Template),
         }
 
-        impl<'de> Visitor<'de> for RecipeBodyVisitor {
-            type Value = RecipeBody;
-
-            fn expecting(
-                &self,
-                formatter: &mut std::fmt::Formatter,
-            ) -> std::fmt::Result {
-                // "!<type>" is a little wonky, but tags aren't a common YAML
-                // syntax so we should provide a hint to the user about what it
-                // means. Once they provide a tag they'll get a different error
-                // message if it's an unsupported tag
-                formatter.write_str("string, boolean, number, or tag !<type>")
-            }
-
-            visit_primitive!(visit_bool, bool);
-            visit_primitive!(visit_u64, u64);
-            visit_primitive!(visit_u128, u128);
-            visit_primitive!(visit_i64, i64);
-            visit_primitive!(visit_i128, i128);
-            visit_primitive!(visit_f64, f64);
-            visit_primitive!(visit_str, &str);
-
-            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
-            where
-                A: EnumAccess<'de>,
-            {
-                let (tag, value) = data.variant::<String>()?;
-                match tag.as_str() {
-                    RecipeBody::VARIANT_JSON => {
-                        // Deserialize to regular JSON
-                        let json: serde_json::Value =
-                            value.newtype_variant()?;
-                        // Parse strings as templates
-                        RecipeBody::json(json).map_err(A::Error::custom)
-                    }
-                    RecipeBody::VARIANT_FORM_URLENCODED => {
-                        Ok(RecipeBody::FormUrlencoded(value.newtype_variant()?))
-                    }
-                    RecipeBody::VARIANT_FORM_MULTIPART => {
-                        Ok(RecipeBody::FormMultipart(value.newtype_variant()?))
-                    }
-                    other => Err(A::Error::unknown_variant(
-                        other,
-                        RecipeBody::ALL_VARIANTS,
-                    )),
-                }
-            }
+        // Support internally tagged enums for any body type. Also support bare
+        // expressions for a raw body
+        let wrapper = RecipeBodyWrapper::deserialize(deserializer)?;
+        match wrapper {
+            RecipeBodyWrapper::RecipeBody(body) => Ok(Some(body)),
+            RecipeBodyWrapper::Raw(data) => Ok(Some(RecipeBody::Raw(data))),
         }
-
-        deserializer.deserialize_any(RecipeBodyVisitor)
     }
 }
+*/
 
 #[cfg(test)]
 mod tests {
+    use crate::collection::RecipeBody;
+
     use super::*;
     use indexmap::indexmap;
     use rstest::rstest;
     use serde_json::json;
-    use serde_yaml::{
-        Mapping,
-        value::{Tag, TaggedValue},
-    };
+    use serde_yaml::Mapping;
     use slumber_util::assert_err;
+    use std::iter;
 
     #[rstest]
     #[case::multiple_default(
@@ -319,30 +243,21 @@ mod tests {
     )]
     #[case::json(
         RecipeBody::json(json!({"user": "{{ user_id }}"})).unwrap(),
-        serde_yaml::Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new("json"),
-            value: mapping([("user", "{{ user_id }}")])
-        })),
+        yaml_enum("json", [("data", mapping([("user", "{{ user_id }}")]))]),
     )]
     #[case::json_nested(
         RecipeBody::json(json!(r#"{"warning": "NOT an object"}"#)).unwrap(),
-        serde_yaml::Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new("json"),
-            value: r#"{"warning": "NOT an object"}"#.into()
-        })),
+        yaml_enum("json", [("data", r#"{"warning": "NOT an object"}"#)]),
     )]
     #[case::form_urlencoded(
         RecipeBody::FormUrlencoded(indexmap! {
             "username".into() => "{{ username }}".into(),
             "password".into() => "{{ prompt('Password', sensitive=true) }}".into(),
         }),
-        serde_yaml::Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new("form_urlencoded"),
-            value: mapping([
-                ("username", "{{ username }}"),
-                ("password", "{{ prompt('Password', sensitive=true) }}"),
-            ])
-        }))
+        yaml_enum("form_urlencoded", [("data", mapping([
+            ("username", "{{ username }}"),
+            ("password", "{{ prompt('Password', sensitive=true) }}"),
+        ]))]),
     )]
     fn test_serde_recipe_body(
         #[case] body: RecipeBody,
@@ -367,27 +282,21 @@ mod tests {
     #[rstest]
     #[case::array(
         Vec::<i32>::new(),
-        "invalid type: sequence, expected string, boolean, number, or tag !<type>"
+        "invalid type: sequence, expected string, boolean, or number"
     )]
     #[case::map(
         Mapping::default(),
-        "invalid type: map, expected string, boolean, number, or tag !<type>"
+        "invalid type: map, expected string, boolean, or number"
     )]
     // `Raw` variant is *not* accessible by tag
     #[case::raw_tag(
-        serde_yaml::Value::Tagged(Box::new(TaggedValue{
-            tag: Tag::new("raw"),
-            value: "{{ user_id }}".into()
-        })),
+        yaml_enum("raw", [("data", "data")]),
         "unknown variant `raw`, expected one of \
         `json`, `form_urlencoded`, `form_multipart`",
     )]
-    #[case::form_urlencoded_wrong_type(
-        serde_yaml::Value::Tagged(Box::new(TaggedValue{
-            tag: Tag::new("form_urlencoded"),
-            value: "{{ user_id }}".into()
-        })),
-        "invalid type: string \"{{ user_id }}\", expected a map"
+    #[case::form_urlencoded_missing_data(
+        yaml_enum("form_urlencoded", [] as [(_, serde_yaml::Value); 0]),
+        "TODO"
     )]
     fn test_deserialize_recipe_error(
         #[case] yaml: impl Into<serde_yaml::Value>,
@@ -410,5 +319,18 @@ mod tests {
             .map(|(k, v)| (serde_yaml::Value::from(k), v.into()))
             .collect::<Mapping>()
             .into()
+    }
+
+    /// Build a YAML mapping with a `type` field
+    fn yaml_enum(
+        type_: &'static str,
+        fields: impl IntoIterator<
+            Item = (&'static str, impl Into<serde_yaml::Value>),
+        >,
+    ) -> serde_yaml::Value {
+        mapping(
+            iter::once(("type", serde_yaml::Value::from(type_)))
+                .chain(fields.into_iter().map(|(k, v)| (k, v.into()))),
+        )
     }
 }

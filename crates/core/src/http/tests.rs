@@ -226,7 +226,7 @@ async fn test_build_body(
     },
     "Basic dXNlcjo="
 )]
-#[case::bearer(Authentication::Bearer("{{ token }}".into()), "Bearer tokenzzz")]
+#[case::bearer(Authentication::Bearer { token: "{{ token }}".into() }, "Bearer tokenzzz")]
 #[tokio::test]
 async fn test_authentication(
     http_engine: HttpEngine,
@@ -791,7 +791,7 @@ async fn test_build_curl(http_engine: HttpEngine) {
     "--user 'user:'",
 )]
 #[case::bearer(
-    Authentication::Bearer("{{ token }}".into()),
+    Authentication::Bearer { token: "{{ token }}".into() },
     "--header 'authorization: Bearer tokenzzz'",
 )]
 #[tokio::test]

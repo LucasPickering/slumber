@@ -384,7 +384,7 @@ impl<'a> RecipeBuilder<'a> {
                             .map(Template::raw)
                             .unwrap_or_default();
                         self.authentication =
-                            Some(Authentication::Bearer(template));
+                            Some(Authentication::Bearer { token: template });
                     }
                     unsupported => {
                         error!(

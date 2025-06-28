@@ -14,22 +14,28 @@ profiles:
       greeting: howdy
 
 requests:
-  fld_9a7332db608943b093c929a82c81df50: !folder
+  fld_9a7332db608943b093c929a82c81df50:
+    type: folder
     name: My Folder
     requests:
-      fld_8077c48f5a89436bbe4b3a53c06471f5: !folder
+      fld_8077c48f5a89436bbe4b3a53c06471f5:
+        type: folder
         name: Inner Folder
         requests:
-          req_2ec3dc9ff6774ac78248777e75984831: !request
+          req_2ec3dc9ff6774ac78248777e75984831:
+            type: request
             name: Bearer Auth
             method: GET
             url: https://httpbin.org/get
             body: null
-            authentication: !bearer " {% response 'body', 'req_3bc2de939f1a4d1ebc00835cbefd6b5d', 'b64::JC5oZWFkZXJzLkhvc3Q=::46b', 'when-expired', 60 %}"
+            authentication:
+              type: bearer
+              token: " {% response 'body', 'req_3bc2de939f1a4d1ebc00835cbefd6b5d', 'b64::JC5oZWFkZXJzLkhvc3Q=::46b', 'when-expired', 60 %}"
             query: {}
             headers: {}
 
-          req_b08ee35904784b5f9af598f9b7fd7ca0: !request
+          req_b08ee35904784b5f9af598f9b7fd7ca0:
+            type: request
             name: Digest Auth (Unsupported)
             method: GET
             url: https://httpbin.org/get
@@ -38,18 +44,21 @@ requests:
             query: {}
             headers: {}
 
-          req_284e0d90f0d647b483f863af5ee79c23: !request
+          req_284e0d90f0d647b483f863af5ee79c23:
+            type: request
             name: Basic Auth
             method: GET
             url: https://httpbin.org/get
             body: null
-            authentication: !basic
+            authentication:
+              type: basic
               username: user
               password: pass
             query: {}
             headers: {}
 
-          req_814a5e9b63a7482da1d8261311bc6c84: !request
+          req_814a5e9b63a7482da1d8261311bc6c84:
+            type: request
             name: No Auth
             method: GET
             url: https://httpbin.org/get
@@ -58,7 +67,8 @@ requests:
             query: {}
             headers: {}
 
-      req_583c296a600247d6b0c28a0afcefdb89: !request
+      req_583c296a600247d6b0c28a0afcefdb89:
+        type: request
         name: With Text Body
         method: POST
         url: https://httpbin.org/post
@@ -68,7 +78,8 @@ requests:
           content-type: text/plain
         body: "hello!"
 
-      req_1419670d20eb4964956df954e1eb7c4b: !request
+      req_1419670d20eb4964956df954e1eb7c4b:
+        type: request
         name: With JSON Body
         method: POST
         url: https://httpbin.org/post
@@ -78,9 +89,12 @@ requests:
           # This is redundant with the body type, but it's more effort than
           # it's worth to remove it
           content-type: application/json
-        body: !json { "message": "hello!" }
+        body:
+          type: json
+          data: { "message": "hello!" }
 
-      req_a01b6de924274654bda0835e2a073bd0: !request
+      req_a01b6de924274654bda0835e2a073bd0:
+        type: request
         name: With Multipart Body
         method: POST
         url: https://httpbin.org/post
@@ -90,17 +104,22 @@ requests:
           # This is redundant with the body type, but it's more effort than
           # it's worth to remove it
           content-type: multipart/form-data
-        body: !form_multipart
-          username: user
-          image: "{{ file('./public/slumber.png') }}"
+        body:
+          type: form_multipart
+          data:
+            username: user
+            image: "{{ file('./public/slumber.png') }}"
 
-  req_a345faa530a7453e83ee967d18555712: !request
+  req_a345faa530a7453e83ee967d18555712:
+    type: request
     name: Login
     method: POST
     url: https://httpbin.org/anything/login
-    body: !form_urlencoded
-      username: user
-      password: pass
+    body:
+      type: form_urlencoded
+      data:
+        username: user
+        password: pass
     authentication: null
     query: {}
     headers:

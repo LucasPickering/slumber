@@ -68,7 +68,7 @@ impl CurlBuilder {
                 .unwrap();
                 self
             }
-            Authentication::Bearer(token) => self
+            Authentication::Bearer { token } => self
                 .header(
                     &header::AUTHORIZATION,
                     // The token is base64-encoded so we know it's valid

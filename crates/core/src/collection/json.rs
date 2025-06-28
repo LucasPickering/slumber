@@ -1,16 +1,17 @@
 //! Utilities for working with templated JSON
 
+use crate::render::TemplateContext;
 use futures::future;
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 use slumber_template::{RenderError, Template, TemplateParseError};
 use std::str::FromStr;
 use thiserror::Error;
 
-use crate::render::TemplateContext;
-
 /// A JSON value like [serde_json::Value], but all strings are templates
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
+#[serde(untagged, expecting = "JSON value")]
 pub enum JsonTemplate {
     Null,
     Bool(bool),

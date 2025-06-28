@@ -6,6 +6,7 @@
   username: xX{{ command(['whoami']) | trim() | sensitive() }}Xx
   user_guid: abc123
 .base_request: &base_request
+  type: request
   headers:
     Accept: application/json
 
@@ -32,9 +33,10 @@ profiles:
       host: http://localhost:5000
 
 requests:
-  authentication: !folder
+  authentication:
+    type: folder
     requests:
-      login: !request
+      login:
         <<: *base_request
         method: POST
         url: "{{ host }}/anything/login"
@@ -42,16 +44,19 @@ requests:
         query:
           sudo: yes_please
           fast: [no_thanks, actually_maybe]
-        body: !form_urlencoded
-          username: "{{ username }}"
-          password: "{{ prompt(message='Password', sensitive=true) }}"
+        body:
+          type: form_urlencoded
+          data:
+            username: "{{ username }}"
+            password: "{{ prompt(message='Password', sensitive=true) }}"
 
-      basic_auth: !request
+      basic_auth:
         <<: *base_request
         method: POST
         url: "{{ host }}/anything/login"
         persist: false
-        authentication: !basic
+        authentication:
+          type: basic
           username: "{{ username }}"
           password: "{{ prompt(message='Password') }}"
         query:
@@ -60,28 +65,31 @@ requests:
         headers:
           Accept: application/json
 
-      bearer_auth: !request
+      bearer_auth:
         <<: *base_request
         method: POST
         url: "{{ host }}/anything/login"
         persist: false
-        authentication: !bearer "{{ response('login', trigger='12h') | jsonpath('$.form') }}"
+        authentication:
+          type: bearer
+          token: "{{ response('login', trigger='12h') | jsonpath('$.form') }}"
         query:
           sudo: yes_please
           fast: [no_thanks, actually_maybe]
         headers:
           Accept: application/json
 
-  users: !folder
+  users:
+    type: folder
     name: Users
     requests:
-      get_users: !request
+      get_users:
         <<: *base_request
         name: Get Users
         method: GET
         url: "{{ host }}/get"
 
-      get_user: !request
+      get_user:
         <<: *base_request
         name: Get User
         method: GET
@@ -94,44 +102,49 @@ requests:
             ) }}"
           select_dynamic: "{{ response('get_users') | jsonpath('$.headers') | select() }}"
 
-      modify_user: !request
+      modify_user:
         <<: *base_request
         name: Modify User
         method: PUT
         url: "{{ host }}/anything/{{ user_guid }}"
         body:
-          !json {
-            "new_username": "user formerly known as {{ username }}",
-            "number": 3,
-            "bool": true,
-            "null": null,
-            "array": [1, 2, false, 3.3, "www.www"],
-          }
+          type: json
+          data:
+            {
+              "new_username": "user formerly known as {{ username }}",
+              "number": 3,
+              "bool": true,
+              "null": null,
+              "array": [1, 2, false, 3.3, "www.www"],
+            }
 
-  get_image: !request
+  get_image:
+    type: request
     headers:
       Accept: image/png
     name: Get Image
     method: GET
     url: "{{ host }}/image"
 
-  upload_image: !request
+  upload_image:
     <<: *base_request
     name: Upload Image
     method: POST
     url: "{{ host }}/anything/image"
-    body: !form_multipart
-      filename: "logo.png"
-      image: "{{ file('static/slumber.png') }}"
+    body:
+      type: form_multipart
+      data:
+        filename: "logo.png"
+        image: "{{ file('static/slumber.png') }}"
 
-  big_file: !request
+  big_file:
     <<: *base_request
     name: Big File
     method: POST
     url: "{{ host }}/anything"
     body: "{{ file('Cargo.lock') }}"
 
-  raw_json: !request
+  raw_json:
     <<: *base_request
     name: Raw JSON
     method: POST
@@ -144,19 +157,20 @@ requests:
         "size": "HUGE"
       }
 
-  delay: !request
+  delay:
     <<: *base_request
     name: Delay
     method: GET
     url: "{{ host }}/delay/5"
 
-  dynamic_response_type: !request
+  dynamic_response_type:
     <<: *base_request
     name: Dynamic Response Type
     method: GET
     url: "{{ host }}/{{ select(['json', 'html', 'xml']) }}"
 
-  redirect: !request
+  redirect:
+    <<: *base_request
     name: Redirect
     method: GET
     url: "{{host}}/redirect-to?url={{host}}/get"

@@ -778,7 +778,8 @@ mod tests {
 name: Test Reloaded
 
 requests:
-    test: !request
+    test:
+        type: "request"
         method: "GET"
         url: "test"
 "#,

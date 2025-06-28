@@ -146,7 +146,9 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde_json::json;
-    use slumber_util::{Factory, TempDir, assert_err, temp_dir, test_data_dir};
+    use slumber_util::{
+        Factory, TempDir, assert_err, parse_yaml, temp_dir, test_data_dir,
+    };
     use std::{fs, fs::File};
 
     /// Test various cases of [CollectionFile::with_dir]
@@ -220,11 +222,58 @@ mod tests {
         );
     }
 
+    /// Test various error cases when deserializing a collection. Make sure
+    /// we get a useful error message for each one
+    #[rstest]
+    #[case::recipe_missing_type(
+        json!({
+            "requests": {
+                "r1": {
+                    "method": "GET",
+                    "url": "http://localhost",
+                }
+            }
+        }),
+        "requests.r1: missing field `type`"
+    )]
+    #[case::query(
+        json!({
+            "requests": {
+                "r1": {
+                    "type": "request",
+                    "method": "GET",
+                    "url": "http://localhost",
+                    "query": 3,
+                }
+            }
+        }),
+        "requests.r1.query: invalid type: integer `3`, expected a map"
+    )]
+    #[case::headers(
+        json!({
+            "requests": {
+                "r1": {
+                    "type": "request",
+                    "method": "GET",
+                    "url": "http://localhost",
+                    "headers": 3,
+                }
+            }
+        }),
+        "requests.r1.headers: invalid type: integer `3`, expected a map"
+    )]
+    fn test_deserialize_collection_error(
+        #[case] collection: serde_json::Value,
+        #[case] expected_error: &str,
+    ) {
+        let yaml = collection.to_string(); // JSON is valid YAML
+        assert_err!(parse_yaml::<Collection>(yaml.as_bytes()), expected_error);
+    }
+
     /// A catch-all regression test, to make sure we don't break anything in the
     /// collection format. This lives at the bottom because it's huge.
     #[rstest]
-    #[tokio::test]
-    async fn test_regression(test_data_dir: PathBuf) {
+    fn test_regression(test_data_dir: PathBuf) {
         let loaded =
             Collection::load(&test_data_dir.join("regression.yml")).unwrap();
         let expected = Collection {
@@ -248,7 +297,6 @@ mod tests {
                     default: true,
                     data: indexmap! {
                         "host".into() => "https://httpbin.org".into(),
-
                     },
                 },
             ]),
@@ -304,10 +352,10 @@ mod tests {
                                 )
                                 .unwrap(),
                             ),
-                            authentication: Some(Authentication::Bearer(
-                                "{{ response('login') | jsonpath('$.token') }}"
+                            authentication: Some(Authentication::Bearer {
+                                token: "{{ response('login') | jsonpath('$.token') }}"
                                     .into(),
-                            )),
+                            }),
                             headers: indexmap! {
                                 "accept".into() => "application/json".into(),
                             },

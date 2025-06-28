@@ -360,9 +360,9 @@ impl<'a> RecipeBuilder<'a> {
                     });
                 }
                 "bearer" => {
-                    self.authentication = Some(Authentication::Bearer(
-                        Template::from_field("api_token"),
-                    ));
+                    self.authentication = Some(Authentication::Bearer {
+                        token: Template::from_field("api_token"),
+                    });
                 }
                 _ => {
                     error!("Unsupported HTTP authentication scheme `{scheme}`");

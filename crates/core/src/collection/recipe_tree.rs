@@ -65,7 +65,13 @@ impl IntoIterator for RecipeLookupKey {
 #[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
 #[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    deny_unknown_fields,
+    // TODO nice descriptive message here
+    expecting = "TODO"
+)]
 #[expect(clippy::large_enum_variant)]
 pub enum RecipeNode {
     Folder(Folder),
@@ -281,10 +287,7 @@ mod tests {
     use indexmap::indexmap;
     use itertools::Itertools;
     use rstest::{fixture, rstest};
-    use serde_yaml::{
-        Value,
-        value::{Tag, TaggedValue},
-    };
+    use serde_yaml::Value;
     use slumber_util::{Factory, assert_err};
 
     impl<const N: usize> From<[&str; N]> for RecipeLookupKey {
@@ -308,15 +311,18 @@ mod tests {
         )
     }
 
-    /// Build a YAML mapping with a variant tag
-    fn tagged_mapping<const N: usize>(
-        tag: &str,
-        items: [(&str, Value); N],
-    ) -> Value {
-        Value::Tagged(Box::new(TaggedValue {
-            tag: Tag::new(tag),
-            value: mapping(items),
-        }))
+    /// Build a folder
+    fn folder<const N: usize>(children: [(&str, Value); N]) -> Value {
+        mapping([("type", "folder".into()), ("requests", mapping(children))])
+    }
+
+    /// Build a recipe
+    fn recipe() -> Value {
+        mapping([
+            ("type", "request".into()),
+            ("method", "GET".into()),
+            ("url", "http://localhost/url".into()),
+        ])
     }
 
     #[fixture]
@@ -381,76 +387,25 @@ mod tests {
 
     /// Deserializing with a duplicate ID anywhere in the tree should fail
     #[rstest]
-    #[case::anywhere(
+    #[case::recipe(
         // Two requests share an ID
         mapping([
-            (
-                "dupe",
-                tagged_mapping(
-                    "!request",
-                    [("method", "GET".into()), ("url", "url".into())],
-                ),
-            ),
-            (
-                "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        mapping([(
-                            "dupe",
-                            tagged_mapping(
-                                "!request",
-                                [
-                                    ("method", "GET".into()),
-                                    ("url", "url".into()),
-                                ],
-                            ),
-                        )]),
-                    )],
-                ),
-            ),
+            ("dupe", recipe()),
+            ("f1", folder([("dupe", recipe())])),
         ])
     )]
     // Two folders share an ID
     #[case::folder(
         mapping([
-            (
-                "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        mapping([("dupe", tagged_mapping("!folder", []))]),
-                    )],
-                ),
-            ),
-            ("dupe", tagged_mapping("!folder", [])),
+            ("f1", folder([("dupe", folder([]))])),
+            ("dupe", folder([])),
         ])
     )]
     // Request + folder share an ID
     #[case::request_folder(
         mapping([
-            (
-                "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        tagged_mapping(
-                            "!request",
-                            [("dupe", tagged_mapping("!folder", []))],
-                        ),
-                    )],
-                ),
-            ),
-            (
-                "dupe",
-                tagged_mapping(
-                    "!request",
-                    [("method", "GET".into()), ("url", "url".into())],
-                ),
-            ),
+            ("f1", folder([("dupe", recipe())])),
+            ("dupe", recipe()),
         ])
     )]
     fn test_duplicate_id(#[case] yaml_value: Value) {
@@ -477,38 +432,13 @@ mod tests {
         };
 
         // Create equivalent YAML
-        let recipe_value: Value = tagged_mapping(
-            "!request",
-            [
-                ("method", "GET".into()),
-                ("url", "http://localhost/url".into()),
-            ],
-        );
         let yaml = mapping([
-            ("r1", recipe_value.clone()),
+            ("r1", recipe()),
             (
                 "f1",
-                tagged_mapping(
-                    "!folder",
-                    [(
-                        "requests",
-                        mapping([
-                            (
-                                "f2",
-                                tagged_mapping(
-                                    "!folder",
-                                    [(
-                                        "requests",
-                                        mapping([("r2", recipe_value.clone())]),
-                                    )],
-                                ),
-                            ),
-                            ("r3", recipe_value.clone()),
-                        ]),
-                    )],
-                ),
+                folder([("f2", folder([("r2", recipe())])), ("r3", recipe())]),
             ),
-            ("r4", recipe_value.clone()),
+            ("r4", recipe()),
         ]);
 
         assert_eq!(

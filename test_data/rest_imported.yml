@@ -10,7 +10,8 @@ profiles:
       ENDPOINT: post
 
 requests:
-  SimpleGet_0: !request
+  SimpleGet_0:
+    type: request
     name: SimpleGet
     method: GET
     url: "{{ HOST }}/get"
@@ -18,14 +19,18 @@ requests:
     authentication: null
     query: {}
     headers: {}
-  JsonPost_1: !request
+  JsonPost_1:
+    type: request
     name: JsonPost
     method: POST
     url: "{{ HOST }}/post"
-    body: !json
-      data: my data
-      name: "{{ FULL }}"
-    authentication: !basic
+    body:
+      type: json
+      data:
+        data: my data
+        name: "{{ FULL }}"
+    authentication:
+      type: basic
       username: foo
       password: bar
     query:
@@ -33,18 +38,22 @@ requests:
     headers:
       Content-Type: application/json
       X-Http-Method-Override: PUT
-  Request_2: !request
+  Request_2:
+    type: request
     name: Request
     method: POST
     url: https://httpbin.org/{{ ENDPOINT }}
     body: first={{ FIRST }}&last={{ LAST }}&full={{ FULL }}
-    authentication: !bearer efaxijasdfjasdfa
+    authentication:
+      type: bearer
+      token: efaxijasdfjasdfa
     query: {}
     headers:
       Content-Type: application/x-www-form-urlencoded
       My-Header: hello
       Other-Header: goodbye
-  Pet_json_3: !request
+  Pet_json_3:
+    type: request
     name: Pet.json
     method: POST
     url: "{{ HOST }}/post"

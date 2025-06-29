@@ -225,7 +225,7 @@ impl slumber_util::Factory for TemplateContext {
 }
 
 /// An abstraction that provides behavior for chained HTTP requests. This
-/// enables fetching past requests and sending requests. The implementor is
+/// enables fetching past requests and sending requests. The implementer is
 /// responsible for providing the data store of the requests, and persisting
 /// the sent request as appropriate.
 #[async_trait] // Native async fn isn't dyn-compatible
@@ -237,7 +237,7 @@ pub trait HttpProvider: Debug + Send + Sync {
         recipe_id: &RecipeId,
     ) -> anyhow::Result<Option<Exchange>>;
 
-    /// Build and send an HTTP request. The implementor may choose whether
+    /// Build and send an HTTP request. The implementer may choose whether
     /// triggered chained requests will be sent, and whether the result should
     /// be persisted in the database.
     async fn send_request(

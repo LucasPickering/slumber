@@ -294,7 +294,7 @@ impl<'a> TemplateSource<'a> for ChainTemplateSource<'a> {
         stack: &mut RenderKeyStack<'a>,
     ) -> TemplateResult {
         // Check the chain cache to see if this value is already being computed
-        // somewhere else. If it is, we'll block on that and re-use the result.
+        // somewhere else. If it is, we'll block on that and reuse the result.
         // If not, we get a guard back, meaning we're responsible for the
         // computation. At the end, we'll write back to the guard so everyone
         // else can copy our homework.
@@ -765,7 +765,7 @@ impl<'a> ChainTemplateSource<'a> {
                     })?;
 
                 // Convert all values to strings, for convenience. This may be a
-                // bit wonky for nexted objects/arrays, but it should be obvious
+                // bit wonky for nested objects/arrays, but it should be obvious
                 // to the user what's going on so it's better than erroring
                 options
                     .into_iter()

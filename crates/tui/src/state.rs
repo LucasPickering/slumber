@@ -809,7 +809,7 @@ requests:
         );
         assert_eq!(collection.recipes.iter().count(), 0);
 
-        // Update the file with an invalid colletion
+        // Update the file with an invalid collection
         fs::write(file.path(), "requests: 3").unwrap();
 
         // We need to manually plumb messages through. Normally the TUI loop

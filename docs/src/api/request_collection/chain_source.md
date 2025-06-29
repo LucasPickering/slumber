@@ -30,7 +30,7 @@ message: Enter Password
 | ---------- | --------------------------------------------------- | --------------------------------------------------------------- |
 | `!request` | [`ChainSource::Request`](#request)                  | Body of the most recent response for a specific request recipe. |
 | `!command` | [`ChainSource::Command`](#command)                  | Stdout of the executed command                                  |
-| `!env`     | [`ChainSource::Environment`](#environment-variable) | Value of an envionrment variable, or empty string if undefined  |
+| `!env`     | [`ChainSource::Environment`](#environment-variable) | Value of an environment variable, or empty string if undefined  |
 | `!file`    | [`ChainSource::File`](#file)                        | Contents of the file                                            |
 | `!prompt`  | [`ChainSource::Prompt`](#prompt)                    | Value entered by the user                                       |
 | `!select`  | [`ChainSource::Select`](#select)                    | User selects a value from a list                                |

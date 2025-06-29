@@ -316,7 +316,7 @@ impl slumber_util::Factory for Chain {
 /// to the `Authorization` header, that header will end up being included in the
 /// request twice.
 ///
-/// Type parameter allows this to be re-used for post-render purposes (with
+/// Type parameter allows this to be reused for post-render purposes (with
 /// `T=String`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
@@ -362,7 +362,7 @@ impl RecipeBody {
 
     /// Get the anticipated MIME type that will appear in the `Content-Type`
     /// header of a request containing this body. This is *not* necessarily
-    /// the MIME type that will _actually_ be used, as it could be overidden by
+    /// the MIME type that will _actually_ be used, as it could be overridden by
     /// an explicit header.
     pub fn mime(&self) -> Option<Mime> {
         match self {

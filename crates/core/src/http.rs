@@ -330,7 +330,7 @@ impl HttpEngine {
                 recipe.render_body(options, template_context),
             )?;
 
-            // Buidl the command
+            // Build the command
             let mut builder = CurlBuilder::new(recipe.method)
                 .url(url, &query)
                 .headers(&headers)?;

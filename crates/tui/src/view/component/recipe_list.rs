@@ -48,7 +48,7 @@ pub struct RecipeListPane {
     /// Emitter for menu actions, to be handled by our parent
     actions_emitter: Emitter<RecipeMenuAction>,
     /// The visible list of items is tracked using normal list state, so we can
-    /// easily re-use existing logic. We'll rebuild this any time a folder is
+    /// easily reuse existing logic. We'll rebuild this any time a folder is
     /// expanded/collapsed (i.e whenever the list of items changes)
     select: Component<
         PersistedLazy<SelectedRecipeKey, SelectState<RecipeListItem>>,

@@ -30,7 +30,7 @@ where
     Item: FixedSelect,
     State: SelectStateData,
 {
-    /// Re-use SelectState for state management. The only different is we
+    /// Reuse SelectState for state management. The only different is we
     /// guarantee any value of the item type is in the list (because there's
     /// a fixed number of values), so in a few places we'll unwrap options.
     inner: SelectState<Item, State>,

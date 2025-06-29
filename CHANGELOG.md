@@ -109,7 +109,7 @@ This releases focuses on history and data management. A suite of new features an
 
 ## [3.0.0] - 2025-02-15
 
-A major release! The main focus of this release is the introduction of shell commands for data querying and export. Previously, you could query response bodies within the TUI only using JSONPath. This limited querying only to JSON responses, and the limited amount of operators supported by JSON. Now, you can use whatever shell commands you want (such as `head`, `grep`, and `jq`) to filter your reponses bodies, right in the TUI! [Check out the docs](https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.md) for more examples.
+A major release! The main focus of this release is the introduction of shell commands for data querying and export. Previously, you could query response bodies within the TUI only using JSONPath. This limited querying only to JSON responses, and the limited amount of operators supported by JSON. Now, you can use whatever shell commands you want (such as `head`, `grep`, and `jq`) to filter your responses bodies, right in the TUI! [Check out the docs](https://slumber.lucaspickering.me/book/user_guide/tui/filter_query.md) for more examples.
 
 In addition to the querying change, this release includes a handful of breaking changes, none of which are likely to cause issues for existing users.
 
@@ -136,7 +136,7 @@ In addition to the querying change, this release includes a handful of breaking 
 - Several changes related to keybinds and action menus to make the two feel more cohesive
   - Add "Edit" and "Reset" actions to menus on the recipe pane
     - These don't provide any new functionality, as the `e` and `z` keys are already bound to those actions, but it should make them more discoverable
-  - Add keybind (`v` by defualt) to open a recipe/request/response body in your pager
+  - Add keybind (`v` by default) to open a recipe/request/response body in your pager
     - Previously this was available only through the actions menu
   - "View Body" and "Copy Body" actions for a **recipe** are now only available within the Body tab of the Recipe pane
     - Previously they were available anywhere in the Recipe List or Recipe panes. With the addition of other actions to the menu it was started to feel cluttered
@@ -180,7 +180,7 @@ In addition to the querying change, this release includes a handful of breaking 
 - Improve UX of query text box
   - The query is now auto-applied when changed (with a 500ms debounce), and drops focus on the text box when Enter is pressed
 - Refactor UI event handling logic
-  - This shouldn't have any noticable impact on the user, but if you notice any bugs please open an issue
+  - This shouldn't have any noticeable impact on the user, but if you notice any bugs please open an issue
 - Include request duration in History modal
 - Rename `viewer` config field to `pager`
   - The old field name `viewer` is still supported for backward compatibility, but the docs have been updated to suggest the newer name instead

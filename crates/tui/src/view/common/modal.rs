@@ -78,7 +78,7 @@ impl EventHandler for Box<dyn Modal> {
     }
 }
 
-/// Define how a type can be converted into a modal. Often times, implementors
+/// Define how a type can be converted into a modal. Often times, implementers
 /// of [Modal] will be esoteric types that external consumers who want to open
 /// a modal aren't concerned about. This trait provides an adapter layer
 /// between the type a user might have (e.g. [anyhow::Error]) and the inner

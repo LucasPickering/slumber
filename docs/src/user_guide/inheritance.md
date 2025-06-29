@@ -41,7 +41,7 @@ requests:
 
 You've heard of [DRY](https://en.wikipedia.org/wiki/Don%27t_repeat_yourself), so you know this is bad. Every new request recipe requires re-specifying the headers, and if anything about the authorization changes, you have to change it in multiple places.
 
-You can easily re-use components of your collection using [YAML's merge feature](https://yaml.org/type/merge.html).
+You can easily reuse components of your collection using [YAML's merge feature](https://yaml.org/type/merge.html).
 
 ```yaml
 profiles:

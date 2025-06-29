@@ -325,7 +325,7 @@ impl ToSql for SqlWrap<&HeaderMap> {
 
 impl FromSql for SqlWrap<HeaderMap> {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        // There's no easy way to re-use the header parsing logic from the http
+        // There's no easy way to reuse the header parsing logic from the http
         // crate, so we have to reimplement it ourselves
 
         fn header_line(

@@ -44,8 +44,9 @@ impl CollectionFile {
         Self::with_dir(env::current_dir()?, override_path)
     }
 
-    /// Get a handle to the collection file, seaching a specific directory. This
-    /// is only useful for testing. Typically you just want [Self::new].
+    /// Get a handle to the collection file, searching a specific directory.
+    /// This is only useful for testing. Typically you just want
+    /// [Self::new].
     pub fn with_dir(
         mut dir: PathBuf,
         override_path: Option<PathBuf>,

@@ -96,7 +96,7 @@ impl TextBox {
     /// change event, because it's assumed this is being called by the parent
     /// and therefore the parent doesn't need to be notified about it. Instead,
     /// you should manually call whatever would be trigger by the change event.
-    /// This simplies logic and makes it easier to follow.
+    /// This simplifies logic and makes it easier to follow.
     pub fn set_text(&mut self, text: String) {
         self.state.text = text;
         self.state.end();

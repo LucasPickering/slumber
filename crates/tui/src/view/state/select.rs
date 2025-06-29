@@ -282,7 +282,7 @@ impl<Item, State: SelectStateData> SelectState<Item, State> {
         }
     }
 
-    /// Helper to generate an emit an event for the currentl selected item. The
+    /// Helper to generate an emit an event for the currently selected item. The
     /// event will *not* be emitted if no item is select, or the selected item
     /// is disabled.
     fn emit_for_selected(&self, event_fn: impl Fn(usize) -> SelectStateEvent) {

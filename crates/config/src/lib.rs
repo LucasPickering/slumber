@@ -266,7 +266,7 @@ impl Default for HttpEngineConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct CommandsConfig {
     /// Wrapping shell to parse and execute commands
-    /// If empty, commands will be parsed with shell-words and run natievly
+    /// If empty, commands will be parsed with shell-words and run natively
     pub shell: Vec<String>,
     /// Default query command for responses
     #[serde(default)]

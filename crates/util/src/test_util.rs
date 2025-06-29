@@ -13,7 +13,7 @@ use uuid::Uuid;
 /// the context of the broader app. It also makes it possible to implement a
 /// factory for a type that already has `Default`.
 ///
-/// Factories can also be parameterized, meaning the implementor can define
+/// Factories can also be parameterized, meaning the implementer can define
 /// convenient knobs to let the caller customize the generated type. Each type
 /// can have any number of `Factory` implementations, so you can support
 /// multiple param types.

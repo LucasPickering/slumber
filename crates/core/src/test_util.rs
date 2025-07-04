@@ -12,7 +12,10 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use rstest::fixture;
 use slumber_config::HttpEngineConfig;
 use slumber_template::Template;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    hash::Hash,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 /// A template that spits out bytes that are *not* valid UTF-8
 pub fn invalid_utf8() -> Template {
@@ -145,9 +148,11 @@ impl Prompter for TestSelectPrompter {
 }
 
 /// Construct a map of values keyed by their ID
-pub fn by_id<T: HasId>(
-    values: impl IntoIterator<Item = T>,
-) -> IndexMap<T::Id, T> {
+pub fn by_id<T>(values: impl IntoIterator<Item = T>) -> IndexMap<T::Id, T>
+where
+    T: HasId,
+    T::Id: Clone + Eq + Hash,
+{
     values
         .into_iter()
         .map(|value| (value.id().clone(), value))

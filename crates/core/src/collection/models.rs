@@ -2,7 +2,7 @@
 
 use crate::{
     collection::{
-        cereal,
+        cereal::deserialize_collection,
         json::JsonTemplate,
         recipe_tree::{RecipeNode, RecipeTree},
     },
@@ -15,8 +15,8 @@ use mime::Mime;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use slumber_template::{Template, TemplateParseError};
-use slumber_util::{ResultTraced, parse_yaml};
-use std::{fs::File, iter, path::PathBuf};
+use slumber_util::ResultTraced;
+use std::{fs, iter, path::Path};
 use tracing::info;
 
 /// A collection of profiles, requests, etc. This is the primary Slumber unit
@@ -24,42 +24,37 @@ use tracing::info;
 ///
 /// This deliberately does not implement `Clone`, because it could potentially
 /// be very large. Instead, it's hidden behind an `Arc` by `CollectionFile`.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
 pub struct Collection {
-    #[serde(default, deserialize_with = "cereal::deserialize_profiles")]
     pub profiles: IndexMap<ProfileId, Profile>,
-    /// Internally we call these recipes, but to a user `requests` is more
-    /// intuitive
-    #[serde(default, rename = "requests")]
+    #[serde(rename = "requests")]
     pub recipes: RecipeTree,
 }
 
 impl Collection {
     /// Load collection from a file
-    pub fn load(path: &PathBuf) -> anyhow::Result<Self> {
+    pub fn load(path: &Path) -> anyhow::Result<Self> {
         info!(?path, "Loading collection file");
 
-        let load = || {
-            let file = File::open(path)?;
-            let collection = parse_yaml(&file)?;
-            Ok::<_, anyhow::Error>(collection)
-        };
-
-        load()
+        fs::read_to_string(path)
             .context(format!(
                 "Error loading collection from `{}`",
                 path.display()
             ))
+            .and_then(|input| deserialize_collection(&input, Some(path)))
             .traced()
+    }
+
+    /// Load collection from a YAML string
+    pub fn parse(input: &str) -> anyhow::Result<Self> {
+        deserialize_collection(input, None).traced()
     }
 }
 
 /// Mutually exclusive hot-swappable config group
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
 pub struct Profile {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: ProfileId,
@@ -68,7 +63,6 @@ pub struct Profile {
     /// the TUI, select this profile by default from the list. Only one profile
     /// in the collection can be marked as default. This is enforced by a
     /// custom deserializer function.
-    #[serde(default)]
     pub default: bool,
     pub data: IndexMap<String, Template>,
 }
@@ -129,19 +123,14 @@ impl slumber_util::Factory for ProfileId {
 }
 
 /// A gathering of like-minded recipes and/or folders
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
 pub struct Folder {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
     pub name: Option<String>,
     /// RECURSION. Use `requests` in serde to match the root field.
-    #[serde(
-        default,
-        deserialize_with = "cereal::deserialize_id_map",
-        rename = "requests"
-    )]
+    #[serde(rename = "requests")]
     pub children: IndexMap<RecipeId, RecipeNode>,
 }
 
@@ -167,14 +156,11 @@ impl slumber_util::Factory for Folder {
 /// order to distinguish it from a single instance of an HTTP request. And it's
 /// not called `RequestTemplate` because the word "template" has a specific
 /// meaning related to string interpolation.
-#[expect(clippy::unsafe_derive_deserialize)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(deny_unknown_fields)]
 pub struct Recipe {
     #[serde(skip)] // This will be auto-populated from the map key
     pub id: RecipeId,
-    #[serde(default = "cereal::persist_default")]
     pub persist: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -189,13 +175,9 @@ pub struct Recipe {
     pub authentication: Option<Authentication>,
     /// A map of key-value query parameters. Each value can either be a single
     /// value (`?foo=bar`) or multiple (`?foo=bar&foo=baz`)
-    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     pub query: IndexMap<String, QueryParameterValue>,
-    #[serde(
-        default,
-        deserialize_with = "cereal::deserialize_headers",
-        skip_serializing_if = "IndexMap::is_empty"
-    )]
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     pub headers: IndexMap<String, Template>,
 }
 
@@ -311,9 +293,9 @@ impl slumber_util::Factory for RecipeId {
 ///
 /// Type parameter allows this to be re-used for post-render purposes (with
 /// `T=String`).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum Authentication<T = Template> {
     /// `Authorization: Basic {username:password | base64}`
     Basic { username: T, password: Option<T> },
@@ -322,13 +304,9 @@ pub enum Authentication<T = Template> {
 }
 
 /// A value for a particular query parameter key
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(
-    untagged,
-    deny_unknown_fields,
-    expecting = "string or array of strings"
-)]
+#[serde(untagged)]
 pub enum QueryParameterValue {
     /// The common case: `?foo=bar`
     One(Template),
@@ -359,15 +337,9 @@ impl<const N: usize> From<[&str; N]> for QueryParameterValue {
 /// HTTP engine uses the variant to determine not only how to serialize the
 /// body, but also other parameters of the request (e.g. the `Content-Type`
 /// header).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(
-    tag = "type",
-    content = "data",
-    rename_all = "snake_case",
-    expecting = "TODO",
-    deny_unknown_fields
-)]
+#[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum RecipeBody {
     /// `application/json` body
     Json(JsonTemplate),

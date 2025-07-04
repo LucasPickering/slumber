@@ -6,7 +6,7 @@ use std::{fs::OpenOptions, io::Write, path::PathBuf, process::ExitCode};
 /// We use a static source file, to get control of whitespace/comments.
 /// Generating a collection and serializing it would be like driving from the
 /// back seat with a broom stick.
-const SOURCE: &[u8] = include_bytes!("new.yml");
+const SOURCE: &str = include_str!("new.yml");
 const DEFAULT_PATH: &str = "slumber.yml";
 
 /// Generate a new Slumber collection file
@@ -36,7 +36,7 @@ impl Subcommand for NewCommand {
             .with_context(|| {
                 format!("Error opening file `{}`", path.display())
             })?;
-        file.write_all(SOURCE).with_context(|| {
+        file.write_all(SOURCE.as_bytes()).with_context(|| {
             format!("Error writing to file `{}`", path.display())
         })?;
 
@@ -89,7 +89,7 @@ mod tests {
         };
 
         command.execute(global_args).await.unwrap();
-        let contents = fs::read(&expected_created_path)
+        let contents = fs::read_to_string(&expected_created_path)
             .with_context(|| {
                 format!(
                     "Error reading results from expected output path \
@@ -104,7 +104,7 @@ mod tests {
     /// specific contents
     #[test]
     fn test_deserialize() {
-        let collection: Collection = serde_yaml::from_slice(SOURCE).unwrap();
+        let collection: Collection = Collection::parse(SOURCE).unwrap();
         let expected = Collection {
             profiles: by_id([Profile {
                 id: "example".into(),

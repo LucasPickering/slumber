@@ -1,12 +1,10 @@
 //! Recipe/folder tree structure
 
-use crate::collection::{
-    Folder, HasId, Recipe, RecipeId, cereal::deserialize_id_map,
-};
+use crate::collection::{Folder, HasId, Recipe, RecipeId};
 use anyhow::anyhow;
 use derive_more::From;
 use indexmap::{IndexMap, map::Values};
-use serde::{Deserialize, Deserializer, Serialize, de::Error};
+use serde::Serialize;
 use strum::EnumDiscriminants;
 use thiserror::Error;
 
@@ -16,16 +14,18 @@ use thiserror::Error;
 /// recipes. This is a mild restriction on the user that makes implementing a
 /// lot simpler. In reality it's unlikely they would want to give two things
 /// the same ID anyway.
-#[derive(derive_more::Debug, Default)]
+#[derive(derive_more::Debug, Default, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
 pub struct RecipeTree {
     /// Tree structure storing all the folder/recipe data
+    #[serde(flatten)]
     tree: IndexMap<RecipeId, RecipeNode>,
     /// A flattened version of the tree, with each ID pointing to its path in
     /// the tree. This is possible because the IDs are globally unique. It is
     /// an invariant that every lookup key in this map is valid, therefore it's
     /// safe to panic if one is found to be invalid.
     #[debug(skip)] // It's big and useless
+    #[serde(skip)]
     nodes_by_id: IndexMap<RecipeId, RecipeLookupKey>,
 }
 
@@ -62,16 +62,10 @@ impl IntoIterator for RecipeLookupKey {
 }
 
 /// A node in the recipe tree, either a folder or recipe
-#[derive(Debug, From, Serialize, Deserialize, EnumDiscriminants)]
+#[derive(Debug, From, Serialize, EnumDiscriminants)]
 #[strum_discriminants(name(RecipeNodeType))]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(
-    tag = "type",
-    rename_all = "snake_case",
-    deny_unknown_fields,
-    // TODO nice descriptive message here
-    expecting = "TODO"
-)]
+#[serde(tag = "type", rename_all = "snake_case")]
 #[expect(clippy::large_enum_variant)]
 pub enum RecipeNode {
     Folder(Folder),
@@ -217,26 +211,6 @@ impl RecipeTree {
     }
 }
 
-impl Serialize for RecipeTree {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.tree.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for RecipeTree {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let tree: IndexMap<RecipeId, RecipeNode> =
-            deserialize_id_map(deserializer)?;
-        Self::new(tree).map_err(D::Error::custom)
-    }
-}
-
 #[cfg(any(test, feature = "test"))]
 impl From<IndexMap<RecipeId, Recipe>> for RecipeTree {
     fn from(value: IndexMap<RecipeId, Recipe>) -> Self {
@@ -283,7 +257,7 @@ impl RecipeNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::by_id;
+    use crate::{collection::cereal, test_util::by_id};
     use indexmap::indexmap;
     use itertools::Itertools;
     use rstest::{fixture, rstest};
@@ -410,14 +384,14 @@ mod tests {
     )]
     fn test_duplicate_id(#[case] yaml_value: Value) {
         assert_err!(
-            serde_yaml::from_value::<RecipeTree>(yaml_value),
+            cereal::deserialize_recipe_tree(yaml_value),
             "Duplicate recipe/folder ID `dupe`"
         );
     }
 
-    /// Test successful serialization/deserialization
+    /// Test successful deserialization
     #[rstest]
-    fn test_deserialization(tree: IndexMap<RecipeId, RecipeNode>) {
+    fn test_deserialize(tree: IndexMap<RecipeId, RecipeNode>) {
         // Manually create the ID map to make sure it's correct
         let tree = RecipeTree {
             tree,
@@ -442,7 +416,7 @@ mod tests {
         ]);
 
         assert_eq!(
-            serde_yaml::from_value::<RecipeTree>(yaml).unwrap(),
+            cereal::deserialize_recipe_tree(yaml).unwrap(),
             tree,
             "Deserialization failed"
         );

@@ -26,14 +26,14 @@ reqwest = {workspace = true, features = ["json", "multipart", "rustls-tls", "rus
 rstest = {workspace = true, optional = true}
 rusqlite = {version = "0.35.0", default-features = false, features = ["bundled", "chrono", "uuid"]}
 rusqlite_migration = "2.1.0"
+saphyr = "0.0.6"
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 serde_json_path = "0.7.1"
-serde_yaml = {workspace = true}
 slumber_config = {workspace = true}
+slumber_macros = {workspace = true}
 slumber_template = {workspace = true}
 slumber_util = {workspace = true}
-slumber_macros = {workspace = true}
 strum = {workspace = true, features = ["derive"]}
 thiserror = {workspace = true}
 tokio = {workspace = true, features = ["fs", "process"]}
@@ -49,6 +49,7 @@ proptest = "1.5.0"
 proptest-derive = "0.5.0"
 rstest = {workspace = true}
 serde_test = {workspace = true}
+serde_yaml = {workspace = true}
 slumber_template = {workspace = true, features = ["test"]}
 slumber_util = {workspace = true, features = ["test"]}
 wiremock = {workspace = true}

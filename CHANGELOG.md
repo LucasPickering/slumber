@@ -18,9 +18,17 @@ slumber import v3 <old file> <new file>
 
 The new collection _should_ be equivalent to the old one, but you should keep your old version around just in case something broke. If you notice any differences, please [file a bug!](https://github.com/lucaspickering/slumber/issues/new).
 
+TODO write migration guide
+
 - Replace template chains with a more intuitive function syntax
   - Instead of defining chains separately then referencing them in templates, you can now call functions directly in templates: `{{ response('login') | jsonpath('$.token') }}`
   - TODO link to docs for this
+- Replace YAML `!tags` with an inner `type` field
+  - This change makes the format compatible with JSON Schema
+  - Impacts these collection nodes:
+    - Folder/request nodes
+    - Authentication
+    - Body
 - Represent query parameters as a map of `{parameter: value}` instead of a list of strings like `parameter=value`
   - The map format has been supported as well, but did not allow for multiple values for the same value, hence the need for the string format
   - To define multiple values for the same value, you can now use a list associated to the parameter: `{parameter: [value1, value2]}`

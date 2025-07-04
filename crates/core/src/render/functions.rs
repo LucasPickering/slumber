@@ -11,6 +11,7 @@ use serde::{
 };
 use serde_json_path::{JsonPath, NodeList};
 use slumber_macros::template;
+use slumber_template::TryFromValue;
 use slumber_util::TimeSpan;
 use std::{env, fmt::Debug, process::Stdio, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, process::Command, sync::oneshot};
@@ -186,7 +187,7 @@ pub async fn prompt(
 #[template(TemplateContext)]
 pub async fn response(
     #[context] context: &TemplateContext,
-    #[serde] recipe_id: RecipeId,
+    recipe_id: RecipeId,
     #[kwarg]
     #[serde]
     trigger: RequestTrigger,
@@ -204,7 +205,7 @@ pub async fn response(
 #[template(TemplateContext)]
 pub async fn response_header(
     #[context] context: &TemplateContext,
-    #[serde] recipe_id: RecipeId,
+    recipe_id: RecipeId,
     header: String,
     #[kwarg]
     #[serde]
@@ -346,4 +347,12 @@ pub enum TrimMode {
     /// Trim the start and end of the output
     #[default]
     Both,
+}
+
+impl TryFromValue for RecipeId {
+    fn try_from_value(
+        value: slumber_template::Value,
+    ) -> Result<Self, slumber_template::RenderError> {
+        String::try_from_value(value).map(RecipeId::from)
+    }
 }

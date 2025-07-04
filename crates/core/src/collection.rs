@@ -141,14 +141,15 @@ fn detect_path(dir: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{http::HttpMethod, test_util::by_id};
+    use crate::{
+        collection::cereal::deserialize_collection, http::HttpMethod,
+        test_util::by_id,
+    };
     use indexmap::indexmap;
     use pretty_assertions::assert_eq;
     use rstest::rstest;
     use serde_json::json;
-    use slumber_util::{
-        Factory, TempDir, assert_err, parse_yaml, temp_dir, test_data_dir,
-    };
+    use slumber_util::{Factory, TempDir, assert_err, temp_dir, test_data_dir};
     use std::{fs, fs::File};
 
     /// Test various cases of [CollectionFile::with_dir]
@@ -226,48 +227,41 @@ mod tests {
     /// we get a useful error message for each one
     #[rstest]
     #[case::recipe_missing_type(
-        json!({
-            "requests": {
-                "r1": {
-                    "method": "GET",
-                    "url": "http://localhost",
-                }
-            }
-        }),
-        "requests.r1: missing field `type`"
+        r"
+        requests:
+          r1:
+            method: GET
+            url: http://localhost
+        ",
+        "Error at :4:12: Expected field `type` with one of \"request\", \"folder\""
     )]
     #[case::query(
-        json!({
-            "requests": {
-                "r1": {
-                    "type": "request",
-                    "method": "GET",
-                    "url": "http://localhost",
-                    "query": 3,
-                }
-            }
-        }),
-        "requests.r1.query: invalid type: integer `3`, expected a map"
+        r"
+        requests:
+          r1:
+            type: request
+            method: GET
+            url: http://localhost
+            query: 3
+        ",
+        "Error at :7:19: Expected mapping, received `3`"
     )]
     #[case::headers(
-        json!({
-            "requests": {
-                "r1": {
-                    "type": "request",
-                    "method": "GET",
-                    "url": "http://localhost",
-                    "headers": 3,
-                }
-            }
-        }),
-        "requests.r1.headers: invalid type: integer `3`, expected a map"
+        r"
+        requests:
+          r1:
+            type: request
+            method: GET
+            url: http://localhost
+            headers: 3
+        ",
+        "Error at :7:21: Expected mapping, received `3`"
     )]
     fn test_deserialize_collection_error(
-        #[case] collection: serde_json::Value,
+        #[case] yaml: &str,
         #[case] expected_error: &str,
     ) {
-        let yaml = collection.to_string(); // JSON is valid YAML
-        assert_err!(parse_yaml::<Collection>(yaml.as_bytes()), expected_error);
+        assert_err!(deserialize_collection(yaml, None), expected_error);
     }
 
     /// A catch-all regression test, to make sure we don't break anything in the
@@ -399,6 +393,16 @@ mod tests {
             ])
             .into(),
         };
-        assert_eq!(loaded, expected);
+        assert_eq!(loaded, expected, "Deserialization incorrect");
+
+        // Now that we know deserailization works, let's test serialization.
+        // We'll serialize then deserialize again and expect the same thing
+        let serialized = serde_yaml::to_string(&loaded).unwrap();
+        let loaded: Collection =
+            deserialize_collection(&serialized, None).unwrap();
+        assert_eq!(
+            loaded, expected,
+            "Serialized & re-deserialization incorrect"
+        );
     }
 }

@@ -47,3 +47,7 @@ requests:
 Create this file, then run the TUI with `slumber`.
 
 For a more extensive example, see [the docs](https://slumber.lucaspickering.me/book/getting_started.html).
+
+## Development
+
+If you want to contribute to Slumber, see `CONTRIBUTING.md` for guidelines, development instructions, etc.

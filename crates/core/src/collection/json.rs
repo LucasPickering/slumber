@@ -3,15 +3,15 @@
 use crate::render::TemplateContext;
 use futures::future;
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use slumber_template::{RenderError, Template, TemplateParseError};
 use std::str::FromStr;
 use thiserror::Error;
 
 /// A JSON value like [serde_json::Value], but all strings are templates
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[cfg_attr(any(test, feature = "test"), derive(PartialEq))]
-#[serde(untagged, expecting = "JSON value")]
+#[serde(untagged)]
 pub enum JsonTemplate {
     Null,
     Bool(bool),

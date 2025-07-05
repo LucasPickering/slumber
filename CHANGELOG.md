@@ -34,6 +34,11 @@ TODO write migration guide
   - To define multiple values for the same value, you can now use a list associated to the parameter: `{parameter: [value1, value2]}`
   - [See docs](https://slumber.lucaspickering.me/book/api/request_collection/query_parameters.html) for examples of the new format
 
+### Added
+
+- Generate JSON Schema for both the collection and config formats [#374](https://github.com/LucasPickering/slumber/issues/374)
+  - This enables better validation and completion in your IDE; [see docs for more](TODO)
+
 ### Changed
 
 - Update to Rust 1.88

@@ -43,6 +43,8 @@ TODO write migration guide
 - Add optional root-level `name` field to collections
   - This allows you to provide a descriptive name for the collection to show in the new switcher modal
   - The name is purely descriptive and does not need to be unique
+- Generate JSON Schema for both the collection and config formats [#374](https://github.com/LucasPickering/slumber/issues/374)
+  - This enables better validation and completion in your IDE; [see docs for more](TODO)
 
 ### Changed
 
